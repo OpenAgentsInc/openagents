@@ -22,11 +22,11 @@ This remains local/test-only. OpenAgents product surface does not depend on `oa-
 
 The conformance test uses these OpenAgents product surface-side fixtures:
 
-- `OPENAGENTS_NATIVE_CONTRACT_REGISTRY_V1`;
-- `OPENAGENTS_OA_NODE_CONFORMANCE_FIXTURES`;
-- `OPENAGENTS_WORKROOMD_CONFORMANCE_FIXTURES`;
-- `OPENAGENTS_PROBE_CONFORMANCE_FIXTURES`;
-- `OPENAGENTS_PSIONIC_CONFORMANCE_FIXTURES`; and
+- `OPENAGENTS_NATIVE_CONTRACT_REGISTRY_V1`.
+- `OPENAGENTS_OA_NODE_CONFORMANCE_FIXTURES`.
+- `OPENAGENTS_WORKROOMD_CONFORMANCE_FIXTURES`.
+- `OPENAGENTS_PROBE_CONFORMANCE_FIXTURES`.
+- `OPENAGENTS_PSIONIC_CONFORMANCE_FIXTURES`. And
 - `OPENAGENTS_PYLON_SETTLEMENT_BRIDGE_CONFORMANCE_FIXTURES`.
 
 Rust/native repos should either copy these payloads into their own fixture
@@ -38,15 +38,15 @@ refs, and receipt links against these OpenAgents product surface contracts.
 
 Native conformance should cover:
 
-- shared registry coverage for every consumer and ref kind;
+- shared registry coverage for every consumer and ref kind.
 - `oa-node` managed-machine liveness, capability, trust, quarantine, and
-  provider eligibility fields;
+  provider eligibility fields.
 - `oa-workroomd` assignment intake, grant refs, grant resolution, artifact
-  manifests, cancellation, closeout, archive, destroy, and audit evidence;
+  manifests, cancellation, closeout, archive, destroy, and audit evidence.
 - Probe coding-runtime requests, turn events, tool-call summaries, terminal
-  status, closeout receipts, retained failures, and public projections;
+  status, closeout receipts, retained failures, and public projections.
 - Psionic evidence-only eval/training/optimizer/scorecard/candidate-module
-  evidence without runtime mutation authority; and
+  evidence without runtime mutation authority. And
 - Pylon provider assignments, capability snapshots, wallet readiness
   summaries, buyer payment evidence, accepted work, reward intent, payout
   eligibility, payout dispatch, payout confirmation, payout verification, and
@@ -56,15 +56,15 @@ Native conformance should cover:
 
 The test suite includes failures or flags for:
 
-- missing registry consumer coverage;
-- successful Probe runs without closeout receipts;
-- failed Probe runs without retained-failure evidence;
-- settled Pylon bridges without settlement refs;
-- secret-bearing refs;
-- raw logs and raw payloads;
-- raw timestamps;
-- wallet and raw bitcoin payment material;
-- private repo refs; and
+- missing registry consumer coverage.
+- successful Probe runs without closeout receipts.
+- failed Probe runs without retained-failure evidence.
+- settled Pylon bridges without settlement refs.
+- secret-bearing refs.
+- raw logs and raw payloads.
+- raw timestamps.
+- wallet and raw bitcoin payment material.
+- private repo refs. And
 - payout targets, invoices, preimages, and private channel state.
 
 ## Boundary

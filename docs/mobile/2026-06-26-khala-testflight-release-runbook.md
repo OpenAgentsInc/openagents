@@ -4,7 +4,7 @@ How to archive + sign + upload the native SwiftUI **Khala** app
 (`clients/khala-ios/Khala`, bundle `com.openagents.khala`, Apple Team `HQWSG26L43`)
 to App Store Connect / TestFlight from the CLI. This is the **proven** path —
 build 2 (v1.0.0) was uploaded this way (Delivery UUID
-`95107d96-…`). Local Xcode only; no Expo/EAS (see repo `CLAUDE.md`).
+`95107d96-…`). Local Xcode only. No Expo/EAS (see repo `CLAUDE.md`).
 
 ## The one big gotcha
 
@@ -18,7 +18,7 @@ error: exportArchive No signing certificate "iOS Distribution" found
 ```
 
 The key **can** create certs/profiles via the App Store Connect API (fastlane
-uses that API directly), it just can't do Xcode's *cloud-managed* signing. So
+uses that API directly), it just cannot do Xcode's *cloud-managed* signing. So
 the working path is: **create the Apple Distribution cert + an App Store
 provisioning profile with fastlane, then export with MANUAL signing, then
 upload with `altool`.** Do not waste time retrying `-allowProvisioningUpdates`.
@@ -83,7 +83,7 @@ xcodebuild -project Khala.xcodeproj -scheme Khala -configuration Release \
 Sanity-check the archived app has the icon + version:
 `/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' /tmp/Khala.xcarchive/Products/Applications/Khala.app/Info.plist` → `AppIcon`.
 
-### 3. Create the Apple Distribution cert (once; skip if already in keychain)
+### 3. Create the Apple Distribution cert (once, skip if already in keychain)
 Build a fastlane API-key JSON, then create/install the cert:
 ```sh
 python3 - "$ASC_API_KEY_ID" "$ASC_API_ISSUER_ID" "$ASC_API_PRIVATE_KEY_PATH" <<'PY'
@@ -96,13 +96,13 @@ fastlane run get_certificates api_key_path:/tmp/asc_key.json development:false o
 security find-identity -v -p codesigning | grep "Apple Distribution"
 ```
 Note: this creates a NEW distribution cert if none with a local private key
-exists (the account may already have one whose key we don't hold). Distribution
+exists (the account may already have one whose key we do not hold). Distribution
 certs are capped (usually 2–3) — if at the limit, revoke an unused one in App
 Store Connect rather than failing.
 
 ### 4. Create an App Store provisioning profile that includes THAT cert
 The pre-existing App Store profile is tied to the *old* cert and will be
-rejected ("profile doesn't include signing certificate ..."). Make a fresh one:
+rejected ("profile does not include signing certificate ..."). Make a fresh one:
 ```sh
 fastlane run get_provisioning_profile api_key_path:/tmp/asc_key.json \
   app_identifier:com.openagents.khala force:true output_path:/tmp/khala-fl
@@ -156,7 +156,7 @@ all sizes incl. 60×60@2x (120×120) and the 1024×1024 marketing icon.
 ## "Black screen" in the Simulator is NOT the app
 
 If the Simulator window is black with `IOSurfaceClientSetSurfaceNotify failed
-e00002c7` in the log, that's a host GPU/Metal surface failure, not the app
+e00002c7` in the log, that is a host GPU/Metal surface failure, not the app
 (`simctl ... io screenshot` will still show the real UI). Fix:
 ```sh
 xcrun simctl shutdown all && xcrun simctl erase "iPhone 17" && xcrun simctl boot "iPhone 17"

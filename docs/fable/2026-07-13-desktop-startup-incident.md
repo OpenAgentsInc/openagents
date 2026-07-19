@@ -1,8 +1,8 @@
 # Desktop startup incident: ~5 s blank frame before the UI (2026-07-13)
 
 Status: **FIXED, measured, contract-enforced.** Real-profile time to mounted
-interactable shell went from **5.4–7.0 s** to **~0.44–0.72 s**; the window now
-paints a branded boot frame instead of a blank frame; the history scan streams
+interactable shell went from **5.4–7.0 s** to **~0.44–0.72 s**. The window now
+paints a branded boot frame instead of a blank frame. The history scan streams
 in afterwards behind an honest "Scanning coding history…" state.
 
 ## Owner statement (verbatim)
@@ -71,7 +71,7 @@ So: **there was no enforced startup-time contract.** That gap is closed below
   session custody, real `~/.codex`, plus new per-step main-process marks
   (`sessionHardened`, `syncHostOpened`, `sessionVaultRecovered`,
   `sessionRecoverySettled`) and a renderer `historyHydrated` mark. Timings
-  only; never deletes the measured profile; optional pixel receipts via
+  only. Never deletes the measured profile. Optional pixel receipts via
   `OPENAGENTS_DESKTOP_STARTUP_TRACE_SHOTS`.
 - Electron smoke (`OPENAGENTS_DESKTOP_SMOKE=1`, screenshots via
   `OPENAGENTS_DESKTOP_SMOKE_SHOTS`), `scripts/release-preflight.ts`, and the
@@ -80,7 +80,7 @@ So: **there was no enforced startup-time contract.** That gap is closed below
 
 ## Measured reality (this machine, real profile copy, 22 GB `~/.codex`)
 
-BEFORE (ms from process start; `OPENAGENTS_DESKTOP_STARTUP_TRACE` on a copy of
+BEFORE (ms from process start, `OPENAGENTS_DESKTOP_STARTUP_TRACE` on a copy of
 the real production profile):
 
 | mark | run 1 (cold) | run 2 (warm) |
@@ -102,7 +102,7 @@ Attribution micro-measurement: `buildMergedHistoryGraphs(~/.codex/sessions,
 awaited before mount — took **5,291 ms warm** in isolation. That is the
 incident, end to end. The renderer additionally awaited the coding catalog,
 update projection, thread list, session view, and command handshake before
-mounting; all were riders on the same pre-mount block.
+mounting. All were riders on the same pre-mount block.
 
 ## The fix
 
@@ -111,7 +111,7 @@ Three ordered principles, all landed in this change:
 1. **Window first (main process).** `app.whenReady` now creates the window
    before any local database open, OS-keychain custody, or network work.
    `openDesktopSyncHost` (sync SQLite), the vault recover, and
-   `runtimeGateway.start()` run immediately *after* `createWindow()`; the
+   `runtimeGateway.start()` run immediately *after* `createWindow()`. The
    network session verification (`settleSessionRecovery`) is **fire-and-forget**
    — the renderer sees the honest typed `unverified` phase and the CUT-10
    converging chat facade re-admits operations once verified Sync connects.
@@ -121,7 +121,7 @@ Three ordered principles, all landed in this change:
    shimmer in accent blue — that paints before the renderer bundle even
    evaluates. Every color literal in it is an exact `@effect-native/tokens`
    khalaTheme value, mechanically enforced (same rule as the BrowserWindow
-   `backgroundColor`). Reduced-motion honored; removed the moment the shell
+   `backgroundColor`). Reduced-motion honored. Removed the moment the shell
    mounts. No light variant.
 3. **Mount before hydration (renderer).** `boot.ts` mounts the interactable
    shell (composer focusable, sidebar present) and only then runs
@@ -180,17 +180,17 @@ with falsifier fixtures proving each validator rejects the pre-incident
 shape):
 
 - `startup.window_first_ordering` — the production `whenReady` path creates
-  the window before SQLite/keychain/network; the network settle is never
-  awaited post-window; the network call stays confined to the settle helper.
+  the window before SQLite/keychain/network. The network settle is never
+  awaited post-window. The network call stays confined to the settle helper.
 - `startup.shell_mounts_before_hydration` — the history catalog fetch lives
-  inside `hydrateAfterMount`, which runs after `renderer.mount`; the boot
+  inside `hydrateAfterMount`, which runs after `renderer.mount`. The boot
   frame is removed after mount.
 - `startup.boot_frame_token_sync` — the boot frame exists and every color in
   it is an exact khalaTheme value (no off-palette frame can ever paint).
 - `startup.sidebar_scanning_honesty` — typed view-tree proof of the scanning
   row pre-hydration and the empty-history claim only post-hydration.
 - `startup.bench_budgets` — `startup-bench.ts` now fails (exit 1) if fixture
-  medians exceed windowReadyToShow 1500 ms / shellMounted 2500 ms; generous
+  medians exceed windowReadyToShow 1500 ms / shellMounted 2500 ms. Generous
   machine headroom, but an ordering regression blows these by seconds.
 
 ## Receipts
@@ -198,7 +198,7 @@ shape):
 - Timings: `apps/openagents-desktop/benchmarks/startup/2026-07-13-window-first-boot-frame.json`
   (fixture, budget-asserted). Real-profile traces reproduced in the tables
   above (captured via `OPENAGENTS_DESKTOP_STARTUP_TRACE` against a copy of the
-  production profile; raw files carry timings only).
+  production profile. Raw files carry timings only).
 - Pixels: `docs/receipts/2026-07-13-desktop-startup-incident/boot-frame.png`
   (the branded frame at ready-to-show, real profile) and
   `docs/receipts/2026-07-13-desktop-startup-incident/shell-mounted-smoke.png`
@@ -214,13 +214,13 @@ shape):
   critical path, but the right follow-up is an incremental/persisted catalog
   index (bound the scan, not just its placement). Tracked as follow-up, not
   claimed fixed.
-- The background session verification remains unbounded (no fetch timeout);
+- The background session verification remains unbounded (no fetch timeout).
   it can no longer block the window, but a hung request would leave the
-  session phase `unverified` until process restart. Acceptable now; a bounded
+  session phase `unverified` until process restart. Acceptable now. A bounded
   retry would be strictly better.
 - Real-profile traces were captured against a **copy** of the production
   profile on this machine (dev Electron build), not the installed `oa`
-  bundle; the installed app runs the same `dist/` code path. The ~5 s figure
+  bundle. The installed app runs the same `dist/` code path. The ~5 s figure
   matched the owner's report before the fix and vanished after — but the
   installed-app relaunch itself was not re-run by this agent.
 - In the measured profile the session vault state did not trigger the network
@@ -230,8 +230,8 @@ shape):
   `details-affordance` step fails when the machine's physical mouse cursor
   happens to rest over the visible smoke window's transcript (the CSS
   `:hover` reveal is real). Reproduced on the same build back-to-back with
-  the cursor over/away from the window; not introduced by this change.
-- The full desktop suite passed clean twice (1216 pass / 0 fail); a third run
+  the cursor over/away from the window. Not introduced by this change.
+- The full desktop suite passed clean twice (1216 pass / 0 fail). A third run
   during a concurrent-agent load spike (load average ~24) timed out four
   git-subprocess tests (`git-github-host`, `git-review-corpus` — files this
   change does not touch) at their 5 s budgets. Load-induced, not a

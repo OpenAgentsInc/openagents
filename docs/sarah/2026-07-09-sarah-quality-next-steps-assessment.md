@@ -41,7 +41,7 @@ winning pattern is not "pick a better model" in isolation. It is:
 - **Knowledge quality has a source of truth.** The checked-in KB is generated
   from a typed Blueprint with per-fact provenance, not an ad hoc prompt paste.
 - **Runtime migration is disciplined.** Sarah now serves from
-  `https://openagents.com/sarah`; the private Vercel path is historical; money,
+  `https://openagents.com/sarah`. The private Vercel path is historical. Money,
   CRM, credits, checkout, and receipts stay owned by openagents.com APIs.
 - **The owned avatar pipeline is plausible.** OAV-1 proved MuseTalk +
   CosyVoice2 over owned footage end-to-end, with identity exact outside the
@@ -64,7 +64,7 @@ winning pattern is not "pick a better model" in isolation. It is:
   share seams and measurements, but not the same model choices. LatentSync /
   FLAIR-class work belongs to offline or prerecorded tiers until proven fast.
 - **Conversation evals are fixture-green, not yet sales-quality rich.** S-12
-  covers critical safety/honesty fixtures; it does not yet score pain hunting,
+  covers critical safety/honesty fixtures. It does not yet score pain hunting,
   mirroring, momentum, concise voice turns, and non-pushy account/funding moves.
 - **EN UI gaps still force local shell workarounds.** Media host, streaming
   transcript, mic/level state, and card primitives need Effect Native catalog
@@ -122,7 +122,7 @@ Use the existing `research.md` matrix, but tighten the exit conditions:
   banned as a default.
 - **Best offline candidate:** LatentSync 1.6, then fix its 16-frame
   chunk-boundary hitch before declaring it the winner.
-- **Temporal restoration lane:** run FLAIR on stabilized face/mouth crops; run
+- **Temporal restoration lane:** run FLAIR on stabilized face/mouth crops. Run
   BasicVSR++ / RealBasicVSR as the conservative temporal VSR fallback.
 - **Decision rule:** pick one realtime recipe and one offline/prerecorded
   recipe. Do not let the offline winner expand the realtime scope unless it
@@ -225,10 +225,10 @@ The local `research.md` triage remains the working experiment authority. The
 external primary-source checks I would keep attached to this quality program:
 
 - [MuseTalk](https://github.com/TMElyralab/MuseTalk): current realtime
-  lip-sync baseline; efficient, MIT, but a 256x256 mouth-region ceiling and
+  lip-sync baseline. Efficient, MIT, but a 256x256 mouth-region ceiling and
   single-frame artifacts remain the practical risk.
 - [LatentSync](https://github.com/bytedance/LatentSync): offline diffusion
-  lip-sync tier; repo notes 18GB minimum VRAM for 1.6, which fits the L4.
+  lip-sync tier. Repo notes 18GB minimum VRAM for 1.6, which fits the L4.
 - [FLAIR paper](https://arxiv.org/abs/2311.15445): directly targets
   temporally coherent face-video restoration, the failure mode exposed by
   per-frame GFPGAN.
@@ -238,7 +238,7 @@ external primary-source checks I would keep attached to this quality program:
   synthesis are central to natural visemes.
 - [RIFE](https://github.com/hzwer/ECCV2022-RIFE): permissive, fast 2x frame
   interpolation candidate for the 24fps strobing hypothesis.
-- [GFPGAN](https://github.com/TencentARC/GFPGAN): useful only as a tamed prior;
+- [GFPGAN](https://github.com/TencentARC/GFPGAN): useful only as a tamed prior,
   its own model notes distinguish sharper identity/detail from more natural
   restoration, matching the owner-observed stills-vs-motion split.
 - [BasicVSR++](https://github.com/ckkelvinchan/BasicVSR_PlusPlus) and

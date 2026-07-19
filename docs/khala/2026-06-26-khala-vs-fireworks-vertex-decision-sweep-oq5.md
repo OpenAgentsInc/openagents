@@ -1,6 +1,6 @@
 # Khala vs Fireworks/Vertex — Open Question #5 decision sweep (#6307)
 
-> Status: **harness + Khala-side runnable now; owner-armed real spendful run is
+> Status: **harness + Khala-side runnable now. Owner-armed real spendful run is
 > owner-gated.** This is the report scaffold + owner-arm runbook for the FIRST
 > `decisionGrade: true` Khala-vs-Fireworks/Vertex report. It produces no public
 > claim until the owner arms the spendful comparators and the real report is run.
@@ -14,7 +14,7 @@ The minimum lane decision suite (book P1-5 §4.5 / notes Open Question #5):
 **Khala vs Fireworks vs Vertex on chat / khala-code / verifier / long-context**,
 run for real over **realistic** observed Khala traffic, scored on the
 decision-grade metrics (P50/P90/P99 latency, cost-per-accepted-outcome,
-verification rate, cache hit rate). A fixture/synthetic run is illustrative only;
+verification rate, cache hit rate). A fixture/synthetic run is illustrative only.
 a `decisionGrade: true` report requires the owner-armed real seam over realistic
 traffic.
 
@@ -26,7 +26,7 @@ preflight, public-safe report) — nothing in the existing harness was rewritten
 
 - `real-lane-executor.ts` — the owner-armed `RealLaneExecutor` mapping layer: it
   turns a measured live provider exchange into the canonical `BenchmarkLaneSample`
-  the existing runner records. Holds **no credentials and does no IO**; the
+  the existing runner records. Holds **no credentials and does no IO**. The
   transport is injected. Tags the sweep's own Khala load
   `demand_kind=internal`, `demand_source=benchmark_real_sweep` (#6298). A lane
   with no armed transport is a **typed refusal**, never a fabricated number.
@@ -54,7 +54,7 @@ preflight, public-safe report) — nothing in the existing harness was rewritten
 
 Tests: `real-sweep-runner.test.ts` (11 new) — preflight eligibility, #6298
 attribution, the Khala transport (fake fetch), billable cost-basis, the gating
-(refuses unarmed), the decision-grade rule (Khala-only = not decision-grade;
+(refuses unarmed), the decision-grade rule (Khala-only = not decision-grade,
 Khala + billable over realistic = `decisionGrade:true`), un-armed-lane skip, and
 public-safety on a real-lane report. Full `benchmark/` suite: 70 pass.
 
@@ -64,7 +64,7 @@ public-safety on a real-lane report. Full `benchmark/` suite: 70 pass.
   (existing `RealLaneNotArmedError`), and `runRealSweep` refuses to start without a
   green preflight (`RealSweepNotArmedError`).
 - A Khala-only run is honestly `decisionGrade: false` (no billable comparator).
-- No synthetic shape is published as a measurement; the report flags any
+- No synthetic shape is published as a measurement. The report flags any
   synthetic-only group and stays out of decision-grade.
 - The sweep's own Khala inference is tagged internal + segmented (#6298) and
   still counts in the public all-demand counter when Khala serves tokens.

@@ -66,9 +66,9 @@ pylon khala closeout <assignment-ref> --json
 That command composes the owner-scoped trace-status projection and the
 assignment proof projection into one local `closeoutChecklist`. The checklist
 fails closed unless the assignment status and proof agree on assignment ref,
-Pylon ref, and owner refs; the lifecycle is closed out with closeout refs and no
-rejection refs; the final owner-only trace and raw events are present; token
-usage is recorded with exact own-capacity fields; and the underlying proof
+Pylon ref, and owner refs. The lifecycle is closed out with closeout refs and no
+rejection refs. The final owner-only trace and raw events are present. Token
+usage is recorded with exact own-capacity fields. And the underlying proof
 checklist is green. The remote status/proof projections also expose the
 public-safe closeout policy from the worker closeout event, so the checklist
 requires `paymentMode: "no-spend"`, `settlementState: "not_applicable"`, and
@@ -84,7 +84,7 @@ pylon khala proof <assignment-ref> --json
 It includes a local `proofChecklist` projection. The checklist fails closed
 unless the remote proof has exact own-capacity token usage, owner-only trace
 refs, owner-only raw event refs, positive rows/tokens, and a valid generation
-timestamp. The checklist is still assignment-scoped evidence; it does not
+timestamp. The checklist is still assignment-scoped evidence. It does not
 replace the dispatch runner or deployed assignment-status surface.
 
 The Pylon CLI also has an assignment status read path:
@@ -129,12 +129,12 @@ Each fixture closeout reported `paymentMode: "no-spend"`,
 
 Do not claim:
 
-- third-party Pylon capacity pooling or resale;
-- payout eligibility for owner-local Codex no-spend work;
+- third-party Pylon capacity pooling or resale.
+- payout eligibility for owner-local Codex no-spend work.
 - guaranteed continuous dispatch availability beyond the caller-owned linked
-  Pylon's fresh advertised capacity and server lease window;
-- public raw Codex event visibility;
-- public unauthenticated full-assignment trace/status visibility;
+  Pylon's fresh advertised capacity and server lease window.
+- public raw Codex event visibility.
+- public unauthenticated full-assignment trace/status visibility.
 - broad automatic coding-prompt routing without the typed/semantic selector and
   caller-owned capacity resolver.
 

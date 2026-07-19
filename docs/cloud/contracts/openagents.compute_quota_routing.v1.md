@@ -18,12 +18,12 @@ Every managed Cloud session consumes infrastructure resources: virtual CPUs,
 RAM, GPU time, network egress, and transient storage. These have metered GCP
 costs. This contract defines:
 
-- the compute classes and metered dimensions recorded in a session receipt;
+- the compute classes and metered dimensions recorded in a session receipt.
 - the quota caps that bound concurrent session and remote-lease usage per owner
-  and per org;
+  and per org.
 - the idle-timeout and TTL defaults that cap session lifetime regardless of
-  activity;
-- the shape of the rejection receipt emitted when compute cannot be acquired;
+  activity.
+- the shape of the rejection receipt emitted when compute cannot be acquired.
 - the cost-plus-10% principle that converts metered GCP cost into the billing
   input passed to the Worker billing/credit pipeline.
 
@@ -110,7 +110,7 @@ The complete `compute_usage` sub-record within a resource_usage_receipt:
 | `vcpu_count` | vCPU allocation for the session. |
 | `ram_gib` | RAM allocation in GiB. |
 | `gpu_type` | GPU model string, or `null` for non-GPU classes. |
-| `gpu_count` | GPU count; `0` for non-GPU classes. |
+| `gpu_count` | GPU count. `0` for non-GPU classes. |
 | `egress_bytes` | Outbound bytes past the GCP network boundary. |
 | `workspace_byte_seconds` | Workspace storage time-integral. |
 | `artifact_byte_seconds` | Artifact storage time-integral. |
@@ -122,7 +122,7 @@ The complete `compute_usage` sub-record within a resource_usage_receipt:
 `cost_input_microusd` is the billing input forwarded to the Worker billing
 pipeline. It is not the
 invoiced or settled amount. Set it to `null` when GCP billing data is not
-available at receipt closeout time; downstream reconciliation must not invent
+available at receipt closeout time. Downstream reconciliation must not invent
 a cost figure.
 
 ## Session Caps and Lease Limits
@@ -141,7 +141,7 @@ microVM is in a `running` or `paused` state — for a single owner or org.
 | Per org (organisation account) | 20 active sessions |
 
 Sessions in `terminating` state do not count against the cap. Sessions in
-`paused` state do count. Caps apply across all compute classes; a `micro`
+`paused` state do count. Caps apply across all compute classes. A `micro`
 session and a `gpu-high` session each consume one slot.
 
 ### Max-Remote-Lease Cap
@@ -161,9 +161,9 @@ Sessions on the `local` or `shc` provider lane, including Firecracker-local
 microVMs, do not consume a remote lease slot.
 
 Caps are evaluated read-consistently at admission. A narrow race between two
-concurrent session-start requests may transiently allow one slot past the cap;
+concurrent session-start requests may transiently allow one slot past the cap.
 the next admission corrects the in-memory count. Sessions already admitted past
-the cap due to such races are not forcibly terminated; only new admission
+the cap due to such races are not forcibly terminated. Only new admission
 requests are rejected until the count falls back within bounds.
 
 ## TTL and Idle-Timeout Defaults
@@ -211,7 +211,7 @@ and no customer billing data in any public-facing field.
 | `owner_ref` | Redacted owner or org ref, e.g. `owner://sha256:…`. |
 | `compute_class_requested` | The class label that was requested. |
 | `rejection_code` | One of the codes listed below. |
-| `quota_dimension` | Cap dimension exhausted, if applicable; `null` for capacity or policy rejections. |
+| `quota_dimension` | Cap dimension exhausted, if applicable. `null` for capacity or policy rejections. |
 | `receipt_digest` | `sha256:` digest over the rejection receipt material. |
 
 ### Rejection Codes
@@ -226,7 +226,7 @@ and no customer billing data in any public-facing field.
 
 The rejection receipt is emitted as an `openagents.runner_event.v1`
 `compute.quota.rejected` event and written to `compute-quota-rejections.jsonl`
-on the node. It is not a billable event; no `cost_input_microusd` field
+on the node. It is not a billable event. No `cost_input_microusd` field
 appears on a rejection receipt. Free-text diagnostic details belong in the
 associated runner event, not in the receipt itself.
 
@@ -242,14 +242,14 @@ cost_input_microusd = floor(gcp_metered_cost_microusd × 1.10)
 where `gcp_metered_cost_microusd` is the sum of:
 
 - VM-seconds × the GCP on-demand rate for the compute class at the metered
-  region and time of the session;
-- egress bytes × the applicable GCP network egress rate;
+  region and time of the session.
+- egress bytes × the applicable GCP network egress rate.
 - storage byte-seconds × the applicable GCP storage rate converted to a
   per-byte-second unit.
 
 GCP rates are read from the Cloud Billing Catalog API and cached with a 24 h
 TTL per region. Rate staleness beyond 24 h must be reflected by setting
-`metering_source` to `estimated`; a reconciliation pass corrects
+`metering_source` to `estimated`. A reconciliation pass corrects
 `cost_input_microusd` once fresh rates are available.
 
 The 10% markup is the input to the Worker billing pipeline. It is not the final
@@ -282,7 +282,7 @@ placement resolves to GCE.
 
 The chosen lane records `cost_driven = true` and a refs-only `cost_basis`
 (`PlacementCostBasis`) on the `RunnerBinding` / `placement.bound` event. The
-cost basis surfaces the lane estimates and the per-session figure only; it never
+cost basis surfaces the lane estimates and the per-session figure only. It never
 carries raw customer cost, raw GCP/SHC invoice identifiers, or settlement refs.
 
 Cost-driven placement can be disabled with `OA_CODEX_PLACEMENT_COST_DRIVEN=false`
@@ -304,12 +304,12 @@ The rate source is recorded in `cost_input_basis`:
   rate (`GCE_RAW_PER_VM_SEC_NANOUSD`), pending a live Billing export (cloud#92,
   CND-042 report §2.4). The measured dimension and the catalog rate are kept
   honestly distinct: do not relabel a catalog-rate cost as a live metered cost.
-- `unavailable` — no GCP rate was available; `cost_input_microusd` is `null`.
+- `unavailable` — no GCP rate was available. `cost_input_microusd` is `null`.
 
 Whichever basis is used, the markup is the same cost-plus-10% computed in one
-place (`LaneCostModel::cost_plus_10pct_micro_usd_per_vm_sec`); do not re-derive
+place (`LaneCostModel::cost_plus_10pct_micro_usd_per_vm_sec`). Do not re-derive
 the 1.10 inline. When no rate is available at all, set `cost_input_microusd` to
-`null` and `cost_input_basis` to `unavailable`; do not estimate or substitute.
+`null` and `cost_input_basis` to `unavailable`. Do not estimate or substitute.
 
 ## Runner Behavior
 
@@ -328,9 +328,9 @@ block is added.
 Quota routing emits the following `openagents.runner_event.v1` events:
 
 - `compute.quota.admitted` at session start, citing the `owner_ref` and
-  `compute_class`;
+  `compute_class`.
 - `compute.usage.captured` at closeout, citing the `receipt_digest` and
-  `run_ref`;
+  `run_ref`.
 - `compute.quota.rejected` on admission failure, citing the `rejection_ref`
   and `rejection_code`.
 
@@ -339,7 +339,7 @@ compute metering and quota routing facts.
 
 ## Validation Rules
 
-- `compute_class` must be one of the defined class labels; unlisted labels are
+- `compute_class` must be one of the defined class labels. Unlisted labels are
   rejected.
 - `vm_seconds` must be positive and must not exceed `session_ttl` converted to
   seconds plus a 60-second shutdown grace window.
@@ -353,18 +353,18 @@ compute metering and quota routing facts.
   `compute.usage.captured` runner event explaining why GCP-reported data was
   unavailable.
 - `cost_input_microusd`, when not `null`, must equal
-  `floor(vm_seconds × cost-plus-10% rate)` for the basis's rate source; any other
+  `floor(vm_seconds × cost-plus-10% rate)` for the basis's rate source. Any other
   derivation is rejected.
 - `cost_input_basis` must be `cost_plus_10pct_gcp` or
   `cost_plus_10pct_gcp_catalog` when `cost_input_microusd` is populated, and
   `unavailable` (with a `null` cost) otherwise.
 - Rejection receipts must not contain raw GCP project identifiers, raw owner
   or customer identities, cost figures, or billing data in any field.
-- `rejection_code` must be one of the defined codes; free-text rejection
+- `rejection_code` must be one of the defined codes. Free-text rejection
   reasons belong in the associated runner event, not in the receipt.
 - `receipt_digest` and `rejection_ref` must be `sha256:` references.
 - Settlement refs, wallet seeds, private keys, bearer tokens, and private
   topology markers must not appear in any compute quota or metering record.
 - Silent missing `compute_usage` blocks are not acceptable when a microVM was
-  started; an explicit `metering_source = estimated` record with a declared
+  started. An explicit `metering_source = estimated` record with a declared
   reason is required.

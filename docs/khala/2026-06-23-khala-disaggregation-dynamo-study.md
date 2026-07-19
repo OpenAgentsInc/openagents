@@ -52,17 +52,17 @@ The P0 telemetry schema already gives Khala a public-safe place to record most
 request lifecycle facts, but disaggregation needs a few specific measurements to
 be decision-grade:
 
-- post-cache input tokens;
-- cacheable-prefix tokens and cache-hit tokens;
+- post-cache input tokens.
+- cacheable-prefix tokens and cache-hit tokens.
 - TTFT split into prefill, routing, provider, and gateway overhead where the
-  provider or worker exposes it;
-- prefill queue wait and queue depth;
+  provider or worker exposes it.
+- prefill queue wait and queue depth.
 - decode KV-cache pressure, including resident KV bytes, eviction/offload count,
-  and offload latency;
-- active prefill workers and active decode workers by lane;
-- generated tokens, inter-token latency, and perceived TPS;
-- request class: interactive stream, async job, verifier run, or batch;
-- route, provider, served model, region, fallback reason, and cache-affinity hash;
+  and offload latency.
+- active prefill workers and active decode workers by lane.
+- generated tokens, inter-token latency, and perceived TPS.
+- request class: interactive stream, async job, verifier run, or batch.
+- route, provider, served model, region, fallback reason, and cache-affinity hash.
 - executed verifier result, scalar reward, and cost-per-accepted-outcome.
 
 Until these fields are measured, a disaggregation report would mostly restate
@@ -91,10 +91,10 @@ must fall back to monolithic service or return an honest blocker.
 
 NVIDIA Dynamo is useful to study for architecture patterns:
 
-- KV-block management;
-- KV-aware routing;
-- separating prefill and decode workers;
-- scheduler pressure signals;
+- KV-block management.
+- KV-aware routing.
+- separating prefill and decode workers.
+- scheduler pressure signals.
 - routing around KV-cache locality and offload cost.
 
 Khala should not adopt Dynamo as a dependency now. The current product path
@@ -122,9 +122,9 @@ capability receipts, or Psionic serving seams.
 
 #6092 is resolved by this study because it records:
 
-- the measured traffic/context threshold for reopening disaggregation;
-- the prefill-queue and KV-pressure metrics required first;
-- a reference-only Dynamo decision;
+- the measured traffic/context threshold for reopening disaggregation.
+- the prefill-queue and KV-pressure metrics required first.
+- a reference-only Dynamo decision.
 - a clear "not yet" recommendation for Khala MVP production routing.
 
 No production code is required to close this issue.

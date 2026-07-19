@@ -1,7 +1,7 @@
 # RX-8 Model-Custody Lead Gen Segment
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -9,10 +9,10 @@ the owner pulls it forward. Do not route new work from it now.
 Date: 2026-07-04
 Issue: [#8281](https://github.com/OpenAgentsInc/openagents/issues/8281)
 Status: analyzer config, regulated template variant, LG-7 segment config, and
-LG-2 pipeline source-ref coverage landed; no live send or customer result.
+LG-2 pipeline source-ref coverage landed. No live send or customer result.
 
 RX-8 turns the Campaign B "Own Your AI" plan into a typed, draft-only segment.
-It does not create a Reactor customer pilot; RX-7 stays owner/customer gated.
+It does not create a Reactor customer pilot. RX-7 stays owner/customer gated.
 
 ## Analyzer
 
@@ -23,8 +23,8 @@ It does not create a Reactor customer pilot; RX-7 stays owner/customer gated.
 
 The analyzer scans only public URLs and records only reproducible public facts:
 
-- published subprocessors or DPA pages;
-- public privacy or AI-feature disclosures;
+- published subprocessors or DPA pages.
+- public privacy or AI-feature disclosures.
 - careers or jobs pages that name AI/model stack terms.
 
 Every finding carries `factuality: "public_surface_only"` and
@@ -59,9 +59,9 @@ Assessment offer.
 
 The template intentionally avoids forbidden copy:
 
-- no compliance-certification claim;
-- no ownership/privacy guarantee beyond the scoped assessment;
-- no public price;
+- no compliance-certification claim.
+- no ownership/privacy guarantee beyond the scoped assessment.
+- no public price.
 - no email/Apollo send authority.
 
 The claim linter covers the template in

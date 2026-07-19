@@ -13,7 +13,7 @@ OpenAgents pays for **accepted work output only**.
 No provider credentials, sessions, or account access are ever transferred,
 metered for resale, or brokered by OpenAgents or between participants.
 
-Contributors are responsible for their own provider-terms compliance; the
+Contributors are responsible for their own provider-terms compliance. The
 runtime never exfiltrates provider auth material.
 
 This is labor: selling work product, not capacity resale. Any feature request

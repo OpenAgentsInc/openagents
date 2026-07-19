@@ -10,7 +10,7 @@ bounded per-payout cap **and** a single allowed recipient/run. With the gate
 OFF, behavior is byte-for-byte the current simulation.
 
 This document is the map and the design. The accompanying code adds the
-owner-gated switch and tests; it does **not** wire a live Spark container call
+owner-gated switch and tests. It does **not** wire a live Spark container call
 into the route. The remaining live-money step is owner-only (see
 *What remains for the owner*).
 
@@ -212,7 +212,7 @@ include raw invoice/preimage/payment-hash/address/mnemonic/amount-beyond-policy.
   refs). The route links `settlementReceiptRef` onto the run via
   `appendTrainingRunReceiptRefs`, and `resolveRunSettlements` reads it back.
 - Recipient-confirmed credit is a **separate** observation (the contributor
-  wallet confirms receive). The receipt asserts dispatch+reconcile; wallet
+  wallet confirms receive). The receipt asserts dispatch+reconcile. Wallet
   landing can still be in-flight (covered by the Spark backup-receive path).
   Public copy must not claim "landed in wallet" from the receipt alone.
 
@@ -221,7 +221,7 @@ include raw invoice/preimage/payment-hash/address/mnemonic/amount-beyond-policy.
 New module `tassadar-run-settlement-gate.ts`:
 - `TassadarRealSettlementGate` schema, all bounding fields explicit.
 - `readTassadarRealSettlementGate(env)` parses env via the typed boundary
-  (no raw `JSON.parse`); **absent/unset/malformed → disabled (fail closed).**
+  (no raw `JSON.parse`). **Absent/unset/malformed → disabled (fail closed).**
 - `resolveTassadarSettlementAdapter({ gate, request, contributorRef })` returns
   `'simulation'` unless **all** hold:
   - `gate.enabled === true` (env flag `OPENAGENTS_REAL_SETTLEMENT_ENABLED`,
@@ -235,13 +235,13 @@ New module `tassadar-run-settlement-gate.ts`:
   the gate OFF still simulates).
 - Hard ceiling: `gate.maxPayoutSats` is itself clamped ≤
   `TassadarRunSettlementHardPerPayoutCapSats` (100_000) and ≤ the run
-  `spendCapSats`; the builder re-checks the amount against both independently.
+  `spendCapSats`. The builder re-checks the amount against both independently.
 
 ### 2.7 Receipt-first promise-flip sequence (owner-only, not done here)
 
 1. Owner sets the gate env (flag + cap + one recipient + one run).
-2. Owner triggers a single small real settlement; the route dispatches through
-   Spark; a `realBitcoinMoved:true` receipt is written and dereferenceable.
+2. Owner triggers a single small real settlement. The route dispatches through
+   Spark. A `realBitcoinMoved:true` receipt is written and dereferenceable.
 3. Contributor confirms the credit.
 4. **Only then** the owner edits the product-promise `acceptanceProof` to cite
    the new real receipt ref, per the registry's `realBitcoinMoved:true` rule.
@@ -255,16 +255,16 @@ New module `tassadar-run-settlement-gate.ts`:
   gate, env parse (fail-closed), and `resolveTassadarSettlementAdapter`.
 - **Change:** `tassadar-run-settlement.ts` — the real branch stamps
   `moneyMovement: 'real_bitcoin'` (so the public derivation is correct) when the
-  adapter is `spark_treasury`; `mdk_agent_wallet` keeps its existing
-  `treasury_mdk_bounded_spend` label; `simulation` stays `'none'`. Adds a pure
+  adapter is `spark_treasury`. `mdk_agent_wallet` keeps its existing
+  `treasury_mdk_bounded_spend` label. `simulation` stays `'none'`. Adds a pure
   `realSettlementMovementMode(adapterKind)` helper. No behavior change for the
   default `simulation` path.
 - **New:** `workers/api/src/tassadar-run-settlement-gate.test.ts` — proves:
   (a) gate absent/OFF → `simulation`, builder yields `moneyMovement:'none'`,
-  `realBitcoinMoved` derives false, and (with a fake dispatcher) no payout call;
+  `realBitcoinMoved` derives false, and (with a fake dispatcher) no payout call.
   (b) gate ON + within cap + allowlisted → real adapter, a mocked dispatch
-  yields a `realBitcoinMoved:true` receipt; (c) a retry through the authority
-  dedupe path makes **one** dispatch; (d) amount over the gate cap →
+  yields a `realBitcoinMoved:true` receipt. (C) a retry through the authority
+  dedupe path makes **one** dispatch. (D) amount over the gate cap →
   `simulation` (fail-closed), no payout call.
 
 The route (`routeRunSettlementReceipt`) is **left unchanged** in this scaffold:
@@ -280,26 +280,26 @@ reviewed change rather than a redesign.
 | Failure | Handling |
 | --- | --- |
 | Gate unset / malformed env | Fail closed → `simulation`. No real branch reachable. |
-| Admin passes `spark_treasury` with gate OFF | `resolveTassadarSettlementAdapter` returns `simulation`; byte-for-byte sim. |
-| Amount over gate cap or run `spendCapSats` | `simulation` (resolver) + builder re-rejects over hard cap; no dispatch. |
+| Admin passes `spark_treasury` with gate OFF | `resolveTassadarSettlementAdapter` returns `simulation`. Byte-for-byte sim. |
+| Amount over gate cap or run `spendCapSats` | `simulation` (resolver) + builder re-rejects over hard cap. No dispatch. |
 | Recipient/run not allowlisted | `simulation`. |
-| Dispatch fails after intent created | Intent persists `approved`, no `settlement_recorded` receipt → not counted as settled; safe to retry (idempotent). |
-| Payout succeeds but receipt write fails | Spark dedupes on `idempotencyKey`; retry re-finds the existing attempt (no second pay) and re-writes the receipt. |
+| Dispatch fails after intent created | Intent persists `approved`, no `settlement_recorded` receipt → not counted as settled. Safe to retry (idempotent). |
+| Payout succeeds but receipt write fails | Spark dedupes on `idempotencyKey`. Retry re-finds the existing attempt (no second pay) and re-writes the receipt. |
 | Duplicate route call (retry) | `createPayoutIntent` rejects replay / `dispatchPayout` returns existing attempt → at most one pay. |
-| Wallet landing in-flight | Receipt asserts dispatch+reconcile only; public copy must not claim "in wallet". |
-| Partial / wrong amount | Amount is fixed from the request and capped two ways; Spark dispatches the exact `amountSat`; reconciliation must be `matched` before `realBitcoinMoved`. |
+| Wallet landing in-flight | Receipt asserts dispatch+reconcile only. Public copy must not claim "in wallet". |
+| Partial / wrong amount | Amount is fixed from the request and capped two ways. Spark dispatches the exact `amountSat`. Reconciliation must be `matched` before `realBitcoinMoved`. |
 
 ---
 
 ## 5. Invariants touched / honored
 
 - **Receipt-Backed Public Pylon Paid-Work Totals** — real receipts must prove
-  real movement; simulation receipts must not count. This design keeps
+  real movement. Simulation receipts must not count. This design keeps
   `moneyMovement:'real_bitcoin'` as the only path to `realBitcoinMoved:true`.
 - **MDK Payout Mode Declaration / MDK Agent-Wallet Send Readiness** — real
   dispatch goes through `TreasuryPaymentAuthority` wallet-readiness +
-  pause + cap gates; the gate adds an owner flag on top.
-- **User-Facing Live Data Integrity** — no copy flip here; the flip is
+  pause + cap gates. The gate adds an owner flag on top.
+- **User-Facing Live Data Integrity** — no copy flip here. The flip is
   owner-only and receipt-first.
 - No invariant is weakened. The gate only **adds** a default-OFF condition on
   top of every existing safety check.
@@ -314,7 +314,7 @@ reviewed change rather than a redesign.
 2. Wire `routeRunSettlementReceipt` to drive `TreasuryPaymentAuthority` +
    `makeSparkTreasuryPayoutAdapter` (with the treasury container fetch +
    `resolveDestination`) on the resolved real branch.
-3. Run one small real settlement; verify a dereferenceable
+3. Run one small real settlement. Verify a dereferenceable
    `realBitcoinMoved:true` receipt and contributor-confirmed credit.
 4. Flip the product-promise `acceptanceProof` to cite that receipt
    (receipt-first), then disable the gate.

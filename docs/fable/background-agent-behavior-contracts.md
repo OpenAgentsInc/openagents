@@ -4,7 +4,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** repository-agent (Fast Follow work generation)
 - **Stated by:** owner via conversation on 2026-07-16
-- **Statement:** The policy is now go, that's unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.
+- **Statement:** The policy is now go, that is unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.
 - **Enforcement tier:** test-sweep
 - **Oracle** `background_agents.fast_follow.owner_admission` (bun-test, unit): The Fast Follow seed binds the owner-accepted expansion plan, retains bounded work-packet and denied-authority gates, and cannot regress to the superseded policy block. — `scripts/check-fast-follow.test.ts`
 - **Verification:** The Fast Follow seed, authority docs, accepted plan, and bounded packet requirements are enforced by scripts/check-fast-follow.test.ts in the normal test sweep.
@@ -14,9 +14,9 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** pylon-worker (Pylon Claude execution)
 - **Stated by:** owner via issue_list on 2026-07-11
-- **Statement:** Claude bypass permission is a revocable process-local capability bound to one exact owner-local Pylon run/turn/session, operation, and named account; public, bridge, org-cloud, mismatched, expired, replayed, and revoked paths remain restrictive.
+- **Statement:** Claude bypass permission is a revocable process-local capability bound to one exact owner-local Pylon run/turn/session, operation, and named account. Public, bridge, org-cloud, mismatched, expired, replayed, and revoked paths remain restrictive.
 - **Enforcement tier:** test-sweep
-- **Oracle** `background_agents.claude.authority_scope` (bun-test, unit): A process-opaque, expiring authority admits only its exact Pylon, run, operation, and named account; serialization, scope mismatch, expiry, and revocation fail closed. — `packages/pylon-core/src/executor/claude-owner-local-permission.test.ts`
+- **Oracle** `background_agents.claude.authority_scope` (bun-test, unit): A process-opaque, expiring authority admits only its exact Pylon, run, operation, and named account. Serialization, scope mismatch, expiry, and revocation fail closed. — `packages/pylon-core/src/executor/claude-owner-local-permission.test.ts`
 - **Oracle** `background_agents.claude.assignment_permission` (bun-test, unit): The assignment executor applies bypass only with the admitted authority, aborts on cancellation, and emits refs-only audit evidence. — `apps/pylon/tests/claude-agent-executor.test.ts`
 - **Oracle** `background_agents.claude.non_local_denial` (bun-test, unit): Runtime-intent and control-session tests prove owner-local admission while org-cloud, bridge-like, replayed, and unscoped launches remain bounded. — `apps/pylon/src/orchestration/runtime-intent-enforcement.test.ts`
 - **Verification:** CUT-05 is enforced by the authority, assignment, runtime-intent, control-session, Fleet runner, and public-projection tests in the normal Bun sweeps.
@@ -26,10 +26,10 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** pylon-worker (Pylon Fleet supervision)
 - **Stated by:** owner via issue_list on 2026-07-11
-- **Statement:** Every Fleet supervisor loop and harness dispatch is cancelled and joined by its owning run scope before the Pylon slot is released; completed/accepted publication remains impossible until the matching verifier and terminal closeout evidence are durable.
+- **Statement:** Every Fleet supervisor loop and harness dispatch is cancelled and joined by its owning run scope before the Pylon slot is released. Completed/accepted publication remains impossible until the matching verifier and terminal closeout evidence are durable.
 - **Enforcement tier:** test-sweep
 - **Oracle** `background_agents.fleet.scope_join` (bun-test, unit): Manager stop aborts and joins an in-flight dispatch, retains its late lifecycle, releases the Pylon slot exactly once, and permits a following run. — `apps/pylon/tests/fleet-run-manager.test.ts`
-- **Oracle** `background_agents.fleet.verifier_before_publication` (bun-test, unit): The Pylon-owned runner withholds completed dispatch evidence until the exact accepted worker closeout and verifier evidence are readable; restart cannot promote a verifier rejection. — `apps/pylon/tests/fleet-run-owned-runner.test.ts`
+- **Oracle** `background_agents.fleet.verifier_before_publication` (bun-test, unit): The Pylon-owned runner withholds completed dispatch evidence until the exact accepted worker closeout and verifier evidence are readable. Restart cannot promote a verifier rejection. — `apps/pylon/tests/fleet-run-owned-runner.test.ts`
 - **Oracle** `background_agents.fleet.harness_cancellation` (bun-test, unit): Codex and Claude assignment executors inherit the owning supervisor abort signal and close with typed public-safe cancellation evidence before verification or publication. — `apps/pylon/tests/codex-agent-executor.test.ts`
 - **Verification:** CUT-06 is enforced by manager scope-race, exact closeout ordering, restart rejection, harness cancellation, and Khala leaked-scope regressions in the normal Bun sweeps.
 - **Authority boundary:** This contract governs process-local Fleet supervisor ownership and terminal publication order. It grants no new provider, public, remote-host, spend, settlement, or writeback authority.
@@ -38,7 +38,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** openagents.com-api (background agent dispatch)
 - **Stated by:** owner via issue_list on 2026-07-03
-- **Statement:** Auto-pause after 3 consecutive failures; maxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.
+- **Statement:** Auto-pause after 3 consecutive failures. MaxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.
 - **Enforcement tier:** test-sweep
 - **Oracle** `background_agents.dispatch.definition_budget_caps` (bun-test, unit): Definition dispatch refuses exhausted daily run and credit budgets, rejects invalid run-second budgets, reserves zero credits for current own-Pylon no-spend dispatch, and writes the capped timeout into the Pylon assignment. — `apps/openagents.com/workers/api/src/agent-definition-run-routes.test.ts`
 - **Oracle** `background_agents.dispatch.trigger_auto_pause` (bun-test, unit): Trigger rows auto-pause after three consecutive failures, preserve the pause reason, leave due-trigger scans empty while paused, and reset the failure streak on explicit enable. — `apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts`
@@ -49,7 +49,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** pylon-worker (background agent dispatch)
 - **Stated by:** owner via issue_list on 2026-07-03
-- **Statement:** Dispatch failures are classified as transient or permanent; per-account/lane breakers cool or quarantine failed lanes and feed delegate readiness/capacity instead of repeatedly dispatching into known failures.
+- **Statement:** Dispatch failures are classified as transient or permanent. Per-account/lane breakers cool or quarantine failed lanes and feed delegate readiness/capacity instead of repeatedly dispatching into known failures.
 - **Enforcement tier:** test-sweep
 - **Oracle** `background_agents.dispatch.orchestration_store_breaker` (bun-test, unit): The local orchestration store classifies transient and permanent dispatch failures, persists per-account/lane breaker rows, cools transient failures, and quarantines permanent credential failures. — `apps/pylon/src/orchestration/supervisor-orchestration.test.ts`
 - **Oracle** `background_agents.dispatch.khala_spawn_breaker` (bun-test, unit): Khala spawn planning zeroes advertised capacity for cooled account/lane breakers, skips broken accounts, and projects timeout failures into typed transient dispatch classifications. — `apps/pylon/tests/khala-spawn.test.ts`
@@ -62,7 +62,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** openagents.com-api (background agent tool policy)
 - **Stated by:** owner via issue_list on 2026-07-03
-- **Statement:** Definition toolset compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access; ask entries route to escalation instead of failing; no lane may reach tools outside compiled policy.
+- **Statement:** Definition toolset compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access. Ask entries route to escalation instead of failing. No lane may reach tools outside compiled policy.
 - **Enforcement tier:** test-sweep
 - **Oracle** `background_agents.toolset.schema_policy` (bun-test, unit): Shared agent-definition policy compiler preserves deny precedence, ask escalation, allow, and default-deny semantics. — `packages/agent-runtime-schema/src/index.test.ts`
 - **Oracle** `background_agents.toolset.khala_local_lane` (bun-test, unit): Khala local-lane dispatcher enforces compiled name/authority policy before tool execution and routes ask decisions to approval. — `packages/khala-tools/src/dispatcher.test.ts`
@@ -74,7 +74,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** openagents.com-api (Autopilot Lead Gen)
 - **Stated by:** owner via issue on 2026-07-04
-- **Statement:** Autopilot Lead Gen v0 is a drafting-only standing background agent: target discovery, agent-readiness analysis, report drafts, sequence-entry drafts, receipt writing, and operator-inbox escalation are permitted; outreach send/activation tools are denied and absent from allow/ask.
+- **Statement:** Autopilot Lead Gen v0 is a drafting-only standing background agent: target discovery, agent-readiness analysis, report drafts, sequence-entry drafts, receipt writing, and operator-inbox escalation are permitted. Outreach send/activation tools are denied and absent from allow/ask.
 - **Enforcement tier:** test-sweep
 - **Oracle** `lead_gen_agent.drafting_only_toolset` (bun-test, unit): The Autopilot Lead Gen definition has no send tools in allow/ask, explicitly denies email/Apollo send and activation refs, allows only drafting/analyzer/operator-inbox work plus the Forge receive-pack dispatch scope, and compiles as dispatchable. — `apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts`
 - **Verification:** LG-7 is enforced by the openagents.com Cloud Run API lead-gen agent-definition test in the normal pnpm exec vp test sweep.
@@ -84,7 +84,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** openagents.com-api (Autopilot Lead Gen)
 - **Stated by:** owner via issue on 2026-07-04
-- **Statement:** Autopilot Lead Gen may produce reports and sequence drafts, but no outreach leaves the system unless a separate LG-4 approval receipt exists; the v0 dogfood receipt records sendAuthority.allowed=false.
+- **Statement:** Autopilot Lead Gen may produce reports and sequence drafts, but no outreach leaves the system unless a separate LG-4 approval receipt exists. The v0 dogfood receipt records sendAuthority.allowed=false.
 - **Enforcement tier:** test-sweep
 - **Oracle** `lead_gen_agent.no_send_without_approval_receipt` (bun-test, unit): The run payload and OpenAgents dogfood receipt record sendAuthority.allowed=false, keep drafted reports/sequences in review state, name the operator inbox, and require a separate LG-4 approval receipt before any send. — `apps/openagents.com/workers/api/src/autopilot-lead-gen-agent-definition.test.ts`
 - **Verification:** LG-7 is enforced by the openagents.com Cloud Run API lead-gen agent-definition test in the normal pnpm exec vp test sweep.
@@ -105,7 +105,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** pylon-worker (background agent credentials)
 - **Stated by:** owner via issue_list on 2026-07-03
-- **Statement:** No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout. Short-lived helper cache entries may exist only under Git admin state; GitHub PATs, raw Forge git tokens, credentialed Git URLs, and Git extraheader authorization material are rejected in the bounded checkout or selected isolated account home.
+- **Statement:** No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout. Short-lived helper cache entries may exist only under Git admin state. GitHub PATs, raw Forge git tokens, credentialed Git URLs, and Git extraheader authorization material are rejected in the bounded checkout or selected isolated account home.
 - **Enforcement tier:** test-sweep
 - **Oracle** `background_agents.credentials.long_lived_scm_scanner` (bun-test, unit): scanLongLivedScmCredentials detects GitHub PATs / raw Forge git tokens / credentialed Git URLs in worker roots while allowing bounded helper cache entries. — `apps/pylon/tests/workspace-materializer.test.ts`
 - **Oracle** `background_agents.credentials.closeout_cleanup` (bun-test, unit): Workspace lease cleanup removes a dirty workspace when the dirty content contains long-lived SCM credential material instead of retaining it. — `apps/pylon/tests/workspace-worktree.test.ts`
@@ -198,7 +198,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** pylon-worker (background agent definitions)
 - **Stated by:** owner via issue_list on 2026-07-03
-- **Statement:** One unchanged background-agent definition runs on Codex and Claude; harness is a field, never load-bearing.
+- **Statement:** One unchanged background-agent definition runs on Codex and Claude. Harness is a field, never load-bearing.
 - **Enforcement tier:** unenforced
 - **Verification:** Pending BA-A4: add the parity fixture proving one unchanged definition runs on both harnesses, then flip this contract to enforced with that fixture as the oracle.
 - **Blockers:** `blocker.background_agents.ba_a4.oracle_not_landed`
@@ -218,7 +218,7 @@ Registry version: `2026-07-16.1` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** khala-code-desktop (warm dispatch)
 - **Stated by:** owner via issue_list on 2026-07-03
-- **Statement:** Khala Code composer emits a typed, debounced, owner-scoped pre-materialize signal while a fleet/background run is being composed; honest no-op when the target lane has no warm path.
+- **Statement:** Khala Code composer emits a typed, debounced, owner-scoped pre-materialize signal while a fleet/background run is being composed. Honest no-op when the target lane has no warm path.
 - **Enforcement tier:** unenforced
 - **Verification:** Pending BA-E3: add debounce and gating tests for the composer pre-materialize signal, then flip this contract to enforced with those tests as bun-test oracles.
 - **Blockers:** `blocker.background_agents.ba_e3.oracle_not_landed`

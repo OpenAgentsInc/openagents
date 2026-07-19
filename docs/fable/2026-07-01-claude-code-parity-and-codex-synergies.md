@@ -11,11 +11,11 @@ Fable/Claude-Agent-SDK planning delegating to Codex for coding — paired with
 the fleet-management work. Companion to the multi-harness section of
 `2026-07-01-episode-245-completion-and-multi-harness-orchestration.md`, the
 fleet fan-out instructions, and the Effect integration audit in this folder.
-Documentation-only; flips no promise state.
+Documentation-only. Flips no promise state.
 Execution: Phases 0–3 and the synergy crossovers in §4 are scheduled as the
 Claude-harness and multi-harness workstreams in the unified
 [`ROADMAP.md`](./ROADMAP.md). Phase 0's `ChatRuntime` selector is the same
-seam as the episode-245 doc's Axis A toggle — build it once; the fan-out
+seam as the episode-245 doc's Axis A toggle — build it once. The fan-out
 doc's Lane B4 (`workerKind`) is the Axis B half.
 
 ## 1. Where We Actually Stand
@@ -33,8 +33,8 @@ lane exists. What does not exist is Claude as a **chat harness in the desktop**:
 
 **The desktop has no runtime abstraction to extend.** The seam map is blunt:
 there is no shared chat-runtime interface. `CodexAppServerChatRuntime`
-(`codex-app-server-chat-runtime.ts:96`) is a concrete object type; the legacy
-Khala-native runtime is a bare function; `rpc-handlers.ts` selects between them
+(`codex-app-server-chat-runtime.ts:96`) is a concrete object type. The legacy
+Khala-native runtime is a bare function. `rpc-handlers.ts` selects between them
 with ad-hoc branching (`useLegacyKhalaNativeRuntime()`, `:674`) that is honored
 in exactly one place (`submitChatMessage`, `:1950`). Every thread-lifecycle RPC
 (`codexThreadList/Read/Rename/Archive/Delete/Fork/Compact`, `codexTurnStart/
@@ -48,9 +48,9 @@ harness-neutral**. `KhalaCodeDesktopChatTurnEvent` (`shared/rpc.ts:65` —
 `tool_event`) is not Codex-specific, and the headless path proves it — it
 consumes only that neutral stream plus a three-method runtime
 (`interruptTurn|startThread|startTurn`, `headless.ts:15`). The neutral event
-model is the contract; everything Codex-specific sits on one side of it.
+model is the contract. Everything Codex-specific sits on one side of it.
 
-## 2. The SDK In One Page (What We're Wrapping)
+## 2. The SDK In One Page (What We are Wrapping)
 
 The Claude Agent SDK is the mirror image of Codex app-server in shape:
 
@@ -70,8 +70,8 @@ The Claude Agent SDK is the mirror image of Codex app-server in shape:
   (partial deltas, only with `includePartialMessages`),
   `system/compact_boundary`, `system/session_state_changed`
   (idle|running|requires_action), `system/status`, `rate_limit_event`.
-- **Sessions**: persisted as JSONL under `~/.claude/projects/<dir>/<id>.jsonl`;
-  session ids are UUIDs (settable via `options.sessionId`); `resume`,
+- **Sessions**: persisted as JSONL under `~/.claude/projects/<dir>/<id>.jsonl`.
+  session ids are UUIDs (settable via `options.sessionId`). `resume`,
   `continue`, `forkSession`, `resumeSessionAt`. Crucially, sessions are
   **programmatically enumerable**: `listSessions()`, `getSessionMessages()`,
   `forkSession()`, `renameSession()`, `deleteSession()`, `tagSession()`, plus a
@@ -79,19 +79,19 @@ The Claude Agent SDK is the mirror image of Codex app-server in shape:
   suite in `examples/session-stores/`.
 - **Permissions**: the `canUseTool(toolName, input, options)` callback returns
   `PermissionResult` (`allow` with optional `updatedInput`/`updatedPermissions`,
-  or `deny` with message/`interrupt`); the `options` bag is rich enough to drive
+  or `deny` with message/`interrupt`). The `options` bag is rich enough to drive
   a desktop dialog directly (`title`, `displayName`, `description`,
   `blockedPath`, `suggestions`, `toolUseID`). `permissionMode` ∈
   `default|acceptEdits|bypassPermissions|plan|dontAsk|auto`. Thirty **hooks**
   (`PreToolUse`…`MessageDisplay`) are a second, non-interactive permission
   channel — a `PreToolUse` deny bypasses `canUseTool`.
 - **Tools/MCP**: in-process MCP via `createSdkMcpServer` + `tool()` (Zod
-  schema); external stdio/SSE/HTTP MCP via `options.mcpServers`; status via
+  schema). External stdio/SSE/HTTP MCP via `options.mcpServers`. Status via
   `mcpServerStatus()`.
 - **Subagents**: `options.agents: Record<string, AgentDefinition>` — each with
   its own prompt, tools, model, mcpServers, skills, `background`, `memory`,
   `permissionMode`. `options.agent` picks the main-thread agent.
-- **Auth**: resolved by the subprocess from env / `~/.claude` OAuth;
+- **Auth**: resolved by the subprocess from env / `~/.claude` OAuth.
   `ANTHROPIC_API_KEY` must be spread into `options.env` (env *replaces*, not
   merges). `accountInfo()` reports the resolved identity/provider.
 
@@ -101,11 +101,11 @@ The Claude Agent SDK is the mirror image of Codex app-server in shape:
 | --- | --- |
 | thread | session (`session_id`, JSONL-persisted) |
 | thread id | `session_id` (UUID, settable) |
-| turn (explicit object) | implicit: `user` → `result` span; `session_state_changed` + `result` mark boundaries |
+| turn (explicit object) | implicit: `user` → `result` span. `session_state_changed` + `result` mark boundaries |
 | item: agent message | `assistant` text blocks |
 | item: reasoning | thinking blocks + `stream_event` |
 | item: command execution | Bash `tool_use`/`tool_result` + `SDKToolProgressMessage` |
-| item: file change/patch | Edit/Write `tool_use`; `SDKFilesPersistedEvent`; `rewindFiles()` |
+| item: file change/patch | Edit/Write `tool_use`. `SDKFilesPersistedEvent`. `rewindFiles()` |
 | item: MCP tool call | `tool_use` named `mcp__server__tool` |
 | item deltas | `stream_event` (needs `includePartialMessages`) |
 | approval request | `canUseTool` callback (interactive) / `PreToolUse` hook (auto) |
@@ -116,10 +116,10 @@ The Claude Agent SDK is the mirror image of Codex app-server in shape:
 | model/config read | `system/init` + `supportedModels()` + `accountInfo()` |
 
 The load-bearing difference: **Codex gives explicit turn/item objects on the
-wire; the SDK gives a flatter message stream you reconstruct turns from** (user→
+wire. The SDK gives a flatter message stream you reconstruct turns from** (user→
 result spans) and items from `tool_use`/`tool_result` pairing via
 `parent_tool_use_id`/`tool_use_id`. The desktop's existing thread-item projector
-is exactly this reconstruction for Codex; Claude needs a parallel one.
+is exactly this reconstruction for Codex. Claude needs a parallel one.
 
 ## 3. Claude Bring-Up Plan (Reach Codex Parity)
 
@@ -136,7 +136,7 @@ one-place branch into a real selector:
 
 - `src/shared/rpc.ts`: extend `KhalaCodeDesktopRuntimeMode` (add
   `claude_runtime`) and `KhalaCodeDesktopBackendProjection.kind` (add
-  `claude_app_sdk`); generalize the `codexItem` message field name to a
+  `claude_app_sdk`). Generalize the `codexItem` message field name to a
   harness-neutral `harnessItem` (alias for back-compat).
 - `rpc-handlers.ts`: replace `useLegacyKhalaNativeRuntime()` with a three-way
   `selectChatRuntime()` and route `submitChatMessage`, `codexTurnStart`, and the
@@ -160,12 +160,12 @@ can throw a typed `unsupported` initially and light up in later phases.
   `acquireRelease` resource (release calls `close()` + aborts the owned
   `AbortController`). Own the `AbortController` explicitly — the SDK's forwarded
   spawn signal only fires after a ~2s grace, so fiber interruption must abort the
-  controller directly for immediate teardown; map the user's "stop" button to
+  controller directly for immediate teardown. Map the user's "stop" button to
   `Query.interrupt()` (graceful) as a distinct service method.
 - `src/bun/claude-thread-item-projector.ts` (new): map `SDKMessage` →
-  `KhalaCodeDesktopChatTurnEvent`. `assistant` text → `message_delta`/`_replace`;
-  thinking → reasoning card; `tool_use`/`tool_result` (paired via id) →
-  `tool_event`; `result` → `message_done` with usage; `session_state_changed`/
+  `KhalaCodeDesktopChatTurnEvent`. `assistant` text → `message_delta`/`_replace`.
+  thinking → reasoning card. `tool_use`/`tool_result` (paired via id) →
+  `tool_event`. `result` → `message_done` with usage. `session_state_changed`/
   `status` → status. Model the `SDKMessage` union as an Effect `Schema.Union`
   (discriminate on `type` then `subtype`), keeping the inner `message:
   BetaMessage`/`MessageParam` as passthrough — decode at the SDK boundary so the
@@ -198,8 +198,8 @@ tracked its gaps.
 - **Approvals** (`src/bun/claude-approvals`): wire `canUseTool` as an
   Effect-bridged edge callback — the SDK awaits a `Promise` your renderer
   resolves via a `Deferred`/`Queue`-backed approval service. The `options` bag
-  (`title`/`displayName`/`description`/`suggestions`) drives the dialog; "always
-  allow" returns `{behavior:'allow', updatedPermissions: options.suggestions}`;
+  (`title`/`displayName`/`description`/`suggestions`) drives the dialog. "Always
+  allow" returns `{behavior:'allow', updatedPermissions: options.suggestions}`.
   set `decisionClassification` for telemetry. This is Claude's parallel to
   `codex-approval-decisions.ts` — do not try to force Claude decisions through
   the Codex approval shapes. Respect `options.signal` → fiber interruption.
@@ -208,9 +208,9 @@ tracked its gaps.
   `apps/pylon/src/claude-turn-reporter.ts`'s body shape
   (`openagents.pylon.claude_turn.v1`, provider `pylon-claude-own-capacity`).
   Decide the ingest route deliberately: the desktop Codex path posts to
-  `/api/stats/token-usage/events`; the Pylon Claude lane posts to
+  `/api/stats/token-usage/events`. The Pylon Claude lane posts to
   `/api/pylon/claude/turns`. Keeping the desktop-Claude path on the stats route
-  matches the desktop-Codex path; keep exact-only accounting either way. The
+  matches the desktop-Codex path. Keep exact-only accounting either way. The
   bounded Pylon-Claude executor now treats a missing/unconfigured/failed turn
   reporter as a public-safe closeout diagnostic, not as a silent success.
 - **MCP / fleet bridge** (`src/bun/claude-fleet-mcp-bridge.ts`): the Claude
@@ -229,7 +229,7 @@ tracked its gaps.
 - Slash registry from `supportedCommands()` + `system/init.slash_commands`,
   refreshed on `commands_changed`. Invoke by sending `/name args` as prompt.
 - `claude-parity-contract.ts` + gap matrix parallel to the Codex ones, pinned to
-  the installed SDK version (0.3.172; note the CHANGELOG head is 0.3.198 with
+  the installed SDK version (0.3.172, note the CHANGELOG head is 0.3.198 with
   `reinitialize()`, background-agent `agent_id` on `can_use_tool`, and a
   `canUseTool`-shadowing warning to heed when bumping).
 
@@ -282,12 +282,12 @@ Concretely: a "plan-then-fan-out" run = Claude session (plan mode, Fable) →
 emits `FleetRun` with N work units → supervisor dispatches each to Codex (or
 Claude, or auto) → Claude reviews the returned diffs (its strength) and either
 accepts, requests changes (the annotate-diff loop from the Orca doc), or
-re-plans. The deterministic delegation program stays the control-flow authority;
+re-plans. The deterministic delegation program stays the control-flow authority.
 Claude supplies decomposition and review judgment, not per-call control.
 
 **T9.3 update (2026-07-02):** the `auto` target now has a classifier-aware
 parameter layer. A typed workflow-classification hint can bias `auto` toward
-Codex or Claude only when that lane has advertised free slots; admitted
+Codex or Claude only when that lane has advertised free slots. Admitted
 parameters tune confidence threshold, classifier bonus, and tie-breaker. This
 keeps Claude/Fable planning as advisory structure while `khala.fleet.delegate`
 continues to own deterministic control flow.
@@ -301,7 +301,7 @@ nodes to Codex first, records task-DAG deps in the orchestration store, and
 releases dependent nodes only after predecessor closeout. Claude review output
 has a sibling typed verdict contract
 `openagents.khala_code.claude_plan_fanout_review.v1` with
-`accept | request_changes | replan`; it produces an advisory signal only, so
+`accept | request_changes | replan`. It produces an advisory signal only, so
 verify commands and the deterministic FleetRun/delegation program remain the
 authority.
 
@@ -311,7 +311,7 @@ Claude's review quality pairs with our verification gates. After a Codex worker'
 verify command passes, a Claude session can do a second-pass semantic review
 (the SDK's `outputFormat: json_schema` gives a structured verdict), feeding the
 QA framework's oracle set and the merge policy. This keeps the honest-evidence
-invariant (verify command is authority; Claude review is advisory signal) while
+invariant (verify command is authority, Claude review is advisory signal) while
 adding the judgment Codex-only closeouts lack.
 
 ### 4.3 Cross-harness session portability
@@ -336,7 +336,7 @@ one list with harness badges.
 
 Per the integration audit's v4 baseline:
 
-- **`query()` iterable → `Stream`** (`Stream.fromAsyncIterable`); the `Query`
+- **`query()` iterable → `Stream`** (`Stream.fromAsyncIterable`). The `Query`
   handle → `acquireRelease` (release: `interrupt` is graceful, `close()` +
   `controller.abort()` is teardown). Own the `AbortController`.
 - **Control methods** (`setModel`, `setPermissionMode`, `setMcpServers`,
@@ -344,30 +344,30 @@ Per the integration audit's v4 baseline:
   `accountInfo`, `rewindFiles`, `interrupt`) → Effect service methods
   (`Effect.tryPromise`), gated behind a streaming-input `ClaudeSession` service.
 - **Session functions** (`listSessions`, `getSessionMessages`, `forkSession`,
-  …) → stateless service methods; candidates for a shared `SessionCatalog`.
+  …) → stateless service methods. Candidates for a shared `SessionCatalog`.
 - **`SDKMessage` union, `PermissionResult`, `PermissionUpdate`, hook I/O,
   `McpServerStatus`, `SDKSessionInfo`** → `Schema` (discriminated unions),
   decoded at the boundary.
 - **`canUseTool`, hooks, `onElicitation`, `stderr`, `spawnClaudeCodeProcess`** →
   edge callbacks bridged via `Effect.runPromise` of a `Deferred`/`Queue`-backed
-  service; wire `options.signal` to interruption.
+  service. Wire `options.signal` to interruption.
 - **`sessionStore`** → thin adapter whose methods `Effect.runPromise` our Effect
   data layer (D1/SQLite), validated by the SDK's conformance suite.
 
 ## 6. Invariants To Keep
 
 - Isolated Claude homes only (`CLAUDE_CONFIG_DIR` per account, the `.claude-*`
-  pattern); never touch the owner's live `~/.claude` for worker/fleet accounts,
+  pattern). Never touch the owner's live `~/.claude` for worker/fleet accounts,
   mirroring the Codex `~/.codex` rule.
 - Owner-local full access (`bypassPermissions`) stays a local, visibly-labeled
-  posture; it is never a public wire field. Approvals are Claude-native
+  posture. It is never a public wire field. Approvals are Claude-native
   (`canUseTool`/hooks), not translated through Codex approval enums.
 - Exact-only token accounting per harness (`pylon-claude-own-capacity` /
-  `pylon-codex-own-capacity`); public counters remain projections; the SDK's
+  `pylon-codex-own-capacity`). Public counters remain projections. The SDK's
   `total_cost_usd`/`modelUsage` are recorded but never synthesized into the
   served-token counter.
 - The deterministic `khala.fleet.delegate` program remains the control-flow
-  authority for delegation; Claude planning supplies decomposition and review,
+  authority for delegation. Claude planning supplies decomposition and review,
   not per-call control (the DSPy split the fan-out doc and episode 245 both
   teach).
 - Version-pin discipline: pin the SDK, and update the Claude parity contract +
@@ -375,7 +375,7 @@ Per the integration audit's v4 baseline:
 
 ## 7. Bottom Line
 
-Claude is already a live *worker* lane at ~80% Codex parity in Pylon; the gap is
+Claude is already a live *worker* lane at ~80% Codex parity in Pylon. The gap is
 that Khala Code Desktop has no *chat harness* abstraction to host it. The
 bring-up is therefore: introduce a `ChatRuntime` interface, land a
 `ClaudeChatRuntime` as the desktop's first real Effect service (the SDK maps

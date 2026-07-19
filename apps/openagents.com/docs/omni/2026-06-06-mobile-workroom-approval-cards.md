@@ -19,16 +19,16 @@ Implementation:
 
 The compact workroom record carries:
 
-- status and status ref;
-- work kind;
-- title ref;
-- active outcome refs;
-- artifact refs;
-- receipt refs;
-- blocker refs;
-- site refs;
-- source refs;
-- provider state refs; and
+- status and status ref.
+- work kind.
+- title ref.
+- active outcome refs.
+- artifact refs.
+- receipt refs.
+- blocker refs.
+- site refs.
+- source refs.
+- provider state refs. And
 - wallet state refs.
 
 Projection labels use friendly time strings such as `5 minutes ago`, not raw
@@ -39,12 +39,12 @@ approval cards plus artifact, receipt, and evidence counts.
 
 Approval cards support these action kinds:
 
-- `crm_send`;
-- `coding_write`;
-- `runner_launch`;
-- `payment`;
-- `provider_action`;
-- `public_claim`; and
+- `crm_send`.
+- `coding_write`.
+- `runner_launch`.
+- `payment`.
+- `provider_action`.
+- `public_claim`. And
 - `legal_sensitive`.
 
 Each card records action kind, risk level, approval requirement, state,
@@ -62,8 +62,8 @@ refs.
 
 Card expiry is projected as:
 
-- `not_expiring` when no expiry exists;
-- `active` with a label such as `Expires in 1 hour`; or
+- `not_expiring` when no expiry exists.
+- `active` with a label such as `Expires in 1 hour`. Or
 - `expired` with a label such as `Expired 10 minutes ago`.
 
 Raw ISO timestamps remain in records only and are not exposed in projections.
@@ -72,12 +72,12 @@ Raw ISO timestamps remain in records only and are not exposed in projections.
 
 The projection is read-only. It cannot:
 
-- approve cards;
-- execute actions;
-- send notifications;
-- spend wallets;
-- mutate provider accounts;
-- launch runners; or
+- approve cards.
+- execute actions.
+- send notifications.
+- spend wallets.
+- mutate provider accounts.
+- launch runners. Or
 - upgrade public claims.
 
 Those actions require separate server-authoritative routes, scoped grants,
@@ -87,10 +87,10 @@ idempotency, receipts, and approval policy.
 
 Supported projection audiences are:
 
-- `public`;
-- `agent`;
-- `customer`;
-- `team`; and
+- `public`.
+- `agent`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public and agent projections redact private approval, idempotency, provider,
@@ -103,11 +103,11 @@ before projection.
 
 Coverage includes:
 
-- compact mobile projection validation;
-- pending, blocked, expired, and critical approval counts;
-- risk/evidence and mandatory approval requirements;
-- expiry display labels;
-- approval, execution, blocked, and expired state requirements;
-- public and agent redaction; and
+- compact mobile projection validation.
+- pending, blocked, expired, and critical approval counts.
+- risk/evidence and mandatory approval requirements.
+- expiry display labels.
+- approval, execution, blocked, and expired state requirements.
+- public and agent redaction. And
 - hard false approval, execution, notification, payment, provider, public
   claim, and runner-launch mutation authority.

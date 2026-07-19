@@ -19,16 +19,16 @@ proof export, and economics records.
 
 `omni_evidence_bundles` records:
 
-- `id` and unique `idempotency_key`;
-- required `workroom_id`;
-- `work_kind`;
-- `status`;
-- legal-sensitive flag;
-- `summary_ref`;
-- optional source-authority caveat ref;
-- typed evidence `entries_json`;
-- `public_receipt_ref`;
-- bounded metadata;
+- `id` and unique `idempotency_key`.
+- required `workroom_id`.
+- `work_kind`.
+- `status`.
+- legal-sensitive flag.
+- `summary_ref`.
+- optional source-authority caveat ref.
+- typed evidence `entries_json`.
+- `public_receipt_ref`.
+- bounded metadata.
 - lifecycle timestamps.
 
 Supported bundle statuses:
@@ -58,14 +58,14 @@ Evidence entries support:
 
 Each entry carries:
 
-- entry kind;
-- ref;
-- summary ref;
-- source authority;
-- visibility;
-- redaction state;
-- required flag;
-- public-safe flag;
+- entry kind.
+- ref.
+- summary ref.
+- source authority.
+- visibility.
+- redaction state.
+- required flag.
+- public-safe flag.
 - optional caveat ref.
 
 ## Projection Split
@@ -85,26 +85,26 @@ public pages.
 
 `createOmniEvidenceBundle`:
 
-- records idempotently by `idempotency_key`;
-- requires an existing active workroom;
-- requires bundle `workKind` to match the workroom;
-- validates all refs as public-safe refs;
+- records idempotently by `idempotency_key`.
+- requires an existing active workroom.
+- requires bundle `workKind` to match the workroom.
+- validates all refs as public-safe refs.
 - rejects raw provider, run-log, email, payment, wallet, token, invoice,
-  preimage, customer-private, and secret-like material in refs or metadata;
-- forbids public visibility for non-public-safe entries;
-- forbids `private_only` redaction state on public-safe entries;
-- requires legal-sensitive customer/public entries to include caveats;
+  preimage, customer-private, and secret-like material in refs or metadata.
+- forbids public visibility for non-public-safe entries.
+- forbids `private_only` redaction state on public-safe entries.
+- requires legal-sensitive customer/public entries to include caveats.
 - requires legal-sensitive bundles to include a redaction report.
 
 ## Boundaries
 
 This slice does not:
 
-- fetch Exa or build source artifacts;
-- send email;
-- mutate workroom or order status;
-- publish a proof page;
-- decide acceptance;
+- fetch Exa or build source artifacts.
+- send email.
+- mutate workroom or order status.
+- publish a proof page.
+- decide acceptance.
 - create settlement or payout claims.
 
 It creates the typed evidence bundle model that later acceptance lifecycle,

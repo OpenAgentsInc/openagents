@@ -45,7 +45,7 @@ The stable cursor key is:
 ```
 
 Events sort by `ts`, then `sourceKind`, then `eventRef`. `ts` is an ISO-8601 UTC
-timestamp ending in `Z`; `sourceKind` is one of the finite source-kind values;
+timestamp ending in `Z`. `sourceKind` is one of the finite source-kind values.
 `eventRef` must be a public-safe opaque ref, not a URL with query secrets.
 
 ## Event Kinds

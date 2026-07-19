@@ -1,14 +1,14 @@
 # OpenChamber Whole-Product Teardown — 2026-07-12
 
-## TL;DR
+## TL.DR
 
 OpenChamber is the strongest open reference in this teardown set for the
 **persistent coding workroom as a product**. It is not merely an OpenCode chat
 skin. At v1.16.0 it presents one shared React workroom through web/PWA,
-Electron, Capacitor mobile, and VS Code; connects that workroom to a local or
-remote OpenCode runtime; keeps files, Git, worktrees, terminal, permissions,
+Electron, Capacitor mobile, and VS Code. Connects that workroom to a local or
+remote OpenCode runtime. Keeps files, Git, worktrees, terminal, permissions,
 questions, schedules, notifications, voice, and remote reachability near the
-conversation; and increasingly moves unattended behavior into the server.
+conversation. And increasingly moves unattended behavior into the server.
 
 Its most important product lesson is the same one the earlier OpenAgents
 research identified, now with much stronger evidence: the transcript is the
@@ -80,7 +80,7 @@ This is a read-only source teardown of:
 | Local reference | `projects/repos/openchamber` |
 | Tag | `v1.16.0` |
 | Commit | `e1e5bf61fe4fc435332eee9b3ee6601b6dbbecb5` |
-| Release commit date | 2026-07-13 in the commit's `+03:00` timezone; 2026-07-12 in this workspace's America/Chicago timezone |
+| Release commit date | 2026-07-13 in the commit's `+03:00` timezone. 2026-07-12 In this workspace's America/Chicago timezone |
 | License | MIT |
 | Package manager | Bun 1.3.14 |
 | Engine floor | Node 22 |
@@ -101,7 +101,7 @@ Evidence labels follow the [teardown convention](./README.md):
 
 No live OpenChamber service, signed release artifact, external relay Worker,
 provider backend, or private user data was inspected. Source can prove a
-contract or implementation path; it cannot prove production availability,
+contract or implementation path. It cannot prove production availability,
 operator practice, signing custody, or the behavior of services outside this
 repository.
 
@@ -131,7 +131,7 @@ The product combines five ideas:
 
 This is a coherent product sentence. It avoids treating “chat,” “agent,”
 “terminal,” “mobile,” and “remote” as separate applications. The workroom is
-the client; OpenCode is the underlying agent runtime; OpenChamber's server is
+the client. OpenCode is the underlying agent runtime. OpenChamber's server is
 the adapter and local capability host.
 
 The boundary is also a limitation. OpenChamber inherits OpenCode's session and
@@ -168,12 +168,12 @@ resources. `[source]`
 This is operationally simple and gives the same server-owned features to the
 Desktop. It also means a real application quit terminates the server and any
 goal/schedule timers it owns. Hiding the window on macOS or to the tray keeps
-them alive; quitting does not. A headless `openchamber` service is the actual
+them alive. Quitting does not. A headless `openchamber` service is the actual
 always-on host option. `[source][inferred]`
 
 Electron enables `contextIsolation` and disables renderer Node integration,
 but sets `sandbox: false` and `webviewTag: true`. The preload exposes a generic
-`invoke(command, args)` bridge on every loaded page; main process gates commands
+`invoke(command, args)` bridge on every loaded page. Main process gates commands
 by sender origin and a remote-safe allowlist. Local pages also receive a client
 token and runtime headers through renderer-visible globals. Navigation and
 window opening are origin-checked, and local file grants are separately
@@ -217,7 +217,7 @@ modeled native workroom. It adds secure storage, QR scanning, push,
 keyboard/status-bar integration, deep links, and platform projects. Android
 uses SSE where native WebSocket behavior is unreliable. `[source]`
 
-The product choices are useful; the application architecture is not the
+The product choices are useful. The application architecture is not the
 OpenAgents target. Effect Native should share domain programs and contracts
 while rendering mobile state as a mobile surface, not wrap the Desktop/web
 layout in a native WebView.
@@ -252,7 +252,7 @@ metadata becomes the user's primary history index.
 The center is turn-oriented and renders assistant text, reasoning, tool parts,
 commands, file edits, diffs, plans, todos, errors, permissions, questions,
 queued input, and completion state with different density. Long or routine
-tool activity collapses; reviewable or blocking state expands. Branching,
+tool activity collapses. Reviewable or blocking state expands. Branching,
 undo/redo, revert, fork, and “start a new session from this answer” treat
 conversation history as operable structure rather than a flat log. `[source]`
 
@@ -287,17 +287,17 @@ the same typed intents rather than each owning an action path.
 
 OpenChamber makes sessions first-class operational resources:
 
-- create, rename, archive, delete, share, fork, undo, redo, and revert;
+- create, rename, archive, delete, share, fork, undo, redo, and revert.
 - bind a session to its actual directory rather than the currently selected
-  directory;
+  directory.
 - create isolated Git worktrees and start sessions from issues, pull requests,
-  plans, or prior answers;
-- preserve provider/model/agent/variant selection;
-- show live status and attention across initialized directories;
+  plans, or prior answers.
+- preserve provider/model/agent/variant selection.
+- show live status and attention across initialized directories.
 - open the same session in web, Desktop, mobile, VS Code, or a remote host.
 
 The UI distinguishes directory-scoped live stores from a global session cache.
-The global cache supplies cold/archived coverage; initialized child stores
+The global cache supplies cold/archived coverage. Initialized child stores
 supply live status. Mutation actions update both the server and visible global
 cache. `[source]`
 
@@ -305,17 +305,17 @@ This division solves a real UI problem but creates two client-side truths that
 must be carefully reconciled. OpenAgents should preserve the user experience
 while giving Khala Sync and owning services clearer authority:
 
-- server-confirmed canonical catalog for cross-device session identity;
-- device-local catalog for signed-out local work;
-- live subscription as current activity, not historical inference;
-- explicit unavailable/stale/refetch states rather than silently empty data;
-- host-private path binding outside shared projections;
+- server-confirmed canonical catalog for cross-device session identity.
+- device-local catalog for signed-out local work.
+- live subscription as current activity, not historical inference.
+- explicit unavailable/stale/refetch states rather than silently empty data.
+- host-private path binding outside shared projections.
 - one generation-fenced attachment when work moves.
 
 OpenChamber's remote model reconnects clients to an existing host. OpenAgents'
 remote-first model additionally needs placement, checkpoint, detach, attach,
 move, capability reauthorization, and receipts. The former is strong product
-evidence for demand; it is not proof of the latter.
+evidence for demand. It is not proof of the latter.
 
 ## 6. Event pipeline, state, and rendering performance
 
@@ -330,7 +330,7 @@ flush at frame-oriented intervals. `[source][test]`
 
 The reducer owns state-dependent validity. Transport code does not guess
 whether a delta is redundant. Event handlers clone only the fields an event
-will mutate; selectors read leaf values rather than whole maps; high-frequency
+will mutate. Selectors read leaf values rather than whole maps. High-frequency
 viewport/stream state is split from low-frequency selection/input state.
 OpenChamber's module documentation reports that eliminating eager cloning cut
 MessageList renders from roughly 1,972 to 296 in its measured session.
@@ -369,13 +369,13 @@ the product's runtime authority.
 
 OpenAgents should keep the seam narrower:
 
-- the Runtime Gateway is the only app-service seam;
-- provider-native events normalize into registered OpenAgents contracts;
-- files/Git/PTY remain host-owned capability services;
-- credentials remain in main/OS or server custody;
+- the Runtime Gateway is the only app-service seam.
+- provider-native events normalize into registered OpenAgents contracts.
+- files/Git/PTY remain host-owned capability services.
+- credentials remain in main/OS or server custody.
 - commands carry stable identity, owner scope, generation, idempotency, policy,
-  deadline, and outcome;
-- Sync distributes projections and durable outcomes but does not execute;
+  deadline, and outcome.
+- Sync distributes projections and durable outcomes but does not execute.
 - Pylon and managed Cloud are composed through the same placement/workroom
   contract rather than cloned inside Desktop.
 
@@ -384,13 +384,13 @@ OpenAgents should keep the seam narrower:
 OpenChamber's server provides a broad developer workbench:
 
 - workspace-bounded read, raw, serve, write, mkdir, delete, rename, reveal,
-  list, search, and background command jobs;
+  list, search, and background command jobs.
 - Git status, staged/unstaged diff, hunk stage/unstage/discard, branches,
   remotes, worktrees, commit, fetch/pull/push, history, stash, merge/rebase, and
-  conflict inspection;
-- GitHub authentication plus issue/PR context and PR/check/merge workflows;
+  conflict inspection.
+- GitHub authentication plus issue/PR context and PR/check/merge workflows.
 - full-duplex PTY over a versioned WebSocket control protocol with a bounded
-  in-memory startup replay buffer and HTTP/SSE fallback;
+  in-memory startup replay buffer and HTTP/SSE fallback.
 - project actions, preview/dev-server workflows, open-in-editor/finder/terminal,
   and inline comments on files/diffs/plans.
 
@@ -419,11 +419,11 @@ send another prompt asynchronously using the prior provider/model/agent/variant.
 
 The goal record includes:
 
-- opaque goal id and objective reference;
-- `active`, `paused`, `blocked`, `budgetLimited`, or `complete` status;
-- token budget and segmented usage/accounting;
-- automatic-turn count;
-- blocked and audit-failure streaks;
+- opaque goal id and objective reference.
+- `active`, `paused`, `blocked`, `budgetLimited`, or `complete` status.
+- token budget and segmented usage/accounting.
+- automatic-turn count.
+- blocked and audit-failure streaks.
 - progress note, status reason, cursor, and timestamps.
 
 Every mutation re-reads the session and checks the goal id, preventing a late
@@ -436,12 +436,12 @@ ready notifications and emit a single settled notification. `[source]`
 
 Those are strong patterns. In particular:
 
-- goal state is server-owned, not component-owned;
-- explicit stop dominates autonomy;
-- stale logical-goal writes are fenced;
-- accounting advances before the side effect;
-- user activity is rechecked immediately before continuation;
-- terminal states and limits are visible;
+- goal state is server-owned, not component-owned.
+- explicit stop dominates autonomy.
+- stale logical-goal writes are fenced.
+- accounting advances before the side effect.
+- user activity is rechecked immediately before continuation.
+- terminal states and limits are visible.
 - normal attention noise is suppressed while blockers still surface.
 
 ### 9.2 What is not implemented
@@ -455,14 +455,14 @@ scan. It sees only sessions that emit events while that server process is
 running. Its quiet timers and in-flight set are memory-only. Therefore:
 
 - an active goal whose session is already idle at server restart may never be
-  re-armed until another relevant event happens;
+  re-armed until another relevant event happens.
 - a crash after the persisted turn increment but before `prompt_async` biases
-  away from duplication, but can leave a continuation permanently missing;
+  away from duplication, but can leave a continuation permanently missing.
 - there is no durable continuation row, lease, claim generation, attempt state,
-  outbox, startup reconciliation, or reaper;
-- only one goal exists per session and the loop skips subagent sessions;
+  outbox, startup reconciliation, or reaper.
+- only one goal exists per session and the loop skips subagent sessions.
 - the auditor sees the objective and latest assistant response, not typed
-  evidence of repository, test, deployment, or external-system state;
+  evidence of repository, test, deployment, or external-system state.
 - the tagged tree contains no Session Goal tests.
 
 The feature is a good **next-turn autonomy loop**, not exact interrupted-turn
@@ -501,13 +501,13 @@ The product integration is excellent: a recurring prompt appears as a normal
 session that the user can inspect, continue, and receive notifications about.
 The implementation remains a process scheduler:
 
-- timers, queue, running keys, and concurrency counters are memory-only;
-- startup recomputes future times from “now,” skipping downtime occurrences;
-- an overdue once task can become non-runnable;
+- timers, queue, running keys, and concurrency counters are memory-only.
+- startup recomputes future times from “now,” skipping downtime occurrences.
+- an overdue once task can become non-runnable.
 - watchdog timeout does not necessarily abort the underlying create/prompt
-  side effect;
+  side effect.
 - there is no durable run id/lease, due-slot idempotency key, heartbeat, reaper,
-  or transactional next-run advancement;
+  or transactional next-run advancement.
 - the docs explicitly say tasks fire only while the server is running.
 
 OpenAgents should harvest the normal-session projection and scheduling UX, then
@@ -533,7 +533,7 @@ follow merely from “goal active.” OpenAgents needs capability/risk classes,
 exact owner/device/session/turn/run/generation, expiry/revocation, ask/deny/allow
 precedence, non-serializable owner-local danger authority where explicitly
 permitted, and a receipt for the effective decision. Questions, tool approvals,
-and plan reviews already fit the private `runtime_interaction` boundary; goals
+and plan reviews already fit the private `runtime_interaction` boundary. Goals
 should wait on or settle blocked from that authority instead of bypassing it.
 
 ## 12. Voice: strong dictation mechanics, not persistent two-way voice
@@ -541,9 +541,9 @@ should wait on or settle blocked from that authority instead of bypassing it.
 OpenChamber publicly calls the feature Voice Mode. In v1.16 it is principally:
 
 - composer dictation via browser recognition, an OpenAI-compatible server, or
-  local/on-device models;
+  local/on-device models.
 - message-level text-to-speech via browser voices, OpenAI-compatible service,
-  local/macOS paths, and local model support;
+  local/macOS paths, and local model support.
 - play/read-aloud controls and a browser conversation experience.
 
 It is not a durable, always-open, full-duplex assistant audio session.
@@ -560,14 +560,14 @@ insert-and-send, retry, and accept-partial. `[source][test]`
 Those patterns directly inform the separately tracked
 [OpenAgents audio program](../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md):
 
-- preserve sequence/ACK/replay and explicit finalization;
-- never replace a longer finalized utterance with a late snippet;
-- retain failed audio under explicit visible custody for bounded retry;
+- preserve sequence/ACK/replay and explicit finalization.
+- never replace a longer finalized utterance with a late snippet.
+- retain failed audio under explicit visible custody for bounded retry.
 - separate capture, egress, retention, transcription, command proposal,
-  acceptance, execution, playback, and outcome;
-- support barge-in with playback generations and cancellation dominance;
+  acceptance, execution, playback, and outcome.
+- support barge-in with playback generations and cancellation dominance.
 - use Google Cloud STT/TTS and the accepted Effect/Rust split rather than
-  copying OpenChamber's provider/key paths;
+  copying OpenChamber's provider/key paths.
 - keep raw media out of Sync and remove raw transcript logging.
 
 OpenChamber's server stream manager is connection-local and does not provide a
@@ -596,7 +596,7 @@ identity.
 The private relay is one of OpenChamber's best isolated designs. A host makes
 an outbound connection to a broker. Client and host establish ECDH/AEAD E2EE,
 multiplex HTTP/SSE/WebSocket traffic, and treat the relay as an opaque courier.
-The paired client still presents its normal server credential; the relay grants
+The paired client still presents its normal server credential. The relay grants
 reachability, not authorization. HTTP and WebSocket path allowlists remain
 explicit. Pairing secrets are one-time, relay is opt-in, devices are revocable,
 and a stable server identity pins refreshed LAN candidates before a bearer is
@@ -609,7 +609,7 @@ returns. `[source][test]`
 
 Harvest the trust model and transparent transport interface. Do not copy the
 manually mirrored TypeScript client and JavaScript host crypto/framing
-implementations; OpenAgents should use one normative schema and golden corpus
+implementations. OpenAgents should use one normative schema and golden corpus
 across Effect and Rust decoders. The external relay Worker is not in the tagged
 repo, so broker retention, deployment, and operational claims remain
 unverified. Raw audio needs its own bounded media policy even if transported
@@ -631,7 +631,7 @@ a notification payload confer authority.
 
 ### Strong choices
 
-- Server-side provider credentials for small-model calls; UI receives text and
+- Server-side provider credentials for small-model calls. UI receives text and
   model identity, not the stored provider secret.
 - Hashed, revocable client bearer tokens and one-time pairing redemption.
 - Password/passkey/pairing as issuance methods for one durable remote-client
@@ -648,9 +648,9 @@ a notification payload confer authority.
 
 - Electron renderer sandbox is disabled and `webviewTag` enabled.
 - Preload exposes a generic command bridge to all pages, then relies on a main
-  allowlist; local renderer globals include runtime credentials.
+  allowlist. Local renderer globals include runtime credentials.
 - A remote web UI can be privileged through a broad local server surface when
-  correctly authenticated; exposure safety depends on UI auth, client tokens,
+  correctly authenticated. Exposure safety depends on UI auth, client tokens,
   route policy, and deployment configuration.
 - Some OpenCode provider auth behavior reads and rewrites upstream auth files,
   increasing coupling and credential blast radius.
@@ -671,11 +671,11 @@ authority are stronger and should not be relaxed for feature parity.
 OpenChamber packages:
 
 - Electron DMG/ZIP for macOS with hardened runtime, entitlements, and notarize
-  configuration;
-- NSIS on Windows;
-- npm-distributed web/CLI server;
-- VS Code extension package;
-- Capacitor iOS/Android projects;
+  configuration.
+- NSIS on Windows.
+- npm-distributed web/CLI server.
+- VS Code extension package.
+- Capacitor iOS/Android projects.
 - PWA assets and service worker.
 
 The Desktop bundles a matching OpenCode CLI and has a self-update path. The web
@@ -688,11 +688,11 @@ SSH, Git, and other modules. It also has release build scripts. `[test]`
 
 Important proof gaps in this snapshot:
 
-- no tagged Session Goal tests;
-- no source proof of the external relay/push services;
-- no live signed/notarized/install/update/rollback receipt was audited;
-- no proof that Desktop, mobile, web, and VS Code all preserve every contract;
-- no durable crash/restart oracle for goal/schedule side effects;
+- no tagged Session Goal tests.
+- no source proof of the external relay/push services.
+- no live signed/notarized/install/update/rollback receipt was audited.
+- no proof that Desktop, mobile, web, and VS Code all preserve every contract.
+- no durable crash/restart oracle for goal/schedule side effects.
 - no evidence that a Capacitor mobile release has the same native reliability
   and accessibility as a purpose-built Effect Native surface.
 
@@ -748,13 +748,13 @@ The historical
 [OpenChamber UI/UX Port Research](../../apps/openagents.com/docs/2026-06-03-openchamber-ui-ux-port-research.md)
 remains accurate about:
 
-- the three-pane workroom;
-- turn and tool projection;
-- blocker docks and attention;
-- chat/review coupling;
-- session hierarchy;
-- event reduction and touched-field performance;
-- mobile state rather than desktop-layout copying;
+- the three-pane workroom.
+- turn and tool projection.
+- blocker docks and attention.
+- chat/review coupling.
+- session hierarchy.
+- event reduction and touched-field performance.
+- mobile state rather than desktop-layout copying.
 - rejecting React/Zustand and browser-owned host authority.
 
 This teardown supersedes it for current architecture and sequencing. The June
@@ -762,18 +762,18 @@ document's large “Implementation Update” is a historical record of an older
 web/Autopilot surface, not current OpenAgents Desktop/mobile authority. Since
 then OpenChamber added or matured:
 
-- Electron as the primary Desktop release target;
-- bundled OpenCode and multi-host Desktop operation;
-- Capacitor mobile applications and native push/deep-link support;
-- private outbound E2EE relay and unified pairing;
-- server-owned permission auto-accept reconciliation;
-- scheduled tasks;
-- Session Goals and small-model auditing;
-- richer voice/dictation/TTS paths;
+- Electron as the primary Desktop release target.
+- bundled OpenCode and multi-host Desktop operation.
+- Capacitor mobile applications and native push/deep-link support.
+- private outbound E2EE relay and unified pairing.
+- server-owned permission auto-accept reconciliation.
+- scheduled tasks.
+- Session Goals and small-model auditing.
+- richer voice/dictation/TTS paths.
 - significantly more explicit sync/reconnect/performance guidance.
 
 The new evidence strengthens the original interaction recommendation but also
-raises the bar. OpenAgents no longer needs merely an OpenChamber-shaped web UI;
+raises the bar. OpenAgents no longer needs merely an OpenChamber-shaped web UI.
 it needs a hardened, durable, provider-neutral workroom contract shared by
 Desktop and mobile.
 
@@ -792,9 +792,9 @@ motion rules.
 | OpenChamber evidence | OpenAgents adaptation | Owning lane |
 | --- | --- | --- |
 | Dense project/worktree/session rail | Canonical CUT-13 identities, recent-first session directory, typed attention and status, clean user-facing titles | D1/D2, R1/R2 |
-| Turn/tool/blocker timeline plus right review panel | One event-derived timeline and inspection projection using stable refs; full child topology and independent transcripts | D1/D3, CUT-11–14 |
+| Turn/tool/blocker timeline plus right review panel | One event-derived timeline and inspection projection using stable refs. Full child topology and independent transcripts | D1/D3, CUT-11–14 |
 | Touched-field reducer and stream coalescing | Effect reducer allocation discipline, schema-valid replay, cursor gaps, backpressure and renderer update tests | D1, R2/R4 |
-| One composer with model/mode/voice/goal affordances | Canonical composer state and command registry; pointer/keyboard/voice/mobile invoke the same intents | D2, AUDIO, R6 |
+| One composer with model/mode/voice/goal affordances | Canonical composer state and command registry. Pointer/keyboard/voice/mobile invoke the same intents | D2, AUDIO, R6 |
 | Pending permission reconciliation | Server-owned `runtime_interaction` recovery and attention independent of mounted UI | D4/D5, R3/R4 |
 | Goal id stale-write fence and cancellation dominance | Goal generation/CAS and owner stop dominance | #8744 plus future bounded goals contract |
 | Dictation sequence/ACK and failed-audio UX | Persistent audio contract, Google STT, bounded retention/retry, transcript replacement fence | #8733–#8741 |
@@ -808,9 +808,9 @@ motion rules.
    leases, due/outbox state, idempotency, generation fencing, deterministic
    evidence predicates, and fault tests. Do not claim restart recovery from
    metadata persistence.
-2. **Scheduled tasks.** Use durable task/run authority and missed-run policy;
+2. **Scheduled tasks.** Use durable task/run authority and missed-run policy.
    retain the inspectable normal-session UX.
-3. **Permissions.** Keep server reconciliation but compile scoped authority;
+3. **Permissions.** Keep server reconciliation but compile scoped authority.
    reject blanket session booleans for high-risk operations.
 4. **Remote work.** Keep transparent host access but add host-independent
    identity, target descriptors, checkpoint/attachment generations, capability
@@ -821,26 +821,26 @@ motion rules.
    persistent stream generation, consent/retention, Google primitives, Rust
    helper boundary, typed command proposal, playback generation, and raw-media
    exclusion.
-7. **Small-model utility.** A cheap auditor/summarizer may assist projection;
+7. **Small-model utility.** A cheap auditor/summarizer may assist projection.
    it never owns acceptance, spending, deployment, permission, or public truth.
 8. **Shared clients.** Share domain contracts and programs through Effect
    Native, not a WebView application or duplicated bridge implementations.
 
 ### 19.3 Reject explicitly
 
-- copying React components, Zustand stores, Express modules, or Tailwind theme;
-- treating raw OpenCode protocol as the OpenAgents client contract;
-- renderer-visible client/provider/runtime credentials;
+- copying React components, Zustand stores, Express modules, or Tailwind theme.
+- treating raw OpenCode protocol as the OpenAgents client contract.
+- renderer-visible client/provider/runtime credentials.
 - `sandbox: false`, `webviewTag: true`, or a generic renderer command bridge as
-  the OpenAgents Desktop baseline;
-- broad browser-accessible local filesystem, Git, terminal, or process APIs;
-- blanket permission auto-accept inherited merely from goal/session state;
-- model verdict or assistant summary as outcome authority;
-- process timers as durable autonomy or schedule proof;
-- two manually mirrored implementations of a security protocol;
-- a second session/run/workflow database inside Desktop;
-- Capacitor/WebView as the OpenAgents mobile architecture;
-- voice transcript, audio, playback, or model speech as command/outcome proof;
+  the OpenAgents Desktop baseline.
+- broad browser-accessible local filesystem, Git, terminal, or process APIs.
+- blanket permission auto-accept inherited merely from goal/session state.
+- model verdict or assistant summary as outcome authority.
+- process timers as durable autonomy or schedule proof.
+- two manually mirrored implementations of a security protocol.
+- a second session/run/workflow database inside Desktop.
+- Capacitor/WebView as the OpenAgents mobile architecture.
+- voice transcript, audio, playback, or model speech as command/outcome proof.
 - OpenChamber's exact color, density, icon, or motion implementation.
 
 ## 20. Ordered consequences for OpenAgents
@@ -859,10 +859,10 @@ motion rules.
 4. **Close exact turn recovery separately.** #8744 must recover or honestly
    settle an accepted interrupted turn before a goal loop may build on it.
 5. **Specify durable goals as a new authority.** Register goal, requirement,
-   continuation, audit, evidence, lease, and terminal-outcome schemas; add a
+   continuation, audit, evidence, lease, and terminal-outcome schemas. Add a
    startup scanner and crash-window model before implementation claims.
 6. **Reuse the existing interaction and policy system.** Goals wait for typed
-   permission/question/plan decisions; they do not mint authority.
+   permission/question/plan decisions. They do not mint authority.
 7. **Keep the audio program parallel.** Apply OpenChamber's ACK/retry and
    dictation UX lessons to #8733–#8741 without changing the accepted Google
    STT/TTS, retention, or Effect/Rust decisions.

@@ -84,9 +84,9 @@ This table links a payment event to revenue-share projection state:
 
 The migration enforces that a provider payout claim requires:
 
-- accepted-work ref;
-- Nexus receipt ref;
-- Treasury receipt ref; and
+- accepted-work ref.
+- Nexus receipt ref.
+- Treasury receipt ref. And
 - LDK settlement receipt ref.
 
 ## Referral Boundary
@@ -101,10 +101,10 @@ new user/customer/site/order -> referral source
 
 It may not:
 
-- create a positive reward amount;
-- create provider payout eligibility;
-- imply accepted work;
-- create a Bitcoin withdrawal claim; or
+- create a positive reward amount.
+- create provider payout eligibility.
+- imply accepted work.
+- create a Bitcoin withdrawal claim. Or
 - project a paid reward without a later paid event.
 
 Referral reward trigger is `paid_activity` only when a later paid checkout,
@@ -118,7 +118,7 @@ The asset used by the buyer controls the safest default contributor asset.
 | Buyer-side asset | Default contributor asset | Withdrawal posture |
 | --- | --- | --- |
 | `sats` | `sats` | Bitcoin-withdrawable only after settlement, reserves, and policy checks. |
-| `credits` | `credits` | Internal credit only; no immediate Bitcoin withdrawal liability. |
+| `credits` | `credits` | Internal credit only. No immediate Bitcoin withdrawal liability. |
 | `usd` | `credits` or policy-defined payable | Fiat or credit policy required before any Bitcoin conversion. |
 
 Credit spend must not silently create immediate Bitcoin withdrawal liability.
@@ -142,21 +142,21 @@ the provider is eligible. Accepted work does not mean the payout is settled.
 
 The public dashboard may show:
 
-- paid action receipt;
-- entitlement granted;
-- referral attribution linked to paid activity;
-- accepted-work ref when present;
-- payout eligibility state; and
+- paid action receipt.
+- entitlement granted.
+- referral attribution linked to paid activity.
+- accepted-work ref when present.
+- payout eligibility state. And
 - settlement state only when receipt-backed.
 
 It must not show:
 
-- raw invoices;
-- raw preimages;
-- payment hashes;
-- wallet mnemonics;
-- MDK access tokens;
-- private payout targets; or
+- raw invoices.
+- raw preimages.
+- payment hashes.
+- wallet mnemonics.
+- MDK access tokens.
+- private payout targets. Or
 - "settled" without settlement receipt refs.
 
 ## Projection Shape
@@ -201,12 +201,12 @@ This is dashboard state, not a final settlement instruction.
 The focused tests prove:
 
 - paid Site activity can trigger referral attribution without provider payout
-  eligibility;
-- raw signup attribution cannot create payout eligibility;
-- credit spend cannot become immediate Bitcoin withdrawal liability;
-- credit-sourced rewards project as internal credit only;
-- Pylon accepted-work payout claims require Nexus, Treasury, and LDK refs;
-- valid accepted-work refs can project payout eligibility; and
+  eligibility.
+- raw signup attribution cannot create payout eligibility.
+- credit spend cannot become immediate Bitcoin withdrawal liability.
+- credit-sourced rewards project as internal credit only.
+- Pylon accepted-work payout claims require Nexus, Treasury, and LDK refs.
+- valid accepted-work refs can project payout eligibility. And
 - unsafe raw payment material is rejected from public refs.
 
 ## Next Work

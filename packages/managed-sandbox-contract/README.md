@@ -7,7 +7,7 @@ It does not provision infrastructure or own provider-private SDK sessions.
 
 The Box compatibility surface is a deliberately bounded projection over the
 native OpenAgents contract. `@asciidev/box-sdk@0.0.24` is pinned as a
-development-only conformance dependency; production services must not import
+development-only conformance dependency. Production services must not import
 or expose the SDK as their domain model.
 
 See `docs/cloud/contracts/openagents.managed_sandbox.v1.md` for the normative

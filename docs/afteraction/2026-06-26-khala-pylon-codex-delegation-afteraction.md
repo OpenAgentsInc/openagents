@@ -1,7 +1,7 @@
 # 2026-06-26 Khala -> Pylon -> Codex Delegation After-Action
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 ## Status
@@ -11,9 +11,9 @@ complete in this change.
 
 Focused Pylon regression coverage is passing locally for:
 
-- dead local no-spend owner recovery;
-- expired local accepted lease pruning;
-- hung Codex SDK runner bounding;
+- dead local no-spend owner recovery.
+- expired local accepted lease pruning.
+- hung Codex SDK runner bounding.
 - no-spend assignment acceptance/progress/artifact/closeout flow.
 
 Live production-API proof from the local patched Pylon completed at
@@ -22,14 +22,14 @@ Live production-API proof from the local patched Pylon completed at
 - the abandoned lease
   `assignment.public.khala_coding.chatcmpl_fd33103f7b4349218f9b0760e8ca5632`
   was submitted as stale with closeout
-  `assignment.closeout.cfd5d6dd9b2a6140f361a836`;
+  `assignment.closeout.cfd5d6dd9b2a6140f361a836`.
 - two new assignments on the same linked Pylon were then run and accepted in
   parallel:
   `assignment.public.khala_coding.chatcmpl_6d190807e87c4a558dac39a098a9d268`
   and
-  `assignment.public.khala_coding.chatcmpl_a2bd2121c00d4a2f8e63eb26f48f9148`;
+  `assignment.public.khala_coding.chatcmpl_a2bd2121c00d4a2f8e63eb26f48f9148`.
 - both produced exact owner-capacity token rows, owner-only ATIF traces, and
-  private raw Codex event archives;
+  private raw Codex event archives.
 - after both closeouts, the same Pylon advertised `available=2`, `ready=2`,
   `busy=0`, and `queued=0` again.
 
@@ -37,14 +37,14 @@ The Worker-side #6358 counter-health changes were deployed through
 `deploy:safe` as Worker version `95d3fcee-f740-477d-b3c4-368f198e8255`.
 Production smokes passed after deploy:
 
-- `https://openagents.com/` returned HTTP 200;
-- `https://openagents.com/assets/index-MEx5hXlp.js` returned HTTP 200;
-- `GET /api/public/khala-tokens-served` returned `tokensServed=301,802,319`;
+- `https://openagents.com/` returned HTTP 200.
+- `https://openagents.com/assets/index-MEx5hXlp.js` returned HTTP 200.
+- `GET /api/public/khala-tokens-served` returned `tokensServed=301,802,319`.
 - `GET /api/public/khala-tokens-served/model-mix?window=30d` returned
   `totalTokens=301,802,319`, `pylon_codex=224,016,760`, and `123` Pylon-Codex
-  usage events;
+  usage events.
 - `scripts/khala-canary.sh` returned `state="up"`,
-  `publicCounterCheck="skipped_internal"`, and `demandKind="internal"`;
+  `publicCounterCheck="skipped_internal"`, and `demandKind="internal"`.
 - one bounded `scripts/khala-heartbeat.sh` wave returned `state="ok"`,
   `ok=10`, `fail=0`, `summedTokens=21,049`,
   `publicCounterCheck="skipped_internal"`, and `demandKind="internal"`.
@@ -72,7 +72,7 @@ The Khala -> Pylon -> Codex path is an owner-capacity coding delegation lane:
    `demand_kind='own_capacity'`, and
    `demand_source='khala_coding_delegation'`.
 7. Owner-only redacted ATIF traces and private raw Codex SDK event archives are
-   retained for audit; public closeouts and counters remain aggregate/public-safe.
+   retained for audit. Public closeouts and counters remain aggregate/public-safe.
 
 The lane is intentionally not a generic marketplace worker. It is a
 caller-owned, no-spend path for the user's linked Pylon and local Codex account.
@@ -145,18 +145,18 @@ blocker when it cannot complete.
 The local Pylon assignment state tracked accepted/running/closed-ish status, but
 older rows did not carry:
 
-- server lease expiry;
-- payment mode;
-- owning local process id;
-- local owner heartbeat timestamp;
+- server lease expiry.
+- payment mode.
+- owning local process id.
+- local owner heartbeat timestamp.
 - local owner heartbeat sequence.
 
 Without those fields, a sibling Pylon process could not distinguish:
 
-- "another local process is actively running this assignment";
-- "the owner process died";
-- "this is a legacy accepted row from an interrupted run";
-- "the server lease expired";
+- "another local process is actively running this assignment".
+- "the owner process died".
+- "this is a legacy accepted row from an interrupted run".
+- "the server lease expired".
 - "this was a no-spend local run that can safely be marked stale".
 
 The safe default was therefore too conservative: leave the accepted row alone
@@ -176,9 +176,9 @@ been abandoned.
 
 The runbook documented how to:
 
-- advertise multiple Codex slots;
-- request a typed coding assignment;
-- run a no-spend assignment;
+- advertise multiple Codex slots.
+- request a typed coding assignment.
+- run a no-spend assignment.
 - inspect exact token rows.
 
 But the operational path still required manual shells and manual assignment
@@ -219,11 +219,11 @@ Regression:
 
 New accepted leases carry:
 
-- `ownerProcessId`;
-- `ownerStartedAt`;
-- `ownerHeartbeatAt`;
-- `ownerHeartbeatSequence`;
-- `leaseExpiresAt`;
+- `ownerProcessId`.
+- `ownerStartedAt`.
+- `ownerHeartbeatAt`.
+- `ownerHeartbeatSequence`.
+- `leaseExpiresAt`.
 - `paymentMode`.
 
 `assignment run-no-spend` starts a local heartbeat for the claimed lease and
@@ -237,10 +237,10 @@ Before polling for new assignments, `assignment run-no-spend` scans local active
 leases. If a no-spend local lease has a dead owner process, stale heartbeat, or
 expired server lease, Pylon submits a public-safe stale closeout:
 
-- `status='stale'`;
-- `paymentMode='no-spend'`;
-- `settlementState='not_applicable'`;
-- `payoutClaimAllowed=false`;
+- `status='stale'`.
+- `paymentMode='no-spend'`.
+- `settlementState='not_applicable'`.
+- `payoutClaimAllowed=false`.
 - `blocker.assignment.local_run_interrupted`.
 
 This tells the Worker the old accepted assignment no longer represents active
@@ -277,42 +277,42 @@ The same patch also fixes the #6358 counter-health failure mode that triggered
 the investigation:
 
 - public token counter projections include all real served-token rows:
-  `internal`, `internal_stress`, `own_capacity`, external, and unlabeled;
+  `internal`, `internal_stress`, `own_capacity`, external, and unlabeled.
 - `demand_kind` / `demand_source` remain in the private ledger for segmentation
-  but are not subtracted from the headline public aggregate;
+  but are not subtracted from the headline public aggregate.
 - sync deltas publish internal rows too, with only event refs, timestamps, and
-  counts, so the homepage stream reconciles with the scalar;
+  counts, so the homepage stream reconciles with the scalar.
 - `scripts/khala-heartbeat.sh` and `scripts/khala-canary.sh` now validate 200
   status, non-empty provider usage, and readable/monotonic public counters,
   requiring counter movement by default even for internal probes.
 
 The important policy distinction is that "internal dogfood" is not external
 market demand, but it is still real Khala-served token volume. Public market
-claims must use segmented/private analytics; the headline token counter is a
+claims must use segmented/private analytics. The headline token counter is a
 total served counter and must not move backward when segmentation improves.
 
 ## Live Multi-Assignment Proof
 
 The patched local Pylon published two Codex slots:
 
-- `pylonRef`: `pylon.33afd48282a649047e3a`;
-- `capacity.coding.codex.available`: `2`;
-- `capacity.coding.codex.ready`: `2`;
-- `capacity.coding.codex.busy`: `0`;
-- `capacity.coding.codex.queued`: `0`;
-- heartbeat sequence: `231`;
+- `pylonRef`: `pylon.33afd48282a649047e3a`.
+- `capacity.coding.codex.available`: `2`.
+- `capacity.coding.codex.ready`: `2`.
+- `capacity.coding.codex.busy`: `0`.
+- `capacity.coding.codex.queued`: `0`.
+- heartbeat sequence: `231`.
 - heartbeat time: `2026-06-26T23:24:27.833Z`.
 
 The abandoned assignment was recovered first:
 
 - assignment:
-  `assignment.public.khala_coding.chatcmpl_fd33103f7b4349218f9b0760e8ca5632`;
-- local terminal status: `stale`;
+  `assignment.public.khala_coding.chatcmpl_fd33103f7b4349218f9b0760e8ca5632`.
+- local terminal status: `stale`.
 - closeout:
-  `assignment.closeout.cfd5d6dd9b2a6140f361a836`;
-- closeout submitted at: `2026-06-26T23:22:01.074Z`;
-- blocker: `blocker.assignment.local_run_interrupted`;
-- settlement: `not_applicable`;
+  `assignment.closeout.cfd5d6dd9b2a6140f361a836`.
+- closeout submitted at: `2026-06-26T23:22:01.074Z`.
+- blocker: `blocker.assignment.local_run_interrupted`.
+- settlement: `not_applicable`.
 - payout claim allowed: `false`.
 
 Two fresh assignments then ran concurrently and both closed accepted:
@@ -324,10 +324,10 @@ Two fresh assignments then ran concurrently and both closed accepted:
 
 Both exact usage rows carried:
 
-- `provider='pylon-codex-own-capacity'`;
-- `model='openagents/pylon-codex'`;
-- `usage_truth='exact'`;
-- `demand_kind='own_capacity'`;
+- `provider='pylon-codex-own-capacity'`.
+- `model='openagents/pylon-codex'`.
+- `usage_truth='exact'`.
+- `demand_kind='own_capacity'`.
 - `demand_source='khala_coding_delegation'`.
 
 After the two accepted closeouts, `provider go-online` again showed
@@ -338,12 +338,12 @@ longer poisoned dispatch capacity.
 
 This fix does not claim:
 
-- broad marketplace delegation;
-- routing to someone else's Pylon;
-- payout eligibility;
-- public exposure of raw Codex events;
+- broad marketplace delegation.
+- routing to someone else's Pylon.
+- payout eligibility.
+- public exposure of raw Codex events.
 - public counter proof from a running assignment before exact closeout usage is
-  ingested;
+  ingested.
 - server-side knowledge of local process death without Pylon reporting it.
 
 It only fixes the owner-local no-spend Pylon/Codex path so interrupted local
@@ -384,7 +384,7 @@ Live proof:
 7. Confirm the public counter remains monotonic and includes all real served
    token rows, including `demand_kind='internal'` dogfood and `own_capacity`
    Pylon/Codex usage. Keep internal/external/unlabeled provenance in segmented
-   analytics; do not use the headline counter alone as external-demand proof.
+   analytics. Do not use the headline counter alone as external-demand proof.
    Complete after Worker deploy `95d3fcee-f740-477d-b3c4-368f198e8255`:
    public counter/model-mix read live, internal canary/heartbeat stayed green
    without requiring public counter movement, and Pylon-Codex exact rows remain
@@ -416,7 +416,7 @@ When delegation looks wedged:
 1. Check advertised capacity:
    `pylon provider go-online --json` and `pylon presence heartbeat --json`.
 2. Poll assignments with the same token/Pylon owner scope.
-3. Inspect local assignment state only for local recovery evidence; do not paste
+3. Inspect local assignment state only for local recovery evidence. Do not paste
    raw state into public issues.
 4. Prefer explicit assignment refs when running parallel no-spend tasks.
 5. Treat any accepted non-expired lease without progress/closeout as a recovery

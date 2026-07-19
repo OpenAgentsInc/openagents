@@ -25,7 +25,7 @@ proof"): the owner has decided OpenAgents Desktop supersedes them.
 Seven promises flip to `withdrawn` with successor
 `promise:openagents.desktop_app.v1`. Withdrawals are downgrades and need no
 `promise_transition` receipt per the `mobile.autopilot_remote_control.v1`
-precedent (`docs/promises/registry.md`); stable promise IDs, historical
+precedent (`docs/promises/registry.md`). Stable promise IDs, historical
 evidence refs, and public receipt/read routes remain served.
 
 | promiseId | prior state | new state |
@@ -39,25 +39,25 @@ evidence refs, and public receipt/read routes remain served.
 | `khala_code.bundled_fleet_skill.v1` | planned (capability carry-forward) | withdrawn |
 
 Green count moves 34 -> 33 (`autopilot.agent_world_scene.v1` was the one
-green record in the set; its historical owner-signed #7030 green transition
+green record in the set. Its historical owner-signed #7030 green transition
 stays recorded in the registry notes).
 
 `khala_code.bundled_fleet_skill.v1` leaves the
 `khalaCodeCapabilityDisposition` carry-forward ledger because its subject —
 the canonical `.agents/skills/khala-fleet/SKILL.md` — was removed at owner
-direction; the carry-forward claim no longer exists to port.
+direction. The carry-forward claim no longer exists to port.
 
 ## Surface dispositions in the same change
 
 | Surface | Disposition |
 | --- | --- |
-| `apps/autopilot-desktop/` | REMOVED (superseded by OpenAgents Desktop). No external package imported it; root scripts/workspaces entries removed. The `updates.openagents.com` legacy desktop feed routes remain armed CUT-26 `410` tombstones (`apps/oa-updates/src/legacy-desktop-lockout.ts`). |
-| `packages/sarah-take-scoreboard/` | REMOVED (Sarah surface cleanup; clean leaf — no runtime importers). Root script + perimeter-allowlist entries removed; the admitted MVP AssuranceSpec sweep command was re-pinned under its own revision bump. |
-| `.agents/skills/khala-fleet/` | REMOVED. The frozen Khala Code client's byte-pin test was reduced to embedded-copy checks with a dated note; the bundled-skill promise is withdrawn above. |
+| `apps/autopilot-desktop/` | REMOVED (superseded by OpenAgents Desktop). No external package imported it. Root scripts/workspaces entries removed. The `updates.openagents.com` legacy desktop feed routes remain armed CUT-26 `410` tombstones (`apps/oa-updates/src/legacy-desktop-lockout.ts`). |
+| `packages/sarah-take-scoreboard/` | REMOVED (Sarah surface cleanup, clean leaf — no runtime importers). Root script + perimeter-allowlist entries removed. The admitted MVP AssuranceSpec sweep command was re-pinned under its own revision bump. |
+| `.agents/skills/khala-fleet/` | REMOVED. The frozen Khala Code client's byte-pin test was reduced to embedded-copy checks with a dated note. The bundled-skill promise is withdrawn above. |
 | `clients/khala-code-desktop/` | REMOVED in #8793 after every executable Pylon/QA/package dependency was migrated. QA-owned compatibility fixtures remain in the QA harness, neutral chat events use `agent-runtime-schema`, and active desktop gates target `apps/openagents-desktop`. Historical promise evidence dereferences through `git show c7044f5a28:<path>` and the backroom supersession intake. |
 | `packages/autopilot-ui/` | RETAINED: the live `apps/openagents.com/apps/web` app depends on it (`package.json` workspace dep + `@import '@openagentsinc/autopilot-ui/styles.css'`), plus token-parity tests in `packages/ui` and `packages/autopilot-control-protocol`. Not autopilot-desktop-only, so the owner's "etc" does not reach it. |
-| `/api/sarah/fleet-runs` (FleetRun authority route) | ALIASED, not removed: neutral canonical path `/api/fleet-runs` added; the legacy path stays a served compatibility alias because shipped OpenAgents desktop/mobile binaries hardcode it (`packages/khala-sync-client` now targets the neutral path for future builds). No 410: fielded clients would lose the live fleet projection. |
-| `/api/operator/business/sarah-checkout-links` + CRM Sarah handoff store | RETAINED: live CRM machinery (`crm-reply-routes.ts`, `crm-command.ts`, `crm-mcp.ts`) consumes the handoff store; renaming cascades through production CRM code and D1 migration 0311 — deferred to its own bounded issue. |
+| `/api/sarah/fleet-runs` (FleetRun authority route) | ALIASED, not removed: neutral canonical path `/api/fleet-runs` added. The legacy path stays a served compatibility alias because shipped OpenAgents desktop/mobile binaries hardcode it (`packages/khala-sync-client` now targets the neutral path for future builds). No 410: fielded clients would lose the live fleet projection. |
+| `/api/operator/business/sarah-checkout-links` + CRM Sarah handoff store | RETAINED: live CRM machinery (`crm-reply-routes.ts`, `crm-command.ts`, `crm-mcp.ts`) consumes the handoff store. Renaming cascades through production CRM code and D1 migration 0311 — deferred to its own bounded issue. |
 
 Full per-item restoration pointers live in
 `docs/refactor/2026-07-14-mvp-prune-ledger.md` (Part 2).

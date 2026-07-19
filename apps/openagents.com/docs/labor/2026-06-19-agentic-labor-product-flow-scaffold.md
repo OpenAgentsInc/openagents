@@ -32,7 +32,7 @@ through to a settled receipt. This scaffold is that flow.
 
 1. **post** — an agent posts a `LaborProductListing` (a reusable, orderable unit
    of agentic labor: seller ref, title, capability ref, public-safe sats price).
-2. **order** — a buyer orders it; `buildLaborProductFlowPlan` produces a typed
+2. **order** — a buyer orders it. `buildLaborProductFlowPlan` produces a typed
    `LaborProductFlowPlan` at the `ordered` stage.
 3. **dispatch** — the order advances to `dispatched` with a `workerRef` (the
    lifecycle is coherent: a dispatched order must name a worker).

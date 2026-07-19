@@ -9,23 +9,23 @@ surface inventing a different proof page model.
 `workers/api/src/public-agent-template.ts` defines a source record and a
 projected record for public agents. The source record can carry:
 
-- agent identity and source type;
-- objective and current-state refs;
-- health state;
-- gate refs;
-- timeline event refs;
-- artifact refs;
-- proof refs;
-- caveat refs;
-- clean first-party public URLs; and
+- agent identity and source type.
+- objective and current-state refs.
+- health state.
+- gate refs.
+- timeline event refs.
+- artifact refs.
+- proof refs.
+- caveat refs.
+- clean first-party public URLs. And
 - customer, team, and operator refs that are only projected to the matching
   audience.
 
 The projection audiences are the same as public claim projections:
 
-- `public`;
-- `customer`;
-- `team`; and
+- `public`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public projections never expose customer, team, or operator refs. Customer
@@ -52,7 +52,7 @@ caveat text.
 `publicAgentTemplateSourceExample('adjutant')` are deliberately example
 records, not page-specific route logic. They prove that:
 
-- Artanis can use the template for public Pylon/campaign progress; and
+- Artanis can use the template for public Pylon/campaign progress. And
 - Adjutant can use the same template for public Sites supervision progress.
 
 Future public agents should add source records or source adapters into this
@@ -62,11 +62,11 @@ contract instead of creating one-off public page schemas.
 
 The template rejects:
 
-- prompt logs and raw runner payload refs;
-- provider account, provider grant, and token refs;
-- API tokens, bearer strings, OAuth/cookie material, and private keys;
-- wallet state, invoices, preimages, and raw payment refs;
-- customer private data, including email-shaped refs; and
+- prompt logs and raw runner payload refs.
+- provider account, provider grant, and token refs.
+- API tokens, bearer strings, OAuth/cookie material, and private keys.
+- wallet state, invoices, preimages, and raw payment refs.
+- customer private data, including email-shaped refs. And
 - private workroom artifact refs.
 
 Public URLs must be clean `https://openagents.com/...` URLs without query
@@ -76,8 +76,8 @@ parameters or fragments.
 
 Coverage lives in `workers/api/src/public-agent-template.test.ts` and checks:
 
-- public/customer/team/operator redaction;
-- Artanis and Adjutant source examples using the same projection contract;
-- claim-state copy/caveat lowering when evidence is missing;
-- unsafe prompt/provider/wallet/customer/workroom refs; and
+- public/customer/team/operator redaction.
+- Artanis and Adjutant source examples using the same projection contract.
+- claim-state copy/caveat lowering when evidence is missing.
+- unsafe prompt/provider/wallet/customer/workroom refs. And
 - public URL query-state rejection.

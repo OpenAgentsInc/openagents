@@ -11,19 +11,19 @@
 ## Launch Package And Version Truth
 
 **Stable v1.0 is cut and currently at 1.0.5.** `apps/pylon/package.json` and
-`apps/pylon/src/version.ts` are `1.0.5` (kept in sync; the version-sync test
+`apps/pylon/src/version.ts` are `1.0.5` (kept in sync, the version-sync test
 guards both).
 
 **The default published Pylon is now `@openagentsinc/pylon@1.0.5`** — the
 `latest` dist-tag. A fresh `npx @openagentsinc/pylon` installs the Node/Effect
 earning-capable node directly from npm. The old `0.2.5` GitHub-asset launcher
-(previously `latest`) is superseded; it predated the Tassadar earning path and
+(previously `latest`) is superseded. It predated the Tassadar earning path and
 could no longer resolve a runnable release asset on a clean machine (Launch
 L-1, #5393).
 
 **The v1.0 stable package is published on the `latest` dist-tag.** The owner
 authorized the initial stable cut on 2026-06-18 (#5393), promoting the rc line
-(`1.0.0-rc.37`, no code change) to `1.0.0`; the current stable patch is
+(`1.0.0-rc.37`, no code change) to `1.0.0`. The current stable patch is
 `1.0.5`. Install with
 `npm install -g @openagentsinc/pylon` or run directly via
 `npx @openagentsinc/pylon`. Verify the live dist-tags with
@@ -33,7 +33,7 @@ both `package.json` and `src/version.ts`. The publish flow is documented in
 
 The npm package and the signed standalone auto-update feed are separate
 release surfaces. The `1.0.5` npm publish does NOT update
-`updates.openagents.com/pylon/.../feed.json`; that feed only moves when the
+`updates.openagents.com/pylon/.../feed.json`. That feed only moves when the
 signed binary flow in `apps/pylon/scripts/build-rc-binaries.sh` and the
 `oa-updates` publish path are run. The npm package ships the Node/Effect source
 that runs directly, so the npm publish alone fixes `npx`.
@@ -104,13 +104,13 @@ Post the report to the Release Candidates forum with the Pylon version,
 registration/`/api/agents/me` result, presence refs, training status summary,
 preflight readiness or blockers, lease ref if claimed, trace-submit result,
 validator auto result, and any blocker refs. A lease or readiness result is not
-an earning or settlement claim; only a dereferenceable settlement receipt is.
+an earning or settlement claim. Only a dereferenceable settlement receipt is.
 
 ### Owner source-checkout development
 
 Run source-checkout commands with the repository-pinned Node runtime and
 `node --import tsx apps/pylon/src/index.ts`. Published artifacts remain the
-only release evidence; a source checkout is development evidence only.
+only release evidence. A source checkout is development evidence only.
 
 **Non-readiness warnings — read before running:**
 
@@ -125,7 +125,7 @@ only release evidence; a source checkout is development evidence only.
   understands it is pre-release software with wallet-adjacent surfaces.
   Wallet operations always end in an explicit confirmation dialog, but the
   posture is: test with sats you can afford to lose, or with none.
-- The local gate (`pnpm run release:gate`) is the bar the RC has to pass;
+- The local gate (`pnpm run release:gate`) is the bar the RC has to pass.
   if you run the RC and find a gate the suite misses, that report is more
   valuable than the testing itself - file it or post it on the Forum.
 
@@ -169,25 +169,25 @@ active breakers before advertising capacity or assigning slots. The legacy
 When a dispatched context records a failure, the assigned task is moved to
 `failed`, the context is released, and the context is quarantined as
 `circuit_broken` after the configured failure threshold. Later heartbeats update
-liveness data but do not clear a circuit breaker; an operator must explicitly
+liveness data but do not clear a circuit breaker. An operator must explicitly
 reset or replace that context.
 
 Use `publicSnapshot()` for surfaces that may leave the local process. That
 projection contains task/context refs, statuses, runner kinds, heartbeat/drift
 metadata, and repo refs only. It intentionally omits task prompts and replaces
-local worktree paths with `null`; raw prompts, verification details, and local
+local worktree paths with `null`. Raw prompts, verification details, and local
 paths remain local-only execution state.
 
 `portable-session-operation-ledger.ts` is the PORT-03 owner-local movement
 fence. Its file-backed SQLite rows bind every operation to exact session,
 attachment, generation, kind, and canonical input bytes. Quiescence disables
-new work for that generation transactionally; activation can advance exactly
+new work for that generation transactionally. Activation can advance exactly
 one generation only after a public-safe authority evidence ref, restoring one
 accepting attachment. Completed and in-flight operations survive process reopen
 and replay without repeating effects, while stale generations, conflicting
 bytes, duplicate-but-different outcomes, paths, secrets, process details, and
 topology-shaped result material fail closed. The source lifecycle and local
-destination rehydration adapters below now consume this fence; #8748 still
+destination rehydration adapters below now consume this fence. #8748 Still
 requires the remaining production composition and the direct local → managed →
 local acceptance journey.
 
@@ -200,7 +200,7 @@ the runtime atomically replaces the old epoch with a non-accepting `quiesced`
 binding and `portable.recover` returns a typed refs-only outcome. Even a
 deliberately still-live old manager must recheck that durable epoch before `session.reply`,
 so it cannot accept stale parent or child work. The recovery ref is byte-
-idempotent and generation-fenced; see
+idempotent and generation-fenced. See
 `tests/portable-control-session-recovery.test.ts`.
 
 ## Dashboard (TUI)
@@ -210,7 +210,7 @@ execution-log feed (left), wallet/telemetry/operator panes (right), a repo/AI
 context pane on wide terminals, a composer (bottom), and a one-line key-hint
 footer.
 
-- Startup is quiet by default; launch with `--verbose` (or `PYLON_VERBOSE=1`)
+- Startup is quiet by default. Launch with `--verbose` (or `PYLON_VERBOSE=1`)
   for full service logs, or press `f2` to toggle verbosity at runtime.
 - `ctrl+k` opens the command palette (fuzzy search over every command),
   `f1` shows all keybindings, `tab` switches focus between the log feed and
@@ -220,17 +220,17 @@ payout target`) run from the palette and always end in an explicit
   confirmation dialog before any money moves.
 - Keybindings are user-configurable via `keybinds.json` in the Pylon home
   directory: `{ "bindings": { "palette.open": "ctrl+p" } }`. Keys are
-  command names (see `f1`); values are `@opentui/keymap` key strings.
+  command names (see `f1`). Values are `@opentui/keymap` key strings.
   Invalid files are reported and ignored.
 - The composer submits with `meta+return` and streams the selected local
   adapter into the feed, running in the current working directory by default
   (`PYLON_CODEX_CWD` or `PYLON_ACTIVE_REPO` can override it). Codex is the
-  default backend; set `"dev": { "defaultAdapter": "claude_agent" }` or launch
+  default backend. Set `"dev": { "defaultAdapter": "claude_agent" }` or launch
   with `--adapter claude` to use the local Claude Agent SDK instead. Missing
   SDK/auth readiness is shown as a typed adapter blocker before any session
   starts. Claude sessions keep their SDK session id locally so follow-up
-  prompts can resume; only hashed session refs appear in the feed. The default
-  Codex composer mode is local bounded `workspace-write`; `pylon dev
+  prompts can resume. Only hashed session refs appear in the feed. The default
+  Codex composer mode is local bounded `workspace-write`. `pylon dev
 --codex-danger`, `pylon --codex-danger`, or `"dev":
 { "codexExecutionMode": "local_supervised_danger" }` explicitly switches the
   **local dashboard composer only** to SDK `danger-full-access` with
@@ -238,7 +238,7 @@ payout target`) run from the palette and always end in an explicit
   backend has the same opt-in shape: `pylon --claude-danger` or `"dev":
 { "claudeExecutionMode": "local_supervised_danger" }` switches the local
   composer to SDK `permissionMode: "bypassPermissions"` with no tool
-  allowlist and labels the feed as `Claude DANGER`; the default Claude
+  allowlist and labels the feed as `Claude DANGER`. The default Claude
   composer mode stays local bounded (tool allowlist + `acceptEdits`). Both
   danger flags are rejected with typed blockers on every public command path.
   Composer streams persist public-safe per-account usage truth under the
@@ -261,7 +261,7 @@ payout target`) run from the palette and always end in an explicit
 - `pylon context --json` returns the same public-safe repo, instruction,
   current-job, and AI-account/adaptor projection that drives the TUI's
   `Repo & AI Context` pane, including the optional account usage summary when
-  one has been observed. On wide dashboards it renders beside telemetry; on
+  one has been observed. On wide dashboards it renders beside telemetry. On
   narrow dashboards use `f6` or the command palette to open the full context
   view, and `Context: refresh repo & AI` to re-probe local state.
 - `pylon auth codex` is the human path for connecting Codex capacity. It first
@@ -269,7 +269,7 @@ payout target`) run from the palette and always end in an explicit
   creates an isolated local Codex home, runs `codex login --device-auth` for
   that home only when needed, then privately imports that local Codex auth into
   the linked OpenAgents owner account. The only human output is the
-  verification URL and user code for required browser/device steps; attempt
+  verification URL and user code for required browser/device steps. Attempt
   IDs, tokens, JSON plumbing, local credential paths, and the private import
   stay hidden. Re-run `pylon auth codex` to add another Codex account (`codex`,
   `codex-2`, `codex-3`, ...), or pass
@@ -284,7 +284,7 @@ payout target`) run from the palette and always end in an explicit
   and platform truth (currently unavailable unless the future provider-pool
   proxy is reachable). `--account codex`, `--account chatgpt`,
   `--provider codex`, and `--provider claude` target the matching unnamed
-  default provider home; registered account refs still target their configured
+  default provider home. Registered account refs still target their configured
   homes. `--refresh` is explicit because it runs one minimal bounded
   inference per selected account and may consume paid provider tokens.
 - Public activity evidence is available without a local node:
@@ -300,7 +300,7 @@ payout target`) run from the palette and always end in an explicit
 - `pylon dev check --json`, `pylon dev apply --json`, and
   `pylon dev reload --json` provide the local supervised check/apply/reload
   loop. `check` emits changed file refs, dirty-state counts, command refs, exit
-  codes, and output digest refs; pass `--allow-dirty` when you intentionally
+  codes, and output digest refs. Pass `--allow-dirty` when you intentionally
   want to inspect an untracked dirty tree. The same actions are exposed in the
   command palette as Dev commands. They never commit, push, clean, or switch
   branches.
@@ -344,7 +344,7 @@ payout target`) run from the palette and always end in an explicit
   (`idle`, `queued`, `working`, `waiting`, `blocked`, `done`, `failed`, or
   `offline`), runner/task/dispatch refs, public-safe worktree refs, and the
   supported control verbs. Control commands use
-  `openagents.pylon.agent_runner_control_command.v1`; the initial allowlist is
+  `openagents.pylon.agent_runner_control_command.v1`. The initial allowlist is
   `status.list`, `task.list`, `task.update`, `task.dispatch`, and
   `dispatch.cancel`. This is a contract/projection surface only: current Codex
   and Claude assignment execution still flows through the existing lease runner
@@ -356,7 +356,7 @@ payout target`) run from the palette and always end in an explicit
 `@opentui/solid`'s `testRender`: inject keys programmatically, capture
 character frames, snapshot them with Vitest, and drive the real
 runtime/bridge with fake `PylonEvent` streams. See
-`tests/tui-render-harness.test.ts`; the harness is importable by the
+`tests/tui-render-harness.test.ts`. The harness is importable by the
 runtime package's renderer tests as well.
 
 ## Bootstrap And Status
@@ -405,7 +405,7 @@ pylon wallet admit-payout-target --kind bolt12_offer --ref payout.bolt12.<hash>
 
 Wallet status reports one agent-facing balance, sourced from the deterministic
 Spark wallet derived from the Pylon identity mnemonic. MDK is auxiliary for
-treasury/checkouts and legacy compatibility; it is excluded from the displayed
+treasury/checkouts and legacy compatibility. It is excluded from the displayed
 agent balance and public readiness refs. The older `wallet receive` and MDK
 control receive paths remain legacy compatibility until the MDK scope-down issue
 removes MDK from the agent receive path.
@@ -420,7 +420,7 @@ pylon wallet send --rail spark --lightning-address <name@example.com> --amount 2
 ```
 
 The command pays from the node's Spark wallet, not from MDK. Public output and
-local ledger records contain only digest refs, amount/fee, method, and status;
+local ledger records contain only digest refs, amount/fee, method, and status.
 they never print the raw invoice, Lightning Address, mnemonic, API key, or Spark
 storage path.
 
@@ -510,7 +510,7 @@ for each parallel slot. It is now a specialization of the generic spawn runner.
 Add `--execute` to dispatch each `codex_agent_task`, run the no-spend
 assignment, verify exact token proof, and record before/after public Khala
 token-counter evidence. The command reports `mergePolicy:
-"operator_review_required"`; review, commit, push, and close each issue after
+"operator_review_required"`. Review, commit, push, and close each issue after
 proof. See `docs/khala-burndown-runbook.md`.
 
 The FleetRun live smoke scripts are skip-safe by default and exist for owner
@@ -523,7 +523,7 @@ with `PYLON_FLEET_RUN_LIVE_PYLON_REF`, exactly two distinct
 starts a supervised issue-list FleetRun at target concurrency 2. The
 supervisor publishes a fresh presence heartbeat with the run capacity before
 each real dispatch pass and carries the same advertised capacity environment
-into the `khala request` process; if server admission still rejects a request,
+into the `khala request` process. If server admission still rejects a request,
 the smoke result carries a `dispatchFailures` summary instead of only aggregate
 counters.
 Final no-spend progress messages are bounded to the hosted assignment API
@@ -532,14 +532,14 @@ worker-closeout event body before submission. Progress/artifact submission
 rejections add a
 `blocker.assignment.progress_or_artifact_http_<status>` closeout ref so the
 next operator can distinguish a schema/API refusal from a runtime refusal.
-The final hosted progress message is intentionally generic; detailed runner
+The final hosted progress message is intentionally generic. Detailed runner
 diagnostics stay in the local closeout refs and owner-only trace/proof paths.
 The smoke fails closed unless both assignment refs close out with green `pylon
 khala closeout` checklists, positive exact `token_usage_events` rows, zero
 duplicate work-unit claims, and a public `/api/public/khala-tokens-served`
 delta at least as large as the exact closeout total. Counter movement alone is
 never accepted. Owner-only trace proof may report more rows than the
-public-safe ref projection returns; the closeout checklist accepts the capped
+public-safe ref projection returns. The closeout checklist accepts the capped
 ref projection only when trace count, final-trace readiness, and owner-only
 visibility are still present.
 Assignment workers execute from the Pylon app path, so app-local verification
@@ -555,7 +555,7 @@ pylon node fleet-run-intake-status --json
 
 The command reads the authenticated loopback node projection. `disabled` plus
 `blocker.pylon.fleet_run_intake.transport_not_configured` means the node lacks
-the base URL or agent bearer; `polling` distinguishes an in-flight tick;
+the base URL or agent bearer. `polling` distinguishes an in-flight tick.
 `idle`/`closed`, `pollCount`, the last fixed intake projection, and fixed
 blocker refs make a slow or failed standing loop distinguishable from silence.
 Claim idempotency survives a lost response or failed local import while the
@@ -573,7 +573,7 @@ duration 30 minutes, minimum 2 refills, and at least 7 distinct issue numbers
 `PYLON_FLEET_RUN_SUSTAINED_DURATION_MINUTES`,
 `PYLON_FLEET_RUN_SUSTAINED_MIN_REFILLS`,
 `PYLON_FLEET_RUN_SUSTAINED_POLL_MS`, and
-`PYLON_FLEET_RUN_SUSTAINED_TIMEOUT_MS`; the script rejects values below the
+`PYLON_FLEET_RUN_SUSTAINED_TIMEOUT_MS`. The script rejects values below the
 documented minimums before dispatching real work.
 The default source is `issue_list`, which requires
 `PYLON_FLEET_RUN_SUSTAINED_ISSUES` to name at least `target + minRefills`
@@ -586,7 +586,7 @@ array of bounded public-safe plan nodes (`ref`, `title`, `objective`, optional
 `url`) and must contain at least `target + minRefills` distinct nodes. The
 plan-DAG path still uses real supervised Pylon assignments, named isolated
 worker accounts, exact closeout/token-row proof, duplicate work-unit detection,
-and public counter reconciliation; it only changes the work source from GitHub
+and public counter reconciliation. It only changes the work source from GitHub
 issue numbers to explicit bounded evidence nodes. Within one sustained run,
 each plan node is single-attempt: completed nodes are skipped as completed,
 and released or expired nodes are treated as failed for planning so a refill
@@ -598,7 +598,7 @@ manual preflight heartbeat is not treated as enough proof by itself. If hosted
 admission still reports `stale_or_missing_heartbeat`, the Pylon service refreshes
 the heartbeat and retries that assignment request before the work unit is
 counted failed. This retry also covers structured `ok:false` stale-heartbeat
-admission responses that exit zero; hosted admission failures are not always
+admission responses that exit zero. Hosted admission failures are not always
 process-level failures.
 
 ### Local multi-session proof runs
@@ -653,7 +653,7 @@ pnpm run smoke:nip90-provider
 admission policy that the OpenTUI background loop will use. Labor jobs require
 an explicit first-run operator approval record from `provider approve-labor`
 before they execute on a machine. `provider once` is the headless smoke path
-for one relay loop iteration; the default dashboard starts the same loop
+for one relay loop iteration. The default dashboard starts the same loop
 automatically only when the persisted lifecycle is `online` or
 `assignment-ready`. Own-capacity dispatch includes local active
 `assignment run-no-spend` runners in `load.coding.<service>.busy`, so a
@@ -672,14 +672,14 @@ which re-exports the local `nostr-effect` protocol helpers.
 
 Environment controls:
 
-- `PYLON_NIP90_RELAYS`: comma-separated relay URLs; defaults to
+- `PYLON_NIP90_RELAYS`: comma-separated relay URLs. Defaults to
   the configured public Nostr relay (default `wss://nos.lol`).
-- `PYLON_NIP90_PRICE_MSATS`: price floor and requested invoice amount;
+- `PYLON_NIP90_PRICE_MSATS`: price floor and requested invoice amount.
   defaults to `1000`.
-- `PYLON_NIP90_REQUEST_TTL_SECONDS`: request age limit; defaults to one year.
-- `PYLON_NIP90_MAX_INFLIGHT`: total local inflight admission leases; defaults
+- `PYLON_NIP90_REQUEST_TTL_SECONDS`: request age limit. Defaults to one year.
+- `PYLON_NIP90_MAX_INFLIGHT`: total local inflight admission leases. Defaults
   to `1`.
-- `PYLON_NIP90_PER_BUYER_MAX_INFLIGHT`: per-buyer inflight leases; defaults
+- `PYLON_NIP90_PER_BUYER_MAX_INFLIGHT`: per-buyer inflight leases. Defaults
   to `1`.
 - `PYLON_LABOR_AGENT`: optional local labor agent selector: `codex`,
   `opencode`, or `claude_code`. If unset, Pylon detects `codex`, then
@@ -697,7 +697,7 @@ Legacy Spark/Breez migration boundary: `pylon wallet migrate-spark` is a
 preflight-first compatibility path for old v0.2.x balances. It reports missing
 Breez/Spark credential material as an actionable blocker and only proceeds with
 explicit local consent. `pylon wallet send --rail spark --confirm-send` is the
-direct Spark spend/withdraw path for credited Spark wallet funds; it is separate
+direct Spark spend/withdraw path for credited Spark wallet funds. It is separate
 from accepted-work payout authority and emits public-safe refs only. Users must
 never paste a 12-word mnemonic, raw invoice, Lightning Address, API key, or Spark
 storage path into GitHub, support threads, logs, or issue comments. See
@@ -706,7 +706,7 @@ storage path into GitHub, support threads, logs, or issue comments. See
 Labor boundary: Pylon rejects labor requests that carry provider-auth-shaped
 material, requests outside the bounded workspace, or a policy ref other than
 `provider.compliant_usage_labor.v1`. The contributor's own local provider
-accounts or API budgets stay on the contributor machine; OpenAgents pays for
+accounts or API budgets stay on the contributor machine. OpenAgents pays for
 accepted work output only and never resells, proxies, brokers, or transfers
 provider credentials, sessions, account access, or consumer subscription
 capacity.
@@ -742,7 +742,7 @@ The runtime includes:
   refs, assignment-runner admission, typed unattached refusal, and redacted
   availability/transcript/tool-call receipts. See
   `docs/2026-06-09-pylon-qwen35-local-inference-roadmap.md` and
-  `docs/psionic-qwen-live-smoke.md`; this is not a training, bundled-model,
+  `docs/psionic-qwen-live-smoke.md`. This is not a training, bundled-model,
   startup auto-download, or paid-capacity claim.
 
 ## GEPA Capability Envelope
@@ -791,7 +791,7 @@ one-click update (`@openagentsinc/pylon-core/custody/harness-maintenance`):
   and a `current`/`behind_latest`/`unknown` advisory per harness.
 - `--update` runs detect → pin → update → **re-probe** → receipt. The pin
   records the expected version, binary sha256, and channel before anything
-  runs; success is only reported after the swapped binary answers a version
+  runs. Success is only reported after the swapped binary answers a version
   probe on the same channel. A failed re-probe, a channel change, or an
   unchanged version is a typed maintenance failure (non-zero exit) with the
   previous state recorded intact.
@@ -801,7 +801,7 @@ one-click update (`@openagentsinc/pylon-core/custody/harness-maintenance`):
 - Every run appends a provenance receipt (source, command, bounded output
   excerpt, before/after states, re-probe result) under
   `<pylon home>/harness-maintenance/`, and stdout prints the public-safe
-  projection (home paths collapse to `~`; never tokens or auth state).
+  projection (home paths collapse to `~`, never tokens or auth state).
 - Maintenance updates BINARIES only: spawns scrub `CODEX_HOME` /
   `CLAUDE_CONFIG_DIR` / `GROK_HOME`, login/auth arguments are refused by a
   typed guard, and the default `~/.codex` login home is never read or written.
@@ -831,7 +831,7 @@ receipt (the `>=2` bar). It is INERT by default — with
 `PYLON_MULTI_EARNING_LEDGER_ENABLED` off it emits an empty projection
 (`inert: true`, zero settled modes, promise `red`) and ingests no live earning
 records. It moves no money, reads no wallet, and never prints raw payment
-material; amounts are aggregate sats only. The green flip stays owner-signed.
+material. Amounts are aggregate sats only. The green flip stays owner-signed.
 See `docs/promises/2026-06-23-pylon-multi-earning-node-receipt-machinery.md` in
 the repo root.
 
@@ -869,7 +869,7 @@ repository post-image, binary diff, root/child graph, and per-thread cursors,
 and leaves that generation non-accepting. Activation re-reads PORT-01 and opens
 the local generation only when the exact destination attachment, checkpoint,
 and next generation are authoritative. Stage, activation, and abort are
-byte-idempotent across SQLite reopen; abort must release every staged agent and
+byte-idempotent across SQLite reopen. Abort must release every staged agent and
 capability plus process, scratch, and port state. The private rehydrator may
 handle local paths and checkpoint bytes, but its durable/public port returns
 only digests and refs. `tests/portable-session-destination.test.ts` exercises a

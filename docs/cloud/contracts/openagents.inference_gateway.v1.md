@@ -19,12 +19,12 @@ The Model-2 inference gateway lets managed Cloud workrooms consume model
 capacity without placing provider credentials inside the customer session VM.
 It defines:
 
-- where OpenAgents-owned commercial API keys live;
-- how a customer session VM reaches model inference;
-- the per-request metering record used for prepaid credit-ledger drawdown;
+- where OpenAgents-owned commercial API keys live.
+- how a customer session VM reaches model inference.
+- the per-request metering record used for prepaid credit-ledger drawdown.
 - the pricing basis for direct providers and gateway providers such as
-  OpenRouter;
-- the refs-only artifact, log, receipt, and projection boundary;
+  OpenRouter.
+- the refs-only artifact, log, receipt, and projection boundary.
 - the policy boundary between API-inference resale and subscription resale.
 
 ## Invariant Binding
@@ -114,12 +114,12 @@ Allowed custody path:
 
 Forbidden custody paths:
 
-- storing OpenAgents provider keys on the managed node;
-- storing OpenAgents provider keys inside the session VM;
+- storing OpenAgents provider keys on the managed node.
+- storing OpenAgents provider keys inside the session VM.
 - injecting OpenAgents provider keys into workload process environment
-  variables;
+  variables.
 - writing OpenAgents provider keys to `.env`, shell rc, SDK config, auth cache,
-  artifact, trace, callback, receipt, fixture, screenshot, or normal log;
+  artifact, trace, callback, receipt, fixture, screenshot, or normal log.
 - returning OpenAgents provider keys, key prefixes, key suffixes, key hashes,
   authorization headers, or secret-store payloads to Pylon, the customer VM, or
   any retained projection.
@@ -210,9 +210,9 @@ Every gateway request emits an
 | `total_tokens` | Sum used for billing evidence when available. |
 | `count_source` | `provider_reported`, `gateway_counted`, `parsed_from_stream`, `estimated`, or `unavailable`. |
 | `upstream_cost_microusd` | Metered provider or upstream gateway API cost before markup, nullable only when unavailable at receipt time. |
-| `gateway_cost_microusd` | OpenAgents gateway-specific metered cost component, if separately measured; `0` when no separate component applies. |
+| `gateway_cost_microusd` | OpenAgents gateway-specific metered cost component, if separately measured. `0` when no separate component applies. |
 | `cost_input_microusd` | Nullable billing input: metered API/gateway cost x 1.10. |
-| `cost_input_basis` | `cost_plus_10pct_metered_api_gateway_cost` when populated; `unavailable` otherwise. |
+| `cost_input_basis` | `cost_plus_10pct_metered_api_gateway_cost` when populated. `unavailable` otherwise. |
 | `pricing_policy_ref` | Pricing policy applied to the request. |
 | `emitted_at_ms` | Metering receipt emission time. |
 | `receipt_digest` | `sha256:` digest over the redacted metering record. |
@@ -234,11 +234,11 @@ cost_input_microusd = floor((upstream_cost_microusd + gateway_cost_microusd) x 1
 where:
 
 - `upstream_cost_microusd` is OpenAgents' metered provider API cost for the
-  request;
+  request.
 - for an upstream gateway such as OpenRouter, `upstream_cost_microusd` is
-  OpenAgents' metered gateway bill for that request;
+  OpenAgents' metered gateway bill for that request.
 - `gateway_cost_microusd` is any separately measured OpenAgents gateway
-  execution, network, or surcharge cost component included by policy;
+  execution, network, or surcharge cost component included by policy.
 - the 10% markup applies to the metered API/gateway cost whether OpenAgents
   calls the model provider directly or routes through an upstream gateway.
 
@@ -322,14 +322,14 @@ gateway lifecycle.
 
 Receipts must not contain:
 
-- OpenAgents-owned provider API keys;
-- encrypted provider credential payloads;
-- provider key hashes, prefixes, suffixes, or fingerprints;
-- provider authorization headers or bearer tokens;
-- gateway auth token values;
-- raw prompts, completions, tool calls, tool outputs, or provider bodies;
-- process environment values;
-- provider account secrets or secret-store payloads;
+- OpenAgents-owned provider API keys.
+- encrypted provider credential payloads.
+- provider key hashes, prefixes, suffixes, or fingerprints.
+- provider authorization headers or bearer tokens.
+- gateway auth token values.
+- raw prompts, completions, tool calls, tool outputs, or provider bodies.
+- process environment values.
+- provider account secrets or secret-store payloads.
 - customer wallet, payment, or raw ledger credentials.
 
 ## Retained Projections
@@ -401,11 +401,11 @@ keys held in the control-plane secret broker.
 This path is **not subscription resale**:
 
 - it must not resell ChatGPT, Claude, Gemini, or other end-user subscription
-  seats;
+  seats.
 - it must not share, broker, tunnel, or multiplex subscription cookies,
-  browser sessions, device tokens, OAuth grants, or user subscription auth;
+  browser sessions, device tokens, OAuth grants, or user subscription auth.
 - it must not price usage from a subscription plan unless a future policy
-  explicitly creates a compliant API-inference mechanism with test coverage;
+  explicitly creates a compliant API-inference mechanism with test coverage.
 - subscription-backed workrooms remain governed by their own auth-grant and
   unavailable-usage contracts, not by this Model-2 credit drawdown path.
 
@@ -434,13 +434,13 @@ completions, provider bodies, and provider credentials remain forbidden.
 
 Gateway routing emits the following `openagents.runner_event.v1` events:
 
-- `model.gateway.session.prepared` when a gateway session is attached;
-- `model.gateway.access.checked` for local allow/deny decisions;
+- `model.gateway.session.prepared` when a gateway session is attached.
+- `model.gateway.access.checked` for local allow/deny decisions.
 - `model.gateway.request.metered` when a per-request metering record is
-  emitted;
+  emitted.
 - `model.gateway.ledger.drawdown.submitted` when prepaid credit drawdown input
-  is sent;
-- `model.gateway.egress.denied` when direct-provider egress is blocked;
+  is sent.
+- `model.gateway.egress.denied` when direct-provider egress is blocked.
 - `model.gateway.session.released` at closeout or revocation.
 
 Artifact and closeout receipts remain separate. This contract covers only
@@ -480,7 +480,7 @@ projection facts.
 
 ## Non-Goals
 
-- No customer BYO key transfer; that is
+- No customer BYO key transfer. That is
   `openagents.byo_credential_broker.v1`.
 - No OpenAgents provider key on the workload host, managed node, session VM, or
   runner environment.
@@ -490,5 +490,5 @@ projection facts.
 - No subscription resale, subscription seat sharing, browser-session resale, or
   subscription-auth multiplexing.
 - No wallet authority or raw settlement credential sharing with the workroom.
-- No replacement for `openagents.resource_usage_receipt.v1`; gateway metering
+- No replacement for `openagents.resource_usage_receipt.v1`. Gateway metering
   may feed that receipt family by ref, but remains a separate contract.

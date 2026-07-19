@@ -21,16 +21,16 @@ before owner-local desktop state crosses a model/provider boundary.
 
 It should:
 
-- run locally inside the owner-controlled desktop process;
-- protect current user messages before provider requests;
+- run locally inside the owner-controlled desktop process.
+- protect current user messages before provider requests.
 - protect prior user messages and prior tool cards when replaying conversation
-  history into a provider request;
+  history into a provider request.
 - protect local tool result content before the result is sent back to the
-  model;
-- protect assistant text before storing/replaying it as model context;
-- reveal placeholders for the local user-visible transcript;
-- keep the Rampart session table local to one chat session;
-- preserve OpenAgents-specific secret scrubbing for API keys and bearer tokens;
+  model.
+- protect assistant text before storing/replaying it as model context.
+- reveal placeholders for the local user-visible transcript.
+- keep the Rampart session table local to one chat session.
+- preserve OpenAgents-specific secret scrubbing for API keys and bearer tokens.
 - report degraded modes through structured redaction refs.
 
 It is not meant to be a security boundary. It is a privacy prefilter. Access
@@ -74,10 +74,10 @@ structured PII recognizers, placeholder table, `protect`, `protectReply`,
 
 OpenAgents adds:
 
-- an Effect service wrapper;
-- a Bun-compatible full-model loader adapter;
+- an Effect service wrapper.
+- a Bun-compatible full-model loader adapter.
 - OpenAgents-specific regex scrubbing for OpenRouter keys, generic API keys,
-  and bearer tokens;
+  and bearer tokens.
 - structured mode and redaction refs.
 
 ## Runtime Service Shape
@@ -95,11 +95,11 @@ type KhalaPrivacyRedactionServiceShape = {
 
 `KhalaPrivacyRedactionResult` records:
 
-- `engine`: Rampart or the Khala regex-only fallback;
-- `mode`: `rampart_model`, `rampart_heuristics`, or `regex_only`;
-- `text`: the protected text;
-- `placeholders`: placeholders introduced by Rampart;
-- `redacted`: whether text changed;
+- `engine`: Rampart or the Khala regex-only fallback.
+- `mode`: `rampart_model`, `rampart_heuristics`, or `regex_only`.
+- `text`: the protected text.
+- `placeholders`: placeholders introduced by Rampart.
+- `redacted`: whether text changed.
 - `redactionRefs`: refs describing PII redaction or degraded execution.
 
 The service is lazy. It does not load Rampart until the first text protection
@@ -126,15 +126,15 @@ as public trace material, or committed to artifacts.
 
 For each chat turn, Khala Code Desktop builds provider messages from:
 
-1. the Khala Code system prompt;
-2. the tool catalog system prompt;
+1. the Khala Code system prompt.
+2. the tool catalog system prompt.
 3. projected transcript messages.
 
 Before any transcript content is included in provider messages:
 
-- user messages run through `protectUserText`;
+- user messages run through `protectUserText`.
 - previous tool cards are wrapped as `Previous tool result:\n...` and then run
-  through `protectUserText`;
+  through `protectUserText`.
 - assistant history runs through `protectModelText`.
 
 When the model calls a local tool, the local tool result is visible in the local
@@ -145,22 +145,22 @@ When the model returns assistant text:
 
 1. the complete raw assistant text is passed through `revealForLocalUser`
    (revealing from the raw reply — re-protecting first can mangle session
-   placeholder tokens so they no longer match the reveal table);
+   placeholder tokens so they no longer match the reveal table).
 2. the revealed text is passed through the irreversible
    `redactKhalaPublicText` secret-shape scrub (API keys / bearer tokens the
-   model emits must not persist raw in the local transcript; scrubbed
+   model emits must not persist raw in the local transcript. Scrubbed
    secrets are never in the reveal table, so this cannot re-mangle
-   placeholders);
-3. that scrubbed, revealed text is rendered in the local transcript;
+   placeholders).
+3. that scrubbed, revealed text is rendered in the local transcript.
 4. independently, the complete assistant text is passed through
    `protectModelText` and that protected copy is pushed back into the
    provider message history.
 
 So the intended invariant is:
 
-- provider requests receive placeholdered text;
-- provider replay context receives placeholdered assistant/tool text;
-- local user-visible transcript can show revealed placeholders;
+- provider requests receive placeholdered text.
+- provider replay context receives placeholdered assistant/tool text.
+- local user-visible transcript can show revealed placeholders.
 - the placeholder table remains local.
 
 ## Example
@@ -205,9 +205,9 @@ bundled transformers runtime.
 OpenAgents keeps the Rampart guard API but bypasses that broken direct loader in
 Node-like runtimes:
 
-1. import `@nationaldesignstudio/rampart`;
+1. import `@nationaldesignstudio/rampart`.
 2. if the caller did not provide `ner`, did not request a worker, and did not
-   request `heuristicsOnly`, build a local NER detector;
+   request `heuristicsOnly`, build a local NER detector.
 3. load `@huggingface/transformers` directly with:
 
    ```ts
@@ -217,7 +217,7 @@ Node-like runtimes:
    })
    ```
 
-4. adapt the returned classifier to Rampart's `TokenClassifier` shape;
+4. adapt the returned classifier to Rampart's `TokenClassifier` shape.
 5. pass that detector into `rampart.createGuard({ ...options, ner })`.
 
 That means Khala still uses Rampart's detector merge, policy, placeholder table,
@@ -225,33 +225,33 @@ That means Khala still uses Rampart's detector merge, policy, placeholder table,
 path is swapped out for Bun.
 
 The adapter intentionally preserves tokenizer binding when exposing
-`countTokens` and `tokenize`; those methods rely on tokenizer instance state.
+`countTokens` and `tokenize`. Those methods rely on tokenizer instance state.
 
 ## Modes And Redaction Refs
 
 The service has three modes:
 
 - `rampart_model`: full Rampart guard with contextual NER and deterministic
-  recognizers;
-- `rampart_heuristics`: Rampart guard with deterministic recognizers only;
+  recognizers.
+- `rampart_heuristics`: Rampart guard with deterministic recognizers only.
 - `regex_only`: OpenAgents secret/token regex scrubber only.
 
 Refs:
 
-- `redaction.khala.rampart.pii`: Rampart changed the text;
+- `redaction.khala.rampart.pii`: Rampart changed the text.
 - `redaction.khala.rampart.full_model_unavailable`: full model initialization
-  failed and the service fell back;
+  failed and the service fell back.
 - `redaction.khala.rampart.heuristics_unavailable`: heuristics initialization
-  failed and the service fell back;
+  failed and the service fell back.
 - `redaction.khala.rampart.runtime_failure`: Rampart loaded, but a protection
-  call failed;
+  call failed.
 - `redaction.khala.regex.secret_material`: the OpenAgents regex scrubber changed
   token-shaped text.
 
 The current production behavior is fail-soft:
 
-1. try full Rampart model mode;
-2. if full model mode fails, try Rampart heuristics;
+1. try full Rampart model mode.
+2. if full model mode fails, try Rampart heuristics.
 3. if Rampart heuristics fail, use regex-only secret scrubbing.
 
 Fail-soft keeps chat usable and preserves API-key/bearer-token redaction even
@@ -265,28 +265,28 @@ back.
 
 Full model mode can detect contextual labels such as:
 
-- given names and surnames;
-- email addresses;
-- phone-like contact fields;
+- given names and surnames.
+- email addresses.
+- phone-like contact fields.
 - tax IDs, bank accounts, routing numbers, government IDs, passports, driver's
-  licenses;
-- building numbers and street names;
+  licenses.
+- building numbers and street names.
 - city, state, and ZIP labels, although those are kept by default policy.
 
 Rampart heuristics cover deterministic structured patterns such as:
 
-- email addresses;
-- SSNs;
-- credit cards with validation;
-- URLs;
-- IP addresses;
+- email addresses.
+- SSNs.
+- credit cards with validation.
+- URLs.
+- IP addresses.
 - MAC addresses.
 
 OpenAgents regex scrubbing additionally covers:
 
-- `OPENROUTER_API_KEY=...`;
-- `sk-or-...` OpenRouter keys;
-- `sk-...` API-key-shaped strings;
+- `OPENROUTER_API_KEY=...`.
+- `sk-or-...` OpenRouter keys.
+- `sk-...` API-key-shaped strings.
 - `Bearer ...` token-shaped strings.
 
 The OpenAgents regex pass is defense-in-depth for secrets outside Rampart's PII
@@ -296,14 +296,14 @@ taxonomy. It is not a general replacement for full Rampart mode.
 
 In the intended full-model path:
 
-- raw current user message text does not leave the desktop app;
+- raw current user message text does not leave the desktop app.
 - raw prior user message text does not leave the desktop app during history
-  replay;
+  replay.
 - raw local tool result text does not leave the desktop app as a provider tool
-  message;
+  message.
 - raw assistant text is not kept as provider replay context after the complete
-  assistant message is processed;
-- placeholders leave the desktop app;
+  assistant message is processed.
+- placeholders leave the desktop app.
 - the placeholder table does not leave the desktop app.
 
 Local transcript rendering can show revealed values because the user is looking
@@ -357,18 +357,18 @@ the test harness crash during native teardown even after assertions pass. The
 child process still proves the real app path:
 
 - package test: `loads the Rampart contextual model under Bun and redacts names
-  by default`;
+  by default`.
 - desktop test: `uses the default Rampart model redaction before hosted provider
   requests`.
 
 The desktop test captures the outbound hosted-provider request body and asserts
 that:
 
-- the user message contains `[GIVEN_NAME_1] [SURNAME_1]`;
-- the user message contains `[EMAIL_1]`;
-- the user message contains `[BUILDING_NUMBER_1] [STREET_NAME_1]`;
-- the user message keeps `Chicago, IL 60601`;
-- the request body does not contain the raw name, email, or street address;
+- the user message contains `[GIVEN_NAME_1] [SURNAME_1]`.
+- the user message contains `[EMAIL_1]`.
+- the user message contains `[BUILDING_NUMBER_1] [STREET_NAME_1]`.
+- the user message keeps `Chicago, IL 60601`.
+- the request body does not contain the raw name, email, or street address.
 - the local transcript reveals the placeholdered assistant reply.
 
 ## Manual Smoke
@@ -418,14 +418,14 @@ alice@example.com
 
 When changing this layer:
 
-- keep the redaction service in `packages/khala-tools`;
-- keep app wiring in `clients/khala-code-desktop`;
-- do not scatter direct Rampart imports throughout UI code;
+- keep the redaction service in `packages/khala-tools`.
+- keep app wiring in `clients/khala-code-desktop`.
+- do not scatter direct Rampart imports throughout UI code.
 - do not log raw prompts, raw tool results, placeholder tables, or provider
-  payloads in tests or docs;
+  payloads in tests or docs.
 - add focused tests for every new boundary where text crosses into provider
-  context;
-- preserve the OpenAgents regex scrubber even if Rampart changes upstream;
+  context.
+- preserve the OpenAgents regex scrubber even if Rampart changes upstream.
 - update this doc and the Rampart research notes if package versions, model
   revisions, default modes, or fallback policy change.
 
@@ -435,12 +435,12 @@ These are not blockers for the current shipped desktop redaction path, but they
 are the right next hardening steps:
 
 - add a fail-closed product mode for sessions that require full contextual
-  redaction before provider dispatch;
-- expose redaction mode/refs in local diagnostics without leaking raw text;
+  redaction before provider dispatch.
+- expose redaction mode/refs in local diagnostics without leaking raw text.
 - decide whether streaming assistant deltas should be redaction-gated before
-  local emission;
-- add separate controls for screenshots, files, binary uploads, and audio;
+  local emission.
+- add separate controls for screenshots, files, binary uploads, and audio.
 - add a model artifact mirror policy if OpenAgents hosts the Rampart model
-  files directly;
+  files directly.
 - revisit fallback behavior whenever `@nationaldesignstudio/rampart` publishes
   a Node/Bun CPU fix.

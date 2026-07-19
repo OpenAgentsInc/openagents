@@ -43,15 +43,15 @@ The contract exports:
 
 A valid retained smoke requires:
 
-- operator approval refs;
-- persisted runtime snapshot refs;
-- persisted loop record refs;
-- persisted loop tick refs;
-- persisted health snapshot refs;
-- persisted work-routing proposal refs;
-- persisted Forum publication intent refs;
-- public `/api/public/artanis/report` refs;
-- rollback or scheduler-disable refs;
+- operator approval refs.
+- persisted runtime snapshot refs.
+- persisted loop record refs.
+- persisted loop tick refs.
+- persisted health snapshot refs.
+- persisted work-routing proposal refs.
+- persisted Forum publication intent refs.
+- public `/api/public/artanis/report` refs.
+- rollback or scheduler-disable refs.
 - delivered Forum post and delivery receipt refs, or explicit no-publish proof
   refs for no-launch/no-publish test mode.
 
@@ -89,14 +89,14 @@ safe private refs by reference.
 
 The contract rejects:
 
-- missing persisted row refs;
-- missing Forum delivery or no-publish proof refs;
-- missing public report refs;
-- missing rollback/disable refs;
-- mutable authority;
-- private/raw D1 refs;
-- raw command output;
-- wallet/payment/provider/customer/secret material;
+- missing persisted row refs.
+- missing Forum delivery or no-publish proof refs.
+- missing public report refs.
+- missing rollback/disable refs.
+- mutable authority.
+- private/raw D1 refs.
+- raw command output.
+- wallet/payment/provider/customer/secret material.
 - raw timestamps in projected refs.
 
 ## Verification

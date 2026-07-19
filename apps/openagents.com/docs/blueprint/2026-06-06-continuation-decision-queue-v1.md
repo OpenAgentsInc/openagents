@@ -18,19 +18,19 @@ of work is waiting and which evidence/receipt refs justify that state.
 
 Each queue item includes:
 
-- decision ref;
-- action;
-- status;
-- recommended next order ref;
-- blocker refs;
-- approval refs;
-- retry refs;
-- account-failover flag and refs;
-- stop condition refs;
-- Program Signature id;
-- workroom/order/Site refs;
-- evidence refs;
-- receipt refs;
+- decision ref.
+- action.
+- status.
+- recommended next order ref.
+- blocker refs.
+- approval refs.
+- retry refs.
+- account-failover flag and refs.
+- stop condition refs.
+- Program Signature id.
+- workroom/order/Site refs.
+- evidence refs.
+- receipt refs.
 - safe summary ref.
 
 ## Customer Versus Operator Projection
@@ -48,11 +48,11 @@ safe retry marker `retry.account_failover_needed`.
 The first tests build queue projections from the #273 continuation fixtures and
 cover:
 
-- next order refs for every decision kind;
-- blocker refs for fix, request-context, and escalation cases;
-- approval refs for review and escalation cases;
-- retry and account-failover refs for operator projection;
-- customer redaction for account/source details;
+- next order refs for every decision kind.
+- blocker refs for fix, request-context, and escalation cases.
+- approval refs for review and escalation cases.
+- retry and account-failover refs for operator projection.
+- customer redaction for account/source details.
 - stop condition refs for terminal decisions.
 
 Future HTTP/API handlers should consume this projection instead of exposing raw

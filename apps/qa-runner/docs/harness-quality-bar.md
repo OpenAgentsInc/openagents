@@ -12,7 +12,7 @@ That is exactly what the rules below pin down.
 ## 1. Honest outcomes — no flaky-pass, ever
 
 - **Assert real outcomes, not tautologies.** A passing step must prove something
-  about the target (a URL that did/didn't change, text that is/ isn't present, a
+  about the target (a URL that did/did not change, text that is/ is not present, a
   condition that became true). `expect(true).toBe(true)`, asserting the fixture
   you just set, or asserting only that "the code ran" are not outcomes.
 - **A failure is a failure.** A false assertion, a thrown browser error, a
@@ -32,7 +32,7 @@ That is exactly what the rules below pin down.
 ## 2. Deterministic — no sleeps, no wall-clock races
 
 - **Waits are conditions, never sleeps.** Use `wait-for` with a condition
-  (`text-visible`, `url-includes`, `selector-visible`); never a fixed `sleep`.
+  (`text-visible`, `url-includes`, `selector-visible`). Never a fixed `sleep`.
   The browser surface only exposes condition waits for this reason.
 - **Timeouts/retries are clock-injectable.** `timeouts.ts` races a deadline
   against an injectable `TimerLike` and runs retry delays through it, so tests
@@ -55,7 +55,7 @@ mid-step (SIGINT) must still leave behind the evidence:
 - The runner wraps the whole session in `Effect.ensuring(..., flushResult)`, so
   **`result.json` is written from whatever steps were captured** — on success,
   on throw, and on interrupt. A partial/interrupted run is `status: "fail"` with
-  an `failure` summary that says it was interrupted; it is never a fake pass.
+  an `failure` summary that says it was interrupted. It is never a fake pass.
 - Proven by `runner-hardening.test.ts`: a hanging step + per-step timeout, and an
   external fiber interrupt mid-step, both leave `trace.zip`, `video.webm`, and a
   schema-valid `result.json` on disk.
@@ -81,10 +81,10 @@ mid-step (SIGINT) must still leave behind the evidence:
 
 - [ ] Every passing step asserts a real outcome about the target (no tautology).
 - [ ] The deliberately-broken variant of the journey FAILS (a red is a real red).
-- [ ] No `sleep`; all waits are conditions.
+- [ ] No `sleep`. All waits are conditions.
 - [ ] If retries are enabled, `maxAttempts` is bounded and a persistent failure
       still fails the run.
-- [ ] Commitments (if declared) match observed step labels; a false claim is
+- [ ] Commitments (if declared) match observed step labels. A false claim is
       REFUTED, not omitted.
 - [ ] Nothing secret can reach `result.json` (no raw text/tokens recorded).
 

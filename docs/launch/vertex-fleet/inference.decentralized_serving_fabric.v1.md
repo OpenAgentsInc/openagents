@@ -18,16 +18,16 @@ split *implemented against* `psionic.serve.pipeline_sharded_run_receipt.v1`.
   pure, deterministic `evaluateShardWanServingPayout(...)` that:
   - decodes a product-side public-safe view of a
     `psionic.serve.pipeline_sharded_run_receipt.v1` receipt (layer-block facts +
-    exact-greedy parity result only; no identity, no secrets, no raw activations);
+    exact-greedy parity result only. No identity, no secrets, no raw activations).
   - enforces the shard-WAN structural invariants before anything is payable:
     more than one stage, every stage GPU-resident (no whole-model fallback faking
     a split), contiguous gap-free overlap-free layer coverage of the whole model,
-    and no single stage spanning the entire model;
+    and no single stage spanning the entire model.
   - enforces the **born-verified payment gate** — `verified` parity pays,
     `mismatch` is rejected, `no_reference` defaults to HOLD (never pay against
-    self-report);
+    self-report).
   - apportions the contributor cut **per-layer-block** with the largest-remainder
-    method so the split sums to the cut exactly (no sat created or lost);
+    method so the split sums to the cut exactly (no sat created or lost).
   - always returns `ownerArmedRequired: true` — `payable` is a necessary, never a
     sufficient, gate. This code dispatches no money.
 - `apps/openagents.com/workers/api/src/shard-wan-serving-payout-split.test.ts` —
@@ -49,7 +49,7 @@ fabric claim is made — there is no real Psionic shard-WAN receipt yet.
   the fabric supply adapter are also still unbuilt).
 - Wiring this split into RL-2/RL-3 settlement and an owner-armed first payout.
 - The open product decision on the weighting rule (this ships the documented
-  `per_layer_block` default; FLOP-aware / latency-contribution remain open).
+  `per_layer_block` default. FLOP-aware / latency-contribution remain open).
 
 Pointer: companion design doc lives at
 `docs/inference/2026-06-19-decentralized-serving-shard-wan.md`.

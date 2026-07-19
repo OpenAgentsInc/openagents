@@ -13,10 +13,10 @@
 - **Tracking epic:** [#8733](https://github.com/OpenAgentsInc/openagents/issues/8733)
 - **Implementation leaves:** [#8734](https://github.com/OpenAgentsInc/openagents/issues/8734)–[#8741](https://github.com/OpenAgentsInc/openagents/issues/8741)
 - **AUDIO-1 contract freeze:** implemented by `packages/audio-contract`, the
-  media-only `crates/oa-desktop-audio` mirror, and their shared golden corpus;
+  media-only `crates/oa-desktop-audio` mirror, and their shared golden corpus.
   the remaining leaves build on this authority boundary.
 - **AUDIO-2 Google STT gateway:** implemented and live-smoked on private Cloud
-  Run revision `openagents-audio-staging-00002-7x4`; see
+  Run revision `openagents-audio-staging-00002-7x4`. See
   [`evidence/2026-07-12-audio-2-google-stt-staging-receipt.md`](./evidence/2026-07-12-audio-2-google-stt-staging-receipt.md).
 - **AUDIO-3 retained audio:** implemented on `main` at `658ecd197d` with
   receipt-gated envelope encryption, private GCS objects, Cloud SQL manifests,
@@ -29,7 +29,7 @@
   actions, Google Chirp 3 HD playback, and qualified barge-in are on `main`.
 - **AUDIO-8 deployed proof:** current private audio revision
   `openagents-audio-staging-00013-mks` is reached only through public,
-  grant-gated edge revision `openagents-audio-edge-staging-00001-frh`; real
+  grant-gated edge revision `openagents-audio-edge-staging-00001-frh`. Real
   microphone, durable ACK, 60-second mute/reconcile/export/delete, full Desktop
   verification, and packaged-app lower-rung evidence are recorded in
   [`evidence/2026-07-12-audio-8-deployed-real-microphone-receipt.md`](./evidence/2026-07-12-audio-8-deployed-real-microphone-receipt.md).
@@ -55,16 +55,16 @@ high-density visual field, local capabilities, agent topology, files, diffs,
 terminals, and approvals. Voice supplies a continuous low-friction way to
 direct attention and express intent while the user's eyes and hands are doing
 something else. The server supplies comprehension, orchestration, and spoken
-response. The result is not merely hands-free chat; it is a conversational
+response. The result is not merely hands-free chat. It is a conversational
 operating layer over the whole OpenAgents workbench.
 
 The proposed mode must not be implemented as:
 
 - a resurrection of Sarah, `/sarah/*`, the deleted `apps/sarah` package, a
-  persona, avatar, opener, or the stopped Hydralisk GPU service;
-- arbitrary server control over the renderer;
-- raw audio flowing through Khala Sync or the Runtime Gateway event stream;
-- a voice-only command authority; or
+  persona, avatar, opener, or the stopped Hydralisk GPU service.
+- arbitrary server control over the renderer.
+- raw audio flowing through Khala Sync or the Runtime Gateway event stream.
+- a voice-only command authority. Or
 - an unqualified promise to save every frame in Cloud SQL.
 
 Recommended delivery split, now tracked under #8733:
@@ -81,7 +81,7 @@ Recommended delivery split, now tracked under #8733:
 
 The transcript archive in `docs/transcripts/` shows a consistent product idea
 expressed through several generations of software. The names and technical
-stacks changed; the desired human-computer relationship did not.
+stacks changed. The desired human-computer relationship did not.
 
 ### 1.1 Before Onyx: one simple wish into an inspectable agent system
 
@@ -93,7 +93,7 @@ observed through plans, artifacts, diffs, and a heads-up display. The important
 pattern was **simple intent in, structured and inspectable work out**.
 
 Voice was never envisioned as replacing those artifacts. It was a faster front
-door to them. A spoken request could be loose and human; the system behind it
+door to them. A spoken request could be loose and human. The system behind it
 still needed plans, tools, progress, evidence, and a place for the user to
 intervene.
 
@@ -119,11 +119,11 @@ desired, but should not have to micromanage the machinery.
 
 That episode also connected voice to a much larger system:
 
-- a personal agent coordinating other agents and services;
-- an event feed showing background work rather than blocking on one chat turn;
-- shared skills, tools, and knowledge;
-- local and remote compute;
-- user-defined budgets and inspectable activity; and
+- a personal agent coordinating other agents and services.
+- an event feed showing background work rather than blocking on one chat turn.
+- shared skills, tools, and knowledge.
+- local and remote compute.
+- user-defined budgets and inspectable activity. And
 - an open market in which requests could discover capable providers.
 
 Episode [`140`](../transcripts/140.md), *Open-Sourcing Onyx*, compressed the
@@ -140,7 +140,7 @@ simple conversational surface, while remaining open and inspectable.
 Episode [`144`](../transcripts/144.md) paired Onyx with Pylon. The phone could
 reach files, Git, databases, models, and tools on a trusted computer through an
 open capability protocol. This established an enduring topology: the voice
-client does not need to hold every capability itself; it can be a safe control
+client does not need to hold every capability itself. It can be a safe control
 surface for powerful runtimes elsewhere.
 
 Episode [`145`](../transcripts/145.md), *Going Local*, pushed the idea toward a
@@ -180,7 +180,7 @@ the coding loop from one tool call into repo maps, relevant-file selection,
 plans, actions, reasoning streams, tests, and repeatable issue-to-PR work.
 Episode [`160`](../transcripts/160.md) imagined Onyx sending a push notification
 when an agent became stuck and accepting a spoken follow-up. That is an early
-version of today's attention loop: agents work asynchronously; voice lets the
+version of today's attention loop: agents work asynchronously. Voice lets the
 human resolve the few moments that need judgment.
 
 ### 1.4 Commander: Jarvis meets the agent fleet
@@ -193,8 +193,8 @@ that surfaces only what needs attention.
 
 This adds an important dimension to the Onyx vision:
 
-- **Onyx:** one conversational front door from anywhere;
-- **Commander:** one visual command center for many concurrent agents; and
+- **Onyx:** one conversational front door from anywhere.
+- **Commander:** one visual command center for many concurrent agents. And
 - **persistent Desktop voice:** a continuous bridge between speech and that
   visual command center.
 
@@ -247,9 +247,9 @@ screen or microphone is currently attached.
 
 The old Pro operator-canvas audit at
 `docs/pro/2026-06-24-pro-operator-ui-revival-audit.md` adds another useful
-interaction pattern: natural language mounts contextual HUD panes; sensitive
+interaction pattern: natural language mounts contextual HUD panes. Sensitive
 actions move through dry-run, step-up authentication, approvals, and decision
-traces; assistant audio supports barge-in. The current Desktop can recover that
+traces. Assistant audio supports barge-in. The current Desktop can recover that
 grammar without recovering the obsolete product shell.
 
 ### 1.6 The product thesis for persistent voice
@@ -265,7 +265,7 @@ The strongest version of voice mode has five jobs:
 3. **Command the fleet.** Spoken verbs select and steer exact sessions,
    children, targets, and work—not a generic assistant detached from the live
    workbench.
-4. **Handle the attention loop.** Agents can ask for clarification or approval;
+4. **Handle the attention loop.** Agents can ask for clarification or approval.
    the user can answer immediately, defer it, or open the relevant UI context.
 5. **Learn from real work, with consent.** Retained audio and its corrections
    can eventually improve endpointing, transcription, routing, and UX, but only
@@ -281,13 +281,13 @@ The Desktop toolbar exposes a Voice control. Clicking it opens an explicit,
 visible, persistent two-way session:
 
 - the client captures microphone audio and continuously sends bounded audio
-  chunks;
+  chunks.
 - the server acknowledges ordered chunks, performs VAD/ASR/turn detection,
-  and may stream audio replies;
+  and may stream audio replies.
 - transcripts can create ordinary messages or propose registered UI/runtime
-  actions such as follow-up, steer, interrupt, focus, or open;
+  actions such as follow-up, steer, interrupt, focus, or open.
 - consequential actions retain the same visible confirmation and policy gates
-  as text; and
+  as text. And
 - the session survives normal network changes through bounded reconnect,
   sequence acknowledgement, and gap recovery without duplicating commands or
   inference turns.
@@ -336,7 +336,7 @@ frame for later analysis. The product interpretation is explicit:
 - While connected and unmuted, accepted microphone frames are retained. The UI
   separately shows microphone capture, network egress, retention, and
   playback.
-- Mute stops new capture egress and retained-frame acceptance; Stop and
+- Mute stops new capture egress and retained-frame acceptance. Stop and
   sign-out/revocation terminate the session and retention.
 - The MVP is owner dogfood until deletion/export, tenancy, custody, and
   derived-data receipts are proven. This is not yet a broad public default or
@@ -357,7 +357,7 @@ The implementation contract still needs exact answers for:
 
 Until these policy details land, the live path is limited to owner dogfood with
 bounded quotas and no training/export beyond the explicit session custody
-contract. AUDIO-1 #8734 owns that freeze; AUDIO-3 #8736 owns enforcement and
+contract. AUDIO-1 #8734 owns that freeze. AUDIO-3 #8736 owns enforcement and
 receipts.
 
 ## 4. Existing Desktop seams to extend
@@ -370,12 +370,12 @@ The active destination is the greenfield Effect Native/Electron app at
 
 The renderer remains tokenless and least-authority. It uses:
 
-- `src/preload.cts` as the only renderer bridge;
+- `src/preload.cts` as the only renderer bridge.
 - `src/runtime-gateway-contract.ts` for closed schema-decoded queries,
-  commands, and event subscriptions;
-- `src/runtime-live-subscriptions.ts` for generation-fenced subscriptions;
+  commands, and event subscriptions.
+- `src/runtime-live-subscriptions.ts` for generation-fenced subscriptions.
 - `src/desktop-command-contract.ts`, `src/desktop-command-host.ts`, and
-  `src/renderer/command-registry.ts` for one action vocabulary; and
+  `src/renderer/command-registry.ts` for one action vocabulary. And
 - `src/runtime-gateway.ts` for host composition.
 
 Add closed voice session intents such as:
@@ -412,7 +412,7 @@ revocation, and the schema-decoded renderer projection. The accepted
 uses a narrow packaged Rust helper, `crates/oa-desktop-audio`, for capture,
 resampling, packetization, the direct authenticated media socket,
 jitter/backpressure buffers, playback, device changes, and prompt buffer
-flush. Electron supervises it through a closed versioned control protocol;
+flush. Electron supervises it through a closed versioned control protocol.
 identity, policy, commands, transcripts, storage, receipts, and UI remain
 Effect/TypeScript. This keeps sustained raw media and native device callbacks
 out of the renderer and Electron application heap without creating a second
@@ -431,11 +431,11 @@ snippet, filesystem path, shell command, or renderer mutation.
 
 Each proposal is decoded against the Desktop command contract and bound to:
 
-- owner, device, voice session, conversation, and exact target refs;
-- a stable intent/idempotency identity;
+- owner, device, voice session, conversation, and exact target refs.
+- a stable intent/idempotency identity.
 - the command's normal readiness, permission, approval, and confirmation
-  policy;
-- transcript provenance and confidence for explanation, not authority; and
+  policy.
+- transcript provenance and confidence for explanation, not authority. And
 - the durable command outcome/ref already used by text and pointer input.
 
 Raw audio, ASR text, TTS speech, and model prose never prove that an action was
@@ -444,7 +444,7 @@ accepted or completed. A timeout remains `unknown_pending_reconcile`.
 ## 5. Realtime protocol proposal
 
 Use a dedicated bidirectional media transport. WebRTC is attractive for
-audio/jitter/codec/NAT behavior and matches Hydralisk experience; an
+audio/jitter/codec/NAT behavior and matches Hydralisk experience. An
 authenticated binary WebSocket is simpler for an initial desktop-to-cloud
 prototype and explicit application-level replay. Select the transport through
 a measured spike, but freeze the application frames independently so the
@@ -455,7 +455,7 @@ authority contract does not depend on transport choice.
 - `session_hello`: protocol version, session/device/conversation refs,
   generation, capabilities, audio format, requested retention tier.
 - `audio_chunk`: monotonically sequenced audio, capture timestamps, duration,
-  codec/format, key epoch, content digest, VAD hint; bounded payload.
+  codec/format, key epoch, content digest, VAD hint. Bounded payload.
 - `capture_state`: muted/unmuted, device change, OS interruption, background or
   suspend transition.
 - `transcript_correction`: user-edited text bound to a hypothesis/final ref.
@@ -489,14 +489,14 @@ replay across sessions or generations. Unknown frame versions fail closed.
 
 ### Delivery semantics
 
-- Audio transport is at-least-once under reconnect; chunk digests and sequence
+- Audio transport is at-least-once under reconnect. Chunk digests and sequence
   windows make storage/ASR ingestion idempotent.
 - A final utterance ref is emitted exactly once per accepted turn. Interim
   hypotheses are replaceable and never execute actions.
 - Replay of transcript/output frames is delivery-only: it does not rerun ASR,
   inference, persistence, or commands.
 - Command proposals expire and bind to exact transcript/turn/target refs.
-- Slow clients are bounded and detached or degraded; no unbounded queue.
+- Slow clients are bounded and detached or degraded. No unbounded queue.
 - Generation fencing prevents an old resumed connection from accepting audio,
   playback, or decisions after a new connection becomes active.
 
@@ -520,13 +520,13 @@ and audit logs for read/delete/export operations. No public object URLs.
 
 Cloud SQL/Postgres is appropriate for:
 
-- voice session, generation, owner/device/conversation refs;
-- consent disclosure/version and retention policy receipt;
+- voice session, generation, owner/device/conversation refs.
+- consent disclosure/version and retention policy receipt.
 - ordered chunk/segment manifests, digests, capture/server timestamps, codec,
-  byte count, gaps, and object refs;
-- utterance, transcript, model/ASR provenance, and correction refs;
-- command proposal, confirmation, intent, and durable outcome refs;
-- encryption key epoch, deletion/export/legal-hold state; and
+  byte count, gaps, and object refs.
+- utterance, transcript, model/ASR provenance, and correction refs.
+- command proposal, confirmation, intent, and durable outcome refs.
+- encryption key epoch, deletion/export/legal-hold state. And
 - aggregate public-safe latency, loss, and cost metrics.
 
 Do not store audio blobs in relational rows. Do not put raw audio or object
@@ -539,7 +539,7 @@ Deletion and retention must name each class independently: raw audio,
 normalized audio, transcript hypotheses, final/corrected transcripts,
 speaker/voice features, embeddings, summaries, eval samples, model-training
 copies, command receipts, and aggregate metrics. Deleting raw audio does not
-implicitly prove all derived copies were removed; the deletion receipt must
+implicitly prove all derived copies were removed. The deletion receipt must
 state the exact classes and remaining lawful records.
 
 ## 7. Prior voice infrastructure patterns worth retaining
@@ -589,31 +589,31 @@ useful generic realtime lessons:
 
 - `voice-stream-coordinator.ts`: authenticated exact scope, one executing
   stream per scope, linked cancellation, delivery-only replay, public-safe
-  errors, and exactly one terminal record side effect;
+  errors, and exactly one terminal record side effect.
 - `voice-fragment-coalescer.ts`: bounded grouping for cumulative ASR
   fragments, one shared canonical result, busy rejection, active-group and
-  timeout limits;
+  timeout limits.
 - `conversation-stream-fanout.ts`: bounded sequence replay, lag eviction,
-  terminal complete/error/aborted/overflow states, one canonical record; and
+  terminal complete/error/aborted/overflow states, one canonical record. And
 - `realtime-token-guard.ts`: origin/CSRF, rate, active-session, TTL, daily
   budget, and alert concepts, while replacing its process-local Maps with
   distributed admission authority.
 
 Useful Hydralisk/Pipecat-derived infrastructure patterns:
 
-- typed audio and control frames;
+- typed audio and control frames.
 - server-side VAD, segmented streaming STT, interim/final distinction, and
-  semantic end-of-turn detection;
+  semantic end-of-turn detection.
 - immediate interruption frames with playback-buffer flush and backchannel
-  guards;
-- small interruption-grade output chunks;
-- STT/LLM/TTS TTFB and first-audible TTFA metrics;
-- tracked task ownership, heartbeat, cancellation, and close; and
+  guards.
+- small interruption-grade output chunks.
+- STT/LLM/TTS TTFB and first-audible TTFA metrics.
+- tracked task ownership, heartbeat, cancellation, and close. And
 - ICE restart/renegotiation concepts if WebRTC wins the transport spike.
 
-Avoid the old browser final-only SpeechRecognition path; it fragmented turns
+Avoid the old browser final-only SpeechRecognition path. It fragmented turns
 and delayed barge-in. Keep sustained ASR/VAD or GPU inference away from a
-latency-sensitive event loop; the prior renderer needed off-loop work,
+latency-sensitive event loop. The prior renderer needed off-loop work,
 watchdogs, and silence-passthrough protection.
 
 The reusable quality gates are decoded-frame media truth, bounded LIVE leases,
@@ -625,21 +625,21 @@ control remaining usable when media fails.
 Persistent voice increases the sensitivity and attack surface beyond Sarah's
 text transcript flow. The threat model must cover:
 
-- bystander, household, workplace, meeting, and notification capture;
+- bystander, household, workplace, meeting, and notification capture.
 - misleading UI when OS permission, selected device, mute, egress, retention,
-  or playback state disagree;
-- ambient prompt injection and speech from speakers/TVs;
-- replayed or synthesized speaker audio and false identity assumptions;
-- cross-tenant/session/generation frame replay;
-- stolen resume tokens and long-lived connections after sign-out/revocation;
+  or playback state disagree.
+- ambient prompt injection and speech from speakers/TVs.
+- replayed or synthesized speaker audio and false identity assumptions.
+- cross-tenant/session/generation frame replay.
+- stolen resume tokens and long-lived connections after sign-out/revocation.
 - partial uploads, duplicated chunks, silent loss, clock skew, and corrupt
-  media used for later analysis;
+  media used for later analysis.
 - raw audio/transcripts leaking into logs, crash dumps, analytics, support
-  bundles, traces, or model-provider errors;
+  bundles, traces, or model-provider errors.
 - retention beyond disclosed TTL, incomplete deletion, backup resurrection,
-  unauthorized export, region drift, and legal-hold ambiguity;
+  unauthorized export, region drift, and legal-hold ambiguity.
 - unbounded bandwidth, storage, ASR/TTS/model spend, reconnect storms, and
-  slow-consumer memory pressure; and
+  slow-consumer memory pressure. And
 - accessibility, language, accent, speech impairment, and noisy-room failures
   that could turn low-confidence ASR into high-impact actions.
 
@@ -667,12 +667,12 @@ Freeze exact budgets during the protocol spike. Initial targets to test:
 | Final utterance to first assistant text | decomposed STT/LLM p50/p95 |
 | Final utterance to first audible output | explicit TTFA p50/p95 |
 | Heartbeat stale detection | bounded and visible, no indefinite listening state |
-| Reconnect | resumes one generation or fails closed; never two active sessions |
+| Reconnect | resumes one generation or fails closed. Never two active sessions |
 
 Measure capture-to-ingest delay, packet/segment loss, gap recovery, ASR
 interim/final latency, end-of-turn latency, inference first token, TTS first
 byte, TTFA, playback underrun, interruption, reconnect, retained bytes,
-deletion lag, and per-session cost. Metrics use refs and aggregates; logs do
+deletion lag, and per-session cost. Metrics use refs and aggregates. Logs do
 not contain raw audio or transcripts.
 
 ## 10. Ordered delivery plan
@@ -685,13 +685,13 @@ P1-parallel audio epic and a true sub-issue of the sole Sol program parent
 
 | Issue | Outcome | Dependencies |
 | --- | --- | --- |
-| [#8734 AUDIO-1](https://github.com/OpenAgentsInc/openagents/issues/8734) | Freeze wire, lifecycle, authority, retention schemas and behavior oracles | none; shared-contract owner |
+| [#8734 AUDIO-1](https://github.com/OpenAgentsInc/openagents/issues/8734) | Freeze wire, lifecycle, authority, retention schemas and behavior oracles | none, shared-contract owner |
 | [#8735 AUDIO-2](https://github.com/OpenAgentsInc/openagents/issues/8735) | Private Cloud Run binary WebSocket gateway bridged to Google STT V2 streaming | AUDIO-1 |
-| [#8736 AUDIO-3](https://github.com/OpenAgentsInc/openagents/issues/8736) | Encrypted GCS audio segments plus Cloud SQL manifests/delete/export receipts | AUDIO-1; parallel with AUDIO-2/AUDIO-4 |
-| [#8737 AUDIO-4](https://github.com/OpenAgentsInc/openagents/issues/8737) | Host-owned Desktop mic/playback/transport lifecycle and bounded Gateway projection | AUDIO-1; parallel with AUDIO-2/AUDIO-3 |
+| [#8736 AUDIO-3](https://github.com/OpenAgentsInc/openagents/issues/8736) | Encrypted GCS audio segments plus Cloud SQL manifests/delete/export receipts | AUDIO-1, parallel with AUDIO-2/AUDIO-4 |
+| [#8737 AUDIO-4](https://github.com/OpenAgentsInc/openagents/issues/8737) | Host-owned Desktop mic/playback/transport lifecycle and bounded Gateway projection | AUDIO-1, parallel with AUDIO-2/AUDIO-3 |
 | [#8738 AUDIO-5](https://github.com/OpenAgentsInc/openagents/issues/8738) | Effect Native persistent Voice control, interim/final transcript, and truthful status HUD | AUDIO-4 |
 | [#8739 AUDIO-6](https://github.com/OpenAgentsInc/openagents/issues/8739) | Final speech/control frames through existing message/steer/interrupt/focus commands | AUDIO-2/AUDIO-4/AUDIO-5 |
-| [#8740 AUDIO-7](https://github.com/OpenAgentsInc/openagents/issues/8740) | Google Chirp 3 HD reply stream, host playback, and qualified barge-in | AUDIO-2/AUDIO-4; integrates AUDIO-6 |
+| [#8740 AUDIO-7](https://github.com/OpenAgentsInc/openagents/issues/8740) | Google Chirp 3 HD reply stream, host playback, and qualified barge-in | AUDIO-2/AUDIO-4, integrates AUDIO-6 |
 | [#8741 AUDIO-8](https://github.com/OpenAgentsInc/openagents/issues/8741) | Deployed real-mic fault/privacy/storage acceptance and owner receipt | AUDIO-2 through AUDIO-7 |
 
 The graph deliberately lets cloud STT, storage, and Desktop host work proceed
@@ -706,8 +706,8 @@ cloud gateway and every application/authority surface in Effect/TypeScript.
 The Desktop renderer now consumes the host-owned voice projection through the
 existing Runtime Gateway rather than owning a microphone or websocket. Its
 compact Effect Native HUD independently reports capture, egress, retention,
-and playback; renders provisional and final transcripts differently; keeps a
-final transcript editable in the text composer; and labels command proposals
+and playback. Renders provisional and final transcripts differently. Keeps a
+final transcript editable in the text composer. And labels command proposals
 as proposals until a later registered-command receipt proves application.
 Permission, connection, device, backpressure, revocation, and media failures
 leave the ordinary text surface available. Static token-driven presentation
@@ -723,15 +723,15 @@ duplicate existing Effect authorities without improving realtime media.
 Final STT controls now cross the Rust media helper as bounded, identity-bound
 events rather than being discarded. The helper validates the protocol and the
 complete owner/device/thread/session/generation identity before projecting a
-transcript, activity, or command proposal; it never interprets the text or
+transcript, activity, or command proposal. It never interprets the text or
 selects an application action.
 
 The Effect Native renderer owns a central typed voice selector. It embeds the
 utterance and closed registered-action descriptors as normalized character
 trigram vectors, ranks them by cosine similarity, and requires both a score and
 margin. This is deliberately not keyword routing. Confident harmless focus
-routes are limited to canonical Desktop command IDs; interrupt uses the same
-Stop intent; all other finals use the existing message submit path, which is
+routes are limited to canonical Desktop command IDs. Interrupt uses the same
+Stop intent. All other finals use the existing message submit path, which is
 also the existing queue-until-idle follow-up path while a turn is active.
 Ambiguous or inadmissible input remains editable text. A bounded ledger keyed
 by voice session, generation, and utterance rejects replay, duplicate finals,
@@ -749,7 +749,7 @@ Google Chirp 3 HD bidirectional streaming synthesis. It preserves assistant
 text first, normalizes only a conservative spoken-form lexicon, emits fixed
 24 kHz mono s16le chunks, and records text-free synthesis metrics. The signed
 Rust helper validates identity, generation, turn, speech ref, codec, size, and
-digest before buffering playback; a newer speech ref flushes the old queue.
+digest before buffering playback. A newer speech ref flushes the old queue.
 
 Qualified barge-in requires Google speech-begin plus at least three characters
 of interim/final speech. It cancels synthesis/inference through the registered
@@ -760,7 +760,7 @@ flushes Rust's output queue. See the
 ### V0 — owner direction and contracts
 
 - Record the owner direction for explicit click-to-start persistent capture and
-  retained owner-dogfood audio; keep ambient auto-start and broad public
+  retained owner-dogfood audio. Keep ambient auto-start and broad public
   defaults out of scope.
 - Write privacy, consent, retention, deletion/export, training-use, tenancy,
   and regional custody contracts.
@@ -768,7 +768,7 @@ flushes Rust's output queue. See the
   text fallback, confirmation, and media failure.
 - Freeze `VoiceSession`, `AudioChunk`, `ServerControl`, proposal, ACK/gap,
   generation, and retention-receipt schemas.
-- Model bounded session/generation/sequence/reconnect behavior; turn meaningful
+- Model bounded session/generation/sequence/reconnect behavior. Turn meaningful
   counterexamples into protocol tests.
 
 **Exit:** schemas reject cross-session replay, two active generations,
@@ -790,34 +790,34 @@ or action and no unbounded queue.
 - Add the Desktop toolbar control and bounded session projection.
 - Host/utility process owns OS permission, capture, resampling, packetization,
   and transport.
-- Start only after an explicit click; mute stops egress; suspend/restart does
+- Start only after an explicit click. Mute stops egress. Suspend/restart does
   not silently reopen capture.
-- Send accepted frames into AUDIO-3's bounded encrypted segment/manifests path;
+- Send accepted frames into AUDIO-3's bounded encrypted segment/manifests path.
   never SQL blobs or Sync media.
 
 **Exit:** packaged Desktop survives start/mute/device-change/suspend/network-
-change/revoke/stop with truthful indicators; every accepted sequence is stored
+change/revoke/stop with truthful indicators. Every accepted sequence is stored
 or named as an explicit manifest gap.
 
 ### V3 — VAD, ASR, and transcript truth
 
 - Add process-isolated server VAD, segmented streaming ASR, interim/final
   frames, and semantic end-of-turn.
-- Emit exactly one final utterance; allow visible correction before risky use.
+- Emit exactly one final utterance. Allow visible correction before risky use.
 - Persist only the explicitly permitted derived transcript class.
 
 **Exit:** noisy/reconnect/replay fixtures and real speech produce one final
-turn; low-confidence ambiguity cannot silently execute an action.
+turn. Low-confidence ambiguity cannot silently execute an action.
 
 ### V4 — small safe action set
 
 - Route `message/follow-up`, `steer`, `interrupt`, and harmless `focus/open`
   proposals through the existing Desktop command registry.
 - Require ordinary confirmations and outcomes. Keep text controls visible.
-- Do not add ad hoc keyword routing; use the central typed semantic selector
+- Do not add ad hoc keyword routing. Use the central typed semantic selector
   and bounded decoder after command selection.
 
-**Exit:** voice and text produce the same intent schema and durable result;
+**Exit:** voice and text produce the same intent schema and durable result.
 lost ACK/reconnect never duplicates execution.
 
 ### V5 — two-way speech and barge-in
@@ -825,9 +825,9 @@ lost ACK/reconnect never duplicates execution.
 - Stream canonical assistant text and TTS audio.
 - Bind playback chunks to utterance/generation refs.
 - VAD/interim speech triggers qualified interruption and immediate buffer
-  flush; backchannel guards reduce false interruption.
+  flush. Backchannel guards reduce false interruption.
 
-**Exit:** first-audible and interruption budgets pass; failed audio never hides
+**Exit:** first-audible and interruption budgets pass. Failed audio never hides
 text or command state.
 
 ### V6 — retention completeness and user custody
@@ -838,8 +838,8 @@ text or command state.
   policy, and explicit retention receipts.
 - Provide a clear per-session retained/not-retained indicator and controls.
 
-**Exit:** retention cannot start without matching consent; deletion/export and
-expiry are receipt-proven across raw and derived data classes; raw media never
+**Exit:** retention cannot start without matching consent. Deletion/export and
+expiry are receipt-proven across raw and derived data classes. Raw media never
 appears in Sync, logs, analytics, or support bundles.
 
 ### V7 — R7 dogfood and release
@@ -858,7 +858,7 @@ appears in Sync, logs, analytics, or support bundles.
 
 1. Is persistent mode explicit click-to-open only, or may a wake word activate
    capture? Recommendation: explicit click only for the first release.
-2. WebRTC or binary WebSocket for V1? Decide by spike; keep frame schemas
+2. WebRTC or binary WebSocket for V1? Decide by spike. Keep frame schemas
    transport-neutral.
 3. Which ASR/TTS providers and local fallbacks satisfy latency, privacy,
    language, and custody requirements?
@@ -889,5 +889,5 @@ established Desktop release system.
 The north star is the old Onyx promise—say what you want and useful work
 happens—combined with Commander's Jarvis/StarCraft fleet surface and Sol's
 durable evidence. The durable invariant is simple: voice makes the whole
-OpenAgents system easier to command; it does not become an authority of its
+OpenAgents system easier to command. It does not become an authority of its
 own.

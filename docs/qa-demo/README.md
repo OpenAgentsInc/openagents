@@ -1,7 +1,7 @@
 # QA flow — verifiable Khala-driven QA artifact (2026-06-24)
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 `run-and-post.sh <PR>` runs a Khala-driven QA session, composes a polished video
 (`apps/qa-runner compose`, ffmpeg), and posts it to the PR with **gh-attach**
@@ -25,7 +25,7 @@ distill → test → video chain is reviewer-verifiable, not asserted:
 | `customer-behavior-contract-pilot.json` | the first customer-facing behavior-contract engagement seed for issue #8186, using this public demo target while signed-client registries stay private by default |
 
 `result.json` also names the run's raw local Playwright artifacts
-(`session.mp4`, `trace.zip`, `00-login-page.png`); the **public-safe**
+(`session.mp4`, `trace.zip`, `00-login-page.png`). The **public-safe**
 `session-trace.json` and the composed `khala-autonomous-qa.mp4` are the
 committed, shareable forms of those.
 
@@ -37,7 +37,7 @@ pnpm test generated/login-verify-2026-06-24.e2e.test.ts
 # -> 1 pass  (runs the distilled test against production)
 ```
 
-The distilled test is **green against prod** — that's the receipt. This is the
+The distilled test is **green against prod** — that is the receipt. This is the
 "verify an agent's work by reading the test + its output" thesis (#6192),
 applied to our own artifact.
 
@@ -49,7 +49,7 @@ of the behavior-contract catalog
 a stated journey ("the login page loads and titles correctly on prod"),
 driven end to end, distilled into a committed oracle test, with a
 shareable video + trace as the deviation-loop evidence. A customer
-engagement's contract oracles produce exactly this artifact chain per sweep;
+engagement's contract oracles produce exactly this artifact chain per sweep.
 the registry entry supplies the statement and the enforcement gate, and this
 demo supplies the receipt format.
 
@@ -60,4 +60,4 @@ contract registry. It deliberately uses `visibility: "public-demo"` rather than
 claiming a signed customer. Each stated expectation starts `pending` with an
 explicit blocker until its oracle runs in the customer cadence and emits a
 per-contract receipt. Real client registries use the same schema but default to
-`client-private`; public evidence requires an explicit opt-in ref.
+`client-private`. Public evidence requires an explicit opt-in ref.

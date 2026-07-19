@@ -16,11 +16,11 @@ Vortex public projection docs, and the deprecated Autopilot4 Rust source. This c
 in the useful pieces:
 
 - Artanis identity, objective, and instruction source refs.
-- capability labels for trainer, support, evaluator, and integrity work;
-- Program/Blueprint policy signatures;
-- GitHub repository allowlist and staged-write posture;
+- capability labels for trainer, support, evaluator, and integrity work.
+- Program/Blueprint policy signatures.
+- GitHub repository allowlist and staged-write posture.
 - health gates, dispatch blockers, recovery commands, launch checks, and
-  promotion evidence gates;
+  promotion evidence gates.
 - public projection/redaction rules.
 
 The workroom remains private. Public Artanis output must be created later as a
@@ -50,9 +50,9 @@ redacted projection after retained evidence exists.
 
 `settlement_intent`, when present, contains only public-safe identifiers:
 
-- `artanis_run_id`, which must equal `bootstrap_run_id`;
-- `artanis_assignment_id`;
-- `settlement_intent_id`;
+- `artanis_run_id`, which must equal `bootstrap_run_id`.
+- `artanis_assignment_id`.
+- `settlement_intent_id`.
 - optional `public_receipt_id`.
 
 It does not grant wallet authority, payment authority, or checkout authority.

@@ -1,6 +1,6 @@
 # Autopilot Task: Cloudflare Containers Runner Backup Implementation
 
-Status: queued delegation packet; blocked from dispatch until the Autopilot
+Status: queued delegation packet. Blocked from dispatch until the Autopilot
 dispatch gate in `AGENTS.md` is satisfied.
 
 Target repo: `OpenAgentsInc/openagents`
@@ -29,12 +29,12 @@ recommendations are complete enough for reliable delegation:
 
 - operator preflight exists and reports migration state, agent/project
   presence, provider health, SHC health, callback config, GitHub writeback
-  readiness, and target branch state;
-- reconnect-required provider states are caught before dispatch;
-- SHC callback payload contracts and retry/backfill paths are covered;
-- run continuation attaches to the same durable goal;
+  readiness, and target branch state.
+- reconnect-required provider states are caught before dispatch.
+- SHC callback payload contracts and retry/backfill paths are covered.
+- run continuation attaches to the same durable goal.
 - public/team goal observation can show the current run without exposing
-  private delivery mechanics;
+  private delivery mechanics.
 - operator checklist or equivalent status summary exists for foreground
   supervision.
 
@@ -56,19 +56,19 @@ lane.
 
 The finished system must support:
 
-- `cloudflare_container` as a first-class `RunnerBackend`;
-- D1 storage and public projections for the new backend;
-- backend-neutral dispatch selection;
-- SHC adapter behavior preserved exactly;
-- Cloudflare Containers Worker binding and Container class;
-- a minimal fake Container runner path for staging/tests;
-- a real OpenCode/Codex runner image path once the fake path is proven;
+- `cloudflare_container` as a first-class `RunnerBackend`.
+- D1 storage and public projections for the new backend.
+- backend-neutral dispatch selection.
+- SHC adapter behavior preserved exactly.
+- Cloudflare Containers Worker binding and Container class.
+- a minimal fake Container runner path for staging/tests.
+- a real OpenCode/Codex runner image path once the fake path is proven.
 - provider-account grant resolution inside the runner, not in public Worker
-  bodies;
-- callback/event/artifact closeout through the existing OpenAgents product surface ledger;
+  bodies.
+- callback/event/artifact closeout through the existing OpenAgents product surface ledger.
 - billing metadata that distinguishes product runner usage from Cloudflare
-  platform costs;
-- operator-only health, capacity, and failover visibility;
+  platform costs.
+- operator-only health, capacity, and failover visibility.
 - tests and staging smoke evidence before any automatic failover is enabled.
 
 ## Current Starting Point
@@ -192,12 +192,12 @@ Safe production links:
 
 Do not include:
 
-- provider tokens;
-- callback tokens;
-- OAuth material;
-- local secret paths;
-- raw runner payloads;
-- SHC/GCloud private credentials;
+- provider tokens.
+- callback tokens.
+- OAuth material.
+- local secret paths.
+- raw runner payloads.
+- SHC/GCloud private credentials.
 - Cloudflare API tokens.
 
 ## Commit Input For Dispatch
@@ -248,8 +248,8 @@ Do not start code from stale platform assumptions.
 - Add `cloudflare_container` to `RunnerBackend`.
 - Update request selector parsing in `workers/api/src/omni-handlers.ts`.
 - Add a D1 migration for:
-  - `agent_runs.backend`;
-  - `deployments.primary_backend`;
+  - `agent_runs.backend`.
+  - `deployments.primary_backend`.
   - `deployments.fallback_backend`.
 - Preserve existing `shc_vm` and `gcloud_vm` rows.
 - Do not reintroduce `local_fake` as a public backend.
@@ -257,9 +257,9 @@ Do not start code from stale platform assumptions.
 
 Expected tests:
 
-- schema decode accepts `cloudflare_container`;
-- invalid backends still fail;
-- migration accepts the new backend and preserves existing rows;
+- schema decode accepts `cloudflare_container`.
+- invalid backends still fail.
+- migration accepts the new backend and preserves existing rows.
 - launch selector can choose `cloudflare_container`.
 
 ### Slice 3: Introduce Runner Gateway Boundary
@@ -274,10 +274,10 @@ Expected tests:
 
 Expected tests:
 
-- `shc_vm` still dispatches through SHC;
-- SHC request bodies match existing tests;
-- unconfigured Container backend fails with a typed dispatch error;
-- dispatch failure events still append to run timelines;
+- `shc_vm` still dispatches through SHC.
+- SHC request bodies match existing tests.
+- unconfigured Container backend fails with a typed dispatch error.
+- dispatch failure events still append to run timelines.
 - deployment dispatch preserves primary/fallback semantics.
 
 ### Slice 4: Add Cloudflare Containers Binding Behind A Disabled Flag
@@ -288,27 +288,27 @@ Expected tests:
   `workers/api/wrangler.jsonc`.
 - Add migration tags only after verifying deployed Durable Object history.
 - Add config fields:
-  - `RUNNER_DISPATCH_POLICY`;
-  - `CLOUDFLARE_CONTAINER_DISPATCH_MODE`;
+  - `RUNNER_DISPATCH_POLICY`.
+  - `CLOUDFLARE_CONTAINER_DISPATCH_MODE`.
   - optional image tag/digest metadata.
 - Keep the default mode `unconfigured`.
 - Route binding access through the existing typed runtime capability boundary.
 
 Expected tests:
 
-- minimal env remains valid with Containers unconfigured;
-- malformed Container dispatch mode fails;
-- live Container mode requires the required binding/config;
+- minimal env remains valid with Containers unconfigured.
+- malformed Container dispatch mode fails.
+- live Container mode requires the required binding/config.
 - no production route directly reads raw `env.RUNNER_CONTAINER` outside the
   runtime boundary.
 
 ### Slice 5: Build Minimal Fake Container Runner
 
 - Add a minimal Dockerfile and runner control server that can:
-  - receive a sanitized assignment;
-  - emit lifecycle events;
-  - emit a fake `result.md` artifact manifest;
-  - return a stable external id;
+  - receive a sanitized assignment.
+  - emit lifecycle events.
+  - emit a fake `result.md` artifact manifest.
+  - return a stable external id.
   - handle cancel.
 - Use explicit run IDs with `getContainer(env.RUNNER_CONTAINER, runId)`.
 - Do not use `getRandom` for stateful runs.
@@ -316,10 +316,10 @@ Expected tests:
 
 Expected tests:
 
-- Worker dispatch reaches the fake Container adapter in local/fake tests;
-- events normalize through `OmniRunnerEventService`;
-- duplicate events are idempotent;
-- artifact refs are recorded before completion;
+- Worker dispatch reaches the fake Container adapter in local/fake tests.
+- events normalize through `OmniRunnerEventService`.
+- duplicate events are idempotent.
+- artifact refs are recorded before completion.
 - no credential-shaped material reaches D1 or public projection.
 
 ### Slice 6: Add Real OpenCode/Codex Image Path
@@ -334,11 +334,11 @@ Expected tests:
 
 Expected tests or smoke:
 
-- staging launch clones a test repo;
-- produces `result.md`;
-- produces `github-writeback.json` when writeback is requested;
-- sends lifecycle events;
-- scrubs provider auth material;
+- staging launch clones a test repo.
+- produces `result.md`.
+- produces `github-writeback.json` when writeback is requested.
+- sends lifecycle events.
+- scrubs provider auth material.
 - stops/sleeps cleanly.
 
 ### Slice 7: Preserve Provider Account Secret Boundary
@@ -354,9 +354,9 @@ Expected tests or smoke:
 
 Expected tests:
 
-- Worker dispatch bodies do not contain OpenCode auth JSON;
-- runner event payloads containing credential-shaped values are rejected;
-- revoked provider auth still maps to reconnect-required health;
+- Worker dispatch bodies do not contain OpenCode auth JSON.
+- runner event payloads containing credential-shaped values are rejected.
+- revoked provider auth still maps to reconnect-required health.
 - service credential names do not appear in public events.
 
 ### Slice 8: Artifact, Billing, And Operator Surfaces
@@ -372,9 +372,9 @@ Expected tests:
 
 Expected tests:
 
-- missing required artifacts fail or block the run;
-- billing records backend metadata for `cloudflare_container`;
-- exhausted credits cancel or stop the active backend;
+- missing required artifacts fail or block the run.
+- billing records backend metadata for `cloudflare_container`.
+- exhausted credits cancel or stop the active backend.
 - fleet projection reports Container availability without leaking private
   dispatch mechanics.
 

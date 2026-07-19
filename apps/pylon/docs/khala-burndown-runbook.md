@@ -34,7 +34,7 @@ that the Pylon registration belongs to another agent immediately after rotating
 or reissuing the local OpenAgents agent token, run `pylon auth openagents
 --json` and retry. The Worker accepts active credentials linked to the same
 OpenAuth owner and re-homes the Pylon registration on the next successful
-register/heartbeat write; unrelated agent credentials remain forbidden.
+register/heartbeat write. Unrelated agent credentials remain forbidden.
 
 ## Dry Run
 
@@ -80,7 +80,7 @@ exact token usage with at least one token row. The output includes assignment
 refs, durable request ids, proof event counts, trace counts, and verified token
 totals. It also snapshots `/api/public/khala-tokens-served` before and after the
 run and reports counter state, delta, and expected minimum delta from verified
-proof totals; if the public counter is reachable but unchanged after a verified
+proof totals. If the public counter is reachable but unchanged after a verified
 closeout, the result carries `blocker.khala_burndown.counter_not_incremented`.
 
 ## Review And Closeout

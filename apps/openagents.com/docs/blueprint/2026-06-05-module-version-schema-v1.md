@@ -14,14 +14,14 @@ candidates.
 
 The schema gives each module version explicit:
 
-- module kind;
-- lifecycle status;
-- release state;
-- implementation and artifact refs;
-- Program Type and optional Program Signature linkage;
-- provenance;
-- scorecards;
-- release decision;
+- module kind.
+- lifecycle status.
+- release state.
+- implementation and artifact refs.
+- Program Type and optional Program Signature linkage.
+- provenance.
+- scorecards.
+- release decision.
 - rollback and deprecation anchors.
 
 ## Release-State Guardrail

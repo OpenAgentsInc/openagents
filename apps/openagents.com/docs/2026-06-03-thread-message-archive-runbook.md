@@ -297,7 +297,7 @@ Sync cleanup:
 SHC cleanup:
 
 - Confirmed no matching active SHC processes for the five archived run IDs.
-- Sent SHC control cancel requests for all five run IDs; each request was
+- Sent SHC control cancel requests for all five run IDs. Each request was
   accepted and returned `status: canceled`.
 - Removed the exact five matching run/job state directories under
   `/var/lib/openagents/codex-control`.

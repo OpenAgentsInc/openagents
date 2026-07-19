@@ -120,5 +120,5 @@ ledger-backed replay protection.
 - No real checkout page is rendered yet.
 - No durable checkout intent, L402 challenge, redemption, or entitlement ledger
   is written yet.
-- Replay safety is contract-level and deterministic in this issue; durable
+- Replay safety is contract-level and deterministic in this issue. Durable
   one-shot redemption belongs in the next MDK/ledger implementation slice.

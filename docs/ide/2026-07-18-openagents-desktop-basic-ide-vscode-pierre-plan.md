@@ -29,7 +29,7 @@ authority OpenAgents already owns:
    current hand-rendered `<pre>` diff. The same adapter should later power
    compare, conflict, and agent-change review.
 4. Keep **Effect Native and OpenAgents Desktop state/services canonical**.
-   Monaco owns scoped editing mechanics; Pierre owns scoped tree/diff rendering;
+   Monaco owns scoped editing mechanics. Pierre owns scoped tree/diff rendering.
    neither owns the workspace, documents, Git repository, permissions, session,
    recovery, or receipts.
 5. Extend the existing `files` workspace mode into the first **Editor mode**
@@ -44,7 +44,7 @@ typed authority plane.
 The exact language/process ownership is fixed by the companion
 [`Zed-quality Effect and Rust architecture`](./2026-07-18-zed-quality-ide-effect-rust-architecture.md):
 Effect/TypeScript owns the project, document, language, Git, task, agent,
-policy, persistence, and projection graph. Rust is not the IDE backend; it is
+policy, persistence, and projection graph. Rust is not the IDE backend. It is
 limited to supervised authority-free PTY/containment and benchmark-admitted
 native helpers.
 
@@ -108,12 +108,12 @@ The source checkouts were clean and synced before this plan was written.
 | Source | Commit | Tree | Observed | Role |
 | --- | --- | --- | --- | --- |
 | OpenAgents target | `907ff2ac94ba7b56964358645deb4d70d23fd59c` | `4fb0f937f9fabcf86e786abaf630076cef0ed578` | 2026-07-18 CDT | Current Desktop authority, state, React workbench, and prior audits |
-| `microsoft/vscode` | `70bbb6920a89486a98a7c810bdb5596d0de746f5` | `25749933e2b845f80b6dbcaa24e4bfef6f647502` | Synced 2026-07-18 CDT; commit timestamp 2026-07-19 UTC | Editor/workbench behavior and architecture reference |
+| `microsoft/vscode` | `70bbb6920a89486a98a7c810bdb5596d0de746f5` | `25749933e2b845f80b6dbcaa24e4bfef6f647502` | Synced 2026-07-18 CDT. Commit timestamp 2026-07-19 UTC | Editor/workbench behavior and architecture reference |
 | `pierrecomputer/pierre` | `4f94a5e765195b27e1e4188b943aab2ae44613cb` | `07920b0558a4c3ecd68a39198cca1046ac309c4b` | 2026-07-18 CDT | Tree, diff, and editor-theme projection reference |
 
 License boundary:
 
-- VS Code is MIT-licensed. Study its behavior and architecture; consume Monaco
+- VS Code is MIT-licensed. Study its behavior and architecture. Consume Monaco
   as a package rather than copying the workbench.
 - Pierre trees and diffs are Apache-2.0 at the pinned revision. The packaged
   Desktop application must carry the required licenses and the trees NOTICE.
@@ -129,25 +129,25 @@ License boundary:
 `docs/khala-code/2026-07-05-vscode-explorer-editor-adoption-audit.md`
 already reached the correct high-level decision:
 
-- use Monaco rather than vendoring VS Code editor internals;
+- use Monaco rather than vendoring VS Code editor internals.
 - adapt stable identity, typed metadata, deterministic sorting, reveal, and
-  keyboard behavior from Explorer without taking the workbench stack;
+  keyboard behavior from Explorer without taking the workbench stack.
 - keep a product-owned workspace service between the renderer and every
-  filesystem provider;
+  filesystem provider.
 - load Monaco and its workers only when the editor surface is opened.
 
 That audit was not hypothetical. Its implementation log records a functioning
 retired Khala Code vertical slice:
 
-- `1d04ee5379` rendered a read-only file tree and Monaco source pane;
-- `6db1a404ab` added open tabs and loaded-tree search;
-- the package pinned `monaco-editor@0.55.1`;
+- `1d04ee5379` rendered a read-only file tree and Monaco source pane.
+- `6db1a404ab` added open tabs and loaded-tree search.
+- the package pinned `monaco-editor@0.55.1`.
 - Monaco's editor, JSON, CSS, HTML, and TypeScript workers were loaded through
-  Vite `?worker` imports;
+  Vite `?worker` imports.
 - the editor was lazy, themed from OpenAgents tokens, bounded to twelve tabs,
   disposed explicitly, and could attach a selected file/range to the composer.
 
-The superseded client was intentionally removed in `393510cee5`; its
+The superseded client was intentionally removed in `393510cee5`. Its
 architecture did not survive as product authority. Reuse the proven bundling,
 worker, theme, and lifecycle lessons, not its raw absolute-path model URIs,
 read-only limitation, hand-built tree, or DOM-local application state.
@@ -165,10 +165,10 @@ visible `<textarea>` suggests.
 | --- | --- | --- |
 | Explicit workspace grant and root-private authority | `apps/openagents-desktop/src/workspace-service.ts` | Keep |
 | Root-relative opaque path refs in the renderer | `workspace-contract.ts`, `workspace-browser.ts` | Keep |
-| Lazy, paged directory tree with ignore/secret/binary/symlink policy | `workspace-service.ts`, `workspace-browser.ts` | Keep as metadata/authority; add a Pierre path-index projection |
-| Cancellable path/content search and 20,000-entry scale bound | `workspace-search-host.ts`, `workspace-search-worker.ts` | Keep; do not overload it as the tree index |
-| Recursive watcher, epoch invalidation, overflow handling | `workspace-service.ts` | Keep; project confirmed changes into Pierre |
-| Create file/folder, revision-bound rename, non-recursive delete, reveal | workspace operation contract and service | Keep; Pierre callbacks dispatch these intents only |
+| Lazy, paged directory tree with ignore/secret/binary/symlink policy | `workspace-service.ts`, `workspace-browser.ts` | Keep as metadata/authority. Add a Pierre path-index projection |
+| Cancellable path/content search and 20,000-entry scale bound | `workspace-search-host.ts`, `workspace-search-worker.ts` | Keep. Do not overload it as the tree index |
+| Recursive watcher, epoch invalidation, overflow handling | `workspace-service.ts` | Keep. Project confirmed changes into Pierre |
+| Create file/folder, revision-bound rename, non-recursive delete, reveal | workspace operation contract and service | Keep. Pierre callbacks dispatch these intents only |
 | UTF-8 open, save, save-as, 1 MB limit, expected-revision conflicts | document contract and service | Keep |
 | Dirty tabs, close confirmation, find, selection, undo/redo scaffold | `renderer/workspace-editor.ts` | Evolve for Monaco's incremental/native model mechanics |
 | Rename retargeting and restart recovery drafts | `renderer/workspace-editor.ts`, shell recovery | Keep and harden |
@@ -176,17 +176,17 @@ visible `<textarea>` suggests.
 | Files + editor split UI, tabs, search, save/conflict UI | `renderer/react-workspace-surfaces.tsx` | Replace custom tree and `<textarea>` with adapters |
 | Maximizable workbench surface | `renderer/react-primitive-adapters.tsx`, `surface-layout.ts` | Make this the Editor-mode entry point |
 | Replaceable typed Effect Native `CodeEditor` host contract | `apps/openagents.com/packages/effect-native-core/src/index.ts` | Extend narrowly where required |
-| Documented textarea host driver | `apps/openagents.com/packages/effect-native-render-dom/src/index.ts` | Retain as test/fallback; install app-owned Monaco driver in Desktop |
+| Documented textarea host driver | `apps/openagents.com/packages/effect-native-render-dom/src/index.ts` | Retain as test/fallback. Install app-owned Monaco driver in Desktop |
 | Shared Khala/Effect Native theme tokens | `packages/ui/src/workbench/theme-bridge.ts`, `desktop-workbench.css` | Remain theme authority |
 
 The visible gap is therefore specific:
 
 - production React files UI still renders its own non-virtualized tree, caps
-  the visible projection at 500 rows, and edits in a `<textarea>`;
+  the visible projection at 500 rows, and edits in a `<textarea>`.
 - the compatibility Effect Native renderer still registers
-  `makeStubCodeEditorDriver()`;
-- review still hand-renders hunks instead of using Pierre;
-- there is no language-server bridge or Problems projection;
+  `makeStubCodeEditorDriver()`.
+- review still hand-renders hunks instead of using Pierre.
+- there is no language-server bridge or Problems projection.
 - “Files” can maximize, but the product does not present that state as a clear
   first-class Editor mode.
 
@@ -197,9 +197,9 @@ This plan implements a first bounded rung of requirements already stated in:
 - `specs/desktop/desktop-trust-complete-workbench.product-spec.md` — two
   densities over one state graph, including a classic workbench with editor,
   files, symbols, search, diagnostics, source control, diff, terminal, preview,
-  extensions, settings, themes, and keymaps;
+  extensions, settings, themes, and keymaps.
 - `specs/openagents/cursor-capability-parity.product-spec.md` — full workflow
-  parity without copying Cursor's closed bundle;
+  parity without copying Cursor's closed bundle.
 - `docs/sol/2026-07-11-openagents-coding-cutover-issue-plan.md` — CUT-17
   workspace browsing, CUT-18 practical typed editing, and CUT-19 Git review.
 
@@ -225,18 +225,18 @@ The source seams inspected at the pin include:
 
 - Monaco public construction and models:
   `src/vs/editor/standalone/browser/standaloneEditor.ts`,
-  `standaloneCodeEditor.ts`, and `editor.api.ts`;
+  `standaloneCodeEditor.ts`, and `editor.api.ts`.
 - editor events/model attachment:
-  `src/vs/editor/browser/widget/codeEditor/codeEditorWidget.ts`;
+  `src/vs/editor/browser/widget/codeEditor/codeEditorWidget.ts`.
 - text models and language features:
   `src/vs/editor/common/model/textModel.ts`,
-  `src/vs/editor/common/services/model.ts`, and `languageFeatures.ts`;
+  `src/vs/editor/common/services/model.ts`, and `languageFeatures.ts`.
 - editor tabs/groups and dirty-close behavior:
   `src/vs/workbench/common/editor/editorGroupModel.ts` and
-  `src/vs/workbench/browser/parts/editor/editorGroupView.ts`;
+  `src/vs/workbench/browser/parts/editor/editorGroupView.ts`.
 - text-file resolve/dirty/save/revert/conflict behavior:
   `src/vs/workbench/services/textfile/common/textFileEditorModel.ts` and
-  `src/vs/workbench/contrib/files/browser/editors/textFileEditor.ts`;
+  `src/vs/workbench/contrib/files/browser/editors/textFileEditor.ts`.
 - Explorer model, view, data source, render, filtering, sorting, DnD, and
   accessibility:
   `src/vs/workbench/contrib/files/common/explorerModel.ts`,
@@ -257,7 +257,7 @@ The source seams inspected at the pin include:
 ### OpenAgents inference
 
 VS Code's layering is why Monaco is reusable and its Explorer is not. The text
-widget/model boundary is a focused product seam; the Explorer boundary assumes
+widget/model boundary is a focused product seam. The Explorer boundary assumes
 the rest of the VS Code platform. Reusing Monaco gives OpenAgents mature editing
 mechanics without inheriting workspace authority. Reusing Pierre gives the
 virtualized, path-first explorer and review kernels without reconstructing the
@@ -271,13 +271,13 @@ Pierre makes that obsolete.
 
 At the pinned revision, `@pierre/trees` provides:
 
-- a path-first public API with canonical string paths;
-- virtualized visible projections and prepared input helpers;
-- React 19 bindings;
+- a path-first public API with canonical string paths.
+- virtualized visible projections and prepared input helpers.
+- React 19 bindings.
 - selection, focus, scrolling, search, Git status, icons, row decorations,
-  context-menu composition, DnD, and inline rename capabilities;
-- `add`, `remove`, `move`, `batch`, and `resetPaths` projection mutations;
-- shadow-DOM rendering, density controls, and CSS-variable theme inputs;
+  context-menu composition, DnD, and inline rename capabilities.
+- `add`, `remove`, `move`, `batch`, and `resetPaths` projection mutations.
+- shadow-DOM rendering, density controls, and CSS-variable theme inputs.
 - tests, E2E coverage, benchmarks, and accessibility behavior.
 
 At the same pin, `@pierre/diffs` supplies file, patch, diff, merge-conflict,
@@ -289,7 +289,7 @@ Neither package is authority. In particular:
 - Its public API does not provide an async directory-expansion data-source
   callback like VS Code's `IAsyncDataSource`.
 - Its built-in inline rename updates its own projection immediately after the
-  callback; it is not an asynchronous revision-conflict protocol.
+  callback. It is not an asynchronous revision-conflict protocol.
 - Its shadow root may complicate theme, focus, test, and VoiceOver behavior.
 - The tree package is beta.
 
@@ -358,11 +358,11 @@ flowchart LR
    handle, credential, or unrestricted URI opener.
 4. Every mutation travels through the existing decoded workspace bridge with
    expected revision/epoch data where applicable.
-5. A successful host result updates the canonical state first; adapters then
+5. A successful host result updates the canonical state first. Adapters then
    reconcile their projection. Optimistic tree mutation is prohibited until a
    reversible typed protocol exists.
 6. Search, language servers, Git, terminals, and preview remain separate host
-   capabilities. Monaco commands may request them; Monaco does not launch them.
+   capabilities. Monaco commands may request them. Monaco does not launch them.
 7. Theme input is resolved from Effect Native/OpenAgents tokens. Untrusted
    theme JSON or Pierre `unsafeCSS` never enters a trusted renderer unchecked.
 
@@ -375,8 +375,8 @@ receipts. A language server or formatter may be an external binary in any
 language, but its lifecycle and results remain an Effect project capability.
 
 When Terminal lands, Effect owns terminal identity, cwd/environment admission,
-retention, command routing, reconnect policy, and projection; xterm owns screen
-emulation; a bounded Rust helper owns only the PTY handle, process group,
+retention, command routing, reconnect policy, and projection. Xterm owns screen
+emulation. A bounded Rust helper owns only the PTY handle, process group,
 resize/signal, and byte transport. Required containment is another supervised
 Rust helper boundary. No native helper holds a root grant, credential,
 conversation, approval, policy, database, or receipt key.
@@ -426,19 +426,19 @@ Full Editor-mode layout:
 First release details:
 
 - left: Pierre explorer, fixed/resizable width, project label, local filter,
-  Git decorations, selection, keyboard navigation, context menu;
+  Git decorations, selection, keyboard navigation, context menu.
 - center: owned tab strip and one Monaco editor widget switching between
-  scoped models;
-- bottom: collapsed by default; Search and Problems appear as soon as their
+  scoped models.
+- bottom: collapsed by default. Search and Problems appear as soon as their
   packets land, while existing Terminal and Review surfaces can be promoted
-  into the same panel later;
+  into the same panel later.
 - status: relative path/language/selection/encoding/EOL/dirty/conflict and
-  workspace-trust state, with no fake LSP or Git readiness;
-- optional agent rail: existing conversation can be restored beside Editor;
+  workspace-trust state, with no fake LSP or Git readiness.
+- optional agent rail: existing conversation can be restored beside Editor.
   the source editor never becomes a separate session authority.
 
 At narrow widths, do not squeeze Monaco below a usable measure. The explorer
-becomes an overlay/drawer and the bottom panel becomes a sheet; the document
+becomes an overlay/drawer and the bottom panel becomes a sheet. The document
 remains primary.
 
 ## Pierre tree adapter
@@ -480,14 +480,14 @@ The referenced scalar schemas are constrained branded values. Their exact
 constraints may differ, but Schema remains the contract authority and these
 semantics must survive:
 
-- main-process scan under the selected workspace grant;
+- main-process scan under the selected workspace grant.
 - the same hidden, Git-ignore, secret, symlink, and permission policy as tree
-  pages and search;
-- deterministic directory-first path ordering;
-- worker/cancellable execution with explicit sequence and epoch;
-- bounded chunks so the IPC bridge never carries an unbounded array;
-- an honest truncation state rather than an apparently complete explorer;
-- no file contents, absolute roots, inode metadata, or credentials;
+  pages and search.
+- deterministic directory-first path ordering.
+- worker/cancellable execution with explicit sequence and epoch.
+- bounded chunks so the IPC bridge never carries an unbounded array.
+- an honest truncation state rather than an apparently complete explorer.
+- no file contents, absolute roots, inode metadata, or credentials.
 - disposal on workspace/session/window close.
 
 Do not implement the index as `search("")`. Search has different caps,
@@ -505,11 +505,11 @@ pagination, previews, cancellation, and user semantics.
 - Store the path-ref/kind mapping in owned adapter state. Pierre numeric/private
   IDs never cross the adapter.
 - `onSelectionChange` dispatches a typed selection intent. File activation
-  opens a document; directory activation only changes projection focus/expand.
+  opens a document. Directory activation only changes projection focus/expand.
 - Project Git status through `setGitStatus`/`applyGitStatusPatch` after status
   authority confirms the snapshot.
 - Project watcher changes only after the main service emits a validated epoch.
-  Batch related add/remove/move changes; on overflow, discard the projection
+  Batch related add/remove/move changes. On overflow, discard the projection
   and request a fresh index.
 - Drive reveal with `scrollToPath(path, { focus: true, offset: "nearest" })`
   after confirming the path exists in the current epoch.
@@ -519,10 +519,10 @@ pagination, previews, cancellation, and user semantics.
 Use Pierre's context-menu and row-decoration composition for buttons, but send
 operations to existing OpenAgents intents:
 
-- New File / New Folder -> existing typed create flow;
-- Rename -> existing expected-revision flow;
-- Delete -> existing non-recursive confirmation flow;
-- Reveal in Finder -> main-only reveal flow;
+- New File / New Folder -> existing typed create flow.
+- Rename -> existing expected-revision flow.
+- Delete -> existing non-recursive confirmation flow.
+- Reveal in Finder -> main-only reveal flow.
 - Open to Side / Add to Agent / Copy Relative Path -> typed renderer intents.
 
 Do not enable Pierre's built-in optimistic rename or DnD in the first release.
@@ -533,7 +533,7 @@ rollback, and proof before it can be enabled.
 
 ### Styling and accessibility
 
-- Use `@pierre/trees/react`; do not register global custom elements unless the
+- Use `@pierre/trees/react`. Do not register global custom elements unless the
   React entry requires it.
 - Set public tree CSS variables from the resolved Effect Native theme. Avoid
   `unsafeCSS` in production.
@@ -555,11 +555,11 @@ package must not depend on Monaco.
 
 Extract the proven worker setup into a single lazy runtime:
 
-- core editor worker;
-- JSON worker;
-- CSS/SCSS/Less worker;
-- HTML/Handlebars/Razor worker;
-- TypeScript/JavaScript worker;
+- core editor worker.
+- JSON worker.
+- CSS/SCSS/Less worker.
+- HTML/Handlebars/Razor worker.
+- TypeScript/JavaScript worker.
 - Monaco editor CSS.
 
 No Monaco/Pierre editor chunk or worker should load during a chat-only launch.
@@ -585,7 +585,7 @@ apps/openagents-desktop/src/renderer/ide/
 The production React renderer uses `monaco-workspace-editor.tsx`. The
 compatibility Effect Native renderer can register
 `makeDesktopMonacoCodeEditorDriver()` over the same runtime/controller instead
-of the stub. One runtime and model-lifecycle implementation is shared; React
+of the stub. One runtime and model-lifecycle implementation is shared. React
 and Host drivers are thin lifecycle adapters.
 
 ### Stable model identity without absolute paths
@@ -603,25 +603,25 @@ oa-workspace://<workspace-session-ref>/<document-ref>
 The canonical state maps `documentRef` to the current relative `pathRef` and
 revision. Rename changes the binding and language mode without exposing the
 root or invalidating tab identity. A future main-process LSP bridge translates
-between opaque renderer document refs and real server-side file URIs; raw LSP
+between opaque renderer document refs and real server-side file URIs. Raw LSP
 file URIs do not cross into the renderer.
 
 ### Canonical versus ephemeral state
 
 Effect Native/OpenAgents owns:
 
-- document ref -> relative path binding;
-- base revision, encoding, EOL, dirty/conflict/save state;
-- bounded current draft and restart-recovery snapshot;
-- tabs, active tab, close confirmation, preview/pinned state, and groups;
+- document ref -> relative path binding.
+- base revision, encoding, EOL, dirty/conflict/save state.
+- bounded current draft and restart-recovery snapshot.
+- tabs, active tab, close confirmation, preview/pinned state, and groups.
 - command intent, permissions, context attachments, and receipts.
 
 Monaco owns only scoped editor mechanics:
 
-- text model implementation and native edit/undo stack;
-- cursor/multi-cursor mechanics;
-- selection, folds, scroll position, decorations, and editor view state;
-- tokenization and built-in language-worker state;
+- text model implementation and native edit/undo stack.
+- cursor/multi-cursor mechanics.
+- selection, folds, scroll position, decorations, and editor view state.
+- tokenization and built-in language-worker state.
 - find/replace widget presentation.
 
 Monaco mechanics must continuously reconcile to canonical document state. They
@@ -696,7 +696,7 @@ adapter without an untyped global event bus.
 Save remains revision-bound:
 
 1. Monaco edit event updates the canonical draft and dirty state.
-2. Cmd/Ctrl+S emits `save_requested`; the application reads the canonical
+2. Cmd/Ctrl+S emits `save_requested`. The application reads the canonical
    draft, current path binding, and expected revision.
 3. The existing main service performs the write.
 4. A saved result advances base revision and clears dirty state without
@@ -707,10 +707,10 @@ Save remains revision-bound:
 Watcher behavior:
 
 - clean tab + external update -> load the new revision and preserve/rebase view
-  state where possible;
-- dirty tab + external update -> conflict, retain both versions, no overwrite;
-- external delete -> unavailable/conflict with draft recoverable;
-- rename confirmed through OpenAgents -> retarget tab and tree together;
+  state where possible.
+- dirty tab + external update -> conflict, retain both versions, no overwrite.
+- external delete -> unavailable/conflict with draft recoverable.
+- rename confirmed through OpenAgents -> retarget tab and tree together.
 - grant revoked -> editor becomes read-only/unavailable, drafts remain bounded
   recovery data, and no mutation is attempted.
 
@@ -720,15 +720,15 @@ Use Pierre/Monaco diff rendering for Compare once the diff adapter lands.
 
 Default:
 
-- editable unless the typed document state says otherwise;
-- `automaticLayout: true`;
-- `largeFileOptimizations: true`;
-- minimap off initially but user-toggleable;
-- word wrap off initially but user-toggleable;
+- editable unless the typed document state says otherwise.
+- `automaticLayout: true`.
+- `largeFileOptimizations: true`.
+- minimap off initially but user-toggleable.
+- word wrap off initially but user-toggleable.
 - bracket matching, indentation guides, line numbers, multi-cursor, native
-  find/replace, go-to-line, and accessibility support on;
-- no unrestricted link opener;
-- no extension-contributed commands or arbitrary webviews;
+  find/replace, go-to-line, and accessibility support on.
+- no unrestricted link opener.
+- no extension-contributed commands or arbitrary webviews.
 - format-on-save, autosave, sticky scroll, breadcrumbs, inlay hints, and code
   actions only when their provider/state is real and visible.
 
@@ -738,11 +738,11 @@ OpenAgents theme state remains the source of truth.
 
 Create one resolved `DesktopEditorThemeProjection` from Effect Native tokens:
 
-- app chrome consumes existing CSS variables;
-- Monaco receives a generated `IStandaloneThemeData`;
+- app chrome consumes existing CSS variables.
+- Monaco receives a generated `IStandaloneThemeData`.
 - Pierre trees receives public tree CSS variables or
-  `themeToTreeStyles()` over a sanitized resolved theme;
-- Pierre diffs receives the same resolved code theme;
+  `themeToTreeStyles()` over a sanitized resolved theme.
+- Pierre diffs receives the same resolved code theme.
 - Shiki, Monaco, and Pierre do not each select an independent dark/light mode.
 
 The first daily-use editor ships one theme for everyone: **Tokyo Night**. The
@@ -757,7 +757,7 @@ in `ROADMAP.md` IDE-18 instead of blocking the first useful editor.
 When later theme switching is admitted, it must update a mounted editor/tree/
 diff without destroying models, selection, scroll, or draft state. Arbitrary
 VS Code theme import is a later allowlisted parser with size/schema/color
-validation; it cannot inject CSS or executable contribution code.
+validation. It cannot inject CSS or executable contribution code.
 
 ## Basic VS Code parity matrix
 
@@ -767,23 +767,23 @@ another editor. It does not mean extension-host or debugger parity.
 
 | Outcome | VS Code reference behavior | Current OpenAgents | Basic release requirement |
 | --- | --- | --- | --- |
-| Open repository | Workspace roots and file service | Explicit selected WorkContext/grant | Keep; Editor mode reflects exact active worktree |
+| Open repository | Workspace roots and file service | Explicit selected WorkContext/grant | Keep. Editor mode reflects exact active worktree |
 | File explorer | Virtualized tree, selection, expansion, decorations | Lazy custom tree, 500 visible rows | Pierre tree over chunked path index, Git status, keyboard/a11y |
 | Open source | Editor input resolves text-file model | Bounded typed read and tab | Monaco model per stable document ref |
 | Syntax editing | Monaco widget/model | `<textarea>` / stub driver | Monaco editable, tokenized, multi-cursor, bracket/indent basics |
-| Tabs | Active/dirty/pinned/preview/group state | Active/dirty/close, max 12 | Dirty, close guard, reorder, preview/pin; stable across panel maximize |
+| Tabs | Active/dirty/pinned/preview/group state | Active/dirty/close, max 12 | Dirty, close guard, reorder, preview/pin. Stable across panel maximize |
 | Save | Dirty/revision/save/revert/conflict | Revisioned save/save-as/conflict | Wire Monaco edits to existing save contract and recovery |
 | File operations | Create/rename/delete/reveal | Typed operations exist | Context menu and shortcuts dispatch existing intents |
-| Find/replace | Native editor find widget | App-owned simple find | Use Monaco native find/replace; keep typed commands |
+| Find/replace | Native editor find widget | App-owned simple find | Use Monaco native find/replace. Keep typed commands |
 | Quick open | Fuzzy file quick access | Path search exists | Cmd/Ctrl+P over bounded path index/search, opens/reveals file |
 | Workspace search | Search view and result navigation | Bounded path/content search | Search panel, result line reveal, cancellation, truncation truth |
-| Navigation | go-to-line, symbols, definition/reference | Only selection/find | Go-to-line in basic; symbols/definition after provider packet |
-| Diagnostics | markers + Problems | None | Problems panel once language bridge exists; no fabricated diagnostics |
-| Git | decorations, SCM, diff | Typed status/review; hand-rendered diff | Pierre decorations/diffs; existing mutation confirmations remain |
+| Navigation | go-to-line, symbols, definition/reference | Only selection/find | Go-to-line in basic. Symbols/definition after provider packet |
+| Diagnostics | markers + Problems | None | Problems panel once language bridge exists. No fabricated diagnostics |
+| Git | decorations, SCM, diff | Typed status/review. Hand-rendered diff | Pierre decorations/diffs. Existing mutation confirmations remain |
 | Compare/conflicts | diff editor | Conflict copy/actions only | Pierre/Monaco compare for external/save conflicts |
-| Commands/keybindings | context-aware command/keybinding service | Typed Desktop command registry | Extend one registry; no second Monaco-only command universe |
+| Commands/keybindings | context-aware command/keybinding service | Typed Desktop command registry | Extend one registry. No second Monaco-only command universe |
 | Settings | editor/workbench settings | some word-wrap/minimap state | Persist bounded editor settings per user/workspace with reset |
-| Themes | dark/light/high contrast | fixed Khala dark theme | Tokyo Night from one projection initially; light/high-contrast/system modes remain an explicit later parity gate |
+| Themes | dark/light/high contrast | fixed Khala dark theme | Tokyo Night from one projection initially. Light/high-contrast/system modes remain an explicit later parity gate |
 | Recovery | hot exit/backup | bounded recovery drafts | Packaged crash/restart proof with dirty documents and conflicts |
 | Accessibility | keyboard, screen reader, high contrast | custom basics | Monaco + Pierre packaged keyboard/VoiceOver/high-contrast proof |
 
@@ -800,22 +800,22 @@ new dependencies or authority paths land.
 Work:
 
 - update Desktop and Cursor-parity specs with a dated basic-editor acceptance
-  row and explicitly mark extensions/debugging/LSP breadth as later gaps;
+  row and explicitly mark extensions/debugging/LSP breadth as later gaps.
 - add behavior-contract scenarios for Editor mode, tree selection, edit/save,
-  conflict, recovery, and grant revocation;
+  conflict, recovery, and grant revocation.
 - update `INVARIANTS.md` for the app-owned Monaco/Pierre React adapter files,
   path-index projection, and the distinction between canonical document state
-  and adapter-local edit mechanics;
+  and adapter-local edit mechanics.
 - freeze the Effect/TypeScript-versus-Rust ownership table, generated
   cross-language fixture rule, helper failure behavior, and per-helper
-  necessity/reversal test before admitting any native IDE crate;
+  necessity/reversal test before admitting any native IDE crate.
 - pin package versions, source commits, licenses, and rollback boundary.
 
 Acceptance:
 
-- no new renderer filesystem/process/Git authority;
-- no absolute path crosses the renderer bridge;
-- adapter ownership and disposal are explicit;
+- no new renderer filesystem/process/Git authority.
+- no absolute path crosses the renderer bridge.
+- adapter ownership and disposal are explicit.
 - public parity language remains “basic editor rung,” not full VS Code/Cursor
   parity.
 
@@ -826,19 +826,19 @@ real packaged Electron renderer before product composition depends on them.
 
 Work:
 
-- add exact dependencies and license/NOTICE packaging;
-- implement lazy Monaco runtime and workers;
+- add exact dependencies and license/NOTICE packaging.
+- implement lazy Monaco runtime and workers.
 - mount a fixture Monaco editor, Pierre tree, and Pierre diff behind dev-only
-  proof routes using production CSP and bundle settings;
+  proof routes using production CSP and bundle settings.
 - measure chunk sizes, first mount, 20k/100k tree behavior, worker resolution,
-  theme switching, focus, and cleanup;
+  theme switching, focus, and cleanup.
 - verify React 19 and Electron 43 compatibility at the current pins.
 
 Acceptance:
 
-- chat-only startup fetches/executes none of the three packages;
-- packaged/offline fixture renders all three without CSP exceptions;
-- every editor/tree/diff instance and worker disposes on route/window close;
+- chat-only startup fetches/executes none of the three packages.
+- packaged/offline fixture renders all three without CSP exceptions.
+- every editor/tree/diff instance and worker disposes on route/window close.
 - a failed beta/package gate produces a typed unavailable proof, not a silent
   fallback or a VS Code Explorer import.
 
@@ -849,22 +849,22 @@ Pierre's virtualized explorer.
 
 Work:
 
-- add typed chunked `workspaceTreeIndex` host/IPC/state flow;
-- share ignore/secret/symlink policy with existing tree/search;
-- add epoch invalidation, cancellation, overflow rescan, and scale fixtures;
+- add typed chunked `workspaceTreeIndex` host/IPC/state flow.
+- share ignore/secret/symlink policy with existing tree/search.
+- add epoch invalidation, cancellation, overflow rescan, and scale fixtures.
 - extend the #9008 `PierreWorkspaceTree` adapter from admitted paged refs to
-  the complete indexed and watched repository projection;
+  the complete indexed and watched repository projection.
 - connect selection/open, reveal, refresh, Git decorations, and safe context
-  actions;
+  actions.
 - preserve primary-rail selection/expansion and Editor-mode layout state.
 
 Acceptance:
 
-- 20k fixture is complete and interactive; 100k is measured and bounded;
+- 20k fixture is complete and interactive. 100K is measured and bounded.
 - deep nesting, ignored paths, symlink escape, permission loss, and watcher
-  overflow are honest;
-- selection and expansion survive safe refreshes;
-- path index contains no content or root;
+  overflow are honest.
+- selection and expansion survive safe refreshes.
+- path index contains no content or root.
 - VoiceOver/keyboard navigation works in packaged Electron.
 
 ### IDE-03 — Monaco document lifecycle
@@ -874,24 +874,24 @@ it, and recover it after a crash.
 
 Work:
 
-- add stable `documentRef` and app-local model registry;
-- implement incremental edit/selection/command events;
+- add stable `documentRef` and app-local model registry.
+- implement incremental edit/selection/command events.
 - mount Monaco in the production React surface and install the app-owned Host
-  driver for compatibility;
-- migrate undo/redo to Monaco mechanics with canonical draft reconciliation;
+  driver for compatibility.
+- migrate undo/redo to Monaco mechanics with canonical draft reconciliation.
 - connect typed save/save-as, dirty-close, rename retarget, external change,
-  delete, revoked grant, and recovery;
+  delete, revoked grant, and recovery.
 - use native find/replace, go-to-line, multi-cursor, indentation, word wrap,
-  minimap toggle, and selection status;
+  minimap toggle, and selection status.
 - add quick file/range context attachment without silently sending content.
 
 Acceptance:
 
-- no keystroke can target the wrong tab after rapid tab/worktree switching;
-- stale model events are rejected/resynced;
-- save conflict never overwrites silently;
-- twelve dirty 1 MB-bounded tabs recover after forced app termination;
-- model/view/worker resources dispose once on tab, project, and window close;
+- no keystroke can target the wrong tab after rapid tab/worktree switching.
+- stale model events are rejected/resynced.
+- save conflict never overwrites silently.
+- twelve dirty 1 MB-bounded tabs recover after forced app termination.
+- model/view/worker resources dispose once on tab, project, and window close.
 - Cmd/Ctrl+S, undo/redo, find/replace, go-to-line, tab traversal, and close
   confirmation pass keyboard tests.
 
@@ -902,23 +902,23 @@ widget embedded in a chat panel.
 
 Work:
 
-- label and command the Files workspace state as Editor mode;
-- add resizable Explorer, editor group, bottom panel, and status bar;
+- label and command the Files workspace state as Editor mode.
+- add resizable Explorer, editor group, bottom panel, and status bar.
 - add quick open, workspace search results, recent files, open-to-side, tab
-  reorder, preview/pin, reopen closed, and split groups;
+  reorder, preview/pin, reopen closed, and split groups.
 - connect new file/folder, rename, delete, reveal, copy relative path, and add
-  to agent through existing typed operations;
+  to agent through existing typed operations.
 - add settings/keybindings for basic editor options through the existing
-  command registry;
+  command registry.
 - persist layout/view state per selected coding session with versioned decode
   and safe reset.
 
 Acceptance:
 
-- every visible control has a typed command/intent and shortcut discoverability;
-- no Monaco action registry becomes the app's command authority;
+- every visible control has a typed command/intent and shortcut discoverability.
+- no Monaco action registry becomes the app's command authority.
 - a changed worktree never reuses another worktree's tabs, path index, model,
-  search result, terminal, or recovery draft;
+  search result, terminal, or recovery draft.
 - narrow window and reduced-motion layouts remain usable.
 
 ### IDE-05 — Pierre review and conflict compare
@@ -929,19 +929,19 @@ bounded host evidence as Editor mode.
 Work:
 
 - replace hand-rendered React diffs with `@pierre/diffs` behind an owned
-  adapter;
+  adapter.
 - map exact typed hunks and file metadata without reparsing unknown Git output
-  in the renderer;
-- add file/aggregate review navigation, annotations, and add-to-composer;
+  in the renderer.
+- add file/aggregate review navigation, annotations, and add-to-composer.
 - use the same adapter for external-save conflict compare and later agent
-  change sets;
+  change sets.
 - preserve secret/binary/oversized/stale refusal and confirmation rules.
 
 Acceptance:
 
-- rendering never expands the host's 120 KB bounded diff authority;
-- stale status cannot trigger a mutation;
-- 1, 100, and large bounded multi-file fixtures scroll without locking the UI;
+- rendering never expands the host's 120 KB bounded diff authority.
+- stale status cannot trigger a mutation.
+- 1, 100, and large bounded multi-file fixtures scroll without locking the UI.
 - theme, keyboard, accessible diff, and disposal proofs pass packaged Electron.
 
 ### IDE-06 — Language intelligence and Problems
@@ -951,23 +951,23 @@ then additional languages connect through a typed language-server host.
 
 Work:
 
-- configure Monaco's existing language workers with workspace-bounded models;
+- configure Monaco's existing language workers with workspace-bounded models.
 - create a language capability catalog with available/degraded/unavailable
-  states;
+  states.
 - add main-process language-server lifecycle, allowlisted executable/config,
-  bounded JSON-RPC, cancellation, crash/restart, and URI translation;
+  bounded JSON-RPC, cancellation, crash/restart, and URI translation.
 - project diagnostics, completion, hover, definition, references, document
-  symbols, rename, code actions, and formatting through typed schemas;
-- add Problems, Outline, breadcrumbs, and symbol quick-open projections;
+  symbols, rename, code actions, and formatting through typed schemas.
+- add Problems, Outline, breadcrumbs, and symbol quick-open projections.
 - keep language servers inside the selected execution profile/sandbox.
 
 Acceptance:
 
-- renderer never spawns or discovers a server;
-- absolute `file://` URIs remain main-side and map to document refs;
-- stale diagnostics are version-rejected;
+- renderer never spawns or discovers a server.
+- absolute `file://` URIs remain main-side and map to document refs.
+- stale diagnostics are version-rejected.
 - server crash, malicious payload, output flood, missing binary, revoked grant,
-  and worktree switch fail closed and visibly;
+  and worktree switch fail closed and visibly.
 - no feature is shown as available before its provider is ready.
 
 ### IDE-07 — Theme, accessibility, performance, and release gate
@@ -977,27 +977,27 @@ Outcome: the basic IDE is release quality rather than a successful demo.
 Work:
 
 - land and verify the one initial Tokyo Night projection across every basic IDE
-  surface; retain light/high-contrast/system-following as a named later parity
-  gap rather than a first-editor blocker;
+  surface. Retain light/high-contrast/system-following as a named later parity
+  gap rather than a first-editor blocker.
 - add keyboard matrices, VoiceOver scripts/manual evidence, high contrast,
-  reduced motion, zoom, and localization-ready labels;
+  reduced motion, zoom, and localization-ready labels.
 - add startup, index, open-file, input latency, memory, worker, and disposal
-  budgets;
-- run adversarial filesystem/document/Git/LSP corpora;
+  budgets.
+- run adversarial filesystem/document/Git/LSP corpora.
 - add packaged macOS proof plus Windows/Linux packaging fixtures when those
-  release targets are admitted;
+  release targets are admitted.
 - capture rollback procedure for each external dependency.
 
 Acceptance budgets to ratify in IDE-00:
 
-- chat startup has zero Monaco/Pierre network requests and no editor workers;
+- chat startup has zero Monaco/Pierre network requests and no editor workers.
 - cached 20k-path Editor open reaches interactive state within 750 ms p95 on
-  the release-reference Mac; uncached indexing reports progress and completes
-  within a separately recorded filesystem budget;
-- a 100 KB source file becomes editable within 250 ms p95 after a cached read;
-- editor input-to-paint remains below 50 ms p95 in the normal corpus;
+  the release-reference Mac. Uncached indexing reports progress and completes
+  within a separately recorded filesystem budget.
+- a 100 KB source file becomes editable within 250 ms p95 after a cached read.
+- editor input-to-paint remains below 50 ms p95 in the normal corpus.
 - no live index task, watcher, language server, model, editor, tree, diff, or
-  worker remains after its owner closes;
+  worker remains after its owner closes.
 - all caps and truncation states are visible and testable.
 
 ## First vertical slice
@@ -1024,54 +1024,54 @@ completion, but do not call those later gaps complete.
 
 ### Pure/unit
 
-- path-ref <-> Pierre path conversion, including directory suffixes;
-- chunk ordering, duplicate suppression, truncation, epoch reset;
-- edit application with multiple disjoint/reversed changes;
-- stale model version, oversize draft, unknown document, and resync;
-- document-ref/path retarget on file and folder rename;
-- tab preview/pin/group/reopen transitions;
-- command enablement and keybinding conflicts;
+- path-ref <-> Pierre path conversion, including directory suffixes.
+- chunk ordering, duplicate suppression, truncation, epoch reset.
+- edit application with multiple disjoint/reversed changes.
+- stale model version, oversize draft, unknown document, and resync.
+- document-ref/path retarget on file and folder rename.
+- tab preview/pin/group/reopen transitions.
+- command enablement and keybinding conflicts.
 - theme token conversion and unsafe input refusal.
 
 ### Main-process integration
 
-- 20k and 100k path indexes;
+- 20k and 100k path indexes.
 - ignored, secret-shaped, binary, unreadable, symlink, loop, deep, and wide
-  trees;
-- watcher add/change/remove/rename/overflow races during indexing;
-- create/rename/delete conflict and permission corpus;
-- concurrent external edit/save, delete, and grant revocation;
-- Git status/diff races and stale refusal;
+  trees.
+- watcher add/change/remove/rename/overflow races during indexing.
+- create/rename/delete conflict and permission corpus.
+- concurrent external edit/save, delete, and grant revocation.
+- Git status/diff races and stale refusal.
 - future LSP lifecycle and URI translation corpus.
 
 ### Renderer integration
 
-- Pierre selection opens exactly one canonical tab;
-- rapid tree clicks and tab switches reject late reads/events;
-- Monaco change -> canonical draft -> save -> revision advance;
-- undo/redo and programmatic selection do not echo-loop;
-- tree rename only moves after host success;
-- theme switch does not destroy models or scroll;
-- enter/exit keeps state and focus;
+- Pierre selection opens exactly one canonical tab.
+- rapid tree clicks and tab switches reject late reads/events.
+- Monaco change -> canonical draft -> save -> revision advance.
+- undo/redo and programmatic selection do not echo-loop.
+- tree rename only moves after host success.
+- theme switch does not destroy models or scroll.
+- enter/exit keeps state and focus.
 - worker/model/tree/diff cleanup is exactly once.
 
 ### Packaged Electron
 
-- offline assets and CSP;
-- open Editor, index fixture, edit, save, search, rename, review, restart;
-- force-kill with dirty tabs and recover;
-- VoiceOver traversal of rail, explorer, tabs, Monaco, Problems, status;
-- high contrast, 200% zoom, reduced motion, narrow window;
+- offline assets and CSP.
+- open Editor, index fixture, edit, save, search, rename, review, restart.
+- force-kill with dirty tabs and recover.
+- VoiceOver traversal of rail, explorer, tabs, Monaco, Problems, status.
+- high contrast, 200% zoom, reduced motion, narrow window.
 - no raw root/path, secret, credential, or document content in logs, receipts,
   telemetry, crash metadata, or public projections.
 
 ### Visual
 
-- empty/loading/indexing/truncated/error explorer;
-- no file, loading, normal, dirty, saving, conflict, deleted, revoked editor;
-- primary-rail Explorer and full Editor mode;
-- dark/light/high-contrast themes;
-- short/deep paths, many tabs, split groups, Problems/review open;
+- empty/loading/indexing/truncated/error explorer.
+- no file, loading, normal, dirty, saving, conflict, deleted, revoked editor.
+- primary-rail Explorer and full Editor mode.
+- dark/light/high-contrast themes.
+- short/deep paths, many tabs, split groups, Problems/review open.
 - Monaco/Pierre focus rings and selection states.
 
 ## Explicit non-goals for the basic release
@@ -1086,7 +1086,7 @@ completion, but do not call those later gaps complete.
 - Debug adapter protocol, notebooks, custom editors, remote SSH/container UI,
   task runner, testing UI, or full settings editor in the first release.
 - AI autocomplete, next-edit prediction, inline generation, or multi-file apply
-  in this basic editor packet; those remain required by the larger Cursor
+  in this basic editor packet. Those remain required by the larger Cursor
   parity contract and must attach through typed editor/model providers later.
 - Pixel-identical VS Code or Cursor chrome.
 - Claiming full VS Code or Cursor parity from this plan.
@@ -1098,15 +1098,15 @@ completion, but do not call those later gaps complete.
 | Pierre trees is beta | API or behavior may break | Exact pin, adapter, contract tests, upstream focused fixes, deliberate upgrade packet |
 | Shadow DOM | Theme/a11y/test boundaries differ | Public vars only, packaged VoiceOver/focus/high-contrast gate |
 | Flat path index | Huge repositories consume scan time/memory | Cancellable chunks, honest caps, prepared input benchmark, epoch reset |
-| Pierre optimistic rename | Host can reject/stale-conflict | Disable it; mutate projection only after typed success |
+| Pierre optimistic rename | Host can reject/stale-conflict | Disable it. Mutate projection only after typed success |
 | Monaco bundle/workers | Startup/package/CSP regressions | Lazy import, offline packaged proof, no chat-load chunks |
 | Full-value state churn | 1 MB draft per keystroke is expensive | Incremental typed edits, native model undo, debounced recovery persistence |
 | Duplicate state owners | Monaco and app can diverge | document/model versions, canonical draft, explicit resync and stale rejection |
 | Rename versus model URI | Monaco URI is immutable | stable opaque `documentRef`, separate current path binding |
-| Language-server path leaks | Servers speak absolute file URIs | main-side translation; renderer receives document refs only |
+| Language-server path leaks | Servers speak absolute file URIs | main-side translation. Renderer receives document refs only |
 | Multiple command systems | Shortcuts become inconsistent | existing typed Desktop command registry remains authority |
 | Theme divergence | Explorer/diff/editor look unrelated | one sanitized Effect Native editor-theme projection |
-| External package authority creep | Widget starts deciding writes/session state | adapter callbacks emit intents only; invariants and substitution tests |
+| External package authority creep | Widget starts deciding writes/session state | adapter callbacks emit intents only. Invariants and substitution tests |
 
 ## Definition of done for the basic IDE rung
 
@@ -1122,7 +1122,7 @@ The rung is complete only when all of the following are true:
   restart recovery, and worktree switching preserve the current OpenAgents
   authority and privacy rules.
 - Review uses `@pierre/diffs` or remains explicitly tracked as the next open
-  packet; hand-rendered review is not called parity.
+  packet. Hand-rendered review is not called parity.
 - No raw workspace root, unrestricted file URI, Node API, Git authority,
   process authority, or credential reaches Monaco or Pierre.
 - Chat-only startup remains editor-free, packaged assets work offline, and all

@@ -1,8 +1,8 @@
 # Closure discipline for the fleet sprint — a note to the working agent
 
 Date: 2026-07-09 (evening)
-Status: Fable operational analysis; addressed to the agent(s) currently
-burning the FC lanes. Sol's roadmap remains canonical; this note is about
+Status: Fable operational analysis. Addressed to the agent(s) currently
+burning the FC lanes. Sol's roadmap remains canonical. This note is about
 converting the last two hours of real work into issue dispositions.
 
 ## The observed pattern
@@ -49,7 +49,7 @@ Apply this now, starting with the single issue closest to done:
    your work queue. Nothing else is.
 2. **Work only the gaps, in rung order.** No new seams on other lanes
    until this issue is closed or explicitly blocked. Deployed is a rung:
-   if the code is landed but the monolith/Pylon hasn't shipped it, deploy
+   if the code is landed but the monolith/Pylon has not shipped it, deploy
    and verify before claiming further progress.
 3. **Split honestly instead of holding open.** If one criterion is
    owner-gated or needs the FC-5 canary, re-scope: land a comment that
@@ -62,25 +62,25 @@ Apply this now, starting with the single issue closest to done:
    itself.
 5. **Close on the merged state, same session.** When exits are met:
    comment with the landed SHA, tests run, receipts, residue — then
-   close. Do not leave closure for "the end"; the end of an agent session
+   close. Do not leave closure for "the end". The end of an agent session
    is the least reliable moment in this whole system.
 6. **WIP cap.** At most two FC lanes with uncommented progress at any
-   time. The claim protocol (Sol §11.4) exists; use CLAIM comments so the
+   time. The claim protocol (Sol §11.4) exists. Use CLAIM comments so the
    parallel tabs stop orbiting the same seams.
 
 ## Suggested concrete order from tonight's state
 
 1. **FC-1 #8637** — ladder comment, close the gaps (the fleet tool,
-   durable run contract, and run intake all appear landed; likely
+   durable run contract, and run intake all appear landed. Likely
    remaining: deployed + fixture receipts on the issue).
 2. **FC-2 #8633** — the supervisor/executor/custody commits look
-   substantially complete; same treatment. Its live rung may legitimately
+   substantially complete. Same treatment. Its live rung may legitimately
    wait on the canary — split if so.
 3. **FC-3 #8639 minimal seam** — supervision projection + typed
-   media/conversation states; close on the fixture+deployed rungs with
+   media/conversation states. Close on the fixture+deployed rungs with
    the live rung explicitly assigned to FC-5.
 4. **FC-5 #8640 Phase A** — the canary IS the live-proof engine for all
-   of the above; schedule it as the next session's single goal rather
+   of the above. Schedule it as the next session's single goal rather
    than a background hope.
 
 ## The measure that matters tonight

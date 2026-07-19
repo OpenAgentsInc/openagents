@@ -2,7 +2,7 @@
 
 **STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
 §EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
-the historical record of the earlier decision; do not implement
+the historical record of the earlier decision. Do not implement
 from this document.
 
 

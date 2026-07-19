@@ -1,7 +1,7 @@
 # Open Issue Blockers
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-11
@@ -181,7 +181,7 @@ Blockers:
 Next unblock:
 
 - Use a public-tier product order with owned capacity dark/limited, customer
-  opt-in, and a quote within cap; then attach the market assignment,
+  opt-in, and a quote within cap. Then attach the market assignment,
   validation, artifact, release, and settlement refs.
 
 ### #4786 Autopilot MVP parent epic
@@ -222,7 +222,7 @@ proof gates above.
 | Issue               | Closed scope                                     | Deferred blocker carried forward                                                          |
 | ------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
 | #4767 M9            | Live rate-limit rotation proof                   | Does not satisfy #4768, #4772, market proof, settlement, or parent MVP readiness.         |
-| #4766 M8            | Provider account pool dashboard                  | Provider live legs now live in closed #4767/#4771 records; #4768/#4772 remain separate.   |
+| #4766 M8            | Provider account pool dashboard                  | Provider live legs now live in closed #4767/#4771 records. #4768/#4772 Remain separate.   |
 | #4771 M13           | Gemini provider-peer live run                    | Does not satisfy #4768, #4772, market proof, settlement, or parent MVP readiness.         |
 | #4769 M11           | Repo connect, data scope, placement explanations | Broader #4772/#4786 proof remains Gate-owned.                                             |
 | #4770 M12           | Team budgets and spend-to-evidence joins         | Live funded payment/settlement evidence remains operator/Gate-owned where claims cite it. |
@@ -239,7 +239,7 @@ proof gates above.
 | #4815 PA2           | Schedule and continuation receipts               | Feeds #4768 proof receipts.                                                               |
 | #4816 PA3           | Notification and attention coordinator           | Feeds #4768 proof receipts.                                                               |
 | #4817 PA4           | Companion projection                             | Feeds #4768 dual-surface proof.                                                           |
-| #4818 PA5           | Smoke receipt authority                          | Evidence-only scaffold; live receipts still required.                                     |
+| #4818 PA5           | Smoke receipt authority                          | Evidence-only scaffold. Live receipts still required.                                     |
 | #4819 PA6           | Artifact and receipt ledger                      | Feeds #4768/#4772 proof trail.                                                            |
 | #4820 PA7           | Structured event replay                          | Feeds #4768/#4772 proof trail.                                                            |
 | #4821 PA8           | Usage budget and cost-stop projections           | Feeds M9/M10/M14 budget and smart-routing claims.                                         |

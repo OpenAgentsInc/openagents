@@ -24,7 +24,7 @@ OpenCode server. The core product shape is a three-part workspace:
 The most important OpenChamber lesson for OpenAgents product surface is that the chat transcript is
 the coordination surface, not the whole application. Chat messages, tool calls,
 file changes, reviews, approvals, and runtime state are projected into one
-workroom. The side panels are not secondary pages; they are live projections of
+workroom. The side panels are not secondary pages. They are live projections of
 the same agent session.
 
 OpenAgents product surface should not port OpenChamber's React, Zustand, Electron, or direct local
@@ -70,15 +70,15 @@ Implemented work:
   session-list expectation without fabricating local threads. Thread clicks now
   hydrate `/api/omni/agent-runs/:missionId`, reconstruct the saved user turn
   from the persisted run goal, and render the saved SHC/OpenCode event
-  timeline. New thread IDs are UUIDs; older `agent_run_<32 hex>` rows are
+  timeline. New thread IDs are UUIDs. Older `agent_run_<32 hex>` rows are
   exposed through UUID route aliases.
 - Route ownership: `apps/web/src/page/loggedIn/view.ts` now owns the shared
   logged-in shell for Chat, Dashboard, Settings, and NotFound.
 - Chat ownership: `apps/web/src/page/loggedIn/page/chat.ts` no longer renders a
-  separate left rail; it owns the center timeline/composer, right review/context
+  separate left rail. It owns the center timeline/composer, right review/context
   panel.
 - Team-room routing: Team Rooms now deep link through clean app routes such as
-  `/teams/openagents-core-team/chat` instead of sharing `/chat`; the production
+  `/teams/openagents-core-team/chat` instead of sharing `/chat`. The production
   chat surface no longer renders the GitHub writeback smoke fixture as default
   state.
 - Production shell: `workers/api/src/index.ts` now serves the Vite app shell
@@ -98,13 +98,13 @@ Implemented work:
   - `workers/api/src/omni-runs.ts` no longer returns fake dispatch results when
     live SHC dispatch is not configured.
   - The shared `RunnerBackend` schema and current Worker request parser no
-    longer accept `local_fake`; old migration text remains historical schema
+    longer accept `local_fake`. Old migration text remains historical schema
     state only.
 - SHC/OpenCode projection follow-up:
   - `apps/web/src/page/loggedIn/page/chat.ts` now projects the noisy raw runner
     stream into OpenCode-style message parts: lifecycle, thinking, shell/tool
     execution, file/artifact changes, and final assistant text. Raw run and
-    event payloads are no longer dumped into the transcript; they are available
+    event payloads are no longer dumped into the transcript. They are available
     through the right-panel run diagnostics `i` dialog.
   - Chat submit now preserves the browser UX contract of Enter to submit and
     Shift+Enter for a newline.
@@ -168,7 +168,7 @@ Implemented work:
     personal/team-scoped thread uploads, with R2 object storage under the
     existing `ARTIFACTS` binding.
   - `/api/thread-files` supports listing and multipart uploads. Personal chat
-    uploads are scoped to the current user; team chat uploads require active
+    uploads are scoped to the current user. Team chat uploads require active
     team membership and are readable by the team.
   - `/api/teams/:teamId/files` lists team-scoped files, and
     `/teams/:teamRef/files` exposes a logged-in Team Files page.
@@ -177,7 +177,7 @@ Implemented work:
     can show where team members or Autopilot referenced it.
   - `/api/thread-files/:fileId` now returns an authorized file detail payload
     with download state, manage capability, and message references. Team file
-    detail pages live at `/teams/:teamRef/files/:fileId`; personal file detail
+    detail pages live at `/teams/:teamRef/files/:fileId`. Personal file detail
     pages live at `/files/:fileId`.
   - File tables now link to the first-party file detail route instead of raw
     downloads. Raw download remains a page action and is disabled when the file
@@ -227,15 +227,15 @@ This confirms one of the report's core recommendations: the left rail should be
 a single product/workroom navigation surface, while the right review/files panel
 remains a separate live context pane. It also confirms the runtime authority
 recommendation: the browser does not fake an assistant stream and does not talk
-to OpenCode directly; it asks the OpenAgents Worker to launch SHC work and
+to OpenCode directly. It asks the OpenAgents Worker to launch SHC work and
 renders the Worker-ingested run/event projection.
 
 The remaining work from this report is now narrower:
 
-- replace simple sidebar room rows with typed workroom/session data;
-- expand timeline parts beyond string text/tool/diff/file records;
+- replace simple sidebar room rows with typed workroom/session data.
+- expand timeline parts beyond string text/tool/diff/file records.
 - continue replacing compatibility detail fetch fallbacks with fully
-  authoritative sync snapshots as every scope has durable projection coverage;
+  authoritative sync snapshots as every scope has durable projection coverage.
 - keep timeline and right-panel state projected from the same normalized event
   stream as live data arrives.
 
@@ -611,7 +611,7 @@ documentation describes the split:
 - Feature caches for Git, PRs, project state, and terminal state.
 
 The important rule from OpenChamber's sync documentation is that event reducers
-should only clone the fields touched by an event. Streaming deltas are frequent;
+should only clone the fields touched by an event. Streaming deltas are frequent.
 spreading whole session records during every delta creates avoidable churn.
 
 OpenChamber handles these event families:
@@ -1068,7 +1068,7 @@ RuntimeSyncEvent
 ```
 
 These names should be made OpenAgents product surface-native during implementation. The important
-constraint is not the exact naming; it is that runtime facts are explicit and
+constraint is not the exact naming. It is that runtime facts are explicit and
 typed.
 
 ### Foldkit/Effect Translation

@@ -62,7 +62,7 @@ curl --retry 5 --retry-delay 2 --retry-all-errors -fsS https://openagents-monoli
 - Scheduled work is owned by Cloud Scheduler and the Cloud Run API, not this
   document application.
 - Used a static hero fold: the production Three.js scene is deferred by the
-  issue; the fold preserves the dark Khala/StarCraft token palette without
+  issue. The fold preserves the dark Khala/StarCraft token palette without
   adding a second renderer.
 
 ## Site Speed Budget
@@ -87,7 +87,7 @@ or infrastructure authority.
 - TS-2 version ID: `01014344-715c-46f2-a71d-6b6ff5db7587`
 - TS-2 startup time recorded by the retired host: 34 ms
 - Landing SSR smoke:
-  completed against the former staging origin; that origin is retired.
+  completed against the former staging origin. That origin is retired.
 - TS-2 staged routes smoked with SSR markers:
   `/business`, `/docs`, `/docs/api`, `/blog`,
   `/blog/introducing-khala-code`, `/code/download`, `/autopilot`,

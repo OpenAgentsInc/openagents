@@ -4,7 +4,7 @@ Status: CND-044 local skeleton
 
 This runner is the local contract proof for Benchmark Cloud. It executes one
 normalized benchmark task, writes required artifacts, and exits after producing
-a normalized result. It is intentionally dataset-neutral; Terminal-Bench,
+a normalized result. It is intentionally dataset-neutral. Terminal-Bench,
 SWE-bench, SWT-Bench, and custom repo tasks should enter through adapters that
 produce the same `BenchmarkTask` envelope.
 
@@ -145,7 +145,7 @@ gcloud builds submit \
   normalized `failed`, `timeout`, or `error` result after writing artifacts.
 - `cloud_execution_closeout.json` is execution evidence only. It must keep
   `walletAuthority=false`, `payoutAuthority=false`, and
-  `publicClaimAuthority=false`; Omega/Vortex remains responsible for public
+  `publicClaimAuthority=false`. Omega/Vortex remains responsible for public
   projection and settlement gates.
 - Dataset adapters must not dump raw environment variables, provider tokens,
   customer data, or broad cloud credentials into artifacts.

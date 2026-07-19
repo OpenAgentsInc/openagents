@@ -1,7 +1,7 @@
 # MMO-style multiple characters per account — Verse presence layer
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -102,7 +102,7 @@ avatars.
 ### 2. Historical generated TS bindings
 
 This document predates the Cloudflare/Effect world cutover. The generated web
-binding directory described here was deleted during the hard decommission pass;
+binding directory described here was deleted during the hard decommission pass.
 the live contract now flows through `packages/world-contract` and
 `packages/world-client`.
 
@@ -116,7 +116,7 @@ the live contract now flows through `packages/world-contract` and
   live SpacetimeDB identity (hex) up through `onConnected`. Once known, the
   client computes `localAvatarRef = "avatar.identity." + identity + ".char." +
   characterId` and re-paints so the scene picks it up.
-- Self-filter fix: the projection carries `localAvatarRef`; `view.ts` feeds
+- Self-filter fix: the projection carries `localAvatarRef`. `view.ts` feeds
   `multiplayer.localAvatarRef` (falling back to the legacy constant only pre-
   connect, when there are no remote rows yet) into the scene layer. Each
   instance now hides **only its own character** and renders all others —
@@ -140,7 +140,7 @@ self-filter key matches the `avatar_ref` the module actually writes.
 ## Scene stability
 
 This change is additive to the presence projection and reducer args. Avatar/
-pose/stream updates still flow through the same dispatch path; nothing here
+pose/stream updates still flow through the same dispatch path. Nothing here
 remounts the Three scene or resets pose. The self-filter switch from the
 pre-connect fallback to the real per-character key happens via a normal snapshot
 re-dispatch, not a scene rebuild.
@@ -151,15 +151,15 @@ Deterministic checks (no manual screenshots):
 
 - **World module** (`cargo test` in the deleted legacy world module):
   distinct `character_id`s under one sender → distinct avatar keys (→ distinct
-  rows); same id is stable (so `leave_region(character_id)` targets exactly one
-  character); same id on different identities never collides; sanitization is
+  rows). Same id is stable (so `leave_region(character_id)` targets exactly one
+  character). Same id on different identities never collides. Sanitization is
   bounded and safe.
 - **Desktop**
   (`apps/autopilot-desktop/src/shared/chat-world-multiplayer.test.ts`,
   `tests/chat-world-subscriptions.test.ts`,
   `tests/chat-world-cloudflare.test.ts`): avatar-key construction +
-  sanitization; the projection carries `localAvatarRef`; reducer calls carry
-  `characterId`; and an integration-style test that, once the identity is known,
+  sanitization. The projection carries `localAvatarRef`. Reducer calls carry
+  `characterId`. And an integration-style test that, once the identity is known,
   the scene self-filters **only** the local character while rendering the same
   account's other character and unrelated remotes.
 - **Gate**: `bun run check:deploy` (includes the desktop typecheck + Verse test

@@ -7,7 +7,7 @@
 > every contract below is preserved verbatim with state `retired` and a
 > retirement note (owner statements are never silently deleted). The
 > registries and oracle files formerly under `apps/sarah/src/contracts/`
-> were deleted with the package; this document is retained as the human
+> were deleted with the package. This document is retained as the human
 > rendering of the historical record.
 
 Machine source of truth: `packages/behavior-contracts/src/sarah-retired.ts`
@@ -38,7 +38,7 @@ provenance (`sarah.blueprint_versioned_provenance.v1`).
   `prospect_ref` filter — or its deterministic same-identity aliases — on
   every prospect-scoped read), never by prompt-side instruction.
 - `sarah.no_improvised_pricing.v1` predates this lane (owner, Sarah spec,
-  2026-07-07; `apps/sarah/INVARIANTS.md`) and is registered here so the
+  2026-07-07. `apps/sarah/INVARIANTS.md`) and is registered here so the
   already-existing deterministic pricing guard is bound to the same registry
   discipline.
 - `sarah.blueprint_versioned_provenance.v1` records the owner's directive
@@ -50,7 +50,7 @@ provenance (`sarah.blueprint_versioned_provenance.v1`).
   verbatim ("the split layout — your video full-height left ~50%, tabbed
   canvas right (map / chat / actions), with the audit's cut list applied (the
   caption row, controls row, and the 480px centered grid that made the page
-  mostly padding — the disclosure banner stays, it's a contract)." — owner,
+  mostly padding — the disclosure banner stays, it is a contract)." — owner,
   Codex thread, 2026-07-09): the `/sarah` shell is a full-height split with
   the Effect Native tabbed canvas on the right.
 - `sarah.fleet_command_multi_harness.v1` records the owner's 2026-07-09
@@ -63,17 +63,17 @@ provenance (`sarah.blueprint_versioned_provenance.v1`).
 
 `apps/sarah/src/services/collective-learning.ts` owns the pipeline:
 deterministic distillation over recent transcripts nominates recurring
-questions, objections, and winning answers; every example is PII-redacted
-(redact-or-drop) before it can enter a `sarah_learning_candidates` row; the
+questions, objections, and winning answers. Every example is PII-redacted
+(redact-or-drop) before it can enter a `sarah_learning_candidates` row. The
 owner decides on the admin-bearer-guarded `/sarah/api/operator/learning`
 endpoints (`SARAH_OPERATOR_ADMIN_TOKEN`, falling back to
-`OPENAGENTS_ADMIN_API_TOKEN`; unarmed → 503, wrong bearer → 401); each
-decision writes a `sarah_learning_receipts` row; and question/answer
+`OPENAGENTS_ADMIN_API_TOKEN`. Unarmed → 503, wrong bearer → 401). Each
+decision writes a `sarah_learning_receipts` row. And question/answer
 approvals publish `sarah_answer_bank` entries whose `approved_by` is the
 receipt ref (`learning_receipt:<id>`), so a live answer dereferences back to
 its approval receipt and redacted source turns. The shared read paths
 (`listApprovedLearnings` and the KHS-6 answer bank) serve only approved
-entries. This is an internal owner-approved store; it makes no public
+entries. This is an internal owner-approved store. It makes no public
 "learning from conversations" claim while the
 `data.khala_free_tier_trace_capture.v1` promise family stays yellow.
 
@@ -132,9 +132,9 @@ Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 - **Enforcement tier:** test-sweep
 - **Oracle** `cross_prospect_query_scoping.unit` (bun-test, unit): Query-layer scoping: seeds transcript turns, CRM projections, and tool receipts for two different prospect refs (sharing a session id to prove prospect_ref is the filter, not session id), then reads each prospect back through every prospect-scoped read helper in session-index and asserts zero rows, markers, or CRM fields from the other prospect appear. — `apps/sarah/src/contracts/isolation-contracts.test.ts`
 - **Oracle** `cross_prospect_injection_probe.rpc` (bun-test, rpc): Injection probe on the avatar brain endpoint: seeds a distinctive secret into prospect B's persisted turns, then POSTs /sarah/api/llm/chat/completions (bearer-armed, model deliberately unarmed so only the deterministic layers answer) with a conversation_ref for prospect A and a user message asking what the last customer said. Asserts the reply and prospect A's recorded transcript contain nothing from prospect B. — `apps/sarah/src/contracts/isolation-contracts.test.ts`
-- **Oracle** `prospect_memory_isolation.unit` (bun-test, unit): KHS-2 memory seam (#8601, merged): getProspectMemoryContext takes exactly one prospectRef; prospectRefAliases only re-encodes that same identity (visitor: refs never alias); an empty ref yields no aliases so no unscoped query is possible; and without a durable store memory fails soft to null instead of falling back to any cross-prospect source. Asserted both in the KHS-2 seam suite and in the isolation contract suite. — `apps/sarah/src/services/prospect-memory.test.ts`
-- **Oracle** `customer_blueprint_prospect_scoping.unit` (bun-test, unit): KHS-9 customer-blueprint seam (#8608): buildCustomerBlueprintDraft takes exactly one prospectRef and every store read is bound to prospectRefAliases(prospectRef) (the exact identity's re-encodings, asserted via the injected reader seam); drafts composed for two prospects sharing seeded data never carry the other prospect's facts, needs, turn ids, or contact; an empty ref refuses instead of reading unscoped. — `apps/sarah/src/services/customer-blueprint.test.ts`
-- **Verification:** bun test src/contracts/isolation-contracts.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Oracle** `prospect_memory_isolation.unit` (bun-test, unit): KHS-2 memory seam (#8601, merged): getProspectMemoryContext takes exactly one prospectRef. ProspectRefAliases only re-encodes that same identity (visitor: refs never alias). An empty ref yields no aliases so no unscoped query is possible. And without a durable store memory fails soft to null instead of falling back to any cross-prospect source. Asserted both in the KHS-2 seam suite and in the isolation contract suite. — `apps/sarah/src/services/prospect-memory.test.ts`
+- **Oracle** `customer_blueprint_prospect_scoping.unit` (bun-test, unit): KHS-9 customer-blueprint seam (#8608): buildCustomerBlueprintDraft takes exactly one prospectRef and every store read is bound to prospectRefAliases(prospectRef) (the exact identity's re-encodings, asserted via the injected reader seam). Drafts composed for two prospects sharing seeded data never carry the other prospect's facts, needs, turn ids, or contact. An empty ref refuses instead of reading unscoped. — `apps/sarah/src/services/customer-blueprint.test.ts`
+- **Verification:** bun test src/contracts/isolation-contracts.test.ts inside apps/sarah. Runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
 - **Authority boundary:** This contract binds Sarah's own read/serve paths (session index, turn store, avatar brain, and the KHS-2 prospect-memory seam from #8601). It does not claim collective learning exists, does not arm any capture sink, and grants no authority over the openagents.com CRM boundary, which remains the system of record. Any NEW prospect-scoped read path added to apps/sarah must gain a bun-test oracle under this contract in the same change.
 
 ### `sarah.collective_learning_owner_gated.v1` — ENFORCED
@@ -143,11 +143,11 @@ Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 - **Stated by:** owner via sarah-production-conversation on 2026-07-09
 - **Statement:** admin approval for determining what she's able to learn generally from everyone else
 - **Enforcement tier:** test-sweep
-- **Oracle** `approved_store_only.unit` (bun-test, unit): Shared-knowledge reads come ONLY from the owner-approved store: seeds pending candidates via distillation, approves one with a receipt, and asserts listApprovedLearnings returns exclusively the approved entry (receipt attached) while pending/rejected candidates stay unreachable; the published answer-bank entry's approved_by is the approval receipt ref, so a live answer dereferences back to its receipt and redacted source turns. — `apps/sarah/src/services/collective-learning.test.ts`
-- **Oracle** `learning_admin_guard.rpc` (bun-test, rpc): Admin guard is mandatory and fails closed on the HTTP surface: with no admin token configured, GET /sarah/api/operator/learning and the distill/approve/reject POSTs return 503 (an approve without the guard is impossible); with the token armed, a missing or wrong bearer is 401 and no decision or receipt is ever written; only the exact bearer can list, distill, approve, and reject. — `apps/sarah/src/services/collective-learning.test.ts`
-- **Oracle** `learning_pii_redaction.unit` (bun-test, unit): PII never enters candidates: seeded examples with emails, phone numbers, long digit runs, and URLs come out scrubbed; name introductions and ambiguous residue drop the example entirely (when in doubt, drop); distilled candidates are asserted free of the seeded contact data across summary, canonical question, proposed answer, and examples. — `apps/sarah/src/services/collective-learning.test.ts`
-- **Verification:** bun test src/services/collective-learning.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
-- **Authority boundary:** This contract binds the KHS-4 pipeline (#8603): candidates distilled from cross-prospect transcripts are PII-redacted (redact-or-drop), stored pending, and cross into shared knowledge ONLY via an owner decision on the admin-bearer-guarded operator endpoints, each writing an approval receipt; answer-bank publications carry the receipt ref as approved_by. It authorizes no capture path and makes no public 'learning from conversations' claim while the data.khala_free_tier_trace_capture.v1 promise family is yellow — this is an internal owner-approved store, framed as such. Nothing crosses prospects without an owner-approval receipt.
+- **Oracle** `approved_store_only.unit` (bun-test, unit): Shared-knowledge reads come ONLY from the owner-approved store: seeds pending candidates via distillation, approves one with a receipt, and asserts listApprovedLearnings returns exclusively the approved entry (receipt attached) while pending/rejected candidates stay unreachable. The published answer-bank entry's approved_by is the approval receipt ref, so a live answer dereferences back to its receipt and redacted source turns. — `apps/sarah/src/services/collective-learning.test.ts`
+- **Oracle** `learning_admin_guard.rpc` (bun-test, rpc): Admin guard is mandatory and fails closed on the HTTP surface: with no admin token configured, GET /sarah/api/operator/learning and the distill/approve/reject POSTs return 503 (an approve without the guard is impossible). With the token armed, a missing or wrong bearer is 401 and no decision or receipt is ever written. Only the exact bearer can list, distill, approve, and reject. — `apps/sarah/src/services/collective-learning.test.ts`
+- **Oracle** `learning_pii_redaction.unit` (bun-test, unit): PII never enters candidates: seeded examples with emails, phone numbers, long digit runs, and URLs come out scrubbed. Name introductions and ambiguous residue drop the example entirely (when in doubt, drop). Distilled candidates are asserted free of the seeded contact data across summary, canonical question, proposed answer, and examples. — `apps/sarah/src/services/collective-learning.test.ts`
+- **Verification:** bun test src/services/collective-learning.test.ts inside apps/sarah. Runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Authority boundary:** This contract binds the KHS-4 pipeline (#8603): candidates distilled from cross-prospect transcripts are PII-redacted (redact-or-drop), stored pending, and cross into shared knowledge ONLY via an owner decision on the admin-bearer-guarded operator endpoints, each writing an approval receipt. Answer-bank publications carry the receipt ref as approved_by. It authorizes no capture path and makes no public 'learning from conversations' claim while the data.khala_free_tier_trace_capture.v1 promise family is yellow — this is an internal owner-approved store, framed as such. Nothing crosses prospects without an owner-approval receipt.
 
 ### `sarah.memory_query_scoped.v1` — ENFORCED
 
@@ -155,20 +155,20 @@ Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 - **Stated by:** owner via sarah-production-conversation on 2026-07-09
 - **Statement:** All prospect-scoped reads are filtered by exact prospect_ref at the query layer, not prompt-side.
 - **Enforcement tier:** test-sweep
-- **Oracle** `memory_query_scoping.unit` (bun-test, unit): Every prospect-scoped read helper that exists today (getSarahSessionTranscript, getSarahProspectToolReceipts, getSarahProspectCrmProjection, findSarahProspectByContactEmail) takes an exact prospect ref (or resolves to exactly one) and returns only that prospect's rows; an unknown ref returns empty, never a fallback to another prospect's data. — `apps/sarah/src/contracts/isolation-contracts.test.ts`
+- **Oracle** `memory_query_scoping.unit` (bun-test, unit): Every prospect-scoped read helper that exists today (getSarahSessionTranscript, getSarahProspectToolReceipts, getSarahProspectCrmProjection, findSarahProspectByContactEmail) takes an exact prospect ref (or resolves to exactly one) and returns only that prospect's rows. An unknown ref returns empty, never a fallback to another prospect's data. — `apps/sarah/src/contracts/isolation-contracts.test.ts`
 - **Oracle** `prospect_memory_query_scoping.unit` (bun-test, unit): KHS-2 memory seam (#8601, merged): every SQL read in prospect-memory.ts is bound to prospectRefAliases(prospectRef) (WHERE prospect_ref IN — exact identity re-encodings only, never a pattern or cross-prospect list), and the alias derivation plus the no-store null path are unit-oracled so a prompt-side 'filter' can never substitute for the query-layer one. — `apps/sarah/src/services/prospect-memory.test.ts`
-- **Verification:** bun test src/contracts/isolation-contracts.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
-- **Authority boundary:** This contract binds the read discipline (exact prospect_ref filter at the query layer), not the storage engine. It does not forbid owner/operator surfaces that intentionally list all prospects (e.g. session receipts for the operator dashboard); those are owner-facing, never prospect-facing, and must never feed a prospect-facing serve path. The KHS-2 prospect-memory reads (#8601) are bound by the seam oracle below.
+- **Verification:** bun test src/contracts/isolation-contracts.test.ts inside apps/sarah. Runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Authority boundary:** This contract binds the read discipline (exact prospect_ref filter at the query layer), not the storage engine. It does not forbid owner/operator surfaces that intentionally list all prospects (e.g. session receipts for the operator dashboard). Those are owner-facing, never prospect-facing, and must never feed a prospect-facing serve path. The KHS-2 prospect-memory reads (#8601) are bound by the seam oracle below.
 
 ### `sarah.no_improvised_pricing.v1` — ENFORCED
 
 - **Surface:** sarah (pricing + deal rules)
 - **Stated by:** owner via sarah-spec on 2026-07-07
-- **Statement:** No improvised discounts; deal-rules code + public packs only; owner-priced params from runtime config.
+- **Statement:** No improvised discounts. Deal-rules code + public packs only. Owner-priced params from runtime config.
 - **Enforcement tier:** test-sweep
 - **Oracle** `pricing_guard_text_lane.unit` (bun-test, unit): Text lane: POST /sarah/api/eve/turn with pricing pressure returns modelPath deterministic_guard with the no-improvised-discounts reply — the model path is never reached. — `apps/sarah/src/server.test.ts`
 - **Oracle** `pricing_guard_avatar_brain.rpc` (bun-test, rpc): Avatar brain: POST /sarah/api/llm/chat/completions with pricing pressure answers from the deterministic guard before the model, holding the same law on the voice lane. — `apps/sarah/src/server.test.ts`
-- **Verification:** bun test src/server.test.ts inside apps/sarah (pricing-guard tests on both the text lane and the avatar brain); runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Verification:** bun test src/server.test.ts inside apps/sarah (pricing-guard tests on both the text lane and the avatar brain). Runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
 - **Authority boundary:** Deal-rule evaluation and human handoff remain the only pricing-adjacent actions, and the openagents.com API remains the authority for checkout and credits. Retrieval, memory, or any future Khala lookup can inform language, never prices — this guard binds regardless of what memory returns.
 
 ### `sarah.in_chat_account_linking.v1` — ENFORCED
@@ -177,10 +177,10 @@ Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 - **Stated by:** owner via sarah-production-conversation on 2026-07-09
 - **Statement:** Sarah prompts the user to create an account without leaving the conversation
 - **Enforcement tier:** test-sweep
-- **Oracle** `account_link_routes.rpc` (bun-test, rpc): Link routes: GET /sarah/api/account/status reports anonymous without a prospect cookie; POST /sarah/api/account/link returns 400 without a prospect cookie, 401 for an unauthenticated request, and on a verified openagents.com session upserts contact_id oa_user:<userId> + contact_email onto the prospect ref. — `apps/sarah/src/server.test.ts`
+- **Oracle** `account_link_routes.rpc` (bun-test, rpc): Link routes: GET /sarah/api/account/status reports anonymous without a prospect cookie. POST /sarah/api/account/link returns 400 without a prospect cookie, 401 for an unauthenticated request, and on a verified openagents.com session upserts contact_id oa_user:<userId> + contact_email onto the prospect ref. — `apps/sarah/src/server.test.ts`
 - **Oracle** `account_link_seam.unit` (bun-test, unit): Link seam units: the pure contact-row shape (oa_user: prefix, account_link mode), the single account-awareness prompt line (may suggest once, never pushy, null when the store cannot persist a link so Sarah never pitches a link that would not stick), test-mode session parsing, and the no-oa_access-cookie anonymous fast path. — `apps/sarah/src/services/account-link.test.ts`
-- **Verification:** bun test src/server.test.ts and src/services/account-link.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
-- **Authority boundary:** This contract binds the account-linking seam only (KHS-7, #8606): the openagents.com API remains the identity and credit authority; sign-in happens on the existing /login + OpenAuth rails (apps/sarah never touches password/OAuth internals and never mints sessions); identity for a link comes ONLY from the first-party session cookie verified against GET /api/auth/session, never from a request body; and the linked identity (user ref + email) lands only in sarah_prospect_contacts. The payment half of the owner's directive (attaching a card, paying in-chat) is KHS-8 (epic #8599) and must gain its own contract when it lands.
+- **Verification:** bun test src/server.test.ts and src/services/account-link.test.ts inside apps/sarah. Runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Authority boundary:** This contract binds the account-linking seam only (KHS-7, #8606): the openagents.com API remains the identity and credit authority. Sign-in happens on the existing /login + OpenAuth rails (apps/sarah never touches password/OAuth internals and never mints sessions). Identity for a link comes ONLY from the first-party session cookie verified against GET /api/auth/session, never from a request body. And the linked identity (user ref + email) lands only in sarah_prospect_contacts. The payment half of the owner's directive (attaching a card, paying in-chat) is KHS-8 (epic #8599) and must gain its own contract when it lands.
 
 ### `sarah.blueprint_versioned_provenance.v1` — ENFORCED
 
@@ -188,12 +188,12 @@ Registry version: `2026-07-09.5` (schema `openagents.behavior_contracts.v1`)
 - **Stated by:** owner via sarah-production-conversation on 2026-07-09
 - **Statement:** I want her to have that Blueprint of her own
 - **Enforcement tier:** test-sweep
-- **Oracle** `blueprint_compile_roundtrip.unit` (bun-test, unit): Seed → compile roundtrip stability: the checked-in seed loads as revision 1 with typed facts in every section; the committed KB doc is byte-identical to the compiled blueprint output (generated, not hand-edited); parse→render→parse is a fixpoint; and the compiled system prompt preserves Section A ordering (identity → engine → hard rules → knowledge). — `apps/sarah/src/services/sarah-blueprint.test.ts`
-- **Oracle** `blueprint_revision_immutability.unit` (bun-test, unit): Revision immutability: adding and retiring facts each create a new receipted revision (changed_by + change_note); the retired fact row remains with revision_retired stamped — never deleted — while leaving the compiled surfaces; retiring twice is a conflict; every fact references the revision that added it. — `apps/sarah/src/services/sarah-blueprint.test.ts`
-- **Oracle** `blueprint_provenance_required.unit` (bun-test, unit): Provenance required on every fact: all seed facts carry owner_kb_v2 with ref + timestamp; adds with an empty or unknown source (or no change note, or an invalid section) are rejected; typed pricing facts carry dealRuleRefs into the deal-rule config and product facts carry promiseIds into the public registry; an approved winning_answer learning promotes to a playbook fact whose provenance source is the KHS-4 approval receipt ref (learning_receipt:<id>), and pending candidates cannot be promoted. — `apps/sarah/src/services/sarah-blueprint.test.ts`
-- **Oracle** `blueprint_admin_guard.rpc` (bun-test, rpc): Safe rollout + fail-closed guard: with SARAH_BLUEPRINT unset the file-based instructions path is unchanged (no compiled sections leak in); armed, the compiled blueprint leads while the tool protocol stays; the operator endpoints are admin-bearer-guarded (unarmed → 503, missing/wrong bearer → 401 with nothing written) and a full receipted revision cycle (add → retire → read back) works only with the exact bearer. — `apps/sarah/src/services/sarah-blueprint.test.ts`
-- **Verification:** bun test src/services/sarah-blueprint.test.ts inside apps/sarah; runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
-- **Authority boundary:** This contract binds Sarah's knowledge object (KHS-5, #8604): her persona/playbook/knowledge live in a typed Blueprint — facts with per-fact provenance ({source, ref, at}; owner_kb_v2 | owner_directive | promise_registry | deal_rules | learning_receipt:<id>), versioned revisions (retire is a new revision, never a delete), and admin-guarded operator writes with a change note. The KB doc is GENERATED from the blueprint (render-kb-from-blueprint.ts), not hand-edited. Consumption is flag-armed (SARAH_BLUEPRINT=1); flag-off keeps the file-based path unchanged. It grants no authority: deal-rules code remains the only pricing authority and the openagents.com API the system of record — blueprint facts inform language, never prices.
+- **Oracle** `blueprint_compile_roundtrip.unit` (bun-test, unit): Seed → compile roundtrip stability: the checked-in seed loads as revision 1 with typed facts in every section. The committed KB doc is byte-identical to the compiled blueprint output (generated, not hand-edited). Parse→render→parse is a fixpoint. And the compiled system prompt preserves Section A ordering (identity → engine → hard rules → knowledge). — `apps/sarah/src/services/sarah-blueprint.test.ts`
+- **Oracle** `blueprint_revision_immutability.unit` (bun-test, unit): Revision immutability: adding and retiring facts each create a new receipted revision (changed_by + change_note). The retired fact row remains with revision_retired stamped — never deleted — while leaving the compiled surfaces. Retiring twice is a conflict. Every fact references the revision that added it. — `apps/sarah/src/services/sarah-blueprint.test.ts`
+- **Oracle** `blueprint_provenance_required.unit` (bun-test, unit): Provenance required on every fact: all seed facts carry owner_kb_v2 with ref + timestamp. Adds with an empty or unknown source (or no change note, or an invalid section) are rejected. Typed pricing facts carry dealRuleRefs into the deal-rule config and product facts carry promiseIds into the public registry. An approved winning_answer learning promotes to a playbook fact whose provenance source is the KHS-4 approval receipt ref (learning_receipt:<id>), and pending candidates cannot be promoted. — `apps/sarah/src/services/sarah-blueprint.test.ts`
+- **Oracle** `blueprint_admin_guard.rpc` (bun-test, rpc): Safe rollout + fail-closed guard: with SARAH_BLUEPRINT unset the file-based instructions path is unchanged (no compiled sections leak in). Armed, the compiled blueprint leads while the tool protocol stays. The operator endpoints are admin-bearer-guarded (unarmed → 503, missing/wrong bearer → 401 with nothing written) and a full receipted revision cycle (add → retire → read back) works only with the exact bearer. — `apps/sarah/src/services/sarah-blueprint.test.ts`
+- **Verification:** bun test src/services/sarah-blueprint.test.ts inside apps/sarah. Runs in the package test glob, the apps/sarah oracle chain, and the repo test:sarah sweep before pushes to main.
+- **Authority boundary:** This contract binds Sarah's knowledge object (KHS-5, #8604): her persona/playbook/knowledge live in a typed Blueprint — facts with per-fact provenance ({source, ref, at}, owner_kb_v2 | owner_directive | promise_registry | deal_rules | learning_receipt:<id>), versioned revisions (retire is a new revision, never a delete), and admin-guarded operator writes with a change note. The KB doc is GENERATED from the blueprint (render-kb-from-blueprint.ts), not hand-edited. Consumption is flag-armed (SARAH_BLUEPRINT=1). Flag-off keeps the file-based path unchanged. It grants no authority: deal-rules code remains the only pricing authority and the openagents.com API the system of record — blueprint facts inform language, never prices.
 
 ## Blueprint Map Split-Screen Contract (BM-3 #8629)
 
@@ -203,11 +203,11 @@ Registry version: `2026-07-09.2` (schema `openagents.behavior_contracts.v1`)
 
 - **Surface:** sarah (Sarah Blueprint map surface)
 - **Stated by:** owner via openagents-codex-thread on 2026-07-09
-- **Statement:** the split layout — your video full-height left ~50%, tabbed canvas right (map / chat / actions), with the audit's cut list applied (the caption row, controls row, and the 480px centered grid that made the page mostly padding — the disclosure banner stays, it's a contract).
+- **Statement:** the split layout — your video full-height left ~50%, tabbed canvas right (map / chat / actions), with the audit's cut list applied (the caption row, controls row, and the 480px centered grid that made the page mostly padding — the disclosure banner stays, it is a contract).
 - **Enforcement tier:** test-sweep
 - **Oracle** `split_layout_surface_tree.unit` (bun-test, unit): Effect Native surface tree oracle: the right pane is an EN Tabs node with Blueprint map selected by default, Chat/Actions/Receipts panels kept mounted, transcript+composer inside the Chat panel, card receipts inside the Receipts panel, and no standalone Sarah title/caption/control row. — `apps/sarah/src/ui/surface.test.ts`
 - **Oracle** `split_layout_source_cutlist.unit` (bun-test, unit): Source layout oracle: the host shell uses a 50/50 viewport split, compact disclosure inside the right shell, EN-keyed video overlay controls, and rejects the old 480px/720px centered grid plus the audited caption/control row strings. — `apps/sarah/src/contracts/split-layout-contracts.test.ts`
-- **Verification:** bun test src/ui/surface.test.ts src/contracts/split-layout-contracts.test.ts inside apps/sarah; runs in the package test glob and gives BM-5 a named contract for the later screenshot smoke deploy gate.
+- **Verification:** bun test src/ui/surface.test.ts src/contracts/split-layout-contracts.test.ts inside apps/sarah. Runs in the package test glob and gives BM-5 a named contract for the later screenshot smoke deploy gate.
 - **Authority boundary:** This contract binds the /sarah browser surface shell only: the top-level split, Effect Native Tabs composition, video-pane overlay controls, compact disclosure banner, and removal of the audited caption/control/centered-grid padding. It does not claim the live Blueprint graph exists yet (BM-2) and does not replace BM-5's later screenshot smoke gate.
 
 ## Sarah Fleet Command Contract
@@ -234,7 +234,7 @@ audibly (`sarah.avatar_greets_first.v1`), the avatar hears user speech
 (`sarah.avatar_hears_speech.v1`), and an abandoned session never wedges the
 slot (`sarah.avatar_slot_never_wedges.v1`). Browser video truth is independent
 from conversation truth (`sarah.avatar_media_truth_never_frozen_live.v1`):
-only a decoded frame on a live video track grants a bounded local LIVE lease;
+only a decoded frame on a live video track grants a bounded local LIVE lease.
 expiry renders an explicit reconnect state without removing text or Fleet
 controls when an exact Fleet scope is present. Public LIVE updates are
 cadence-bounded rather than frame-rate UI
@@ -242,7 +242,7 @@ work. The restart fence rejects duplicate or stale attempts, a prior stop has a
 typed deadline and blocks replacement while its outcome is unknown, and start
 has its own typed deadline so a hung mint/SDK/WebRTC/video acquisition releases
 the interaction transition without permitting overlap. A timed-out generation
-is fenced; a late handle is stopped through the same bounded cleanup path
+is fenced. A late handle is stopped through the same bounded cleanup path
 before replacement is admitted. Surface disposal rejects pending media-host
 acquisition. Every successful mint also owns one idempotent authoritative
 server stop, separate from local teardown: SDK/attach/offer/peer failure,
@@ -254,7 +254,7 @@ cleanup-unconfirmed terminal survives the bounded-start boundary: Sarah shows
 any exact-scope Fleet controls available without issuing a second mint.
 Post-handle attach, disconnect, and peer terminals close the client replacement
 gate at cleanup `pending`, before the stop response settles. Exact `confirmed`
-cleanup is the only transition that reopens it; `unconfirmed` keeps the handle
+cleanup is the only transition that reopens it. `unconfirmed` keeps the handle
 and gate fail-closed and produces zero additional session-mint requests.
 Oracles run in the
 normal sweep plus the synthetic-prospect e2e smoke
@@ -267,7 +267,7 @@ owned session opens with a pre-rendered shippable opener clip playing
 immediately (its own judged audio) while the WebRTC session warms underneath,
 then crossfades to the live stream — killing cold-start dead air. The mint
 option `greeting:"client_clip"` makes the server publish only the greeting
-transcript line and suppress its own TTS greeting (one greet, never two);
+transcript line and suppress its own TTS greeting (one greet, never two).
 clip fetch/autoplay failure restores the TTS greeting via
 `POST /sarah/api/avatar/greet` (never dead air). The license law is inside
 the contract: the clip catalog (`apps/sarah/src/services/opener-clips.ts`)

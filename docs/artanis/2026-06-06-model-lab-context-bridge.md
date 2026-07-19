@@ -21,12 +21,12 @@ Code:
 
 The bridge consumes the implemented Model Lab contracts:
 
-- retained-failure loop;
-- model artifact;
-- training run;
-- evidence graph;
-- Benchmark Cloud evidence;
-- promotion decision ledger;
+- retained-failure loop.
+- model artifact.
+- training run.
+- evidence graph.
+- Benchmark Cloud evidence.
+- promotion decision ledger.
 - public Model Lab report.
 
 Private Artanis/operator context can inspect those projections as read-only
@@ -37,12 +37,12 @@ report projection, plus public-safe readiness/blocker refs.
 
 Missing contracts or missing report evidence become blockers:
 
-- missing retained-failure loop;
-- missing model artifact;
-- missing training run;
-- missing evidence graph;
-- missing Benchmark Cloud evidence;
-- missing promotion decision ledger;
+- missing retained-failure loop.
+- missing model artifact.
+- missing training run.
+- missing evidence graph.
+- missing Benchmark Cloud evidence.
+- missing promotion decision ledger.
 - missing public report.
 
 When blockers or missing evidence exist, the bridge does not produce a public
@@ -53,11 +53,11 @@ refs, and operator-facing next-action drafts instead.
 
 The bridge can draft operator-facing next actions without executing them:
 
-- request missing Model Lab contracts;
-- request missing evidence;
-- inspect retained failures;
-- draft an eval rerun when retained failures lack eval evidence;
-- draft a public Forum summary from a complete public Model Lab report;
+- request missing Model Lab contracts.
+- request missing evidence.
+- inspect retained failures.
+- draft an eval rerun when retained failures lack eval evidence.
+- draft a public Forum summary from a complete public Model Lab report.
 - request operator promotion review when a report says promotion passed but is
   not deployed.
 
@@ -69,13 +69,13 @@ operator-facing draft. It is not execution authority.
 Forum and `/artanis` summaries must use the Model Lab public report projection
 only. They do not receive:
 
-- retained-failure loop internals;
-- model artifact internals;
-- training run internals;
-- evidence graph internals;
-- Benchmark Cloud internals;
-- promotion decision internals;
-- private evidence refs;
+- retained-failure loop internals.
+- model artifact internals.
+- training run internals.
+- evidence graph internals.
+- Benchmark Cloud internals.
+- promotion decision internals.
+- private evidence refs.
 - operator next-action drafts.
 
 ## Authority Boundary
@@ -83,26 +83,26 @@ only. They do not receive:
 The bridge rejects false authority from consumed Model Lab records. Projections
 cannot expose authority to:
 
-- launch evals or training;
-- call providers;
-- install adapters;
-- promote runtime behavior;
-- mutate routes;
-- publish reports;
-- copy raw artifacts, benchmark inputs, datasets, or weights;
-- spend money;
-- mutate payouts or settlement;
+- launch evals or training.
+- call providers.
+- install adapters.
+- promote runtime behavior.
+- mutate routes.
+- publish reports.
+- copy raw artifacts, benchmark inputs, datasets, or weights.
+- spend money.
+- mutate payouts or settlement.
 - upgrade public claims.
 
 ## Tests
 
 Coverage proves:
 
-- all implemented Model Lab contracts project into private Artanis context;
+- all implemented Model Lab contracts project into private Artanis context.
 - public Forum and public Artanis audiences receive only the public report
-  projection;
+  projection.
 - missing contracts and missing evidence produce blockers rather than public
-  promotion claims;
-- retained failures without eval evidence draft an operator eval-rerun action;
-- non-Artanis contexts, unsafe refs, and false Model Lab authority are rejected;
+  promotion claims.
+- retained failures without eval evidence draft an operator eval-rerun action.
+- non-Artanis contexts, unsafe refs, and false Model Lab authority are rejected.
 - raw timestamps and private material do not leak into projections.

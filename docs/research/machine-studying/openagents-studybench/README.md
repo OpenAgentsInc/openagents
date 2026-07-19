@@ -29,15 +29,15 @@ limits, and refs-only public projection rules.
 
 This initial package contains 10 launch-focused rows covering:
 
-- launch claim boundaries;
-- Tassadar public projection truth;
-- settlement and wallet truth;
-- Customer #1 evidence;
-- Forge Autopilot Coder study-packet projection;
-- Blueprint, Probe, and GEPA authority boundaries;
-- Pylon and launch priority boundaries;
-- StudyBench schema adaptation;
-- answer-mode versus patch-mode evaluation;
+- launch claim boundaries.
+- Tassadar public projection truth.
+- settlement and wallet truth.
+- Customer #1 evidence.
+- Forge Autopilot Coder study-packet projection.
+- Blueprint, Probe, and GEPA authority boundaries.
+- Pylon and launch priority boundaries.
+- StudyBench schema adaptation.
+- answer-mode versus patch-mode evaluation.
 - product-promise and marketplace gates.
 
 The rows are public retained fixtures. They are useful for examples, regression,
@@ -47,7 +47,7 @@ loader tests, and evaluator calibration. They are not hidden benchmark evidence.
 
 The MVP-14 comparison and launch study packet support only the yellow
 `autopilot.repo_study_packets.v1` internal-dogfood claim. StudyBench rows and
-study packets are refs-only evidence inputs; they are not customer repo
+study packets are refs-only evidence inputs. They are not customer repo
 studying, not trained repo expert proof, not marketplace packages, not payout
 eligibility, and not paid work.
 

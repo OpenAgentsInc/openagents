@@ -33,12 +33,12 @@ new App Store/TestFlight build.
   of the native build's actual contents (native modules, config plugins,
   etc.), not a hand-set string — change any native-affecting config and the
   fingerprint changes, and old OTA updates stop matching (correctly — they
-  weren't built for the new native shape).
+  were not built for the new native shape).
 - **`apps/oa-updates/scripts/publish-ota.sh`** — the one command that does
   the whole publish: computes the runtime fingerprint, runs `expo export`,
   resolves the public Expo config, and deploys the seed to Cloud Run.
 - **`apps/oa-updates/scripts/deploy-cloudrun.sh`** — the underlying
-  `gcloud run deploy` wrapper; not meant to be run standalone, called by
+  `gcloud run deploy` wrapper. Not meant to be run standalone, called by
   `publish-ota.sh`.
 - **`apps/oa-updates/src/serve.ts`** — the manifest-serving logic (branch
   matching, response body construction).
@@ -76,7 +76,7 @@ The script prints a ready-to-run `curl` command at the end that hits the
 manifest endpoint directly with the right headers — use it as a first,
 fast sanity check before trusting a real device/simulator.
 
-## How to actually prove the round trip worked (don't just trust "publish succeeded")
+## How to actually prove the round trip worked (do not just trust "publish succeeded")
 
 A successful `publish-ota.sh` run does NOT by itself prove the installed
 app will actually download and apply the update without crashing or
@@ -86,7 +86,7 @@ only manifested once expo-updates tried to actually launch the downloaded
 bundle.
 
 The definitive proof method used to validate this end-to-end (2026-07-05):
-1. Fresh-install the app (old runtime/build, so there's a real update to
+1. Fresh-install the app (old runtime/build, so there is a real update to
    pull).
 2. Launch once — this triggers the background download of the new
    manifest/bundle.
@@ -136,13 +136,13 @@ understanding them matters if OTA breaks again after a future change:
    embedded native one — without it, the app throws "runtime not ready"
    immediately after applying an OTA update, and expo-updates silently rolls
    back to the previous cached/embedded bundle (this failure mode is easy to
-   miss because the app doesn't crash — it just quietly reverts). Fixed by
+   miss because the app does not crash — it just quietly reverts). Fixed by
    threading the resolved public Expo config (`expo config --type public
    --json`) through the whole publish pipeline
    (`publish-ota.sh` → `publish-builder.ts`/`publish.ts` →
    `export-reader.ts` → `serve.ts`) as `expo-client.json`, embedded in the
    manifest as `extra.expoClient`.
-5. **`deploy-cloudrun.sh` didn't forward the new env var.** Once
+5. **`deploy-cloudrun.sh` did not forward the new env var.** Once
    `publish-ota.sh` started producing `OA_SEED_EXPO_CLIENT_PATH`, the
    deploy wrapper needed to actually pass it through to Cloud Run — fixed.
 6. **Optional release seed directories must exist in the build context.**
@@ -168,13 +168,13 @@ verification. A green `publish-ota.sh` run only proves the server side.
   manifests (recommended — the installed app's embedded certificate expects
   a signed manifest).
 - `clients/khala-mobile/app.json`'s `updates.requestHeaders` still includes
-  `expo-channel-name: production` (or whatever channel you're actually
+  `expo-channel-name: production` (or whatever channel you are actually
   targeting) — a future edit to this file could silently regress bug #1
   above.
 - If you change any native-affecting config (a config plugin, a new native
   module, `runtimeVersion` policy), remember the fingerprint changes and
   every previously-published OTA update stops matching for new installs —
-  that's correct behavior, not a bug, but it means you need a fresh publish
+  that is correct behavior, not a bug, but it means you need a fresh publish
   after any native change, and a fresh native build (TestFlight/local
   install) to pick up the new fingerprint baseline.
 
@@ -182,7 +182,7 @@ verification. A green `publish-ota.sh` run only proves the server side.
 `expo-auth-session`, `expo-crypto`, and the `expo-web-browser` config plugin.
 That is native-affecting. The native build metadata was bumped to iOS build
 `8` and Android versionCode `2`. The local build pass is complete for this
-change: iOS prebuild/build finished with `** BUILD SUCCEEDED **`; Android
+change: iOS prebuild/build finished with `** BUILD SUCCEEDED **`. Android
 prebuild/build finished with `BUILD SUCCESSFUL` when run with
 `JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home` and
 `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools`. The signed iOS OTA
@@ -194,16 +194,16 @@ multipart with an `expo-signature` manifest part, the same runtime, 20 assets,
 and `extra.expoClient.name = "Khala Code"`.
 
 2026-07-06 #8485 note (MM-G1, push notification device registration): added
-the `expo-notifications` config plugin (native module). Native-affecting;
+the `expo-notifications` config plugin (native module). Native-affecting.
 bumped iOS build to `9` and Android versionCode to `3`. `expo prebuild
 --platform ios` + `bun run build:ios:local` were run locally as part of
-this change (see the issue's closing comment for the exact result); run the
+this change (see the issue's closing comment for the exact result). Run the
 Android equivalent and publish a fresh self-hosted OTA seed for the new
 fingerprint through this runbook before this native shape reaches a real
 device, exactly like the #8470 note above. Getting a LIVE Expo push token
 (not just registering the endpoint) additionally needs an Expo account
-project id (`extra.eas.projectId` in `app.json`) — none exists yet; see
-`NEEDS_OWNER.md`. Until that's set, `registerForPushNotificationsAsync`
+project id (`extra.eas.projectId` in `app.json`) — none exists yet. See
+`NEEDS_OWNER.md`. Until that is set, `registerForPushNotificationsAsync`
 cleanly no-ops with `{ ok: false, reason: "project_id_missing" }` rather than
 crashing, so this native/OTA shape is safe to ship ahead of that owner step.
 

@@ -4,7 +4,7 @@
 - Implementation:
   `packages/portable-session-contract/src/capability-broker.ts`
 - Issue: [#8747](https://github.com/OpenAgentsInc/openagents/issues/8747)
-- Scope: PORT-02 broker lifecycle; PORT-03 owns the first real host move
+- Scope: PORT-02 broker lifecycle. PORT-03 owns the first real host move
 
 ## Operating boundary
 
@@ -12,13 +12,13 @@ The broker is a target-scoped capability state machine, not a secret store or
 generic tunnel. A caller supplies:
 
 - the existing PORT-00 lease scope: owner, session, attachment, generation,
-  target, capability, optional account/tool, and expiry;
-- one nonempty least-privilege permission set;
-- an opaque source-grant ref owned by an injected vault; and
+  target, capability, optional account/tool, and expiry.
+- one nonempty least-privilege permission set.
+- an opaque source-grant ref owned by an injected vault. And
 - a target binding whose class matches a registered adapter.
 
 The broker stores no material. The vault may expose material only for the
-duration of `withSourceGrantMaterial`; the adapter installs it into its bounded
+duration of `withSourceGrantMaterial`. The adapter installs it into its bounded
 target scratch boundary, and the vault zeros or destroys the transient buffer
 after the callback. Neither the broker snapshot nor its evidence sink receives
 the source-grant ref or material.
@@ -26,10 +26,10 @@ the source-grant ref or material.
 Production construction must inject an idempotent durable evidence sink backed
 by the PORT-01 authority/event plane. `append` must resolve only after durable
 commit. A test-only in-memory sink is acceptable only inside the focused fault
-oracle; it is never production composition.
+oracle. It is never production composition.
 
 Supported capabilities are provider, SCM read, SCM writeback, MCP/tool, and a
-bounded named API. `tool` and `api` require an exact `toolRef`; provider requires
+bounded named API. `tool` and `api` require an exact `toolRef`. Provider requires
 an exact named `accountRef`. Empty permissions, missing scope, unready targets,
 adapter-class mismatch, expired leases, and TTL above the configured maximum
 are refused.
@@ -82,18 +82,18 @@ session, credential helper output, socket, or live process state.
 
 | Condition | Required result |
 | --- | --- |
-| Lost acknowledgement | Retry the identical operation ref; receive `replayed`; do not repeat the effect |
-| Conflicting replay | Reject `conflicting_replay`; retain the original result |
+| Lost acknowledgement | Retry the identical operation ref. Receive `replayed`. Do not repeat the effect |
+| Conflicting replay | Reject `conflicting_replay`. Retain the original result |
 | Expiry | Mark non-active, revoke, wipe, and refuse redemption |
-| Mid-move revocation | Source remains non-active; destination is not issued until source wipe passes |
-| Target denial/mismatch | Refuse redemption; keep lease unredeemed |
-| Vault/broker outage | Fail closed with `broker_unavailable`; do not install material |
-| Wipe failure | Record `cleanup_failed`; do not mint destination authority |
+| Mid-move revocation | Source remains non-active. Destination is not issued until source wipe passes |
+| Target denial/mismatch | Refuse redemption. Keep lease unredeemed |
+| Vault/broker outage | Fail closed with `broker_unavailable`. Do not install material |
+| Wipe failure | Record `cleanup_failed`. Do not mint destination authority |
 
 Operator recovery is retry-by-exact-operation-ref for an unknown response,
 followed by inspection of refs-only evidence. Do not inspect, paste, or log raw
 material. A cleanup failure requires target-specific remediation plus a new
-wipe operation ref; it never justifies activating the destination.
+wipe operation ref. It never justifies activating the destination.
 
 ## Threat model and scan gate
 

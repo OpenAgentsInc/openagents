@@ -1,14 +1,14 @@
 # First Negotiated Labor Job Runbook
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
 
 Date: 2026-06-10
 
-Issue scope: #4732, coordinating #4648 (closed/deprioritized 2026-06-11);
+Issue scope: #4732, coordinating #4648 (closed/deprioritized 2026-06-11).
 roadmap rung P1 (#4777) re-points the same run at a real backlog issue.
 This runbook is the stop-on-failure
 path for the first public labor-market proof: a Forum request becomes a
@@ -27,7 +27,7 @@ and settlement evidence is filed before any registry transition.
 - Escrow reserve/release is credit-ledger evidence. It is not settled bitcoin
   until the payout ladder records settlement evidence.
 - Registry edits happen only after receipt refs exist. Propose transitions
-  with evidence; do not flip your own promise.
+  with evidence. Do not flip your own promise.
 - Stop on the first failed phase. Post the typed blocker and public-safe refs
   before retrying.
 
@@ -75,7 +75,7 @@ The live bridge publisher is implemented in
 `apps/openagents.com/workers/api/src/forum-work-request-live-publisher.ts`
 and wired through `forumWorkRequestRelayPublisherForEnv` in the worker
 entrypoint. It activates only when the operator secret
-`FORUM_WORK_REQUEST_MARKET_SECRET_KEY` is configured; unconfigured deploys
+`FORUM_WORK_REQUEST_MARKET_SECRET_KEY` is configured. Unconfigured deploys
 keep the deterministic rejecting default, so
 `POST /api/forum/work-requests` returns
 `503 forum_work_request_relay_rejected` with a
@@ -129,7 +129,7 @@ every MVP surface has an agent-API peer), with
 re-point the refs at the current smallest bounded open issue and say so
 in the evidence bundle. Note ref grammar: deadline/objective refs must
 match the NIP-LBR public-ref pattern (lowercase dotted refs, no colons
-except one trailing `:suffix`); the `pylon work` CLI converts an ISO
+except one trailing `:suffix`). The `pylon work` CLI converts an ISO
 `--deadline` into a `deadline.public.pylon_work.*` ref automatically.
 
 P5 backlog-faucet decoration (#4781): when the target comes from a

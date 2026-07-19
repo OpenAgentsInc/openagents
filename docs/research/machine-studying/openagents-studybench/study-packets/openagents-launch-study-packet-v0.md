@@ -1,7 +1,7 @@
 # OpenAgents Launch Study Packet v0
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-17
@@ -29,20 +29,20 @@ not payout authority, and not hidden benchmark evidence.
 
 Included material:
 
-- public-retained StudyBench row ids and topics;
+- public-retained StudyBench row ids and topics.
 - public source file refs and public line-span evidence refs already committed
-  in the retained package;
+  in the retained package.
 - authority refs, test refs, forbidden claim refs, and private-material policy
-  refs copied from public-retained rows;
+  refs copied from public-retained rows.
 - public launch-edit playbooks derived from those refs.
 
 Excluded material:
 
-- private validation rows;
-- private holdout rows;
+- private validation rows.
+- private holdout rows.
 - private task prompts, gold answers, rubrics, evidence excerpts, scorer
   rationales, candidate transcripts, provider payloads, wallet material, or
-  customer-private data;
+  customer-private data.
 - any claim that this packet proves customer repo studying is live.
 
 ## Public-Retained Row Map
@@ -164,16 +164,16 @@ privacy, and deployment gates.
 
 Allowed copy shape:
 
-- upstream StudyBench is external public calibration;
-- OpenAgents public-retained rows are examples and regression fixtures;
+- upstream StudyBench is external public calibration.
+- OpenAgents public-retained rows are examples and regression fixtures.
 - repo studying remains internal dogfood until private validation/holdout,
   product-promise, privacy, and projection gates exist.
 
 Rejected copy shape:
 
-- "trained repo expert model";
-- "customer repo studying is live";
-- "agents can now edit any repo awesomely";
+- "trained repo expert model".
+- "customer repo studying is live".
+- "agents can now edit any repo awesomely".
 - "public retained scores prove product quality".
 
 ### Tassadar Public Scene
@@ -239,13 +239,13 @@ payout eligibility, and settlement gates.
   corpus manifest ref used by the launch rows.
 - `openagents_public_retained`: public examples and regression fixtures with
   public gold/rubric/evidence material.
-- Private validation split: private scorer/evaluator split; may tune evaluator
+- Private validation split: private scorer/evaluator split. May tune evaluator
   wiring under the private-boundary policy.
-- Private holdout split: private hidden split; cannot feed study packets, GEPA
+- Private holdout split: private hidden split. Cannot feed study packets, GEPA
   training, or public product proof.
-- `rubric_score.probe.studybench*`: score artifact refs; not raw judge
+- `rubric_score.probe.studybench*`: score artifact refs. Not raw judge
   rationale.
-- `probe_closeout.probe_run.studybench*`: Probe closeout refs; evidence only.
+- `probe_closeout.probe_run.studybench*`: Probe closeout refs. Evidence only.
 - `Action Submission`: approval-gated proposal path for external writes.
 - `forbiddenClaimRefs`: refs that name what copy or code must not imply.
 

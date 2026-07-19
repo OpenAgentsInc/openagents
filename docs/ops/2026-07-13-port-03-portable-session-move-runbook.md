@@ -10,14 +10,14 @@
 
 Before a move, read the owner-scoped PORT-01 snapshot and require:
 
-- the command's expected attachment ref/generation exactly equals current;
+- the command's expected attachment ref/generation exactly equals current.
 - migration `0067` has recorded the exact owner/session canonical run,
-  repository, and pinned-base refs; legacy unbound rows cannot move;
-- the destination is an authorized, ready target and is not the source;
+  repository, and pinned-base refs. Legacy unbound rows cannot move.
+- the destination is an authorized, ready target and is not the source.
 - the complete canonical graph has one root, every child edge, independent
-  thread/transcript refs, and a durable current row for every thread;
+  thread/transcript refs, and a durable current row for every thread.
 - the transfer list names every current attachment lease exactly once and uses
-  fresh destination lease/source-grant refs; and
+  fresh destination lease/source-grant refs. And
 - both target adapters declare the exact durable target refs/classes.
 
 Never derive session identity from a host, path, process, provider session, or
@@ -36,7 +36,7 @@ holding and revalidating that claim.
 
 A stale revision, absent claim, or competing claim is terminal for that
 coordinator instance. Dispose it and reconcile from PORT-01 plus a fresh store
-load; never continue with its in-memory snapshot. Release the claim only after
+load. Never continue with its in-memory snapshot. Release the claim only after
 the durable move outcome and required cleanup are reconciled. Migration `0069`
 owns the aggregate/evidence tables. They contain refs and bounded policy facts
 only, never credential bytes, provider payloads, host paths, or repository
@@ -80,12 +80,12 @@ credential-copy shortcut.
 
 | Failure point | Required state/action |
 | --- | --- |
-| Before command admission | No runtime operation; reject stale/unauthorized command |
-| Source cannot quiesce/checkpoint | Record failed outcome if admitted; leave source fenced/recovery-required |
-| Destination prepare/materialize/verify rejects checkpoint | Compensating-abort the prepared resource; make no broker change; retain quiesced source |
-| Capability revoke/wipe/reissue/redeem/install | Abort staged state; release any attempted destination leases; no destination activation |
-| Source cleanup incomplete | Do not advance attachment; abort/release and require recovery |
-| PORT-01 completion unknown | Retry identical command/completion bytes; never construct a second attachment |
+| Before command admission | No runtime operation. Reject stale/unauthorized command |
+| Source cannot quiesce/checkpoint | Record failed outcome if admitted. Leave source fenced/recovery-required |
+| Destination prepare/materialize/verify rejects checkpoint | Compensating-abort the prepared resource. Make no broker change. Retain quiesced source |
+| Capability revoke/wipe/reissue/redeem/install | Abort staged state. Release any attempted destination leases. No destination activation |
+| Source cleanup incomplete | Do not advance attachment. Abort/release and require recovery |
+| PORT-01 completion unknown | Retry identical command/completion bytes. Never construct a second attachment |
 | Activation ACK lost after completion | Read completed authority and retry only the identical activation operation |
 
 A completed command replay may reconcile destination activation, but it must
@@ -99,7 +99,7 @@ Migration `0067` was applied to both `khala_sync_staging` and
 post-apply dry runs reported zero pending migrations.
 
 Migration `0069` was applied to staging and production on 2026-07-13 with
-SHA-256 prefix `ce9db7cddbb5`; both post-apply dry runs reported `0 pending, 70
+SHA-256 prefix `ce9db7cddbb5`. Both post-apply dry runs reported `0 pending, 70
 already applied`. Its real-Postgres store oracle is included below.
 
 ```sh
@@ -118,12 +118,12 @@ checkpoint artifact transport. Before the direct live session, require the
 remaining production paths to be landed and deployed together:
 
 - retained-guest materialization that independently validates the complete
-  manifest, git bundle, post-image, tracked symlinks, and checkpoint digests;
+  manifest, git bundle, post-image, tracked symlinks, and checkpoint digests.
 - one fixed authority-bound root/child continuation action with stable
-  operation/turn refs and atomic canonical event/node/cursor commits;
-- managed-to-local private artifact export plus the concrete local rehydrator;
+  operation/turn refs and atomic canonical event/node/cursor commits.
+- managed-to-local private artifact export plus the concrete local rehydrator.
 - restart-safe Pylon control-session binding recovery, prepared-resource
-  compensation, and missing-VM teardown reconciliation; and
+  compensation, and missing-VM teardown reconciliation. And
 - deployed exact provider/GitHub grant-movement routes and a freshly baked
   guest/rootfs containing the same controller contract.
 
@@ -131,18 +131,18 @@ Then run one direct session on live infrastructure:
 
 1. start a bounded repository session with a root and at least one active child
    on owner-local Pylon A, recording its canonical run, repository, and pinned
-   base through migration `0067` authority;
+   base through migration `0067` authority.
 2. capture canonical refs, per-thread cursors, exact repository/diff digests,
-   current capability leases, process/scratch/port inventory, and attachment;
+   current capability leases, process/scratch/port inventory, and attachment.
 3. move to the accepted #8547 Agent Computer and execute exactly one bounded
    accepted turn for the root and each canonical active child under fresh
-   target grants, with stable per-agent turn refs;
+   target grants, with stable per-agent turn refs.
 4. prove source processes, children, scratch, ports, and grants are gone and a
-   stale source command/event is rejected;
+   stale source command/event is rejected.
 5. retry the same move, continuation, and activation acknowledgement and prove
-   byte-identical refs/cursors with no duplicate work;
+   byte-identical refs/cursors with no duplicate work.
 6. export the changed managed repository privately, fail back to local using
-   the same state machine, and independently verify the restored post-image;
+   the same state machine, and independently verify the restored post-image.
 7. capture final exact post-image, unchanged canonical run/repository/pinned
    base, one live attachment, grant/reclaim evidence, and rollback behavior.
 

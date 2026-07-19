@@ -29,7 +29,7 @@ and several compile-time-gated modules are absent. The audit therefore
 distinguishes architecture visible in source from behavior proven in a
 shippable release.
 
-## TL;DR
+## TL.DR
 
 Claude Code is not fundamentally a terminal chat client. It is a local agent
 engine with several front doors: an interactive React terminal application, a
@@ -49,9 +49,9 @@ cost, usage, rewind, MCP control, model changes, and terminal results as typed
 events and requests.
 
 Its local-first operational design is unusually deep. Conversations are
-append-only graphs rather than flat chat logs; tool results may spill to disk;
-file checkpoints enable rewind; worktrees have explicit create, retain, and
-cleanup behavior; background agents and shell jobs have durable output; and
+append-only graphs rather than flat chat logs. Tool results may spill to disk.
+file checkpoints enable rewind. Worktrees have explicit create, retain, and
+cleanup behavior. Background agents and shell jobs have durable output. And
 compaction attempts to preserve the context needed to continue work. These
 choices make recovery and inspection possible even when the UI disappears.
 
@@ -73,9 +73,9 @@ skip the interactive trust dialog. These are important boundaries, not minor
 implementation details.
 
 For OpenAgents, the right adaptation is a single Effect-based engine protocol
-shared by desktop, terminal, browser, and mobile; a canonical event graph and
-task lifecycle; explicit fail-closed execution profiles; typed authority and
-receipts; durable local recovery; first-class worktrees; and open MCP/skill
+shared by desktop, terminal, browser, and mobile. A canonical event graph and
+task lifecycle. Explicit fail-closed execution profiles. Typed authority and
+receipts. Durable local recovery. First-class worktrees. And open MCP/skill
 compatibility. We should not copy the duplicated query owners, implicit JSONL
 graph semantics, optional isolation, plaintext credential fallback, or build
 matrix dominated by feature flags.
@@ -91,7 +91,7 @@ matrix dominated by feature flags.
 | Primary languages | TypeScript and TSX | [source] |
 | Packaging target | Bun-compiled standalone CLI, with Node/npm installation compatibility | [source] |
 | UI model | React terminal application on a custom Ink-style renderer | [source] |
-| Embedded product version | Not available; injected at build time | [limitation] |
+| Embedded product version | Not available. Injected at build time | [limitation] |
 | Reproducible build | Not possible from this extract alone | [limitation] |
 | Test evidence | No test suite present in the snapshot | [limitation] |
 
@@ -109,11 +109,11 @@ runtime behavior. [source] [limitation]
 
 This teardown is consequently strongest on:
 
-- the public CLI and SDK contracts;
-- terminal composition and rendering;
-- tool, permission, hook, and settings semantics;
-- transcript, checkpoint, task, and worktree persistence;
-- visible MCP, skill, plugin, IDE, and remote-control boundaries; and
+- the public CLI and SDK contracts.
+- terminal composition and rendering.
+- tool, permission, hook, and settings semantics.
+- transcript, checkpoint, task, and worktree persistence.
+- visible MCP, skill, plugin, IDE, and remote-control boundaries. And
 - architectural coupling visible across those systems.
 
 It is weaker on exact release packaging, disabled enterprise experiments,
@@ -176,7 +176,7 @@ Compatibility remains for package-manager installations and Node-oriented
 environments.
 
 [source] The source references 88 distinct compile-time feature symbols. Some
-gate product surfaces; others select internal, enterprise, provider, remote,
+gate product surfaces. Others select internal, enterprise, provider, remote,
 browser, workflow, or experimental behavior. This provides distribution
 flexibility but turns the build matrix into an architectural dimension. A code
 path that type-checks in one build can be absent, structurally different, or
@@ -186,7 +186,7 @@ untested in another.
 Anthropic environments, but a poor model for OpenAgents' core semantics. Our
 engine protocol, authority rules, and task states should not change meaning by
 build flavor. Provider and product adapters can be compiled conditionally at
-the edge; the canonical state machine should remain invariant.
+the edge. The canonical state machine should remain invariant.
 
 ### 3.2 A deliberately fast command-line front door
 
@@ -199,10 +199,10 @@ and policy work that need not block the first frame.
 
 This is a coherent performance strategy:
 
-1. decide the cheapest possible route;
-2. return immediately for trivial commands;
-3. begin high-latency secure-storage and policy reads early;
-4. load the terminal or SDK surface only when selected; and
+1. decide the cheapest possible route.
+2. return immediately for trivial commands.
+3. begin high-latency secure-storage and policy reads early.
+4. load the terminal or SDK surface only when selected. And
 5. reconcile noncritical extension state after useful work can begin.
 
 [inferred] OpenAgents should borrow the staged-startup discipline, especially
@@ -218,7 +218,7 @@ permissions, and remote states. Several services also depend on module-global
 mutable state or caches.
 
 [inferred] This makes cross-cutting behavior easy to add quickly but difficult
-to reason about locally. The danger is not file size alone; it is that one
+to reason about locally. The danger is not file size alone. It is that one
 component becomes the implicit owner of lifecycle sequencing. OpenAgents should
 keep composition roots declarative and move lifecycle ownership into typed
 Effect services with testable scopes.
@@ -242,20 +242,20 @@ elsewhere.
 [schema] Print mode accepts plain text or streaming JSON input and produces
 plain text, one final JSON result, or a stream of JSON messages. It supports:
 
-- turn, token, and dollar budgets;
-- model, effort, thinking, and fallback-model selection;
-- allowed, denied, or explicitly selected tools;
-- permission modes and permission-prompt integration;
+- turn, token, and dollar budgets.
+- model, effort, thinking, and fallback-model selection.
+- allowed, denied, or explicitly selected tools.
+- permission modes and permission-prompt integration.
 - additional directories, settings sources, MCP configuration, agents, and
-  plugins;
-- continuation, resume, session fork, and resume from a specific message;
-- partial assistant-message events;
-- JSON Schema-constrained structured output;
-- file checkpointing and rewind controls; and
+  plugins.
+- continuation, resume, session fork, and resume from a specific message.
+- partial assistant-message events.
+- JSON Schema-constrained structured output.
+- file checkpointing and rewind controls. And
 - remote, worktree, browser, IDE, and environment-related modes when enabled.
 
 [source] Print mode intentionally does not show the normal interactive
-workspace-trust dialog; it emits a warning and expects callers to invoke it only
+workspace-trust dialog. It emits a warning and expects callers to invoke it only
 from trusted directories. That is practical for automation, but it makes the
 launching process responsible for a security decision that interactive users
 normally see.
@@ -283,7 +283,7 @@ forked under a new ID, resumed at a selected message, or rewound with optional
 file restoration. These are engine operations, not UI-only conveniences.
 
 [source] A fork preserves the relevant conversation and prompt-cache prefix but
-restamps the new session. A rewind chooses an earlier graph position; append-only
+restamps the new session. A rewind chooses an earlier graph position. Append-only
 records remain available even when no longer on the active branch. File rewind
 is mediated by the checkpoint store rather than inferred from Git.
 
@@ -338,14 +338,14 @@ fails.
 
 The loop also coordinates:
 
-- retries and provider fallback;
-- prompt caching and stable tool ordering;
-- token, cost, and duration accounting;
-- structured output validation and retry;
-- compact boundaries and context recovery;
-- tool-result size management;
-- partial-message emission;
-- task and hook notifications; and
+- retries and provider fallback.
+- prompt caching and stable tool ordering.
+- token, cost, and duration accounting.
+- structured output validation and retry.
+- compact boundaries and context recovery.
+- tool-result size management.
+- partial-message emission.
+- task and hook notifications. And
 - final stop-reason normalization.
 
 [inferred] This is an agent runtime state machine even where the implementation
@@ -382,13 +382,13 @@ and durable task disposition in the same terminal record.
 
 [schema] The first initialization message can describe:
 
-- working directory and session identity;
-- available tools and MCP servers;
-- selected model and permission mode;
-- slash commands;
-- runtime version and output style;
-- configured agents and skills;
-- installed plugins; and
+- working directory and session identity.
+- available tools and MCP servers.
+- selected model and permission mode.
+- slash commands.
+- runtime version and output style.
+- configured agents and skills.
+- installed plugins. And
 - fast-mode or other capability state.
 
 This gives a client enough information to render a functional control surface
@@ -399,16 +399,16 @@ without importing the engine implementation.
 [schema] The stream includes more than user and assistant messages. It can
 carry:
 
-- partial model events and final result records;
-- compact boundaries and session-state changes;
-- retry, status, rate-limit, and authentication events;
-- local-command and tool progress;
-- hook start, progress, and response events;
-- file-persistence notifications;
-- task started, progress, and terminal notifications;
-- tool-use summaries;
-- MCP elicitation completion;
-- prompt suggestions; and
+- partial model events and final result records.
+- compact boundaries and session-state changes.
+- retry, status, rate-limit, and authentication events.
+- local-command and tool progress.
+- hook start, progress, and response events.
+- file-persistence notifications.
+- task started, progress, and terminal notifications.
+- tool-use summaries.
+- MCP elicitation completion.
+- prompt suggestions. And
 - usage, cost, denial, and stop metadata.
 
 [inferred] The breadth is an important competitive advantage. Clients do not
@@ -418,17 +418,17 @@ have to scrape terminal text to understand the engine.
 
 [schema] Bidirectional control includes:
 
-- interrupt and asynchronous cancellation;
-- tool-permission decisions;
-- permission-mode, model, and thinking changes;
-- MCP status, message, set, reconnect, and toggle operations;
-- current context-usage queries;
-- file rewind;
-- plugin reload;
-- background-task stop;
-- settings inspection and flag-setting controls;
-- read-state seeding;
-- hook callbacks; and
+- interrupt and asynchronous cancellation.
+- tool-permission decisions.
+- permission-mode, model, and thinking changes.
+- MCP status, message, set, reconnect, and toggle operations.
+- current context-usage queries.
+- file rewind.
+- plugin reload.
+- background-task stop.
+- settings inspection and flag-setting controls.
+- read-state seeding.
+- hook callbacks. And
 - MCP elicitation responses.
 
 [source] The protocol preserves a legacy tool name for older SDK, transcript,
@@ -440,9 +440,9 @@ must be versioned independently of UI labels.
 
 The protocol gets four things right:
 
-1. state changes are typed rather than inferred from prose;
-2. control is bidirectional;
-3. long-running tools and tasks expose progress and terminal outcomes; and
+1. state changes are typed rather than inferred from prose.
+2. control is bidirectional.
+3. long-running tools and tasks expose progress and terminal outcomes. And
 4. initialization advertises capabilities instead of assuming one client
    version.
 
@@ -566,7 +566,7 @@ process, network, Git, and task mutations.
 
 [source] Large individual tool results are written to disk and replaced in the
 prompt by a reference. Aggregate tool content within one model message also has
-a budget; replacement decisions are persisted so resume and prompt caching use
+a budget. Replacement decisions are persisted so resume and prompt caching use
 the same representation. Empty results are normalized to an explicit marker.
 
 This is operationally sound: unbounded command output should not consume the
@@ -621,19 +621,19 @@ This is valuable audit data.
 
 [schema] The visible hook vocabulary includes 27 lifecycle events:
 
-- before and after tool use, including failure;
-- user-prompt submission, stop, and stop failure;
-- session start and end;
-- subagent start and stop;
-- before and after compaction;
-- permission request and denial;
-- setup and notification;
-- teammate idle, task creation, and task completion;
-- MCP elicitation and its result;
-- configuration change;
-- worktree creation and removal;
-- instruction loading;
-- working-directory changes; and
+- before and after tool use, including failure.
+- user-prompt submission, stop, and stop failure.
+- session start and end.
+- subagent start and stop.
+- before and after compaction.
+- permission request and denial.
+- setup and notification.
+- teammate idle, task creation, and task completion.
+- MCP elicitation and its result.
+- configuration change.
+- worktree creation and removal.
+- instruction loading.
+- working-directory changes. And
 - file changes.
 
 [source] Hook handlers can use local commands, HTTP in supported contexts,
@@ -656,7 +656,7 @@ is gated in this snapshot and cannot be treated as universally present.
 
 [inferred] Semantic policy can help categorize intent, but it must never weaken
 hard runtime boundaries. OpenAgents' typed authority compiler should produce a
-bounded request first; any model-assisted policy decision should be auditable,
+bounded request first. Any model-assisted policy decision should be auditable,
 revocable, and subordinate to deterministic invariants.
 
 ## 11. Sandboxing and shell safety
@@ -678,16 +678,16 @@ could leave behind.
 ### 11.2 Optional in this snapshot
 
 [source] Sandboxing is not globally on by default in the visible settings
-schema. Configuration can require failure when unavailable; otherwise explicit
+schema. Configuration can require failure when unavailable. Otherwise explicit
 sandbox requests may degrade with a warning. Sandboxed commands can be
 auto-allowed, and an escape path for unsandboxed commands can remain enabled.
 
 This makes the effective promise conditional:
 
-- a permission approval may authorize an unsandboxed command;
+- a permission approval may authorize an unsandboxed command.
 - an “auto-allowed because sandboxed” command is only as safe as the effective
-  sandbox configuration;
-- a fallback warning is weaker than a fail-closed execution profile; and
+  sandbox configuration.
+- a fallback warning is weaker than a fail-closed execution profile. And
 - filesystem isolation does not imply network isolation unless both are set.
 
 [inferred] OpenAgents should expose named profiles such as `observe`,
@@ -789,11 +789,11 @@ every record as a flat chronological chat.
 
 This representation supports:
 
-- ordinary continuation;
-- branches created by retry, edit, or rewind;
-- sidechain agent conversations;
-- session forks;
-- metadata events that do not behave like chat turns; and
+- ordinary continuation.
+- branches created by retry, edit, or rewind.
+- sidechain agent conversations.
+- session forks.
+- metadata events that do not behave like chat turns. And
 - recovery without a database service.
 
 ### 13.2 Compatibility and dead branches
@@ -803,7 +803,7 @@ events are not persisted into the message chain. Rewinds leave abandoned branch
 records in place. When dead branches dominate a large file, a byte-oriented
 prefilter can discard irrelevant regions before full parsing.
 
-[source] Session files can become extremely large; the implementation includes
+[source] Session files can become extremely large. The implementation includes
 special behavior for files beyond normal in-memory rewrite thresholds and
 comments acknowledging multi-gigabyte histories.
 
@@ -818,7 +818,7 @@ graph edges and retention.
 [source] In addition to messages, storage can include summary, title, tag,
 permission-mode, attribution, file-history, content-replacement, compact, and
 context-collapse records. A session file may be created only after meaningful
-user or assistant activity; early metadata and hook output can buffer until
+user or assistant activity. Early metadata and hook output can buffer until
 then.
 
 [inferred] Lazy materialization avoids empty-session clutter but introduces a
@@ -842,7 +842,7 @@ every snapshot to the exact tool call and authority receipt that created it.
 ### 13.5 Retention and privacy
 
 [source] Local retention is configurable, with a visible default measured in
-weeks; a zero-day setting disables persistence and triggers deletion behavior.
+weeks. A zero-day setting disables persistence and triggers deletion behavior.
 Prompt-entry history is stored separately from session JSONL.
 
 [inferred] Multiple local stores mean one “delete session” action must know
@@ -1053,17 +1053,17 @@ sleep/wake behavior, and token refresh.
 
 Those mechanisms reveal the real problem domain:
 
-- commands can be delivered more than once;
-- acknowledgements can be lost;
-- a machine can sleep through a lease;
-- an old process can reconnect after a replacement process starts;
-- credentials can expire mid-session;
-- progress events can arrive after a terminal state; and
+- commands can be delivered more than once.
+- acknowledgements can be lost.
+- a machine can sleep through a lease.
+- an old process can reconnect after a replacement process starts.
+- credentials can expire mid-session.
+- progress events can arrive after a terminal state. And
 - a permission response must reach the exact invocation that requested it.
 
 [inferred] OpenAgents mobile sync needs this level of rigor from the start.
-Every command should have idempotency identity; every worker incarnation should
-have an epoch; every event should have sequence and causal session identity;
+Every command should have idempotency identity. Every worker incarnation should
+have an epoch. Every event should have sequence and causal session identity.
 and terminal task state should be monotonic.
 
 ### 17.3 Other remote surfaces
@@ -1157,7 +1157,7 @@ SHA-256 manifest or package-manager integrity metadata.
 
 [limitation] A separate executable signature or transparency-log verification
 was not observed in the extract. A checksum proves the bytes match the
-manifest; it does not independently prove who authorized the manifest.
+manifest. It does not independently prove who authorized the manifest.
 
 [inferred] OpenAgents should sign component/update manifests, bind them to
 channel and platform, verify rollback constraints, and retain the verified
@@ -1177,7 +1177,7 @@ verify which package paths shipped together.
 
 [source] The runtime includes first-party product analytics, optional operational
 telemetry, feature rollout, customer-configured OpenTelemetry export, and
-performance tracing. Provider and environment settings can disable analytics;
+performance tracing. Provider and environment settings can disable analytics.
 an essential-only posture also suppresses nonessential network activity such as
 some update and release-note checks.
 
@@ -1312,15 +1312,15 @@ one conversation state machine, one task graph, and one authority compiler.
 Define one versioned Effect Schema protocol for desktop, terminal, browser,
 mobile, and external SDK consumers. It should cover:
 
-- capability initialization;
-- conversation and partial model events;
-- tool request, progress, result, and failure;
-- permission request and decision;
-- task and child-agent lifecycle;
-- checkpoints, diffs, worktrees, and integration outcomes;
-- context, memory, compact, and provenance events;
-- remote connectivity and worker epoch;
-- usage, budget, stop, and receipt data; and
+- capability initialization.
+- conversation and partial model events.
+- tool request, progress, result, and failure.
+- permission request and decision.
+- task and child-agent lifecycle.
+- checkpoints, diffs, worktrees, and integration outcomes.
+- context, memory, compact, and provenance events.
+- remote connectivity and worker epoch.
+- usage, budget, stop, and receipt data. And
 - control requests with idempotency and cancellation.
 
 Every surface should consume this protocol. No surface should own a separate
@@ -1331,14 +1331,14 @@ query loop.
 Keep an append-only, human-exportable log, but do not make raw JSONL ordering
 the database. Canonical events should have:
 
-- event and aggregate IDs;
-- parent/causal edges;
-- monotonic sequence within an authority;
-- actor, workspace, and device identity;
-- schema version and content hash;
-- public/private/local classification;
-- idempotency key;
-- authority-policy hash; and
+- event and aggregate IDs.
+- parent/causal edges.
+- monotonic sequence within an authority.
+- actor, workspace, and device identity.
+- schema version and content hash.
+- public/private/local classification.
+- idempotency key.
+- authority-policy hash. And
 - explicit terminal-state rules.
 
 This graph should power desktop rendering, mobile sync, recovery, audit, and
@@ -1383,12 +1383,12 @@ formal models, regression reproduction, and high-trust tasks.
 
 Adopt the strong Claude Code behaviors:
 
-- append-before-side-effect event durability;
-- disk-backed output for large tasks;
-- turn/tool-level file checkpoints;
-- session fork and rewind;
-- conservative worktree retention;
-- resumable background work; and
+- append-before-side-effect event durability.
+- disk-backed output for large tasks.
+- turn/tool-level file checkpoints.
+- session fork and rewind.
+- conservative worktree retention.
+- resumable background work. And
 - inspectable export without a proprietary service.
 
 Improve them with one indexed event authority, bounded retention, transactional
@@ -1396,7 +1396,7 @@ deletion, and typed cross-store receipts.
 
 ### 24.7 Design mobile sync as control-plane replication
 
-Mobile should synchronize safe state and issue typed control commands; it
+Mobile should synchronize safe state and issue typed control commands. It
 should not mirror a terminal or receive unrestricted local content by default.
 Use worker epochs, sequence/ACK, replay windows, idempotency, expiring approvals,
 and monotonic terminal states. The desktop/local engine remains execution
@@ -1411,7 +1411,7 @@ executable authority.
 
 ### 24.9 Keep internal policy typed
 
-Claude Code's broad hook vocabulary is useful; shell and HTTP hooks are not the
+Claude Code's broad hook vocabulary is useful. Shell and HTTP hooks are not the
 right foundation for internal OpenAgents invariants. Implement first-party
 policy, task coordination, receipt emission, and lifecycle reactions as typed
 Effect services and events. Offer external hooks only at bounded extension

@@ -1,7 +1,7 @@
 # P7 Lane C Fanout — Closeout (#4783)
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -27,12 +27,12 @@ in sats** by a market provider, with public receipts.
       `POST /api/autopilot/work/{ref}/lane-c-fanout` route evaluates the
       `evaluateLaneCFanout` gate server-side. Verified live: with
       `customerOptIn:true` + public tier + budget cap → `authorized`
-      (`lane: public_market`, `ready`); with `customerOptIn:false` → **409
+      (`lane: public_market`, `ready`). With `customerOptIn:false` → **409
       `lane_c_fanout_blocked`** (`lane_c.customer_opt_in_missing`). A private /
       non-public / non-opted-in order can never reach the market through this
       route.
 - [x] **Paid in credits → settled in sats**: the customer (requester) funds the
-      sats escrow (P4 #4780 USD→sats settlement bridge is built/closed); on
+      sats escrow (P4 #4780 USD→sats settlement bridge is built/closed). On
       validator-pass the 1 sat releases to the provider. Receipts:
       `receipt.labor_escrow.reserve.432420e6…`, `receipt.labor_escrow.release.432420e6…`.
 - [x] **Receipts public**: reserve + release escrow receipts, kind-6934 result

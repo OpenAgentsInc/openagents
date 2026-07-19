@@ -2,7 +2,7 @@
 
 This directory contains QA harness implementation notes, operational runbooks,
 oracle descriptions, and retained public-safe evidence. It does not own product
-intent or verification intent; those live in ProductSpec and AssuranceSpec.
+intent or verification intent. Those live in ProductSpec and AssuranceSpec.
 
 Most files here describe the former Khala Code Desktop system under
 `clients/khala-code-desktop`. That client is frozen migration and contract
@@ -81,7 +81,7 @@ and live issue state own current work.
 
 AssuranceSpec declares reviewed proof intent for one exact ProductSpec. This
 directory contains some of the harnesses, oracles, runbooks, and historical
-calibration examples an Assurance Spec may reference. It does not own the
+calibration examples an AssuranceSpec may reference. It does not own the
 AssuranceSpec format, admission policy, generated Manifest, or current result
 projection.
 

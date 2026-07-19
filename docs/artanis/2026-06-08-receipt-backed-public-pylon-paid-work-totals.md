@@ -20,11 +20,11 @@ The public fields are:
 A receipt counts toward public paid-work totals only when all of the following
 are true:
 
-- the receipt kind is `settlement_recorded`;
-- the linked payout intent has accepted-work refs;
-- the public Nexus/Pylon receipt projection reports `realBitcoinMoved: true`;
-- the settlement projection is terminal and settled;
-- the payout movement allows the terminal settlement claim;
+- the receipt kind is `settlement_recorded`.
+- the linked payout intent has accepted-work refs.
+- the public Nexus/Pylon receipt projection reports `realBitcoinMoved: true`.
+- the settlement projection is terminal and settled.
+- the payout movement allows the terminal settlement claim.
 - the payout amount is bitcoin millisatoshi and exactly divisible into sats.
 
 Duplicate receipt retries for the same payout intent count once, using the
@@ -34,11 +34,11 @@ first qualifying settlement receipt in created-at order.
 
 These do not count:
 
-- simulation receipts;
-- payment or verification receipts without settlement evidence;
-- rejected reconciliation events;
-- receipts with missing accepted-work refs;
-- unsupported denominations;
+- simulation receipts.
+- payment or verification receipts without settlement evidence.
+- rejected reconciliation events.
+- receipts with missing accepted-work refs.
+- unsupported denominations.
 - legacy aggregate sats that do not include public settlement receipt refs.
 
 ## Zero Versus Unavailable

@@ -201,4 +201,4 @@ After metering, `ServedTokensRecorder` writes a `token_usage_events` row idempot
    
 3. **Production smoke scripts** that exercise all seven smoke types above, runnable against staging/prod with a free key.
 
-4. **Documentation** for the GTM doc: note the older `openagents/openagents/khala` display in OpenCode's TUI selector was a cosmetic concatenation of provider id (`openagents`) + model key (`openagents/khala`). The public model id on the server is already the single segment `openagents/khala`; the published recipe resolves display by using model key `khala` with `api.id: "openagents/khala"`, so no server-side alias is needed.
+4. **Documentation** for the GTM doc: note the older `openagents/openagents/khala` display in OpenCode's TUI selector was a cosmetic concatenation of provider id (`openagents`) + model key (`openagents/khala`). The public model id on the server is already the single segment `openagents/khala`. The published recipe resolves display by using model key `khala` with `api.id: "openagents/khala"`, so no server-side alias is needed.

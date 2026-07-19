@@ -24,24 +24,24 @@ flips no promise state and broadens no public copy.
   directly) that performs final PR review before merge. Review is never
   delegated to the worker that wrote the change.
 - **Owner**: approves anything spend-bearing, copy-gated, or
-  promise-flipping; runs the on-camera episode-245 segment (T16.1); flips
+  promise-flipping. Runs the on-camera episode-245 segment (T16.1). Flips
   `auto_merge_clean` if/when earned.
 
 ## 2. Work Item Lifecycle (Non-Negotiable)
 
-1. **Epic + issues.** One GitHub epic for the roadmap execution; one issue
+1. **Epic + issues.** One GitHub epic for the roadmap execution. One issue
    per ROADMAP task (`Tn.m` in the title), carrying: the source fable doc +
    section, acceptance criteria copied from the roadmap row, deps by issue
    number, the pinned verify command, and the delegability grade. Issues use
-   the repo's strict conventions; loose discussion goes to the Forum per
+   the repo's strict conventions. Loose discussion goes to the Forum per
    repo policy.
 2. **Claim before work.** No worker is dispatched at an issue that another
    live dispatch already covers (until T2.2's claim registry lands, Artanis
-   enforces this manually via the dispatch ledger; after it lands, the
+   enforces this manually via the dispatch ledger. After it lands, the
    registry enforces it structurally — dogfooding the June 29 fix).
 3. **Worktrees only.** All work happens in fresh worktrees from clean
    `origin/main` on this machine (Pylon's workspace materializer already
-   does this for delegated work; Artanis follows the same rule for any
+   does this for delegated work. Artanis follows the same rule for any
    direct work). Never disturb another agent's dirty checkout.
 4. **One PR per issue.** Branch → PR referencing the issue (`Closes #N`).
    The PR body carries the verify-command output. Work on a branch is
@@ -56,7 +56,7 @@ flips no promise state and broadens no public copy.
    Only merged-to-main work counts as done.
 7. **After-action on failure.** A worker that dead-ends, duplicates, or
    produces junk gets its claim released and the failure recorded in the run
-   ledger; recurring classes become fixtures or Khala Code bug issues.
+   ledger. Recurring classes become fixtures or Khala Code bug issues.
 
 ## 3. Delegation Mechanics (Khala Code First)
 
@@ -76,10 +76,10 @@ Primary path, in order of preference:
    lane implementation, which belongs to the fleet.
 
 Wave discipline comes from ROADMAP §3: seams (T1.1, T2.1, T2.2, T8.1) land
-first and alone; then waves fan out wide. Target sustained concurrency rises
+first and alone. Then waves fan out wide. Target sustained concurrency rises
 with account readiness — this run should push toward the June 29 shape
 (15–18 workers) once Wave 1 merges, using the very FleetRun machinery it is
-building as soon as T3.x lands (bootstrap: manual refill by Artanis; then
+building as soon as T3.x lands (bootstrap: manual refill by Artanis, then
 the supervisor takes over — the system takes over its own construction).
 
 **Stress-test posture.** Every fleet-system failure (dead-end, stale
@@ -105,7 +105,7 @@ Fleet-delegated coding work must increment the public counters at
 2. The same handler pushes a live `tokensServedDelta` onto the public sync
    feed (`inference/khala-tokens-served-sync.ts`) — the homepage/`/stats`
    counter moves in real time.
-3. `GET /api/public/khala-tokens-served` re-sums the ledger live-at-read;
+3. `GET /api/public/khala-tokens-served` re-sums the ledger live-at-read.
    `/history`, `/model-mix`, `/channel-mix` feed the `/stats` panels (the
    Pylon-Codex vs Pylon-Claude model mix is where the second lane's share
    becomes publicly visible — a stated Lane E success criterion).
@@ -119,7 +119,7 @@ curl -fsS https://openagents.com/api/public/khala-tokens-served
 $PYLON khala closeout "<assignmentRef>" --json   # closeoutChecklist.ok: true
 ```
 
-Counter movement alone is never proof (other agents run concurrently);
+Counter movement alone is never proof (other agents run concurrently).
 reconcile the delta against the assignment's exact rows via the closeout
 checklist. A run whose token ingest failed is not acceptable evidence —
 rerun or debug until the exact rows exist.
@@ -135,25 +135,25 @@ Every PR review checks, in order:
    accounting untouched or improved, public-safe projections, approval
    prompts intact, live tiers skip-safe, no CI regression, no copy changes.
 4. Contract discipline: schema/invariant changes update `INVARIANTS.md` and
-   tests in the same PR; parity-pin changes update contract + gap matrix +
+   tests in the same PR. Parity-pin changes update contract + gap matrix +
    doc together.
 5. Cleaner-than-found: pre-existing breakage in touched areas fixed or
    explicitly flagged, never silently stepped around.
 
 Reject → the claim releases with a typed reason and the issue gets a
-comment; the worker (or a fresh one) retries against the review notes.
+comment. The worker (or a fresh one) retries against the review notes.
 
 ## 6. Run Ledger And Reporting
 
 Artanis maintains, for the duration of the execution run:
 
 - a dispatch ledger (issue ↔ assignmentRef ↔ worker account ↔ state) — in
-  the orchestration store once T2.1 lands, scratchpad-file before that;
+  the orchestration store once T2.1 lands, scratchpad-file before that.
 - periodic public-safe progress updates to the Forum as the registered
-  `slug=artanis` Forum identity; the old Raynor-token workaround is retired
+  `slug=artanis` Forum identity. The old Raynor-token workaround is retired
   debt, not normal operating practice, and `NEEDS_OWNER.md` entries for
-  anything owner-gated;
-- the running counter evidence (§4) per merged issue;
+  anything owner-gated.
+- the running counter evidence (§4) per merged issue.
 - an after-action section per wave: what the fleet system broke, what got
   fixed, what became a fixture — this is the stress-test deliverable that
   gates putting Khala Code in front of other users.

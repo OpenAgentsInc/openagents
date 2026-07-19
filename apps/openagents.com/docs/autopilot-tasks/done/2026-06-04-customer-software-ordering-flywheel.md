@@ -1,6 +1,6 @@
 # Autopilot Task: Customer Software Ordering Flywheel
 
-Status: complete; moved to `docs/autopilot-tasks/done`
+Status: complete. Moved to `docs/autopilot-tasks/done`
 
 Completion evidence:
 
@@ -8,7 +8,7 @@ Completion evidence:
 - `/api/customer-orders/active` creates/reads the active persisted order.
 - authenticated non-core startup routes land on customer order status instead
   of the operator workroom.
-- `/autopilot` owns the operator workroom route; `/` and `/order` show order
+- `/autopilot` owns the operator workroom route. `/` and `/order` show order
   flow/status.
 - customer order UI includes the 24-hour email promise and hides runner
   mechanics.
@@ -26,7 +26,7 @@ must avoid runner/provider bugs.
 Team: OpenAgents core / `team_openagents_core`
 
 Project: OpenAgents product surface customer ordering and launch funnel. Resolve the concrete
-project ID through operator preflight before dispatch; do not invent one in the
+project ID through operator preflight before dispatch. Do not invent one in the
 runner prompt.
 
 Visibility: product work is public by default. During the beta intake,
@@ -46,14 +46,14 @@ programmatic Autopilot runbook. Implement it directly in this repo on `main`.
 The direct implementation must preserve these gates:
 
 - non-core GitHub-authenticated users can complete repository and request
-  onboarding;
-- non-core users land on a customer order status page, not the chat/workroom;
+  onboarding.
+- non-core users land on a customer order status page, not the chat/workroom.
 - OpenAgents core members keep the operator chat, task streaming, thread,
-  files, diagnostics, billing, settings, and API surfaces;
+  files, diagnostics, billing, settings, and API surfaces.
 - onboarding tells users that beta work is public, OpenAgents pays compute,
-  OpenAgents uses the data, and customers do not need to connect ChatGPT;
+  OpenAgents uses the data, and customers do not need to connect ChatGPT.
 - all customer order work is public for now, with private delivery reserved for
-  a separate paid option later;
+  a separate paid option later.
 - no raw runner events, provider refs, callback tokens, private repo contents,
   or customer session cookies appear in customer-visible order pages.
 
@@ -63,27 +63,27 @@ Turn OpenAgents product surface's current logged-in onboarding and operator work
 launch wedge described in the product transcript:
 
 - GitHub-authenticated users pick a repository and describe what they want
-  built;
+  built.
 - OpenAgents scopes the request asynchronously instead of dropping the user
-  into the full chat/workroom UI;
+  into the full chat/workroom UI.
 - customers see a status page where they can tell when the agent has been
-  queued or has started working;
+  queued or has started working.
 - small first slices can be offered for free, while larger scopes become
-  credit-priced orders with payment follow-up;
+  credit-priced orders with payment follow-up.
 - customer code-session data consent is explicit and can support future
-  revenue-share accounting for reusable Autopilot learnings;
-- all work is public during the beta intake;
-- OpenAgents pays for compute during this beta intake;
-- customers do not connect a ChatGPT account;
+  revenue-share accounting for reusable Autopilot learnings.
+- all work is public during the beta intake.
+- OpenAgents pays for compute during this beta intake.
+- customers do not connect a ChatGPT account.
 - OpenAgents core operators keep the full chat, task streaming, run diagnostics,
-  files, and thread navigation surfaces;
+  files, and thread navigation surfaces.
 - normal ordering users see only intake, order status, quote/free-slice
   decisions, payment state, and notification state.
 
 The result should support the launch story:
 
-- external hook: "Your agent dealer";
-- external compute hook: "Sell us your compute for Bitcoin";
+- external hook: "Your agent dealer".
+- external compute hook: "Sell us your compute for Bitcoin".
 - new code hook: give us useful repo tasks and learning rights, get free work
   now and potential future credit or Bitcoin revenue share when your learning
   contributes to paid workflows.
@@ -119,7 +119,7 @@ from that transcript is:
   reusable learnings from their sessions should create a revenue-share basis:
   credits when revenue is credit-denominated and Bitcoin when revenue is
   Bitcoin-denominated.
-- This revenue-share promise needs product and legal language later; the first
+- This revenue-share promise needs product and legal language later. The first
   implementation should model consent and accounting hooks without pretending
   payouts are complete.
 
@@ -151,7 +151,7 @@ access model is still operator-first:
 - `apps/web/src/domain/session.ts` models onboarding steps, teams, billing
   summary, and `isAdmin`.
 - `apps/web/src/routing/startup.ts` currently routes logged-in users through
-  `loggedInPermissionGate`; users without core-team access hit the invite page
+  `loggedInPermissionGate`. Users without core-team access hit the invite page
   instead of customer intake.
 - `apps/web/src/product-policy.ts` currently makes
   `loggedInPermissionGate(auth)` require `authHasCoreTeamAccess(auth)`, and
@@ -180,7 +180,7 @@ OpenAgents product surface also has a mature operator workroom path:
 
 The implementation must split these worlds cleanly:
 
-- customer intake/order routes for normal authenticated users;
+- customer intake/order routes for normal authenticated users.
 - operator workroom routes and streaming APIs for OpenAgents core members.
 
 Frontend route hiding is not enough. Backend authorization must enforce the
@@ -319,10 +319,10 @@ content in the launch payload.
    operator workroom files before editing. Confirm the final route map in the
    implementation summary.
 2. Introduce explicit policy helpers for:
-   - authenticated customer intake access;
-   - completed customer onboarding access;
-   - operator workroom access;
-   - operator API access;
+   - authenticated customer intake access.
+   - completed customer onboarding access.
+   - operator workroom access.
+   - operator API access.
    - public/demo route access.
 3. Change startup routing so a signed-in non-core user can enter onboarding
    and order status instead of being sent directly to the invite page.
@@ -331,19 +331,19 @@ content in the launch payload.
    billing, files, settings, or operator APIs.
 5. Split onboarding backend authorization:
    - repository list/select/update/skip and goal submit should be available to
-     authenticated GitHub users where the product permits customer intake;
-   - operator-only onboarding/admin mutations must stay core-team gated;
+     authenticated GitHub users where the product permits customer intake.
+   - operator-only onboarding/admin mutations must stay core-team gated.
    - existing session and CSRF/auth boundaries must stay intact.
 6. Add a Schema-backed customer order domain:
-   - `SoftwareOrderId`;
-   - order status;
-   - repo owner/name/ref;
-   - customer goal/request text;
-   - consent snapshot;
-   - quote estimate;
-   - free-slice estimate;
-   - payment state;
-   - operator projection state;
+   - `SoftwareOrderId`.
+   - order status.
+   - repo owner/name/ref.
+   - customer goal/request text.
+   - consent snapshot.
+   - quote estimate.
+   - free-slice estimate.
+   - payment state.
+   - operator projection state.
    - timestamps and actor IDs.
 7. Add tagged errors and Effect services/layers for customer order storage,
    order creation, order status lookup, quote update, and operator projection.
@@ -353,30 +353,30 @@ content in the launch payload.
    future revenue-share learning references. Keep the initial revenue-share
    records as accounting hooks, not payout execution.
 9. Connect onboarding completion to order creation:
-   - repository + goal should create or update the active customer order;
-   - billing skip should not mean "done forever" for customer orders;
+   - repository + goal should create or update the active customer order.
+   - billing skip should not mean "done forever" for customer orders.
    - the post-submit route should be the order status surface, not the
      operator chat.
 10. Build the customer order status UI using existing Foldkit patterns and the
     existing logged-in shell where appropriate. Keep it sparse, durable, and
     mobile-safe:
-    - selected repo;
-    - request summary;
-    - status;
-    - free-slice/quote card when ready;
-    - payment/credits call to action only when real backend support exists;
-    - email/check-back messaging;
+    - selected repo.
+    - request summary.
+    - status.
+    - free-slice/quote card when ready.
+    - payment/credits call to action only when real backend support exists.
+    - email/check-back messaging.
     - no run stream.
 11. Add a minimal customer order API:
-    - create/update active order from onboarding goal;
-    - get active order;
-    - get order by ID for the owning customer;
+    - create/update active order from onboarding goal.
+    - get active order.
+    - get order by ID for the owning customer.
     - acknowledge quote/free-slice decision if available.
 12. Add an operator projection:
     - either a dedicated operator order queue route/API, or a projection into
-      the existing OpenAgents core team/project workroom;
+      the existing OpenAgents core team/project workroom.
     - core operators can see repo, request, customer identity, consent state,
-      status, quote, and safe links into workroom/run creation;
+      status, quote, and safe links into workroom/run creation.
     - non-core users cannot read this projection.
 13. Add a manual scoping path first. The task may add a typed placeholder
     `ScopingService`, but it must not rely on ad hoc string matching for
@@ -450,10 +450,10 @@ content in the launch payload.
   order API auth, order state transitions, quote/free-slice state rendering,
   and operator-only projection.
 - The final implementation commit or PR summary lists:
-  - routes added or changed;
-  - migrations added;
-  - Effect services/layers added;
-  - tests run;
+  - routes added or changed.
+  - migrations added.
+  - Effect services/layers added.
+  - tests run.
   - known follow-ups for Stripe, email, revenue share, or Bitcoin payout rails.
 
 ## Suggested Run Summary

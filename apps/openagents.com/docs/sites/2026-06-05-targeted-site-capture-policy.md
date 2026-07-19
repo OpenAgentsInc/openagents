@@ -19,10 +19,10 @@ event changes the decision.
 
 `workers/api/src/targeted-site-capture-policy.ts` exposes:
 
-- `evaluateTargetedSiteCapturePolicy`;
-- `recordTargetedSiteCapturePolicyEvent`;
-- `isTargetedSiteCaptureFetchable`;
-- list helpers by campaign, prospect, and normalized domain;
+- `evaluateTargetedSiteCapturePolicy`.
+- `recordTargetedSiteCapturePolicyEvent`.
+- `isTargetedSiteCaptureFetchable`.
+- list helpers by campaign, prospect, and normalized domain.
 - customer-safe and operator-safe projection helpers.
 
 The service is intentionally not a route. Future capture workers should call
@@ -32,12 +32,12 @@ the service or read its event records before fetching target pages.
 
 Policy decisions are typed:
 
-- `allowed`;
-- `disallowed`;
-- `blocked`;
-- `manual_review`;
-- `customer_owned`;
-- `suppressed`;
+- `allowed`.
+- `disallowed`.
+- `blocked`.
+- `manual_review`.
+- `customer_owned`.
+- `suppressed`.
 - `paid_escalation`.
 
 The fetchable rule is deliberately narrow:
@@ -54,14 +54,14 @@ fetchable.
 
 The evaluator consumes public-safe refs and signals for:
 
-- robots availability and policy;
-- sitemap availability;
-- suppression matches;
-- contact or request suppression;
-- customer-owned domain signals;
-- manual review;
-- paid provider escalation;
-- bot-protection or login walls;
+- robots availability and policy.
+- sitemap availability.
+- suppression matches.
+- contact or request suppression.
+- customer-owned domain signals.
+- manual review.
+- paid provider escalation.
+- bot-protection or login walls.
 - unsupported schemes and unsafe domains.
 
 Paid provider escalation requires a `paidEscalationRef`, so future capture
@@ -74,16 +74,16 @@ Migration `0073_targeted_site_capture_policy.sql` adds
 
 Each event records:
 
-- campaign id;
-- optional prospect id;
-- normalized domain;
-- source ref;
-- decision and reason;
-- fetchable boolean;
+- campaign id.
+- optional prospect id.
+- normalized domain.
+- source ref.
+- decision and reason.
+- fetchable boolean.
 - robots, sitemap, suppression, customer-authority, paid-escalation, and
-  operator refs;
-- public-safe metadata;
-- idempotency key;
+  operator refs.
+- public-safe metadata.
+- idempotency key.
 - decision and creation timestamps.
 
 Events are indexed by campaign, prospect, and normalized domain.
@@ -92,12 +92,12 @@ Events are indexed by campaign, prospect, and normalized domain.
 
 Customer-safe projections include only:
 
-- campaign id;
-- prospect id;
-- normalized domain;
-- source ref;
-- decision;
-- fetchability;
+- campaign id.
+- prospect id.
+- normalized domain.
+- source ref.
+- decision.
+- fetchability.
 - decision timestamp.
 
 Operator-safe projections can include typed reason and safe refs for robots,
@@ -111,7 +111,7 @@ payment or wallet material, or bot-protection bypass instructions.
 
 Issue batch #52 should build the consumers:
 
-- static capture must require `isTargetedSiteCaptureFetchable` before fetch;
-- Browser Run rendered capture must require the same policy gate;
+- static capture must require `isTargetedSiteCaptureFetchable` before fetch.
+- Browser Run rendered capture must require the same policy gate.
 - provider fallback adapters must create or consume `paid_escalation` policy
   decisions before paid capture begins.

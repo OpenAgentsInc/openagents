@@ -31,11 +31,11 @@ Status after this document lands: complete.
 Outcome:
 
 - define Fast Follow's relationship to ProductSpec, AssuranceSpec, issues,
-  Full Auto, FleetRun, and Blueprint;
+  Full Auto, FleetRun, and Blueprint.
 - add the authored format, canonical JSON projection schema, ProductSpec,
-  OpenAgents seed, skill, AGENTS/invariant rules, and validation check;
+  OpenAgents seed, skill, AGENTS/invariant rules, and validation check.
 - cover every current teardown while binding the Fable essay's five Amp
-  composition milestones as the exact ordered initial program; and
+  composition milestones as the exact ordered initial program. And
 - document an honest current-Desktop overnight bootstrap.
 
 Acceptance: FF-AC-13 through FF-AC-15.
@@ -52,22 +52,22 @@ Owned paths:
 
 Scope:
 
-- Effect Schema types for frontmatter and every typed block;
-- ordered Markdown parser and byte-stable serializer;
+- Effect Schema types for frontmatter and every typed block.
+- ordered Markdown parser and byte-stable serializer.
 - stable diagnostics for missing/duplicate/order/JSON/schema/path/reference
-  failures;
-- exact document digest and versioned canonical intent digest;
-- CLI: `validate`, `digest`, `projection`, and `init`;
-- frozen valid/invalid conformance corpus with one fixture per diagnostic; and
+  failures.
+- exact document digest and versioned canonical intent digest.
+- CLI: `validate`, `digest`, `projection`, and `init`.
+- frozen valid/invalid conformance corpus with one fixture per diagnostic. And
 - repository discovery of the nearest same-scope `FASTFOLLOW.md` with no
   implicit inheritance.
 
 Acceptance:
 
 - FF-AC-01 through FF-AC-03 pass in fixtures and against root
-  `FASTFOLLOW.md`;
-- unknown fields are intent-bound by default;
-- any source path escape fails closed; and
+  `FASTFOLLOW.md`.
+- unknown fields are intent-bound by default.
+- any source path escape fails closed. And
 - package tests, typecheck, distribution pack, and clean-consumer verification
   pass on owned compute.
 
@@ -82,21 +82,21 @@ adapters.
 
 Scope:
 
-- resolve target repository, authority docs, and exact Git tree;
+- resolve target repository, authority docs, and exact Git tree.
 - resolve public Git source commit/tree, release/artifact identity, selected
-  corpus, visibility, provenance, and capture confidence;
-- compile `do_not_edit` FastFollowManifest work units and dedupe identities;
-- keep I/O outside the pure compiler;
+  corpus, visibility, provenance, and capture confidence.
+- compile `do_not_edit` FastFollowManifest work units and dedupe identities.
+- keep I/O outside the pure compiler.
 - never treat branch names, source instructions, or an installed artifact label
-  as exact identity; and
+  as exact identity. And
 - stable manifest content digest and deterministic repeated-build proof.
 
 Acceptance:
 
-- FF-AC-03 and FF-AC-04;
-- same exact inputs produce byte-identical manifests;
-- source/target drift produces a typed stale result, never silent rebind;
-- closed-product observations carry their evidence confidence; and
+- FF-AC-03 and FF-AC-04.
+- same exact inputs produce byte-identical manifests.
+- source/target drift produces a typed stale result, never silent rebind.
+- closed-product observations carry their evidence confidence. And
 - license/provenance `unknown` blocks copying while still allowing study.
 
 Out: model-generated lesson content or candidate implementation.
@@ -111,22 +111,22 @@ without breaking their current OpenAgents-specific consumers.
 
 Scope:
 
-- generic source/corpus manifest with deterministic selected files and spans;
+- generic source/corpus manifest with deterministic selected files and spans.
 - packet schema for source maps, invariants, patterns, glossary, examples,
   tests, traps, playbooks, failures, confidence, visibility, provenance, and
-  freshness;
-- typed research planner request/response with complete lesson disposition;
-- deterministic compiler that rejects unsupported or hallucinated source refs;
-- fixed-budget no-packet versus packet evaluation; and
+  freshness.
+- typed research planner request/response with complete lesson disposition.
+- deterministic compiler that rejects unsupported or hallucinated source refs.
+- fixed-budget no-packet versus packet evaluation. And
 - redacted StudyReceipt with observed provider tokens/cost where available.
 
 Acceptance:
 
-- FF-AC-05 and the public half of FF-AC-09;
-- every packet claim resolves to a pinned source span;
-- repeated public studies can reuse the exact packet key;
-- private material cannot enter packet construction, reflection, or evaluation;
-- a statistical packet never claims exact replay proof; and
+- FF-AC-05 and the public half of FF-AC-09.
+- every packet claim resolves to a pinned source span.
+- repeated public studies can reuse the exact packet key.
+- private material cannot enter packet construction, reflection, or evaluation.
+- a statistical packet never claims exact replay proof. And
 - retained counterexamples become packet fixtures.
 
 Out: target gap/adoption decisions.
@@ -141,23 +141,23 @@ source advice into target intent.
 Scope:
 
 - bind target revision plus AGENTS, invariants, ProductSpec, AssuranceSpec,
-  roadmap, issue, code, test, and receipt identities;
-- central typed semantic selector for directive and target-scope selection;
-- deterministic planning request/response compiler;
+  roadmap, issue, code, test, and receipt identities.
+- central typed semantic selector for directive and target-scope selection.
+- deterministic planning request/response compiler.
 - separate freshness, confidence, relevance, fit, portability,
   license/provenance, implementation, verification, disposition, and exception
-  axes;
-- stable gap and no-material-delta identities; and
+  axes.
+- stable gap and no-material-delta identities. And
 - explicit reject/supersede/block/unavailable/inconclusive states.
 
 Acceptance:
 
-- FF-AC-02, FF-AC-05, and FF-AC-10;
+- FF-AC-02, FF-AC-05, and FF-AC-10.
 - planner output disposes every directive and cannot add an unknown source or
-  target authority ref;
-- unchanged inputs cannot manufacture a second candidate;
+  target authority ref.
+- unchanged inputs cannot manufacture a second candidate.
 - existing implementation and existing issue matches are reported rather than
-  duplicated; and
+  duplicated. And
 - no blended score or self-acceptance exists.
 
 Out: source mutation or admitted implementation.
@@ -172,22 +172,22 @@ accepted proposal into existing target work authority.
 Scope:
 
 - WorkProposal schema with exact study/gap/target/directive refs, target paths,
-  constraints, dependencies, proposed proof, and close rule;
-- dedupe/supersession/disposition ledger;
+  constraints, dependencies, proposed proof, and close rule.
+- dedupe/supersession/disposition ledger.
 - issue-ready Markdown projection with no automatic GitHub mutation by
-  default;
-- exact binding to an existing GitHub issue or ProductSpec work packet;
-- Sol CLAIM protocol and isolated-worktree bridge; and
+  default.
+- exact binding to an existing GitHub issue or ProductSpec work packet.
+- Sol CLAIM protocol and isolated-worktree bridge. And
 - implementation/verification receipt refs without moving their authority into
   Fast Follow.
 
 Acceptance:
 
-- FF-AC-05, FF-AC-06, and FF-AC-10;
-- research cannot mint admission or a mutation lease;
+- FF-AC-05, FF-AC-06, and FF-AC-10.
+- research cannot mint admission or a mutation lease.
 - duplicate, stale, already-claimed, rejected, or policy-blocked candidates
-  refuse visibly;
-- an implementation claim names exact target post-image and candidate digest;
+  refuse visibly.
+- an implementation claim names exact target post-image and candidate digest.
   and
 - closeout keeps evidence-present, verified, accepted, merged, and released
   separate.
@@ -217,21 +217,21 @@ Hot paths, one integration owner:
 
 Scope:
 
-- generalize the host-owned before/after provider work-context projector;
-- bounded Fast Follow identity, directive, stage, and candidate projection;
-- `selectFullAutoWorkItem` before lease claim;
-- persist work/spec/manifest/directive/candidate/claim refs on the exact turn;
-- after-turn revalidation and typed stale/blocked/no-delta notes;
+- generalize the host-owned before/after provider work-context projector.
+- bounded Fast Follow identity, directive, stage, and candidate projection.
+- `selectFullAutoWorkItem` before lease claim.
+- persist work/spec/manifest/directive/candidate/claim refs on the exact turn.
+- after-turn revalidation and typed stale/blocked/no-delta notes.
 - CLI/MCP/OpenAPI profile additions only through the one existing control
-  surface; and
+  surface. And
 - no provider-owned parser or second dispatch path.
 
 Acceptance:
 
-- FF-AC-07 and FF-AC-14;
+- FF-AC-07 and FF-AC-14.
 - restart, overlapping reconciliation, workspace mismatch, provider mismatch,
-  stop, cap, failure, stale spec, stale target, and duplicate candidate tests;
-- unknown/unadmitted provider lanes still fail closed; and
+  stop, cap, failure, stale spec, stale target, and duplicate candidate tests.
+- unknown/unadmitted provider lanes still fail closed. And
 - current ordinary Full Auto behavior remains compatible when no
   FastFollowSpec exists.
 
@@ -244,32 +244,32 @@ Depends on: FF-05 and FF-06.
 Outcome: coordinate multiple delivery, research, and implementation workers
 against an explicit claim-aware capacity policy after rev 13's independently
 active local `FullAutoRun` product is green. This is the future surface-vision
-FA-E2 portfolio/routing seam; local concurrent run admission does not provide
+FA-E2 portfolio/routing seam. Local concurrent run admission does not provide
 portfolio allocation or duplicate-work prevention by itself.
 
 Scope:
 
-- separately admitted run-policy schema; do not put runtime leases in authored
-  FastFollowSpec;
+- separately admitted run-policy schema. Do not put runtime leases in authored
+  FastFollowSpec.
 - an explicit Full Auto intent/invariant revision that admits portfolio
   allocation and any provider/account selection beyond the current
-  owner-admitted ordered rotation policy before either behavior ships;
-- capacity profiles and dynamic reallocation when a work source is exhausted;
-- research writes limited to configured artifact paths;
-- implementation requires admitted candidates and isolated claims/worktrees;
+  owner-admitted ordered rotation policy before either behavior ships.
+- capacity profiles and dynamic reallocation when a work source is exhausted.
+- research writes limited to configured artifact paths.
+- implementation requires admitted candidates and isolated claims/worktrees.
 - account/provider readiness, usage, budget, rate-limit, retry, and breaker
-  accounting;
-- dependency-aware queue and hot-contract ownership;
-- stop, pause, interrupt, drain, restart, and exact closeout; and
+  accounting.
+- dependency-aware queue and hot-contract ownership.
+- stop, pause, interrupt, drain, restart, and exact closeout. And
 - one integration coordinator for shared contracts and `main`.
 
 Acceptance:
 
-- FF-AC-08;
-- deterministic five-worker fixture proves `3/1/1` and `0/2/3` allocation;
-- no candidate or work packet has two active mutation leases;
-- research cannot cross its write boundary;
-- a worker/account failure reallocates only under explicit policy; and
+- FF-AC-08.
+- deterministic five-worker fixture proves `3/1/1` and `0/2/3` allocation.
+- no candidate or work packet has two active mutation leases.
+- research cannot cross its write boundary.
+- a worker/account failure reallocates only under explicit policy. And
 - a full process restart recovers the same run/work identities without duplicate
   dispatch.
 
@@ -284,22 +284,22 @@ logs or hidden agent prompts.
 
 Scope:
 
-- current source/target freshness and exact revision;
-- research versus implementation lane identity;
+- current source/target freshness and exact revision.
+- research versus implementation lane identity.
 - directive, StudyPacket, gap, candidate, claim, worker, cost, proof, and
-  disposition drill-down;
-- cache hit provenance and privacy classification;
+  disposition drill-down.
+- cache hit provenance and privacy classification.
 - queue, blocked, stale, no-delta, stopped, failed, verified, and accepted
-  states;
-- working stop/steer/pause/drain controls; and
+  states.
+- working stop/steer/pause/drain controls. And
 - nightly digest with attention links, not completion claims.
 
 Acceptance:
 
-- FF-AC-12;
-- tap, click, keyboard, and supported voice paths invoke the same typed intent;
+- FF-AC-12.
+- tap, click, keyboard, and supported voice paths invoke the same typed intent.
 - no raw credentials, private prompt/source body, absolute path, or provider
-  event enters a public/client-safe projection; and
+  event enters a public/client-safe projection. And
 - visual/accessibility/keyboard/restart behavior contracts pass.
 
 ## FF-09 — Add the shared public StudyPacket cache
@@ -311,27 +311,27 @@ study without sharing private adaptation context.
 
 Scope:
 
-- content-addressed public packet store and resolver;
-- exact cache-key compiler;
-- freshness, provenance, license, retention, invalidation, and tombstone state;
-- tenant-safe target-local cache separation;
-- observed provider/prompt-cache/token/cost accounting; and
+- content-addressed public packet store and resolver.
+- exact cache-key compiler.
+- freshness, provenance, license, retention, invalidation, and tombstone state.
+- tenant-safe target-local cache separation.
+- observed provider/prompt-cache/token/cost accounting. And
 - hit/miss/denied/stale public-safe receipts.
 
 Acceptance:
 
-- FF-AC-09;
+- FF-AC-09.
 - two distinct target fixtures reuse one exact public packet but produce
-  isolated target gaps;
-- cross-tenant private lookups refuse without existence disclosure;
-- forbidden-material scanners cover packets, indexes, logs, and receipts; and
+  isolated target gaps.
+- cross-tenant private lookups refuse without existence disclosure.
+- forbidden-material scanners cover packets, indexes, logs, and receipts. And
 - cache hit never changes candidate disposition or admission.
 
 Owner gate: retention/publication policy and any external shared service.
 
 ## FF-10 — Add the Khala/Blueprint Fast Follow program and optimizer boundary
 
-Depends on: FF-01 through FF-04. May proceed after their schemas stabilize;
+Depends on: FF-01 through FF-04. May proceed after their schemas stabilize.
 does not block the deterministic product.
 
 Outcome: express the Fast Follow program as typed Blueprint signatures and
@@ -340,20 +340,20 @@ module candidates while keeping runtime control deterministic.
 Scope:
 
 - signatures for source resolution, study, comparison, target mapping,
-  candidate planning, and evaluation;
-- evidence-only Blueprint Program Runs bound to exact manifests and receipts;
-- fixed deterministic control flow;
+  candidate planning, and evaluation.
+- evidence-only Blueprint Program Runs bound to exact manifests and receipts.
+- fixed deterministic control flow.
 - optional offline GEPA/DSPy-class optimization of module parameters against
-  executed target outcomes, tokens, latency, and cost; and
+  executed target outcomes, tokens, latency, and cost. And
 - candidate, shadow, review, and release-gate lifecycle with no self-promotion.
 
 Acceptance:
 
-- FF-AC-11;
+- FF-AC-11.
 - planner/optimizer cannot change source refs, target authority, control flow,
-  visibility, or release gates;
-- raw private target material never enters a shared optimizer corpus;
-- baseline, packet, and optimized-candidate evaluations run at fixed budgets;
+  visibility, or release gates.
+- raw private target material never enters a shared optimizer corpus.
+- baseline, packet, and optimized-candidate evaluations run at fixed budgets.
   and
 - online runtime consumes only an admitted version with exact digest.
 
@@ -362,7 +362,7 @@ Out: deprecated Blueprint service revival, public marketplace, or settlement.
 ## FF-11 — Run the OpenAgents overnight dogfood and publish the evidence
 
 Depends on: repeats after each useful rung. The first manual run can start from
-FF-00; native allocation requires FF-07.
+FF-00. Native allocation requires FF-07.
 
 Outcome: prove that Fast Follow produces useful non-duplicative work under
 real OpenAgents authority.
@@ -370,31 +370,31 @@ real OpenAgents authority.
 First manual run:
 
 - one named, bounded FullAutoRun at a time under the current per-profile
-  concurrency contract, using #8976's visible sidebar tests where applicable;
+  concurrency contract, using #8976's visible sidebar tests where applicable.
 - ordinary non-Full-Auto delivery/research sessions may run alongside it only
   with their own claims/worktrees and without representing a native 3/1/1
-  portfolio;
+  portfolio.
 - the research unit stays scoped to the first non-terminal directive and its
   artifact paths, and implementation consumes only a separately admitted
-  candidate;
-- isolated claims/worktrees for every mutating session; and
+  candidate.
+- isolated claims/worktrees for every mutating session. And
 - retained stop, failure, token, candidate, test, and closeout evidence.
 
 Evaluation:
 
-- compare no packet versus packet at fixed task and token budget;
+- compare no packet versus packet at fixed task and token budget.
 - consume the bounded `FullAutoRunReport` and #8973 private analyzer when
-  available, keeping raw transcripts owner-private;
+  available, keeping raw transcripts owner-private.
 - measure wrong-source reads, duplicated candidate/PR rate, policy rework,
-  verification close rate, no-delta honesty, and cache reuse;
+  verification close rate, no-delta honesty, and cache reuse.
 - retain counterexamples and revise the packet/spec only through their revision
-  laws; and
+  laws. And
 - do not publish a product claim from one successful night.
 
 Acceptance:
 
-- FF-AC-13 through FF-AC-15 for the manual rung;
-- FF-AC-08 for the native five-slot rung;
-- zero collisions and zero private shared-cache findings; and
+- FF-AC-13 through FF-AC-15 for the manual rung.
+- FF-AC-08 for the native five-slot rung.
+- zero collisions and zero private shared-cache findings. And
 - an owner-readable morning digest distinguishes observed, implemented,
   verified, accepted, blocked, and proposed work.

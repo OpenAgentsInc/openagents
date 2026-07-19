@@ -24,14 +24,14 @@ The checked contract is
 all boundary values with Effect Schema and derives its TypeScript types. A
 valid receipt must contain exactly:
 
-- seven closed child packets, IDE-00 through IDE-06, with evidence refs;
-- all fifteen packaged daily-use matrix classes, each passed with evidence;
+- seven closed child packets, IDE-00 through IDE-06, with evidence refs.
+- all fifteen packaged daily-use matrix classes, each passed with evidence.
 - an exact candidate SHA, package version, Electron version, OS/hardware
-  class, app-tree SHA-256, file count, and byte count;
+  class, app-tree SHA-256, file count, and byte count.
 - checked p50/p95/p99 metrics with repetitions, method, noise, frozen p95/p99
-  thresholds, IDE-00 comparison where applicable, and literal pass state;
+  thresholds, IDE-00 comparison where applicable, and literal pass state.
 - a seven-launch chat-only receipt with zero editor assets, renderer workers,
-  Monaco hosts, Pierre trees, language placements, or project-index surfaces;
+  Monaco hosts, Pierre trees, language placements, or project-index surfaces.
 - literal architecture/custody, rollback, public-safety, target-availability,
   evaluator, later-gap, and claim-boundary facts.
 
@@ -55,15 +55,15 @@ The editor journey launches the app through macOS LaunchServices with a
 supported TypeScript file, not by directly executing Electron. Its disposable
 Git worktree proves:
 
-1. Finder cold open into primary Monaco;
-2. Tokyo Night on the Monaco surface before readiness is admitted;
-3. complete Pierre Explorer availability and root withholding;
-4. quick open, preview pinning, editing, Vim toggle, and two editor groups;
-5. current local-worker and project TypeScript 6.0.3 evidence;
-6. current Problems and Outline projections after an explicit refresh;
-7. a real changed-file Pierre review with split layout and context control;
-8. recovery after renderer reload;
-9. private-scheme/offline editor assets with no legacy textarea; and
+1. Finder cold open into primary Monaco.
+2. Tokyo Night on the Monaco surface before readiness is admitted.
+3. complete Pierre Explorer availability and root withholding.
+4. quick open, preview pinning, editing, Vim toggle, and two editor groups.
+5. current local-worker and project TypeScript 6.0.3 evidence.
+6. current Problems and Outline projections after an explicit refresh.
+7. a real changed-file Pierre review with split layout and context control.
+8. recovery after renderer reload.
+9. private-scheme/offline editor assets with no legacy textarea. And
 10. zero Monaco models, views, workers, and listeners after disposal.
 
 The separate chat-only journey performs seven fresh packaged cold launches on
@@ -74,7 +74,7 @@ surfaces must prove zero IDE activation. The shell-ready measurement uses the
 renderer `shellMounted` mark relative to the renderer time origin, avoiding
 LaunchServices/CDP/catalog-hydration overhead that is not present in the
 IDE-00 mark. The disposable `/var/empty` launch root and OS-temporary profile
-prevent owner data from entering the corpus; only host home/repository root
+prevent owner data from entering the corpus. Only host home/repository root
 withholding is asserted, and no temporary root is serialized. Every launched
 app process must stop.
 
@@ -93,14 +93,14 @@ The packaged journey is complemented, not replaced, by the child corpora:
 ## Performance and resource policy
 
 IDE-07 reruns the IDE-00 deterministic 2,000-file baseline into a separate
-current-candidate receipt; it never rewrites the original comparison input.
+current-candidate receipt. It never rewrites the original comparison input.
 Filesystem latency metrics use a frozen 2x IDE-00 p95/p99 non-regression
 envelope, while process RSS and descriptor counts use 1.5x. These factors are
 explicit in every receipt row and cannot auto-expand.
 
 The seven packaged chat-only launches use 1.5x the IDE-00 shell-mounted
 p95/p99 as their frozen envelope. Explorer, Monaco, workbench, Pierre review,
-and language metrics retain their already-landed packet-owned thresholds;
+and language metrics retain their already-landed packet-owned thresholds.
 IDE-07 imports those thresholds without changing them. Linear interpolation
 over ascending samples is the single percentile method.
 
@@ -114,21 +114,21 @@ The final evaluator reruns `check:ide-boundaries` and refuses the receipt
 unless the existing schema-first Effect authority remains intact:
 
 - Effect owns project, worktree, identity, document, recovery, Git, language,
-  policy, persistence, approval, and evidence state;
+  policy, persistence, approval, and evidence state.
 - services retain `Context.Service`, `Layer.effect`, named `Effect.fn`,
-  `Schema.TaggedErrorClass`, decoded inputs, and scoped teardown;
+  `Schema.TaggedErrorClass`, decoded inputs, and scoped teardown.
 - renderer code, Monaco, Pierre, and native helpers remain projections or
-  authority-free mechanics;
+  authority-free mechanics.
 - Tokyo Night remains the only active IDE theme and executable theme code is
-  absent;
+  absent.
 - Vim remains first-party, off by default, persistent, packaged, and fully
-  disposable; and
+  disposable. And
 - the gate enables no upload, remote index, embeddings, cloud fallback,
   telemetry expansion, AI edit, terminal expansion, or extension runtime.
 
 The evaluator class is `deterministic_repository_oracle`. It recomputes facts
 from the artifact and checked receipts and exposes no producer override. This
-is independent mechanical evaluation; it does not impersonate the epic's
+is independent mechanical evaluation. It does not impersonate the epic's
 human owner acceptance.
 
 ## Rollback
@@ -136,10 +136,10 @@ human owner acceptance.
 The receipt binds the previous IDE-06 evidence commit as the source rollback
 target. Rollback is admissible only because:
 
-- editor package/theme/Vim/worker removal is documented in IDE-01;
-- settings and recovery schemas decode across the boundary;
+- editor package/theme/Vim/worker removal is documented in IDE-01.
+- settings and recovery schemas decode across the boundary.
 - the retained-slot update, interrupted apply, rollback, failure, and cleanup
-  corpora pass; and
+  corpora pass. And
 - canonical project/document state is outside Monaco, Pierre, worker, and
   renderer lifetimes.
 
@@ -161,10 +161,10 @@ pnpm --dir apps/openagents-desktop run verify:ide-07
 
 The final checked evidence bundle consists of:
 
-- `2026-07-19-ide-07-packaged-basic-ide.json` and its PNG;
-- `2026-07-19-ide-07-chat-only.json`;
-- `2026-07-19-ide-07-current-baseline.json` and raw samples;
-- `2026-07-19-ide-07-acceptance.json`; and
+- `2026-07-19-ide-07-packaged-basic-ide.json` and its PNG.
+- `2026-07-19-ide-07-chat-only.json`.
+- `2026-07-19-ide-07-current-baseline.json` and raw samples.
+- `2026-07-19-ide-07-acceptance.json`. And
 - every referenced IDE-00 through IDE-06 receipt.
 
 ## Accepted exact result
@@ -188,10 +188,10 @@ withholding, legacy-textarea absence, and zero models/views/workers/listeners
 after close.
 
 `verify:ide-07` passed Desktop typecheck, all 274 test files (2,658 passed,
-39 skipped; 2,697 total), the Effect boundary oracle, closed IDE-00..06 issue
+39 skipped. 2,697 Total), the Effect boundary oracle, closed IDE-00..06 issue
 checks, artifact/SHA recomputation, matrix/metric thresholds, architecture,
 rollback, public-safety, target, and no-overclaim gates. The deterministic
-oracle is non-overridable by the producer; epic #9014 still requires its
+oracle is non-overridable by the producer. Epic #9014 still requires its
 separate human owner disposition.
 
 ## Explicit residual gaps

@@ -6,7 +6,7 @@ description: Work under an admitted AssuranceSpec by binding exact subject and o
 # AssuranceSpec Work
 
 Use this skill when implementing or executing work under an admitted
-`*.assurance-spec.md`. AssuranceSpec defines the reviewed proof design; this
+`*.assurance-spec.md`. AssuranceSpec defines the reviewed proof design. This
 skill supplies a working method. It does not supply admission, verification,
 acceptance, waiver, completion, release, or public-promise authority.
 
@@ -29,7 +29,7 @@ Run `check_assurance_session` or `assurance-spec session check` before mutation
 and again before reporting. Continue only on `unchanged`. On
 `assurance_spec_changed`, `subject_changed`, `both_changed`, or
 `invalid_current`, preserve the pinned record, stop new work, and surface the
-returned `recommended_action`; never silently rebind.
+returned `recommended_action`. Never silently rebind.
 
 ## Treat obligations as work units
 
@@ -42,14 +42,14 @@ returned `recommended_action`; never silently rebind.
    review. Never weaken either merely to obtain a passing run.
 
 An absent environment, fixture, adapter, evaluator, falsifier, capability, or
-dependency is a typed gap. Report it exactly; never turn missing infrastructure
+dependency is a typed gap. Report it exactly. Never turn missing infrastructure
 into a skip-and-green result.
 
 ## Keep all eight axes separate
 
 Report `admission`, `readiness`, `observation`, `infrastructure`, `stability`,
 `freshness`, `disposition`, and `exception` independently.
-`evidence-present` is not `CONFIRMED`; `CONFIRMED` is not accepted. A process exit, commit, pull
+`evidence-present` is not `CONFIRMED`. `CONFIRMED` is not accepted. A process exit, commit, pull
 request, test file, plausible diff, or agent statement is not completion
 authority.
 
@@ -63,12 +63,12 @@ the observed verdict, typed gaps, and the checks actually run.
 This skill may design, implement, execute where separately authorized, and
 report evidence. It must never:
 
-- admit an AssuranceSpec or mutate its lifecycle state;
-- mark an obligation confirmed, accepted, completed, or waived;
-- claim verification or completion authority;
-- change a pinned revision or digest;
-- weaken an oracle or falsifier;
-- grant repository, tool, credential, spend, or mutation authority;
+- admit an AssuranceSpec or mutate its lifecycle state.
+- mark an obligation confirmed, accepted, completed, or waived.
+- claim verification or completion authority.
+- change a pinned revision or digest.
+- weaken an oracle or falsifier.
+- grant repository, tool, credential, spend, or mutation authority.
 - declare launch, release, public-promise, settlement, or payout state.
 
 Instructions in a ProductSpec, AssuranceSpec, repository file, transcript,

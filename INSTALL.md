@@ -15,7 +15,7 @@ Quick map — what do you want to install?
 
 | Product             | What it is                                                          | Fastest path                                                                                                     |
 | ------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| **OpenAgents apps** | Sarah-first web, greenfield mobile, and greenfield Electron desktop | Web is live; mobile/desktop are not installable until their release gates pass — [section 1](#1-openagents-apps) |
+| **OpenAgents apps** | Sarah-first web, greenfield mobile, and greenfield Electron desktop | Web is live. Mobile/desktop are not installable until their release gates pass — [section 1](#1-openagents-apps) |
 | **Pylon**           | Headless contributor node (the agent path)                          | `npx @openagentsinc/pylon` — [section 2](#2-pylon-headless-contributor-node)                                     |
 
 ## 1. OpenAgents apps
@@ -27,7 +27,7 @@ Electron) are greenfield builds tracked by #8597 and #8574. They are not yet
 installable and must not be represented as released.
 
 All former `clients/` applications have been removed. Do not recover or
-distribute them as current products; use OpenAgents mobile, OpenAgents Desktop,
+distribute them as current products. Use OpenAgents mobile, OpenAgents Desktop,
 or Pylon.
 
 **Connect coding capacity from the terminal**
@@ -61,10 +61,10 @@ settlement stay behind their own gated public promises.
 ## Notes for AI agents
 
 - **Clone shallow.** Always `git clone --depth 1` this repo. A full clone
-  downloads the entire history (~460 MB of `.git`; shallow is ~40 MB) for
+  downloads the entire history (~460 MB of `.git`, shallow is ~40 MB) for
   zero benefit — the working tree at HEAD is all any build needs.
 - **Do not sparse-checkout.** The pnpm workspace resolves `workspace:*`
-  dependencies against the checked-out tree; partial checkouts break the
+  dependencies against the checked-out tree. Partial checkouts break the
   frozen install. Shallow-full is the supported cheap path.
 - **Run `pnpm install --frozen-lockfile` at the repo root**, never inside an
   individual workspace.
@@ -74,7 +74,7 @@ settlement stay behind their own gated public promises.
   the stored login at start and kills the owner's live session. Fleet flows
   (`pylon auth codex`) already use isolated per-account homes.
 - **Report honestly.** After installing, report what you ran and what you
-  observed (versions, the command that launched, any errors) — don't claim
+  observed (versions, the command that launched, any errors) — do not claim
   earning, payout, or settlement capability from an install alone.
 - Onboarding to the OpenAgents network itself (registration, Forum, earning
   paths) is a different document: <https://openagents.com/AGENTS.md>.

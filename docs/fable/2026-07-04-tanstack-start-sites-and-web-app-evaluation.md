@@ -2,14 +2,14 @@
 
 **STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
 §EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
-the historical record of the earlier decision; do not implement
+the historical record of the earlier decision. Do not implement
 from this document.
 
 
 Date: 2026-07-04
 Status: analysis/evaluation in the Fable lane. No promise state flips, no
 public copy changes, no issues filed (§10 proposes the map). This doc
-evaluates an owner-raised strategic question and recommends a path; the
+evaluates an owner-raised strategic question and recommends a path. The
 final call changes a standing repo default (the Bun/Effect/Foldkit working
 rule in CLAUDE.md) and is therefore an **owner decision** — when made, the
 rule, AGENTS.md, and INVARIANTS surfaces update in the same change.
@@ -61,7 +61,7 @@ components (`createServerFn` compiles to typed fetch stubs client-side),
 explicit server/client boundaries (`*.server.ts`,
 `server-only` modules), deployed as **edge Workers on Cloudflare** with
 secrets injected as Worker bindings at request time. Their data layer
-stayed put (Supabase) — the framework swap didn't force a data migration.
+stayed put (Supabase) — the framework swap did not force a data migration.
 
 1. **Framework primitives are AI guardrails.** "When AI is generating
    full apps, framework primitives are a direct translation to product
@@ -79,9 +79,9 @@ stayed put (Supabase) — the framework swap didn't force a data migration.
    ourselves (commit `55297c5deb`), and — embarrassingly — the exact
    defect our own web app still has (4.1 MB SPA, nothing paints without
    JS). Sites generated as Start apps pass our own audit **by
-   construction**; we should also bake the rest of the audit checklist
+   construction**. We should also bake the rest of the audit checklist
    (llms.txt, ai-catalog, JSON-LD, robots/sitemap) into the site template
-   so every Autopilot Site ships agent-ready. We sell the audit; our
+   so every Autopilot Site ships agent-ready. We sell the audit. Our
    product output should be its best advertisement.
 3. **The stack you generate should be the stack you run.** Their team
    builds tanstack.com and Lovable-adjacent tooling on the same
@@ -105,11 +105,11 @@ transfer directly onto our infra:
 - Build: `@cloudflare/vite-plugin` (`viteEnvironment: {name: 'ssr'}`) +
   `tanstackStart()` + React — **not Nitro** for Cloudflare.
   `importProtection` hard-fails client bundles that import server-only
-  modules (a CI-time claims-lint for code); router code-splitting defaults
-  split component/loader per route; manual vendor chunks.
-- Per-route rendering: SSR by default; `ssr: false` for the two
+  modules (a CI-time claims-lint for code). Router code-splitting defaults
+  split component/loader per route. Manual vendor chunks.
+- Per-route rendering: SSR by default. `ssr: false` for the two
   client-only surfaces (their in-browser builder). API routes are file
-  routes with `server.handlers`; ~25 server-fn files.
+  routes with `server.handlers`. ~25 Server-fn files.
 - Versions in the lane: `@tanstack/react-start` 1.168.x,
   `react-router` 1.170.x, `query` 5.101.x, `db` 0.6.14 (beta),
   `react-form` 1.33, `react-table` 9-beta, plus **TanStack AI** 0.39
@@ -126,14 +126,14 @@ transfer directly onto our infra:
 
 **Today** (from the implementation audit): Autopilot Sites is a generic
 host, not a framework. A site = D1 rows (`site_projects`/`site_versions`/
-`site_deployments`) + R2 artifacts; two runtime kinds — `omega_static_r2`
-(static files streamed from R2; the live default) and
+`site_deployments`) + R2 artifacts. Two runtime kinds — `omega_static_r2`
+(static files streamed from R2, the live default) and
 `workers_for_platforms` (per-site Worker module sub-dispatched through the
 `SITES_DISPATCH` namespace). Content comes from agent **builder sessions**
 (file snapshots in D1 → `saveVersion` → R2). Production deploy is
-owner/operator-gated; all four `autopilot_sites.*` records are yellow/red
+owner/operator-gated. All four `autopilot_sites.*` records are yellow/red
 with the last mile staged (custom hostnames INERT pending Cloudflare-for-
-SaaS arming; email sends flag-gated pending deliverability proof; no paid
+SaaS arming. Email sends flag-gated pending deliverability proof. No paid
 customer site receipt). There is **no SSR, no template engine, no
 framework** in the serving path — sites are whatever files an agent wrote.
 
@@ -144,11 +144,11 @@ infrastructure already exists):
    routes, server fns, Tailwind 4 with our token system available,
    `wrangler.jsonc` per site — built to a **Worker module** and deployed
    through the *existing* `workers_for_platforms` runtime kind. WfP
-   becomes the default runtime for new sites; `omega_static_r2` remains
+   becomes the default runtime for new sites. `omega_static_r2` remains
    for trivially-static output (Start's prerender can emit that too).
 2. **Build pipeline**: Start sites need `vite build` (dependency install +
    build execution). The preview runner already classifies exactly this
-   (`runtimeNeeds` → `container_metered` tier); the Cloudflare Containers
+   (`runtimeNeeds` → `container_metered` tier). The Cloudflare Containers
    lane referenced in the sites docs is the build executor. This is the
    one genuinely new machine: version → containerized build → Worker
    module + assets into R2 → existing deploy gates. Deterministic,
@@ -157,7 +157,7 @@ infrastructure already exists):
    way — a versioned `sites-tanstack-rules` doc injected into every
    builder session *plus* behavior contracts generated per site (the
    customer-invariant catalog the QA Swarm sells: dead controls, broken
-   flows, claim safety). Generated sites get QA'd by our own swarm; the
+   flows, claim safety). Generated sites get QA'd by our own swarm. The
    loop closes.
 4. **Agent-ready by construction**: the template ships SSR-by-default,
    llms.txt, `/.well-known` agent surfaces, JSON-LD, robots/sitemap —
@@ -165,7 +165,7 @@ infrastructure already exists):
    product quality and marketing for the audit campaign.
 5. **Secrets as bindings** (Lovable's pattern): per-site server env
    injected as Worker bindings at deploy, never bundled — WfP supports
-   per-script bindings; our deploy gate records what was bound.
+   per-script bindings. Our deploy gate records what was bound.
 
 What this does *not* change: the ownership/gating model (builder →
 saved version → operator-gated deploy → receipts), custom-hostname and
@@ -178,14 +178,14 @@ blockers regardless of the framework inside the artifact.
 (Elm-architecture) SPA — `foldkit@0.102`, Effect 4 beta, Vite, Tailwind 4,
 Three.js scenes via `three-effect` — built to static assets served by the
 Worker's ASSETS binding. The measured pain is not stylistic: **one 4.10 MB
-JS bundle (1.07 MB brotli), no route splitting, no SSR**; FCP/LCP 1.16 s
+JS bundle (1.07 MB brotli), no route splitting, no SSR**. FCP/LCP 1.16 s
 desktop / 3.0 s mobile-mid, while the plain-HTML control page (`/lander2`)
 paints in ~0.28–0.30 s (3.9×/10.9× faster). The site-speed lane's own P5
 prescription — route-level splitting + server-rendered critical HTML +
 hydrate-after-paint — is a description of TanStack Start's defaults. And
 our agent-readiness surfaces (`/.well-known/*`, robots, sitemap) had to be
 hand-built on the API Worker precisely because the SPA shell serves agents
-nothing; SSR closes that class structurally.
+nothing. SSR closes that class structurally.
 
 **Recommended architecture — sharpened by owner directive (2026-07-04):
 clone tanstack.com's setup as exactly as practical.** The local clone at
@@ -211,9 +211,9 @@ inspiration. "Stick very close to tanstack.com generally":
 - **Same component/design/Tailwind setup as tanstack.com** — adopt their
   Tailwind 4 configuration and component conventions as the baseline,
   then swap the palette to our StarCraft-blue token system (tokens are
-  the theme; the setup is theirs). `@openagentsinc/ui` React edition
+  the theme. The setup is theirs). `@openagentsinc/ui` React edition
   (TS-9) grows out of this baseline rather than being invented parallel
-  to it. Drop what we don't need (their Sentry/content-collections/
+  to it. Drop what we do not need (their Sentry/content-collections/
   drizzle wiring) rather than porting it unexamined.
 - **Deployed to a NEW Worker with a visible staging URL ASAP — never
   replacing the live openagents.com Worker during bring-up.** First
@@ -221,14 +221,14 @@ inspiration. "Stick very close to tanstack.com generally":
   `*.workers.dev` URL immediately, plus a `start.openagents.com` (or
   `staging.openagents.com`) custom domain when convenient. The existing
   `workers/api` Worker stays untouched as the authority (service
-  binding/API calls cross to it); production route cutover happens only
+  binding/API calls cross to it). Production route cutover happens only
   later, per-route, after the staging surface proves out.
 - **The current `apps/web` Foldkit app is hereby deprecated**: no new
-  pages land there; its pages move into the new system **funnel first
+  pages land there. Its pages move into the new system **funnel first
   and ASAP** — landing, `/business`, `/blog`, `/docs`, `/code/download`,
   vertical pages (where SSR/SEO/agent-readability pay immediately and
   the StarCraft theme reset already zero-based the content) — then the
-  rest; heavy logged-in panels migrate last or stay client-rendered.
+  rest. Heavy logged-in panels migrate last or stay client-rendered.
   Each ported page deletes its Foldkit counterpart at production
   cutover.
 
@@ -240,7 +240,7 @@ change. In the Start app: server functions and loaders run Effect programs
 `effect-start` bridge helper package with managed runtime + per-request
 context — worth building once, reusing everywhere). Effect Schema stays
 the single contract language (the Start app consumes the same schemas the
-API serves). The CLAUDE.md rule's *Effect half* survives intact; only the
+API serves). The CLAUDE.md rule's *Effect half* survives intact. Only the
 *Foldkit-for-web half* is on the table.
 
 **Preserving Foldkit** — tactically, via Start's own escape hatch:
@@ -248,19 +248,19 @@ API serves). The CLAUDE.md rule's *Effect half* survives intact; only the
 `Runtime.run(program)` against a container element — exactly how the
 isolated `lander3-scene` library already mounts. So during migration,
 existing Foldkit surfaces (the app shell panels) mount unchanged inside
-CSR routes; Three.js/`three-effect` scenes likewise (they're
+CSR routes. Three.js/`three-effect` scenes likewise (they are
 DOM-container-based and framework-indifferent). Long-run, the honest
-statement is: **the web surface converges on React** (that's what "build
+statement is: **the web surface converges on React** (that is what "build
 in what Sites builds in" means), Foldkit remains the desktop direction
-(`autopilot-desktop` patterns; the Khala Code Effect-integration plan)
+(`autopilot-desktop` patterns, the Khala Code Effect-integration plan)
 unless a later decision extends this one — and `packages/ui` design
 tokens (CSS/Tailwind) port cleanly since the uniform-StarCraft-blue theme
 lives in tokens, not in Foldkit views.
 
-**Honest costs**: greenfield React in a repo with zero TanStack today; a
-dual-framework interim (bounded by the CSR-mount bridge); Start is 1.x
+**Honest costs**: greenfield React in a repo with zero TanStack today. A
+dual-framework interim (bounded by the CSR-mount bridge). Start is 1.x
 but fast-moving — pin versions and use the parity-contract discipline we
-already run against Codex upstream; the CLAUDE.md/AGENTS/INVARIANTS
+already run against Codex upstream. The CLAUDE.md/AGENTS/INVARIANTS
 default must be updated in the same change as the decision, or every
 future agent will fight the migration.
 
@@ -282,7 +282,7 @@ The mapping is almost mechanical:
 | `begin/write/commit` batch | `readChangesAfter(scope, cursor)` batch on each poke |
 | `truncate()` + resync | the design's `must-refetch` / compaction path |
 | `loadSubset({cursor})` | cursor-paged catch-up (already the API shape) |
-| optimistic `onInsert/onUpdate/onDelete` → matching strategy | named mutators through `sync_mutations`; **`mutation_id` accept/reject is our txid** — cleaner than Electric's Postgres-txid matching because idempotent mutation ids are already first-class in the outbox |
+| optimistic `onInsert/onUpdate/onDelete` → matching strategy | named mutators through `sync_mutations`. **`mutation_id` accept/reject is our txid** — cleaner than Electric's Postgres-txid matching because idempotent mutation ids are already first-class in the outbox |
 
 So: build **`@openagentsinc/khala-sync-db-collection`** —
 `khalaSyncCollectionOptions({ scope, collection, mutators })` — as the
@@ -295,7 +295,7 @@ automatic rollback, multi-collection transactions, `localStorage`/
 empty `packages/khala-sync-client` becomes this adapter (plus a thin
 non-React core if the CLI wants it). Server side changes not at all —
 the outbox, scopes, and mutation machinery are exactly what the adapter
-consumes; the Khala Sync design's Postgres/Hyperdrive Phases 1–2 proceed
+consumes. The Khala Sync design's Postgres/Hyperdrive Phases 1–2 proceed
 underneath unchanged.
 
 Bonus: `cloudflare-durable-objects-db-sqlite-persistence` means a DO can
@@ -308,12 +308,12 @@ path to the offline queue the sync design deliberately deferred.
 An earlier revision of this section presented the fork ("one UI ecosystem
 across web/desktop/mobile vs two") as an open flag. **The owner has since
 decided: ONE UI ecosystem — React + Tailwind everywhere, with React
-Native via Expo for mobile** ("yes expo, then we don't need both Swift
+Native via Expo for mobile** ("yes expo, then we do not need both Swift
 and Kotlin apps"). This section now records that decision and carries the
 velocity assessment the owner asked for. Two standing rules change with
 it, and the rule text updates ride the same change set: the CLAUDE.md
 Foldkit-for-web default, and the 2026-06-26 no-Expo mobile mandate
-(reversed for the Expo framework; see the EAS nuance in §6.3).
+(reversed for the Expo framework, see the EAS nuance in §6.3).
 
 ### 6.1 The velocity assessment: does React/Tailwind actually make us faster?
 
@@ -321,7 +321,7 @@ Yes — and the strongest argument is specific to *how this company builds*.
 
 1. **Our engineering throughput is fleet throughput, and the fleet is
    dramatically more fluent in React+Tailwind than in Foldkit.** React is
-   the largest UI corpus in every frontier model's training data;
+   the largest UI corpus in every frontier model's training data.
    Tailwind is its styling lingua franca. Foldkit is an in-house
    Elm-architecture framework that requires curated rules
    (effect-solutions consultation is a standing instruction), produces
@@ -329,7 +329,7 @@ Yes — and the strongest argument is specific to *how this company builds*.
    priors to check against. This is the harness-evolution and Lovable
    thesis pointed at ourselves: *primitives the model already knows are a
    direct quality and speed lever for AI-generated code.* Every workday
-   here is dozens of agent-written UI diffs; shifting them onto the
+   here is dozens of agent-written UI diffs. Shifting them onto the
    stack the models are best at is a compounding velocity gain, not a
    taste preference.
 2. **One component system, three surfaces.** Web (Start), Khala Code
@@ -337,13 +337,13 @@ Yes — and the strongest argument is specific to *how this company builds*.
    changing the runtime), and mobile (Expo RN). Honest boundary: React
    DOM components do not render in RN — what's fully shared across all
    three is business logic, Effect services, schemas, the TanStack DB
-   data layer (khala-sync-db-collection), hooks, and the design tokens;
+   data layer (khala-sync-db-collection), hooks, and the design tokens.
    styling parity on RN comes via NativeWind (Tailwind-for-RN) over the
    same token set, and component *structure* stays parallel even where
    the leaf primitives differ (`div` vs `View`). Web↔desktop share
    literally everything.
 3. **Maintenance we stop paying.** Foldkit is ours to maintain, document,
-   and teach to every agent; the vanilla-DOM desktop shell (2,598 lines)
+   and teach to every agent. The vanilla-DOM desktop shell (2,598 lines)
    was due for a rewrite regardless (the planned Foldkit migration).
    Redirecting that rewrite to React costs nothing extra *because it has
    not started* — this was the entire point of flagging the fork now.
@@ -353,7 +353,7 @@ Yes — and the strongest argument is specific to *how this company builds*.
    the DOM).
 4. **What we give up, named honestly.** Foldkit's Elm discipline —
    single-state-atom, message-typed updates, principled effects — is a
-   real correctness asset; React's default culture is looser. Mitigation
+   real correctness asset. React's default culture is looser. Mitigation
    is architectural, not nostalgic: TanStack DB collections + live
    queries carry app state (not ad-hoc useState sprawl), Effect services
    stay the logic layer, `importProtection` and lint rules enforce the
@@ -368,16 +368,16 @@ Yes — and the strongest argument is specific to *how this company builds*.
 
 ### 6.2 What one ecosystem looks like, surface by surface
 
-- **Web** — TanStack Start on the tanstack.com Worker pattern (§4);
-  React + Tailwind 4 + tokens; Foldkit surfaces bridge via `ssr:false`
+- **Web** — TanStack Start on the tanstack.com Worker pattern (§4).
+  React + Tailwind 4 + tokens. Foldkit surfaces bridge via `ssr:false`
   CSR mounts strictly as a migration vehicle, deleted route-by-route.
 - **Khala Code desktop** — Electrobun stays (runtime unchanged, all the
-  Codex/RPC/fleet machinery untouched); the shell rewrite goes to
+  Codex/RPC/fleet machinery untouched). The shell rewrite goes to
   **React + Tailwind instead of Foldkit**. The Effect-integration audit's
   substance survives intact — its schema-first RPC contracts and scoped
-  process/services phases are view-layer-independent; only its "staged
+  process/services phases are view-layer-independent. Only its "staged
   Foldkit shell migration" phase is superseded. Existing UX behavior
-  contracts are the safety net for the shell swap: the oracles don't care
+  contracts are the safety net for the shell swap: the oracles do not care
   which framework renders the pixels.
 - **Mobile** — **Expo React Native app** replacing the both-Swift-and-
   Kotlin future: one codebase for iOS + Android, expo-modules API for the
@@ -386,18 +386,18 @@ Yes — and the strongest argument is specific to *how this company builds*.
   `expo-db-sqlite-persistence` + khala-sync-db-collection as the data
   layer, NativeWind + tokens for the theme. Expo Router provides typed
   file-based routing on mobile (TanStack Router does not support RN —
-  accepted; routing is the one per-surface piece).
+  accepted. Routing is the one per-surface piece).
   The shipped SwiftUI app remains the interim companion and the
   reference implementation for the native modules until the Expo app
-  reaches parity; the chat-sync dogfood milestone does not wait for the
+  reaches parity. The chat-sync dogfood milestone does not wait for the
   rewrite (see §6.4).
 - **Shared packages** — `@openagentsinc/ui` evolves to React components
-  on the token system; `khala-sync-db-collection`, schemas, contracts,
+  on the token system. `khala-sync-db-collection`, schemas, contracts,
   and Effect services shared verbatim across all three.
 
 ### 6.3 The Expo mandate reversal, precisely
 
-The 2026-06-26 mandate ("NO Expo/EAS cloud; native SwiftUI only") is
+The 2026-06-26 mandate ("NO Expo/EAS cloud, native SwiftUI only") is
 **reversed for the Expo framework by owner direction (2026-07-04)**. Two
 nuances preserved deliberately:
 
@@ -409,12 +409,12 @@ nuances preserved deliberately:
   Updates server** (`apps/oa-updates`) implements the expo-updates
   protocol (`expo-protocol-version: 1`), signs manifests with
   `expo-signature` code signing, stores assets, and models update
-  channels/branches + runtime fingerprints; it runs on OpenAgents cloud
+  channels/branches + runtime fingerprints. It runs on OpenAgents cloud
   behind `updates.openagents.com`, with the publish pipeline in
   `scripts/publish-ota.sh` (compute runtime fingerprint → `expo export` →
   bake as seed → deploy) — fully off Expo's CDN, and it also carries the
   desktop and Pylon signed-release feeds. The TS-8 Expo app embeds
-  `updates.url` → our server and ships OTA through it; `eas update` is
+  `updates.url` → our server and ships OTA through it. `eas update` is
   not part of the stack at all. One repair item for TS-8: `publish-ota.sh`
   still points at the retired `AutopilotRemoteControl` mobile path and
   gets repointed to the new app.
@@ -425,9 +425,9 @@ The mobile report's Option A (SwiftUI + Swift protocol port) is
 **superseded as the destination** — Option B wins by owner decision, with
 the calculus improved by §5 (the RN app inherits the entire TanStack DB
 data layer rather than hand-rolling anything). What survives: the
-SwiftUI app as interim companion + native-module reference; the
-chat-sync dogfood milestone (KS-1/KS-3/KS-5) unchanged; KS-2 superseded
-by khala-sync-db-collection (TS-3); **KS-4 (Swift protocol port)
+SwiftUI app as interim companion + native-module reference. The
+chat-sync dogfood milestone (KS-1/KS-3/KS-5) unchanged. KS-2 superseded
+by khala-sync-db-collection (TS-3). **KS-4 (Swift protocol port)
 canceled** — the Expo app consumes the TS client directly, and the
 conformance-fixture machinery shrinks to whatever non-JS consumers ever
 exist. The near-term test can still run on the SwiftUI app via the
@@ -454,52 +454,52 @@ billable somewhere in the current revenue plan.
    contract (upstream-pin discipline already proven on Codex).
 2. **Bundle regression in React**: per-route splitting is Start's
    default and `importProtection` + budget tests (site-speed lane
-   budgets) hold the line; the current 4.1 MB monolith is the low bar.
-3. **Dual-framework drift**: time-box the Foldkit-in-CSR bridge; every
+   budgets) hold the line. The current 4.1 MB monolith is the low bar.
+3. **Dual-framework drift**: time-box the Foldkit-in-CSR bridge. Every
    migrated route deletes Foldkit code in the same PR.
 4. **TanStack DB is beta** (0.6): the adapter isolates us — worst case we
-   own the store behind the same `khalaSyncCollectionOptions` surface;
+   own the store behind the same `khalaSyncCollectionOptions` surface.
    the SyncConfig contract is small enough to reimplement.
 5. **Working-rule conflict**: CLAUDE.md currently mandates Foldkit for
-   this app; nothing ships until the owner signs the default change and
+   this app. Nothing ships until the owner signs the default change and
    the rule text updates in the same PR.
 6. **WfP build costs** for user sites (container builds): metered tier
-   exists; receipts per build; budget caps per site.
+   exists. Receipts per build. Budget caps per site.
 
 ## 9. Owner decision points — status after the 2026-07-04 direction
 
 1. ~~Approve the direction~~ **DECIDED**: one UI ecosystem — React +
-   Tailwind across web/desktop/mobile; TanStack Start for the web surface
-   and as Autopilot Sites' canonical output; Expo React Native for
+   Tailwind across web/desktop/mobile. TanStack Start for the web surface
+   and as Autopilot Sites' canonical output. Expo React Native for
    mobile. CLAUDE.md rule text updates ride this change set.
 2. Sequencing: funnel pages first (recommended) vs Sites template first —
-   still open; recommendation stands.
+   still open. Recommendation stands.
 3. ~~Desktop-shell question~~ **DECIDED**: Khala Code shell rewrite goes
    to React + Tailwind (Foldkit shell migration superseded before it
-   started); Electrobun runtime unchanged.
+   started). Electrobun runtime unchanged.
 4. ~~Mobile~~ **DECIDED**: Expo RN app is the destination (one codebase,
-   no separate Swift + Kotlin apps); SwiftUI app is interim + native-
-   module reference; **updates ship via our own EAS-Updates-replacement
+   no separate Swift + Kotlin apps). SwiftUI app is interim + native-
+   module reference. **Updates ship via our own EAS-Updates-replacement
    server (`apps/oa-updates` → `updates.openagents.com`), builds stay
-   local for now** (§6.3); chat-sync dogfood milestone proceeds now on
+   local for now** (§6.3). Chat-sync dogfood milestone proceeds now on
    the interim app.
 
-## 10. Proposed workstream map (TS; not filed — follow-up filing pass next)
+## 10. Proposed workstream map (TS, not filed — follow-up filing pass next)
 
 | Task | Description | Depends |
 | --- | --- | --- |
 | TS-1 | `effect-start` bridge helper (managed Effect runtime + per-request context in Start server fns/loaders) + pinned-version parity contract | — |
-| TS-2 | `apps/start` Worker: funnel pages (landing, /business, /blog, /docs, /code/download) SSR'd on the tanstack.com pattern; well-known agent surfaces served from the shell; site-speed budgets as merge gates | TS-1 |
-| TS-3 | `@openagentsinc/khala-sync-db-collection` (SyncConfig adapter over scope rooms + cursors + mutation-id matching) — supersedes KS-2; first consumer = a live surface in TS-2 or the chat-sync milestone | — |
+| TS-2 | `apps/start` Worker: funnel pages (landing, /business, /blog, /docs, /code/download) SSR'd on the tanstack.com pattern. Well-known agent surfaces served from the shell. Site-speed budgets as merge gates | TS-1 |
+| TS-3 | `@openagentsinc/khala-sync-db-collection` (SyncConfig adapter over scope rooms + cursors + mutation-id matching) — supersedes KS-2. First consumer = a live surface in TS-2 or the chat-sync milestone | — |
 | TS-4 | Autopilot Sites Start template v1 + containerized build lane (version → build → WfP module → existing gates), agent-ready surfaces baked in | — |
 | TS-5 | Sites rules pack + per-site behavior contracts (the Lovable curated-rules lesson, enforced our way) | TS-4 |
 | TS-6 | Web app-shell panel migration (Foldkit-in-CSR bridge, route-by-route, delete-as-you-go) | TS-2 |
-| TS-7 | Khala Code desktop shell rewrite in React + Tailwind (replaces the planned Foldkit shell migration; Electrobun + RPC/fleet machinery untouched; existing UX behavior contracts as the regression net) | TS-2 patterns helpful, not blocking |
-| TS-8 | Expo RN companion app v0: Expo Router shell, NativeWind + tokens, khala-sync-db-collection + expo-sqlite persistence, expo-modules ports of the Swift voice/Apple-FM pieces; local prebuild + Xcode/Gradle builds; own-OTA feed wiring | TS-3; KS-1 server work |
+| TS-7 | Khala Code desktop shell rewrite in React + Tailwind (replaces the planned Foldkit shell migration, Electrobun + RPC/fleet machinery untouched, existing UX behavior contracts as the regression net) | TS-2 patterns helpful, not blocking |
+| TS-8 | Expo RN companion app v0: Expo Router shell, NativeWind + tokens, khala-sync-db-collection + expo-sqlite persistence, expo-modules ports of the Swift voice/Apple-FM pieces. Local prebuild + Xcode/Gradle builds. Own-OTA feed wiring | TS-3. KS-1 server work |
 | TS-9 | `@openagentsinc/ui` React edition on the shared token system (StarCraft theme), consumed by TS-2/TS-6/TS-7 and (via NativeWind parallel) TS-8 | TS-1 |
 | TS-10 | Fleet UI velocity measurement: cycle-time and review-minutes per merged UI PR, Foldkit-era baseline vs React-era, on the BF-7.2 metric shapes — the §6.1 claim gets a receipt | TS-2 |
 
-Start-now set: TS-1, TS-3, TS-4 scaffolding, TS-9; TS-7 before any
+Start-now set: TS-1, TS-3, TS-4 scaffolding, TS-9. TS-7 before any
 further Foldkit-shell effort is spent in the desktop app.
 
 ## 11. The transition plan (added 2026-07-04, post-decision — ordered and specific)
@@ -536,50 +536,50 @@ written:
 
 **Consequences for the TS map:** §5's "khala-sync-db-collection is the
 client half" is now stated more precisely — the client half *exists*
-(khala-sync-client engine, KS-5); **TS-3 is a TanStack DB `SyncConfig`
+(khala-sync-client engine, KS-5). **TS-3 is a TanStack DB `SyncConfig`
 adapter wrapped around the shipped client engine**, not a from-scratch
 store. And the mobile report's KS-1..KS-5 labels collide with the epic's
 KS-* namespace — the chat-milestone items are hereby relabeled **MC-\***
 (MC-1 chat collection + mutators, MC-3 desktop/web sidebar consumers,
-MC-5 cross-device dogfood; MC-2/MC-4 were superseded/canceled in §6.4).
+MC-5 cross-device dogfood. MC-2/MC-4 were superseded/canceled in §6.4).
 
 ### 11.1 The ordering principles
 
-1. **Don't couple a domain's Postgres migration to its UI rewrite** —
+1. **Do not couple a domain's Postgres migration to its UI rewrite** —
    except where the UI rewrite *is* the consumer proof (chat, by design).
 2. **Revenue surfaces first** (funnel pages need zero sync work — ship
-   them immediately); flagship demo second (cross-device chat); Sites
-   third (it needs the build lane anyway); long-tail panels last.
+   them immediately). Flagship demo second (cross-device chat). Sites
+   third (it needs the build lane anyway). Long-tail panels last.
 3. **Baseline before the first React PR** — the §6.1 velocity claim needs
    the Foldkit-era measurement captured first, or the receipt is lost.
 4. **One reordering request into the KS-8 queue**: pull **KS-8.13
    (#8324) ahead of 8.10–8.12** — it is the only KS-8 item that gates the
    one-UI plan (chat scopes = the cross-device dogfood, the desktop
-   shell's first React surface, and the sync engine's flagship demo);
+   shell's first React surface, and the sync engine's flagship demo).
    forum/CRM/sites migrations gate nothing in this plan.
 5. **Every React PR deletes the Foldkit/vanilla-DOM code it replaces** —
    no parallel implementations left standing.
 
 ### 11.2 The waves
 
-**Wave 0 — foundations (start now; all parallel; no KS-8 dependency):**
+**Wave 0 — foundations (start now, all parallel, no KS-8 dependency):**
 
 | # | Work | Notes |
 | --- | --- | --- |
 | 0.1 | File the ONE-UI epic + TS-1..TS-10 issues (per EXECUTION.md conventions) | The filing pass this doc has been deferring |
 | 0.2 | **TS-10a: capture the Foldkit-era velocity baseline** (cycle time, review-minutes per merged UI PR, from existing ledgers) | Must precede the first React merge |
 | 0.3 | **TS-1: `effect-start` bridge** + pinned Start/Router/DB versions + parity-contract file | Unblocks all web work |
-| 0.4 | **TS-9: `@openagentsinc/ui` React edition** on the shared tokens (StarCraft theme; NativeWind-compatible token export) | Unblocks TS-2/6/7/8 |
-| 0.5 | **TS-3: `khala-sync-db-collection`** — TanStack DB `SyncConfig` adapter over the shipped khala-sync-client session engine; mutation-id matching via the KS-3 push route; **first consumer = the already-live `fleet_run` scope** (testable today, no chat dependency) | Proves the adapter against production sync before chat exists |
+| 0.4 | **TS-9: `@openagentsinc/ui` React edition** on the shared tokens (StarCraft theme, NativeWind-compatible token export) | Unblocks TS-2/6/7/8 |
+| 0.5 | **TS-3: `khala-sync-db-collection`** — TanStack DB `SyncConfig` adapter over the shipped khala-sync-client session engine. Mutation-id matching via the KS-3 push route. **First consumer = the already-live `fleet_run` scope** (testable today, no chat dependency) | Proves the adapter against production sync before chat exists |
 | 0.6 | KS-8 queue continues as scheduled: 8.7 billing → 8.8 treasury → 8.9 entitlements (the money-truth migrations stay first — they gate nothing here and matter most) | No change requested |
-| 0.7 | **TS-2a: staging scaffold, day one** — clone the tanstack.com shape into `apps/openagents.com/apps/start` (vite config, server entry, router, wrangler per §4), StarCraft tokens over their Tailwind setup, one real page ported (the landing), **deployed to a NEW Worker with a visible staging URL immediately** (`*.workers.dev` first; `start.openagents.com` custom domain when convenient). Does not touch the live openagents.com Worker | Owner directive: a staging URL ASAP; only needs TS-1 stubs, not the full bridge |
+| 0.7 | **TS-2a: staging scaffold, day one** — clone the tanstack.com shape into `apps/openagents.com/apps/start` (vite config, server entry, router, wrangler per §4), StarCraft tokens over their Tailwind setup, one real page ported (the landing), **deployed to a NEW Worker with a visible staging URL immediately** (`*.workers.dev` first, `start.openagents.com` custom domain when convenient). Does not touch the live openagents.com Worker | Owner directive: a staging URL ASAP. Only needs TS-1 stubs, not the full bridge |
 
-**Wave 1 — the web funnel on Start (revenue-visible; ~immediately after 0.3/0.4):**
+**Wave 1 — the web funnel on Start (revenue-visible, ~immediately after 0.3/0.4):**
 
 | # | Work | Notes |
 | --- | --- | --- |
-| 1.1 | **TS-2: port the funnel into the staging Worker** — `/business`, `/blog`, `/docs`, `/code/download`, vertical pages onto the 0.7 scaffold; well-known agent surfaces served from the shell; site-speed budgets as merge gates; owner reviews everything on the staging URL | Closes the site-speed P5 prescription and the agent-readability gap; zero sync coupling |
-| 1.2 | Production cutover route-by-route onto the real domain only after staging sign-off (new Worker takes the route; API Worker untouched); the deprecated `apps/web` Foldkit page is deleted per cut-over route | The dual-framework window starts and stays bounded; openagents.com is never replaced wholesale |
+| 1.1 | **TS-2: port the funnel into the staging Worker** — `/business`, `/blog`, `/docs`, `/code/download`, vertical pages onto the 0.7 scaffold. Well-known agent surfaces served from the shell. Site-speed budgets as merge gates. Owner reviews everything on the staging URL | Closes the site-speed P5 prescription and the agent-readability gap. Zero sync coupling |
+| 1.2 | Production cutover route-by-route onto the real domain only after staging sign-off (new Worker takes the route, API Worker untouched). The deprecated `apps/web` Foldkit page is deleted per cut-over route | The dual-framework window starts and stays bounded. Openagents.com is never replaced wholesale |
 | 1.3 | KS-8.14 (business funnel D1→Postgres) lands independently underneath — do not couple to 1.1/1.2 | Principle 1 |
 
 **Wave 2 — chat scopes + the flagship demo (gated on the KS-8.13 pull-forward):**
@@ -588,16 +588,16 @@ MC-5 cross-device dogfood; MC-2/MC-4 were superseded/canceled in §6.4).
 | --- | --- | --- |
 | 2.1 | **KS-8.13 (#8324), reordered next in the KS-8 queue**: threads/teams/workspaces to Cloud SQL with Khala Sync scopes | The single blocking migration for everything below |
 | 2.2 | **MC-1: chat collection + named mutators** (`chat.createThread` / `appendMessage` / `renameThread`) on the KS-3 mutator registry, owner-scoped | Small — the mutator engine and authoring guide (#8293) exist |
-| 2.3 | **TS-7 begins with the chat sidebar**: Khala Code desktop's first React + Tailwind surface consumes thread scopes via TS-3; UX behavior contracts as the regression net; vanilla-DOM sidebar deleted | The shell rewrite and the sync consumer are the same PR series |
-| 2.4 | **MC-3/MC-5: cross-device chat dogfood** — web (Start CSR or panel) + desktop sidebars live; interim SwiftUI app does mutation-HTTP + WS refetch; owner runs the phone↔desktop↔web round-trip; public-safe evidence bundle | The Khala Sync flagship receipt and the mobile milestone, unchanged in substance |
+| 2.3 | **TS-7 begins with the chat sidebar**: Khala Code desktop's first React + Tailwind surface consumes thread scopes via TS-3. UX behavior contracts as the regression net. Vanilla-DOM sidebar deleted | The shell rewrite and the sync consumer are the same PR series |
+| 2.4 | **MC-3/MC-5: cross-device chat dogfood** — web (Start CSR or panel) + desktop sidebars live. Interim SwiftUI app does mutation-HTTP + WS refetch. Owner runs the phone↔desktop↔web round-trip. Public-safe evidence bundle | The Khala Sync flagship receipt and the mobile milestone, unchanged in substance |
 
-**Wave 3 — Sites on Start (after TS-4 scaffolding matures; overlaps Wave 2):**
+**Wave 3 — Sites on Start (after TS-4 scaffolding matures, overlaps Wave 2):**
 
 | # | Work | Notes |
 | --- | --- | --- |
-| 3.1 | KS-8.12 (#8323) sites domain → Cloud SQL lands **before** template GA (don't build the new product on tables mid-migration) | Sequencing only; scaffolding can start earlier |
-| 3.2 | **TS-4: Start site template v1 + containerized build lane** (version → build → WfP module → existing deploy gates); agent-ready surfaces baked in | The genuinely new machine |
-| 3.3 | **TS-5: Sites rules pack + per-site behavior contracts**; first dogfood site generated end-to-end (a vertical landing page for our own funnel = the eat-our-own-output proof) | Lovable's curated-rules lesson |
+| 3.1 | KS-8.12 (#8323) sites domain → Cloud SQL lands **before** template GA (do not build the new product on tables mid-migration) | Sequencing only. Scaffolding can start earlier |
+| 3.2 | **TS-4: Start site template v1 + containerized build lane** (version → build → WfP module → existing deploy gates). Agent-ready surfaces baked in | The genuinely new machine |
+| 3.3 | **TS-5: Sites rules pack + per-site behavior contracts**. First dogfood site generated end-to-end (a vertical landing page for our own funnel = the eat-our-own-output proof) | Lovable's curated-rules lesson |
 
 2026-07-04 TS-4 landing note: `autopilot_sites.tanstack_start.v1` now
 materializes a Start template, classifies `wrangler.jsonc` Start projects as
@@ -615,9 +615,9 @@ LG-4 claim safety, and bundle budget before deploy review. See
 
 | # | Work | Notes |
 | --- | --- | --- |
-| 4.1 | **TS-6**: remaining web app-shell panels (Foldkit-in-CSR bridge, route-by-route, delete-as-you-go) | Paced; funnel + chat already migrated |
-| 4.2 | **TS-7 remainder**: rest of the desktop shell to React (settings, history, fleet panels — fleet already syncs via #8303, so consumers move onto TS-3 as they're rewritten) | |
-| 4.3 | **TS-8: Expo RN companion v0** — Expo Router shell, NativeWind tokens, TS-3 + expo-sqlite persistence, expo-modules ports of the Swift voice/Apple-FM pieces; local prebuild + Xcode/Gradle; own-OTA feed; replaces the interim SwiftUI app at parity | Needs TS-3 + chat scopes (Wave 2), nothing else |
+| 4.1 | **TS-6**: remaining web app-shell panels (Foldkit-in-CSR bridge, route-by-route, delete-as-you-go) | Paced. Funnel + chat already migrated |
+| 4.2 | **TS-7 remainder**: rest of the desktop shell to React (settings, history, fleet panels — fleet already syncs via #8303, so consumers move onto TS-3 as they are rewritten) | |
+| 4.3 | **TS-8: Expo RN companion v0** — Expo Router shell, NativeWind tokens, TS-3 + expo-sqlite persistence, expo-modules ports of the Swift voice/Apple-FM pieces. Local prebuild + Xcode/Gradle. Own-OTA feed. Replaces the interim SwiftUI app at parity | Needs TS-3 + chat scopes (Wave 2), nothing else |
 | 4.4 | KS-8 remainder (8.10 forum, 8.11 CRM, 8.15–8.18) + **KS-8.19 cron sweep/D1 retirement + decommission follow-ups (#8331/#8333/#8334/#8335) close the era** | The D1-overload class dies here |
 | 4.5 | **TS-10b: velocity receipt** — React-era metrics vs the 0.2 baseline, published internally | The §6.1 claim, measured |
 
@@ -650,7 +650,7 @@ prebuild/Xcode/Gradle/TestFlight and signed OTA round-trip proof. See
 2026-07-05 TS-8 checkpoint (round 2): both local builds are now genuinely
 green — `expo prebuild` + `xcodebuild` (iOS) and `expo prebuild` +
 `./gradlew assembleDebug` (Android) both succeed from zero on this Mac,
-producing a real `.app` build and a real `app-debug.apk`; the earlier "Java
+producing a real `.app` build and a real `app-debug.apk`. The earlier "Java
 not installed" note was a JDK-version/toolchain-selection issue (JDK 26 vs.
 Android's required JDK 17), not a missing capability, and fixing it surfaced a
 real Kotlin `reified`-generic compile bug in `khala-push-to-talk-stt` that is
@@ -666,7 +666,7 @@ round-trip proof (blocked on interactive `gcloud` re-auth, tracked in
 extracted as `bun run perf:ui-velocity`, and it reproduces the TS-10a baseline
 numbers exactly. The React-era comparison remains time-gated: the later
 dependency anchor is TS-7 phase 1 at `2026-07-04T21:36:04Z`, so the first
-honest 30-day row is not eligible until `2026-08-03T21:36:04Z`; the full
+honest 30-day row is not eligible until `2026-08-03T21:36:04Z`. The full
 30/60-day two-row table matures on `2026-09-02T21:36:04Z`. See
 `docs/perf/2026-07-04-react-ui-velocity-receipt-checkpoint.md`.
 
@@ -691,5 +691,5 @@ KS-8.19 + decommissions — strictly last
    queue reorders 8.13 ahead of 8.10–8.12 — one sentence of sequencing
    that converts the chat demo from "mid-queue eventually" to "next."
 
-Everything in Wave 0 is dependency-free and fleet-shaped; nothing waits
-on anything the company hasn't already built.
+Everything in Wave 0 is dependency-free and fleet-shaped. Nothing waits
+on anything the company has not already built.

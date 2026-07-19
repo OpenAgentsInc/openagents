@@ -10,10 +10,10 @@ or owner-scope authority.
 
 New `post_reward` payment challenges are not issued when:
 
-- the target post is hidden, held for review, or tombstoned;
-- the post author has no public-safe recipient readiness;
-- the payer actor is the same as the recipient actor;
-- the payer has reached the paid-tip challenge rate limit;
+- the target post is hidden, held for review, or tombstoned.
+- the post author has no public-safe recipient readiness.
+- the payer actor is the same as the recipient actor.
+- the payer has reached the paid-tip challenge rate limit.
 - the declared spend cap is below the reward price.
 
 The current paid-tip challenge rate limit is 6 new post-reward challenges per

@@ -17,20 +17,20 @@ Implementation:
 
 A trace records:
 
-- workroom ref;
-- query intent ref;
-- query digest ref;
-- selector kind;
-- selector model ref;
-- source bundle refs;
-- selected source hits;
-- excluded source hits;
-- missing context items;
-- graph nodes and edges;
-- human-confirmed facts;
-- generated summary refs;
-- provenance refs;
-- caveat refs; and
+- workroom ref.
+- query intent ref.
+- query digest ref.
+- selector kind.
+- selector model ref.
+- source bundle refs.
+- selected source hits.
+- excluded source hits.
+- missing context items.
+- graph nodes and edges.
+- human-confirmed facts.
+- generated summary refs.
+- provenance refs.
+- caveat refs. And
 - redaction policy refs.
 
 The selector kind is structured. Supported values include embedding similarity,
@@ -42,15 +42,15 @@ selector refs.
 
 Selected and excluded hits are separate arrays. Each hit includes:
 
-- source ref;
-- source bundle ref;
-- span refs;
-- rank;
-- score in basis points;
-- freshness;
-- provenance refs;
-- rights ref;
-- caveat refs; and
+- source ref.
+- source bundle ref.
+- span refs.
+- rank.
+- score in basis points.
+- freshness.
+- provenance refs.
+- rights ref.
+- caveat refs. And
 - optional exclusion reason kind and reason ref.
 
 Selected hits cannot carry exclusion reasons. Excluded hits must carry both an
@@ -64,11 +64,11 @@ context into current work.
 Missing context items represent work the agent or operator still needs before a
 claim can be trusted:
 
-- needed source;
-- stale memory;
-- rights blocked;
-- private source;
-- unclear query; and
+- needed source.
+- stale memory.
+- rights blocked.
+- private source.
+- unclear query. And
 - contradiction.
 
 Each item includes a label ref, reason ref, and required-for ref.
@@ -89,8 +89,8 @@ remain source-backed without being promoted.
 
 The first projections are:
 
-- `public`;
-- `team`; and
+- `public`.
+- `team`. And
 - `operator`.
 
 Public projections redact private source, span, graph, fact, confirmation,
@@ -104,10 +104,10 @@ Counts reflect visible projected records after redaction.
 
 Retrieval traces are read-only. They cannot:
 
-- autonomously fetch sources;
-- promote facts into workroom objects;
-- mutate generated summaries;
-- mutate graph state; or
+- autonomously fetch sources.
+- promote facts into workroom objects.
+- mutate generated summaries.
+- mutate graph state. Or
 - upgrade public claims.
 
 Those actions require later approval-gated write paths.
@@ -116,9 +116,9 @@ Those actions require later approval-gated write paths.
 
 Coverage includes:
 
-- selected/excluded source projection;
-- stale selected source counts and missing context labels;
-- graph node/edge source support requirements;
-- human-confirmed fact confirmation requirements;
-- public redaction of private refs; and
+- selected/excluded source projection.
+- stale selected source counts and missing context labels.
+- graph node/edge source support requirements.
+- human-confirmed fact confirmation requirements.
+- public redaction of private refs. And
 - unsafe rank, score, selector, source, timestamp, and authority rejection.

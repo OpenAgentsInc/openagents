@@ -4,7 +4,7 @@ Researched: 2026-06-30
 
 Rampart is National Design Studio's local-first PII redaction system for chat
 and intake flows. The Hugging Face artifact at
-`nationaldesignstudio/rampart` is the ONNX token-classification model; the
+`nationaldesignstudio/rampart` is the ONNX token-classification model. The
 intended product integration is the `@nationaldesignstudio/rampart` TypeScript
 runtime, which combines that model with deterministic recognizers, a
 default-deny policy layer, and a per-conversation placeholder table.

@@ -5,7 +5,7 @@ contract. It defines the durable OpenAgents runtime run and event log shape used
 by native, external, hosted, and fixture loops.
 
 The package intentionally contains no executor, provider SDK, or Vercel AI SDK
-dependency. Adapter-specific loops project into this contract at the boundary;
+dependency. Adapter-specific loops project into this contract at the boundary.
 worker and UI surfaces consume event logs and projections derived from this
 contract.
 
@@ -38,7 +38,7 @@ For Khala Code's AI SDK-shaped runtime work, the package also defines:
   tool approvals, and plan reviews. One pending/resolved/expired/revoked
   lifecycle carries exact thread/turn/interaction identity, a server deadline,
   bounded display-safe choices, and kind-matched decisions. Exact retries are
-  duplicates; conflicting reuse and late or revoked decisions fail closed.
+  duplicates. Conflicting reuse and late or revoked decisions fail closed.
 - Structural mappers from existing `AgentRuntimeEvent` records and dependency
   free AI SDK `TextStreamPart`-shaped objects into Khala runtime events.
 

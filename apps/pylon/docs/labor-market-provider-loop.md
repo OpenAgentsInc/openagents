@@ -1,6 +1,6 @@
 # Labor Market Provider Loop
 
-Issue #4730 (epic #4726); promise `labor.nostr_negotiation_market.v1`
+Issue #4730 (epic #4726). Promise `labor.nostr_negotiation_market.v1`
 (registry `2026-06-10.25`). Protocol: `docs/nips/LBR.md` (workspace
 root). Roadmap: `docs/labor/2026-06-10-open-agent-labor-market-roadmap.md`.
 
@@ -20,11 +20,11 @@ generic provider flow in `runProviderJobOnce`:
    quote-once, capability truth (`requiredCapabilityRefs` must all be
    declared by this Pylon's runtime state), concurrency bound, and the
    contributor's price must fit the request's bid. A passing request
-   gets one kind-7000 quote with the amount and refs; everything else
+   gets one kind-7000 quote with the amount and refs. Everything else
    gets a typed refusal and no relay traffic.
 2. **Win.** A kind-7000 LBR acceptance addressed to this provider
    (carrying the requester's escrow receipt ref) triggers execution of
-   the previously quoted job — acceptance without a quote is refused;
+   the previously quoted job — acceptance without a quote is refused.
    acceptance addressed elsewhere is ignored.
 3. **Execute.** Admission still applies: labor first-run operator
    approval (`pylon provider approve-labor`) is required before any
@@ -36,7 +36,7 @@ generic provider flow in `runProviderJobOnce`:
    configured labor runtime.
 4. **Verify, then deliver.** The request's `verificationCommandRef`
    maps through the bounded command registry
-   (`LABOR_MARKET_VERIFICATION_COMMANDS`); unknown refs are refused.
+   (`LABOR_MARKET_VERIFICATION_COMMANDS`). Unknown refs are refused.
    The command must pass in the workspace or **no result is published**
    (`refusal.labor_market.verification_failed`) — the provider never
    ships failing work. A passing job publishes the kind-6934 result
@@ -59,7 +59,7 @@ generic provider flow in `runProviderJobOnce`:
 
 - `autoQuote` defaults to **false** — quoting is opt-in
   (`PYLON_LABOR_MARKET_AUTO_QUOTE=1` to enable by env).
-- `priceMsats` is the contributor's price (`PYLON_LABOR_MARKET_PRICE_MSATS`);
+- `priceMsats` is the contributor's price (`PYLON_LABOR_MARKET_PRICE_MSATS`).
   the platform sets no prices.
 - The local state lives in `labor-market-state.json` (quote records,
   public-safe asserted on every write).
@@ -68,8 +68,8 @@ generic provider flow in `runProviderJobOnce`:
 
 The provider never self-accepts and never sees requester funds — it
 sees an escrow receipt ref. Work runs on the contributor's own agent,
-own credentials, own machine; zero provider-auth material in events,
+own credentials, own machine. Zero provider-auth material in events,
 artifacts, or state (structurally scanned). The relay is transport, not
-authority; settlement truth comes from the platform's escrow/receipt
+authority. Settlement truth comes from the platform's escrow/receipt
 systems (#4729, #4732). Raw session material, diffs, and logs stay
-on-device; only refs travel.
+on-device. Only refs travel.

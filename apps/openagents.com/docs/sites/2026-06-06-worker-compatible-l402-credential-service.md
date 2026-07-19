@@ -20,19 +20,19 @@ The implementation lives in
 
 The payload version is `oa-l402-v1` and binds:
 
-- challenge ref;
-- credential ref;
-- product ID;
-- endpoint ref;
-- method;
-- path;
-- optional request-body digest;
-- amount, asset, and denomination;
-- expiry;
-- payment hash ref;
-- entitlement scope refs;
-- idempotency key hash;
-- replay nonce ref;
+- challenge ref.
+- credential ref.
+- product ID.
+- endpoint ref.
+- method.
+- path.
+- optional request-body digest.
+- amount, asset, and denomination.
+- expiry.
+- payment hash ref.
+- entitlement scope refs.
+- idempotency key hash.
+- replay nonce ref.
 - issue timestamp.
 
 The credential string is:
@@ -76,9 +76,9 @@ entitlement scopes, and amount.
 The service integrates at the type level with:
 
 - #289 payment limit policy, by giving recoverable economic limits a concrete
-  future credential result;
+  future credential result.
 - #290 paid endpoint product catalog, by binding product, endpoint, method,
-  path, amount, and entitlement refs;
+  path, amount, and entitlement refs.
 - #291 buyer-side payment ledger, by deriving payloads from
   `BuyerPaymentChallengeRecord` and using the shared amount schema.
 
@@ -104,10 +104,10 @@ replay nonce refs. No projection includes the signed credential string.
 
 This slice does not:
 
-- create real MDK invoices;
-- verify real payment preimages;
-- settle payments;
-- grant provider payout claims;
+- create real MDK invoices.
+- verify real payment preimages.
+- settle payments.
+- grant provider payout claims.
 - bypass safety, auth, moderation, private authority, or manual-review gates.
 
 ## Verification

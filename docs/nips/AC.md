@@ -22,7 +22,7 @@ This NIP is designed to **fit alongside NIP-SA** (Sovereign Agents) and existing
 * NIP-44 / NIP-59: encryption / gift wrap (private terms and receipts)
 * NIP-57: Lightning zaps (optional repayment / fees)
 * NIP-60 / NIP-61 / NIP-87: Cashu / nutzaps / mint discovery (optional settlement rails)
-* Fedimint: federation ecash rails (federation discovery follows NIP-SA `federation` tag conventions; no dedicated NIP at time of writing)
+* Fedimint: federation ecash rails (federation discovery follows NIP-SA `federation` tag conventions, no dedicated NIP at time of writing)
 * NIP-90: Data Vending Machines (primary "outcome" rail)
 * NIP-98: HTTP Auth (useful for L402-ish flows)
 
@@ -43,7 +43,7 @@ This NIP introduces **Outcome-Scoped Credit Envelopes (OSCE)**: credit that can 
 
 ## Actors
 
-* **Agent**: the borrower; initiates credit intents; spends only within envelopes.
+* **Agent**: the borrower. Initiates credit intents. Spends only within envelopes.
 * **Liquidity Provider (LP)**: capital source (human, org, treasury agent, etc).
 * **Credit Issuer**: service that underwrites risk and issues envelopes (may be same as LP).
 * **Outcome Provider**: the party selling the resource (DVM, API server, skill provider).
@@ -108,7 +108,7 @@ This NIP defines these tags:
 * `["spend_rail", "<rail>", "<reference>"]` — provider-facing spending rail (distinct from `repay`)
   rails:
 
-  * `lightning` (bare default; implies bolt11 when `spend_rail` is absent — backwards compatible)
+  * `lightning` (bare default, implies bolt11 when `spend_rail` is absent — backwards compatible)
   * `bolt11` (explicit: invoice hash pointer)
   * `bolt12` (offer or settlement reference)
   * `cashu` (mint url)
@@ -119,7 +119,7 @@ This NIP defines these tags:
 * `["revoke_reason", "<reason>", "<detail>"]` — machine-readable reason for envelope revocation (e.g., `skl-safety-label`)
 * `["status", "offered|accepted|revoked|spent|settled|defaulted"]`
 
-Providers SHOULD declare the spending rails they accept on their NIP-90 `kind:31990` service announcements. Issuers MUST verify that the agent's declared `spend_rail` is accepted by the target provider before issuing an envelope. If `spend_rail=cashu`, the provider MUST accept Cashu tokens at the declared mint as payment for job results, and the agent MUST NOT use a different mint than declared in the envelope. When `spend_rail` is absent, `lightning` (bolt11) is assumed for backwards compatibility; implementations SHOULD prefer `bolt12` where supported. Parsers MUST handle `repay` and `spend_rail` tags with 3 or more elements and MUST NOT reject events containing additional elements.
+Providers SHOULD declare the spending rails they accept on their NIP-90 `kind:31990` service announcements. Issuers MUST verify that the agent's declared `spend_rail` is accepted by the target provider before issuing an envelope. If `spend_rail=cashu`, the provider MUST accept Cashu tokens at the declared mint as payment for job results, and the agent MUST NOT use a different mint than declared in the envelope. When `spend_rail` is absent, `lightning` (bolt11) is assumed for backwards compatibility. Implementations SHOULD prefer `bolt12` where supported. Parsers MUST handle `repay` and `spend_rail` tags with 3 or more elements and MUST NOT reject events containing additional elements.
 
 ## Kind 39240: Credit Intent
 
@@ -206,7 +206,7 @@ An **addressable** event that defines the enforceable credit capability.
 }
 ```
 
-Issuers MAY include `spend_rail` and (optionally, when `spend_rail=cashu`) `spend_cashu_keyset` tags in the envelope to declare the provider-facing spending rail. This is distinct from `repay`, which defines the agent's repayment rail back to the issuer or LP. When `spend_rail` is absent, implementations SHOULD assume `lightning` (bolt11). Detailed proof construction for non-Lightning rails is intentionally out of AC core scope; `repay` and `spend_rail` tags SHOULD carry stable, rail-appropriate references agreed by participating implementations.
+Issuers MAY include `spend_rail` and (optionally, when `spend_rail=cashu`) `spend_cashu_keyset` tags in the envelope to declare the provider-facing spending rail. This is distinct from `repay`, which defines the agent's repayment rail back to the issuer or LP. When `spend_rail` is absent, implementations SHOULD assume `lightning` (bolt11). Detailed proof construction for non-Lightning rails is intentionally out of AC core scope. `repay` and `spend_rail` tags SHOULD carry stable, rail-appropriate references agreed by participating implementations.
 
 ### Conditional Reversibility (Cancel Window)
 
@@ -412,9 +412,9 @@ Implementations SHOULD ensure envelopes authorize only scoped spends, not transf
 
 Because Nostr relays do not enforce semantics, enforcement occurs at:
 
-* issuer policy engine (won't pay outside scope)
-* provider policy engine (won't serve without valid envelope)
-* verifier policy (won't attest success without evidence)
+* issuer policy engine (will not pay outside scope)
+* provider policy engine (will not serve without valid envelope)
+* verifier policy (will not attest success without evidence)
 
 ### Replay / double-spend protection
 

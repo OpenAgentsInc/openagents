@@ -26,14 +26,14 @@ The implementation lives in
 
 The projection exposes:
 
-- aggregate campaign payment mode;
-- per-assignment payment mode;
-- payment receipt refs;
-- public settlement receipt refs for copy;
-- readiness decision refs;
-- bridge attempt refs;
-- send-readiness state;
-- duplicate-replay safety state;
+- aggregate campaign payment mode.
+- per-assignment payment mode.
+- payment receipt refs.
+- public settlement receipt refs for copy.
+- readiness decision refs.
+- bridge attempt refs.
+- send-readiness state.
+- duplicate-replay safety state.
 - blocker refs.
 
 `settled_bitcoin_ready` is the only state that allows a settled-bitcoin
@@ -47,13 +47,13 @@ assignment lifecycle and settlement-readiness gate.
 
 It blocks:
 
-- missing Stage 0 no-spend evidence;
-- missing unpaid, payable, or settled readiness results;
-- payment claims without payment receipt refs;
-- settled-bitcoin claims without settlement receipt refs;
-- send attempts without wallet send-readiness or outbound liquidity refs;
-- duplicate settlement attempts for the same assignment;
-- duplicate replay attempts that create fresh receipt refs;
+- missing Stage 0 no-spend evidence.
+- missing unpaid, payable, or settled readiness results.
+- payment claims without payment receipt refs.
+- settled-bitcoin claims without settlement receipt refs.
+- send attempts without wallet send-readiness or outbound liquidity refs.
+- duplicate settlement attempts for the same assignment.
+- duplicate replay attempts that create fresh receipt refs.
 - private payment, wallet, preimage, provider, local filesystem, or secret
   material in public refs.
 

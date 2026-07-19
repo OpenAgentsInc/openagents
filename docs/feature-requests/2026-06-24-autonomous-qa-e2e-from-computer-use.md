@@ -14,8 +14,8 @@ answer. Then it **distills that session into a committed, re-runnable end-to-end
 verdict**, and a **shareable trace** — *without running anything yourself*. Verified, not
 vibes.
 
-Under the hood it's an OpenAgents **Autopilot** agent doing the work, powered by the
-**Khala** model. It's **open source and bring-your-own-model** —
+Under the hood it is an OpenAgents **Autopilot** agent doing the work, powered by the
+**Khala** model. It is **open source and bring-your-own-model** —
 `npm i @openagentsinc/qa-runner`, point it at any model, no OpenAgents login — or run it
 hosted.
 
@@ -68,24 +68,24 @@ is a hosted live-CF demo (a one-click owner smoke + one real run) and hardening 
 | Receipts reference the trace uuid as evidence | ✅ live | [#6216](https://github.com/OpenAgentsInc/openagents/issues/6216) |
 | Chat session on the Khala gateway → ATIF trace (flag-gated) | ✅ live | [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) |
 | One canonical in-repo ATIF schema/validator/tripwire package (`@openagentsinc/atif`) | ✅ live | [#6207](https://github.com/OpenAgentsInc/openagents/issues/6207) |
-| Single route table — `route-table.ts` derives client router + server allowlist; agreement test | ✅ live | [#6222](https://github.com/OpenAgentsInc/openagents/issues/6222) |
+| Single route table — `route-table.ts` derives client router + server allowlist. Agreement test | ✅ live | [#6222](https://github.com/OpenAgentsInc/openagents/issues/6222) |
 | Value-based ingest tripwire (4 content-blind false-positives fixed) | ✅ live | see Changelog |
-| CF Browser-Rendering `env.BROWSER` binding + Sandbox backends + screencast→mp4 | ✅ deployed; live managed-Chrome smoke = owner one-click (`NEEDS_OWNER.md`) | [#6205](https://github.com/OpenAgentsInc/openagents/issues/6205), [#6213](https://github.com/OpenAgentsInc/openagents/issues/6213) |
+| CF Browser-Rendering `env.BROWSER` binding + Sandbox backends + screencast→mp4 | ✅ deployed. Live managed-Chrome smoke = owner one-click (`NEEDS_OWNER.md`) | [#6205](https://github.com/OpenAgentsInc/openagents/issues/6205), [#6213](https://github.com/OpenAgentsInc/openagents/issues/6213) |
 | OSS on npm: `@openagentsinc/atif@0.1.0` + `@openagentsinc/qa-runner@0.1.0` | ✅ published | [#6217](https://github.com/OpenAgentsInc/openagents/issues/6217), [#6191](https://github.com/OpenAgentsInc/openagents/issues/6191) |
 
 ### His requirements → status (honest)
 
 | # | He asked for | Delivered | Where |
 |---|---|---|---|
-| Thesis | "verify an agent's work **without running anything locally** — just read the e2e test + its output" | Commitments → **verify verdict** (CONFIRMED/REFUTED/INCONCLUSIVE) + a committed e2e test that's green vs prod; reviewer confirms from the PR artifacts | [#6192](https://github.com/OpenAgentsInc/openagents/issues/6192), PR [#6197](https://github.com/OpenAgentsInc/openagents/issues/6197) |
+| Thesis | "verify an agent's work **without running anything locally** — just read the e2e test + its output" | Commitments → **verify verdict** (CONFIRMED/REFUTED/INCONCLUSIVE) + a committed e2e test that is green vs prod. Reviewer confirms from the PR artifacts | [#6192](https://github.com/OpenAgentsInc/openagents/issues/6192), PR [#6197](https://github.com/OpenAgentsInc/openagents/issues/6197) |
 | 1 | Real dev tools (Chrome, terminal) | Computer-use: real Chrome (CDP/Playwright) + PTY terminal + container + native-desktop (macOS AX) drivers | [#6175](https://github.com/OpenAgentsInc/openagents/issues/6175), [#6186](https://github.com/OpenAgentsInc/openagents/issues/6186), [#6199](https://github.com/OpenAgentsInc/openagents/issues/6199) |
 | 2 | Develop, then **distill into committed tests** | Session → a committed, re-runnable `*.e2e.test.ts` (the differentiator vs videos-only) | [#6174](https://github.com/OpenAgentsInc/openagents/issues/6174) distiller |
 | 3 | Pluggable targets (dev/prod, same test) | Multi-target registry (dev/staging/prod/selfhost, prod read-only) | [#6190](https://github.com/OpenAgentsInc/openagents/issues/6190) |
-| 4 | Fast + cross-OS (mac/Win/Linux) | Parallel sharding + crash-safe harness; terminal/container/native-desktop/firecracker backends across OSes | [#6193](https://github.com/OpenAgentsInc/openagents/issues/6193), [#6186](https://github.com/OpenAgentsInc/openagents/issues/6186), [#6199](https://github.com/OpenAgentsInc/openagents/issues/6199), [#6200](https://github.com/OpenAgentsInc/openagents/issues/6200) |
+| 4 | Fast + cross-OS (mac/Win/Linux) | Parallel sharding + crash-safe harness. Terminal/container/native-desktop/firecracker backends across OSes | [#6193](https://github.com/OpenAgentsInc/openagents/issues/6193), [#6186](https://github.com/OpenAgentsInc/openagents/issues/6186), [#6199](https://github.com/OpenAgentsInc/openagents/issues/6199), [#6200](https://github.com/OpenAgentsInc/openagents/issues/6200) |
 | 5 | **OSS + local** | MIT `@openagentsinc/qa-runner` — self-contained bundle, **bring-your-own model, no OpenAgents login** | [#6191](https://github.com/OpenAgentsInc/openagents/issues/6191) |
 | 6 | Video output | Playwright `recordVideo` + a data-driven ffmpeg **compose** layer (title/verdict cards) | [#6187](https://github.com/OpenAgentsInc/openagents/issues/6187) |
 | 7 | "Chill evals" — compare agents across MCP/config changes | ✅ **done + live**: the comparison **runner** computes real results ([#6183](https://github.com/OpenAgentsInc/openagents/issues/6183)) AND the shareable surface shipped as a public **agent trace** — `/trace/{uuid}` render + `/trace/compare/{ids}` side-by-side comparison (verdict/latency/steps/cost deltas). The `/pro/evals` fixture page was retired. | [#6183](https://github.com/OpenAgentsInc/openagents/issues/6183), [#6209](https://github.com/OpenAgentsInc/openagents/issues/6209), [#6211](https://github.com/OpenAgentsInc/openagents/issues/6211), [#6215](https://github.com/OpenAgentsInc/openagents/issues/6215) |
-| candid | "messy harness; the **last 10%**" | Reviewed, hardened harness (timeouts/retries/artifact-flush/parallel) + quality-bar doc | [#6193](https://github.com/OpenAgentsInc/openagents/issues/6193) |
+| candid | "messy harness. The **last 10%**" | Reviewed, hardened harness (timeouts/retries/artifact-flush/parallel) + quality-bar doc | [#6193](https://github.com/OpenAgentsInc/openagents/issues/6193) |
 | money | hosted VMs + GitHub Sponsors he'd pay for | Hosted **Autopilot (Khala-powered) on own-infra at $0** (operator-credit exemption) + **QA control API** + `/pro` console + Cloud-VM runner/provisioner | [#6180](https://github.com/OpenAgentsInc/openagents/issues/6180), [#6196](https://github.com/OpenAgentsInc/openagents/issues/6196), [#6184](https://github.com/OpenAgentsInc/openagents/issues/6184), [#6176](https://github.com/OpenAgentsInc/openagents/issues/6176)/[#6200](https://github.com/OpenAgentsInc/openagents/issues/6200) |
 
 ## Path to production-ready
@@ -96,22 +96,22 @@ can open at `/trace/{uuid}`**, compare against another, and (optionally) upload 
 own — with **no manual steps and nothing leaking**. Status of the gaps:
 
 1. ✅ **DONE — render page fetches the live trace.** `/trace/{uuid}` now fetches
-   `GET /api/traces/{uuid}` (loading / trace / 404); a real uuid renders. This session is live at the URL above.
+   `GET /api/traces/{uuid}` (loading / trace / 404). A real uuid renders. This session is live at the URL above.
 2. ✅ **DONE — single route table ([#6222](https://github.com/OpenAgentsInc/openagents/issues/6222)).** One `route-table.ts` derives the client
-   router AND the server document allowlist; an agreement test makes the `/trace` 302 /
+   router AND the server document allowlist. An agreement test makes the `/trace` 302 /
    sample-desync class **structurally impossible**.
 3. ✅ **DONE — OSS published ([#6217](https://github.com/OpenAgentsInc/openagents/issues/6217)).** `@openagentsinc/atif` + `@openagentsinc/qa-runner`
-   are on npm; external users can `npm i` / `npx` it (BYO model, no OpenAgents login).
+   are on npm. External users can `npm i` / `npx` it (BYO model, no OpenAgents login).
 4. 🟡 **Live CF execution ([#6205](https://github.com/OpenAgentsInc/openagents/issues/6205)).** The `env.BROWSER` binding + admin smoke route are
-   DEPLOYED; the live managed-Chrome confirmation is a **one-click owner smoke**
+   DEPLOYED. The live managed-Chrome confirmation is a **one-click owner smoke**
    (`GET /api/admin/cf-browser-smoke`, in `NEEDS_OWNER.md`). Then run one real QA on the
    deployed CF bindings. (The scoped CF token can deploy but not manage bindings/secrets/D1 —
    owner OAuth or a fuller token is needed.)
 5. 🟡 **End-to-end hosted demo.** One real Autopilot QA run (powered by Khala) on hosted infra
    → a published `/trace/{uuid}` + a committed green `*.e2e.test.ts` + the comparison view,
    linked from a PR — the customer-facing proof for the first customer.
-6. 🟡 **Hardening.** Trace retention/expiry (residual bullet of [#6212](https://github.com/OpenAgentsInc/openagents/issues/6212)); data-market abuse
-   limits at scale; cross-app emitters beyond the Khala-chat slice (Autopilot work orders,
+6. 🟡 **Hardening.** Trace retention/expiry (residual bullet of [#6212](https://github.com/OpenAgentsInc/openagents/issues/6212)). Data-market abuse
+   limits at scale. Cross-app emitters beyond the Khala-chat slice (Autopilot work orders,
    Pylon sessions — [#6214](https://github.com/OpenAgentsInc/openagents/issues/6214) follow-ups).
 
 Out of scope here: the Khala-program epics ([#6049](https://github.com/OpenAgentsInc/openagents/issues/6049) / [#6017](https://github.com/OpenAgentsInc/openagents/issues/6017) / [#6016](https://github.com/OpenAgentsInc/openagents/issues/6016) / [#6015](https://github.com/OpenAgentsInc/openagents/issues/6015) /
@@ -119,7 +119,7 @@ Out of scope here: the Khala-program epics ([#6049](https://github.com/OpenAgent
 
 ## Changelog
 
-- **2026-06-24 evening — EPIC [#6206](https://github.com/OpenAgentsInc/openagents/issues/6206) fully closed; OSS on npm.** Wired the
+- **2026-06-24 evening — EPIC [#6206](https://github.com/OpenAgentsInc/openagents/issues/6206) fully closed, OSS on npm.** Wired the
   `/trace/{uuid}` **live API fetch** ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209) had shipped sample-only) → the page now renders
   the real stored trace (this session, headless-verified, at the URL above). Landed the
   **single route table** ([#6222](https://github.com/OpenAgentsInc/openagents/issues/6222)) — `route-table.ts` derives client + server, agreement test
@@ -129,13 +129,13 @@ Out of scope here: the Khala-program epics ([#6049](https://github.com/OpenAgent
   [#6205](https://github.com/OpenAgentsInc/openagents/issues/6205) CF Browser-Rendering `env.BROWSER` binding + admin smoke **deployed**. **Published
   `@openagentsinc/atif@0.1.0` + `@openagentsinc/qa-runner@0.1.0` to npm** ([#6217](https://github.com/OpenAgentsInc/openagents/issues/6217)) via
   automation token. **All EPIC [#6206](https://github.com/OpenAgentsInc/openagents/issues/6206) children CLOSED.**
-- **2026-06-24 PM — trace primitive shipped; 4 tripwire bugs fixed.** ATIF store/ingest/read
-  ([#6208](https://github.com/OpenAgentsInc/openagents/issues/6208); R2 offload + 8MB cap [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)), `/trace` render ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209)), comparison ([#6211](https://github.com/OpenAgentsInc/openagents/issues/6211)),
+- **2026-06-24 PM — trace primitive shipped. 4 Tripwire bugs fixed.** ATIF store/ingest/read
+  ([#6208](https://github.com/OpenAgentsInc/openagents/issues/6208). R2 offload + 8MB cap [#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)), `/trace` render ([#6209](https://github.com/OpenAgentsInc/openagents/issues/6209)), comparison ([#6211](https://github.com/OpenAgentsInc/openagents/issues/6211)),
   redaction service ([#6219](https://github.com/OpenAgentsInc/openagents/issues/6219)), converters + import CLI ([#6220](https://github.com/OpenAgentsInc/openagents/issues/6220)), publish-from-runner ([#6210](https://github.com/OpenAgentsInc/openagents/issues/6210)),
   data-market upload ([#6221](https://github.com/OpenAgentsInc/openagents/issues/6221)). Hardened the ingest tripwire from **content-blind** to
   **value-based** (model ids + secret-discussion words + JSON escapes like `key:\n` are content,
-  not leaks; only real secret/wallet VALUES, emails, paths rejected) — [`5abd84e9d0`](https://github.com/OpenAgentsInc/openagents/commit/5abd84e9d0), [`fe59199b21`](https://github.com/OpenAgentsInc/openagents/commit/fe59199b21),
-  [`c24862688c`](https://github.com/OpenAgentsInc/openagents/commit/c24862688c); `INVARIANTS.md` updated. Also fixed a prod bug found along the way: the Artanis
+  not leaks. Only real secret/wallet VALUES, emails, paths rejected) — [`5abd84e9d0`](https://github.com/OpenAgentsInc/openagents/commit/5abd84e9d0), [`fe59199b21`](https://github.com/OpenAgentsInc/openagents/commit/fe59199b21),
+  [`c24862688c`](https://github.com/OpenAgentsInc/openagents/commit/c24862688c). `INVARIANTS.md` updated. Also fixed a prod bug found along the way: the Artanis
   public health report was throwing (a [#6204](https://github.com/OpenAgentsInc/openagents/issues/6204) miss) — [`452a048d8e`](https://github.com/OpenAgentsInc/openagents/commit/452a048d8e).
 - **2026-06-24 AM — autonomous-QA flow landed.** EPICs [#6174](https://github.com/OpenAgentsInc/openagents/issues/6174) + [#6181](https://github.com/OpenAgentsInc/openagents/issues/6181): computer-use drivers
   (Chrome / terminal / container / native-desktop), the session → `*.e2e.test.ts` distiller,
@@ -163,22 +163,22 @@ From a public Q&A with Rhys, three answers that sharpen the spec:
   to the PR — not manual.** *"yeah webm of playwright + terminal control, agent auto
   attaches."* → so the artifact bar is: raw Playwright webm (browser) **plus** the terminal
   session, **automatically** attached to the PR by the agent. (We have the auto-attach glue
-  via `gh-attach` (#6185); we also compose an mp4 with verdict cards — a superset, but the
+  via `gh-attach` (#6185). We also compose an mp4 with verdict cards — a superset, but the
   baseline he expects is the auto-attached webm + terminal.)
-- **You don't have to "trust" the agent — the verification setup makes trust unnecessary.**
+- **You do not have to "trust" the agent — the verification setup makes trust unnecessary.**
   Asked whether agents are finally good enough for QA: *"with the right verification setup
-  (having them use your real tools) you don't need to trust them since if it looks right it
-  is right (with some caveats obviously but that's what you need to build into the
+  (having them use your real tools) you do not need to trust them since if it looks right it
+  is right (with some caveats obviously but that is what you need to build into the
   framework)."* → this is exactly our **verified-not-vibes** thesis: real tools + a
-  machine-checkable rubric/replay mean the **artifact is the proof**; "if it looks right it
+  machine-checkable rubric/replay mean the **artifact is the proof**. "If it looks right it
   is right" is the framework's job to guarantee, not the reviewer's to assume.
-- **He explicitly wants a PR against his repo — it's the evaluation/sales path.** Asked why
+- **He explicitly wants a PR against his repo — it is the evaluation/sales path.** Asked why
   anyone would PR against his repo: *"because i'm wanting to evaluate a product to do this so
   i can pay them and the best way to make me believe in your product is to show it working."*
   → **This reverses our earlier "we are not opening a PR" stance.** A demo PR on
   [`RhysSullivan/executor`](https://github.com/RhysSullivan/executor) that runs our
   autonomous-QA flow against his code and **auto-attaches the webm + terminal video + the
-  distilled e2e test + the verdict/trace** is now the **recommended sales motion** — it's
+  distilled e2e test + the verdict/trace** is now the **recommended sales motion** — it is
   literally how he says he decides whom to pay.
 
 This is **not** "another background coding agent." It is a QA substrate: an agent
@@ -208,7 +208,7 @@ video.*
    and see the comparison (pass-rate, latency, behavior deltas) with the videos.
    Evals, but exploratory and watchable — not a formal benchmark rig.
 
-Monetization he'd accept: a **hosted product** with VMs to run tests on; and/or
+Monetization he'd accept: a **hosted product** with VMs to run tests on. And/or
 **GitHub Sponsors** (he is "so desperate for a good version of this" he'd sponsor
 it outright).
 
@@ -219,12 +219,12 @@ review artifact.* When an autonomous agent claims it built or fixed something,
 the reviewer should not have to clone, install, boot, and click. They read a
 black-box scenario that reads like a product guarantee, watch the recorded run,
 and see it pass against the real target. This is exactly the bar OpenAgents
-already holds for Khala — *verified, not trusted; receipts underneath* — applied
+already holds for Khala — *verified, not trusted. Receipts underneath* — applied
 to product QA. **A passing e2e run with video IS a verification receipt.**
 
 The corollary that makes it agent-native: the agent earns trust by producing the
 same artifact a human reviewer would demand, not by self-attesting. Computer-use
-is how it explores; the distilled test is how it *proves*.
+is how it explores. The distilled test is how it *proves*.
 
 ### What it looks like in practice — demo video play-by-play
 
@@ -242,24 +242,24 @@ artifact.** Frame-by-frame:
 
 | ~t | What's on screen |
 |---|---|
-| 0–1s | **PR [#1002](https://github.com/OpenAgentsInc/openagents/issues/1002)** — "Self-host MCP OAuth: connect-card path, approval screen, real-agent e2e + framework dwells" (Merged, **+879 −19**, 20 files, 16 checks). Body "**The flow, recorded**": *"The real OpenCode binary connecting to a self-hosted instance over MCP OAuth — it asks to connect, you approve on the consent screen, it's connected. One spliced recording of the agent terminal and the browser (paced by the new `E2E_FILM` dwells)."* The embedded film opens in a **terminal**: `$ opencode mcp auth executor` → `MCP OAuth Authentication` → `Starting OAuth flow.` |
-| 2–3s | Film cuts to the **browser**: a **"Connect OpenCode?"** consent screen — *REQUESTING CLIENT: OpenCode; will be able to: confirm identity, read basic profile, read email, stay connected (refresh without re-approving)*; an MCP-server note; **Deny / Allow** (Allow highlighted green). |
+| 0–1s | **PR [#1002](https://github.com/OpenAgentsInc/openagents/issues/1002)** — "Self-host MCP OAuth: connect-card path, approval screen, real-agent e2e + framework dwells" (Merged, **+879 −19**, 20 files, 16 checks). Body "**The flow, recorded**": *"The real OpenCode binary connecting to a self-hosted instance over MCP OAuth — it asks to connect, you approve on the consent screen, it is connected. One spliced recording of the agent terminal and the browser (paced by the new `E2E_FILM` dwells)."* The embedded film opens in a **terminal**: `$ opencode mcp auth executor` → `MCP OAuth Authentication` → `Starting OAuth flow.` |
+| 2–3s | Film cuts to the **browser**: a **"Connect OpenCode?"** consent screen — *REQUESTING CLIENT: OpenCode. Will be able to: confirm identity, read basic profile, read email, stay connected (refresh without re-approving)*. An MCP-server note. **Deny / Allow** (Allow highlighted green). |
 | 4–5s | Browser shows **"Authorization Successful — You can close this window and return to OpenCode."** (the real OAuth round-trip completed). |
 | 6–7s | The film loops back to the terminal (connected) — proving the *real* OpenCode binary + *real* MCP OAuth + *real* browser approval, end to end, not a mock. |
-| 8–10s | Recording scrolls to **PR #996** — "Adds a browser e2e scenario covering the tool **policy UI** end to end, and fixes a bug it surfaced in the tool-detail policy badge" (Merged, **+286 −14**, 4 files, 16 checks). The embedded **web-UI film** shows the executor console (BETA): left nav Integrations / **Policies** / Organization / Billing; the **Policies** page (*Override default approval behavior… Add policy*; Active policies: `…records.create` → **Block**, `…records.*` → **Require approval**). |
-| ~13s | Film drives the **Records API** tools tree (Accounts / Tools tabs; `records` → `create` / `list`; a **List records** detail with Schema / TypeScript / **Run**, Parameters / Response) — the per-tool and category policy surfaces. |
-| ~16s | Brief console **skeleton/loading** state; PR section heading **"The bug it caught"** is visible (the scenario surfaced a real tool-detail policy-badge bug, fixed in the same PR). |
+| 8–10s | Recording scrolls to **PR #996** — "Adds a browser e2e scenario covering the tool **policy UI** end to end, and fixes a bug it surfaced in the tool-detail policy badge" (Merged, **+286 −14**, 4 files, 16 checks). The embedded **web-UI film** shows the executor console (BETA): left nav Integrations / **Policies** / Organization / Billing. The **Policies** page (*Override default approval behavior… Add policy*, Active policies: `…records.create` → **Block**, `…records.*` → **Require approval**). |
+| ~13s | Film drives the **Records API** tools tree (Accounts / Tools tabs, `records` → `create` / `list`, a **List records** detail with Schema / TypeScript / **Run**, Parameters / Response) — the per-tool and category policy surfaces. |
+| ~16s | Brief console **skeleton/loading** state. PR section heading **"The bug it caught"** is visible (the scenario surfaced a real tool-detail policy-badge bug, fixed in the same PR). |
 | ~17–18s | Film shows the **Accounts** tab with **two connected workspace accounts** (`alphab…`, `betab…` keys, *Add connection*) — the scenario "connects two accounts and asserts the rules govern both," persisted server-side. |
 
 **Why it lands (and what we adopt):** (1) the entire review is *watch the film +
-read the PR* — no clone/install/click; (2) the films are real binaries / real
-OAuth / real UI, not stubs; (3) the **`E2E_FILM` "dwells"** deliberately slow
+read the PR* — no clone/install/click. (2) The films are real binaries / real
+OAuth / real UI, not stubs. (3) The **`E2E_FILM` "dwells"** deliberately slow
 machine-speed actions so a human can actually watch them — a small but decisive
-UX detail; (4) one scenario both *demonstrates* a feature and *catches a real
+UX detail. (4) One scenario both *demonstrates* a feature and *catches a real
 bug* in the same PR. An OpenAgents build should produce exactly this artifact —
 with **Khala** as the agent driving the recorded session and an OpenAgents Cloud
 VM as the stage (frames extracted to
-`scratchpad/vidframes/` during this analysis; the source mp4 is on the
+`scratchpad/vidframes/` during this analysis. The source mp4 is on the
 requester's Desktop, not committed).
 
 ## 4. Audit of `executor/e2e` (the folder he linked)
@@ -271,29 +271,29 @@ what's actually there:
 
 | Path | What it is |
 |---|---|
-| `src/scenario.ts` | The ONE way a test is written. A scenario body is an Effect; **its requirements ARE its capability declaration** — it yields services (`Api`/`Browser`/`Cli`/`Mcp`/`Telemetry`/`Billing`/`Restart`/`TtlControl`/`OpenCode`) and *nothing else*. Yielding a service the target lacks surfaces as Effect's missing-service defect, which the runner **classifies into a vitest skip with the missing service named in the matrix**. Per run it writes a small `result.json` + whatever artifacts the surfaces produced. "Correctness lives in the test code and its vitest assertions — there is no recording layer." |
+| `src/scenario.ts` | The ONE way a test is written. A scenario body is an Effect. **Its requirements ARE its capability declaration** — it yields services (`Api`/`Browser`/`Cli`/`Mcp`/`Telemetry`/`Billing`/`Restart`/`TtlControl`/`OpenCode`) and *nothing else*. Yielding a service the target lacks surfaces as Effect's missing-service defect, which the runner **classifies into a vitest skip with the missing service named in the matrix**. Per run it writes a small `result.json` + whatever artifacts the surfaces produced. "Correctness lives in the test code and its vitest assertions — there is no recording layer." |
 | `src/target.ts` | The `Target` interface (deployment seen from outside): `baseUrl`, `mcpUrl`, `capabilities` (`api`/`browser`/`mcp-oauth`/`billing`), `newIdentity()` (fresh isolated user+org — isolation via fresh identity, *no resets*), optional `mcpConsent`, `setAccessTokenTtl`, `restart`. |
 | `src/services.ts` + `src/surfaces/{api,browser,cli,mcp,telemetry}.ts` | The capability services and their wire implementations. `browser.ts` = Playwright over the real web UI, dark mode, with **mp4 video + Playwright trace + per-step screenshots + `failure.png`**, wrapped in `acquireUseRelease` so a vitest timeout still flushes the video/trace instead of leaking Chromium. `telemetry.ts` boots a motel OTLP store and points the target's real exporter at it, so a scenario can assert on **spans the server actually exported** (catches "observability silently went dark"). |
-| `src/vm/{types,tart,ec2,build-binary}.ts` | Cross-OS VM substrate. `VmOs = macos\|linux\|windows`; `tart` (macOS+Linux on Apple Silicon), `ec2` (ephemeral Windows). A `VmHandle` can `ssh`, `push`, **`reboot` for real**, and `tunnel` — so restart-persistence / boot-time auto-start are tested honestly, not faked. |
+| `src/vm/{types,tart,ec2,build-binary}.ts` | Cross-OS VM substrate. `VmOs = macos\|linux\|windows`. `tart` (macOS+Linux on Apple Silicon), `ec2` (ephemeral Windows). A `VmHandle` can `ssh`, `push`, **`reboot` for real**, and `tunnel` — so restart-persistence / boot-time auto-start are tested honestly, not faked. |
 | `src/clients/{chat-theater,replay-brain,opencode,agent-chat-tui}.ts` | The "product-as-used" renderers for watchable recordings: chat-theater (real MCP calls, no inference), replay-brain (scripted LLM wire + real third-party client), opencode integration. |
-| `src/{timeline,trace-harvest,ports}.ts`, `src/viewer/manifest.ts` | Timeline beats, trace harvesting, per-checkout **port locking** (concurrent worktrees can't collide), and the viewer manifest. |
-| `targets/{registry,cloud,selfhost,selfhost-docker,cli,desktop,cloudflare,local}.ts` | The multi-target registry; pick with `E2E_TARGET`, attach to a live instance with `E2E_<TARGET>_URL`. |
-| `scenarios/*.test.ts` (28) + `cloud/`, `selfhost/`, `local/` | Cross-target product journeys (api-tools, auth-methods, oauth-*, policies, mcp-execute, restart-persistence, …); the `cloud/`/`selfhost/`/`local/` dirs hold target-specific ones. |
+| `src/{timeline,trace-harvest,ports}.ts`, `src/viewer/manifest.ts` | Timeline beats, trace harvesting, per-checkout **port locking** (concurrent worktrees cannot collide), and the viewer manifest. |
+| `targets/{registry,cloud,selfhost,selfhost-docker,cli,desktop,cloudflare,local}.ts` | The multi-target registry. Pick with `E2E_TARGET`, attach to a live instance with `E2E_<TARGET>_URL`. |
+| `scenarios/*.test.ts` (28) + `cloud/`, `selfhost/`, `local/` | Cross-target product journeys (api-tools, auth-methods, oauth-*, policies, mcp-execute, restart-persistence, …). The `cloud/`/`selfhost/`/`local/` dirs hold target-specific ones. |
 | `setup/*.globalsetup.ts` + `*.boot.ts` | Per-target (and per-OS) boot: each app boots its OWN dev server or attaches to a running one. |
-| `vitest.config.ts` | **One vitest project per target** (`cloud`, `selfhost`, `selfhost-docker`, `cloudflare`, `desktop`, `desktop-packaged`, `local`, `cli-{macos,linux,windows}`); `fileParallelism:false` for shared-instance targets; 180s–360s timeouts. |
+| `vitest.config.ts` | **One vitest project per target** (`cloud`, `selfhost`, `selfhost-docker`, `cloudflare`, `desktop`, `desktop-packaged`, `local`, `cli-{macos,linux,windows}`). `fileParallelism:false` for shared-instance targets. 180S–360s timeouts. |
 | `desk/`, `viewer/`, `scripts/{film,pr-media,record-*,serve,summary}.ts` | The Desk (virtual Linux desktop: chat in xterm + headed browser + one `ffmpeg x11grab`), the matrix viewer with Playwright-trace links, and shareable PR-media generation. |
 
-**What it already nails (adopt, don't reinvent):** the `Target` abstraction +
-project-per-target ("write once, run on dev/prod/selfhost" — requirement #3); the
+**What it already nails (adopt, do not reinvent):** the `Target` abstraction +
+project-per-target ("write once, run on dev/prod/selfhost" — requirement #3). The
 **capabilities-as-Effect-requirements → auto-skip + matrix** design (elegant — no
-hand-maintained `needs` list to drift); the artifact set (mp4 + trace +
-screenshots + `result.json`) with flush-on-timeout (requirement #6); the cross-OS
-real-reboot VM layer (requirement #4); black-box + review-by-reading discipline;
-port-locking for parallel runs; recording tiers.
+hand-maintained `needs` list to drift). The artifact set (mp4 + trace +
+screenshots + `result.json`) with flush-on-timeout (requirement #6). The cross-OS
+real-reboot VM layer (requirement #4). Black-box + review-by-reading discipline.
+port-locking for parallel runs. Recording tiers.
 
 > Audit catch (doc drift): `e2e/AGENTS.md` still documents the old
 > `scenario("...", { needs: ["api"] }, ...)` signature, but `src/scenario.ts`
-> moved to requirements-as-capabilities (no `needs`). Minor, but it's exactly the
+> moved to requirements-as-capabilities (no `needs`). Minor, but it is exactly the
 > single-source-of-truth lesson we just applied to OpenAgents routing — keep the
 > contract and its doc coupled.
 
@@ -301,7 +301,7 @@ port-locking for parallel runs; recording tiers.
 
 What executor does **not** close — and where an OpenAgents build adds value:
 
-1. **No autonomous loop (the core ask).** Scenarios are human/scripted-authored;
+1. **No autonomous loop (the core ask).** Scenarios are human/scripted-authored.
    the Desk *films* them. Missing: **an agent that drives the real tools itself to
    develop/explore.** → OpenAgents adds **Khala** as the driver (Probe runtime +
    computer-use tools), so exploration is autonomous.
@@ -309,14 +309,14 @@ What executor does **not** close — and where an OpenAgents build adds value:
    scenarios. → Add a **distiller** that turns a Khala session timeline into a
    black-box `Target` scenario meeting the executor quality bar — making the
    *committed test the default deliverable of agent work*, not a human afterthought.
-3. **Runs aren't receipts (no verification/economic layer).** A green run + video
-   is trusted by reading; there's no independent verifier, tamper-evidence, or
+3. **Runs are not receipts (no verification/economic layer).** A green run + video
+   is trusted by reading. There is no independent verifier, tamper-evidence, or
    metering. → OpenAgents wraps each run in the **Tassadar verification-class +
    revenue-loop receipt** model: a run becomes a *dereferenceable, optionally
    independently-verified receipt* — which also unlocks the **hosted-VM
    monetization** natively (metered run → settled receipt).
-4. **VM substrate is bespoke + heavy** (tart/ec2; macOS needs a real VNC GUI
-   session per `notes/testing-on-mac.md`; cost/perf-per-PR unaddressed). →
+4. **VM substrate is bespoke + heavy** (tart/ec2, macOS needs a real VNC GUI
+   session per `notes/testing-on-mac.md`. Cost/perf-per-PR unaddressed). →
    OpenAgents makes per-run isolation a **Cloud primitive**: `cloud` (`oa-node` /
    `oa-workroomd`) over `firecracker` microVMs / `sek8s` confidential runners, so
    cross-OS and scale come from infra we already own — this is the literal "use
@@ -325,7 +325,7 @@ What executor does **not** close — and where an OpenAgents build adds value:
    assumes the product can mint a fresh isolated identity (+ optional restart). →
    Define the **minimal adapter** a third-party app must provide (auth,
    fresh-identity, optional restart) so any product can be a target.
-6. **Computer-use is browser-centric.** Beyond Chrome it's only the Electron
+6. **Computer-use is browser-centric.** Beyond Chrome it is only the Electron
    `desktop` target. → "the same tools you develop with" may need a broader
    computer-use surface (arbitrary GUI in the VM), which the Cloud-VM substrate
    makes natural.
@@ -339,15 +339,15 @@ on OpenAgents Cloud VMs with each run wrapped as a verified receipt.**
 Asked directly *"what's wrong with your implementation?"*, the requester was
 refreshingly honest, and his answer sharpens exactly where OpenAgents adds value:
 
-> "Mainly that it's **messy and I haven't actually reviewed the test setup that
-> much**. It also doesn't cleanly handle things like *'I want to see how agents
+> "Mainly that it is **messy and I have not actually reviewed the test setup that
+> much**. It also does not cleanly handle things like *'I want to see how agents
 > perform with these MCP changes'* (sorta evals but in a chill way). My setup is
 > **decent but the last 10% would go so far** on this."
 
 Three takeaways, each a concrete target:
 
 1. **Messy / under-reviewed harness → a clean, opinionated, *reviewed* harness is
-   the product.** His substrate is decent but he hasn't hardened or audited the
+   the product.** His substrate is decent but he has not hardened or audited the
    test setup itself. The OpenAgents version's job is the **last 10%**: a typed
    (Effect) harness whose own test setup is reviewed and trustworthy, with the
    ergonomics that make the good ideas usable — not a from-scratch reinvention.
@@ -359,22 +359,22 @@ Three takeaways, each a concrete target:
    a single pass/fail run: hold the scenario fixed, vary the agent's config — an
    MCP-server set, a tool policy, a model/brain, a before/after of a change — and
    show the delta (pass-rate, latency, behavior) with the videos side by side.
-   Crucially it's *chill*: exploratory and watchable, not a formal benchmark with
+   Crucially it is *chill*: exploratory and watchable, not a formal benchmark with
    ceremony. This maps cleanly onto what we already have: the `qa-runner`'s
-   brain × backend × **target** already varies the run; add a **variant axis**
+   brain × backend × **target** already varies the run. Add a **variant axis**
    (MCP/tool/config/model) and a comparison report, and reuse the benchmark
    harness's percentile/aggregate math (`inference/benchmark/report.ts`) for the
    numbers. It is the executor multi-target idea generalized — vary the *agent*,
    not just the deployment — and it is the daily-driver loop an MCP author (his
    actual job — `executor` is an MCP tool catalog) wants.
 3. **"The last 10% would go so far" = the opportunity is finishing, not founding.**
-   The high-leverage work is precisely the parts he hasn't built: the autonomous
+   The high-leverage work is precisely the parts he has not built: the autonomous
    develop→distill loop, a reviewed harness, and the chill-eval comparison. That
    is the brief.
 
-Implications folded into the rest of this doc: requirement #7 above; a **variant
+Implications folded into the rest of this doc: requirement #7 above. A **variant
 axis + comparison report** added to the build plan (§7) and architecture (§6, the
-runner already has the brain/backend/target seams to hang it on); and an explicit
+runner already has the brain/backend/target seams to hang it on). And an explicit
 "reviewed, typed harness" quality bar as a first-class deliverable, not an
 afterthought.
 
@@ -382,7 +382,7 @@ afterthought.
 
 After the executor exchange, someone from Factory pointed Rhys at **`droid-control`**
 ("droid-control is fully OSS"). It is the closest thing to this concept shipped by
-a serious team, so it's worth a hard look. Local clone:
+a serious team, so it is worth a hard look. Local clone:
 `projects/repos/factory-plugins/plugins/droid-control` (Factory-AI/factory-plugins).
 There are two related Factory pieces:
 
@@ -407,22 +407,22 @@ There are two related Factory pieces:
    satisfy, not "make something impressive" — an explicit anti-drift guardrail. Our
    qa-runner should adopt "commitments verified at the end of the run."
 2. **The `/verify` investigator + anti-fabrication framing** ("if the claim is
-   false, that's a valid finding; never stage evidence to match the expected
+   false, that is a valid finding. Never stage evidence to match the expected
    outcome"). This is *exactly* our "verified, not trusted / no fake green / honest
    FAIL" discipline — independent validation of our thesis. Worth codifying a named
    `verify` verdict (CONFIRMED/REFUTED/INCONCLUSIVE) in the runner.
 3. **Driver breadth + platform isolation.** Four drivers across web/Electron, PTY,
    real-terminal, and **native desktop**, with per-OS subdocs — broader surface and
    OS coverage than our current Chrome+PTY. Generalize our backend abstraction this
-   way (req #4); native-desktop (`trycua/cua`) is the notable add.
+   way (req #4). Native-desktop (`trycua/cua`) is the notable add.
 4. **Remotion-grade polished video.** Data-driven props (the droid never writes
    JSX), before/after side-by-side, title cards, keystroke overlays, presets. Our
-   videos are raw Playwright `recordVideo` (evidence-grade); theirs are demo-grade.
+   videos are raw Playwright `recordVideo` (evidence-grade). Theirs are demo-grade.
    A **compose/polish layer** (data-driven, not hand-written) is worth stealing for
    shareable demos — directly serves requirement #6 and the "send to Rhys" use case.
 5. **Diff-scoped runs + `config.yaml` single source of truth + `production:
    read-only` restriction + failure learning.** Map the git diff to affected
-   apps/scenarios; treat prod as read-only by policy; feed new failures back. All
+   apps/scenarios. Treat prod as read-only by policy. Feed new failures back. All
    good ergonomics for our runner and the `/pro` console.
 6. **"UX for droids" context discipline** — load only the atom relevant to the
    current step (temporal relevance), not one giant prompt. A clean principle for
@@ -432,7 +432,7 @@ There are two related Factory pieces:
 | Req | droid-control | Note |
 |---|---|---|
 | 1. Real dev tools | ✅ | terminal/browser/desktop drivers |
-| 2. Develop → **distill into committed tests** | ❌ | produces **videos + pass/fail reports**, *not* a checked-in, re-runnable test file. `/qa-test` reports a table; nothing lands in the repo as a regression asset. (Automated QA generates markdown sub-skills — prose flows, still not executable committed tests.) |
+| 2. Develop → **distill into committed tests** | ❌ | produces **videos + pass/fail reports**, *not* a checked-in, re-runnable test file. `/qa-test` reports a table. Nothing lands in the repo as a regression asset. (Automated QA generates markdown sub-skills — prose flows, still not executable committed tests.) |
 | 3. Pluggable targets (dev/prod) | ✅ | `config.yaml` environments |
 | 4. Cross-OS | ✅✅ | stronger than us — native desktop + real terminal + 3 OSes |
 | 5. OSS + local | ⚠️ | **see caveats below** |
@@ -441,12 +441,12 @@ There are two related Factory pieces:
 
 **The "OSS + local" caveats (req #5, ⚠️):** the plugin source is public, but
 (a) there is **no LICENSE file** in the repo — "fully OSS" is asserted, not
-licensed; (b) it is **coupled to Factory's `droid` runtime** — the commands are
+licensed. (B) it is **coupled to Factory's `droid` runtime** — the commands are
 `droid` slash-commands and the architecture states "the agent operating the tool
 is also the runtime," so you run it *inside Factory's agent*, not as a standalone
-library; (c) **`agent-browser` is Factory's own CLI** (docs.factory.ai), not a
-public OSS tool; (d) **Remotion requires a paid company license** for orgs >3
-employees. So it's "OSS-ish plugin source, Factory-runtime-locked" — not a
+library. (C) **`agent-browser` is Factory's own CLI** (docs.factory.ai), not a
+public OSS tool. (D) **Remotion requires a paid company license** for orgs >3
+employees. So it is "OSS-ish plugin source, Factory-runtime-locked" — not a
 framework Rhys can drop into his own CI without adopting Factory's agent.
 
 ### Where OUR approach has extra benefits (beyond droid-control)
@@ -459,20 +459,20 @@ framework Rhys can drop into his own CI without adopting Factory's agent.
    hosted VMs, author rev-share), not just files. droid-control's evidence is
    ephemeral.
 3. **Khala as the driver — model- and runtime-agnostic, on our own infra.** Driven
-   by our own model on our own hourly hardware (zero per-token cost; the
+   by our own model on our own hourly hardware (zero per-token cost, the
    balance-gate exemption), OpenAI-compatible, not locked to a vendor agent. A real
    LICENSE, runnable locally or on OpenAgents Cloud VMs without a Factory dependency.
 4. **The "chill evals" / variant-comparison mode** (req #7) — vary the MCP set /
    tool policy / model and compare. The exact thing droid-control lacks and Rhys
    most wants.
 5. **The `/pro` hosted operator console** — a product surface to watch runs, review
-   distilled tests, and (later) the capability marketplace; not just a CLI plugin.
+   distilled tests, and (later) the capability marketplace. Not just a CLI plugin.
 
 ### Net
 droid-control **validates the thesis** (evidence-first, investigator/anti-
 fabrication, capture→compose→verify) and is **ahead of us on surface/OS breadth and
 video polish** — we should learn both. But it is **not** what Rhys ultimately wants:
-it doesn't distill into committed tests, has no agent/MCP-change comparison eval,
+it does not distill into committed tests, has no agent/MCP-change comparison eval,
 and is Factory-runtime-coupled with license caveats. Our edge is committed-test
 distillation, run-as-receipt+settlement, a model/runtime-agnostic own-infra driver,
 chill-evals, and the `/pro` console — while adopting droid-control's
@@ -481,7 +481,7 @@ compose layer.
 
 ## 5c. Tooling to adopt: `gh-attach` (the "post evidence to the PR" glue)
 
-The Factory engineer also pointed at **`gh-attach`** (`ain3sh/gh-attach`, Go; local
+The Factory engineer also pointed at **`gh-attach`** (`ain3sh/gh-attach`, Go, local
 clone `projects/repos/gh-attach`) — "a neat lil tool that will help with any of
 these PR QA pipelines." It is small and exactly fills a gap we have.
 
@@ -494,20 +494,20 @@ Installable as a `gh` CLI extension (`gh attach …`).
 **Why it matters for us:** GitHub's REST API does **not** natively support
 attaching media to issue/PR comments — gh-attach drives the web upload path that
 does. Our `qa-runner` already produces a `session.mp4`, screenshots, and a
-`result.json`; the missing step is **posting that evidence into a PR/issue comment**
+`result.json`. The missing step is **posting that evidence into a PR/issue comment**
 the way Factory's Automated QA and droid-control do (inline screenshots/video in the
 report). `gh-attach` is that glue: distill → run → `gh-attach` the video+shots →
 post the report comment with the media embedded + the link to the committed e2e
 test. It also serves the same role inside the `/pro` console's run-sharing.
 
-**Adopt-not-vendor:** it's a tiny standalone Go binary (MIT-class), runtime-agnostic
+**Adopt-not-vendor:** it is a tiny standalone Go binary (MIT-class), runtime-agnostic
 (no Factory/`droid` coupling, unlike droid-control), so we can use it directly in
 the QA CI step / `qa-runner` reporting without taking on a dependency on anyone's
 agent. Add it to the Phase 2.5/CI reporting step.
 
 ## 6. Proposed architecture (how OpenAgents could build it)
 
-OpenAgents already owns most of the hard parts; the request is largely a
+OpenAgents already owns most of the hard parts. The request is largely a
 *composition*.
 
 ```
@@ -525,7 +525,7 @@ OpenAgents already owns most of the hard parts; the request is largely a
 ```
 
 - **The agent = Autopilot driving the Probe runtime + computer-use tools, powered by Khala.** The model
-  is **Khala** (`openagents/khala` — one model, no variants) end-to-end; Probe
+  is **Khala** (`openagents/khala` — one model, no variants) end-to-end. Probe
   owns session lifecycle, tool execution, approvals, and transcripts. Give it the
   *same* tools a developer uses: a real Chrome over CDP/Playwright, a real PTY
   terminal, filesystem, and MCP. This is "Codex computer-use, but the session
@@ -567,10 +567,10 @@ OpenAgents already owns most of the hard parts; the request is largely a
 
 - **Phase 0 — adopt the substrate.** Stand up executor's `e2e` Target + VM +
   viewer against an OpenAgents surface (e.g. the `openagents.com` web app) as a
-  consumer; prove "write once, run on dev + prod" with video artifacts. No new
+  consumer. Prove "write once, run on dev + prod" with video artifacts. No new
   agent yet.
 - **Phase 1 — computer-use agent.** Probe runtime + Autopilot drives real Chrome (powered by Khala) +
-  PTY inside one Linux microVM; it can *develop/explore* a task and produce a
+  PTY inside one Linux microVM. It can *develop/explore* a task and produce a
   recorded session (video + timeline). Review the film.
 - **Phase 2 — the distiller.** Turn a recorded session into a committed black-box
   scenario against `Target`, meeting the executor quality bar. The deliverable of
@@ -579,11 +579,11 @@ OpenAgents already owns most of the hard parts; the request is largely a
   *variant axis* to the runner (MCP-set / tool-policy / model-brain / before-after
   of a change) and a comparison report: same scenario(s), N variants, side-by-side
   pass-rate + latency + behavior deltas with the videos. Reuse the benchmark
-  harness aggregates (`inference/benchmark/report.ts`); keep it low-ceremony and
+  harness aggregates (`inference/benchmark/report.ts`). Keep it low-ceremony and
   watchable. This is the daily-driver loop for an MCP author ("how do agents do
   with these MCP changes?").
-- **Phase 3 — multi-OS + speed.** macOS (tart) and Windows (ephemeral) runners;
-  parallel sharding; fast attach-to-running-instance loop.
+- **Phase 3 — multi-OS + speed.** macOS (tart) and Windows (ephemeral) runners.
+  parallel sharding. Fast attach-to-running-instance loop.
 - **Phase 4 — hosted runners + sponsors.** Managed VM pool for runs (the
   monetization), GitHub Sponsors for the OSS core, receipts wired to settlement.
 
@@ -599,7 +599,7 @@ OpenAgents already owns most of the hard parts; the request is largely a
 - "Same tools you develop with": which exact computer-use toolset is in scope v1
   (Chrome + PTY + fs + MCP?) and what stays out (native desktop apps beyond the
   Electron `desktop` target?).
-- Cost/perf envelope for the OS matrix; what's cheap enough to run on every PR.
+- Cost/perf envelope for the OS matrix. What's cheap enough to run on every PR.
 - Trust: should a generated scenario require human acceptance before it counts as
   a guarantee, or is "green on target + video" sufficient (the §3 question)?
 
@@ -629,10 +629,10 @@ Khala using OpenAgents Cloud VMs/infra. No PR to `executor`.
   <https://github.com/RhysSullivan/executor/tree/main/e2e> · local clone:
   `projects/repos/executor`.
 - `projects/repos/executor/e2e/AGENTS.md` — scenario/target/recording contract (note: doc-drift on the `needs` signature, see §4).
-- `projects/repos/executor/e2e/src/scenario.ts` — the test harness (capabilities-as-Effect-requirements → auto-skip + matrix; `result.json` + artifacts).
+- `projects/repos/executor/e2e/src/scenario.ts` — the test harness (capabilities-as-Effect-requirements → auto-skip + matrix, `result.json` + artifacts).
 - `projects/repos/executor/e2e/src/target.ts` — the `Target`/`Identity`/`Capability` interface.
-- `projects/repos/executor/e2e/src/services.ts` + `src/surfaces/{api,browser,cli,mcp,telemetry}.ts` — capability services; `browser.ts` = Playwright + mp4/trace/screenshots with flush-on-timeout.
-- `projects/repos/executor/e2e/targets/` — the multi-target registry; `vitest.config.ts` — one project per target.
+- `projects/repos/executor/e2e/src/services.ts` + `src/surfaces/{api,browser,cli,mcp,telemetry}.ts` — capability services. `browser.ts` = Playwright + mp4/trace/screenshots with flush-on-timeout.
+- `projects/repos/executor/e2e/targets/` — the multi-target registry. `vitest.config.ts` — one project per target.
 - `projects/repos/executor/e2e/src/vm/` (`types.ts`, `tart.ts`, `ec2.ts`) — cross-OS VM substrate.
 - `projects/repos/executor/e2e/scenarios/` (28 cross-target journeys) + `cloud/` / `selfhost/` / `local/`.
 - `projects/repos/executor/e2e/desk/` + `viewer/` + `scripts/{film,pr-media}.ts` — virtual-desktop filming, run viewer, shareable media.

@@ -82,15 +82,15 @@ bun run --cwd workers/api typecheck
 
 The route regression coverage includes:
 
-- assignment create replay by idempotency key;
-- owned assignment list;
-- accept replay by idempotency key;
-- stale lease rejection;
-- wrong-Pylon rejection;
-- invalid private proof material rejection;
-- rejected closeout;
-- accepted-work closeout;
-- post-closeout payment/settlement evidence allowance for accepted work;
+- assignment create replay by idempotency key.
+- owned assignment list.
+- accept replay by idempotency key.
+- stale lease rejection.
+- wrong-Pylon rejection.
+- invalid private proof material rejection.
+- rejected closeout.
+- accepted-work closeout.
+- post-closeout payment/settlement evidence allowance for accepted work.
 - post-closeout progress mutation rejection.
 
 ## Deployment Note
@@ -98,7 +98,7 @@ The route regression coverage includes:
 The canonical deploy command still fails before deployment on pre-existing
 zero-debt architecture budgets unrelated to #502:
 
-- raw Cloudflare `Env` parameter annotations;
+- raw Cloudflare `Env` parameter annotations.
 - Worker `Response` return surfaces.
 
 #502 removed its own new raw date primitive and left those counts unchanged.

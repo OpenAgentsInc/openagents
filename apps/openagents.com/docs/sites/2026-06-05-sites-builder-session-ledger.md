@@ -27,12 +27,12 @@ revision, active preview, and active artifact.
 
 `workers/api/src/sites-builder-sessions.ts` provides typed Effect programs for:
 
-- creating a builder session;
-- appending customer-safe messages;
-- appending phase/file/preview/build/deploy events;
-- recording generated file snapshot metadata;
-- recording preview refs;
-- recording artifact refs;
+- creating a builder session.
+- appending customer-safe messages.
+- appending phase/file/preview/build/deploy events.
+- recording generated file snapshot metadata.
+- recording preview refs.
+- recording artifact refs.
 - reading customer and operator projections.
 
 The repository rejects private runner/provider payloads, secret-shaped strings,

@@ -14,7 +14,7 @@
 
 > Reconciliation note: `~/work/STAGING_E2E_REPORT.md` and `NEEDS_OWNER.md` say
 > "green = 24". The live prod registry now reads **26 green** at version
-> `.48` (the prod registry deploy had been lagging origin/main; it has since
+> `.48` (the prod registry deploy had been lagging origin/main, it has since
 > advanced). This audit uses the live `.48` numbers.
 
 ---
@@ -60,7 +60,7 @@ Two structural facts drive the tightening:
 - **KEEP / PUSH NOW (revenue critical path): 21 promises** — the minimal set
   whose green/working state IS the revenue loop. ~half are already green.
 - **POSTPONE: 19 promises** — built-but-off-path, research lanes, and
-  nice-to-haves. Keep the code; stop spending fleet cycles chasing their green
+  nice-to-haves. Keep the code. Stop spending fleet cycles chasing their green
   flips this week.
 - **WITHDRAW (or hold withdrawn): 4 promises** — novelty/world-first PR claims
   and one duplicate withdrawn already, that should not be driven toward live
@@ -85,24 +85,24 @@ should follow the instant the owner says "prod stripe".
 ## 2. Full inventory (all 105, grouped by state)
 
 Each promise is tagged **ON** (on the 48h revenue critical path) or OFF.
-21 promises are ON; 84 are OFF.
+21 promises are ON. 84 Are OFF.
 
 #### GREEN — live (26)
 
-- `forum.content_tipping.v1` (Forum) — **ON** — Stacker-News-for-agents tipping; the live $-in rail.
-- `payments.reliable_tips_sweepable_balances.v1` (Forum) — **ON** — tips never fail; real sats settled on one audited ledger. Money OUT proven.
-- `labor.forum_work_requests.v1` (Forum) — **ON** — budgeted work request → NIP-90 job → settlement receipts; accepted-outcome lane.
-- `pylon.install_without_wallet_knowledge.v1` (Pylon) — **ON** — install→earn self-serve; settlement-record path (simulation-backed receipt today).
-- `labor.nostr_negotiation_market.v1` (Pylon) — **ON** — full labor job quote→escrow→settle; the labor payout engine.
+- `forum.content_tipping.v1` (Forum) — **ON** — Stacker-News-for-agents tipping. The live $-in rail.
+- `payments.reliable_tips_sweepable_balances.v1` (Forum) — **ON** — tips never fail. Real sats settled on one audited ledger. Money OUT proven.
+- `labor.forum_work_requests.v1` (Forum) — **ON** — budgeted work request → NIP-90 job → settlement receipts. Accepted-outcome lane.
+- `pylon.install_without_wallet_knowledge.v1` (Pylon) — **ON** — install→earn self-serve. Settlement-record path (simulation-backed receipt today).
+- `labor.nostr_negotiation_market.v1` (Pylon) — **ON** — full labor job quote→escrow→settle. The labor payout engine.
 - `payments.offline_receive_spark_fallback.v1` (payments) — **ON** — real recipient-confirmed 50k-sat payout receipts. Money OUT proven.
-- `proof.claim_upgrade_receipts.v1` (public proof) — **ON** — the receipt-first gate every green flip must pass; the audit substrate.
+- `proof.claim_upgrade_receipts.v1` (public proof) — **ON** — the receipt-first gate every green flip must pass. The audit substrate.
 - `autopilot.codex_probe_pylon_successor.v1` (Autopilot) — OFF — positioning/lineage claim.
 - `agents.cursor_forum_wallet.v1` (Forum) — OFF — agent-onboarding convenience.
 - `pylon.v03_release_candidate.v1` (Pylon) — OFF — release-status claim (shipped).
 - `pylon.release_tomorrow.v1` (Pylon) — OFF — release-timing claim (shipped).
 - `pylon.cli_tui_probe_background.v1` (Pylon) — OFF — runtime UX.
 - `pylon.agent_steerable_cli.v1` (Pylon) — OFF — runtime UX.
-- `pylon.no_dark_capacity_accounting.v1` (Pylon) — OFF — capacity-funnel transparency; supports demand provenance but not on the loop itself.
+- `pylon.no_dark_capacity_accounting.v1` (Pylon) — OFF — capacity-funnel transparency. Supports demand provenance but not on the loop itself.
 - `compute.tassadar_executor_poc.v1` (Pylon) — OFF — executor PoC.
 - `artanis.tassadar_evolution_loop.v1` (Pylon) — OFF — agent self-improvement loop.
 - `artanis.cloud_mind.v1` (Pylon) — OFF — agent infra claim.
@@ -118,22 +118,22 @@ Each promise is tagged **ON** (on the 48h revenue critical path) or OFF.
 
 #### YELLOW — partial / gated (30)
 
-- `autopilot.agentic_labor_products.v1` (Autopilot) — **ON** — sells agentic labor not base resale; self-serve order plan live but INERT. Green = one real external labor sale settled.
-- `autopilot.control_center_fanout_marketplace.v1` (Autopilot) — **ON** — fan-out to many agents; self-serve scope met, FLAG-GATED INERT. Green = receipt-first settled fanout.
-- `identity.orange_check_forum_signal.v1` (Forum) — **ON** — $5 orange check; everything built. Green = one live $5 purchase settling through prod checkout.
-- `sites.referral_bitcoin_stream.v1` (Sites) — **ON** — referral → Bitcoin stream; RL-1 dispatch proven vs mock. Green = one real Bitcoin-revenue settled referral payout receipt.
-- `api.hosted_gemini.v1` (agent API) — **ON** — hosted Gemini via OpenAgents API; route smoke passes. Green = registered-agent prod smoke with billing/settlement.
-- `agents.x_claim_reward.v1` (agent-readable surfaces) — **ON** — 1000-sat X-claim reward; dispatcher built, flag-off. Green = one live dispatched reward to a real receive code.
+- `autopilot.agentic_labor_products.v1` (Autopilot) — **ON** — sells agentic labor not base resale. Self-serve order plan live but INERT. Green = one real external labor sale settled.
+- `autopilot.control_center_fanout_marketplace.v1` (Autopilot) — **ON** — fan-out to many agents. Self-serve scope met, FLAG-GATED INERT. Green = receipt-first settled fanout.
+- `identity.orange_check_forum_signal.v1` (Forum) — **ON** — $5 orange check. Everything built. Green = one live $5 purchase settling through prod checkout.
+- `sites.referral_bitcoin_stream.v1` (Sites) — **ON** — referral → Bitcoin stream. RL-1 dispatch proven vs mock. Green = one real Bitcoin-revenue settled referral payout receipt.
+- `api.hosted_gemini.v1` (agent API) — **ON** — hosted Gemini via OpenAgents API. Route smoke passes. Green = registered-agent prod smoke with billing/settlement.
+- `agents.x_claim_reward.v1` (agent-readable surfaces) — **ON** — 1000-sat X-claim reward. Dispatcher built, flag-off. Green = one live dispatched reward to a real receive code.
 - `inference.fireworks_open_model_provider.v1` (inference gateway) — **ON** — live open-model supply lane. Green = paid-credits path collectable + one funded customer request with metering/settlement.
 - `provider.compliant_usage_labor.v1` (labor) — **ON** — earn sats on your own provider budget, no resale. First-live met. Green = external-sats ladder settlement, self-serve.
-- `payments.money_dev_kit.v1` (payments) — **ON** — MDK self-custodial wallet + hosted checkout; blocked on send-capacity. The core $-in/$-out engine.
-- `autopilot.cloud_credits_ui.v1` (payments) — **ON** — credit balance + cost preview UI; renders/tests pass. Green = purchase + spend + settlement behind it.
-- `proof.demand_provenance.v1` (public proof) — **ON** — internal vs external dollars; "no external dollar, no demand claim." The honesty gate on every $ number.
-- `autopilot.mission_briefing.v1` (Autopilot) — OFF — mission briefing JSON; needs one live mission citing it.
+- `payments.money_dev_kit.v1` (payments) — **ON** — MDK self-custodial wallet + hosted checkout. Blocked on send-capacity. The core $-in/$-out engine.
+- `autopilot.cloud_credits_ui.v1` (payments) — **ON** — credit balance + cost preview UI. Renders/tests pass. Green = purchase + spend + settlement behind it.
+- `proof.demand_provenance.v1` (public proof) — **ON** — internal vs external dollars. "No external dollar, no demand claim." The honesty gate on every $ number.
+- `autopilot.mission_briefing.v1` (Autopilot) — OFF — mission briefing JSON. Needs one live mission citing it.
 - `autopilot.desktop_gui_client.v1` (Autopilot) — OFF — signed DMG release work.
-- `autopilot.agent_world_scene.v1` (Autopilot desktop) — OFF — 3D agent-world HUD; growth/novelty.
-- `autopilot.bitcoin_payment_visualization.v1` (Autopilot desktop) — OFF — gold-particle settlement viz; novelty (mirrors real receipts but not the loop).
-- `autopilot.pylon_growth_visualization.v1` (Autopilot desktop) — OFF — crystal-growth viz; novelty.
+- `autopilot.agent_world_scene.v1` (Autopilot desktop) — OFF — 3D agent-world HUD. Growth/novelty.
+- `autopilot.bitcoin_payment_visualization.v1` (Autopilot desktop) — OFF — gold-particle settlement viz. Novelty (mirrors real receipts but not the loop).
+- `autopilot.pylon_growth_visualization.v1` (Autopilot desktop) — OFF — crystal-growth viz. Novelty.
 - `autopilot.repo_study_packets.v1` (Autopilot repo studying) — OFF — repo-study capability.
 - `autopilot.external_repo_studying_pilot.v1` (Autopilot repo studying) — OFF — repo-study pilot.
 - `artanis.pylon_support_responder.v1` (Pylon) — OFF — support agent.
@@ -141,9 +141,9 @@ Each promise is tagged **ON** (on the 48h revenue critical path) or OFF.
 - `autopilot_sites.native_email_sequences.v1` (Sites) — OFF — site email sequences.
 - `autopilot_sites.custom_tenant_hostnames.v1` (Sites) — OFF — custom hostnames.
 - `autopilot_sites.site_build_and_host.v1` (Sites) — OFF — site build/host.
-- `autopilot.builtin_compute_agent.v1` (autopilot) — OFF — built-in compute agent; release work.
-- `autopilot.local_apple_fm_tool_chat.v1` (autopilot) — OFF — local Apple FM chat; release work.
-- `metrics.accepted_outcomes_per_kwh.v1` (metrics) — OFF — AO/kWh metric; needs measured telemetry (energy story, not a $ lane).
+- `autopilot.builtin_compute_agent.v1` (autopilot) — OFF — built-in compute agent. Release work.
+- `autopilot.local_apple_fm_tool_chat.v1` (autopilot) — OFF — local Apple FM chat. Release work.
+- `metrics.accepted_outcomes_per_kwh.v1` (metrics) — OFF — AO/kWh metric. Needs measured telemetry (energy story, not a $ lane).
 - `mobile.voice_approval_companion.v1` (mobile and voice) — OFF — voice approval companion.
 - `pylon.first_real_model_training_run.v1` (training) — OFF — first training run.
 - `training.device_capability_dataset.v1` (training) — OFF — device-capability dataset.
@@ -151,23 +151,23 @@ Each promise is tagged **ON** (on the 48h revenue critical path) or OFF.
 
 #### RED — blocked (20)
 
-- `inference.gateway_credits_business.v1` (inference gateway) — **ON** — credits-funded OpenAI/Anthropic-compatible gateway; request surface live, free inference live. Red on the PAID-credits receipt (card/Bitcoin → credit → spend).
+- `inference.gateway_credits_business.v1` (inference gateway) — **ON** — credits-funded OpenAI/Anthropic-compatible gateway. Request surface live, free inference live. Red on the PAID-credits receipt (card/Bitcoin → credit → spend).
 - `payments.accepted_outcome_economics.v1` (payments) — **ON** — the seven-state accepted-outcome ledger (authorized/paid/accepted/pending/dispatched/confirmed/reconciled/margin). Green = one accepted outcome with all states evidenced. **This IS the loop's spine.**
-- `payments.autopilot_credits_purchase.v1` (payments) — **ON** — buy credits with a card, spend on container/Codex time. Code complete; red on one real prod card purchase + metered spend receipt (owner-gated Stripe secrets).
+- `payments.autopilot_credits_purchase.v1` (payments) — **ON** — buy credits with a card, spend on container/Codex time. Code complete. Red on one real prod card purchase + metered spend receipt (owner-gated Stripe secrets).
 - `autopilot.cloud_coding_sessions.v1` (Autopilot) — OFF — cloud coding sessions on GCE.
 - `cloud.fine_tuning_service.v1` (OpenAgents Cloud) — OFF — buyable fine-tuning primitive.
 - `cloud.sandbox_compute_service.v1` (OpenAgents Cloud) — OFF — buyable sandbox primitive.
-- `pylon.consumer_compute_earns_bitcoin_self_serve.v1` (Pylon) — OFF — Ep238 consumer-compute-earns claim; needs real settled training payout.
+- `pylon.consumer_compute_earns_bitcoin_self_serve.v1` (Pylon) — OFF — Ep238 consumer-compute-earns claim. Needs real settled training payout.
 - `pylon.v0_3_multi_earning_node.v1` (Pylon) — OFF — multi-earning node umbrella.
 - `compute.agentic_kernel_optimization_at_scale.v1` (compute) — OFF — kernel-optimization research.
 - `inference.decentralized_serving_fabric.v1` (inference gateway) — OFF — decentralized serving fabric (big research lane).
 - `marketplace.signature_monetization.v1` (marketplace) — OFF — DSPy/GEPA signature monetization.
 - `mobile.voice_session_evidence_transcript_ingest.v1` (mobile and voice) — OFF — voice transcript ingest.
 - `models.tassadar_percepta_executor.v1` (models) — OFF — Percepta executor architecture (research).
-- `autopilot_sites.partner_payout_ledger.v1` (payments) — OFF — partner/agency payout ledger; projection built, but partner attribution unbuilt. A SECOND referral lane — defer behind the primary Sites referral.
+- `autopilot_sites.partner_payout_ledger.v1` (payments) — OFF — partner/agency payout ledger. Projection built, but partner attribution unbuilt. A SECOND referral lane — defer behind the primary Sites referral.
 - `claims.world_first_ai_training_paid_bitcoin.v1` (public claims) — OFF — Ep238 world-first PR claim.
 - `claims.world_first_public_llm_computer_training_run.v1` (public claims) — OFF — Ep238 world-first PR claim.
-- `referral.refer_once_earn_forever.v1` (referral) — OFF — ecosystem-wide refer-once-earn-forever; cross-category accrual unbuilt. The headline-grade version of the Sites referral; defer the ecosystem framing, keep the Sites cut.
+- `referral.refer_once_earn_forever.v1` (referral) — OFF — ecosystem-wide refer-once-earn-forever. Cross-category accrual unbuilt. The headline-grade version of the Sites referral. Defer the ecosystem framing, keep the Sites cut.
 - `training.public_distributed_training_run.v1` (training) — OFF — public distributed training run.
 - `pylon.largest_decentralized_training_claim.v1` (training) — OFF — largest-run benchmark claim.
 - `workrooms.source_authorized_business_objects.v1` (workrooms) — OFF — source-authorized business objects.
@@ -205,7 +205,7 @@ Each promise is tagged **ON** (on the 48h revenue critical path) or OFF.
 #### WITHDRAWN — historical (2)
 
 - `autopilot.historical_claude_code_mechsuit.v1` (Autopilot) — OFF — historical positioning.
-- `models.tasadar_percepta_executor.v1` (models) — OFF — typo-duplicate of the Percepta promise; already withdrawn.
+- `models.tasadar_percepta_executor.v1` (models) — OFF — typo-duplicate of the Percepta promise. Already withdrawn.
 
 ---
 
@@ -228,7 +228,7 @@ the exact remaining live event needed.
 |---|---|---|
 | `forum.content_tipping.v1` | green | Already green with real sats. This is the live $-in surface for the Bitcoin path. |
 | `payments.money_dev_kit.v1` | yellow | One real funded-payer → ready-recipient direct tip settling, with webhook-confirmed payment + public receipt lookup (`tip-post-smoke --strict-smooth`). Blocker today: MDK agent-wallet **send capacity** — fund it. |
-| `payments.autopilot_credits_purchase.v1` | red | **OWNER-GATED.** One real signed-in user funds a USD credit balance with a card in prod (needs `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SIGNING_SECRET`, `STRIPE_CREDIT_PACKAGES_JSON`) → `billing_ledger_entries` entry tied to a Stripe Checkout Session. Code complete; gate is the secret + one real card. |
+| `payments.autopilot_credits_purchase.v1` | red | **OWNER-GATED.** One real signed-in user funds a USD credit balance with a card in prod (needs `STRIPE_API_KEY`, `STRIPE_WEBHOOK_SIGNING_SECRET`, `STRIPE_CREDIT_PACKAGES_JSON`) → `billing_ledger_entries` entry tied to a Stripe Checkout Session. Code complete. Gate is the secret + one real card. |
 | `inference.gateway_credits_business.v1` | red | Same card→credit→spend receipt, applied to inference: USD→msat bridge (#5497) + one funded metered inference request producing a dereferenceable card→credit→inference-spend receipt. |
 | `inference.fireworks_open_model_provider.v1` | yellow | Paid-credits path collectable end-to-end + one real customer-completed funded open-model request with metering + settlement. (Same gate as the gateway, expressed on the open-model supply lane.) |
 | `api.hosted_gemini.v1` | yellow | Registered-agent production smoke through the gateway with billing/entitlement/metering/settlement refs. |
@@ -250,7 +250,7 @@ the exact remaining live event needed.
 | `provider.compliant_usage_labor.v1` | yellow | Same compliant flow settling **external sats** over the reliable-tips ladder, running self-serve (not operator-staged). |
 | `autopilot.agentic_labor_products.v1` | yellow | One real labor product ordered by an external buyer, carried through the (currently INERT, flag-gated) settlement seam, producing a dereferenceable settlement receipt + owner sign-off. |
 | `autopilot.control_center_fanout_marketplace.v1` | yellow | Plugin-marketplace execution beyond `code_task` + a receipt-first owner-signed settlement against an armed self-serve fanout. |
-| `pylon.install_without_wallet_knowledge.v1` | green | Green via simulation-backed receipt; the **real** earning step (a `realBitcoinMoved:true` settlement) overlaps Hop 5. |
+| `pylon.install_without_wallet_knowledge.v1` | green | Green via simulation-backed receipt. The **real** earning step (a `realBitcoinMoved:true` settlement) overlaps Hop 5. |
 
 ### Hop 4 — settlement receipt
 
@@ -263,7 +263,7 @@ the exact remaining live event needed.
 | Promise | State | Remaining gate |
 |---|---|---|
 | `payments.reliable_tips_sweepable_balances.v1` | green | Live with real sats (direct BOLT-12 + automated sweep + refund-on-fail). The proven payout engine. |
-| `payments.offline_receive_spark_fallback.v1` | green | Live; two real recipient-confirmed 50k-sat payouts. Resilience for the OUT hop. |
+| `payments.offline_receive_spark_fallback.v1` | green | Live. Two real recipient-confirmed 50k-sat payouts. Resilience for the OUT hop. |
 | `sites.referral_bitcoin_stream.v1` | yellow | One real Bitcoin-revenue production event producing a dereferenceable settled referral payout receipt (dispatch already proven vs mock adapter under RL-1 #5458). |
 | `agents.x_claim_reward.v1` | yellow | One live operator-dispatched 1000-sat reward settled to a real owner receive code with public-safe receipt refs. Smallest real outbound payout — a clean OUT-hop proof. |
 
@@ -286,7 +286,7 @@ flags as NEXT.
 "prod stripe", run `identity.orange_check_forum_signal.v1` ($5, smallest
 discrete card purchase) first as the card-rail smoke, then
 `payments.autopilot_credits_purchase.v1` + `inference.gateway_credits_business.v1`
-for the full card→credit→inference-spend receipt. All code exists; the gate is
+for the full card→credit→inference-spend receipt. All code exists. The gate is
 the three Stripe secrets + one real card.
 
 **Then the spine + a payout:** record the
@@ -310,33 +310,33 @@ driving-priority recommendations.
 | Promise | State | Rec | Rationale |
 |---|---|---|---|
 | `world.multiplayer_agent_world.v1` | planned | **withdraw from active driving** | Walkable multiplayer agent-world MMORPG — pure growth/novelty, zero revenue path. |
-| `autopilot.agent_character_creation.v1` | planned | **withdraw from active driving** | Agent "character creation" onboarding novelty; not on any $ hop. |
-| `claims.pursued_world_first_largest_agentic_sales_force.v1` | planned | **withdraw from active driving** | Aspirational world-first PR claim; explicitly "pursuing, not claiming." No revenue dependency. |
+| `autopilot.agent_character_creation.v1` | planned | **withdraw from active driving** | Agent "character creation" onboarding novelty. Not on any $ hop. |
+| `claims.pursued_world_first_largest_agentic_sales_force.v1` | planned | **withdraw from active driving** | Aspirational world-first PR claim. Explicitly "pursuing, not claiming." No revenue dependency. |
 | `claims.pursued_world_first_largest_sales_force.v1` | planned | **withdraw from active driving** | Same — 7M-seller bar is narrative, not a 48h loop. |
 
 ### Postpone (19) — built-but-off-path, research lanes, nice-to-haves
 
 | Promise | State | Rec | Rationale |
 |---|---|---|---|
-| `autopilot.agent_world_scene.v1` | yellow | postpone | 3D agent-world HUD; growth/novelty, not the loop. |
-| `autopilot.bitcoin_payment_visualization.v1` | yellow | postpone | Settlement *visualization* mirrors real receipts but does not produce one; defer behind the real receipt. |
-| `autopilot.pylon_growth_visualization.v1` | yellow | postpone | Crystal-growth viz; novelty. |
+| `autopilot.agent_world_scene.v1` | yellow | postpone | 3D agent-world HUD. Growth/novelty, not the loop. |
+| `autopilot.bitcoin_payment_visualization.v1` | yellow | postpone | Settlement *visualization* mirrors real receipts but does not produce one. Defer behind the real receipt. |
+| `autopilot.pylon_growth_visualization.v1` | yellow | postpone | Crystal-growth viz. Novelty. |
 | `training.full_pipeline_program.v1` | planned | postpone | Full owned training pipeline — long research program, no 48h revenue. |
-| `training.ablation_system.v1` | planned | postpone | Receipted ablation system; research lane. |
-| `training.data_refinery_corpus.v1` | planned | postpone | Data refinery corpus; research lane. |
-| `training.model_ladder.v1` | planned | postpone | R0–R3 ladder; research lane. |
-| `training.marathon_operations.v1` | planned | postpone | Marathon ops discipline; research lane. |
-| `training.post_training_arc.v1` | planned | postpone | Post-training arc; research lane. |
-| `training.public_gradient_windows.v1` | planned | postpone | Public gradient windows; research/training. |
+| `training.ablation_system.v1` | planned | postpone | Receipted ablation system. Research lane. |
+| `training.data_refinery_corpus.v1` | planned | postpone | Data refinery corpus. Research lane. |
+| `training.model_ladder.v1` | planned | postpone | R0–R3 ladder. Research lane. |
+| `training.marathon_operations.v1` | planned | postpone | Marathon ops discipline. Research lane. |
+| `training.post_training_arc.v1` | planned | postpone | Post-training arc. Research lane. |
+| `training.public_gradient_windows.v1` | planned | postpone | Public gradient windows. Research/training. |
 | `cloud.fine_tuning_service.v1` | red | postpone | Buyable fine-tuning primitive — big build, not a 48h loop. |
 | `cloud.sandbox_compute_service.v1` | red | postpone | Buyable sandbox primitive — big build, not a 48h loop. |
-| `cloud.primitives_suite.v1` | planned | postpone | Full primitives suite umbrella; depends on the above. |
-| `cloud.agent_cloud_one_stop_revshare.v1` | planned | postpone | One-stop Agent Cloud umbrella; depends on the suite. |
-| `compute.agentic_kernel_optimization_at_scale.v1` | red | postpone | Kernel-optimization research; no revenue path this week. |
-| `inference.decentralized_serving_fabric.v1` | red | postpone | Decentralized serving fabric; large research lane. The paid gateway loop uses Fireworks/Gemini supply today. |
-| `marketplace.wasm_plugins.v1` | planned | postpone | WASM plugin packages; nice-to-have. |
-| `marketplace.agentic_npm_module_registry.v1` | planned | postpone | Agentic npm registry; nice-to-have. |
-| `marketplace.signature_monetization.v1` | red | postpone | DSPy/GEPA signature monetization; speculative, off-loop. |
+| `cloud.primitives_suite.v1` | planned | postpone | Full primitives suite umbrella. Depends on the above. |
+| `cloud.agent_cloud_one_stop_revshare.v1` | planned | postpone | One-stop Agent Cloud umbrella. Depends on the suite. |
+| `compute.agentic_kernel_optimization_at_scale.v1` | red | postpone | Kernel-optimization research. No revenue path this week. |
+| `inference.decentralized_serving_fabric.v1` | red | postpone | Decentralized serving fabric. Large research lane. The paid gateway loop uses Fireworks/Gemini supply today. |
+| `marketplace.wasm_plugins.v1` | planned | postpone | WASM plugin packages. Nice-to-have. |
+| `marketplace.agentic_npm_module_registry.v1` | planned | postpone | Agentic npm registry. Nice-to-have. |
+| `marketplace.signature_monetization.v1` | red | postpone | DSPy/GEPA signature monetization. Speculative, off-loop. |
 
 > Borderline items deliberately **kept on path**, not postponed:
 > `inference.referral_on_all_inference.v1`, `referral.refer_once_earn_forever.v1`,
@@ -369,7 +369,7 @@ else in Section 3 either feeds that or proves a specific hop.
 research lane, the cloud primitives/fine-tuning/sandbox builds, the
 serving-fabric and kernel-optimization research, the marketplace plugin/registry
 nice-to-haves, and the agent-world / character-creation / world-first-sales-force
-novelty. Park their PRs; do not chase their greens until the loop closes.
+novelty. Park their PRs. Do not chase their greens until the loop closes.
 
 **Net effect:** fleet attention collapses from "advance all 29+ yellows / 20
 reds / 27 planned" to **~13 still-moving promises** (the 21 critical minus the 8
@@ -392,7 +392,7 @@ Ordered. Owner-gated unblocks are marked **[OWNER]**.
    payout → dereference the settled-sats receipt
    (`forum.content_tipping.v1` + `payments.reliable_tips_sweepable_balances.v1`).
    **This is the first real $ in→out with a receipt.**
-3. Record the receipt-first transition evidence; **[OWNER]** sign off the
+3. Record the receipt-first transition evidence. **[OWNER]** sign off the
    green-flip transitions per `proof.claim_upgrade_receipts.v1`.
 
 **T+8h → T+24h — The accepted-outcome spine:**
@@ -432,7 +432,7 @@ Ordered. Owner-gated unblocks are marked **[OWNER]**.
   the Bitcoin loop above closes the loop *without* this, so the owner can sign
   off the loop-closed milestone before deciding on the card rail).
 - **[OWNER]** Funded wallet authorization for the live Bitcoin send (the MDK
-  treasury is funded; send-capacity top-up is the concrete action).
+  treasury is funded. Send-capacity top-up is the concrete action).
 - Optional: prod `OPENAGENTS_ADMIN_API_TOKEN` to backfill audit-trail receipts
   for the ~10 greens missing them (unblocks the
   `proof.claim_upgrade_receipts.v1` green flip).

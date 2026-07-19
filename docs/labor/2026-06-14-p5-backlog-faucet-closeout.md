@@ -1,7 +1,7 @@
 # P5 Backlog Faucet — Closeout (#4781)
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -25,7 +25,7 @@ receipts.
       receipts**: #4966 was quoted (1 sat), accepted (escrow `33e0a3e0…`),
       executed (provider's own codex agent, output-only), validator-accepted
       (`bun test` 1 pass / 0 fail), and **settled** (escrow
-      `released_to_provider`; reserve + release receipts public; work-request
+      `released_to_provider`. Reserve + release receipts public. Work-request
       state `settled`).
 
 ## What was built / wired
@@ -33,7 +33,7 @@ receipts.
 - **Issue→work-request adapter (CLI):**
   `apps/openagents.com/scripts/backlog-faucet-list.ts` uses the checked-in
   faucet contract (`backlog-faucet.ts`) to decorate issues (objective ref =
-  issue, never body copies; idempotent on the faucet key) and posts through the
+  issue, never body copies. Idempotent on the faucet key) and posts through the
   live work-requests endpoint, then posts the `listedIssueCommentBody` back to
   each issue. One channel per issue (skips re-commenting when the market marker
   is present).
@@ -73,11 +73,11 @@ In this single-operator MVP, the provider is a **genuinely independent node
 identity** — a separate Pylon home (`/tmp/oa-provider-home`) with its own Nostr
 pubkey (`3fd9b3f1…`), separate from the requester (Raynor). It runs the real
 NIP-LBR protocol, does real codex work, and settles real sats over the ledger.
-It is not a different human; it is a real second market participant at the
+It is not a different human. It is a real second market participant at the
 protocol level. The faucet mechanism, the chain, and the receipts are all live
 and reproducible for any future genuinely-third-party provider that quotes a
 listed issue.
 
 The other two listed issues (#4956, #4749) remain as standing open-market
-inventory; any capability-true provider can quote them through the Forum
+inventory. Any capability-true provider can quote them through the Forum
 work-requests surface or the kind-5934 relay twin.

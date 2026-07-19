@@ -14,12 +14,12 @@ revision list and customer feedback timeline.
 
 The order detail page shows:
 
-- the current Autopilot progress state;
-- the latest active Site URL from the order projection;
-- latest saved Site version metadata when present;
-- a revision panel with current/prior Site versions;
-- review state and deployment state for revisions;
-- customer feedback history;
+- the current Autopilot progress state.
+- the latest active Site URL from the order projection.
+- latest saved Site version metadata when present.
+- a revision panel with current/prior Site versions.
+- review state and deployment state for revisions.
+- customer feedback history.
 - a follow-up composer that posts to the customer feedback API.
 
 The UI keeps deployment state separate from customer acceptance. A live URL can
@@ -49,10 +49,10 @@ the composer is cleared.
 
 The order page handles:
 
-- no linked Site yet;
-- no Site revisions yet;
-- no customer feedback yet;
-- loading and failed revision/feedback requests;
+- no linked Site yet.
+- no Site revisions yet.
+- no customer feedback yet.
+- loading and failed revision/feedback requests.
 - feedback submit failure.
 
 ## Verification

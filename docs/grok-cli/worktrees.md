@@ -43,7 +43,7 @@ leaves its worktree in place. `gc` runs only when you invoke it.
 | `grok worktree list` | List tracked worktrees |
 | `grok worktree show <id>` | Show details for one worktree |
 | `grok worktree rm <ids...>` | Remove worktrees (`--dry-run` to preview) |
-| `grok worktree gc` | Remove entries whose directory is gone; `--max-age 7d` also expires idle worktrees not in use by a running process |
+| `grok worktree gc` | Remove entries whose directory is gone. `--max-age 7d` also expires idle worktrees not in use by a running process |
 
 ## OpenAgents note
 

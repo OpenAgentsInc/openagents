@@ -1,7 +1,7 @@
 # Cloudflare World Actor Command Authority Model
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -73,18 +73,18 @@ For every accepted service projection row r:
 
 ## Counterexamples Converted To Tests
 
-- A browser actor tries `upsert_training_run`; expected rejected auth receipt
+- A browser actor tries `upsert_training_run`. Expected rejected auth receipt
   and diagnostic delta.
-- An agent actor tries `append_world_event`; expected rejected auth receipt and
+- An agent actor tries `append_world_event`. Expected rejected auth receipt and
   no projected row.
-- An operator actor tries `record_bridge_health`; expected rejected auth
+- An operator actor tries `record_bridge_health`. Expected rejected auth
   receipt and no bridge-health row.
-- A service actor tries `send_local_message`; expected rejected auth receipt and
+- A service actor tries `send_local_message`. Expected rejected auth receipt and
   no local-chat row.
-- A service actor writes a private/unsafe projection row; expected rejected
+- A service actor writes a private/unsafe projection row. Expected rejected
   redaction receipt and no payload echo.
 
 These are covered in `apps/openagents-world/src/commands.test.ts`. The model is
-bounded to command authority; it does not prove Cloudflare runtime delivery,
+bounded to command authority. It does not prove Cloudflare runtime delivery,
 network ordering, or cross-service identity issuance. Those are covered by the
 Worker service tests, two-client smokes, and deploy runbooks.

@@ -1,7 +1,7 @@
 # Quick 3D MMORPG Full Mechanics Harvest Plan
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -132,7 +132,7 @@ As of 2026-06-17:
   sampling, stable chunk keys, quadtree LOD planning, synchronous and
   module-worker-backed chunk geometry building, skirt vertices, splat
   texture-index/weight output, and a width-keyed chunk pool. This is isolated
-  substrate only; no OpenAgents page consumes terrain by default.
+  substrate only. No OpenAgents page consumes terrain by default.
 - OpenAgents issue #5275 added the owned world asset catalog and provenance
   policy in `docs/game/2026-06-17-openagents-world-asset-catalog.md`. It records
   current `/tassadar` procedural assets as approved-owned, defines target
@@ -191,7 +191,7 @@ OpenAgents harvest:
   - `createSkyboxEnvironment`.
 - `/tassadar` should keep the current full-bleed canvas and add only minimal HUD
   overlays. No large boxed dashboard chrome in the primary scene.
-- Scene presets must not create fake activity. Lighting/fog/sky are ambience;
+- Scene presets must not create fake activity. Lighting/fog/sky are ambience.
   pulses, beams, or moving data must remain evidence-backed.
 
 ### 3. Asset Loading And Model Instances
@@ -298,7 +298,7 @@ OpenAgents harvest:
   - entity description cache keyed by stable id.
   - proximity subscription group.
   - dead/despawn animation policy.
-- The MMO database owns avatar/world interaction state; Worker projections own
+- The MMO database owns avatar/world interaction state. Worker projections own
   proof/run/settlement authority.
 - For `/tassadar`, SpacetimeDB rows should drive avatar positions, pylon
   station positions, local chat, attention, and selected-entity state.
@@ -360,7 +360,7 @@ OpenAgents harvest:
   - reputation can be verified-work count.
   - capabilities can be equipment.
   - XP can be earned receipts or accepted work count only if backed by records.
-  - "damage" should not appear on `/tassadar`; use "blocked", "stale",
+  - "damage" should not appear on `/tassadar`. Use "blocked", "stale",
     "verified", "accepted", "settled", or "attention" states.
 
 ### 9. Inventory And Equipment
@@ -587,7 +587,7 @@ Plan:
 - Prefer owned/generated OpenAgents-specific GLBs and textures for brand-critical
   surfaces.
 - The owned catalog is now
-  `docs/game/2026-06-17-openagents-world-asset-catalog.md`; it is the production
+  `docs/game/2026-06-17-openagents-world-asset-catalog.md`. It is the production
   gate until a machine-readable manifest replaces it.
 
 ## Target Architecture

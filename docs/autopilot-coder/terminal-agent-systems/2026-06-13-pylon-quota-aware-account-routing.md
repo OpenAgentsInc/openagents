@@ -1,7 +1,7 @@
 # Pylon Quota-Aware Account Routing & Failover
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-13
@@ -12,7 +12,7 @@ describe code as it exists today plus the *intended* additions, with the two
 clearly distinguished.
 
 Related issues: #4881, #4882, #4884. This document is the shared contract those
-issues build against; #4883 is the planning issue that produced it.
+issues build against. #4883 Is the planning issue that produced it.
 
 Source files this design grounds against (read, current behavior):
 
@@ -84,7 +84,7 @@ Resolution rules:
 - If `accountPool` is **absent or empty**, the runner uses the existing
   single-selector fields (`accountRef` / `accountHome` / `codexHome` /
   `claudeConfigDir`) and behaves exactly as today. No pool, no failover.
-- If `accountPool` is **present**, it takes precedence; the single-selector
+- If `accountPool` is **present**, it takes precedence. The single-selector
   fields are ignored for that entry (the implementation issue should reject an
   entry that sets both, mirroring the existing
   `account_selector_ambiguous` style of guard, rather than silently picking one).
@@ -148,7 +148,7 @@ isAccountAvailable(record, now):
   itself recorded a `quota_block` for a member during the current run, that
   member is not re-attempted later in the same run even if its `retryAtIso`
   would elapse mid-run. The implementation tracks an in-run `Set` of
-  blocked-this-run account hashes layered on top of the persisted ledger; the
+  blocked-this-run account hashes layered on top of the persisted ledger. The
   ledger governs *cross-run* skipping, the in-run set governs *within-run*
   no-retry. This keeps a single pool walk strictly forward-only and bounded by
   the pool length.
@@ -204,7 +204,7 @@ field for the hash.
 
 `MultiSessionOutcome` gains additive routing fields. The existing `account`
 field continues to report the account the session ultimately ran under (the
-winner on success; the last attempted member on exhaustion):
+winner on success. The last attempted member on exhaustion):
 
 ```ts
 // additive to MultiSessionOutcome — existing fields unchanged
@@ -217,7 +217,7 @@ accounts were tried, never the refs or homes themselves.
 
 ### Summary
 
-`MultiSessionSummary` records the run-level routing picture (all additive; the
+`MultiSessionSummary` records the run-level routing picture (all additive, the
 existing `deviations` array and counts are unchanged except for the new
 deviation token in §5):
 
@@ -237,7 +237,7 @@ routing: {
 ```
 
 All of the above pass through the existing `scanProofSerialization` and
-`assertPublicProjectionSafe` gates unchanged; because every new field is a hash
+`assertPublicProjectionSafe` gates unchanged. Because every new field is a hash
 or an enum, they carry no redaction risk.
 
 ---
@@ -253,7 +253,7 @@ A session resolves to exactly one terminal state, consistent with the existing
   the winner. Identical artifact / `resultRef` semantics to today.
 
 - **failed (non-quota)** — a member ran and failed for a non-quota reason. The
-  existing `classifyError` path applies unchanged; the pool walk stops. The
+  existing `classifyError` path applies unchanged. The pool walk stops. The
   outcome's `errorClass` / `errorDigestRef` are as today, with
   `routingReason` recorded as the reason of the failing attempt.
 
@@ -269,7 +269,7 @@ A session resolves to exactly one terminal state, consistent with the existing
   This token joins the existing
   `deviation.pylon.multi_session.some_sessions_failed` in
   `MultiSessionSummary.deviations` (the run still reports `some_sessions_failed`
-  because the exhausted session counts toward `failedCount`; the new token is
+  because the exhausted session counts toward `failedCount`. The new token is
   additive and more specific). The exhaustion deviation entry carries the
   **earliest `retryAtIso` across the pool** so an operator knows the soonest the
   session could be retried:
@@ -297,7 +297,7 @@ per-session outcomes.
 ## 6. Expected module interfaces
 
 The implementation issues (#4881 / #4882 / #4884) should wire to these exact
-shapes so the runner does not re-decide them. Both modules are **new**; the
+shapes so the runner does not re-decide them. Both modules are **new**. The
 runner depends only on these signatures, not their internals.
 
 ### 6a. Detection module — `classifyQuotaSignal`
@@ -327,7 +327,7 @@ Contract notes for the implementer:
 - `exhausted: false` means "not a quota block" — the runner then falls through
   to the existing `classifyError` failure handling. The detection module must
   not claim a quota block for ordinary verification or workspace failures.
-- `retryAtRaw` exists purely as the preimage for `retryAtIso`; it is **not**
+- `retryAtRaw` exists purely as the preimage for `retryAtIso`. It is **not**
   forwarded to any heartbeat, outcome, or summary field. Only `retryAtIso` and
   `sourceDigestRef` cross the public boundary.
 - `sourceDigestRef` should be produced with the same `stableRef` /
@@ -373,7 +373,7 @@ export function isAccountAvailable(
 Contract notes:
 
 - The ledger key is the hash, never the ref. `recordQuotaBlock` derives the key
-  from `account.accountRefHash`; it must not read `account.home` or
+  from `account.accountRefHash`. It must not read `account.home` or
   `account.accountRef` into the persisted record.
 - `loadQuotaRecord` returning `null` means "no known block" → available.
 - `isAccountAvailable` is the single source of truth for the §3 rule and is
@@ -387,15 +387,15 @@ Contract notes:
 
 | Area | Today | After implementation |
 | --- | --- | --- |
-| Plan entry account binding | one selector | optional ordered `accountPool`; single-selector path unchanged |
+| Plan entry account binding | one selector | optional ordered `accountPool`. Single-selector path unchanged |
 | Quota block | child exits non-zero → `failed` via `classifyError` | detected, recorded to ledger, pool advances |
 | Heartbeat phases | `run_started`/`started`/`completed`/`run_completed` | + `account_attempt` (additive) |
 | Outcome | `state`, `account`, error refs | + `routingReason`, `attemptedAccountHashes` (additive) |
-| Summary | counts, `outcomes`, `deviations` | + `routing` block; + `all_accounts_exhausted` deviation token |
+| Summary | counts, `outcomes`, `deviations` | + `routing` block. + `all_accounts_exhausted` deviation token |
 | Redaction posture | refs/hashes/digests only | unchanged — every new field is a hash, enum, ISO time, or digest ref |
 | Concurrency / workspace / dev-proof child | as in `runMultiSessionPlan` | unchanged |
 
-No existing field is removed or repurposed; no existing invariant is relaxed.
+No existing field is removed or repurposed. No existing invariant is relaxed.
 Implementation lands behind the optional `accountPool` field, so plans that do
 not use it observe byte-identical behavior to today.
 
@@ -410,7 +410,7 @@ not use it observe byte-identical behavior to today.
   last-write-wins-by-key read shape. (#4882)
 - **Cross-session sharing within a run.** When two concurrent sessions share a
   pool member and one records a block, should the other observe it immediately?
-  The persisted ledger makes this eventually-consistent; the in-run set is
+  The persisted ledger makes this eventually-consistent. The in-run set is
   per-session. Decide whether to add a run-scoped shared block set. (#4884)
 - **`classifyQuotaSignal` provider coverage.** Which provider signals (HTTP 429,
   provider-specific quota strings, `Retry-After`) map to `exhausted` and how

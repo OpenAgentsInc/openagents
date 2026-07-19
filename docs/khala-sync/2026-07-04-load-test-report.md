@@ -36,7 +36,7 @@ Cloud SQL (`khala_sync_staging`, instance `khala-sync-pg`, PG17,
   read — same shape, noted by the harness).
 - Connection pool 52 (postgres.js, `prepare: false` to mirror Hyperdrive's
   transaction-mode discipline). The harness refuses pools above 25% of the
-  server's `max_connections` (600 here; staging and prod share the
+  server's `max_connections` (600 here, staging and prod share the
   instance).
 
 ## Headline numbers (staging substrate run, runId `ks9-1-main`)
@@ -55,7 +55,7 @@ readers. **Errors: zero, across every operation class.**
 - Sustained **25.2 pushes/s = 50.4 committed mutation transactions/s**
   (16,724 changelog rows + 16,724 ledger rows written and then cleaned up).
 - Visibility = writer's pre-push stamp → reader observation on the direct
-  Postgres poll path; it includes the full push latency plus the 1s reader
+  Postgres poll path. It includes the full push latency plus the 1s reader
   poll interval by construction. The hub fan-out path (KS-4) is a separate
   seam and was not measured here.
 
@@ -77,7 +77,7 @@ Removing the pacing changed **nothing**: throughput stayed at ~25 pushes/s
 (the closed loop is bound by the WAN round trips per push:
 40 workers ÷ 1.55 s/push ≈ 25.8/s) and tail latency actually tightened
 (p99 2010 ms vs 2432 ms) — no queueing, no degradation, no errors under the
-burst shape. DB-side headroom above this client's ceiling is untouched;
+burst shape. DB-side headroom above this client's ceiling is untouched.
 pushing the database itself to saturation requires either a closer client
 or many more concurrent workers, both out of scope for the 2×-June-shape
 acceptance.
@@ -86,7 +86,7 @@ acceptance.
 
 Sampled `pg_stat_activity` on `khala_sync_staging` during the sustained run:
 
-- Backends: 51 (the harness pool) on top of a 9-backend idle baseline;
+- Backends: 51 (the harness pool) on top of a 9-backend idle baseline.
   `max_connections` 600 — no pressure on backend slots.
 - Active backends: 15–28, **every one waiting on `ClientRead`** — the
   database was waiting on the client's next statement over the ~100 ms WAN
@@ -100,7 +100,7 @@ Sampled `pg_stat_activity` on `khala_sync_staging` during the sustained run:
 executes ~14 sequential statements ⇒ ~14 RTTs ≈ 1.4–1.6 s of pure network
 time, which is the entire push p50. The production path (Worker →
 Hyperdrive → Cloud SQL, single-digit-ms proximity per SPEC §3.3 of the
-rationale doc) removes that amplification; DB-side capacity was never
+rationale doc) removes that amplification. DB-side capacity was never
 approached.
 
 ## Comparison to the June 28–29 failure profile
@@ -116,7 +116,7 @@ approached.
 
 The June cascade was a single-writer SQLite queue where one slow aggregate
 stalled dispatch reads. Here, 40 concurrent writer streams serialized only
-on their own per-scope counter rows; readers ran on MVCC snapshots and never
+on their own per-scope counter rows. Readers ran on MVCC snapshots and never
 queued behind writers. The structural fix the rationale doc predicted is
 what the run shows.
 
@@ -135,19 +135,19 @@ what the run shows.
 2. **Per-scope writer serialization never showed.** Distinct personal
    scopes ⇒ no counter-row contention. A fleet writing ONE hot scope (e.g.
    a busy `scope.fleet_run.*`) serializes on that scope's counter row by
-   design; if a future shape needs >~200 tx/s into a single scope, KS-2
+   design. If a future shape needs >~200 tx/s into a single scope, KS-2
    should look at counter-row batching. Not a current risk.
 3. **Reads are index-only and flat.** `logPage` p50 ≈ 3 RTTs (~307 ms from
-   the WAN client) regardless of changelog size during the run; `bootstrap`
+   the WAN client) regardless of changelog size during the run. `bootstrap`
    the same. The KS-2.2 page-shape design held under concurrent write load.
 4. **Delta visibility on the poll path is poll-interval-bound.** p50 1.8 s
    ≈ push latency + 1 s poll. The KS-4 hub (LISTEN-driven capture → DO
-   WebSocket fan-out) is what turns this into sub-second delivery; this run
+   WebSocket fan-out) is what turns this into sub-second delivery. This run
    deliberately measured the Postgres-authoritative fallback path.
 5. **Backend budget.** 52 direct backends for the harness was 8.7% of
    `max_connections` — but the RUNBOOK's "backends should stay small and
    flat" invariant is about the production topology (Hyperdrive pools,
-   direct paths bounded). The harness enforces a 25%-of-max cap; keep that
+   direct paths bounded). The harness enforces a 25%-of-max cap. Keep that
    when re-running.
 
 ## HTTP-mode run: attempted, skipped honestly
@@ -173,7 +173,7 @@ harness (plain `DELETE`s across `khala_sync_changelog`,
 `khala_sync_capture_checkpoints`, `khala_sync_scope_owners` — volumes are
 bounded by the run and the scopes are disjoint from real scopes by
 construction, so no compaction pass is needed). Main run deletion counts:
-16,724 changelog + 16,724 mutations + 40 scopes + 40 client-state rows;
+16,724 changelog + 16,724 mutations + 40 scopes + 40 client-state rows.
 post-run verification query returned zero remaining `loadtest` rows.
 
 ## Reproduction

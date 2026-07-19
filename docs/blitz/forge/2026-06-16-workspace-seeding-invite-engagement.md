@@ -7,12 +7,12 @@ Scope: #5093, Epic C / prefilled workspaces.
 
 The prefilled workspace primitive now covers the operator seed-to-invite loop:
 
-- operators create public-safe project workspaces with `POST /api/workspaces`;
-- operator responses include a personal invite URL at `/workspaces/{workspaceId}`;
-- the first signed-in holder who opens an unbound `invited` workspace claims it;
-- holder reads record first view and revisit count;
+- operators create public-safe project workspaces with `POST /api/workspaces`.
+- operator responses include a personal invite URL at `/workspaces/{workspaceId}`.
+- the first signed-in holder who opens an unbound `invited` workspace claims it.
+- holder reads record first view and revisit count.
 - `POST /api/workspaces/{workspaceId}/engagement` with
-  `{ "event": "first_run" }` records the first starter-run handoff;
+  `{ "event": "first_run" }` records the first starter-run handoff.
 - operator reads expose engagement for inspection, while holder projections keep
   operator-only holder bindings and invite metadata out.
 
@@ -25,7 +25,7 @@ authority, spend, payout, settlement, provider mutation, delivery, or public
 claim authority.
 
 The invite URL is not an auth grant. It points to the branded logged-out
-workspace shell; session issuance still happens through `/login`, and holder
+workspace shell. Session issuance still happens through `/login`, and holder
 access is enforced by the Worker route before returning the seeded workspace
 projection.
 

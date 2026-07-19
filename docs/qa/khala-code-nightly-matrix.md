@@ -2,7 +2,7 @@
 
 The Khala Code desktop/mobile nightly matrix and its client-specific
 Maestro/emulator/visual lanes were retired on 2026-07-14 with the final
-`clients/` removal. This file remains as a tombstone for old links; none of its
+`clients/` removal. This file remains as a tombstone for old links. None of its
 former environment toggles or client commands are executable authority.
 
 Current deterministic checks are owned by supported surfaces:

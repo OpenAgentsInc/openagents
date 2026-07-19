@@ -69,7 +69,7 @@ Nostr NIP-57 zaps are useful as an optional interoperability layer, but they
 are not a replacement for the Forum BOLT 12 path described in this audit.
 NIP-57 uses a signed Nostr `kind: 9734` zap request, an LNURL-pay callback, a
 BOLT11 invoice, and a published `kind: 9735` zap receipt. The local NIP-57
-source also warns that a zap receipt is not strong proof of payment; clients
+source also warns that a zap receipt is not strong proof of payment. Clients
 trust the zap receipt author.
 
 OpenAgents should therefore treat NIP-57 as a possible Nostr bridge or social
@@ -124,7 +124,7 @@ Important behavior from the local source:
   explicit amount.
 - Fixed-amount BOLT11 payments can omit amount because the invoice defines it.
 - For BOLT12 sends, the payment hash is not known before send. The result has
-  a stable `paymentId`; `paymentHash` and `preimage` are populated only after a
+  a stable `paymentId`. `paymentHash` and `preimage` are populated only after a
   successful payment event when the caller waits for payment outcome.
 - BOLT12 send performs a full RGS sync before dispatch because onion message
   routing needs current routing data.
@@ -165,10 +165,10 @@ that creates offers on behalf of a wallet.
 The local resolver package supports BOLT 12 offers as first-class payment
 methods:
 
-- raw `lno...` offers;
-- Bitcoin URI parameters such as `bitcoin:?lno=...` and `bitcoin:?req-lno=...`;
+- raw `lno...` offers.
+- Bitcoin URI parameters such as `bitcoin:?lno=...` and `bitcoin:?req-lno=...`.
 - DNS/human-readable payment instruction flows that can resolve to BOLT 12
-  offers;
+  offers.
 - amount validation and network/chain checks for offers.
 
 This matters for OpenAgents because a future agent profile can store a generic
@@ -184,24 +184,24 @@ local MDK source audit.
 
 The Worker should own:
 
-- typed schemas;
-- D1 records;
-- public-safe projections;
-- rate limits;
-- idempotency keys;
-- policy gates;
-- product receipts;
-- redaction;
-- claim and settlement state;
+- typed schemas.
+- D1 records.
+- public-safe projections.
+- rate limits.
+- idempotency keys.
+- policy gates.
+- product receipts.
+- redaction.
+- claim and settlement state.
 - sidecar/hosted MDK client calls.
 
 A Node-capable sidecar, local Pylon, `mdkd`, hosted MDK, or agent wallet should
 own:
 
-- BOLT 12 offer creation;
-- BOLT 12 offer payment;
-- BOLT 12 receive setup and RGS sync;
-- wallet key material;
+- BOLT 12 offer creation.
+- BOLT 12 offer payment.
+- BOLT 12 receive setup and RGS sync.
+- wallet key material.
 - raw invoices, payment hashes, preimages, and node logs.
 
 The Worker may store public-safe offer refs and hashes, but it must not store
@@ -260,19 +260,19 @@ forum_tip_settlement_claims
 
 Public surfaces should show:
 
-- method type;
-- readiness status;
-- offer support as a capability flag;
-- public-safe offer ID digest or capability ref;
+- method type.
+- readiness status.
+- offer support as a capability flag.
+- public-safe offer ID digest or capability ref.
 - settled tip totals only after recipient settlement evidence.
 
 Public surfaces should not show:
 
 - full raw offer by default if it enables unsolicited scraping without user
-  intent;
-- raw payment hashes or preimages;
-- wallet paths;
-- sidecar credentials;
+  intent.
+- raw payment hashes or preimages.
+- wallet paths.
+- sidecar credentials.
 - internal hosted MDK credentials.
 
 For agent-readable JSON, raw BOLT12 offers can be exposed only in an explicit
@@ -295,9 +295,9 @@ until BOLT 12 receive and settlement smokes pass.
 
 Required gates:
 
-- current Forum tipping tests remain green;
-- public tip totals remain recipient-settled only;
-- payer-only or pending events remain hidden from public paid totals;
+- current Forum tipping tests remain green.
+- public tip totals remain recipient-settled only.
+- payer-only or pending events remain hidden from public paid totals.
 - current OpenAgents receipt IDs remain stable.
 
 ### Phase 1: BOLT 12 Capability Projection
@@ -338,11 +338,11 @@ Build a no-public-output smoke using local MDK `lightning-js` or `mdkd`:
 5. Pay the `lno...` offer with `pay(..., 10_000, waitForPaymentSecs)`.
 6. Wait for `PaymentSuccessful`.
 7. Record only public-safe evidence refs:
-   - offer ID digest;
-   - payment ID digest;
-   - amount;
-   - method type;
-   - status;
+   - offer ID digest.
+   - payment ID digest.
+   - amount.
+   - method type.
+   - status.
    - smoke run ref.
 
 Do not commit wallet homes, mnemonics, raw offers, payment hashes, or
@@ -380,7 +380,7 @@ Response behavior:
 - If the author has a ready BOLT12 receive method, return a versioned payment
   instruction document with the exact amount constraints and method type.
 - If BOLT12 is degraded, either return the current L402/BOLT11 paid-action path
-  or return unavailable; do not invent pending tips.
+  or return unavailable. Do not invent pending tips.
 
 The endpoint must make the boundary explicit:
 
@@ -415,8 +415,8 @@ CLI/recovery path and provider callback path converge to one public tip.
 Once raw BOLT12 offers work, add support for human-readable payment
 instructions:
 
-- agent profile payment code;
-- `user@domain` / BIP 353 record;
+- agent profile payment code.
+- `user@domain` / BIP 353 record.
 - Nostr profile payment code if and when the identity model is ready.
 
 This should be a receive-method variant, not a separate tipping system.
@@ -463,7 +463,7 @@ The promise can honestly say:
    smoke against at least two independent ready recipients.
 2. Use `tip-post-smoke --strict-smooth` as the smooth-path gate. The command
    records payer balance before/after, direct-tip receipt state, post
-   `tipStats`, and whether timeout recovery was needed; diagnostic mode can
+   `tipStats`, and whether timeout recovery was needed. Diagnostic mode can
    keep recovery visible as a blocker while debugging.
 3. Keep `forum.content_tipping.v1` yellow until smooth live smoke passes and
    public post stats/receipt refs agree with the API.
@@ -471,5 +471,5 @@ The promise can honestly say:
    agent-wallet webhook contract.
 5. Add human-readable payment instruction support, such as BIP 353, only after
    raw BOLT 12 offer tipping remains stable.
-6. Add NIP-57 zaps only as an optional bridge after BOLT 12 is stable; keep
+6. Add NIP-57 zaps only as an optional bridge after BOLT 12 is stable. Keep
    external zap receipts separate from canonical Forum settled-tip stats.

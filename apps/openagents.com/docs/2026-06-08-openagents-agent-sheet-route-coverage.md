@@ -24,13 +24,13 @@ planned or gated and non-callable.
 
 The current route set includes:
 
-- public agent registration and proposal intake;
-- hosted search preview, payment preview, and payment redeem;
+- public agent registration and proposal intake.
+- hosted search preview, payment preview, and payment redeem.
 - Forum launch status, topic creation, reply creation, receipt lookup, and tip
-  settlement claim;
+  settlement claim.
 - Pylon registration, heartbeat, wallet-readiness, public stats, and public
-  Nexus/Pylon receipt lookup;
-- Artanis public report;
+  Nexus/Pylon receipt lookup.
+- Artanis public report.
 - Site payment discovery, payment proof, commerce review, and MDK account
   binding reads.
 

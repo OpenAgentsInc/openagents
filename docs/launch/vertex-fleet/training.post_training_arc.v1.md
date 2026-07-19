@@ -6,7 +6,7 @@ Date: 2026-06-20
 
 ## 2026-06-20 (h) — vibe-test closeout grading challenge bridge
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+Promise: `training.post_training_arc.v1` (stays **planned**, no green flip, no
 registry edit).
 
 ### Blocker advanced
@@ -35,7 +35,7 @@ vibe-test grading dispatch would settle against. This change adds that bridge.
     recompute (the rubric scorer runs in this worker, unlike the SFT Rust lane),
     rejecting a stale/forged spec and verifying a worker's CLAIMED closeout
     digest. `Verified` only when stored expected, fresh recompute, and the claim
-    all agree; otherwise `Rejected` with `DigestMismatch` /
+    all agree. Otherwise `Rejected` with `DigestMismatch` /
     `OutputDigestMissing` / `DimensionMismatch` / `VerificationClassUnknown`.
   - `buildPostTrainingVibeTestGradingChallengeCreateRequest`: bridges the spec
     into the rail-side `TrainingVerificationChallengeCreateRequest` envelope and
@@ -55,7 +55,7 @@ vibe-test grading dispatch would settle against. This change adds that bridge.
 
 The transcripts remain REPO-OWNED FIXTURE TEXT, not real Psion instruct-model
 outputs, and `reviewerSigned` is hard-coded `false` — this module never forges a
-reviewer signature. It only constructs/verifies/validates the challenge request;
+reviewer signature. It only constructs/verifies/validates the challenge request.
 it submits nothing, takes no lease, spends no sats, settles nothing, and creates
 no rail-side challenge. No public route, registry edit, or green transition is
 added.
@@ -70,13 +70,13 @@ dispatch / lease / settlement / on-rail Verified challenge has run.
 
 ## 2026-06-20 (g) — instruct-SFT lane grading challenge bridge
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+Promise: `training.post_training_arc.v1` (stays **planned**, no green flip, no
 registry edit).
 
 ### Blocker advanced
 
 `blocker.product_promises.instruct_sft_paid_dispatch_missing` — advanced, **not
-cleared**. This is the first piece built toward paid SFT dispatch; prior passes
+cleared**. This is the first piece built toward paid SFT dispatch. Prior passes
 only published the fixture-scale lane receipt.
 
 The instruct-SFT lane receipt commits a deterministic `reportDigest` answer key
@@ -96,7 +96,7 @@ change adds that bridge, mirroring the committed DPO grading-challenge pattern.
   - `verifyPsionInstructSftGradingResponse`: verifies a worker's CLAIMED lane
     report digest against the committed answer key and returns a
     `TrainingVerificationVerdict` (`Verified` only when the well-formed expected
-    digest, the claim, and any supplied completed-step count agree; otherwise
+    digest, the claim, and any supplied completed-step count agree. Otherwise
     `Rejected` with `DigestMismatch` / `OutputDigestMissing` /
     `DimensionMismatch` / `VerificationClassUnknown`).
   - `buildPsionInstructSftGradingChallengeCreateRequest`: bridges the spec into
@@ -116,7 +116,7 @@ in-repo recompute** — the spec's answer key is the committed fixture report
 digest, and the verifier compares a claim against that committed answer key. A
 real paid dispatch's rail-side `deterministic_recompute` verifier would re-run
 the Psionic lane. This module only constructs/validates the request and computes
-the verdict math; it submits nothing, takes no lease, spends no sats, settles
+the verdict math. It submits nothing, takes no lease, spends no sats, settles
 nothing, and creates no rail-side challenge. No public route, registry edit, or
 green transition is added.
 
@@ -130,7 +130,7 @@ lane (rather than comparing against the committed answer key) is not yet wired.
 
 ## 2026-06-20 (f) — DPO grading challenge create-request builder
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+Promise: `training.post_training_arc.v1` (stays **planned**, no green flip, no
 registry edit).
 
 ### Blocker advanced
@@ -181,7 +181,7 @@ not yet wired.
 
 ## 2026-06-20 (e) — DPO preference-grading challenge verifier
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+Promise: `training.post_training_arc.v1` (stays **planned**, no green flip, no
 registry edit).
 
 ### Blocker advanced
@@ -238,7 +238,7 @@ not yet wired.
 
 ## 2026-06-20 (d) — overlong-penalty GRPO reward-shaping reference math
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+Promise: `training.post_training_arc.v1` (stays **planned**, no green flip, no
 registry edit).
 
 ### Blocker advanced
@@ -293,7 +293,7 @@ bounded synthetic completions, and base rewards are the exact-match signal. This
 is the exact, unit-tested reward-shaping math plus a deterministic shaping
 digest — a prerequisite for paid GRPO reward grading, not the paid work itself.
 No paid OpenAgents GRPO reward-shaping dispatch, Verified challenge, settlement,
-or policy-gradient update exists; the update step stays behind the #4669
+or policy-gradient update exists. The update step stays behind the #4669
 training boundary. No public projection/route, no registry edit, and no green
 transition is created here.
 
@@ -313,7 +313,7 @@ not yet wired.
 
 ## 2026-06-20 (c) — public vibe-test rubric projection
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip).
+Promise: `training.post_training_arc.v1` (stays **planned**, no green flip).
 
 ### Blocker advanced
 
@@ -357,7 +357,7 @@ post-training closeout artifact.
 
 ## 2026-06-20 (b) — vibe-test rubric reference module
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip, no
+Promise: `training.post_training_arc.v1` (stays **planned**, no green flip, no
 registry edit).
 
 ### Blocker advanced
@@ -422,7 +422,7 @@ closeout still needs reviewed real transcripts plus a human signature.
 
 Date: 2026-06-20
 
-Promise: `training.post_training_arc.v1` (stays **planned**; no green flip).
+Promise: `training.post_training_arc.v1` (stays **planned**, no green flip).
 
 ## Blocker advanced
 
@@ -490,7 +490,7 @@ The per-response log-probs are **synthetic** — derived deterministically from
 the completion text and the exact-match reward (the policy is nudged toward the
 chosen response). No hosted LLM and no real policy/reference model is queried.
 The contribution is the exact, unit-tested DPO reference math plus a
-deterministic grading digest; it is a prerequisite for paid preference work, not
+deterministic grading digest. It is a prerequisite for paid preference work, not
 the paid work itself. The DPO/policy-gradient update step also stays behind the
 `#4669` training boundary.
 
@@ -498,6 +498,6 @@ the paid work itself. The DPO/policy-gradient update step also stays behind the
 
 - `blocker.product_promises.preference_rollout_work_missing` — still open: no
   paid `cs336_a5_dpo_grading` dispatch / settlement / Verified challenge over
-  preference pairs has run; real model log-probs are not yet wired.
+  preference pairs has run. Real model log-probs are not yet wired.
 - `blocker.product_promises.instruct_sft_paid_dispatch_missing` — unchanged.
 - `blocker.product_promises.vibe_test_artifact_missing` — unchanged.

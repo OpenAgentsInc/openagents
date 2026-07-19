@@ -12,11 +12,11 @@ supporting audits, and evidence boundaries separate and easy to read.
 The canonical IDE program now lives outside this frozen MVP package:
 
 - `docs/ide/ROADMAP.md` owns the IDE-00..19 dependency sequence, built-in Vim
-  contract, initial Tokyo Night theme contract, and honest release rungs;
+  contract, initial Tokyo Night theme contract, and honest release rungs.
 - `specs/desktop/desktop-trust-complete-workbench.product-spec.md` revision 7
-  owns the complete Desktop IDE outcome;
+  owns the complete Desktop IDE outcome.
 - `specs/openagents/cursor-capability-parity.product-spec.md` revision 3 owns
-  the full Cursor breadth and closure gate; and
+  the full Cursor breadth and closure gate. And
 - `specs/IDE_ROADMAP_CROSSWALK.md` maps the roadmap to ProductSpec criteria and
   proposed AssuranceSpecs.
 
@@ -53,7 +53,7 @@ are independently satisfied.
    relabeling RC16 or inheriting revision-3 admission. Its parser-valid,
    unadmitted companion is
    [`openagents-desktop-mvp-phase-2-react-codex-workbench.rev4-proposed.assurance-spec.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.rev4-proposed.assurance-spec.md).
-   The proposal binds all 20 criteria; AC-15 through AC-20 have complete
+   The proposal binds all 20 criteria. AC-15 through AC-20 have complete
    proposed proof design for the post-RC16 changes, while AC-1 through AC-14
    remain explicitly `needs_design`. That honest 6/20 readiness state blocks
    admission or execution of the full Phase 2 proof until the earlier criteria
@@ -99,12 +99,12 @@ are independently satisfied.
     — the exact owner acceptance, close-rule disposition, and boundaries that
     permit #8756 to close without implying publication or broader rollout.
 
-The Product Spec declares intent. The local package implements the pinned
+The ProductSpec declares intent. The local package implements the pinned
 upstream ProductSpec `0.19.0` structured acceptance-criterion, Eval, success-
 metric, `applies_to`, and Related Artifact constructs while retaining the
 explicit legacy profile used by this revision-6 subject. Runtime policy,
 behavior contracts, Eval Suites, tests, reviewed artifacts, and receipts
-provide evidence; owner and release policies decide what it permits; the
+provide evidence. Owner and release policies decide what it permits. The
 promise registry alone authorizes public claims.
 
 ## ProductSpec location and validation
@@ -123,7 +123,7 @@ node --import tsx packages/product-spec/src/cli.ts validate \
 pnpm test packages/product-spec/test/product-spec.test.ts
 ```
 
-Do not create second copies under `specs/`; links, issues, dispatch prompts,
+Do not create second copies under `specs/`. Links, issues, dispatch prompts,
 and future decision traces should cite the exact path plus `spec_revision`.
 
 ## Current ProductSpec workroom loop
@@ -156,7 +156,7 @@ workroom verification grants release or public-claim authority.
 
 The live companion lives here as
 `openagents-codex-workroom-mvp.assurance-spec.md`, beside the ProductSpec it
-binds. Its revision-1 proposal remains frozen in the conformance corpus; the
+binds. Its revision-1 proposal remains frozen in the conformance corpus. The
 live revision 2 is reviewed, admitted, and fully designed. The exact
 Environment Profile, adapter lock, review, admission, deterministic Manifest,
 18 candidate receipts, 18 falsifier receipts, 18 sensitivity receipts, and
@@ -170,14 +170,14 @@ The reusable tooling is also publicly distributable: npm `latest` resolves to
 `@openagentsinc/assurance-spec@0.1.1`. The
 [`public registry receipt`](../../assurance/assurance-spec-public-registry-receipt.json)
 records exact integrity fields, publish-time parity tests, and the no-auth
-clean-checkout `pnpm exec` proof. Publication distributes the proof tooling; it does
+clean-checkout `pnpm exec` proof. Publication distributes the proof tooling. It does
 not publish RC9 or grant release/public-claim authority.
 
 The target subject is currently ProductSpec format `0.1`, `spec_revision: 6`,
 SHA-256
 `fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1`, with
 `CW-AC-01` through `CW-AC-18`. A changed revision or digest requires the pilot
-binding and evidence to be reconciled; this README is not an authority for
+binding and evidence to be reconciled. This README is not an authority for
 silently pinning stale identity.
 
 Revision 6 is valid under the current OpenAgents ProductSpec profile, but not
@@ -197,8 +197,8 @@ package (#8758):
 - [`openagents-codex-workroom-mvp.rev7-proposed.product-spec.md`](./openagents-codex-workroom-mvp.rev7-proposed.product-spec.md)
   — revision 7, converting `CW-AC-01…18` to structured `AC-1…18` items and the
   seven metrics to `SM-1…7` (single-line whitespace-collapse normalization
-  only; every other intent section is verbatim revision-6 prose). It validates
-  under both the `openagents` and `upstream` ProductSpec profiles; each
+  only. Every other intent section is verbatim revision-6 prose). It validates
+  under both the `openagents` and `upstream` ProductSpec profiles. Each
   metric's `segment`/`source` provenance lives in its keyed Success Metric
   Context section, and its Decision Trace section records the migration and
   its approval state.
@@ -210,7 +210,7 @@ package (#8758):
   — the portable Decision Trace v0.1 companion for the proposed identity
   migration. It records the update-spec decision and preserves revision-6
   packets, runs, and evidence as historical records rather than relabeling
-  them. `product-spec validate-trace` gates its shape; adoption remains
+  them. `product-spec validate-trace` gates its shape. Adoption remains
   owner-gated with revision 7.
 
 ## Proposed AssuranceSpec revision 4 (2026-07-14 exact MVP assurance coverage)
@@ -220,9 +220,9 @@ package (#8758):
   with the 2026-07-14 owner-directed supersession removals and implementing
   UX-5's complete-and-minimal expected-working-surface proof design
   (`apps/autopilot-desktop`, `packages/sarah-take-scoreboard`,
-  `.agents/skills/khala-fleet`, and `clients/khala-code-desktop` deleted; sweep
+  `.agents/skills/khala-fleet`, and `clients/khala-code-desktop` deleted. Sweep
   command of record no longer names their tests). The admitted revision-2 document, its
-  evidence index, and its receipts remain byte-stable historical proof;
+  evidence index, and its receipts remain byte-stable historical proof.
   admitting revision 4 (including regenerating the repository inventory
   against the post-removal head) is a subsequent owner/gate act. See
   `docs/promises/2026-07-14-owner-supersession-removals.md` and
@@ -238,7 +238,7 @@ of this package, the checked-in AssuranceSpec proposal, and the MVP-01
 (#8756) dogfood remain bound to revision 6 (`CW-AC-*`, digest
 `sha256:fba79633…`). PSEL-3 freezes the migrated document/intent identities,
 rebinds the AssuranceSpec, and creates the new accepted plan/run for the
-`AC-*` identity; no run, packet, or evidence is relabeled by the proposal.
+`AC-*` identity. No run, packet, or evidence is relabeled by the proposal.
 Reconcile any future `CW-AC-*` reference through the ID map, never by
 find-and-replace.
 

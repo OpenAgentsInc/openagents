@@ -32,7 +32,7 @@ Safety boundary:
 - Messages from any origin other than the active Site origin are ignored.
 - Wrong message types, missing selectors/tags, secret-shaped selectors, and
   unsafe attributes are rejected before dispatch.
-- The bridge does not inspect cross-origin DOM itself; eligible Site runtimes
+- The bridge does not inspect cross-origin DOM itself. Eligible Site runtimes
   must emit the payload.
 - No runner payloads, source archives, build logs, private run IDs, provider
   refs, or secrets are accepted.

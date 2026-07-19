@@ -108,9 +108,9 @@ When a claim is approved, the public profile moves from
 
 The public response may expose only public-safe owner-claim refs:
 
-- `ownerHandoff.ownerUserRef` such as `owner:github:17035300`;
-- `ownerHandoff.claimRef`;
-- `ownerHandoff.claimReceiptRefs`;
+- `ownerHandoff.ownerUserRef` such as `owner:github:17035300`.
+- `ownerHandoff.claimRef`.
+- `ownerHandoff.claimReceiptRefs`.
 - matching `publicProjection.safeReceiptRefs`.
 
 It must not expose owner email, login session data, bearer tokens, credential

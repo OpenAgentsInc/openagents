@@ -28,9 +28,9 @@ Five components, five packages/homes:
 
 | Component | Home | Role |
 |---|---|---|
-| Contracts | `packages/khala-sync` | Effect Schema types for scopes, versions, changelog entries, mutations, wire protocol, errors. The single source of truth; server and clients depend on it. |
+| Contracts | `packages/khala-sync` | Effect Schema types for scopes, versions, changelog entries, mutations, wire protocol, errors. The single source of truth. Server and clients depend on it. |
 | Server substrate | `packages/khala-sync-server` | Postgres schema + outbox writer + version allocator + mutator engine + bootstrap/catch-up queries + compaction. Runs inside the `openagents.com` Worker via Hyperdrive. |
-| Hub delivery | `packages/khala-sync-server` (DO class) | `KhalaSyncHubDO`: one Durable Object per scope; recent log window in DO SQLite; hibernating WebSockets; offset-resumable HTTP catch-up. |
+| Hub delivery | `packages/khala-sync-server` (DO class) | `KhalaSyncHubDO`: one Durable Object per scope. Recent log window in DO SQLite. Hibernating WebSockets. Offset-resumable HTTP catch-up. |
 | Capture | `packages/khala-sync-server` | Tail `khala_sync_changelog` (direct Postgres connection — NOT Hyperdrive, which drops LISTEN/NOTIFY) and push frames to scope hubs. |
 | Client engine | `packages/khala-sync-client` | Local store (SQLite), transport, bootstrap/catch-up/live state machine, optimistic mutators, rebase, cursor persistence. |
 
@@ -59,9 +59,9 @@ match) so change→scope routing is an index lookup, never a scan.
 - Every scope has a **monotonic version** (`bigint`, starts at 1) allocated
   by the server **inside the writing transaction** under a row lock on the
   scope's counter row (`khala_sync_scopes.last_version`). Ordering is
-  correct by construction; the outbox sequence-gap trap cannot occur.
+  correct by construction. The outbox sequence-gap trap cannot occur.
 - A **cursor** is `(scope, version)`. Clients persist cursors durably and
-  resume from them. Delivery is at-least-once; **apply must be idempotent**
+  resume from them. Delivery is at-least-once. **Apply must be idempotent**
   (entries keyed by `(scope, version)`).
 
 ### 2.3 Changelog entries
@@ -71,7 +71,7 @@ One row per changed entity per transaction per scope
 (`upsert | delete`), the **full post-image** as canonical JSON (v1 choice:
 post-image, not diffs — simpler rebase, self-healing), tombstone flag,
 mutation ref, committed-at. Deletes are soft (tombstone entries) so they
-replicate; compaction prunes both log and tombstones behind the retained
+replicate. Compaction prunes both log and tombstones behind the retained
 window.
 
 ### 2.4 Mutations
@@ -89,13 +89,13 @@ opaque field values):
   append(s), `khala_sync_mutations` upsert (per-client `lastMutationId` +
   result) — all atomic. Idempotent by `(clientGroupId, mutationId)`.
 - Acceptance rules (imported from PowerSync scar tissue): acceptance is
-  synchronous with the transaction; **validation failures ack the mutation
+  synchronous with the transaction. **Validation failures ack the mutation
   and report the error in-band** — they never 4xx/block the queue.
 - Rebase: on every delta the client rewinds its overlay to confirmed state,
   applies new entries, re-applies still-unconfirmed mutations, reveals
-  atomically. Mutators must be replay-safe; server outcome wins.
+  atomically. Mutators must be replay-safe. Server outcome wins.
 - v1 offline contract: **online-optimistic** — reads work offline, pushes
-  wait for connectivity; mutations queued while offline are bounded and
+  wait for connectivity. Mutations queued while offline are bounded and
   expire honestly.
 
 ## 3. Wire protocol
@@ -112,7 +112,7 @@ All frames are Effect Schema types in `packages/khala-sync`
   snapshot was taken. The client stitches: apply snapshot, then catch up
   **from exactly that cursor**.
 - `GET /api/sync/log?scope=…&cursor=…&limit=…` — offset-resumable catch-up:
-  `LogPage { entries, nextCursor, upToDate }`. Cacheable; served from the
+  `LogPage { entries, nextCursor, upToDate }`. Cacheable. Served from the
   hub's DO SQLite window when possible, from Postgres otherwise.
 - `WS /api/sync/connect?scope=…&cursor=…` — live tail. Frames:
   `DeltaFrame { scope, entries, cursor }`,
@@ -122,7 +122,7 @@ All frames are Effect Schema types in `packages/khala-sync`
   client's cursor, schema version unsupported, or scope membership changed
   → client clears scope-local state and re-bootstraps. Never guess.
 
-Auth: requests carry the normal OpenAgents auth; the server resolves scope
+Auth: requests carry the normal OpenAgents auth. The server resolves scope
 access on every bootstrap/connect and re-checks on membership change
 (revocation ⇒ hub sends `MustRefetch(reason: access_changed)` and the
 re-bootstrap returns nothing). The ONE exception is `scope.public.*`
@@ -135,21 +135,21 @@ path.
 Scope-read resolution (KS-7.1, #8305) is one taxonomy-complete resolver
 (`resolveScopeRead` in `packages/khala-sync-server/src/scope-auth.ts`,
 wired Worker-side in `khala-sync-scope-auth.ts`) consulted by log,
-bootstrap, AND connect: `scope.user.*` self-only; `scope.public.*` ANY
+bootstrap, AND connect: `scope.user.*` self-only. `scope.public.*` ANY
 caller, including one with NO authenticated actor at all (KS-8.x
 anonymous-read exception, `userId === undefined` — the ONLY taxonomy
-member ever readable anonymously; see
-`docs/khala-sync/RUNBOOK.md` "Anonymous read scopes"); `scope.team.*` live
-D1 team membership;
-`scope.agent_run.*` run owner or active member of the run's team;
+member ever readable anonymously. See
+`docs/khala-sync/RUNBOOK.md` "Anonymous read scopes"). `scope.team.*` live
+D1 team membership.
+`scope.agent_run.*` run owner or active member of the run's team.
 `scope.thread.*` either that legacy `agent_runs` / autopilot-thread mapping
-or the owner-private chat thread's `khala_sync_scope_owners` row;
+or the owner-private chat thread's `khala_sync_scope_owners` row.
 `scope.fleet_run.*` the `khala_sync_scope_owners` owner. A taxonomy member
 with no read policy is gated CLOSED (403 typed
 `unknown_scope`), and a failed membership/ownership lookup fails CLOSED as
 a retryable 503 `storage_unavailable` — never a grant. Membership is
 re-read live per request, so a revoked user fails their very next
-bootstrap/log/connect; the push half is the internal access-changed trigger
+bootstrap/log/connect. The push half is the internal access-changed trigger
 (`POST /api/internal/khala-sync/hub/access-changed { scope }`, admin
 bearer): the scope's hub broadcasts `MustRefetch(access_changed)` to every
 socket and closes them, and sockets re-run the resolver on reconnect. On
@@ -163,10 +163,10 @@ row-version strategy, adapted to scopes. The server stores per
 (clientGroup, scope) Client View Records (`khala_sync_cvrs`) and answers a
 pull with `puts`/`dels` computed by set-diffing the CURRENT authorized row
 set (one REPEATABLE READ snapshot) against the client's referenced CVR
-widened by its live-drift rows; rows that left the set — deleted,
+widened by its live-drift rows. Rows that left the set — deleted,
 tombstone-compacted, or no longer authorized — arrive as dels, so
 permission-driven retraction is structural instead of a full re-bootstrap.
-It is the SLOW/recovery (`must_refetch`) path only; live deltas and the
+It is the SLOW/recovery (`must_refetch`) path only. Live deltas and the
 log remain primary, and unflagged deployments answer 404 (zero behavior
 change). Full design, soundness argument, and cost bounds:
 `docs/khala-sync/CVR_DESIGN.md`.
@@ -201,15 +201,15 @@ khala_sync_portable_*    (PORT-01 session, target membership, nested graph,
 - Bootstrap snapshot: per-entity-type queries at a single transaction
   snapshot, paired with the scope version read in the same transaction.
 - Compaction: scheduled job advances `retained_from_version` (window: max
-  entries or age), deletes older changelog rows; hubs relay `MustRefetch`
+  entries or age), deletes older changelog rows. Hubs relay `MustRefetch`
   to any cursor behind the window.
 - Capture: v1 tails `khala_sync_changelog` (`WHERE (scope, version) >
   last-pushed`, LISTEN/NOTIFY wake + short poll fallback) over a direct
   Postgres connection. The WAL/pgoutput upgrade (PG17 failover slots) swaps
-  only this component; the log contract does not change.
+  only this component. The log contract does not change.
 
 Connectivity: the Worker reaches Cloud SQL through **Hyperdrive**
-(transaction-mode pooling; no LISTEN/NOTIFY, no session state — mutators
+(transaction-mode pooling, no LISTEN/NOTIFY, no session state — mutators
 must be single-transaction). The capture worker and migrations use a direct
 connection path.
 
@@ -218,27 +218,27 @@ connection path.
 `KhalaSyncHubDO` (one per scope, `idFromName(scope)`):
 
 - Holds the recent log window in DO SQLite (`entries(version, payload)`,
-  bounded count/bytes); appends arrive from capture (or same-Worker push
+  bounded count/bytes). Appends arrive from capture (or same-Worker push
   after commit as the fast path).
-- WebSockets via the Hibernation API; per-socket cursor in
+- WebSockets via the Hibernation API. Per-socket cursor in
   `serializeAttachment`. On append: fan out `DeltaFrame` to sockets at the
-  window edge; sockets behind the window get `MustRefetch`.
-- Serves `GET log` pages from its window; falls through to Postgres for
+  window edge. Sockets behind the window get `MustRefetch`.
+- Serves `GET log` pages from its window. Falls through to Postgres for
   older-but-retained ranges.
-- The DO is a **cache and fan-out layer only** — Postgres is authoritative;
+- The DO is a **cache and fan-out layer only** — Postgres is authoritative.
   a reset DO re-hydrates from Postgres. No business writes originate in
   the hub.
 
 ## 6. Client engine
 
-- Local store: SQLite (`bun:sqlite` on desktop; SQLite-WASM/`opfs-sahpool`
+- Local store: SQLite (`bun:sqlite` on desktop, SQLite-WASM/`opfs-sahpool`
   with a SharedWorker single-writer on web — later lane). Tables:
   `entities(scope, entity_type, entity_id, post_image_json, version)`,
   `cursors(scope, version)`, `pending_mutations(mutation_id, name, args,
   state)`, `meta(schema_version, client_id, client_group_id)`.
 - State machine per scope: `idle → bootstrapping → catching_up → live`,
   with `must_refetch` from any state. Reconnect = resume from durable
-  cursor; the cursor, not the connection, is the source of truth.
+  cursor. The cursor, not the connection, is the source of truth.
 - Read API: typed queries over confirmed state + optimistic overlay, with
   change subscription for UI (Effect Stream / signal adapter).
 
@@ -249,19 +249,19 @@ carries production surfaces)
 2. A client never persists optimistic effects into its durable store.
 3. Every changelog entry is attributable to a mutation ref (or a named
    system writer).
-4. Delivery is at-least-once; apply is idempotent by `(scope, version,
+4. Delivery is at-least-once. Apply is idempotent by `(scope, version,
    entity)`.
 5. Mutation execution and changelog append are one Postgres transaction.
 6. A cursor behind the retained window MUST receive `MustRefetch`, never a
    partial log.
 7. Scope access is checked at bootstrap/connect and re-checked on
-   membership change; revocation retracts synced state via re-bootstrap.
+   membership change. Revocation retracts synced state via re-bootstrap.
 8. Public-scope projections (e.g. tokens-served) reconcile to exact source
    rows — the sync path never invents counter deltas.
 9. Raw private material (prompts, tokens, wallet, local paths) never enters
    changelog post-images for scopes broader than the owner.
 10. A portable session has one owner-minted, host-independent identity and at
-    most one work-accepting attachment generation; event/command writes from a
+    most one work-accepting attachment generation. Event/command writes from a
     stale generation fail before mutation and movement fences every descendant.
 11. Portable event/command logs are authority. Current rows, capture, hubs,
     sockets, and client caches are disposable projections repaired from Cloud
@@ -271,7 +271,7 @@ carries production surfaces)
 
 - Contracts: schema round-trip + property tests (`packages/khala-sync`).
 - Rebase correctness: property/model-based tests — random mutation
-  interleavings; invariant: client converges to server state, no
+  interleavings. Invariant: client converges to server state, no
   optimistic residue.
 - Stitching: bootstrap-vs-log seam tests (snapshot at v, entries (v, v+k]).
 - Behavior contracts: register owner-stated expectations
@@ -283,5 +283,5 @@ carries production surfaces)
 ## 9. Issue map
 
 Epic: [#8282](https://github.com/OpenAgentsInc/openagents/issues/8282).
-Workstream issues KS-0 … KS-9 are #8283–#8312; the live table is in
+Workstream issues KS-0 … KS-9 are #8283–#8312. The live table is in
 `docs/khala-sync/README.md`.

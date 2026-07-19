@@ -22,23 +22,23 @@ only after OpenAgents product surface grants a specific assignment to a specific
 
 OpenAgents product surface owns:
 
-- provider account CRUD and operator UI;
-- encrypted secret storage for raw Gemini API keys;
-- Google key inventory metadata, rotation state, and health checks;
-- grant issuance and one-time grant resolution endpoints;
-- public/operator-safe provider account projections;
-- D1 migrations and backfill from existing ad hoc Gemini config, if any;
+- provider account CRUD and operator UI.
+- encrypted secret storage for raw Gemini API keys.
+- Google key inventory metadata, rotation state, and health checks.
+- grant issuance and one-time grant resolution endpoints.
+- public/operator-safe provider account projections.
+- D1 migrations and backfill from existing ad hoc Gemini config, if any.
 - audit/operator receipts for key addition, rotation, revocation, and grant
   issuance.
 
 Probe owns:
 
-- provider enum/schema acceptance for `google_gemini`;
-- decoding OpenAgents product surface grant responses for Gemini;
-- runner authorization checks against assignment refs and runner proof;
-- per-run materialization into `GOOGLE_GENERATIVE_AI_API_KEY`;
-- redacted materialized/scrubbed receipts;
-- scrub-on-closeout and failure cleanup;
+- provider enum/schema acceptance for `google_gemini`.
+- decoding OpenAgents product surface grant responses for Gemini.
+- runner authorization checks against assignment refs and runner proof.
+- per-run materialization into `GOOGLE_GENERATIVE_AI_API_KEY`.
+- redacted materialized/scrubbed receipts.
+- scrub-on-closeout and failure cleanup.
 - direct Gemini runtime use after the env key is materialized.
 
 Probe must not become the durable store for raw Gemini keys. OpenAgents product surface must not send
@@ -119,9 +119,9 @@ same grant envelope pattern Probe already uses for ChatGPT/Codex:
 Probe should reject:
 
 - materialization into `GEMINI_API_KEY` when OpenAgents product surface intended
-  `GOOGLE_GENERATIVE_AI_API_KEY`;
-- OpenCode-specific env names;
-- raw key content in the grant envelope;
+  `GOOGLE_GENERATIVE_AI_API_KEY`.
+- OpenCode-specific env names.
+- raw key content in the grant envelope.
 - grants whose provider account, grant ref, runner session, or assignment proof
   do not match.
 
@@ -159,22 +159,22 @@ not carry provider refs keep the current behavior: they require
 
 Probe receipts should include:
 
-- provider id;
-- provider account ref;
-- provider secret ref;
-- grant ref;
-- target env name;
-- materialized/scrubbed timestamps;
-- backend profile id;
+- provider id.
+- provider account ref.
+- provider secret ref.
+- grant ref.
+- target env name.
+- materialized/scrubbed timestamps.
+- backend profile id.
 - `contentRedacted: true`.
 
 Probe receipts must not include:
 
-- raw Gemini API key;
-- request headers;
-- raw prompts;
-- tool inputs;
-- provider payloads;
+- raw Gemini API key.
+- request headers.
+- raw prompts.
+- tool inputs.
+- provider payloads.
 - Google project secrets or key strings.
 
 OpenAgents product surface receipts should similarly store refs, health status, rotation refs, and
@@ -182,17 +182,17 @@ redacted key status only.
 
 ## Migration And Backfill
 
-Probe needs no data migration; it only changes schemas and materialization
+Probe needs no data migration. It only changes schemas and materialization
 logic.
 
 OpenAgents product surface likely needs:
 
-- provider enum migration for `google_gemini`;
+- provider enum migration for `google_gemini`.
 - optional seed/backfill for the existing production Gemini Worker secret as a
-  provider account record;
+  provider account record.
 - operator UI/API for adding, rotating, disabling, and health-checking Gemini
-  basic API keys;
-- a grant route for Gemini or a provider-generic grant route;
+  basic API keys.
+- a grant route for Gemini or a provider-generic grant route.
 - tests proving public projections and receipts reject raw key material.
 
 Backfill should store only a secret binding ref and safe metadata. It must not
@@ -208,7 +208,7 @@ Implementation should be split:
    Gemini basic API keys: OpenAgentsInc/openagents#526.
 3. End-to-end managed Gemini assignment smoke from OpenAgents product surface grant resolution to
    Probe env materialization to Gemini backend completion:
-   OpenAgentsInc/probe#200 (Probe fake E2E and opt-in live smoke implemented;
+   OpenAgentsInc/probe#200 (Probe fake E2E and opt-in live smoke implemented,
    production OpenAgents product surface route still depends on OpenAgentsInc/openagents#526).
 
 These issues can proceed after local Gemini API-key support remains stable.

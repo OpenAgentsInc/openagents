@@ -11,15 +11,15 @@ shapes.
 
 Current Phase 0 scope:
 
-- shared contract package metadata;
-- schema decode helpers;
-- authority taxonomy and grant filtering;
-- transport config and lifecycle schemas;
-- tool, resource, and prompt descriptors;
-- naming and resource URI rules;
-- receipt, tagged error, progress, and elicitation schemas;
-- public-safe output and redaction rules;
-- import markers for Pylon, Autopilot Desktop, Worker/API, and web surfaces;
+- shared contract package metadata.
+- schema decode helpers.
+- authority taxonomy and grant filtering.
+- transport config and lifecycle schemas.
+- tool, resource, and prompt descriptors.
+- naming and resource URI rules.
+- receipt, tagged error, progress, and elicitation schemas.
+- public-safe output and redaction rules.
+- import markers for Pylon, Autopilot Desktop, Worker/API, and web surfaces.
 - package status metadata for docs and compatibility checks.
 
 ## Phase 0 Non-Goals
@@ -38,7 +38,7 @@ per-session loopback HTTP transport. It imports this package's authority
 classes, receipt schema, and unsafe-material redaction rules, and it runs on
 the khala-tools MCP registry/JSON-RPC path rather than a new registry. The
 contract package itself still exposes no runtime transport
-(`runtimeTransportExposed: false`); new runtime tools should keep importing
+(`runtimeTransportExposed: false`). New runtime tools should keep importing
 this package rather than defining new authority, descriptor, receipt, error,
 progress, elicitation, naming, or output safety shapes.
 
@@ -118,9 +118,9 @@ progress events, diagnostics, issue comments, or public resources.
 
 The Phase 0 package is imported by:
 
-- `apps/pylon/src/mcp-contract-import.ts`;
-- `apps/autopilot-desktop/src/mcp-contract-import.ts`;
-- `apps/openagents.com/workers/api/src/mcp-contract-import.ts`;
+- `apps/pylon/src/mcp-contract-import.ts`.
+- `apps/autopilot-desktop/src/mcp-contract-import.ts`.
+- `apps/openagents.com/workers/api/src/mcp-contract-import.ts`.
 - `apps/openagents.com/apps/web/src/mcp-contract-import.ts`.
 
 Each marker records the shared schema version, surface authority, output safety

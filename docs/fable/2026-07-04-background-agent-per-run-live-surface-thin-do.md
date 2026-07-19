@@ -57,7 +57,7 @@ The object uses Durable Object SQLite storage and an explicit
 The spike pins two numbered migrations:
 
 - migration 1 creates `_sql_schema_migrations`, `live_clients`,
-  `live_events`, and `live_alarm_tasks`;
+  `live_events`, and `live_alarm_tasks`.
 - migration 2 adds run/client and due-task indexes.
 
 `live_clients.serialized_attachment_json` is the durable mirror of the
@@ -102,9 +102,9 @@ Initial task kinds:
 
 `decideAgentDefinitionRunLiveSurface` enforces the current gate:
 
-- no WS-10 client-facing live channel: stay on `durable_streams`;
-- operator flag alone: stay on `durable_streams`;
-- WS-10 channel plus operator enablement: candidate `thin_do_live_surface`;
+- no WS-10 client-facing live channel: stay on `durable_streams`.
+- operator flag alone: stay on `durable_streams`.
+- WS-10 channel plus operator enablement: candidate `thin_do_live_surface`.
 - live adoption still requires a real binding, route contract, migration, and
   end-to-end tests in the same future change.
 

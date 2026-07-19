@@ -19,20 +19,20 @@ Implementation:
 
 The package record carries:
 
-- package and version refs;
-- domain kind;
-- display name ref;
-- context template refs;
-- outcome template refs;
-- program signature refs;
-- fixture records;
-- review records;
-- enablement records;
-- public projection refs;
-- promotion records;
-- attribution records;
-- source refs;
-- blocker refs; and
+- package and version refs.
+- domain kind.
+- display name ref.
+- context template refs.
+- outcome template refs.
+- program signature refs.
+- fixture records.
+- review records.
+- enablement records.
+- public projection refs.
+- promotion records.
+- attribution records.
+- source refs.
+- blocker refs. And
 - caveat refs.
 
 Projection timestamps are friendly labels and do not expose raw ISO strings.
@@ -44,15 +44,15 @@ project ops, support, legal safe-hold, Pylon ops, and general packages.
 
 Supported states:
 
-- `draft`;
-- `fixture_validated`;
-- `review_recorded`;
-- `org_private_enabled`;
-- `public_projection_ready`;
-- `runtime_promotion_requested`;
-- `runtime_promoted`;
-- `marketplace_attributed`;
-- `blocked`; and
+- `draft`.
+- `fixture_validated`.
+- `review_recorded`.
+- `org_private_enabled`.
+- `public_projection_ready`.
+- `runtime_promotion_requested`.
+- `runtime_promoted`.
+- `marketplace_attributed`.
+- `blocked`. And
 - `deprecated`.
 
 Each later state requires the evidence that justifies it. Fixture validation
@@ -76,8 +76,8 @@ and state. Approved reviews require reviewer, evidence, and receipt refs.
 
 Enablement records separate:
 
-- `org_private`;
-- `public_projection`; and
+- `org_private`.
+- `public_projection`. And
 - `runtime`.
 
 Enabled records require approval receipts, receipts, and audience refs. This
@@ -93,7 +93,7 @@ Runtime promotion is gated by explicit evidence and approvals. Promoted
 records require runtime receipts and `rollback_ready` posture. Rollback-ready
 or rolled-back records require rollback refs.
 
-The projection still reports `runtimePromotionAllowed: false`; this contract
+The projection still reports `runtimePromotionAllowed: false`. This contract
 does not promote packages by itself.
 
 ## Marketplace Attribution
@@ -107,23 +107,23 @@ refs. This is marketplace memory, not a payout or listing mutation.
 
 Domain agent package lifecycle projections cannot:
 
-- execute fixtures;
-- mutate reviews;
-- enable org access;
-- mutate public projection;
-- promote runtime packages;
-- create marketplace listings;
-- spend or mutate payment state; or
+- execute fixtures.
+- mutate reviews.
+- enable org access.
+- mutate public projection.
+- promote runtime packages.
+- create marketplace listings.
+- spend or mutate payment state. Or
 - mutate rollback state.
 
 ## Projection Audiences
 
 Supported audiences are:
 
-- `public`;
-- `agent`;
-- `customer`;
-- `team`; and
+- `public`.
+- `agent`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public and agent projections redact private package source, review,
@@ -137,12 +137,12 @@ raw fixtures, private repos, raw logs, and raw timestamps.
 
 Coverage includes:
 
-- lifecycle projection and friendly times;
+- lifecycle projection and friendly times.
 - fixture validation, review, enablement, public projection, runtime
-  promotion, and marketplace attribution separation;
-- promotion gates and rollback posture requirements;
-- attribution receipt requirements;
-- public redaction; and
+  promotion, and marketplace attribution separation.
+- promotion gates and rollback posture requirements.
+- attribution receipt requirements.
+- public redaction. And
 - hard false fixture execution, review, enablement, public projection,
   runtime promotion, marketplace listing, payment, and rollback mutation
   authority.

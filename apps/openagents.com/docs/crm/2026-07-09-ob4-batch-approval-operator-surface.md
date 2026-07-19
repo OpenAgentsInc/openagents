@@ -1,7 +1,7 @@
 # OB-4 (#8561) — Batch approval operator surface
 
 **Date:** 2026-07-09
-**Status:** Operator UI + admin OpenAuth surface landed; live 100/day proof and Sarah S-8 email channel remain residual.
+**Status:** Operator UI + admin OpenAuth surface landed. Live 100/day proof and Sarah S-8 email channel remain residual.
 
 ## What shipped
 
@@ -32,12 +32,12 @@ Batch approve is **UX only**, not new send authority.
 2. `batchApproveCrmSendCommands` walks each id and calls the **unchanged** `approveAndExecuteCrmSendCommand` one-by-one.
 3. Each command keeps its own per-send result / receipt on `crm_contact_commands`.
 4. A batch action *additionally* writes one `crm_command_batches` rollup receipt.
-5. A server-side daily send cap (default 100/day) stops mid-batch once hit; remaining items return disposition `capped` and are **never sent**.
+5. A server-side daily send cap (default 100/day) stops mid-batch once hit. Remaining items return disposition `capped` and are **never sent**.
 
 Nothing in the admin routes, Aiur proxy, or UI invents a bulk-send primitive or bypasses the proposal → approval → `dispatchCrmSend` path.
 
 ## Residuals (issue stays open)
 
-1. **Live 100/day + &lt;30 min operator time** — needs a real drafted day and measured ops timing (OB-6 operatorMinutes still `not_measured` until timing is wired).
-2. **OB-1 arming (#8558)** — full ramp-config governance not landed; daily cap is a fixed stand-in.
-3. **Sarah S-8 email channel** — lives in the private Sarah service; until `SARAH_EMAIL_CHANNEL_LIVE` / S-8 calls `recordCrmReplyEvent` (or the inbound webhook), `routedTo` stays the v0 `operator_notification` fallback.
+1. **Live 100/day + &lt.30 Min operator time** — needs a real drafted day and measured ops timing (OB-6 operatorMinutes still `not_measured` until timing is wired).
+2. **OB-1 arming (#8558)** — full ramp-config governance not landed. Daily cap is a fixed stand-in.
+3. **Sarah S-8 email channel** — lives in the private Sarah service. Until `SARAH_EMAIL_CHANNEL_LIVE` / S-8 calls `recordCrmReplyEvent` (or the inbound webhook), `routedTo` stays the v0 `operator_notification` fallback.

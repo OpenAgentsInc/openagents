@@ -1,13 +1,13 @@
 # WoC Overview and Architecture
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
 
 Date: 2026-06-22
-Source: `projects/repos/world-of-claudecraft/` (MIT licensed; `levy-street/world-of-claudecraft`)
+Source: `projects/repos/world-of-claudecraft/` (MIT licensed, `levy-street/world-of-claudecraft`)
 
 ## What it is
 
@@ -16,7 +16,7 @@ codebase: an offline browser world, an authoritative Postgres-backed multiplayer
 and a headless Gymnasium RL environment. It ships nine classes with real vanilla-style
 kits and talent trees, three open-world zones, five dungeons, a ranked PvP arena, real
 party/trade/duel multiplayer, and a procedural world where almost nothing is a shipped
-asset (towns, terrain, water, weather, spell icons, and sound are generated at runtime;
+asset (towns, terrain, water, weather, spell icons, and sound are generated at runtime,
 only the rigged character GLBs and a handful of textures/HDRIs are real files).
 
 Stack: TypeScript (ESM, `strict`), Three.js r165 renderer, `ws` WebSockets, Postgres
@@ -45,7 +45,7 @@ RL env a real test of the actual game rather than a reimplementation.
 
 `src/world_api.ts` defines `IWorld` (a ~300-line read-only interface: player, entities
 map, inventory, equipment, party, social, market, quests, etc., no setters). The offline
-`Sim` satisfies it structurally; the online `ClientWorld` (`src/net/online.ts`)
+`Sim` satisfies it structurally. The online `ClientWorld` (`src/net/online.ts`)
 implements it by mirroring server snapshots. **`src/render/` and `src/ui/` talk only to
 `IWorld`**, never to a concrete world. A new render/UI feature extends `IWorld` first,
 then is implemented in both worlds, then consumed through the interface. The HUD therefore
@@ -53,10 +53,10 @@ runs identically offline and online and never knows which world it is reading.
 
 ### 3. The server is authoritative
 
-Clients stream movement intent and commands at 20 Hz; the server runs the one shared
+Clients stream movement intent and commands at 20 Hz. The server runs the one shared
 `Sim` and returns interest-scoped (~90-120 yd) snapshots plus per-player events. Every
 combat roll, loot drop, quest credit, and vendor transaction resolves server-side. The
-client is a renderer; it never decides outcomes.
+client is a renderer. It never decides outcomes.
 
 ## Repo map
 
@@ -97,9 +97,9 @@ Most directories carry their own `CLAUDE.md` with local conventions.
 
 | WoC | Verse equivalent |
 |---|---|
-| Deterministic `Sim` (offline + RL + server) | Public Worker/D1 remains product authority; `apps/openagents-world` Region Durable Objects own live world presence/interaction |
+| Deterministic `Sim` (offline + RL + server) | Public Worker/D1 remains product authority. `apps/openagents-world` Region Durable Objects own live world presence/interaction |
 | `IWorld` seam (render/ui read-only) | `packages/world-contract` + `packages/world-client` expose a read-only world projection consumed by `three-effect` + Foldkit HUD |
-| Authoritative server, client renders | Same posture: Region DOs own world commands/presence; Worker/D1 owns run/proof/business truth; desktop/web render |
+| Authoritative server, client renders | Same posture: Region DOs own world commands/presence. Worker/D1 owns run/proof/business truth. Desktop/web render |
 | `ClientWorld` mirrors server snapshots | `packages/world-client` mirrors Cloudflare `WorldDelta` snapshots/deltas into the Verse read model |
 | 20 Hz tick, intent streaming | Controller pose/intent commands publish at bounded rates to Region DO command handlers with seq/ack diagnostics |
 
@@ -115,5 +115,5 @@ refs") on the Worker/D1 side.
 The most important non-obvious carry-over: WoC proves that the discipline of **one seam +
 pure-logic extraction + server authority** is what makes a world maintainable across
 offline, online, and headless hosts at once. Our `three-effect`-first rule and the
-Cloudflare-world-vs-Worker/D1 authority split are the same instinct; this audit is largely
+Cloudflare-world-vs-Worker/D1 authority split are the same instinct. This audit is largely
 about borrowing the concrete modules that fall out of that discipline.

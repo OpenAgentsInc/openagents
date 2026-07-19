@@ -104,7 +104,7 @@ decode against the Blueprint schemas and pass the same safe-projection checks
 used by the registry client.
 
 Blueprint refs can narrow runtime scope but cannot widen runner authority. For
-example, `backendCapabilityRefs` must match the selected backend; an Apple FM
+example, `backendCapabilityRefs` must match the selected backend. An Apple FM
 assignment can name `probe.backend.apple_fm_bridge`, but cannot claim some
 other backend capability. Inline registry slices are also cross-checked: when
 a slice is present, requested Program Type, Program Signature, Module Version,

@@ -6,7 +6,7 @@ Date: 2026-06-05
 
 Authenticated visits to `https://openagents.com/` could surface
 `{"error":"storage_error"}` after the browser app loaded. The public app shell
-itself was healthy; the error came from an authenticated startup API path that
+itself was healthy. The error came from an authenticated startup API path that
 read the active customer order.
 
 Two separate storage failures hit the same route. First, the deployed Worker
@@ -86,7 +86,7 @@ That D1 error is wrapped as `CustomerOrderStorageError` and mapped to:
 The visible symptom was generic. `storage_error` is intentionally redacted and
 can be emitted by more than one route family, including onboarding and operator
 site routes. The homepage request itself returned `200` because it only served
-the app shell; the failure happened later in authenticated browser API calls.
+the app shell. The failure happened later in authenticated browser API calls.
 
 Unauthenticated probes were clean:
 
@@ -244,12 +244,12 @@ Unauthenticated API behavior remained normal:
   team-chat adjutant intent, adjustment request, and notification email ref
   schema through `0038`.
 - The manual `0036` recovery was schema-equivalent to the intended migration
-  plus child-reference preservation. It should not be repeated blindly; future
+  plus child-reference preservation. It should not be repeated blindly. Future
   table rebuild migrations need to account for inbound foreign keys.
 - The customer-order active read can now join `site_projects`,
   `site_deployments`, and `adjutant_adjustment_requests` without storage errors.
 - Completed-onboarding users now have corresponding active `software_orders`
-  rows; future environments will get the same idempotent backfill through
+  rows. Future environments will get the same idempotent backfill through
   migration `0039`.
 - The active-order endpoint now has a defensive fallback for storage failures.
   This avoids showing raw `storage_error` on the homepage, but it also means a

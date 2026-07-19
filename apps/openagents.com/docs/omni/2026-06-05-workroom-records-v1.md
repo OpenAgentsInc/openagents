@@ -18,20 +18,20 @@ Sites and non-Sites work such as PR-style coding requests.
 
 `omni_workrooms` records:
 
-- `id` and unique `idempotency_key`;
-- required `software_order_id`;
-- optional `accepted_outcome_contract_id`;
-- optional `site_id`;
-- optional `assignment_id`;
-- `work_kind`;
-- `status`;
-- `visibility`;
-- `customer_intent_ref`;
-- optional `task_packet_ref`;
+- `id` and unique `idempotency_key`.
+- required `software_order_id`.
+- optional `accepted_outcome_contract_id`.
+- optional `site_id`.
+- optional `assignment_id`.
+- `work_kind`.
+- `status`.
+- `visibility`.
+- `customer_intent_ref`.
+- optional `task_packet_ref`.
 - typed public-safe ref arrays for sources, artifacts, emails, receipts, and
-  blockers;
-- `public_receipt_ref`;
-- bounded `metadata_json`;
+  blockers.
+- `public_receipt_ref`.
+- bounded `metadata_json`.
 - lifecycle timestamps.
 
 Supported work kinds match accepted outcome contracts:
@@ -57,14 +57,14 @@ Supported statuses:
 
 `promoteOmniWorkroom`:
 
-- records idempotently by `idempotency_key`;
-- requires an active, unarchived software order;
-- requires Site workrooms to include an existing active Site ref;
-- accepts non-Sites workrooms with no Site ref;
+- records idempotently by `idempotency_key`.
+- requires an active, unarchived software order.
+- requires Site workrooms to include an existing active Site ref.
+- accepts non-Sites workrooms with no Site ref.
 - validates optional assignment and accepted outcome contract refs when
-  supplied;
+  supplied.
 - validates all source, artifact, email, receipt, and blocker refs as
-  public-safe refs;
+  public-safe refs.
 - rejects raw provider, run-log, email, payment, wallet, token, invoice,
   preimage, customer-private, and secret-like material in refs or metadata.
 
@@ -72,11 +72,11 @@ Supported statuses:
 
 `publicOmniWorkroomProjection` exposes only:
 
-- software order id;
-- optional Site id;
-- work kind;
-- status;
-- visibility;
+- software order id.
+- optional Site id.
+- work kind.
+- status.
+- visibility.
 - public receipt ref.
 
 `customerOmniWorkroomProjection` additionally exposes customer-safe intent,
@@ -84,10 +84,10 @@ artifact, email, receipt, and blocker refs.
 
 `operatorOmniWorkroomProjection` includes operator-only linkage:
 
-- workroom id;
-- accepted outcome contract id;
-- assignment id;
-- source refs;
+- workroom id.
+- accepted outcome contract id.
+- assignment id.
+- source refs.
 - task packet ref.
 
 This split is the first guardrail against destroying customer order state or
@@ -97,12 +97,12 @@ leaking private run mechanics through public/customer surfaces.
 
 This slice does not:
 
-- replace the order status API;
-- change Site revision behavior;
-- create customer UI;
-- mutate order status;
-- send email;
-- accept or reject work;
+- replace the order status API.
+- change Site revision behavior.
+- create customer UI.
+- mutate order status.
+- send email.
+- accept or reject work.
 - create payout eligibility or settlement claims.
 
 It creates the durable workroom record layer that later evidence bundle,

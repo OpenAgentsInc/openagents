@@ -12,10 +12,10 @@ boundaries.
 
 MoneyDevKit should now be treated as:
 
-- the default local self-custodial wallet runtime for ordinary Pylon installs;
-- a strong reference for LSPS4/JIT receive-liquidity behavior;
-- a checkout and L402 reference for customer/product payments;
-- an agent-facing JSON CLI integration surface; and
+- the default local self-custodial wallet runtime for ordinary Pylon installs.
+- a strong reference for LSPS4/JIT receive-liquidity behavior.
+- a checkout and L402 reference for customer/product payments.
+- an agent-facing JSON CLI integration surface. And
 - a VSS/remote-state reference for later optional Pylon backup work.
 
 The default wrapped runtime is `@moneydevkit/agent-wallet`. It gives Pylon a
@@ -25,10 +25,10 @@ raw Lightning liquidity on day one.
 
 The wrapped runtime must not become:
 
-- the source of truth for accepted-work eligibility;
-- the source of truth for whether OpenAgents owes a payout;
-- the Treasury payout dispatcher;
-- the Nexus reconciliation authority; or
+- the source of truth for accepted-work eligibility.
+- the source of truth for whether OpenAgents owes a payout.
+- the Treasury payout dispatcher.
+- the Nexus reconciliation authority. Or
 - a hidden custody sidecar outside Pylon's explicit wallet/runtime status.
 
 Pylon owns the product contract around wallet runtime selection, local wallet
@@ -67,9 +67,9 @@ existence of a wallet.
 
 The target product behavior is:
 
-- a Pylon has a local wallet identity;
-- the wallet registers a durable receive target with Nexus;
-- the operator can see receive readiness clearly; and
+- a Pylon has a local wallet identity.
+- the wallet registers a durable receive target with Nexus.
+- the operator can see receive readiness clearly. And
 - the user does not have to manually reason about channel liquidity before
   receiving accepted-work bitcoin payouts.
 
@@ -96,10 +96,10 @@ full-access Basic Auth tiers, and platform-token integration.
 
 That is useful for:
 
-- Autopilot Sites commerce;
-- paid agent API access;
-- L402-style route recovery;
-- customer checkout experiments; and
+- Autopilot Sites commerce.
+- paid agent API access.
+- L402-style route recovery.
+- customer checkout experiments. And
 - product billing prototypes.
 
 It is not the same problem as accepted-work payout custody.
@@ -127,20 +127,20 @@ registration metadata, accepted-work eligibility, and settlement evidence.
 
 Pylon must keep:
 
-- wallet-owned payout target identity;
-- local recovery and encrypted backup semantics;
-- local receipt history;
-- Nexus payout target registration;
-- provider eligibility boundaries; and
+- wallet-owned payout target identity.
+- local recovery and encrypted backup semantics.
+- local receipt history.
+- Nexus payout target registration.
+- provider eligibility boundaries. And
 - redacted wallet telemetry.
 
 Nexus/Treasury must keep:
 
-- work acceptance authority;
-- payout eligibility authority;
-- payout dispatch authority;
-- settlement reconciliation;
-- public-safe receipts; and
+- work acceptance authority.
+- payout eligibility authority.
+- payout dispatch authority.
+- settlement reconciliation.
+- public-safe receipts. And
 - operator controls for retry, pause, or block states.
 
 MoneyDevKit can inform liquidity and checkout behavior, but it cannot decide
@@ -151,23 +151,23 @@ whether OpenAgents owes a payout or whether a payout is settled.
 The following must never enter public projections, Site receipts, Forum posts,
 customer-visible docs, or agent-readable manifests:
 
-- wallet mnemonics;
-- MDK platform access tokens;
-- LSP credentials;
-- webhook secrets;
-- payment preimages;
-- raw invoices;
-- raw channel monitor state;
-- raw VSS payloads;
-- raw telemetry payloads; or
+- wallet mnemonics.
+- MDK platform access tokens.
+- LSP credentials.
+- webhook secrets.
+- payment preimages.
+- raw invoices.
+- raw channel monitor state.
+- raw VSS payloads.
+- raw telemetry payloads. Or
 - raw payout targets.
 
 The MDK wrapper must emit only redacted refs into OpenAgents product surface and preserve the
 read-only projection boundary already used by:
 
-- `workers/api/src/pylon-ldk-readiness-projections.ts`;
-- `workers/api/src/pylon-payout-target-admission.ts`;
-- `workers/api/src/pylon-wallet-liquidity-readiness.ts`; and
+- `workers/api/src/pylon-ldk-readiness-projections.ts`.
+- `workers/api/src/pylon-payout-target-admission.ts`.
+- `workers/api/src/pylon-wallet-liquidity-readiness.ts`. And
 - `workers/api/src/pylon-wallet-telemetry.ts`.
 
 ## Test And Deployment Posture
@@ -200,10 +200,10 @@ Pylon wraps MoneyDevKit agent-wallet as the default runtime and keeps native
 
 The next roadmap work should continue with:
 
-- #354: VSS as optional Pylon remote state backend;
-- #355: accepted-work payout SLO projection;
-- #356: safe public payout rows;
-- #357: read-only Lightning/Pylon graph API contract; and
+- #354: VSS as optional Pylon remote state backend.
+- #355: accepted-work payout SLO projection.
+- #356: safe public payout rows.
+- #357: read-only Lightning/Pylon graph API contract. And
 - #358: accepted-work proof links in Sites/order receipts.
 
 After that read-only surface is complete, a later Pylon/Rust issue should add

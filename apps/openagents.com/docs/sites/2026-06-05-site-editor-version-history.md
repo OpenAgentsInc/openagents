@@ -5,14 +5,14 @@ Issue: `#168`
 The Site editor sidebar now includes a customer-safe version history panel.
 Each history row can show:
 
-- whether the revision is current or prior;
-- the revision ID;
-- formatted creation time;
+- whether the revision is current or prior.
+- the revision ID.
+- formatted creation time.
 - a safe origin summary from the feedback/adjustment that produced the
-  revision, or from safe version metadata for initial prompts;
-- formatted origin time when one is known;
-- review/build status;
-- the dedicated version URL when available; and
+  revision, or from safe version metadata for initial prompts.
+- formatted origin time when one is known.
+- review/build status.
+- the dedicated version URL when available. And
 - a button that starts a follow-up comment from that revision context.
 
 The backend projection follows the version lifecycle instead of guessing from

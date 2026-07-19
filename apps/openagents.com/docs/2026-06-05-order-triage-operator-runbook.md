@@ -91,7 +91,7 @@ Behavior:
   a `site_generation` Adjutant assignment in `preflight_pending`.
 - `runnable_general_autopilot` creates a `general_order_fulfillment`
   assignment in `preflight_pending`.
-- Existing active assignments are treated as `already_assigned`; the route does
+- Existing active assignments are treated as `already_assigned`. The route does
   not create duplicates.
 - `needs_clarification`, `smoke_or_test`, `legal_sensitive_policy_review`, and
   `unavailable_or_declined` remain held and do not create assignments.
@@ -133,7 +133,7 @@ Behavior:
   duplicates.
 - Held classes remain held with a typed reason and no assignment creation.
 - Unlike the first-batch endpoint, this path is not gated on
-  `firstBatchEligible`; it relies on the typed triage classification.
+  `firstBatchEligible`. It relies on the typed triage classification.
 - No Autopilot launch, task packet generation, provider lease, saved Site
   version, deployment, or email send is started by this endpoint.
 
@@ -188,12 +188,12 @@ receipt. Record it through the public-fork fulfillment path in
 
 That path:
 
-- uses `open_fork_pull_request` and authority mode `openagents_fork`;
-- still requires explicit customer/operator approval;
-- writes the authority receipt before publishing a PR artifact;
+- uses `open_fork_pull_request` and authority mode `openagents_fork`.
+- still requires explicit customer/operator approval.
+- writes the authority receipt before publishing a PR artifact.
 - records fork, branch, target branch, commit, PR URL, tests summary, and
-  authority metadata in `order_fulfillment_artifacts`;
-- marks the order delivered when the review-ready PR artifact is saved;
+  authority metadata in `order_fulfillment_artifacts`.
+- marks the order delivered when the review-ready PR artifact is saved.
 - leaves unapproved or blocked attempts as customer-safe notes artifacts
   instead of attempting a GitHub write.
 
@@ -211,17 +211,17 @@ OpenAgents product surface.
 
 That path:
 
-- uses `open_pull_request` and authority mode `customer_grant`;
+- uses `open_pull_request` and authority mode `customer_grant`.
 - requires explicit approval, a healthy `github_write_connections` row,
   repo/workflow scopes, a secret-backed connection, and a fresh issued
-  `github_write_auth_grants` row tied to the assignment/run;
+  `github_write_auth_grants` row tied to the assignment/run.
 - blocks missing connection, missing scope, missing secret, expired grant,
   used grant, revoked grant, mismatched grant, or missing grant before a PR
-  artifact can be published;
+  artifact can be published.
 - records branch, target branch, commit, PR URL, tests summary, permission
-  receipt, and authority metadata when the customer grant is valid;
+  receipt, and authority metadata when the customer grant is valid.
 - marks the order delivered when the review-ready private PR artifact is
-  saved;
+  saved.
 - leaves blocked attempts as customer-safe notes artifacts and moves the order
   to `needs_customer_input` rather than attempting a private-repo write.
 
@@ -254,20 +254,20 @@ Body:
 `policyMode` can be `public_beta_free` or `operator_grant`. The route is
 idempotent per active software order and records:
 
-- policy ID and mode;
-- software order ID;
-- current assignment ID when present;
-- current Site ID when present;
-- applying operator user ID;
-- operator reason;
-- customer-safe no-charge summary; and
+- policy ID and mode.
+- software order ID.
+- current assignment ID when present.
+- current Site ID when present.
+- applying operator user ID.
+- operator reason.
+- customer-safe no-charge summary. And
 - created/updated timestamps.
 
 The route rejects customer-safe policy copy that implies paid settlement,
 Lightning, MDK, L402, wallet, provider payout, invoice, or payment-ID activity.
 First-batch launch preflight then includes a `first_batch_payment_policy`
 check. Runnable first-batch orders are blocked at launch until this explicit
-policy exists; non-first-batch assignments do not require it. Generation usage
+policy exists. Non-first-batch assignments do not require it. Generation usage
 receipts for this path remain zero-charge `public_beta_free` receipts and carry
 the first-batch policy ID and mode in team receipt details.
 
@@ -282,18 +282,18 @@ GET /api/operator/orders/triage/first-batch/monitor?limit=100
 
 The monitor returns each first-batch record with:
 
-- customer-safe order title, repository ref, status, and summary;
-- triage classification, eligibility, hold reason, and next action;
-- Site project ID, slug, title, and status when present;
+- customer-safe order title, repository ref, status, and summary.
+- triage classification, eligibility, hold reason, and next action.
+- Site project ID, slug, title, and status when present.
 - Adjutant assignment ID, kind, status, goal ID, current run ID, task packet
-  path, and commit SHA when present;
+  path, and commit SHA when present.
 - active provider-account lease ref and public provider account ref when a
-  lease exists;
+  lease exists.
 - first-batch no-payment policy requirement, status, policy mode, policy ID,
-  customer-safe summary, and applying operator when present;
-- latest failover receipt and account state action;
-- latest runner callback/event, callback status, and callback lag;
-- current blocker and next action; and
+  customer-safe summary, and applying operator when present.
+- latest failover receipt and account state action.
+- latest runner callback/event, callback status, and callback lag.
+- current blocker and next action. And
 - safe operator commands for dashboard, lease explanation, failover history,
   assignment review, and first-batch assignment creation.
 

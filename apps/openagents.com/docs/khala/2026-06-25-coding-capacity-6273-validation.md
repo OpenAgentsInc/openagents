@@ -76,7 +76,7 @@ The store (`linkOpenAuthAgent`) and migration model `status='revoked'` /
 `revoked_at`, but only link (POST) and list (GET) routes exist. There is no
 HTTP path to revoke a link. P1's acceptance explicitly listed revoke.
 
-### F3 — classifier is structured-only; the semantic/embedding path is not implemented (#6277)
+### F3 — classifier is structured-only. The semantic/embedding path is not implemented (#6277)
 
 `classifyCodingWorkflow` reads only an explicit header
 (`x-openagents-workflow-class`), structured body fields (`workflowClass` /
@@ -103,7 +103,7 @@ The `own_capacity` demand kind is added to the ledger enum and the delegation
 path records tokens with `demandKind: 'own_capacity'` /
 `demandSource: 'khala_coding_delegation'` through the normal, unfiltered
 `recordTokensServed` path (so it DOES hit the public counter). But the
-recorder tests assert the counter-move with `internal`, not `own_capacity`;
+recorder tests assert the counter-move with `internal`, not `own_capacity`.
 #6280's "a test that an own-capacity coding completion does move the public
 counter" is not explicitly present.
 
@@ -137,9 +137,9 @@ the UNION resolver, and the route handlers all enforce OpenAuth-scoped
 aggregation, and the firm own-capacity-only execution invariant holds at both
 the resolver and the delegation dispatch (proven independently by the added
 harness, including the cross-account 403 denial that upstream tests did not
-cover). The capacity projection carries all dimensions; the classifier is
-invariant-compliant; the router branch is default-on with only a disable
-switch; the counter correctly counts own-capacity tokens source-agnostically.
+cover). The capacity projection carries all dimensions. The classifier is
+invariant-compliant. The router branch is default-on with only a disable
+switch. The counter correctly counts own-capacity tokens source-agnostically.
 
 Must fix before greenlighting the next build phase:
 
@@ -150,12 +150,12 @@ Must fix before greenlighting the next build phase:
 Should fix / track (do not block, but the next phase will lean on these):
 
 2. **F2** — add the unlink/revoke route to complete P1's create/read/revoke.
-3. **F6** — P4 resumable execution is a stub; the CLI/MCP phase that routes a
+3. **F6** — P4 resumable execution is a stub. The CLI/MCP phase that routes a
    real coding agent through the user's Pylon depends on the
    router-originated → on-Pylon-execute → durable-stream-closeout loop actually
    running. Treat #6279 as not-yet-done.
 4. **F3** — decide whether the semantic free-form classifier is required for
-   the CLI/MCP phase; if free-form "do this PR" detection is expected, it is
+   the CLI/MCP phase. If free-form "do this PR" detection is expected, it is
    not implemented yet.
 5. **F4 / F5** — cosmetic/coverage: bump the heartbeat schema signal and add an
    own_capacity-specific counter-move test.

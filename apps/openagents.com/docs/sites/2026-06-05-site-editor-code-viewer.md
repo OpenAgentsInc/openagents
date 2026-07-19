@@ -6,10 +6,10 @@ The Site editor sidebar now includes a read-only code viewer for selected
 element source context. When a customer selects a safe element target, the code
 viewer shows:
 
-- a bounded source path such as `selected-element/a.html`;
-- the current Site version reference;
-- the detected language;
-- the bounded read-only source snippet; and
+- a bounded source path such as `selected-element/a.html`.
+- the current Site version reference.
+- the detected language.
+- the bounded read-only source snippet. And
 - a copy affordance for the snippet.
 
 This slice does not expose generated source archives or private build artifacts

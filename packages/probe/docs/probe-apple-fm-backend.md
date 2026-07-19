@@ -35,7 +35,7 @@ requests/responses, usage truth, and snapshot stream events.
 
 `packages/runtime/src/backends/apple-fm/receipts.ts` defines redacted
 availability, failure, and transcript receipt helpers. Token usage is explicitly
-`exact`, `estimated`, or `unknown`; Probe must not label approximate Apple FM
+`exact`, `estimated`, or `unknown`. Probe must not label approximate Apple FM
 usage as exact.
 
 `packages/runtime/src/backends/registry.ts` registers the first Apple FM local
@@ -53,7 +53,7 @@ The same client implements the first inference path:
 
 Plain-text completion posts to `/v1/chat/completions`, normalizes the bridge
 response into Probe's Apple FM contract, and emits redacted transcript receipts.
-Usage truth is preserved as `exact`, `estimated`, or `unknown`; OpenAI-shaped
+Usage truth is preserved as `exact`, `estimated`, or `unknown`. OpenAI-shaped
 token counts without explicit truth are treated as `estimated`, not exact.
 
 Snapshot streaming is implemented separately through
@@ -190,7 +190,7 @@ Apple FM acceptance case names and comparison receipt shape. Receipts preserve
 backend kind, model, availability, usage truth, and tool/refusal facts.
 
 `docs/apple-fm-admitted-mac-acceptance.md` documents the live admitted-Mac
-runbook. Live Apple FM checks are excluded from default CI; unsupported hardware
+runbook. Live Apple FM checks are excluded from default CI. Unsupported hardware
 or unavailable Apple Intelligence must be recorded as `unsupported` or
 `unavailable`, not `failed`.
 

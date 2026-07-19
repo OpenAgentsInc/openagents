@@ -16,7 +16,7 @@ subagent topology, controls, history, review, recovery, and evidence.
 
 The Agent IDE is also OpenAgents' human front door to the broader open agent
 network being bootstrapped. The IDE gives a person one coherent cockpit for
-intent, authority, supervision, and review; the network direction is intended
+intent, authority, supervision, and review. The network direction is intended
 to connect that cockpit to a growing ecology of agents, models, tools, compute,
 and contributors beyond any one lab.
 
@@ -35,24 +35,24 @@ agent work:
 | Review              | Bounded files, Git status and diffs, and evidence beside the conversation                  |
 | Continuity          | Findable history, exact retry reconciliation, reload and restart recovery, and diagnostics |
 
-Conversation is the default surface; repository context, the agent graph,
+Conversation is the default surface. Repository context, the agent graph,
 review, and diagnostics open around the work when needed. This is not a code
 editor with a chat panel, and it is not another model provider. Many tools put
-an agent inside an IDE; OpenAgents makes the agents, their work, and their
+an agent inside an IDE. OpenAgents makes the agents, their work, and their
 evidence the IDE.
 
 ## One product, Desktop first
 
 The OpenAgents product identity spans Desktop and mobile. Desktop is The Agent
-IDE today; mobile is the retained compact companion. The accepted first product
+IDE today. Mobile is the retained compact companion. The accepted first product
 shape is deliberately narrower:
 
 | App                    | Current role                                                                                                                                                                   |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **OpenAgents Desktop** | The primary local-first Agent IDE: a signed workroom around the user's ordinary logged-in Codex session, usable without an OpenAgents account                                  |
-| **OpenAgents mobile**  | The retained companion built on the same product identity and typed application model; physical distribution and broader remote-coding claims remain separately evidence-gated |
+| **OpenAgents mobile**  | The retained companion built on the same product identity and typed application model. Physical distribution and broader remote-coding claims remain separately evidence-gated |
 
-Codex is the first engine. Codex owns its model, agent, and tool loop;
+Codex is the first engine. Codex owns its model, agent, and tool loop.
 OpenAgents owns the durable product around it. The current Desktop MVP keeps
 its visible path intentionally small—New Chat, Chat, Project Home, and
 Settings—while making sessions, typed activity, child agents, bounded
@@ -61,13 +61,13 @@ repository review, controls, recovery, updates, and diagnostics coherent.
 ProductSpec and AssuranceSpec remain underlying authoring and verification
 tooling. They are not user-facing destinations in the MVP. Fleet, broad
 provider parity, managed targets, portable host movement, and full mobile
-coding are closed `not planned`; retained architecture does not restore their
+coding are closed `not planned`. Retained architecture does not restore their
 product status without a new bounded owner decision and issue.
 
 The exact current scope and proof boundary live in the
 [`MVP package`](docs/mvp/README.md) and
 [`Sol master roadmap`](docs/sol/MASTER_ROADMAP.md). An accepted or signed
-release candidate is not the same as a published release; public availability
+release candidate is not the same as a published release. Public availability
 and capability language remain gated by the
 [`promise registry`](docs/promises/README.md).
 
@@ -113,7 +113,7 @@ registry agent a shipped provider. This direction is client-only: controlling
 external coding agents is the requirement.
 
 The source audit and ordered implementation gates are in the
-[T3 Code Agent Client Protocol implementation teardown](docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md);
+[T3 Code Agent Client Protocol implementation teardown](docs/teardowns/2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md).
 the pinned protocol authority, bounded stdio transport, and hermetic 23-method
 [conformance package](packages/agent-client-protocol-conformance/README.md) are
 now implemented. The shared [runtime bridge contract](docs/adr/2026-07-16-agent-client-runtime-bridge.md)
@@ -129,14 +129,14 @@ flat installation closure, negotiates `cursor_login`, and
 keeps model discovery behind its versioned extension decoder. Diagnostic live
 probes and source-derived fixtures remain explicitly non-release evidence. A
 checked opt-in production runner now reproduces a redacted Grok/Cursor candidate
-receipt in disposable repositories; it has no claim authority. The checked
+receipt in disposable repositories. It has no claim authority. The checked
 [pinned live-binary matrix](packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
 and [human proof ledger](docs/qa/2026-07-16-acp10-release-proof/README.md) now
-independently gate the two peers; their current verdict is experimental because
+independently gate the two peers. Their current verdict is experimental because
 the complete checked evidence has not yet been bound into shipped admission.
-All code-owned required scenarios are now satisfied on tested Darwin arm64;
+All code-owned required scenarios are now satisfied on tested Darwin arm64.
 other platforms remain explicitly untested. Execution is tracked in
-[#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887);
+[#8887 — Full Agent Client Protocol integration for Grok and Cursor](https://github.com/OpenAgentsInc/openagents/issues/8887).
 the wider reference set remains indexed in
 [Product Teardowns](docs/teardowns/README.md).
 
@@ -145,12 +145,12 @@ probe-verified executable identity, validated alternate executable selection,
 advertised authentication state, session/cancellation/recovery state, and
 stable-versus-extension configuration provenance. Grok uses the existing local
 cached-token session for headless ACP by default—no API key is required. An
-intentionally supplied `XAI_API_KEY` remains an optional peer-advertised path;
+intentionally supplied `XAI_API_KEY` remains an optional peer-advertised path.
 Cursor exposes only its advertised `cursor_login` flow. The
 support artifact is constructed in main from a closed refs-only schema and
 omits executable paths, environment, auth payloads, prompts, files, terminal
 content, and native events. Desktop derives its label from trusted-profile
-admission evidence; the pinned matrix remains the release authority and is not
+admission evidence. The pinned matrix remains the release authority and is not
 loaded by the renderer. The checked Grok and Cursor builds remain visibly
 experimental, and evidence for one can never promote the other.
 
@@ -163,14 +163,14 @@ result, and recombine for the next task without one model vendor owning the
 graph.
 
 The Agent IDE makes that network useful and legible to a human. It is where an
-operator supplies goals, repositories, judgment, and boundaries; sees which
-agents and tools did what; intervenes when needed; and decides whether the
+operator supplies goals, repositories, judgment, and boundaries. Sees which
+agents and tools did what. Intervenes when needed. And decides whether the
 result counts. In the other direction, the network can make the IDE more
 capable than any single agent: broader specialists, tools, compute, review, and
 eventually reusable capabilities can meet behind one durable workroom.
 
 The bootstrap loop is bidirectional: the IDE creates real demand and
-verifiable outcomes; the network can return a wider supply of agents, tools,
+verifiable outcomes. The network can return a wider supply of agents, tools,
 capacity, and reusable capabilities.
 
 The atomic unit is an **accepted outcome**, not a token, model response, or
@@ -181,7 +181,7 @@ back to the people who contribute useful skills, compute, data, review, and
 verification.
 
 Any future multiplayer participation must remain opt-in and owner-controlled.
-Independent workrooms would share nothing by default; participation would
+Independent workrooms would share nothing by default. Participation would
 require explicit grants, bounded authority, visibility rules, and evidence
 that other participants can inspect without receiving private prompts,
 credentials, or repository data.
@@ -191,14 +191,14 @@ credentials, or repository data.
 | Layer        | Meaning                                                                                                                                                                        |
 | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Product**  | The Agent IDE: OpenAgents Desktop today and the retained OpenAgents mobile companion                                                                                           |
-| **Platform** | The typed runtime, workspace capabilities, Effect Native, receipts, and broader retained Sync, Pylon, and Agent Computer substrate; not all of it is required by the local MVP |
+| **Platform** | The typed runtime, workspace capabilities, Effect Native, receipts, and broader retained Sync, Pylon, and Agent Computer substrate. Not all of it is required by the local MVP |
 | **Network**  | The intended open coordination topology being bootstrapped behind the Agent IDE: agents, tools, compute, people, verification, and accepted outcomes                           |
 | **Lab**      | Research, evaluation, and open-model work that improves the available workers while keeping the Agent IDE neutral among them                                                   |
 
 This network is a direction being bootstrapped, not a claim that every routing,
 market, settlement, distributed-training, or multiplayer path ships in the
 current product. The accepted Desktop MVP proves the local control surface
-first; broader paths retain their own owner decisions and evidence gates.
+first. Broader paths retain their own owner decisions and evidence gates.
 
 The project thesis begins in
 [`Episode 200: The Agent Network`](docs/transcripts/200.md), while
@@ -213,18 +213,18 @@ This is a Node.js, pnpm, Vite Plus, Effect, and Effect Schema monorepo. The
 current toolchain is pinned in [`package.json`](package.json).
 
 - [`apps/openagents-desktop`](apps/openagents-desktop/README.md) — Electron
-  host, tokenless Runtime Gateway, and the primary Agent IDE;
+  host, tokenless Runtime Gateway, and the primary Agent IDE.
 - [`apps/openagents-mobile`](apps/openagents-mobile/README.md) — React
-  Native/Expo host for the compact OpenAgents client;
+  Native/Expo host for the compact OpenAgents client.
 - [`apps/openagents.com`](apps/openagents.com/README.md) — public, auth, API,
-  Sync, promise, receipt, health, legal, and operations surfaces;
-- [`apps/pylon`](apps/pylon) — account custody and owner-local execution;
+  Sync, promise, receipt, health, legal, and operations surfaces.
+- [`apps/pylon`](apps/pylon) — account custody and owner-local execution.
 - [`packages`](packages) — shared schemas, runtime, Sync, UI, evidence, and
-  infrastructure contracts;
+  infrastructure contracts.
 - [`docs/mvp`](docs/mvp/README.md) — exact first-product definition and
-  release-candidate evidence;
+  release-candidate evidence.
 - [`docs/sol`](docs/sol/README.md) — canonical product direction, roadmap,
-  decisions, and implementation evidence;
+  decisions, and implementation evidence.
 - [`docs/effect-native`](docs/effect-native/README.md) — the shared typed
   application and renderer architecture.
 

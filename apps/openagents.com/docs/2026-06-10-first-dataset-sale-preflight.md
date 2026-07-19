@@ -59,23 +59,23 @@ Result: 7 passed, 0 failed.
 
 Coverage:
 
-- clean fixture produces a public-safe bundle manifest;
-- seeded credential material refuses before writing a sellable bundle;
-- written bundle bytes hash to the manifest digest;
+- clean fixture produces a public-safe bundle manifest.
+- seeded credential material refuses before writing a sellable bundle.
+- written bundle bytes hash to the manifest digest.
 - NIP-DS listing/offer/request/result helpers validate through
-  `@openagentsinc/nip90`;
+  `@openagentsinc/nip90`.
 - delivery descriptor digest verification is green for the fixture bundle.
 
 ## Remaining Blockers
 
 The #4645 acceptance criteria still require:
 
-- owner-approved export of a real conversation bundle;
-- public-safe redaction manifest for that real bundle;
-- listing and offer on the scoped relay;
-- operator-approved funded purchase;
-- delivery entitlement with digest verification;
-- public settlement receipt with stream kind `data`;
+- owner-approved export of a real conversation bundle.
+- public-safe redaction manifest for that real bundle.
+- listing and offer on the scoped relay.
+- operator-approved funded purchase.
+- delivery entitlement with digest verification.
+- public settlement receipt with stream kind `data`.
 - product-promise transition receipts before any registry edit.
 
 The live public data settlement counters remain empty as of this preflight:

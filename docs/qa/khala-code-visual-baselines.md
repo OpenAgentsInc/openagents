@@ -50,7 +50,7 @@ writes a relative `deltas/<id>.delta.png` image in the baseline store. Smoke
 summaries include each screenshot's `visualBaseline` verdict, including
 `matched`, `missing`, `blessed`, or the failing `changed` status.
 
-The fixture visual smokes run in dark mode across desktop and mobile viewports;
+The fixture visual smokes run in dark mode across desktop and mobile viewports.
 mobile uses reduced-motion. The packaged native AX smoke records its headed
 screenshots as desktop, dark, no-preference baselines.
 

@@ -30,17 +30,17 @@ The flow now has a typed evidence path:
 6. A simulation payout attempt can be dispatched through the simulation adapter.
 7. A simulation reconciliation event can be recorded.
 8. Public-safe payment authority receipts can be generated for:
-   - payout intent created;
-   - dispatch recorded;
-   - confirmation recorded;
-   - verification recorded;
+   - payout intent created.
+   - dispatch recorded.
+   - confirmation recorded.
+   - verification recorded.
    - settlement recorded.
 9. The settlement bridge can project a timeline:
-   - `reward_intent`;
-   - `payout_eligible`;
-   - `payout_dispatched`;
-   - `payout_confirmed`;
-   - `payout_verified`;
+   - `reward_intent`.
+   - `payout_eligible`.
+   - `payout_dispatched`.
+   - `payout_confirmed`.
+   - `payout_verified`.
    - `settled`.
 10. A paused or failed settlement path is modeled as a blocked evidence-only
     bridge record with blocker refs.
@@ -53,17 +53,17 @@ authority service and simulation adapter.
 
 The settlement bridge remains evidence-only:
 
-- no buyer charge mutation;
-- no live wallet spend;
-- no payout dispatch authority;
-- no payout target mutation;
+- no buyer charge mutation.
+- no live wallet spend.
+- no payout dispatch authority.
+- no payout target mutation.
 - no settlement mutation.
 
 The accepted-work payout row remains read-only:
 
-- no public claim upgrade;
-- no payout target mutation;
-- no settlement mutation;
+- no public claim upgrade.
+- no payout target mutation.
+- no settlement mutation.
 - no live wallet spend.
 
 Live bitcoin movement remains blocked until later OpenAgents product surface/Nexus gates prove
@@ -93,12 +93,12 @@ bun run --cwd workers/api test -- src/pylon-marketplace-payout-flow.test.ts src/
 The focused payout-flow test checks:
 
 - a simulated marketplace job can move from intake to assignment to accepted
-  work to payout intent to settlement receipt;
-- missing accepted-work refs or a non-accepted assignment blocks payout flow;
+  work to payout intent to settlement receipt.
+- missing accepted-work refs or a non-accepted assignment blocks payout flow.
 - settlement bridge records link back to job, assignment, Artanis dispatch,
-  payout intent, and adapter attempt;
+  payout intent, and adapter attempt.
 - public projections redact dispatch and verification internals while keeping
-  settlement claims inspectable;
+  settlement claims inspectable.
 - paused settlement is represented as a blocked evidence-only bridge record.
 
 ## Remaining Gaps

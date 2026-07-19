@@ -1,7 +1,7 @@
 # Machine Studying Ties To Blueprint, Tassadar, DSPy, And Marketplaces
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-17
@@ -89,11 +89,11 @@ agent does to itself before downstream evaluation. In OpenAgents, that should
 not be an untyped notes file alone. It should be a Blueprint-owned artifact
 with:
 
-- corpus/source refs and freshness;
-- the signature family it is meant to improve;
-- tool scopes and backend constraints;
-- generated notes, rubrics, probes, retained failures, examples, and fixtures;
-- the measured expertise curve before and after use;
+- corpus/source refs and freshness.
+- the signature family it is meant to improve.
+- tool scopes and backend constraints.
+- generated notes, rubrics, probes, retained failures, examples, and fixtures.
+- the measured expertise curve before and after use.
 - the release gate that says whether it can become a promoted Module Version,
   Context Pack, Probe tool-menu policy, or marketplace package candidate.
 
@@ -146,12 +146,12 @@ accurate tool menu before inference begins.
 
 A Probe machine-studying benchmark should therefore measure:
 
-- baseline Probe turn with generic registry/tool preflight;
-- Probe turn with a generated study packet mounted;
-- whether the selected signature/tool menu changes;
-- whether the right evidence enters the trajectory;
-- whether the agent uses that evidence correctly;
-- score versus generated tokens or wall-clock budget;
+- baseline Probe turn with generic registry/tool preflight.
+- Probe turn with a generated study packet mounted.
+- whether the selected signature/tool menu changes.
+- whether the right evidence enters the trajectory.
+- whether the agent uses that evidence correctly.
+- score versus generated tokens or wall-clock budget.
 - whether any write-side effect remains an Action Submission instead of direct
   Program Run authority.
 
@@ -220,9 +220,9 @@ execution traces are digest-pinned and replay-verifiable. That makes them
 different from normal learned modules or context packets. The marketplace audit
 sketches a ladder:
 
-- exact compiled modules with replay proofs;
-- deterministic host-native plugins with typed packets and replay posture;
-- statistical learned modules with eval receipts and divergence histograms;
+- exact compiled modules with replay proofs.
+- deterministic host-native plugins with typed packets and replay posture.
+- statistical learned modules with eval receipts and divergence histograms.
 - effectful/networked goods that fall back to Blueprint governance, Source
   Authority, Action Submissions, approvals, and receipts.
 

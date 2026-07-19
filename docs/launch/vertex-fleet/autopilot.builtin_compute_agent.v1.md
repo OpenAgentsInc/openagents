@@ -34,9 +34,9 @@ The fixture:
 |---|---|
 | `builtin_compute_agent_signed_recut_missing` | **Still open.** Requires a signed+notarised Autopilot Desktop build with the built-in-agent source and packaged OpenAgents compute credentials — owner-gated, needs a real recut. |
 | `builtin_compute_agent_live_from_install_smoke_missing` | **Still open.** Requires a from-install go-online session on a clean Mac with the signed installer — depends on the signed recut. |
-| `openagents_compute_metering_live_smoke_missing` | **Partially advanced.** The projection fixture and test infrastructure for capturing a live metered session now exist; the blocker is not dropped because no live session evidence has been captured yet. A live smoke run filling in real refs will produce `status: live_metered_session_verified` and clear this blocker. |
+| `openagents_compute_metering_live_smoke_missing` | **Partially advanced.** The projection fixture and test infrastructure for capturing a live metered session now exist. The blocker is not dropped because no live session evidence has been captured yet. A live smoke run filling in real refs will produce `status: live_metered_session_verified` and clear this blocker. |
 
 ## check:deploy
 
-Passed. 19/19 metering smoke tests pass; all 3 check:deploy test files pass
+Passed. 19/19 metering smoke tests pass. All 3 check:deploy test files pass
 (product-promises.test.ts, mullet/routes.test.ts, public-proof-replay-routes.test.ts).

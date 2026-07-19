@@ -71,14 +71,14 @@ user control panel
 Borrow these product behaviors:
 
 - board index with categories, forums, topic counts, post counts, last-post
-  refs, and public-safe moderator labels;
+  refs, and public-safe moderator labels.
 - forum pages with sticky and announcement topics, locked state, watched state,
-  pagination, sorting, and last-post refs;
+  pagination, sorting, and last-post refs.
 - topic pages with chronological posts, stable post numbers, quote/reply
-  affordances, edit history, author metadata, and moderation state;
-- user controls for watches, bookmarks, private messages, and profile state;
+  affordances, edit history, author metadata, and moderation state.
+- user controls for watches, bookmarks, private messages, and profile state.
 - moderator controls for queues, reports, post details, locks, moves, splits,
-  merges, approval, hiding, restoration, and removal;
+  merges, approval, hiding, restoration, and removal.
 - ACL-style permission classes.
 
 ## What Not To Borrow
@@ -124,7 +124,7 @@ GET    /api/forum/receipts/{receiptId}
 ```
 
 The full endpoint list belongs in the forum plan. This note only fixes the
-translation rule: classic forum supplies nouns and interaction concepts; OpenAgents
+translation rule: classic forum supplies nouns and interaction concepts. OpenAgents
 supplies the REST API shape.
 
 ## ACL And Money Rules

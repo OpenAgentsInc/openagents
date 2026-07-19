@@ -87,7 +87,7 @@ Current, grounded facts:
   continue to call only `POST /api/v1/chat/completions` with
   `model: "openagents/khala"`. A one-off request key may be sent on that same
   hosted endpoint with `x-openagents-provider: openrouter` and
-  `x-openagents-provider-key`; the request key takes precedence, remains
+  `x-openagents-provider-key`. The request key takes precedence, remains
   redacted, is never persisted, and still runs through Khala routing, tracing,
   metering, and no-debit BYOK semantics.
 - The repo has Apple FM bridge packaging and smoke material in
@@ -155,10 +155,10 @@ credentials. It should follow the same isolation posture described in
 
 The Pylon supervisor is responsible for:
 
-- ensuring one active node identity for the app-managed Pylon home;
-- starting/stopping the local control server;
-- publishing heartbeat/capacity when the user goes online;
-- exposing assignment and proof status to the UI;
+- ensuring one active node identity for the app-managed Pylon home.
+- starting/stopping the local control server.
+- publishing heartbeat/capacity when the user goes online.
+- exposing assignment and proof status to the UI.
 - providing local-only diagnostics without leaking prompts, auth paths, wallet
   material, raw command output, or private repo data into public views.
 
@@ -176,7 +176,7 @@ existing audit vocabulary:
 - override order for lower-level runtime: `PROBE_APPLE_FM_BASE_URL`, then
   `OPENAGENTS_APPLE_FM_BASE_URL`, then default loopback
 - stream semantics: Apple FM snapshots, not fake token deltas
-- usage truth: exact, estimated, or unknown; never fake exact tokens
+- usage truth: exact, estimated, or unknown. Never fake exact tokens
 
 Desktop should reuse the packaged helper contract from
 `apps/autopilot-desktop/src/shared/apple-fm-packaging.ts`: the helper belongs at
@@ -192,33 +192,33 @@ is a full Codex replacement. Unsupported machines are `unsupported` or
 
 The desktop chat surface should mirror the mobile app's current direction:
 
-- single model label: `Khala`;
-- streaming OpenAI-compatible chat completions;
-- local conversation history;
-- markdown, bullets, headings, and fenced code blocks with copy actions;
-- typed prompts and optional push-to-talk;
-- clear 402/free-quota and network error handling;
+- single model label: `Khala`.
+- streaming OpenAI-compatible chat completions.
+- local conversation history.
+- markdown, bullets, headings, and fenced code blocks with copy actions.
+- typed prompts and optional push-to-talk.
+- clear 402/free-quota and network error handling.
 - first-use disclosure for free-tier data sharing when minting or using a free
   key.
 
 When local Apple FM is available, the app may show it as a local backend/source
 status for node/provider work. It should not silently replace the public Khala
-model label with "Apple FM"; the user should be able to see which route handled
+model label with "Apple FM". The user should be able to see which route handled
 local provider assignments and which remote Khala route served chat.
 
 ### Fleet, Agent, and Provider Surfaces
 
 Desktop has room for the whole Khala node surface:
 
-- connected OpenAgents identity and local agent identity;
-- local Pylon readiness and heartbeat freshness;
-- connected provider accounts such as Codex refs, when present;
-- Apple FM backend readiness and blockers;
+- connected OpenAgents identity and local agent identity.
+- local Pylon readiness and heartbeat freshness.
+- connected provider accounts such as Codex refs, when present.
+- Apple FM backend readiness and blockers.
 - advertised capacity refs, including counted refs such as
-  `capacity.coding.codex.available=N` where applicable;
-- current load, queued assignments, recent closeouts, and proof refs;
+  `capacity.coding.codex.available=N` where applicable.
+- current load, queued assignments, recent closeouts, and proof refs.
 - provider mode toggle: offline, online, online-with-Apple-FM, online-with-
-  coding-capacity;
+  coding-capacity.
 - earnings/receipt summary with unsettled, rejected, credited, and settled
   states clearly distinguished.
 
@@ -238,10 +238,10 @@ Desktop needs two identity layers:
 
 The app should support:
 
-- mint/paste an `oa_agent_...` key for chat;
-- OpenAuth login/linking for richer account/fleet/provider functions;
-- safe display of account email/refs when returned by Pylon/OpenAgents;
-- no raw token display after capture;
+- mint/paste an `oa_agent_...` key for chat.
+- OpenAuth login/linking for richer account/fleet/provider functions.
+- safe display of account email/refs when returned by Pylon/OpenAgents.
+- no raw token display after capture.
 - public-safe logs by default, with owner-only raw traces behind explicit local
   diagnostics.
 
@@ -252,7 +252,7 @@ The first launch should feel like one operation, not a setup checklist:
 1. **Welcome / connect:** user signs in or enters/mints an agent key.
 2. **Node home:** app creates or selects the app-managed Pylon home.
 3. **Pylon start:** local Pylon boots or the app attaches to an existing one.
-4. **Apple FM check:** bridge readiness is checked; if missing, the app explains
+4. **Apple FM check:** bridge readiness is checked. If missing, the app explains
    that Apple FM needs an admitted Apple Silicon/Apple Intelligence environment
    and the packaged helper.
 5. **Khala connected:** chat surface is usable even when Apple FM is
@@ -263,7 +263,7 @@ The first launch should feel like one operation, not a setup checklist:
 
 The key UX invariant: chat should work before provider mode is perfect, but
 provider claims must be honest. A user on an unsupported Mac can still use Khala
-chat; they simply cannot advertise Apple FM capacity.
+chat. They simply cannot advertise Apple FM capacity.
 
 ## 6. Reuse vs Build
 
@@ -315,9 +315,9 @@ Khala Desktop should follow the repo's native Apple build policy:
   XcodeGen-generated project committed with enough structure to open in Xcode.
 - **Signing team:** Apple Team `HQWSG26L43`.
 - **Distribution targets:**
-  - development builds through Xcode;
+  - development builds through Xcode.
   - TestFlight for Mac app beta if the team chooses App Store Connect
-    distribution;
+    distribution.
   - signed and notarized Developer ID `.app`/`.dmg` for direct desktop
     distribution.
 - **Notarization:** codesign with hardened runtime, notarize, staple the `.app`,
@@ -346,12 +346,12 @@ MVP should ship only the pieces needed to prove the desktop node loop honestly:
 
 Non-goals for MVP:
 
-- no fake model picker;
-- no global Apple FM coding parity claim;
-- no marketplace settlement broadening beyond current Pylon receipt states;
-- no pooled third-party capacity routing by default;
+- no fake model picker.
+- no global Apple FM coding parity claim.
+- no marketplace settlement broadening beyond current Pylon receipt states.
+- no pooled third-party capacity routing by default.
 - no public traces containing raw prompts, raw shell output, local paths, auth
-  material, wallet material, or private repo data;
+  material, wallet material, or private repo data.
 - no OTA path.
 
 ## 9. Risks and Open Questions
@@ -366,13 +366,13 @@ Non-goals for MVP:
 - **Identity confusion:** user auth, Pylon identity, agent refs, account refs,
   and provider capacity refs need crisp labels.
 - **Provider claims:** "online" must mean the exact capabilities advertised by
-  heartbeat are fresh and available; stale or blocked capability must not appear
+  heartbeat are fresh and available. Stale or blocked capability must not appear
   as earnable supply.
 - **Usage accounting:** Apple FM usage may be estimated or unknown. Public
   counters and proof claims should not synthesize exact token rows from local
   estimates.
 - **Distribution split:** TestFlight and notarized DMG may have different
-  sandbox/entitlement and helper-launch constraints; release docs must cover
+  sandbox/entitlement and helper-launch constraints. Release docs must cover
   both.
 - **Privacy:** local raw Pylon/Codex/Apple FM diagnostics may contain sensitive
   material. The desktop app should default to public-safe summaries and keep raw
@@ -382,15 +382,15 @@ Non-goals for MVP:
 
 The first implementation should be considered complete when:
 
-- the macOS app builds locally through Xcode/xcodebuild;
-- chat against `openagents/khala` works with a Keychain-stored key;
-- app start either attaches to an existing Pylon or boots an app-managed Pylon;
-- Apple FM readiness shows ready/unavailable/unsupported with typed blockers;
-- provider mode publishes only verified capabilities;
+- the macOS app builds locally through Xcode/xcodebuild.
+- chat against `openagents/khala` works with a Keychain-stored key.
+- app start either attaches to an existing Pylon or boots an app-managed Pylon.
+- Apple FM readiness shows ready/unavailable/unsupported with typed blockers.
+- provider mode publishes only verified capabilities.
 - a local no-spend/fixture provider assignment can be accepted and closed out
-  when the required capability is available;
+  when the required capability is available.
 - packaging verification proves the Apple FM helper is inside the signed app
-  bundle when Apple FM support is advertised;
-- release docs state whether the build is TestFlight, notarized DMG, or both;
+  bundle when Apple FM support is advertised.
+- release docs state whether the build is TestFlight, notarized DMG, or both.
 - `bun run --cwd apps/openagents.com check:deploy` remains green before the PR
   lands.

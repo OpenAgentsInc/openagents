@@ -9,14 +9,14 @@ Updated: 2026-06-25
 > the GTM push memo
 > ([`../inference/2026-06-25-khala-inference-gtm-push.md`](../inference/2026-06-25-khala-inference-gtm-push.md),
 > §2 Pillar 1 + §5 Sequence) and the shipped autonomous-QA epic (#6181). Where it
-> cites a live system it says so; where it sets direction it labels it
+> cites a live system it says so. Where it sets direction it labels it
 > **direction**. It flips **no** promise state — the product-promise registry is
 > owner-gated. Nothing here is public-claim copy or a product promise. Secrets are
-> referenced by file/label only; no key value appears here.
+> referenced by file/label only. No key value appears here.
 
 ---
 
-## 0. TL;DR
+## 0. TL.DR
 
 - `qa-runner` is shipped and real today: it drives a **real browser**, emits a
   **video + a committed e2e test + an honest pass/fail verdict**, is OSS /
@@ -25,7 +25,7 @@ Updated: 2026-06-25
   local BYO overrides. (§1)
 - **Route `qa-runner` → Khala is shipped (#6237):** the BYO-model config now
   defaults to `openagents/khala`, base `https://openagents.com/api/v1`, with a
-  free key from `POST /api/keys/free`; flags/env still override. This is dogfood
+  free key from `POST /api/keys/free`. Flags/env still override. This is dogfood
   lane #1: it is already running, it is a steady **token floor** on the North Star
   (tokens served per day), and it is a continuous **correctness signal** on Khala
   over the exact code/verification workload Khala is meant to be good at. QA
@@ -50,7 +50,7 @@ Updated: 2026-06-25
   `oa-codex-control`'s `/v1/placement/start` endpoint, pins `cloud-gcp`, and asks
   the GCE runner to run the Khala-backed full QA matrix, publish `/trace/{uuid}`
   + `/pro` evidence, and post the existing `pr-comment-run.ts` verdict on PRs.
-  Missing config skips; failed launch warns; neither blocks a green deploy gate.
+  Missing config skips. Failed launch warns. Neither blocks a green deploy gate.
   (§3, §4)
 
 ---
@@ -64,7 +64,7 @@ Khala autonomous-QA flow (epic #6174, rolled up into #6181). The public pitch
 
 > drives a **real browser** against any target, verifies a check the way a person
 > would, and emits a **video + a committed e2e test + an honest pass/fail
-> verdict**. … It's OSS, local-first, and **bring-your-own-model — no OpenAgents
+> verdict**. … It is OSS, local-first, and **bring-your-own-model — no OpenAgents
 > login required.** Khala is one optional backend, not a dependency.
 
 ### What a run produces (path evidence)
@@ -80,18 +80,18 @@ A run writes, into its `--out` artifact dir (`apps/qa-runner/QA-RUNNER.md`,
 - `trace.zip` (Playwright trace) + `NN-step.png` per-step screenshots.
 - the distilled **`*.e2e.test.ts`** (default `generated/<slug>.e2e.test.ts`) — a
   re-runnable, black-box test with named user-readable steps and deterministic
-  waits; point `TARGET_URL` at dev or prod to run it anywhere.
+  waits. Point `TARGET_URL` at dev or prod to run it anywhere.
 - `session-trace.json` (Khala runs) — the deterministic, public-safe
   `KhalaSessionTrace` (`openagents.khala.session_trace.v1`), the distiller's input.
 
 The exit code is honest: `0` only on a clean pass **and** an admissible distilled
-test; a real deviation yields a FAIL visible in the video — **never a fake green**.
+test. A real deviation yields a FAIL visible in the video — **never a fake green**.
 
 ### BYO-model, no login (the core run is provider-agnostic)
 
 The core path runs on your machine, against your target, driven by the default
 Khala endpoint or **any OpenAI-compatible model** you bring, with **no OpenAgents
-account/login required** (`apps/qa-runner/README.md`; issue #6191 / Rhys req #5).
+account/login required** (`apps/qa-runner/README.md`, issue #6191 / Rhys req #5).
 Model/base overrides keep the BYO contract intact, while the default dogfood lane
 requires a free `oa_agent_…` key from `POST /api/keys/free`. Model
 selection precedence (`src/byo-model.ts`):
@@ -103,7 +103,7 @@ api-key  : --api-key  > QA_API_KEY  > OPENAI_API_KEY  > (required, unless --allo
 ```
 
 The key **value is never printed** — only its source label is logged. The shipped
-`qa` CLI is a self-contained `dist/qa.js` bundle (workspace deps inlined; only
+`qa` CLI is a self-contained `dist/qa.js` bundle (workspace deps inlined, only
 `playwright` external), so a standalone install needs no workspace and no login.
 
 ### The harness quality bar (the "last 10%", #6193)
@@ -112,21 +112,21 @@ The key **value is never printed** — only its source label is logged. The ship
 the green trustworthy:
 
 1. **Honest outcomes — no flaky-pass, ever.** Passing steps assert real outcomes
-   about the target, not tautologies; a false assertion / thrown error / timed-out
-   step / refusal / interrupt all yield `status: "fail"`; retries are opt-in,
+   about the target, not tautologies. A false assertion / thrown error / timed-out
+   step / refusal / interrupt all yield `status: "fail"`. Retries are opt-in,
    bounded, and **visible** (`detail.attempts > 1`), never a cover-up.
-2. **Deterministic** — waits are conditions (`wait-for`), never sleeps; timeouts
-   and retries are clock-injectable; sharding is completion-driven and
+2. **Deterministic** — waits are conditions (`wait-for`), never sleeps. Timeouts
+   and retries are clock-injectable. Sharding is completion-driven and
    order-stable.
 3. **Artifacts always flush — even on crash / interrupt** (the load-bearing
    guarantee): `Effect.ensuring(..., flushResult)` + the browser surface's
    release block leave `trace.zip`, video, and a schema-valid `result.json` on
-   disk even on throw or SIGINT; a partial run is an honest `fail`.
+   disk even on throw or SIGINT. A partial run is an honest `fail`.
 4. **Fast path — parallel beats serial** (`runShards`, asserted margin in
    `shard.test.ts`).
 5. **Public-safe by construction** — `assertPublicSafeResult` walks `result.json`
-   before write and rejects tokens/secrets/prompts/cookies/credentials; typed
-   text of a `type` step is never recorded (selector + length only); read-only
+   before write and rejects tokens/secrets/prompts/cookies/credentials. Typed
+   text of a `type` step is never recorded (selector + length only). Read-only
    targets (prod by default, #6190) refuse mutating steps.
 
 ### Drivable over HTTP (the QA Control API, #6196)
@@ -134,8 +134,8 @@ the green trustworthy:
 The whole flow — submit → run → fetch artifacts + verdict + `/pro` link — is also
 API-first via a **qa-runner HTTP daemon** (`bun run api` /
 `src/daemon.ts --api`), because the runner drives a real Chrome which cannot run
-in a Cloudflare Worker. Auth is a Khala agent bearer token; a deterministic
-**mock path** runs with no Chrome/network/spend by default; real runs are
+in a Cloudflare Worker. Auth is a Khala agent bearer token. A deterministic
+**mock path** runs with no Chrome/network/spend by default. Real runs are
 owner-gated by `QA_CONTROL_ARM_REAL=1`, with a per-run `QA_CONTROL_TOKEN_BUDGET`
 cap. Full curl walkthrough: `apps/qa-runner/docs/control-api-quickstart.md`.
 
@@ -168,7 +168,7 @@ vision is **proven live** (Zeratul, zero balance, `openagents/khala`): "Khala
 autonomously drives real dev tools on our own infra, distills the session into a
 committed e2e test, and emits a video — at \$0 (operator-credit exemption)." Where
 we already beat Factory: a **committed, re-runnable e2e test** (they emit only
-videos + reports); runtime-agnostic + own-infra + no funding; real
+videos + reports). Runtime-agnostic + own-infra + no funding. Real
 anti-fabrication (the distilled test passes against prod). Remaining children
 spanned #6182–#6196 (OpenRouter provider layer, chill-evals + `/pro`, gh-attach
 PR-evidence loop, driver/OS breadth, verify verdict, harness hardening, QA control
@@ -240,14 +240,14 @@ in order: `OPENAGENTS_API_KEY` → a discovered `OPENAGENTS_AGENT_TOKEN` in
 loop-proving fallback (`--no-fallback` forbids it). One model surface only:
 `openagents/khala` (no `-code`/`-mini`/`-pro` variants).
 
-To also publish the green VERIFIED trace, set the §1 publish env vars; a finished
+To also publish the green VERIFIED trace, set the §1 publish env vars. A finished
 `control.ts` / `pr-comment` run publishes automatically.
 
 ### Quota headroom
 
 Free tier is now **2,500,000 tokens/day · 2,000 requests/day** per key (resets at
-UTC midnight; env-tunable `FREE_TIER_MAX_*`). That is ample headroom for a
-continuous internal QA cadence; if QA volume ever approaches the cap, route it
+UTC midnight. Env-tunable `FREE_TIER_MAX_*`). That is ample headroom for a
+continuous internal QA cadence. If QA volume ever approaches the cap, route it
 through an authenticated/metered key rather than the free tier so external
 free-tier users keep their headroom.
 
@@ -259,8 +259,8 @@ are real served tokens and may be reported as such, but we should be able to
 external traction we do not have."* QA dogfood tokens must be **tagged internal**
 in the inference analytics (the owner-gated
 `GET /api/admin/inference-analytics` already breaks down by
-provider/model/route/day; add an internal-vs-external dimension or use a
-dedicated key class for dogfood so the split is queryable). Tokens served is real;
+provider/model/route/day. Add an internal-vs-external dimension or use a
+dedicated key class for dogfood so the split is queryable). Tokens served is real.
 external traction is a separate, smaller number.
 
 ---
@@ -284,7 +284,7 @@ external traction is a separate, smaller number.
 So "run QA on every push" **must not** be a GitHub Action. (Note: the `qa-runner`
 README/quickstart contain a sample `.github/workflows/qa.yml` and reference a
 `chill-eval.yml` — those are illustrative copy for **outside OSS users** of the
-standalone package; they are not present in this repo, and `pr-comment-run.ts` is
+standalone package. They are not present in this repo, and `pr-comment-run.ts` is
 explicitly designed to be **agent-triggered on owned infra**, not a workflow.)
 
 ### How pushes are gated today
@@ -329,9 +329,9 @@ silently block or kill the push/deploy. Do not recreate a flaky gate that forces
 
 | Option | Where it runs | Blocks the push? | Strengths | Risks |
 |---|---|---|---|---|
-| **(a) Pre-push hook stage** | local `.githooks/pre-push` | **yes** (synchronous) | already the gate; instant feedback; no infra | a real browser run is slow/flaky → exactly the #6234 failure mode if unbounded/unscoped; would force `--no-verify` |
-| **(b) Deploy pipeline** (`check:deploy`) | local / deployer | **yes** (synchronous) | one gate to reason about | same flakiness risk; couples QA latency to every deploy; verse-smoke proved this is fragile |
-| **(c) Our own GCE runner** (`oa-codex-control` + GCE) | owned infra, async | **no** (out-of-band) | unbounded compute; real browser at scale; matches the invariant's "owned infra" intent; publishes traces/videos | needs a push→trigger seam; verdict is post-hoc, not a blocking gate |
+| **(a) Pre-push hook stage** | local `.githooks/pre-push` | **yes** (synchronous) | already the gate. Instant feedback. No infra | a real browser run is slow/flaky → exactly the #6234 failure mode if unbounded/unscoped. Would force `--no-verify` |
+| **(b) Deploy pipeline** (`check:deploy`) | local / deployer | **yes** (synchronous) | one gate to reason about | same flakiness risk. Couples QA latency to every deploy. Verse-smoke proved this is fragile |
+| **(c) Our own GCE runner** (`oa-codex-control` + GCE) | owned infra, async | **no** (out-of-band) | unbounded compute. Real browser at scale. Matches the invariant's "owned infra" intent. Publishes traces/videos | needs a push→trigger seam. Verdict is post-hoc, not a blocking gate |
 
 `oa-codex-control` + GCE already exists and is deployed
 (`cloud/crates/oa-codex-control`, deploy `cloud/scripts/gcp-codex-control-deploy.sh`):
@@ -350,7 +350,7 @@ Define **"a push runs QA"** as a two-tier contract:
   `run-if-desktop-changed.ts`). Keep it to a handful of deterministic
   `scriptedBrain`/`--fake-model` checks or a single short real-browser check with
   a strict `run-bounded.ts` cap. It must **fail loud** and, like the verse fix,
-  **must never become an unbounded SIGKILL gate** — if QA can't finish inside the
+  **must never become an unbounded SIGKILL gate** — if QA cannot finish inside the
   budget it reports `incomplete` and yields to Tier 2 rather than blocking the
   push. If even this is too flaky to be a hard gate, it stays a **warning-only**
   pre-push notice (loud stderr) and the real verdict is Tier 2.
@@ -365,7 +365,7 @@ Define **"a push runs QA"** as a two-tier contract:
 
 Concretely, **where the green traces + videos land:**
 `https://openagents.com/trace/{uuid}` (the redacted shareable trace, video served
-inline) and the `/pro` run/eval pages; on a PR, also the agent-posted PR comment
+inline) and the `/pro` run/eval pages. On a PR, also the agent-posted PR comment
 with the comparison table + video + distilled-test ref + `/pro` link.
 
 This keeps the blocking gate fast and deterministic (Tier 1), and moves the
@@ -394,14 +394,14 @@ It posts a refs-only `openagents.codex_placement_assignment.v1` payload to
 runner to use `apps/qa-runner`'s Khala defaults, publish only public-safe green
 VERIFIED traces/videos to `/trace/{uuid}` and `/pro`, and report red/refuted/
 incomplete results loudly without mutating or blocking the pushed commit. Missing
-env exits as `SKIPPED`; HTTP/control failure exits non-zero so the hook prints a
+env exits as `SKIPPED`. HTTP/control failure exits non-zero so the hook prints a
 warning, but the push remains allowed after `check:deploy` is green.
 
 ---
 
 ## 4. Relationship to the deploy gate
 
-QA **complements** `check:deploy`; it must not **become** it.
+QA **complements** `check:deploy`. It must not **become** it.
 
 - `check:deploy` stays the fast, deterministic, blocking gate (typechecks,
   topology, contract-drift, conflict-markers, unit suites, `no-github-actions`).
@@ -412,7 +412,7 @@ QA **complements** `check:deploy`; it must not **become** it.
   the deployed surface continuously, drives a real browser like a user, and emits
   honest pass/fail + a shareable trace. It answers "does the shipped thing
   actually work for a human," which unit tests and typechecks cannot.
-- The bright line, restated from #6234: **QA reports loudly; QA never silently
+- The bright line, restated from #6234: **QA reports loudly. QA never silently
   blocks or SIGKILLs a push or deploy.** A QA red is a loud, dereferenceable
   artifact (trace + video + REFUTED verdict), not a wedged gate that drives people
   to `--no-verify`. If we ever feel tempted to make QA a hard inline blocker,
@@ -425,11 +425,11 @@ QA **complements** `check:deploy`; it must not **become** it.
 **Shipped vs direction.**
 
 - **Shipped (live):** `qa-runner` real-browser run + video + committed e2e test +
-  honest verdict; BYO-model incl. Khala default (#6237); verify verdict (#6192);
-  harness quality bar (#6193); QA Control API (#6196); shareable redacted
-  `/trace/{uuid}` publish (proven live 2026-06-24); the pre-push `check:deploy`
-  gate; warning-only scoped/bounded Tier 1 QA smoke (#6245); warning-only
-  push→`oa-codex-control` GCE trigger seam (#6238); `oa-codex-control` + GCE
+  honest verdict. BYO-model incl. Khala default (#6237). Verify verdict (#6192).
+  harness quality bar (#6193). QA Control API (#6196). Shareable redacted
+  `/trace/{uuid}` publish (proven live 2026-06-24). The pre-push `check:deploy`
+  gate. Warning-only scoped/bounded Tier 1 QA smoke (#6245). Warning-only
+  push→`oa-codex-control` GCE trigger seam (#6238). `oa-codex-control` + GCE
   (deployed). Epic #6181 closed.
 - **Direction (to build):** a Gym environment seeded from QA tasks + the
   real-browser verifier (§GYM cross-ref), plus production operator policy for
@@ -441,12 +441,12 @@ QA **complements** `check:deploy`; it must not **become** it.
   test. Mitigations are already in the harness: condition-only waits (no sleeps),
   bounded visible retries, artifact-flush-on-crash/interrupt, per-scenario
   isolated backend + artifact dir. Tier 1 must additionally be hard-timeout-bounded
-  and scoped; Tier 2 runs isolated per-VM on GCE.
+  and scoped. Tier 2 runs isolated per-VM on GCE.
 - **Cost / quota.** Free tier headroom is 2.5M tok/day · 2k req/day per key —
   ample for now. Continuous QA at scale should move to a metered key so it does
   not consume the public free-tier allowance, and so its tokens are cleanly
   attributable as internal.
-- **Secrets.** Khala/agent tokens come from env + `~/work/.secrets/*.env`; the key
+- **Secrets.** Khala/agent tokens come from env + `~/work/.secrets/*.env`. The key
   **value is never printed** (only its source label). Trace publish redacts
   secrets/PII/paths before upload and the ingest rejects leaked values. Never put
   a key in tracked files, commit messages, or normal terminal output.
@@ -476,14 +476,14 @@ QA **complements** `check:deploy`; it must not **become** it.
   `publish-trace.ts`, `daemon.ts`, `pr-comment-run.ts` — model selection, Khala
   endpoint defaults, trace publish, daemon, agent-triggered PR evidence.
 - `apps/qa-runner/package.json` — scripts (`qa`, `demo:khala`, `api`, `evals`, …).
-- `INVARIANTS.md` (root) — No GitHub-Hosted CI / Cloud Actions; `check:no-github-actions`.
+- `INVARIANTS.md` (root) — No GitHub-Hosted CI / Cloud Actions. `check:no-github-actions`.
 - `apps/openagents.com/package.json` — `check:deploy`, `check:no-github-actions`.
 - `.githooks/pre-push`, `scripts/enable-git-hooks.sh`,
   `scripts/qa-pre-push-smoke.ts`, `scripts/qa-async-gce-trigger.ts` — the
   pre-push gate, Tier 1 QA smoke, and Tier 2 async GCE trigger.
 - `apps/autopilot-desktop/scripts/run-bounded.ts`,
-  `scripts/run-if-desktop-changed.ts`; commit `a462f448d1` — the #6234 fix.
-- `cloud/crates/oa-codex-control/`, `cloud/scripts/gcp-codex-control-deploy.sh`;
+  `scripts/run-if-desktop-changed.ts`. Commit `a462f448d1` — the #6234 fix.
+- `cloud/crates/oa-codex-control/`, `cloud/scripts/gcp-codex-control-deploy.sh`.
   `docs/launch/2026-06-20-cloud-agent-fleet-audit.md` — the GCE runner.
 - `docs/faq/khala-inference-quickstart.md` — free key, base URL, quota.
 - `docs/inference/2026-06-25-khala-inference-gtm-push.md` — §2 Pillar 1, §5

@@ -27,11 +27,11 @@ ingress-state.json
 
 It records:
 
-- visibility: `private`, `collaborators`, or `public`;
-- optional managed preview URL;
-- optional custom domain;
-- named collaborator grants;
-- endpoint token digests;
+- visibility: `private`, `collaborators`, or `public`.
+- optional managed preview URL.
+- optional custom domain.
+- named collaborator grants.
+- endpoint token digests.
 - ingress receipts.
 
 Workrooms start private. Switching to collaborator or public visibility emits a

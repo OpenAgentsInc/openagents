@@ -1,7 +1,7 @@
 # Khala speculation acceptance telemetry + dynamic-disablement policy (book P1-8, #6091)
 
 Status: buildable-now telemetry + decision-policy + receipt-disclosure machinery
-merged; the REAL speculative decode (a draft model / a real serving engine) is
+merged. The REAL speculative decode (a draft model / a real serving engine) is
 compute/owner-gated and stays inert. A real lane now has a pure evidence
 preflight that refuses missing owner approval, missing public-safe evidence,
 unmeasured draft counts, and high-batch/high-pressure policy failures before it
@@ -12,7 +12,7 @@ can project active speculation metadata. Not deployed by this change.
 Speculative decoding speeds up DECODE by letting a cheap drafter guess the next
 few tokens and letting the expensive target model VERIFY all the guesses in a
 single parallel forward pass. Accepted drafts give several tokens for the cost of
-one verification step; a rejection still makes forward progress of one true token
+one verification step. A rejection still makes forward progress of one true token
 (the target's own prediction at the rejection point). Verifying K tokens costs
 roughly one forward pass because transformers process all positions in parallel,
 which is exactly what they are good at.
@@ -46,7 +46,7 @@ The typed `KhalaSpeculationMode` union:
 - `n_gram` — reuse repeated n-grams already seen in the current generation/context
   as the draft. No draft model. **Fit for code repetition.**
 - `lookahead` — maintain an n-gram table over the KV cache and propose matching
-  continuations. No draft model. Same code-repetition fit; used for long-context
+  continuations. No draft model. Same code-repetition fit. Used for long-context
   codebase questions (a large context to mine).
 - `eagle` — **EAGLE-style learned hidden-state drafting. FLAGGED AS A LATER
   Psionic / learned-serving lane.** EAGLE predicts the target model's next hidden
@@ -61,12 +61,12 @@ The typed `KhalaSpeculationMode` union:
   API without disclosing the mode/acceptance.
 
 n-gram and lookahead are the two Worker-runnable draft-free modes today
-(`isDraftFreeMode`); `eagle` is the only learned mode (`isLearnedMode`).
+(`isDraftFreeMode`). `eagle` is the only learned mode (`isLearnedMode`).
 
 ## Honesty contract (mirrors the telemetry `not_measured` discipline)
 
 - The acceptance rate is a real number ONLY when an actual draft/verify pass
-  produced an accepted + proposed count pair; the rate is DERIVED from those
+  produced an accepted + proposed count pair. The rate is DERIVED from those
   counts and clamped to `[0, 1]`. Absent counts (or zero proposals) =>
   `not_measured`, never a fabricated rate and never a defaulted `0`.
 - `none` (we know no speculation ran) is distinct from `not_measured` (we do not
@@ -85,7 +85,7 @@ threshold config (`KhalaSpeculationPolicyConfig`). Decision order:
 
 1. No drafting requested (`none`/`not_measured`) => off (`disabled_not_requested`).
 2. A learned/unavailable mode (`eagle`) => off (`disabled_mode_unavailable`) — the
-   Worker has no draft model; that is the Psionic lane.
+   Worker has no draft model. That is the Psionic lane.
 3. The pressure signal is unknown (`not_measured` batch or pressure) => off
    (`disabled_pressure_unknown`) — we cannot confirm the low-batch sweet spot, so
    be conservative.
@@ -136,7 +136,7 @@ may speculate without telling us) — honest, never a fabricated active mode.
 **Compute / owner / flag-gated (built shape, inert — NOT armed here):**
 
 - The REAL speculative decode (an actual n-gram/lookahead drafter or a learned
-  draft head) needs a real serving engine; there is none in the Worker, so the
+  draft head) needs a real serving engine. There is none in the Worker, so the
   live path discloses `not_measured`/`none`. A future serving engine threads real
   draft counts into the same metadata fields. Until that engine exists and the
   owner supplies approval/caps plus public-safe evidence refs,
@@ -168,11 +168,11 @@ may speculate without telling us) — honest, never a fabricated active mode.
 The inference test suites (807 tests, incl. the new speculation suites),
 `typecheck`, `check:architecture`, `check:effect-topology`, and
 `check:public-projection-freshness`. Tests cover: acceptance-rate telemetry
-populating from a fixture decode trace (honest sentinel when no speculation ran);
+populating from a fixture decode trace (honest sentinel when no speculation ran).
 `decideSpeculation` enabling at low batch and disabling at high batch / pressure /
-unknown-signal / learned-mode / not-requested; real-lane preflight accepting only
+unknown-signal / learned-mode / not-requested. Real-lane preflight accepting only
 owner-armed, public-safe, measured low-batch evidence and returning known inactive
-metadata when policy disables speculation; the speculation mode disclosed in the
-record; the report acceptance aggregate keyed by the four axes; and the real
+metadata when policy disables speculation. The speculation mode disclosed in the
+record. The report acceptance aggregate keyed by the four axes. And the real
 speculative-decoding engine staying flag-gated off (the fixture seam never spends,
 the un-armed real seam refuses to run).

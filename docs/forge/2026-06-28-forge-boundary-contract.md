@@ -1,13 +1,13 @@
 # forge.openagents.com Boundary Contract
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 Forge implementation routing must respect the separate-private-repo boundary.
 
 
-Status: SU-0 boundary lock for #6768, 2026-06-28. Public-safe; no secrets,
+Status: SU-0 boundary lock for #6768, 2026-06-28. Public-safe. No secrets,
 tokens, private source, or raw logs.
 
 This document freezes the first Forge execution boundary. #6770 added
@@ -24,7 +24,7 @@ Forge has two separate auth planes:
 - **Control plane:** service, session, or admin credentials with
   `ForgeControlPlaneScope` values. These scopes are all prefixed with
   `forge:*` and are the only scopes accepted by `/api/forge/*`. Non-admin
-  control-plane bearer tokens are also bound to one tenant ref; callers send
+  control-plane bearer tokens are also bound to one tenant ref. Callers send
   that scope as `X-OpenAgents-Forge-Tenant-Ref`, and the Worker rejects any
   request body or query `tenantRef` that does not match it.
 
@@ -113,7 +113,7 @@ For background-agent definition dispatch (#8200), Forge tenant git tokens may
 also carry `ref_restrictions_json`. Smart-Git receive-pack rejects any command
 whose ref is outside that token allowlist before packfile archive or
 coordination mutation. Definition dispatch stores only public-safe token refs on
-the work record (`git_token_refs_json`) and run row; raw token values are never
+the work record (`git_token_refs_json`) and run row. Raw token values are never
 stored there, and Pylon closeout revokes the recorded token refs.
 
 ## Verification Receipt Format

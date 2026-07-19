@@ -5,7 +5,7 @@ Status: Business/sales opportunity analysis. Honest-scope throughout: this doc
 separates the *demand thesis* (strong) from *what OpenAgents can deliver today*
 (narrower than the thesis) and marks the line explicitly. It reuses the
 GTM/funnel patterns, ICP framing, pricing logic, and revenue-loop thesis already
-established in the OpenAgents launch material; it does **not** name or describe
+established in the OpenAgents launch material. It does **not** name or describe
 any specific prospect, client, partner, or person.
 
 > One-line thesis: a large, *already-paying* refactor-and-harden demand pool is
@@ -30,7 +30,7 @@ describes an "AI-slop refactor wave" already arriving:
   cheap-POC applications** — built fast with no-code/AI app builders, AI codegen,
   or low-cost offshore labor.
 - These apps **demo well and pass a glance**: "every file looks fine, but the
-  system doesn't hold together." The fundamentals — data modeling, error handling,
+  system does not hold together." The fundamentals — data modeling, error handling,
   auth boundaries, state management, concurrency, observability — were never done.
 - **Real usage breaks them.** What survived a demo and a seed round collapses under
   actual users, scale, edge cases, and change requests.
@@ -39,7 +39,7 @@ describes an "AI-slop refactor wave" already arriving:
 
 The underlying law is simple and not new: **systems thinking has to happen
 somewhere. If it is skipped at build time, it gets paid for — at a premium —
-later.** Cheap POC code is a loan against the future; the refactor wave is the
+later.** Cheap POC code is a loan against the future. The refactor wave is the
 loan coming due.
 
 ### 1.2 Why it is real *now* (and accelerating)
@@ -82,11 +82,11 @@ The refactor wave is attractive *specifically* because it inverts that failure:
   refactor wave is a *buyer's dollar*, not a subsidy — which is the entire point of
   closing the loop.
 
-> Honest framing (carry it everywhere): the **demand thesis is strong and external**;
+> Honest framing (carry it everywhere): the **demand thesis is strong and external**.
 > the claim that OpenAgents already converts agentic-coding buyers at volume is the
 > *owner's basis*, not a proven-at-scale number. What is proven: the paid coding
 > boundary is real, inbound paid rails are shipped, and the first labor outcomes
-> have settled. State the wave as the opportunity; state our delivery in shipped-vs-
+> have settled. State the wave as the opportunity. State our delivery in shipped-vs-
 > building terms (§7).
 
 ---
@@ -95,7 +95,7 @@ The refactor wave is attractive *specifically* because it inverts that failure:
 
 The refactor wave is usually framed as a *consulting* opportunity — bill senior
 human hours at rising rates. OpenAgents' position is structurally different and
-better: **we are not selling consulting hours; we are selling outcome-grade fixes
+better: **we are not selling consulting hours. We are selling outcome-grade fixes
 delivered by our own agentic-coding supply, with verification receipts.**
 
 ### 2.1 We can *do* the work, not just scope it
@@ -108,7 +108,7 @@ delivered by our own agentic-coding supply, with verification receipts.**
 - **We own the supply underneath.** Inference/serving runs on supply we control
   (our cloud/Vertex quota, passthrough providers, and the Pylon serving fabric).
   That means our cost basis is *ours to optimize*, not a reseller markup. The slop
-  was shipped fast and cheap; **we fix it faster and cheaper, and keep margin.**
+  was shipped fast and cheap. **We fix it faster and cheaper, and keep margin.**
 - **The economics favor the machine here.** Refactor/hardening work is high-volume,
   pattern-heavy, and verifiable — the regime where agentic execution has the
   biggest cost-and-speed edge over senior human hours, which is exactly the comp
@@ -118,7 +118,7 @@ delivered by our own agentic-coding supply, with verification receipts.**
 
 The refactor wave exists *because* someone skipped systems thinking. The obvious
 risk is that an AI refactor just produces **more, faster slop** — fixes that look
-fine and don't hold. OpenAgents' answer is the verification spine that already
+fine and do not hold. OpenAgents' answer is the verification spine that already
 underlies its labor settlements:
 
 - **Accepted outcome → receipt → settle.** Every fix is a scoped, accepted outcome,
@@ -132,7 +132,7 @@ underlies its labor settlements:
   outcomes have settled on it.)
 
 This is the honest, defensible wedge: **"We fix what cheap AI/offshore left broken,
-and we prove it holds — because we don't skip systems thinking, and you get a
+and we prove it holds — because we do not skip systems thinking, and you get a
 receipt."**
 
 ### 2.3 The "shitty website" adjacency
@@ -152,21 +152,21 @@ visible win that opens the door to the higher-value codebase work. It is an idea
 
 - **Stage:** post-demo / post-seed / early-traction. They have shipped something,
   raised or earned a little, and now have *real users hitting it*. (Pre-shipping =
-  no pain yet; mature eng org = has its own team.)
+  no pain yet. Mature eng org = has its own team.)
 - **Team shape:** **no senior technical owner / no CTO.** A non-technical founder
   or operator drove the build via an AI builder, codegen, or low-cost contractors.
   This is the "too small for an internal platform team, too big for nothing" middle.
-- **Spend behavior:** already paying for point tools and AI; willing to put a card
-  or Bitcoin down for an outcome; feeling the cost of downtime/bugs/churn.
+- **Spend behavior:** already paying for point tools and AI. Willing to put a card
+  or Bitcoin down for an outcome. Feeling the cost of downtime/bugs/churn.
 - **Trigger event:** a recent breakage, scaling wall, failed pivot/feature, a
   security scare, or an investor/customer asking "is this thing actually solid?"
 
 ### 3.2 Technographic / "AI-slop tells" (the diagnostic signals)
 
 These are the same tells the practitioner signal calls out — *every file looks
-fine, the system doesn't hold together*:
+fine, the system does not hold together*:
 
-- **AI-comment-style code** — verbose, uniform, explain-the-obvious comments;
+- **AI-comment-style code** — verbose, uniform, explain-the-obvious comments.
   boilerplate that reads like generated output.
 - **Weird/over-abstracted structure** — abstractions with no payoff, inconsistent
   patterns file-to-file, copy-pasted near-duplicates.
@@ -174,7 +174,7 @@ fine, the system doesn't hold together*:
   checks at the wrong layer or absent, no tests, no migrations discipline, no
   observability, secrets in the wrong place, N+1 and unbounded queries.
 - **Builder/codegen fingerprints** — telltale framework scaffolding from popular
-  AI app builders; default project structures left untouched; generated UI with no
+  AI app builders. Default project structures left untouched. Generated UI with no
   real data model behind it.
 - **"Shitty website" tells** — generic AI marketing copy, no semantic structure,
   not crawlable/AI-answer-legible, no analytics, broken on mobile, no conversion
@@ -187,20 +187,20 @@ fine, the system doesn't hold together*:
   above. The breakage-window cohort is identifiable by *build vintage + recent
   traction signals*.
 - **Inbound by pain.** Capture demand that searches for "my app is breaking /
-  needs a rewrite / is slow / won't scale." This is where **GEO (Generative Engine
+  needs a rewrite / is slow / will not scale." This is where **GEO (Generative Engine
   Optimization)** matters: be the *cited answer* when an LLM is asked "what do I do
-  about my vibe-coded app that's falling over." Structured, question-shaped, citable
+  about my vibe-coded app that is falling over." Structured, question-shaped, citable
   content compounds here, and OpenAgents' agent-readable posture (AGENTS.md, the
   public promise registry, public proof surfaces) is a natural GEO advantage.
 - **Content + outbound, the established three-at-once motion.** Daily ICP-connected
-  content (lists travel from a cold start); signal-based, **human-written** outbound
+  content (lists travel from a cold start). Signal-based, **human-written** outbound
   (humans write the outreach so it stays authentic — the AI does the *accepted-
-  outcome work*, not the cold copy); and GEO that captures the demand the other two
-  create. The three compound (content seeds GEO and warms outbound; outbound surfaces
-  pain that becomes content; GEO captures the created demand).
+  outcome work*, not the cold copy). And GEO that captures the demand the other two
+  create. The three compound (content seeds GEO and warms outbound, outbound surfaces
+  pain that becomes content. GEO captures the created demand).
 
 > Compliance line (carry from the GTM guardrails): volume is fine, but identification
-> + a working opt-out is mandatory; enrich/call **inbound** leads who gave a number,
+> + a working opt-out is mandatory. Enrich/call **inbound** leads who gave a number,
 > respect DNC/opt-outs, no autodial/mass-SMS to scraped numbers, compliant enrichment
 > sources only, warm/known invites to any shared channel — not cold spam.
 
@@ -213,8 +213,8 @@ fine, the system doesn't hold together*:
 > **"We fix what cheap AI and offshore left broken — and we keep it working."**
 
 It connects to the buyer's two real drivers: **money** (the breakage is costing
-them users, deals, and dev time; a solid system unlocks growth) and **reputation /
-peace of mind** (no more embarrassing outages; a system they can actually stand
+them users, deals, and dev time. A solid system unlocks growth) and **reputation /
+peace of mind** (no more embarrassing outages, a system they can actually stand
 behind). Lead with *the result and the receipt*, never with "trust the model."
 
 ### 4.2 The entry wedge — a cheap, fast, concrete first fix
@@ -235,8 +235,8 @@ lands in our other verticals.
 
 ### 4.3 How it ladders into ongoing work
 
-- **Audit → first fix → hardening backlog.** The audit *creates the backlog*; each
-  item is a future accepted outcome. The first fix proves the loop; the backlog is
+- **Audit → first fix → hardening backlog.** The audit *creates the backlog*. Each
+  item is a future accepted outcome. The first fix proves the loop. The backlog is
   the expansion.
 - **One-off → standing relationship.** Move the conversation into a shared channel
   (opt-in, warm) where the relationship is run, fixes ship continuously, and the
@@ -274,22 +274,22 @@ otherwise pay, and it is going *up*.
   dangerous). Keep three things distinct: the **product unit** (the accepted fix /
   hardening outcome), the **technical closeout unit**, and the **pricing mechanism**.
 - Surface pricing as **transparent, usage-based credits**: buy credits, spend as you
-  go, no monthly AI subscription, credits don't expire; **Bitcoin top-up earns a
+  go, no monthly AI subscription, credits do not expire. **Bitcoin top-up earns a
   discount** funded by real card-fee savings. The audit/first-fix wedge is a small,
-  fixed, low-friction credit spend; ongoing hardening is usage-based.
+  fixed, low-friction credit spend. Ongoing hardening is usage-based.
 
 ### 5.3 How it feeds the revenue loop
 
 A refactor dollar entering the **accepted-outcome → receipt → settle** spine is the
 buy-side dollar the loop has always needed. It funds work executed wherever
-cheapest, verified once so it isn't re-done, and **fans out** to everyone who
+cheapest, verified once so it is not re-done, and **fans out** to everyone who
 contributed — compute/serving providers, model/data/module authors, graders, labor
 contributors, the referrer who brought the deal, and the platform. The refactor
 wave is, concretely, **demand funding supply** — the definition of the loop closing,
 applied to work people already pay for.
 
 > Two honest pricing boundaries to keep exact: (a) **credit vs Bitcoin** — cards buy
-> *credits* and create *credit-denominated* revshare; only Bitcoin/Lightning-sourced
+> *credits* and create *credit-denominated* revshare. Only Bitcoin/Lightning-sourced
 > revenue creates *withdrawable Bitcoin* revshare (do not collapse the two). (b)
 > Revenue share is **usage-funded** (paid on real paid activity, never on signups).
 
@@ -309,7 +309,7 @@ applied to work people already pay for.
    business name, the app/site URL, and "what's breaking." Enrich inbound leads via
    our own API (dogfood + context before first reply).
 4. **Activate** with a **prefilled agent workspace** seeded from the URL — auto-run
-   the slop audit so their workspace is populated the moment they're invited. Offer an
+   the slop audit so their workspace is populated the moment they are invited. Offer an
    **opt-in** shared channel (created on consent, not auto-opened for everyone).
 5. **Convert** by moving the conversation into the channel, landing the first accepted
    fix with a receipt, then expanding into the hardening backlog / ongoing
@@ -318,15 +318,15 @@ applied to work people already pay for.
 
 ### 6.2 Qualification
 
-A strong target: shipped an AI-built/vibe-coded app or a thrown-together site;
-non-technical founder/operator with no senior technical owner; post-demo/seed with
-*real users now hitting breakage*; already spends on tools/AI and will put a card or
-Bitcoin down; has a concrete recent trigger (outage, scaling wall, security scare,
-investor/customer pressure); and — bonus — is plugged into a peer network or serves
+A strong target: shipped an AI-built/vibe-coded app or a thrown-together site.
+non-technical founder/operator with no senior technical owner. Post-demo/seed with
+*real users now hitting breakage*. Already spends on tools/AI and will put a card or
+Bitcoin down. Has a concrete recent trigger (outage, scaling wall, security scare,
+investor/customer pressure). And — bonus — is plugged into a peer network or serves
 its own book of clients (channel potential).
 
 Do **not** chase: pre-shipping projects (no pain), or orgs with a capable internal
-eng team (no gap). Name honestly what we *don't* fix — irreducible product/strategy
+eng team (no gap). Name honestly what we *do not* fix — irreducible product/strategy
 judgment is theirs, not ours.
 
 ### 6.3 Plugging into the business-OS / CRM
@@ -339,7 +339,7 @@ or create the work order for Autopilot to execute. That turns the intake demo in
 operational sales machine: **discovery → CRM event → opportunity → quote → accepted
 outcome → receipt → settle → expansion**, all on one event graph. (Today these lanes —
 CRM, intake, work orders, receipts — exist but are not fully joined into one event
-graph; joining them is the build that makes this turnkey — §7.)
+graph. Joining them is the build that makes this turnkey — §7.)
 
 ### 6.4 Honest scope: what we can deliver today vs build
 
@@ -358,10 +358,10 @@ graph; joining them is the build that makes this turnkey — §7.)
 - **Outward, per-client SLA projection** of the promise engine (today the registry
   describes the *product's* claims, not an individual client's deliverables).
 - A single **closed "$1 in → >$1 out at scale"** turnkey loop (assembled from
-  primitives; individual legs are real, the at-scale guarantee is not).
+  primitives. Individual legs are real, the at-scale guarantee is not).
 - The **multi-party split engine** fanning one payment across all contributors
-  (planning-stage; primitives + a read-only projection exist, money isn't split yet).
-- **Settled referral payout** (the 5% ledger + caps exist; dispatch is operator-gated;
+  (planning-stage, primitives + a read-only projection exist, money is not split yet).
+- **Settled referral payout** (the 5% ledger + caps exist, dispatch is operator-gated,
   no settled referral payout yet).
 - **White-label revenue-share operator** (specced/planned).
 - Fully **joined CRM event graph** (the lanes exist separately).
@@ -375,31 +375,31 @@ still being wired, and is honest about the parts that are *building*.
 ## 7. Risks and honesty
 
 The single most important risk is the one **the signal itself teaches**: *systems
-thinking can't be skipped — and if we skip it, we become the next slop.* Applied to
+thinking cannot be skipped — and if we skip it, we become the next slop.* Applied to
 us:
 
-- **Our refactors must actually hold.** An AI fix that looks fine but doesn't hold is
-  the exact failure we're selling against. This is non-negotiable: every fix is a
+- **Our refactors must actually hold.** An AI fix that looks fine but does not hold is
+  the exact failure we are selling against. This is non-negotiable: every fix is a
   scoped, graded, **receipt-backed** accepted outcome — tests + review + benchmark/
-  replay where applicable — not an unverified diff. If we can't verify it, we don't
+  replay where applicable — not an unverified diff. If we cannot verify it, we do not
   promise it.
-- **Don't overclaim delivery.** The *demand thesis* is strong and external; the claim
+- **Do not overclaim delivery.** The *demand thesis* is strong and external. The claim
   that we convert agentic-coding buyers at volume is the owner's basis, not proven at
-  scale. Sell the shipped capability; mark the building parts as building (§6.4). The
+  scale. Sell the shipped capability. Mark the building parts as building (§6.4). The
   credibility of the whole motion depends on not blurring "primitive exists" into
   "the loop is closed."
-- **Scope honestly.** Some breakage is product/strategy judgment we don't fix; some is
-  irreducible domain/regulatory constraint. Naming what we *won't* fix builds the trust
+- **Scope honestly.** Some breakage is product/strategy judgment we do not fix. Some is
+  irreducible domain/regulatory constraint. Naming what we *will not* fix builds the trust
   that lets us be believed about what we will.
 - **Keep the pricing boundaries exact.** Credit-revshare vs withdrawable-Bitcoin-
-  revshare are different sides of a line; revenue share is usage-funded, never
-  signup-funded; subscription-seat resale is never allowed (API-inference resale is).
-  Don't fumble these in a sales conversation.
-- **Compliance on outreach.** Volume is fine; identification + working opt-out is
-  mandatory; warm/inbound-first; compliant enrichment only.
+  revshare are different sides of a line. Revenue share is usage-funded, never
+  signup-funded. Subscription-seat resale is never allowed (API-inference resale is).
+  Do not fumble these in a sales conversation.
+- **Compliance on outreach.** Volume is fine. Identification + working opt-out is
+  mandatory. Warm/inbound-first. Compliant enrichment only.
 
 > The wave is real, the demand pays, and we can do the work cheaper and faster with
-> margin. The only way we lose it is by becoming what we're selling against. The
+> margin. The only way we lose it is by becoming what we are selling against. The
 > verification spine — receipts, grading, the promise engine — is precisely the
 > discipline that keeps us from skipping the systems thinking. That discipline *is*
 > the product.
@@ -412,8 +412,8 @@ us:
    prioritized "missing fundamentals + highest-risk breakage" audit out, delivered by
    Autopilot, with a receipt.
 2. Add the **slop-refactor message + usage-based credit pricing** to the business
-   landing surface and the qualification form (phone first-class; capture app/site URL
-   and "what's breaking"; auto-run the audit to prefill the workspace).
+   landing surface and the qualification form (phone first-class, capture app/site URL
+   and "what's breaking". Auto-run the audit to prefill the workspace).
 3. Build the **three-at-once acquisition motion** aimed at the breakage-window cohort:
    ICP-connected daily content, signal-based human-written outbound, and GEO targeting
    "my AI-built app is breaking" intent.

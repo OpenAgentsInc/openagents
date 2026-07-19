@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -48,21 +48,21 @@ scripts/gcp-node-bootstrap.sh \
 The script creates:
 
 - required APIs:
-  - Compute Engine;
-  - Artifact Registry;
-  - Cloud Storage;
-  - IAM;
-  - Cloud Logging;
-  - Cloud Monitoring;
-  - Secret Manager;
-  - OS Login;
-- Artifact Registry Docker repo `oa-cloud`;
-- private VPC `oa-cloud-<env>`;
-- regional subnet `oa-cloud-<env>-<region>`;
-- IAP-only SSH firewall rule;
-- service account `oa-node-<env>`;
-- state, artifact, receipt, and log buckets;
-- placeholder Secret Manager secret for scoped secret-access smoke tests;
+  - Compute Engine.
+  - Artifact Registry.
+  - Cloud Storage.
+  - IAM.
+  - Cloud Logging.
+  - Cloud Monitoring.
+  - Secret Manager.
+  - OS Login.
+- Artifact Registry Docker repo `oa-cloud`.
+- private VPC `oa-cloud-<env>`.
+- regional subnet `oa-cloud-<env>-<region>`.
+- IAP-only SSH firewall rule.
+- service account `oa-node-<env>`.
+- state, artifact, receipt, and log buckets.
+- placeholder Secret Manager secret for scoped secret-access smoke tests.
 - IAM for artifact reads, storage object admin on the test buckets, log
   writing, metric writing, and placeholder secret access.
 
@@ -92,10 +92,10 @@ project APIs.
 
 The bootstrap path creates infrastructure only. It does not:
 
-- bake provider secrets into images;
-- grant wallet authority to workrooms;
-- expose workrooms publicly;
-- configure private fleet topology beyond a single test network;
+- bake provider secrets into images.
+- grant wallet authority to workrooms.
+- expose workrooms publicly.
+- configure private fleet topology beyond a single test network.
 - claim production readiness.
 
 The next issue, CND-034, installs `oa-node` onto a single test GCE VM using

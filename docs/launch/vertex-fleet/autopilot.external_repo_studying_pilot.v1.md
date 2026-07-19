@@ -28,7 +28,7 @@ ever uploading, storing, fetching, unpacking, or studying a single byte.
   - Preflight gates: declared size within cap, file count within cap, clean-scan
     attestation present, privacy-review present, uploader terms accepted.
   - **Inert by construction**: `intakeAdmitted`, `ingested`, and `effectsApplied`
-    are ALWAYS false; `customerPublicClaimAllowed` / `marketplacePackageAllowed`
+    are ALWAYS false. `customerPublicClaimAllowed` / `marketplacePackageAllowed`
     / `payoutEligible` are ALWAYS false. The flag-gated seam
     (`EXTERNAL_REPO_STUDY_SELF_SERVE_UPLOAD_ENABLED`, default OFF) computes
     `wouldIngestWhenArmed` (armed + owner sign-off + preflight passed) but never
@@ -45,18 +45,18 @@ This preflight is the *decision/control* layer only. The self-serve upload
 blocker stays listed because it still requires, all owner/product-gated and out
 of scope here:
 
-- real durable, access-controlled upload storage + signed-URL intake;
+- real durable, access-controlled upload storage + signed-URL intake.
 - real malware/secret-scan execution (this module only checks an attestation
-  *ref* exists, it does not run the scan);
+  *ref* exists, it does not run the scan).
 - a real customer-data privacy review backing the `privacyReviewRef`
   (overlaps with `external_repo_studying_privacy_policy_missing`, also unaddressed
-  here);
+  here).
 - an ARMED ingestion against a real customer upload with a dereferenceable
   closeout receipt and owner sign-off per `proof.claim_upgrade_receipts.v1`.
 
 The remaining blockers (`privacy_policy_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -64,7 +64,7 @@ and owner-signed.
 ## Update (2026-06-20): privacy-review preflight
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains" below; blocker NOT dropped).
+(partially — see "What remains" below, blocker NOT dropped).
 
 This adds the smallest genuine missing piece of the privacy-policy control
 surface: a **refs-only, inert-by-construction customer-data privacy-review
@@ -90,11 +90,11 @@ and processes no customer data.
     authorization present, retention window within cap
     (`PRIVACY_REVIEW_MAX_RETENTION_DAYS = 365`), declared PII categories within
     the allowed closed set.
-  - Derives `privacyReviewRef` ONLY when the review would clear; a blocked review
+  - Derives `privacyReviewRef` ONLY when the review would clear. A blocked review
     derives `null`, so it cannot satisfy the upload preflight's privacy-review
     presence check.
   - **Inert by construction**: `reviewCleared` and `effectsApplied` are ALWAYS
-    false; `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
+    false. `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
     `payoutEligible` are ALWAYS false. The flag-gated seam
     (`EXTERNAL_REPO_STUDY_PRIVACY_REVIEW_ENABLED`, default OFF) computes
     `wouldClearWhenArmed` (armed + reviewer sign-off + preflight passed) but never
@@ -112,16 +112,16 @@ stays listed because it still requires, all owner/product-gated and out of scope
 here:
 
 - a real, human/legal customer-data privacy review (not just a ref presence
-  check) backing an ARMED clearance;
-- a published customer-facing privacy policy / DPA for external-repo studying;
+  check) backing an ARMED clearance.
+- a published customer-facing privacy policy / DPA for external-repo studying.
 - real durable, access-controlled storage and retention enforcement that honours
-  the declared retention window;
+  the declared retention window.
 - an armed clearance against a real customer study with a dereferenceable
   closeout receipt and owner sign-off per `proof.claim_upgrade_receipts.v1`.
 
 The remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -129,7 +129,7 @@ and owner-signed.
 ## Update (2026-06-20): policy registry ↔ on-disk document digest binding
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 The published policy registry already pinned the *structured* terms with a
 `termsDigest`, but the actual human-readable legal text a customer reads
@@ -155,24 +155,24 @@ point at a stale/forged document. This change closes that document-drift seam.
     text or an unknown/empty ref does not verify.
   - **Inert by construction** is preserved: `effectsApplied` /
     `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
-    remain ALWAYS false; this only pins/verifies published text.
+    remain ALWAYS false. This only pins/verifies published text.
 - `packages/probe/packages/runtime/tests/external-repo-studying-privacy-policy-registry.test.ts`
   — 2 new tests (now 7 total): one reads the on-disk legal document, recomputes
   the digest, and asserts it equals the pinned constant (a CI guard against
-  doc↔registry drift); one verifies exact text passes while tampered text and
+  doc↔registry drift). One verifies exact text passes while tampered text and
   unknown/empty refs fail.
 
 ### What genuinely remains (blocker NOT dropped)
 
 Pinning the document content does not by itself clear `privacy_policy_missing`.
 Still required, all owner/legal-gated and out of scope here: legal/owner
-ratification of the policy text; a real human/legal review against a real
-customer study (not a ref/digest check); durable, access-controlled storage that
-enforces the declared retention window; and an owner-signed armed clearance with
+ratification of the policy text. A real human/legal review against a real
+customer study (not a ref/digest check). Durable, access-controlled storage that
+enforces the declared retention window. And an owner-signed armed clearance with
 a dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`. The
 remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -180,7 +180,7 @@ and owner-signed.
 ## Update (2026-06-20): upload ↔ privacy-review binding
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 This closes the seam between the two existing sibling preflights. Before this
 change the self-serve upload preflight's privacy-review gate was only a STRING
@@ -205,7 +205,7 @@ would clear, but nothing forced the upload to consume THAT ref.
     `…self_serve_upload.privacy_review_missing` instead of trusting a string.
   - **Inert by construction**: `intakeAdmitted`, `ingested`, `effectsApplied`
     are ALWAYS false (asserted on both the binding and the nested upload
-    preflight); `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
+    preflight). `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
     `payoutEligible` are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`.
     Refuses `OpenAgentsInc/openagents` as a target.
 - `packages/probe/packages/runtime/tests/external-repo-studying-upload-privacy-binding.test.ts`
@@ -219,10 +219,10 @@ would clear, but nothing forced the upload to consume THAT ref.
 The binding is still the *decision/control* layer only. The self-serve upload
 blocker stays listed because it still requires, all owner/product-gated and out
 of scope here: real durable, access-controlled upload storage + signed-URL
-intake; real malware/secret-scan execution; a real customer-data privacy review
-backing an ARMED clearance; and an ARMED ingestion against a real customer upload
+intake. Real malware/secret-scan execution. A real customer-data privacy review
+backing an ARMED clearance. And an ARMED ingestion against a real customer upload
 with a dereferenceable closeout receipt and owner sign-off per
-`proof.claim_upgrade_receipts.v1`. No promise state changed; any future green
+`proof.claim_upgrade_receipts.v1`. No promise state changed. Any future green
 flip remains receipt-first and owner-signed.
 
 ---
@@ -230,7 +230,7 @@ flip remains receipt-first and owner-signed.
 ## Update (2026-06-20): published privacy policy + registry
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 Until now the privacy-review and self-serve upload preflights checked only that a
 study's `dataProcessingAgreementRef` / `retentionPolicyRef` were *present* (any
@@ -250,7 +250,7 @@ and makes it a verifiable, content-hashed, canonical reference.
   - `buildOpenAgentsExternalRepoStudyPrivacyPolicyRegistry(...)`
   - Schema `openagents.external_repo_study_privacy_policy_registry.v0`, decoded
     through `validateProbeBenchmarkPublicProjection` + a deterministic
-    `registryHash`; each published version carries a `termsDigest` =
+    `registryHash`. Each published version carries a `termsDigest` =
     `sha256(stableJson(terms))`.
   - The published caps **mirror what the privacy-review preflight enforces** —
     it imports `PRIVACY_REVIEW_MAX_RETENTION_DAYS` and
@@ -271,14 +271,14 @@ and makes it a verifiable, content-hashed, canonical reference.
 
 Publishing the policy text and its canonical reference does not by itself clear
 `privacy_policy_missing`. Still required, all owner/legal-gated and out of scope
-here: legal/owner ratification of the policy text; a real human/legal review
-against a real customer study (not a ref/digest check); durable,
-access-controlled storage that enforces the declared retention window; and an
+here: legal/owner ratification of the policy text. A real human/legal review
+against a real customer study (not a ref/digest check). Durable,
+access-controlled storage that enforces the declared retention window. And an
 owner-signed armed clearance with a dereferenceable closeout receipt per
 `proof.claim_upgrade_receipts.v1`. The remaining blockers
 (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -286,7 +286,7 @@ and owner-signed.
 ## Update (2026-06-20): review ↔ published-policy binding
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 The published policy registry (previous update) introduced
 `isPublishedExternalRepoStudyPrivacyPolicyRef` to close the forgeable-string
@@ -314,7 +314,7 @@ closes that seam, exactly as the upload↔privacy binding did for the
     `retention_policy_missing` instead of trusting arbitrary strings. The matched
     version's `termsDigest` is recorded as evidence.
   - **Inert by construction**: `reviewCleared` / `effectsApplied` are ALWAYS
-    false (asserted on both the binding and the nested review preflight);
+    false (asserted on both the binding and the nested review preflight).
     `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
     are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`. Refuses
     `OpenAgentsInc/openagents` as a target.
@@ -328,14 +328,14 @@ closes that seam, exactly as the upload↔privacy binding did for the
 
 The binding is still the *decision/control* layer only. The privacy-policy
 blocker stays listed because it still requires, all owner/legal-gated and out of
-scope here: legal/owner ratification of the policy text; a real human/legal
-review against a real customer study (not a ref/digest check); durable,
-access-controlled storage that enforces the declared retention window; and an
+scope here: legal/owner ratification of the policy text. A real human/legal
+review against a real customer study (not a ref/digest check). Durable,
+access-controlled storage that enforces the declared retention window. And an
 owner-signed armed clearance with a dereferenceable closeout receipt per
 `proof.claim_upgrade_receipts.v1`. The remaining blockers
 (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -343,7 +343,7 @@ and owner-signed.
 ## Update (2026-06-20): scan-attestation ↔ upload binding
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 This closes the LAST forgeable-string seam in the self-serve upload preflight —
 the malware/secret clean-scan gate — and is the exact next step the previous
@@ -373,7 +373,7 @@ binds them, mirroring the existing upload↔privacy binding.
     string.
   - **Inert by construction**: `intakeAdmitted`, `ingested`, `effectsApplied`
     are ALWAYS false (asserted on both the binding and the nested upload
-    preflight); `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
+    preflight). `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
     `payoutEligible` are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`.
     Refuses `OpenAgentsInc/openagents` as a target.
 - `packages/probe/packages/runtime/tests/external-repo-studying-scan-upload-binding.test.ts`
@@ -389,13 +389,13 @@ scan) are now backed by verified, content-bound references rather than arbitrary
 strings. The binding is still the *decision/control* layer only. The self-serve
 upload blocker stays listed because it still requires, all owner/product-gated
 and out of scope here: real malware/secret-scan EXECUTION (the registry only
-mirrors a verdict); real durable, access-controlled upload storage + signed-URL
-intake; a real customer-data privacy review backing an ARMED clearance; and an
+mirrors a verdict). Real durable, access-controlled upload storage + signed-URL
+intake. A real customer-data privacy review backing an ARMED clearance. And an
 ARMED ingestion against a real customer upload with a dereferenceable closeout
 receipt and owner sign-off per `proof.claim_upgrade_receipts.v1`. The remaining
 blockers (`privacy_policy_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -403,7 +403,7 @@ and owner-signed.
 ## Update (2026-06-20): clean-scan attestation registry
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 The upload↔privacy binding (earlier update) closed the forgeable-string seam for
 the upload preflight's `privacyReviewRef`. The upload preflight's OTHER refs-only
@@ -420,7 +420,7 @@ that closes that seam, mirroring the privacy-policy registry.
   - Schema `openagents.external_repo_study_scan_attestation_registry.v0`, decoded
     through `validateProbeBenchmarkPublicProjection` + a deterministic
     `registryHash`. Records issued scan verdicts as refs/digests/enums/counts
-    only; each attestation is bound to a SPECIFIC `(customerRef, repo,
+    only. Each attestation is bound to a SPECIFIC `(customerRef, repo,
     uploadManifestDigest)` and pinned with a deterministic `attestationDigest`
     (`externalRepoStudyScanAttestationDigest`), from which `attestationRef` is
     derived — so a recorded verdict cannot drift from the manifest it covered.
@@ -456,7 +456,7 @@ dereferenceable closeout receipt and owner sign-off per
 `proof.claim_upgrade_receipts.v1`. The remaining blockers
 (`privacy_policy_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -464,7 +464,7 @@ and owner-signed.
 ## Update (2026-06-20): combined upload-intake binding (both gates at once)
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 The two earlier bindings each closed only ONE of the upload preflight's two
 refs-only gates: `upload<->privacy` derives the `privacyReviewRef` but still lets
@@ -488,12 +488,12 @@ adds that composition so the upload has NO forgeable ref input at all.
     privacy ref from a cleared, customer/repo-matched review AND the scan ref from
     a registry-verified clean attestation for the same customer + repo + manifest,
     then builds the upload preflight from both. `bound_held` requires BOTH gates
-    genuinely backed; each gate independently controls its own ref, so a failure
+    genuinely backed. Each gate independently controls its own ref, so a failure
     in one gate blocks only that gate's upload check (the validator asserts an
     unbacked gate derives no ref and never leaves the upload's gate satisfied).
   - **Inert by construction**: `intakeAdmitted`, `ingested`, `effectsApplied`
     are ALWAYS false (asserted on both the binding and the nested upload
-    preflight); `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
+    preflight). `customerPublicClaimAllowed` / `marketplacePackageAllowed` /
     `payoutEligible` are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`.
     Refuses `OpenAgentsInc/openagents` as a target.
 - `packages/probe/packages/runtime/tests/external-repo-studying-upload-intake-binding.test.ts`
@@ -509,14 +509,14 @@ single binding from verified, content-bound sources — no forgeable ref input
 remains on the self-serve upload path. The binding is still the *decision/control*
 layer only. The self-serve upload blocker stays listed because it still requires,
 all owner/product-gated and out of scope here: real malware/secret-scan EXECUTION
-(the registry only mirrors a verdict); a real customer-data privacy review backing
-an ARMED clearance; real durable, access-controlled upload storage + signed-URL
-intake; and an ARMED ingestion against a real customer upload with a
+(the registry only mirrors a verdict). A real customer-data privacy review backing
+an ARMED clearance. Real durable, access-controlled upload storage + signed-URL
+intake. And an ARMED ingestion against a real customer upload with a
 dereferenceable closeout receipt and owner sign-off per
 `proof.claim_upgrade_receipts.v1`. The remaining blockers
 (`privacy_policy_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -524,7 +524,7 @@ and owner-signed.
 ## Update (2026-06-20): data-subject request (DSR) preflight
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 Section 6 ("Data subject rights") of the published privacy policy
 (`docs/legal/external-repo-studying-privacy-policy.v0.md`) PROMISES that a
@@ -553,10 +553,10 @@ layer.
     `policyRef` must match a KNOWN published version — the same forgeable-string
     seam the review↔policy binding closed. Preflight gates: policy published,
     request ref present, subject ref present, customer authorization present,
-    request type supported. Derives an `acknowledgementRef` ONLY when admitted;
+    request type supported. Derives an `acknowledgementRef` ONLY when admitted.
     a blocked request derives `null`.
   - **Inert by construction**: `requestHonored`, `dataExported`, `dataErased`,
-    `authorizationWithdrawn`, and `effectsApplied` are ALWAYS false;
+    `authorizationWithdrawn`, and `effectsApplied` are ALWAYS false.
     `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
     are ALWAYS false. The flag-gated seam
     (`EXTERNAL_REPO_STUDY_DATA_SUBJECT_REQUEST_ENABLED`, default OFF) computes
@@ -575,12 +575,12 @@ layer.
 This preflight is the *intake/decision* layer only. The privacy-policy blocker
 stays listed because it still requires, all owner/legal-gated and out of scope
 here: a real human/legal DSR fulfilment process backed by durable,
-access-controlled storage that can actually export or erase derived artifacts;
-legal/owner ratification of the policy text; and an owner-signed armed run with a
+access-controlled storage that can actually export or erase derived artifacts.
+legal/owner ratification of the policy text. And an owner-signed armed run with a
 dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`. The
 remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -588,7 +588,7 @@ and owner-signed.
 ## Update (2026-06-20): customer-authorization registry (lawful-basis anchor)
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 Section 3 ("Lawful basis and authorization") of the published privacy policy
 (`docs/legal/external-repo-studying-privacy-policy.v0.md`) states OpenAgents
@@ -647,7 +647,7 @@ owner-signed armed clearance with a dereferenceable closeout receipt per
 `proof.claim_upgrade_receipts.v1` — all owner/legal-gated and out of scope here.
 The remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -655,7 +655,7 @@ and owner-signed.
 ## Update (2026-06-20): review ↔ customer-authorization binding
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 The customer-authorization registry (previous update) introduced
 `isActiveCustomerAuthorizationRef` to verify a ref matches a KNOWN, ACTIVE
@@ -685,7 +685,7 @@ privacy-review preflight, mirroring the review↔policy and scan↔upload bindin
     ref, so the review blocks on
     `…privacy_review.customer_authorization_missing` instead of trusting a string.
   - **Inert by construction**: `reviewCleared` and `effectsApplied` are ALWAYS
-    false (asserted on both the binding and the nested review preflight);
+    false (asserted on both the binding and the nested review preflight).
     `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
     are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`. Refuses
     `OpenAgentsInc/openagents` as a target.
@@ -702,13 +702,13 @@ retention policy, and lawful-basis authorization) are now backed by verified,
 content-bound references rather than arbitrary strings. The binding is still the
 *decision/control* layer only. The privacy-policy blocker stays listed because it
 still requires, all owner/legal-gated and out of scope here: legal/owner
-ratification of the policy text; a real human/legal review against a real customer
-study (not a ref check); durable, access-controlled storage that enforces the
-declared retention window and real revocation; and an owner-signed armed clearance
+ratification of the policy text. A real human/legal review against a real customer
+study (not a ref check). Durable, access-controlled storage that enforces the
+declared retention window and real revocation. And an owner-signed armed clearance
 with a dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`. The
 remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -716,12 +716,12 @@ and owner-signed.
 ## Update (2026-06-20): DSR ↔ customer-authorization binding
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 The customer-authorization registry update named the next step explicitly: a
 binding that DERIVES the privacy-review / upload / **DSR** preflights'
 `customerAuthorizationRef` from a registry-known ACTIVE authorization. The
-review↔authorization binding closed the seam for the privacy-review preflight;
+review↔authorization binding closed the seam for the privacy-review preflight.
 this change closes the LAST forgeable-string seam in the **data-subject-request
 (DSR) preflight**. Until now the DSR preflight's `customerAuthorizationPresent`
 gate was still a plain string-presence check
@@ -748,7 +748,7 @@ string passed, including a forged, stale, or WITHDRAWN ref.
     string.
   - **Inert by construction**: `requestHonored`, `dataExported`, `dataErased`,
     `authorizationWithdrawn`, and `effectsApplied` are ALWAYS false (asserted on
-    both the binding and the nested DSR preflight); `customerPublicClaimAllowed` /
+    both the binding and the nested DSR preflight). `customerPublicClaimAllowed` /
     `marketplacePackageAllowed` / `payoutEligible` are ALWAYS false.
     `sourceBoundary = "customer_refs_withheld"`. Refuses
     `OpenAgentsInc/openagents` as a target.
@@ -765,13 +765,13 @@ dedicated preflight (privacy-review and DSR) now derive `customerAuthorizationRe
 from a verified active authorization rather than an arbitrary string. The binding
 is still the *decision/control* layer only. The privacy-policy blocker stays
 listed because it still requires, all owner/legal-gated and out of scope here:
-legal/owner ratification of the policy text; a real human/legal DSR fulfilment
+legal/owner ratification of the policy text. A real human/legal DSR fulfilment
 process backed by durable, access-controlled storage that can actually export or
-erase derived artifacts; real revocation enforcement; and an owner-signed armed
+erase derived artifacts. Real revocation enforcement. And an owner-signed armed
 run with a dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`.
 The remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.
 
 ---
@@ -779,7 +779,7 @@ and owner-signed.
 ## Update (2026-06-20): combined review-intake binding (all three review gates at once)
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_privacy_policy_missing`**
-(partially — see "What remains"; blocker NOT dropped).
+(partially — see "What remains", blocker NOT dropped).
 
 The two earlier review bindings each closed only SOME of the privacy-review
 preflight's three refs-only gates: `review<->policy` derives the DPA + retention
@@ -808,11 +808,11 @@ input at all.
     a registry-verified ACTIVE authorization
     (`isActiveCustomerAuthorizationRef`) for the same customer + repo, then builds
     the review preflight from all three. `bound_held` requires BOTH sources
-    genuinely backed; each gate independently controls its own refs, so a failure
+    genuinely backed. Each gate independently controls its own refs, so a failure
     in one source blocks only that gate (the validator asserts an unbacked source
     derives no ref and never leaves the review's gate satisfied).
   - **Inert by construction**: `reviewCleared` and `effectsApplied` are ALWAYS
-    false (asserted on both the binding and the nested review preflight);
+    false (asserted on both the binding and the nested review preflight).
     `customerPublicClaimAllowed` / `marketplacePackageAllowed` / `payoutEligible`
     are ALWAYS false. `sourceBoundary = "customer_refs_withheld"`. Refuses
     `OpenAgentsInc/openagents` as a target.
@@ -830,11 +830,11 @@ derived in a single binding from verified, content-bound sources — no forgeabl
 ref input remains on the privacy-review path. The binding is still the
 *decision/control* layer only. The privacy-policy blocker stays listed because it
 still requires, all owner/legal-gated and out of scope here: legal/owner
-ratification of the policy text; a real human/legal review against a real customer
-study (not a ref check); durable, access-controlled storage that enforces the
-declared retention window and real revocation; and an owner-signed armed clearance
+ratification of the policy text. A real human/legal review against a real customer
+study (not a ref check). Durable, access-controlled storage that enforces the
+declared retention window and real revocation. And an owner-signed armed clearance
 with a dereferenceable closeout receipt per `proof.claim_upgrade_receipts.v1`. The
 remaining blockers (`self_serve_upload_missing`, `marketplace_metering_missing`,
 `pricing_package_policy_missing`, `payout_settlement_gates_missing`) are
-untouched. No promise state changed; any future green flip remains receipt-first
+untouched. No promise state changed. Any future green flip remains receipt-first
 and owner-signed.

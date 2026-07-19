@@ -2,12 +2,12 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
-Status: live provisioner landed; bounded end-to-end live smoke passed on
+Status: live provisioner landed. Bounded end-to-end live smoke passed on
 2026-06-14 with guaranteed teardown and zero leftover instances.
 
 This records the receipt-first evidence for flipping the Google GCE
@@ -88,7 +88,7 @@ ZERO oa-codex-sess firewall rules
 
 The control-plane GCE session emits `openagents.resource_usage_receipt.v1`
 (refs-and-limits only) via `finish_gce_lease`. In this smoke the lifecycle was
-exercised at the `gcloud` layer directly; the in-process Rust lease lifecycle
+exercised at the `gcloud` layer directly. The in-process Rust lease lifecycle
 (provision -> in_use -> resource_usage_receipt -> cleanup) is covered green by
 `cargo test -p oa-codex-control` (`gce_lane_provisions_runs_emits_receipt_and_cleans_up`)
 on the fake provisioner, which mints the same receipt/cleanup refs the live lane
@@ -101,7 +101,7 @@ figures and no raw GCP identifiers.
   first-boot VM within the smoke's retry budget. The provision + RUNNING health
   + guaranteed teardown legs are proven. Confirming the in-VM Codex/echo
   assignment over IAP (or via the startup-script + serial-console path) is a
-  bounded follow-up; it does not affect the lease/teardown guarantees.
+  bounded follow-up. It does not affect the lease/teardown guarantees.
 
 ## Reproduce (one command)
 

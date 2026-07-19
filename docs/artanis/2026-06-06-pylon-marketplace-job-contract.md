@@ -32,13 +32,13 @@ pricing, and payment rails continue maturing.
 
 The initial marketplace job kinds are:
 
-- artifact review;
-- inference;
-- GEPA/DSPy optimization;
-- LoRA fine-tuning;
-- training;
-- benchmark evaluation;
-- embedding/data preparation;
+- artifact review.
+- inference.
+- GEPA/DSPy optimization.
+- LoRA fine-tuning.
+- training.
+- benchmark evaluation.
+- embedding/data preparation.
 - validation.
 
 Each intake record carries requester refs, work kind, benchmark/model/data refs,
@@ -54,10 +54,10 @@ blocker refs.
 
 Assignment records separate proposal from paid work:
 
-- proposed and held-for-authority records can exist without provider assignment;
+- proposed and held-for-authority records can exist without provider assignment.
 - assigned/running/result-submitted/accepted records require provider
-  eligibility, assignment authority refs, and Pylon assignment receipt refs;
-- result-submitted records require artifact and result evidence refs;
+  eligibility, assignment authority refs, and Pylon assignment receipt refs.
+- result-submitted records require artifact and result evidence refs.
 - accepted records require acceptance criteria and accepted-work refs.
 
 The resource mode is linked to the Pylon resource-mode setup contract:
@@ -68,10 +68,10 @@ The resource mode is linked to the Pylon resource-mode setup contract:
 Accepted-work payout states are not based on Forum rewards or generic job
 creation. Once payout state reaches accepted work, the record must carry:
 
-- accepted-work refs;
-- Nexus receipt refs;
-- Pylon receipt refs;
-- Treasury receipt refs;
+- accepted-work refs.
+- Nexus receipt refs.
+- Pylon receipt refs.
+- Treasury receipt refs.
 - payout caveat refs.
 
 The contract grants no buyer-charge mutation, no paid-assignment dispatch, no
@@ -82,15 +82,15 @@ projections.
 
 Public and agent projections redact:
 
-- private requester refs;
-- private provider refs;
-- private evidence;
-- operator authority details;
-- buyer payment evidence;
-- raw model artifacts;
-- raw datasets;
-- runner logs;
-- wallet/payment material;
+- private requester refs.
+- private provider refs.
+- private evidence.
+- operator authority details.
+- buyer payment evidence.
+- raw model artifacts.
+- raw datasets.
+- runner logs.
+- wallet/payment material.
 - raw timestamps.
 
 Operator and private projections can show safe private refs, but the same raw
@@ -114,5 +114,5 @@ The tests prove:
 - Forum rewards and generic job-creation refs cannot be used as payout basis.
 - Raw private data, model artifacts, provider tokens, runner logs, wallet
   material, payment material, and raw timestamps are rejected.
-- Operator API writes require admin authority and `Idempotency-Key`; retries
+- Operator API writes require admin authority and `Idempotency-Key`. Retries
   replay the original result and conflicting bodies are rejected.

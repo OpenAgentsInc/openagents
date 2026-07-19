@@ -51,33 +51,33 @@ routes that did not exist), and Aiur's sync proxy.
 | QA Swarm (desktop) — `docs/qa/qa-swarm-khala-code-standing-engagement.md`, `scripts/qa-nightly-matrix.ts`, `apps/qa-runner/` | Real, substantial: nightly matrix, visual baselines, perf budgets, findings ledger, computer-use driver for desktop/web | No mobile backend, no khala-sync transport adapter. Desktop connects over surfaces where browser cookies mask the auth gap anyway |
 | QA Swarm (mobile) — `docs/khala-mobile/2026-07-05-qa-swarm-mobile-adaptation.md` | A design doc + the existing `bun test` suite. Its own table: seeded monkeys "none yet", perf probes "none yet", LLM explorers "this audit itself" | It is a plan, not a fleet. Nothing autonomous drives the app |
 | Mobile RN-mount harness — `tests/support/rn-test-environment.ts` | Real React state/render/effect for mounted production components under `bun test` | Documented limits: no native rendering, no gestures, no Skia/Reanimated — and crucially, no network. Component tests stub `globalThis.fetch` |
-| Maestro — `clients/khala-mobile/.maestro/flows/` | `LaunchFallback` and `LaunchGitHubSignInInteraction` genuinely ran on sim/emulator (dated receipts). Real launches, real taps | The ONE flow that reaches live sync (`SignedInThreadSmoke.yaml`) has NEVER run — blocked on a seeded public-safe GitHub test account that doesn't exist (`needs_seeded_public_safe_test_github_account`) |
+| Maestro — `clients/khala-mobile/.maestro/flows/` | `LaunchFallback` and `LaunchGitHubSignInInteraction` genuinely ran on sim/emulator (dated receipts). Real launches, real taps | The ONE flow that reaches live sync (`SignedInThreadSmoke.yaml`) has NEVER run — blocked on a seeded public-safe GitHub test account that does not exist (`needs_seeded_public_safe_test_github_account`) |
 | Server route tests — `khala-sync-connect-routes.test.ts` | Param validation, scope gate, hub forward — "All seams are injected — no network, no Durable Objects" (its own header) | The fake `authenticate` ignored which request it received, so the index.ts wiring bug (authenticating the RAW request instead of the normalized one) was structurally invisible |
 | Client engine tests — `packages/khala-sync-client/` | Session/overlay/store logic over FAKE transports, thoroughly | `transport.ts` — the file that talks to real servers — is imported by ZERO test files. Literally untested code |
-| Worker full-stack e2e — `khala-sync-access-revocation.e2e.test.ts` | Real local Postgres + real route handlers + real hub DO + real client store/session | Drives the revocation path via the DO directly; never crosses the `/api/sync/connect` route's auth with a cookie-less bearer |
+| Worker full-stack e2e — `khala-sync-access-revocation.e2e.test.ts` | Real local Postgres + real route handlers + real hub DO + real client store/session | Drives the revocation path via the DO directly. Never crosses the `/api/sync/connect` route's auth with a cookie-less bearer |
 | Predeploy smoke — `predeploy-parallel-dispatch-smoke.mjs` (in `deploy:safe`) | Real staging: registers an agent, dispatches parallel no-spend Codex assignments, checks dedup | Entirely about dispatch dedup. Zero sync/WS/bearer coverage — so `deploy:safe` green said nothing about this |
 | Behavior contracts — `packages/behavior-contracts` | Coverage checker proves an oracle FILE exists and references its contractId | No contract binds "a cookie-less bearer client completes a real connect upgrade and reaches live". The semantically-nearest contract (`khala_mobile.platform.launched_app_interaction_smoke.v1`) is `pending`, `unenforced`, `oracles: []` |
 
 The one-line synthesis: **every layer stopped exactly at the seam.** Server
-tests fake the client side; client tests fake the server side; the two
-device flows that ran stop at the sign-in screen; the one flow that would
-cross the seam has never executed; the deploy gate smokes an unrelated
+tests fake the client side. Client tests fake the server side. The two
+device flows that ran stop at the sign-in screen. The one flow that would
+cross the seam has never executed. The deploy gate smokes an unrelated
 subsystem.
 
 ## 3. Why the agent found it in minutes once it looked in the right place
 
 The eventual diagnosis loop was: (1) drive the real client transport against
-production for a public scope — works; (2) same for an authenticated user
-scope — WS fails while HTTP succeeds; (3) curl the raw upgrade to capture
-the 401 body; (4) read the route's auth wiring. Total new code: ~40 lines.
+production for a public scope — works. (2) Same for an authenticated user
+scope — WS fails while HTTP succeeds. (3) Curl the raw upgrade to capture
+the 401 body. (4) Read the route's auth wiring. Total new code: ~40 lines.
 Nothing about this required a device, a simulator, credentials the repo
-didn't already have (an agent bearer), or any new infrastructure. **The
-capability gap is not tooling — it's that this loop wasn't encoded anywhere
+did not already have (an agent bearer), or any new infrastructure. **The
+capability gap is not tooling — it is that this loop was not encoded anywhere
 an agent (or CI) runs by default.** The scratch script that found the bug
 (`packages/khala-sync-client/scratch/khala-repro-user.ts`) is exactly the
 artifact that should have existed as a standing test.
 
-## 4. Recommendations (ordered; each names its concrete first artifact)
+## 4. Recommendations (ordered, each names its concrete first artifact)
 
 ### R1 — Promote the incident repro into a standing live-seam smoke (highest leverage, smallest lift)
 
@@ -93,7 +93,7 @@ reaches `live`. Two run modes:
   (the parallel-dispatch smoke already self-registers agents — reuse that
   exact mechanism). Fails the gate → production never gets the regression.
 - **Local full-stack mode**: the access-revocation e2e already assembles
-  real Postgres + real route handlers + real hub DO; extend that harness to
+  real Postgres + real route handlers + real hub DO. Extend that harness to
   mount the REAL `/api/sync/connect` route (with the real index.ts wiring
   extracted into a testable route-table entry) and connect the REAL client
   transport to it.
@@ -113,7 +113,7 @@ existing doc-coverage/architecture checks) that fails when a `src/` file in
 
 ### R3 — Wiring-level route tests, not just handler-level
 
-The post-fix connect tests still inject a fake `authenticate`; the real
+The post-fix connect tests still inject a fake `authenticate`. The real
 `index.ts` closure remains uncovered. Extract per-route wiring (the object
 literal currently inline in `index.ts`) into importable factories so a test
 can assert: "the connect route's `authenticate` resolves an actor from a
@@ -133,7 +133,7 @@ build pointing at staging, promote
 `pending/oracles: []` to enforced with the Maestro receipt as its oracle,
 and add the run to the (currently desktop-only) nightly matrix as the first
 mobile row. This is the layer that catches whatever R1–R3 structurally
-can't: symptoms only visible through the real app (today's watchdog
+cannot: symptoms only visible through the real app (today's watchdog
 flip-back flash would have shown up here as "error text appears then
 disappears").
 
@@ -152,7 +152,7 @@ server each "worked").
 
 ### R6 — Teach the QA swarm the diagnosis loop itself (agent-facing)
 
-The desktop QA swarm's findings-ledger pattern is right; what mobile needs
+The desktop QA swarm's findings-ledger pattern is right. What mobile needs
 is the swarm's *explorer* role pointed at seams, not screens. Add to
 `apps/qa-runner` a `khala-sync-transport` backend: a headless target that
 (like the incident script) drives real transports with real/seeded bearers
@@ -167,7 +167,7 @@ Independent of tests: the session's `driveScope` retries connect failures
 forever with no cap and no telemetry. Two changes: (a) treat a 401 on
 connect like the existing 403 handling — park the scope as `denied` instead
 of retrying an unauthenticatable connect forever (a 401 loop is never going
-to self-heal); (b) emit a client-side counter/log ref after N consecutive
+to self-heal). (B) emit a client-side counter/log ref after N consecutive
 connect failures, surfaced through the existing Worker observability, so a
 fleet-wide connect-failure spike pages within minutes of a bad deploy. Had
 (a) existed, build 10 would have shown a crisp "access denied" instead of
@@ -188,22 +188,22 @@ first user report.
 
 ## 6. What this does NOT claim
 
-- None of this replaces device-level testing; R1–R3 are deliberately
+- None of this replaces device-level testing. R1–R3 are deliberately
   cheaper layers that catch the *contract* class, while R4 remains the only
   layer that sees real-device-only failures.
 - The behavior-contract coverage checker still only proves oracle files
-  exist and reference their contract; R5 narrows but does not eliminate the
+  exist and reference their contract. R5 narrows but does not eliminate the
   gap between "an oracle exists" and "the oracle proves the statement."
 - Staging-gated smokes depend on staging remaining representative
   (same wiring, same auth stack). The staging Worker currently shares the
-  route code but has separate secrets/bindings; drift there would silently
+  route code but has separate secrets/bindings. Drift there would silently
   weaken R1's gate.
 
 ## 7. AssuranceSpec disposition (2026-07-13)
 
-The proposed AssuranceSpec companion turns R5 into a typed seam declaration;
+The proposed AssuranceSpec companion turns R5 into a typed seam declaration.
 mock-only component tests cannot satisfy it. The canonical seam fields and
 authority boundary are in
 [`../assurance/CURRENT_SYSTEM_MAP.md`](../assurance/CURRENT_SYSTEM_MAP.md).
 R1–R7 retain their recorded implementation state, and no current QA Runner path
-is claimed to consume an Assurance Spec.
+is claimed to consume an AssuranceSpec.

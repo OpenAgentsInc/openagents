@@ -100,9 +100,9 @@ false unless separate gate refs are supplied by the owning systems.
 ## Test Coverage
 
 `packages/runtime/tests/benchmark-contracts.test.ts` covers valid assignment,
-run, decision-trace, candidate, and promotion-decision schema refs; invalid
-closeouts missing artifact or proof refs; unsafe projection rejection and
-scrubbing; failed and timed-out retained closeouts; and separate retained,
+run, decision-trace, candidate, and promotion-decision schema refs. Invalid
+closeouts missing artifact or proof refs. Unsafe projection rejection and
+scrubbing. Failed and timed-out retained closeouts. And separate retained,
 validation, holdout, and live evidence representations.
 
 `packages/runtime/src/benchmark/closeout-writer.ts` builds and writes the first

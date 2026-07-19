@@ -27,13 +27,13 @@ This run adds that missing connective tissue:
   `apps/openagents.com/workers/api/src/agentic-labor-product.ts` — a **pure,
   forward-only, single-stage** transition:
   - `{ kind: 'dispatch', workerRef }` requires an `ordered` flow + non-empty
-    worker, yields a `dispatched` plan;
+    worker, yields a `dispatched` plan.
   - `{ kind: 'deliver', artifactRef }` requires a `dispatched` flow + non-empty
     artifact, yields a `delivered` plan (the only stage the seam settles).
   - The order's identity (orderId, listing, buyerRef, createdAt, and the
     public-safe would-be settlement receipt ref) is carried unchanged.
   - Rebuilt through the same `buildLaborProductFlowPlan` validator, so every
-    lifecycle-coherence guarantee holds; the result stays `inert: true` /
+    lifecycle-coherence guarantee holds. The result stays `inert: true` /
     `promiseState: 'yellow'`.
 
 With this, the full in-memory carry-through exists and is tested:
@@ -74,7 +74,7 @@ needs a **real** sale, not a typed carry-through:
    stream.
 3. **Owner sign-off** on the upgrade.
 
-This run made the carry-through *expressible and tested*; it did not produce a
+This run made the carry-through *expressible and tested*. It did not produce a
 real settled sale, so the blocker stays listed.
 
 ## Follow-up run (2026-06-20): settled-receipt recording
@@ -129,7 +129,7 @@ This run adds the connective entry point and the missing proof:
   `apps/openagents.com/workers/api/src/agentic-labor-product.ts` — a **composed**
   effectful function carrying ONE sale `order -> dispatch -> deliver -> settle ->
   recorded receipt` in a single call. The PURE steps are composed exactly as the
-  unit functions define them (every coherence + receipt-matching guard holds);
+  unit functions define them (every coherence + receipt-matching guard holds).
   the only side effect is the FLAG-GATED, owner-gated `settleLaborProductOrder`.
   Honest result union: `recorded` (money moved + dereferenceable receipt),
   `rejected` (a pure step failed, with the failing stage), `disabled` (flag off —
@@ -176,7 +176,7 @@ This run adds the read seam:
 - `GET /api/public/autopilot/labor-products?receiptRef=<ref>` in
   `agentic-labor-product-routes.ts` dereferences a published receipt. The store
   is **empty in production** (no real receipt has been published), so the route
-  returns `receipt: null` and stays INERT; it is only non-empty when a real
+  returns `receipt: null` and stays INERT. It is only non-empty when a real
   settled receipt is deliberately published into the injected store.
 
 Tests: new `settlement-receipt dereference (read-only, INERT)` block in
@@ -184,8 +184,8 @@ Tests: new `settlement-receipt dereference (read-only, INERT)` block in
 route cases in `agentic-labor-product-routes.test.ts` (armed dereference, unknown
 ref -> null, disabled -> INERT null).
 
-Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**;
-`bun run check:deploy` **passed**; `git diff --check` clean.
+Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**.
+`bun run check:deploy` **passed**. `git diff --check` clean.
 
 Still does **not** clear the blocker: this makes a published receipt
 *resolvable*, but the production store is empty and no REAL external sale
@@ -211,10 +211,10 @@ This run adds that label + the enforcing projection (new file
 - `classifyLaborProductSaleDemand(receipt, signals)` — a **pure, conservative**
   classifier yielding `external | internal | unlabeled`:
   - self-dealt (buyer or debited account == seller) -> `internal` (you cannot buy
-    from yourself and call it market demand), even with an external ref;
-  - a known internal/operator actor (`internalActorRefs`) -> `internal`;
+    from yourself and call it market demand), even with an external ref.
+  - a known internal/operator actor (`internalActorRefs`) -> `internal`.
   - `external` ONLY on **positive** third-party evidence (a non-empty
-    `externalDemandRef`) AND a clean counterparty;
+    `externalDemandRef`) AND a clean counterparty.
   - otherwise `unlabeled` (NOT external).
   It can only **withhold** an external demand claim, never manufacture one.
 - `projectLaborProductDemandProvenance(entries)` — a public-safe projection that
@@ -227,8 +227,8 @@ Tests: `agentic-labor-product-demand.test.ts` (8 cases) covering the external
 gate, both self-dealt forms, known-internal-actor, unlabeled default, blank-ref
 rejection, and the empty + mixed projection split.
 
-Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**;
-`bun run check:deploy` **passed**; `git diff --check` clean.
+Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**.
+`bun run check:deploy` **passed**. `git diff --check` clean.
 
 Still does **not** clear the blocker: this makes a settlement's demand
 provenance *labelable and enforceable*, but no REAL external (third-party
@@ -252,14 +252,14 @@ This run adds the conservative gate (new file
 `apps/openagents.com/workers/api/src/agentic-labor-product-claim-upgrade.ts`):
 
 - `assessLaborProductRealSaleClaim(input, options?)` — a **pure** verdict over
-  four independently-reported gates: a genuine settled receipt; the demand
+  four independently-reported gates: a genuine settled receipt. The demand
   attestation demonstrably belongs to THAT receipt (orderId **and** receiptRef
-  match); that matched attestation classifies the demand `external`; and an owner
+  match). That matched attestation classifies the demand `external`. And an owner
   sign-off ref is present. `realSaleSubstantiated` is true **only** when all four
   pass. It can only **withhold** a claim, never manufacture one, and **never**
   flips a promise — every output carries `promiseState: 'yellow'`.
 - `projectLaborProductRealSaleClaims(inputs)` — a public-safe `live_at_read`
-  projection; `realSaleClaimSubstantiated` is true only when at least one
+  projection. `realSaleClaimSubstantiated` is true only when at least one
   settlement clears every gate. Empty in production (no real external settled
   receipt published) -> nothing substantiated, blocker surfaced.
 
@@ -268,8 +268,8 @@ happy path (and that it stays yellow), withhold-on-missing-owner-sign-off,
 whitespace-only sign-off, self-dealt non-external demand, the cross-receipt
 attestation-mismatch hole, and the empty + mixed projection split.
 
-Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**;
-`bun run check:deploy` **passed**; `git diff --check` clean.
+Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**.
+`bun run check:deploy` **passed**. `git diff --check` clean.
 
 Still does **not** clear the blocker: this assembles and cross-validates the
 *evidence* a claim-upgrade review weighs, but no REAL external settled receipt
@@ -307,8 +307,8 @@ nothing substantiated even with a populated store), armed-but-empty (nothing
 substantiated), and a deliberately-published full evidence bundle (the verdict
 CAN report `realSaleClaimSubstantiated: true` while STILL staying yellow).
 
-Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**;
-`bun run check:deploy` **passed**; `git diff --check` clean.
+Validation: `bunx tsc -p tsconfig.json --noEmit` (workers/api) **0 errors**.
+`bun run check:deploy` **passed**. `git diff --check` clean.
 
 Still does **not** clear the blocker: this makes the reviewer's verdict
 *reachable and queryable*, but the production claim store is empty — no REAL

@@ -19,9 +19,9 @@ probe-worker.json
 The attachment uses `openagents.probe_worker_attachment.v1` and is valid only
 when:
 
-- it names one workroom and one workspace root;
-- it lists allowed capabilities explicitly;
-- `raw_secret_access=false`;
+- it names one workroom and one workspace root.
+- it lists allowed capabilities explicitly.
+- `raw_secret_access=false`.
 - secret references are broker references, not raw token values.
 
 ## Closeout

@@ -25,7 +25,7 @@ actions that can be run in one sitting:
 
 The first blocker is shared with `payments.money_dev_kit.v1`. Clearing it
 requires live provider callback evidence at
-`POST /api/forum/paid-actions/mdk/webhooks`; local tests are not enough.
+`POST /api/forum/paid-actions/mdk/webhooks`. Local tests are not enough.
 
 ## Safety Boundaries
 
@@ -115,9 +115,9 @@ curl -fsS "https://openagents.com/api/forum/direct-tips/${ATTEMPT_ID}?cb=4653-we
 
 Operator evidence must show:
 
-- original callback produced one receipt;
+- original callback produced one receipt.
 - duplicate callback replay, if available from the MDK dashboard or provider
-  replay control, returns an idempotent response and does not duplicate totals;
+  replay control, returns an idempotent response and does not duplicate totals.
 - repeating the payer submission with the same idempotency key converges to the
   same attempt/receipt instead of creating a second settled tip.
 
@@ -131,16 +131,16 @@ receipt, depending on what the provider/operator surface supports.
 
 Evidence can be either:
 
-- a provider refund event mapped to the direct-tip attempt; or
+- a provider refund event mapped to the direct-tip attempt. Or
 - an operator-approved reversal event with a public-safe reversal ref.
 
 Required public-safe fields:
 
-- `attemptId`;
-- original `receiptRef`;
-- `paymentState: refunded` or `paymentState: reversed`;
-- `settlementState: refunded` or `settlementState: reversed`;
-- `redactedEvidenceRef`;
+- `attemptId`.
+- original `receiptRef`.
+- `paymentState: refunded` or `paymentState: reversed`.
+- `settlementState: refunded` or `settlementState: reversed`.
+- `redactedEvidenceRef`.
 - route/status URL used to verify the public projection.
 
 After the refund/reversal:
@@ -163,7 +163,7 @@ Ordinary Forum tips now use direct BOLT12 payments rather than hosted checkout.
 The existing `/checkout/{id}` page still needs a maintainer decision:
 
 - clear this blocker from `forum.content_tipping.v1` as not applicable to
-  direct Forum tips; or
+  direct Forum tips. Or
 - move/rename it to a hosted-checkout-specific MDK promise blocker.
 
 Before that transition, collect a browser pass for a hosted checkout page:
@@ -174,9 +174,9 @@ curl -fsSI 'https://openagents.com/checkout/<checkout-id>?cb=4653-checkout-polis
 
 The screenshot/evidence note should verify:
 
-- QR is visible;
-- `lightning:` wallet link is visible;
-- paid/expired/unavailable states are human-readable;
+- QR is visible.
+- `lightning:` wallet link is visible.
+- paid/expired/unavailable states are human-readable.
 - no agent bearer token, raw invoice secret, payment hash, preimage, wallet
   path, or webhook secret appears in page HTML.
 
@@ -188,8 +188,8 @@ Run one non-MDK recipient-wallet direct tip if an approved recipient wallet
 class is available. The public projection must still use the same direct-tip
 attempt/status surfaces:
 
-- `POST /api/forum/posts/{postId}/direct-tips`;
-- `GET /api/forum/direct-tips/{attemptId}`;
+- `POST /api/forum/posts/{postId}/direct-tips`.
+- `GET /api/forum/direct-tips/{attemptId}`.
 - `GET /api/forum/tip-leaderboards`.
 
 If no approved non-MDK wallet class exists, the maintainer must either leave
@@ -208,10 +208,10 @@ POST /api/operator/product-promises/transitions
 
 The final issue comment should cite:
 
-- commit SHA containing this runbook;
-- exact smoke commands run, with secrets redacted;
-- route names;
-- attempt IDs and receipt refs;
-- registry version before and after;
-- transition receipt refs;
+- commit SHA containing this runbook.
+- exact smoke commands run, with secrets redacted.
+- route names.
+- attempt IDs and receipt refs.
+- registry version before and after.
+- transition receipt refs.
 - whether any first-attempt cold-channel timeout occurred.

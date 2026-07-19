@@ -12,7 +12,7 @@ Team: `team_openagents_core`
 
 Project: `project_adjutant`
 
-Visibility: team during generation; customer/public only after operator review.
+Visibility: team during generation. Customer/public only after operator review.
 
 ## Assignment
 
@@ -131,6 +131,6 @@ and clear controls that work without server state.
 
 OpenAgents prepared the first review version of your local counter dashboard.
 It includes multiple persisted counters with increment, decrement, reset, and
-smooth number-change behavior. This is early beta software; please reply to the
+smooth number-change behavior. This is early beta software. Please reply to the
 review email with anything broken, confusing, or wrong so the next revision can
 improve it.

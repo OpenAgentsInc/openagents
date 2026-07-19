@@ -73,7 +73,7 @@ paths:
 
 The default benchmark still includes an intentional 800ms cold-route delay, so
 its cold `clickToFullRenderMs` remains above the render budget by construction.
-Use the low-RPC run to isolate render work; use the default run to track
+Use the low-RPC run to isolate render work. Use the default run to track
 end-to-end route latency separately.
 
 ## Fixed Slice: Missing Q2.2 Sample Coverage
@@ -120,7 +120,7 @@ recorded these sample values in `var/qa-8022/q2-sample-coverage-after.json`:
 ]
 ```
 
-The app-server spawn-ready writer is covered by the RPC handler regression test;
+The app-server spawn-ready writer is covered by the RPC handler regression test.
 its value is hardware/process dependent, so the test asserts the sample shape
 and unit rather than a fixed duration.
 

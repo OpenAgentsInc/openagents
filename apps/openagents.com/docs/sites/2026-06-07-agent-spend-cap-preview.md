@@ -19,14 +19,14 @@ credit, or MDK state.
 
 The preview input describes:
 
-- the paid action and product refs;
-- the actor ref, audience, and authenticated-agent state;
+- the paid action and product refs.
+- the actor ref, audience, and authenticated-agent state.
 - the route ref and whether the route is public-previewable or owner-grant
-  only;
+  only.
 - the configured price, max-per-call cap, max-per-window cap, and current
-  window spend;
+  window spend.
 - the requested payment rail, supported rails, settlement mode, retry refs, and
-  idempotency guidance;
+  idempotency guidance.
 - the current unified payment decision from the shared payment policy surface.
 
 Prices use the same paid-endpoint price contract as the product catalog. For
@@ -57,17 +57,17 @@ The preview returns one of these public-safe statuses:
 
 The projection includes normalized next actions such as:
 
-- `pay_l402_mdk`;
-- `spend_internal_credits`;
-- `add_credits`;
-- `use_entitlement`;
-- `use_free_beta`;
-- `lower_spend_or_raise_cap`;
-- `provide_agent_token`;
-- `ask_owner_for_grant`;
-- `request_manual_review`;
-- `fix_catalog`;
-- `fix_currency`;
+- `pay_l402_mdk`.
+- `spend_internal_credits`.
+- `add_credits`.
+- `use_entitlement`.
+- `use_free_beta`.
+- `lower_spend_or_raise_cap`.
+- `provide_agent_token`.
+- `ask_owner_for_grant`.
+- `request_manual_review`.
+- `fix_catalog`.
+- `fix_currency`.
 - `stop`.
 
 These are guidance only. A preview response does not grant authority to take the
@@ -82,11 +82,11 @@ archives. The returned projection is checked again before it leaves the helper.
 
 The side-effect summary is always false for:
 
-- `callsMdk`;
-- `createsPaymentArtifact`;
-- `redeemsCredentials`;
-- `createsEntitlement`;
-- `debitsCredits`;
+- `callsMdk`.
+- `createsPaymentArtifact`.
+- `redeemsCredentials`.
+- `createsEntitlement`.
+- `debitsCredits`.
 - `mutatesPayout`.
 
 That invariant is the point of the contract: agents can inspect budget and

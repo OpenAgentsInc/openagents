@@ -44,8 +44,8 @@ them.
 
 Generated Site source should receive only:
 
-- public source refs;
-- public invite refs when needed; and
+- public source refs.
+- public invite refs when needed. And
 - OpenAgents product surface-owned capture URLs created in the capture/CTA issues.
 
 It should not receive token hashes, private invite tokens, wallet material,

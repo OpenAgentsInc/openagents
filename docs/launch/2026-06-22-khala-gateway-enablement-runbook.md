@@ -1,21 +1,21 @@
 # Khala Gateway Enablement — One-Shot Runbook
 
 > **STATUS 2026-06-22: STAGING ENABLED + SERVING LIVE.** Owner refreshed wrangler
-> to a Workers-write OAuth token; provider secrets (`FIREWORKS_API_KEY`,
+> to a Workers-write OAuth token. Provider secrets (`FIREWORKS_API_KEY`,
 > `VERTEX_SA_KEY`) set on `openagents-staging`, D1 migrated, Worker deployed
 > (`INFERENCE_GATEWAY_ENABLED="true"`, version `c3ce41bc…`). `GET /v1/models`
-> lists `khala-mini` + `khala-code`; a `gemini-3.5-flash` completion returns
+> lists `khala-mini` + `khala-code`. A `gemini-3.5-flash` completion returns
 > **HTTP 200** with real usage — the gateway genuinely serves. **Remaining:** a
 > paid `khala-code`/`khala-mini` completion `402`s on a fresh agent
 > (`insufficient_credits`) — it needs a **funded balance** (Bitcoin/Spark, the M3
 > step + the guinea-pig payout lever), not a gateway change. **Prod** is still on
-> a pre-#6018 build; redeploy with the same recipe (prod already has the provider
+> a pre-#6018 build. Redeploy with the same recipe (prod already has the provider
 > secrets + a valid agent token). The original NEEDS-OWNER write-creds blocker
 > below is **resolved**.
 
 *2026-06-22. The exact steps to take Khala from "merged but not live" to a real
 metered completion + receipt, and the first Bitcoin/Spark payout to the
-guinea-pig Pylon. Everything is staged and ready; the ONLY missing piece is a
+guinea-pig Pylon. Everything is staged and ready. The ONLY missing piece is a
 **write-scoped Cloudflare credential**.*
 
 ## State (verified 2026-06-22)
@@ -33,7 +33,7 @@ guinea-pig Pylon. Everything is staged and ready; the ONLY missing piece is a
     `54fac8b750a29fdda9f2fa0f0afaed90` — not authorized for Workers edit.
   - No CF Workers token found in GCP Secret Manager (`openagentsgemini`, 54 secrets).
 - Everything else is in hand: provider keys (`.secrets/fireworks.env` →
-  `FIREWORKS_API_KEY`; `.secrets/vertex-sa-inference.json` → `VERTEX_SA_KEY`), an
+  `FIREWORKS_API_KEY`. `.secrets/vertex-sa-inference.json` → `VERTEX_SA_KEY`), an
   agent token for the smoke (`.secrets/openagents-artanis-agent.env` →
   `OPENAGENTS_AGENT_TOKEN`), and the guinea-pig payout target
   (`.secrets/khala-test-payout.env`). `gcloud` is authed (project
@@ -48,7 +48,7 @@ guinea-pig Pylon. Everything is staged and ready; the ONLY missing piece is a
    `54fac8b75…`) into `/Users/christopherdavid/work/.secrets/cloudflare-openagents.env`.
 3. **OR** run §"Enable on staging" yourself (the commands below).
 
-## Enable on staging (safe target; own D1/R2, separate URL)
+## Enable on staging (safe target, own D1/R2, separate URL)
 
 All commands from a **clean worktree off `origin/main`** (deploy rule), with the
 deploy token + account id exported:
@@ -87,7 +87,7 @@ curl -sS -X POST "$BASE/v1/chat/completions" \
 
 Acceptance: the response carries the `openagents` block (`requested_model`,
 `served_model`, `worker`, `lane`, `verification`, `cost_msat`, `settled`) and a
-real completion. `khala-code` serves on the Fireworks lane (key set above);
+real completion. `khala-code` serves on the Fireworks lane (key set above).
 `khala-mini` serves on the Vertex-Gemini lane (`VERTEX_SA_KEY`). That closes M0's
 live acceptance → comment + close #6008.
 
@@ -102,7 +102,7 @@ single-digit-sats range), register the guinea-pig Spark target
 
 ## Prod (after staging proves out)
 
-Same as staging without `--env staging` (prod is already provisioned, so it's a
+Same as staging without `--env staging` (prod is already provisioned, so it is a
 code update): set the secrets on the prod Worker, `wrangler d1 migrations apply
 openagents-autopilot --remote`, `bun run build:web`, `wrangler deploy --assets
 ../../apps/web/dist`. Prod redeploy touches the live product — do it from clean

@@ -35,14 +35,14 @@ read-only step: it returns intents and decisions, not side effects.
 
 The output includes:
 
-- canonical Artanis Forum watch intents;
-- decisions for each unique notification;
+- canonical Artanis Forum watch intents.
+- decisions for each unique notification.
 - reply-draft publication intents for public-safe questions in canonical
-  Artanis topics;
-- operator-question refs when a human/operator gate is needed;
+  Artanis topics.
+- operator-question refs when a human/operator gate is needed.
 - work-routing proposal refs for Pylon, Nexus, Model Lab, inference, training,
-  fine-tuning, benchmark, or assignment prompts;
-- moderation report intents for unsafe/private material; and
+  fine-tuning, benchmark, or assignment prompts.
+- moderation report intents for unsafe/private material. And
 - notification-read intents only after a decision receipt exists.
 
 ## Classification
@@ -87,12 +87,12 @@ decision.
 
 The listener projection has hard false authority for:
 
-- deployment;
-- direct Forum posting;
-- moderation;
-- payment spend;
-- provider mutation;
-- training launch; and
+- deployment.
+- direct Forum posting.
+- moderation.
+- payment spend.
+- provider mutation.
+- training launch. And
 - wallet spend.
 
 Those actions remain behind the separate delivery bridge, operator gates,
@@ -104,11 +104,11 @@ the production launch gate.
 Coverage proves:
 
 - a public-safe question in the Artanis status topic produces a reply
-  publication intent and a notification-read intent;
+  publication intent and a notification-read intent.
 - duplicate notifications collapse to one decision and stable reply-draft
-  idempotency keys;
-- unsafe/private material becomes a report intent and blocker, not a reply;
+  idempotency keys.
+- unsafe/private material becomes a report intent and blocker, not a reply.
 - operator questions and work-routing prompts are classified without
-  publishing;
-- already-read notifications do not create read intents; and
+  publishing.
+- already-read notifications do not create read intents. And
 - unsafe listener refs are rejected before public projection.

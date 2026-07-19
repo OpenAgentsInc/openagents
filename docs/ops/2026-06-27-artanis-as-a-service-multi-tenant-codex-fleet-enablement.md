@@ -5,7 +5,7 @@
 Codex and Claude Agent accounts and have a per-user Artanis orchestrate backlog burndown
 across their own fleet — across every Khala surface (CLI, desktop/mobile app,
 website, REST/OpenAI-compatible API).
-**Status:** Gap analysis / proposal. Nothing here ships state; it enumerates what
+**Status:** Gap analysis / proposal. Nothing here ships state. It enumerates what
 EXISTS today vs what is NEEDED, verified against the repo on 2026-06-27.
 
 ## Vision
@@ -19,7 +19,7 @@ refactor/debugging executor. "Artanis as a Service" is that loop, generalized to
 any signed-in Khala user: **bring your own Codex and Claude accounts, link your
 own Pylons, point a per-user Artanis at your own repos/issues, and let it route
 backlog burndown across your fleet.** The user pays OpenAI/Anthropic directly for
-their own capacity; OpenAgents monetizes the *orchestration* layer (the
+their own capacity. OpenAgents monetizes the *orchestration* layer (the
 supervisor + Artanis + the fleet dashboard), never the resale of provider
 capacity. Everything is strictly per-tenant isolated.
 
@@ -27,7 +27,7 @@ capacity. Everything is strictly per-tenant isolated.
 
 The owner flow runs at ~2.3M tokens/min across 6 Codex accounts, own-capacity /
 no-spend. Full operational detail is in the burn runbook
-[`2026-06-27-khala-codex-own-capacity-burn-runbook.md`](./2026-06-27-khala-codex-own-capacity-burn-runbook.md);
+[`2026-06-27-khala-codex-own-capacity-burn-runbook.md`](./2026-06-27-khala-codex-own-capacity-burn-runbook.md).
 the protocol/proof contract is the **"Khala -> Pylon -> Codex Coding Delegation
 Runbook"** in [`../../CLAUDE.md`](../../CLAUDE.md) and the invariant ledger
 `apps/openagents.com/INVARIANTS.md` ("Khala Coding Delegation Through Pylons").
@@ -45,25 +45,25 @@ Runbook"** in [`../../CLAUDE.md`](../../CLAUDE.md) and the invariant ledger
    auto-scaling to `min(SUP_MAX_SLOTS, ready × SUP_PER_ACCOUNT)`, self-throttling
    on 409/429, with an owner-session tripwire.
 4. Claude Agent requests use the same typed Khala request seam with
-   `--workflow claude_agent_task`; the dispatch gate requires
+   `--workflow claude_agent_task`. The dispatch gate requires
    `capability.pylon.local_claude_agent`, Claude capacity refs, and a
    `claude_agent` account hash when pinned.
-5. Artanis (the owner's operator agent) decides the task pool / division of labor;
+5. Artanis (the owner's operator agent) decides the task pool / division of labor.
    reachable at `POST /api/operator/artanis/chat`, currently OWNER-gated.
 
 ## At a glance — EXISTS vs NEEDED
 
 | # | Capability | EXISTS today (verified) | NEEDED for AaaS | Owning surface |
 |---|---|---|---|---|
-| 1 | Per-user identity & Pylon linking | Owner/caller-owned scope: token → OpenAuth account → linked Pylons; gate is "caller-owned pylon" | Generalize "caller-owned" to ANY signed-in user; remove owner-hardcoded admits | Worker API (`coding-workflow-delegation.ts`, `artanis-owner-authority.ts`, `index.ts:isOpenAgentsAdminEmail`) |
-| 2 | Connect-your-fleet UX | `pylon auth codex --account`, Claude `claude_agent` account registry support, `pylon accounts list/usage`; khala CLI reads pylon account homes | Productized list/add/remove/readiness across CLI + app + web for Codex and Claude Agent; on-device security copy | `apps/pylon` CLI, `clients/khala-cli`, web/app |
-| 3 | Per-account + per-tenant dispatch | Dispatch gate is caller-owned and service-aware for Codex/Claude; gate-fix #6354 and Claude lane #6388/#6391/#6421 pieces landed | Per-account gate keying for each service at scale; strict per-tenant isolation | Worker API (`inference/coding-workflow-delegation.ts`, `khala-pylon-admission.ts`) |
+| 1 | Per-user identity & Pylon linking | Owner/caller-owned scope: token → OpenAuth account → linked Pylons. Gate is "caller-owned pylon" | Generalize "caller-owned" to ANY signed-in user. Remove owner-hardcoded admits | Worker API (`coding-workflow-delegation.ts`, `artanis-owner-authority.ts`, `index.ts:isOpenAgentsAdminEmail`) |
+| 2 | Connect-your-fleet UX | `pylon auth codex --account`, Claude `claude_agent` account registry support, `pylon accounts list/usage`. Khala CLI reads pylon account homes | Productized list/add/remove/readiness across CLI + app + web for Codex and Claude Agent. On-device security copy | `apps/pylon` CLI, `clients/khala-cli`, web/app |
+| 3 | Per-account + per-tenant dispatch | Dispatch gate is caller-owned and service-aware for Codex/Claude. Gate-fix #6354 and Claude lane #6388/#6391/#6421 pieces landed | Per-account gate keying for each service at scale. Strict per-tenant isolation | Worker API (`inference/coding-workflow-delegation.ts`, `khala-pylon-admission.ts`) |
 | 4 | Turnkey supervisor/runner | Owner Codex shell scripts w/ hardcoded `SUP_PYLON_REF`/`SUP_REPO`/`SUP_ISSUES` defaults | First-class `khala fleet` command set (or managed runner): user's token, auto-resolved pylon ref, user's backlog, Codex/Claude division-of-labor policy | `clients/khala-cli` (+ optional managed runner) |
-| 5 | Per-user Artanis | Single owner-promoted identity; memory/awareness already keyed `owner:<userId>` | Per-tenant instance/scoping, per-user memory + awareness + approval gates + authority bounds | Worker API (`artanis-*.ts`) |
-| 6 | Khala surfaces | CLI `/artanis` owner channel; `POST /api/operator/artanis/chat`; mobile `KhalaArtanis.swift`; `/api/v1/chat/completions` | `khala fleet`, web fleet dashboard, per-user operator/fleet API generalizing the chat route | CLI + web/app + Worker API |
-| 7 | Metering & business model | `token_usage_events` exact rows keyed `actor_user_id`; own-capacity/no-spend | Per-tenant metering of orchestration; subscription/metered billing decision | Worker API + billing (owner-gated) |
-| 8 | Security & isolation | Isolated per-account homes; caller-owned scope; owner-session tripwire | Generalize tripwire per-user; enforce per-tenant scope on every read/dispatch/trace | All surfaces (hard invariants) |
-| 9 | Reliability gaps | Known + documented in burn runbook §5/§9; empty-reply fallback (#6359) | Design these in for tenants, not rediscover | CLI + Worker + ops |
+| 5 | Per-user Artanis | Single owner-promoted identity. Memory/awareness already keyed `owner:<userId>` | Per-tenant instance/scoping, per-user memory + awareness + approval gates + authority bounds | Worker API (`artanis-*.ts`) |
+| 6 | Khala surfaces | CLI `/artanis` owner channel. `POST /api/operator/artanis/chat`. Mobile `KhalaArtanis.swift`. `/api/v1/chat/completions` | `khala fleet`, web fleet dashboard, per-user operator/fleet API generalizing the chat route | CLI + web/app + Worker API |
+| 7 | Metering & business model | `token_usage_events` exact rows keyed `actor_user_id`. Own-capacity/no-spend | Per-tenant metering of orchestration. Subscription/metered billing decision | Worker API + billing (owner-gated) |
+| 8 | Security & isolation | Isolated per-account homes. Caller-owned scope. Owner-session tripwire | Generalize tripwire per-user. Enforce per-tenant scope on every read/dispatch/trace | All surfaces (hard invariants) |
+| 9 | Reliability gaps | Known + documented in burn runbook §5/§9. Empty-reply fallback (#6359) | Design these in for tenants, not rediscover | CLI + Worker + ops |
 | 10 | Phased rollout | — | Phase 1 CLI BYO → Phase 2 web + per-user Artanis → Phase 3 self-serve + billing | Product |
 | 11 | Open decisions | — | Pricing, tenant autonomy default, support burden, ToS/abuse, additional providers beyond Codex/Claude Agent | Owner |
 
@@ -91,12 +91,12 @@ The single-tenant hardcoding lives in two places:
   for `pylon_job_dispatch` (so the gated `dispatch_codex_task` tool executes for
   the owner without an armed approval-gate row).
 
-**NEEDED.** The own-capacity coding seam is *already* per-owner-scope safe; the
+**NEEDED.** The own-capacity coding seam is *already* per-owner-scope safe. The
 gap is the **admit set** and the **standing-approval grant**, which are
 owner-only. For AaaS:
 
 - Generalize "caller-owned pylon" admission so any authenticated user's token can
-  link and target THEIR pylons (the gate logic is reusable; the owner-email /
+  link and target THEIR pylons (the gate logic is reusable, the owner-email /
   owner-agent allowlist is what must not be the precondition for *self-service*
   dispatch).
 - Replace the single standing owner approval with a **per-tenant** default
@@ -119,14 +119,14 @@ owner-only. For AaaS:
   `pylon accounts usage --account <ref> --refresh --json`).
 - Claude Agent accounts are represented by the same account registry using
   `provider: "claude_agent"` and public-safe hashes shaped
-  `account.pylon.claude_agent.<hex>`; request dispatch and assignment execution
+  `account.pylon.claude_agent.<hex>`. Request dispatch and assignment execution
   select the Claude provider when the workflow is `claude_agent_task`.
 - The khala CLI (`clients/khala-cli`, package `@openagentsinc/khala`) already
   discovers pylon Codex account homes (`codex.ts:pylonCodexAccountHomes()`,
   reading `dev.accounts` from pylon config) and has `auth codex` / `codex`
   subcommands (`cli.ts`).
 - Credentials stay on the user's device: per-account auth.json under
-  `<pylon home>/accounts/<provider>/<ref>`; the Pylon is local. The
+  `<pylon home>/accounts/<provider>/<ref>`. The Pylon is local. The
   **NEVER `codex login` against `~/.codex`** invariant remains documented in
   CLAUDE.md and burn-runbook §9, and the same "device credentials stay local"
   boundary applies to Claude homes/tokens.
@@ -137,7 +137,7 @@ owner-only. For AaaS:
   `capability.pylon.local_claude_agent`), `add`, `remove`, and `status` —
   surfaced as a fleet view, not raw pylon plumbing.
 - A clear on-device security model in the UX copy: "your provider credentials never
-  leave your machine; OpenAgents orchestrates, your local Pylon executes."
+  leave your machine. OpenAgents orchestrates, your local Pylon executes."
 - Web/app parity: a connected-accounts panel that reflects the same local pylon
   inventory (web cannot hold device creds, so this reads the local pylon's
   public-safe account list, not the secrets).
@@ -165,7 +165,7 @@ caller-owned Pylons that advertise the requested service capability/capacity
    capacity.
 2. **Strict per-tenant isolation.** One tenant's accounts/pylons/assignments/
    traces must never be visible or usable by another. The caller-owned scope
-   (§1) gives the read/dispatch boundary; AaaS must additionally guarantee no
+   (§1) gives the read/dispatch boundary. AaaS must additionally guarantee no
    cross-tenant *capacity borrowing* — a tenant's advertised slots serve only
    that tenant's requests.
 
@@ -179,7 +179,7 @@ caller-owned Pylons that advertise the requested service capability/capacity
 
 - `SUP_PYLON_REF` defaults to the stale `pylon.33afd48282a649047e3a` (must be
   overridden to the live ref).
-- `SUP_REPO` defaults to `OpenAgentsInc/openagents`; `SUP_ISSUES` defaults to
+- `SUP_REPO` defaults to `OpenAgentsInc/openagents`. `SUP_ISSUES` defaults to
   OpenAgents' own backlog (`6310 6311 6320 6354 6355 6358`).
 - Requires `OPENAGENTS_AGENT_TOKEN` (FATAL if unset) — the owner-linked Artanis
   token.
@@ -197,7 +197,7 @@ OpenAgents'):
   behavior, but scoped to the tenant and writing to a tenant-visible notice, not
   the owner's `NEEDS_OWNER.md`.
 - Optionally a **managed runner** (OpenAgents-hosted control loop firing against
-  the tenant's local pylon) so users who don't want a long-lived local script
+  the tenant's local pylon) so users who do not want a long-lived local script
   still get 24/7 burndown.
 
 ## 5. Per-user Artanis
@@ -228,7 +228,7 @@ OpenAgents'):
 - Per-user memory + situational awareness over THEIR fleet/backlog (the readers
   passed to `buildArtanisSituationalAwareness` must be tenant-scoped).
 - Per-user approval gates + authority bounds: a tenant Artanis self-approves only
-  its own own-capacity no-spend dispatch; the never-waivable money-movement gates
+  its own own-capacity no-spend dispatch. The never-waivable money-movement gates
   stay gated for every tenant.
 - The operator chat surface per-user across CLI/app/web/API (§6).
 
@@ -244,7 +244,7 @@ OpenAgents'):
   `clients/khala-ios/Khala/Khala/Net/KhalaArtanis.swift` as an Artanis client seam.
 - **REST/OpenAI-compatible API**: EXISTS — `POST /api/v1/chat/completions`
   (OpenAI-compatible, model `openagents/khala`, Bearer key auth, daily-quota /
-  balance gate; see `index.ts:6876`, `config.ts`). NEEDED — a per-user
+  balance gate. See `index.ts:6876`, `config.ts`). NEEDED — a per-user
   operator/fleet API generalizing `/api/operator/artanis/chat` (today admin-gated)
   so tenants can drive fleet + Artanis programmatically with their own key.
 
@@ -274,19 +274,19 @@ Artanis + dashboard) — subscription and/or metered orchestration.
 These are non-negotiable for every tenant:
 
 - **Credentials stay on the user's device.** Codex auth.json and Claude account
-  tokens live only in the local pylon's per-account homes; the Worker never
+  tokens live only in the local pylon's per-account homes. The Worker never
   receives raw provider credentials.
 - **Never `codex login` / `pylon auth codex` against `~/.codex`** — it wipes a
   live session. Always isolated per-account homes (CLAUDE.md, burn-runbook §9).
 - **Strict per-tenant scope on every read, dispatch, and trace.** Built on the
-  caller-owned token scope (§1); extended so no tenant sees another's pylons,
+  caller-owned token scope (§1). Extended so no tenant sees another's pylons,
   accounts, assignments, `token_usage_events`, or owner-only `agent_traces`.
 - **No cross-tenant capacity borrowing** — advertised slots serve only their
   owner's requests.
 - **Owner-session tripwire generalized to per-user** — a broken local provider
-  session GLOBAL-PAUSEs that tenant's pool and notifies that tenant; it must
+  session GLOBAL-PAUSEs that tenant's pool and notifies that tenant. It must
   never run provider login flows and never affect other tenants.
-- Public-safe claims only; never-waivable money-movement gates stay gated for
+- Public-safe claims only. Never-waivable money-movement gates stay gated for
   every tenant.
 
 ## 9. Reliability gaps to design in (not rediscover)
@@ -295,19 +295,19 @@ From the burn runbook §5/§9 — bake these into the tenant runner/UX so users 
 hit them blind:
 
 - **`go-online` vs bare `presence heartbeat`** — older code's bare heartbeat
-  advertises `codex available=0`; the runner must use `go-online` or current-code
+  advertises `codex available=0`. The runner must use `go-online` or current-code
   heartbeat (post-#6354).
-- **Heartbeat-wedge** — `presence heartbeat` can hang and stall a loop; any
+- **Heartbeat-wedge** — `presence heartbeat` can hang and stall a loop. Any
   heartbeat loop must background + `timeout`.
 - **Stale `SUP_PYLON_REF` default** — auto-resolve the live ref at launch
-  (`provider go-online --json`); never trust the hardcoded default.
+  (`provider go-online --json`). Never trust the hardcoded default.
 - **Cloudflare urllib-UA edge block** — `Python-urllib/*` is hard-blocked at the
-  edge for `/api/v1/*` (looks like "fleet down"); the tenant SDK/client must set
+  edge for `/api/v1/*` (looks like "fleet down"). The tenant SDK/client must set
   a non-urllib User-Agent. (Full WAF carve-out is owner-gated.)
-- **Over-spawn 409-thrash** — right-size requesters to advertised concurrency;
+- **Over-spawn 409-thrash** — right-size requesters to advertised concurrency.
   the supervisor self-throttles via backoff, hand-rolled loops do not.
 - **GLM tool-calling broken / paid-fallback** — see
-  `docs/inference/2026-06-25-glm-fleet-max-throughput-stress-and-artanis-overseer.md`;
+  `docs/inference/2026-06-25-glm-fleet-max-throughput-stress-and-artanis-overseer.md`.
   Artanis's own reasoning/tool model choice must not silently fall back to a paid
   path for tenants.
 - **Empty-reply** — keep the `#6359` empty-reply fallback in every tenant Artanis.
@@ -316,35 +316,35 @@ hit them blind:
 
 **Phase 1 — CLI-only BYO Codex/Claude fleet for invited power users.**
 - Prereqs: §1 generalize caller-owned dispatch to non-owner authenticated users +
-  per-tenant default dispatch approval; §2 `khala fleet connect`; §4 `khala fleet
-  run` with auto-resolved pylon ref and tenant-supplied repo/issues; §8
-  per-tenant scope + per-user tripwire; §9 reliability defaults baked in.
+  per-tenant default dispatch approval. §2 `khala fleet connect`. §4 `khala fleet
+  run` with auto-resolved pylon ref and tenant-supplied repo/issues. §8
+  per-tenant scope + per-user tripwire. §9 Reliability defaults baked in.
 - Owner-reviewed: invite-gated, manual onboarding, owner watches the first
   tenants' burn/traces.
 
 **Phase 2 — Web fleet dashboard + per-user Artanis chat.**
 - Prereqs: §5 per-user Artanis admit (lift the admin-only `requireAdminSession`
-  gate on the chat route to authenticated-user-scoped); §6 web dashboard
-  (accounts, concurrency, burn, task pool, chat); per-user operator/fleet API.
+  gate on the chat route to authenticated-user-scoped). §6 Web dashboard
+  (accounts, concurrency, burn, task pool, chat). Per-user operator/fleet API.
 
 **Phase 3 — Full self-serve managed service + billing.**
-- Prereqs: §3 per-account gate proof for real fan-out; §4 optional managed
-  runner; §7 per-tenant orchestration meter + chosen billing model; §11 owner
+- Prereqs: §3 per-account gate proof for real fan-out. §4 Optional managed
+  runner. §7 Per-tenant orchestration meter + chosen billing model. §11 Owner
   decisions resolved (pricing, autonomy default, ToS/abuse).
 
 ## 11. Open decisions for the owner
 
-- **Pricing/billing model** — subscription vs metered orchestration vs hybrid;
+- **Pricing/billing model** — subscription vs metered orchestration vs hybrid.
   what unit (orchestrated tokens, fleet-hours, seats).
 - **Default tenant Artanis autonomy** — how much a tenant's Artanis decides/acts
-  before requiring tenant approval (the owner gets standing approval today; what's
+  before requiring tenant approval (the owner gets standing approval today, what's
   the tenant default?).
-- **Support burden of users' local Pylons** — managed runner vs pure self-host;
+- **Support burden of users' local Pylons** — managed runner vs pure self-host.
   how much we debug a tenant's local environment.
 - **ToS / abuse** — guard against someone connecting provider accounts purely to
-  farm tokens or violate provider terms; rate/oversight policy.
+  farm tokens or violate provider terms. Rate/oversight policy.
 - **Additional providers in scope?** — Codex and Claude Agent are the first two
-  local coding lanes; decide whether day-one AaaS includes any other adapters.
+  local coding lanes. Decide whether day-one AaaS includes any other adapters.
 
 ---
 
@@ -356,7 +356,7 @@ Verified against `origin/main` on 2026-06-27:
   `apps/openagents.com/workers/api/src/inference/coding-workflow-delegation.ts`
   (`hasAvailableCodexCapacity` ~line 299), admission refs in
   `inference/khala-pylon-admission.ts`.
-- Owner hardcoding: `index.ts:1790` `isOpenAgentsAdminEmail`;
+- Owner hardcoding: `index.ts:1790` `isOpenAgentsAdminEmail`.
   `artanis-owner-authority.ts` (owner agent ids + standing `pylon_job_dispatch`
   approval + never-waivable bounds).
 - Artanis chat route admit gate + owner-scoped memory/awareness:
@@ -364,7 +364,7 @@ Verified against `origin/main` on 2026-06-27:
   `buildArtanisSituationalAwareness`, `loadArtanisMemory`).
 - Per-user Artanis substrate already `ownerId`-keyed: `artanis-owner-memory.ts`
   (migration `0245`), `artanis-situational-awareness.ts`,
-  `artanis-approval-gates.ts`; empty-reply guard in `artanis-operator.ts`
+  `artanis-approval-gates.ts`. Empty-reply guard in `artanis-operator.ts`
   (`ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK`, ~line 878, #6359).
 - Supervisor single-tenant defaults: `apps/pylon/scripts/codex-supervisor/`
   (now committed) — `SUP_PYLON_REF=pylon.33afd48282a649047e3a`,

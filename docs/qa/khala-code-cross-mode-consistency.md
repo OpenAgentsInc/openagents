@@ -5,7 +5,7 @@ Status: ROADMAP_QA Q4.5 / issue #8031 implemented.
 The cross-mode corpus lives in
 `packages/khala-qa-harness/src/seed-corpus.ts` as
 `scenario.khala_code.seed.cross_mode_consistency.v1`. It is one fixture-tier
-scenario document with `modes: ["rpc", "dom"]`; the runner executes that same
+scenario document with `modes: ["rpc", "dom"]`. The runner executes that same
 document through Mode P and Mode D drivers, then evaluates the scenario's
 `consistency` oracles across both mode reports.
 

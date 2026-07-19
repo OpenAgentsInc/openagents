@@ -88,7 +88,7 @@ The harness is represented as a tuple over six editable dimensions:
 | D6. Output processing  | Post-call handling               | Extract an answer, validate a schema, choose a fallback |
 
 The decomposition follows the temporal flow of inference. Its purpose is not to
-claim that the dimensions are independent; the paper explicitly treats their
+claim that the dimensions are independent. The paper explicitly treats their
 interactions as important. The value is diagnostic: a failed run can be mapped
 to a primary and secondary dimension, and a candidate can make a legible change
 to a bounded control surface.
@@ -102,8 +102,8 @@ knowledge.
 
 Executing harness `W` on a case produces:
 
-- a prediction;
-- a model/tool trace containing intermediate outputs; and
+- a prediction.
+- a model/tool trace containing intermediate outputs. And
 - runtime diagnostics: model-call count, total tokens, and latency.
 
 The primary reward is the task metric comparing the prediction with the search
@@ -126,12 +126,12 @@ memory.
 
 For every case and search iteration, MemoHarness records:
 
-- case and iteration identifiers;
-- visible case features;
-- the applied harness;
-- the configuration delta from the harness most recently used on that case;
-- the full execution trajectory;
-- reward and token cost; and
+- case and iteration identifiers.
+- visible case features.
+- the applied harness.
+- the configuration delta from the harness most recently used on that case.
+- the full execution trajectory.
+- reward and token cost. And
 - a structured diagnosis.
 
 The diagnosis includes a success bit, one primary failure dimension (or none),
@@ -151,7 +151,7 @@ the entire bank.
 
 In the reference implementation, verifier results, exceptions, timeouts,
 missing artifacts, command failures, and traces are mapped heuristically to one
-of the six dimensions. The diagnosis is deliberately coarse; repeated evidence
+of the six dimensions. The diagnosis is deliberately coarse. Repeated evidence
 is expected to create more useful structure at the global-pattern layer.
 
 ## 5. Training-time harness search
@@ -163,11 +163,11 @@ is for every added behavior to be justified by observed execution evidence.
 
 At each outer iteration, the controller:
 
-1. constructs a query from the current harness and accumulated bank;
-2. retrieves a bounded evidence slice;
-3. proposes a new six-dimensional harness;
-4. executes it on every labeled search case;
-5. records rewards, costs, trajectories, and diagnoses; and
+1. constructs a query from the current harness and accumulated bank.
+2. retrieves a bounded evidence slice.
+3. proposes a new six-dimensional harness.
+4. executes it on every labeled search case.
+5. records rewards, costs, trajectories, and diagnoses. And
 6. periodically or opportunistically distills repeated failures into global
    patterns.
 
@@ -188,9 +188,9 @@ an 8,192-token maximum generation budget.
 At evaluation time, the experience bank is frozen and there is no iterative
 feedback loop. For a new case, MemoHarness retrieves:
 
-- the most instruction-similar successful historical cases;
-- the most instruction-similar failed historical cases;
-- feature-conditioned bank entries and statistics; and
+- the most instruction-similar successful historical cases.
+- the most instruction-similar failed historical cases.
+- feature-conditioned bank entries and statistics. And
 - the global patterns.
 
 Instruction similarity is defined as cosine similarity between instruction
@@ -223,7 +223,7 @@ validation-selected harness rather than the highest held-out checkpoint. It
 does not state the number of repeated runs in the paper.
 
 Terminal-Bench baselines are Terminus, OpenCode, Claude Code, and Codex. When a
-framework permits the generator to be swapped, the authors use GPT-5.3-Codex;
+framework permits the generator to be swapped, the authors use GPT-5.3-Codex.
 otherwise they use the closest released configuration. Consequently, some
 comparisons are closer to controlled harness comparisons and others are
 comparisons between full released systems.
@@ -340,8 +340,8 @@ output, it asks how often reward also increases. The all-transition positive
 baseline is about 13.2%.
 
 The strongest reported associations are `cat` (8 positive transitions among 11
-additions; +59.5 percentage-point lift), `sed` (4/11; +23.2 pp), `which` (5/15;
-+20.2 pp), and `test` (14/46; +17.3 pp). `pip`, `python3`, `strings`,
+additions. +59.5 Percentage-point lift), `sed` (4/11, +23.2 pp), `which` (5/15,
++20.2 pp), and `test` (14/46, +17.3 pp). `pip`, `python3`, `strings`,
 `pdftotext`, and `head` also have positive lift. `grep`, `echo`, and `curl` are
 below baseline, while several rare operations have zero positive examples.
 
@@ -371,7 +371,7 @@ MemoHarness's claimed novelty is the combination of structured harness search,
 reusable diagnostic experience, and feedback-free case-level adaptation at
 test time. Meta-Harness is the closest prior optimizer, but the paper excludes
 it from direct experiments because suitable public code was not available when
-the experiments were finalized; later reference code was not incorporated.
+the experiments were finalized. Later reference code was not incorporated.
 
 ## 11. Limitations and critical reading
 
@@ -439,7 +439,7 @@ The ideas worth carrying forward are:
   bounded.
 - Rank correctness before cost, while still recording exact token, cache, call,
   and latency evidence.
-- Keep test-time specialization label-free and policy-constrained; do not let
+- Keep test-time specialization label-free and policy-constrained. Do not let
   adaptation become an untracked online mutation path.
 
 Adoption should require stronger gates than this paper demonstrates: strict

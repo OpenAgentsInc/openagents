@@ -10,17 +10,17 @@ Registry: `2026-06-23.1` → `2026-06-23.2`
 Of the six DE-8 promises, this is the one with the most **build** leverage left
 on the proof/verification surface (not just a live-event flip):
 
-- `proof.claim_upgrade_receipts.v1` — already **green** (audit panel shipped; the
+- `proof.claim_upgrade_receipts.v1` — already **green** (audit panel shipped, the
   flip is recorded). Done.
 - `agents.x_claim_reward.v1` — blocker is a live operator BOLT12 payout dispatch.
-  Pure owner live-event; code already built.
+  Pure owner live-event. Code already built.
 - `identity.orange_check_forum_signal.v1` — Nostr export already built and
   published (event id recorded). Blocker is a live $5 production purchase. Pure
   owner live-event.
 - `agents.nostr_fallback_coordination.v1` — actively claimed by another agent
   (Lathe) on #5531. Avoided to prevent collision.
 - `artanis.pylon_support_responder.v1` — blockers need a live non-owner party +
-  a 10-tick cron streak. Owner/community-gated; its readiness surface
+  a 10-tick cron streak. Owner/community-gated. Its readiness surface
   (`/api/public/artanis/responder-support`) already exists.
 - **`artanis.labor_requester.v1`** — the receipt machinery is fully built
   (requester surface → tick driver → content-addressed receipt → tamper-evident
@@ -48,20 +48,20 @@ machinery (no fork):
     `blocker.product_promises.artanis_labor_live_enablement_missing`.
   - `unattendedRequestReceiptsProven` (≥10 placed, code-anchored target) → clears
     `blocker.product_promises.artanis_labor_unattended_request_receipts_missing`.
-  - `greenGateMet` (both) — the mechanical receipt-evidence predicate **only**;
+  - `greenGateMet` (both) — the mechanical receipt-evidence predicate **only**.
     it never includes the separate owner sign-off.
 - `apps/openagents.com/workers/api/src/artanis-labor-receipt-routes.ts` —
   `buildArtanisLaborGreenReadinessProjection` (lists the store, builds the same
   feed the public receipt feed serves, projects readiness) +
   `handlePublicArtanisLaborGreenReadinessApi` (GET-only, no-store).
-- Route mounted: `GET /api/public/artanis/labor-green-readiness` (index.ts);
+- Route mounted: `GET /api/public/artanis/labor-green-readiness` (index.ts).
   added to the worker exact-routes manifest, the OpenAPI contract
   (`ArtanisLaborGreenReadinessProjection` schema + path), the architecture
   projection-surface ledger (`staleness_declared`), and the INVARIANTS.md
   public-projection inventory.
 - Tests: `artanis-labor-green-readiness.test.ts` (new) + the existing
   `artanis-labor-receipt-routes.test.ts` — 17 assertions over the projection and
-  handler; the full labor family is 93 passing.
+  handler. The full labor family is 93 passing.
 
 Safe-by-construction: read-only, no-store, mints no dispatch/spend/escrow/
 settlement/registry authority, cannot create a receipt, enable a tick, or flip a
@@ -113,7 +113,7 @@ NEEDS-OWNER — to take `artanis.labor_requester.v1` green:
    surface and the dereferenceable placed-receipt refs, per
    `proof.claim_upgrade_receipts.v1`.
 
-The mechanical receipt-evidence and gates-met requirements are NOT waived; only
+The mechanical receipt-evidence and gates-met requirements are NOT waived. Only
 the per-flip owner sign-off (step 2) is the remaining owner authority.
 
 ## Scope / collisions

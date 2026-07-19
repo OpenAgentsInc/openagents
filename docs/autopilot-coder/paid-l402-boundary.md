@@ -1,7 +1,7 @@
 # Autopilot Coder Paid L402 Boundary
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Payable Autopilot work uses a two-step route contract:
@@ -20,11 +20,11 @@ calls an explicit payment verifier. Production wiring now points that verifier
 at the buyer-payment ledger:
 
 - the `402` path persists a buyer-payment challenge when the ledger is
-  configured;
-- the paid retry must match a redeemed ledger record for the same challenge;
-- the redemption must point at an issued receipt and active entitlement;
-- the entitlement must cover the signed L402 scope refs;
-- the receipt amount/product/challenge must match the credential and quote;
+  configured.
+- the paid retry must match a redeemed ledger record for the same challenge.
+- the redemption must point at an issued receipt and active entitlement.
+- the entitlement must cover the signed L402 scope refs.
+- the receipt amount/product/challenge must match the credential and quote.
 - the receipt must have a matched reconciliation event.
 
 A signed credential or public-safe proof ref alone does not move work to

@@ -3,20 +3,20 @@
 - Date: 2026-07-19
 - Class: current-status
 - Source snapshot: `030754d52632673f17cdd7b2a71a93866dd34800`
-- Status: P0 through P5 complete. P6 legacy conversion remains.
+- Status: P0 through P6 complete. Final controls are active.
 - Dispatch: no
 - Owner: OpenAgents documentation
 - Requirement: All OpenAgents documentation and specifications must use ASD-STE100 Simplified Technical English.
 
 ## Result
 
-OpenAgents has completed P0 through P5 of this conversion.
+OpenAgents has completed P0 through P6 of this conversion.
 The repository now has an STE policy, glossary, document profiles, a checker, and owned gates.
 The team converted the control documents, active specifications, high-risk procedures, public technical text, and active plans.
 
-The remaining legacy documents are in the P6 migration set.
-The complete document estate does not yet have a terminal disposition.
-Thus, this audit does not claim complete repository conformance.
+Every governed document now has a digest-bound terminal disposition.
+Mutable first-party text has an inspected profile.
+Immutable and third-party text has a source-data profile and provenance frame.
 
 ## Implementation status
 
@@ -32,11 +32,9 @@ It requires an authorized Issue 9 dictionary outside Git.
 The root fast check and the deploy check run the migration ratchet.
 Thus, local hooks and OpenAgents-owned runners use the same checker.
 This control does not show full conformance.
-The P6 conversion and final inspection are still necessary.
-
-P1 through P5 are now complete.
+P1 through P6 are now complete.
 Their receipts are in [`docs/ste`](../ste/README.md).
-P6 must classify and complete the remaining legacy estate.
+The final inventory makes later path or byte drift fail closed.
 
 The policy has a controlled agent compact profile.
 Human-facing text continues to use the base STE profile.
@@ -600,10 +598,9 @@ Record these program measures:
 
 ## Next work packet
 
-The next packet is P6.
-It must classify each remaining governed document as mutable text, immutable evidence, third-party source data, or superseded text.
-It must convert mutable text and record provenance for the other categories.
-It must reduce the legacy migration count to zero.
+Normal document maintenance now owns the next work.
+A changed or new governed file needs a complete review and a new final inventory digest.
+The repository gates enforce this rule.
 
 ## Audit limitation
 

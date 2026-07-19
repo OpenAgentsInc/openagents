@@ -1,23 +1,23 @@
-> **Resolution (2026-06-15, rev 2 of the guide).** Findings dispositioned; the
+> **Resolution (2026-06-15, rev 2 of the guide).** Findings dispositioned. The
 > guide (`2026-06-15-rc-agent-test-guide.md`) was rewritten so a **no-SDK run is a
 > full pass**:
 > - **Core is SDK-free, confirmed.** All 6 core commands (`help`/`bootstrap`/
 >   `context`/`status`/`balance`/`memories`) emit valid JSON on **stdout** with no
->   agent SDK installed; the node boots without one. (The original run's `status`
+>   agent SDK installed. The node boots without one. (The original run's `status`
 >   "failure" was a stdout-vs-`2>&1` parse issue + a guide-shape mismatch, not a
 >   binary fault.) The agent SDKs are `optionalDependencies`, so installs/builds
->   never require them and the compiled binary doesn't bundle them — SDK-free by
+>   never require them and the compiled binary does not bundle them — SDK-free by
 >   design.
 > - **`status --json` shape** — guide now asserts the real nested shape
->   (`.kind`, `.state.version`, `.state.runtime.lifecycle`); no code change (that
+>   (`.kind`, `.state.version`, `.state.runtime.lifecycle`). No code change (that
 >   envelope is the established public projection).
 > - **`compiled binary sdk_missing`** — expected SDK-free behavior, **not a
 >   defect**. We deliberately do **not** bundle agent SDKs into the standalone
->   binary. §4 (managed sessions) is now explicitly OPTIONAL + SDK-gated; no-SDK →
+>   binary. §4 (managed sessions) is now explicitly OPTIONAL + SDK-gated. No-SDK →
 >   record `sessionSpawned: "skipped-no-sdk"` (a pass). Sessions are exercised from
 >   a source checkout (where `node_modules` has the optional SDK) or an
 >   SDK-equipped env.
-> - **`update --check` 404** — feed-publishing state, not a binary failure; guide
+> - **`update --check` 404** — feed-publishing state, not a binary failure. Guide
 >   marks it `feed-unpublished` and non-fatal. Publishing the RC feed to
 >   `updates.openagents.com` remains a maintainer task.
 > - **Guide robustness** — added the `pylon node` startup prerequisite, a random
@@ -27,7 +27,7 @@
 # Pylon v1.0-rc Agent Test Results - Codex
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-15

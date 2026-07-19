@@ -46,14 +46,14 @@ mock of the `openagents.com` Worker, and drives the actual launcher
 first-run path, with no GUI and no env vars.
 
 Exit `0` means every automatable gate passed. The token in play is a fake
-`oa_agent_...` value minted by the mock; the smoke asserts it is never printed to
+`oa_agent_...` value minted by the mock. The smoke asserts it is never printed to
 any status/log surface, and never reads or prints an identity seed.
 
 ### Gates the harness proves AUTOMATICALLY
 
 Part A — AO-3 first-run identity choice (#5444), both paths:
 
-- Fresh machine: no existing identity detected; the choice is needed; create-new
+- Fresh machine: no existing identity detected. The choice is needed. Create-new
   is always available.
 - Use-existing: a seed-bearing `~/.openagents/pylon` home is **detected by marker
   presence only** (the seed is never read), the public npub is surfaced, and the
@@ -84,7 +84,7 @@ signals from Part B (no faked progress):
 
 - After the chain converges, the wizard projects identity / registered /
   node-online / wallet / payout / presence as `done`.
-- The chain is **not** falsely `complete` before a settled payout; the "you are
+- The chain is **not** falsely `complete` before a settled payout. The "you are
   here" pointer points at an unfinished step (Tassadar / earning).
 - A claimed-but-unsettled snapshot shows Tassadar + claimed `done` and earning
   `active` (work claimed, awaiting settlement) — still not `complete`.
@@ -131,14 +131,14 @@ repo:
 
 - **A rendered window on a clean, external Apple-Silicon Mac.** A headless smoke
   cannot confirm what a stranger sees when they open the signed `.dmg`. The
-  black-screen guard proves the `Document` contract in source/unit form; it does
+  black-screen guard proves the `Document` contract in source/unit form. It does
   not screenshot the published build on a fresh machine.
 - **Production presence.** The smoke registers against a mock. Real appearance on
   `https://openagents.com/api/public/pylon-stats` requires the real Worker, a
   real minted agent token, and a network round-trip from a real install.
 - **A settled Bitcoin receipt.** A claimed Tassadar window only becomes *earned*
   sats once a **live validator pair** settles it. That is real money on real
-  infra and depends on a counterparty; it cannot be synthesized.
+  infra and depends on a counterparty. It cannot be synthesized.
 
 These require: a physical Mac, a fresh signed DMG (AO-5 / the current
 `autopilot-desktop` release), and a live validator pair on the Tassadar run.
@@ -161,7 +161,7 @@ Build and notarization:
 - DMG notarization submission:
   `ccc6c3f9-fd2f-4477-9dc4-ad9c27613fec`, status `Accepted`.
 - Gatekeeper:
-  DMG and installed app accepted as `Notarized Developer ID`; `hdiutil verify`
+  DMG and installed app accepted as `Notarized Developer ID`. `hdiutil verify`
   returned `VALID`.
 
 From-DMG UI proof:
@@ -240,7 +240,7 @@ show seeds, tokens, or raw payout addresses).
 
 1. **Install + open from the DMG, NO terminal.**
    - Download the signed DMG, drag to Applications, open it.
-   - Expected: Gatekeeper accepts it (notarized Developer ID); the window
+   - Expected: Gatekeeper accepts it (notarized Developer ID). The window
      **renders** the immersive first-run scene — **no black/blank window**.
    - Evidence: a screenshot of the rendered first-run window.
      - Gate: *From-DMG rendered window on a clean Mac.*
@@ -248,7 +248,7 @@ show seeds, tokens, or raw payout addresses).
 2. **AO-3 identity choice — create new (named).**
    - On the "Get started" first screen, choose **Create a new Autopilot
      identity** and give it a name.
-   - Expected: the wizard advances; the name is the one used at registration.
+   - Expected: the wizard advances. The name is the one used at registration.
    - Evidence: a screenshot of the choice screen + the chosen name.
      - Gate: *AO-3 create-new identity choice (named).*
 
@@ -262,7 +262,7 @@ show seeds, tokens, or raw payout addresses).
      - Gate: *AO-3 use-existing identity choice (no fork).*
 
 4. **AO-1 self-register + token persisted.**
-   - Expected: the wizard's "Agent registered" step reaches `done`; the agent is
+   - Expected: the wizard's "Agent registered" step reaches `done`. The agent is
      visible in the registry/forum.
    - Evidence: the registry/forum entry ref (public-safe). The token must **not**
      appear anywhere.
@@ -270,7 +270,7 @@ show seeds, tokens, or raw payout addresses).
 
 5. **AO-2 node online + wallet receive-ready + payout target + presence.**
    - Expected: the wizard shows node-online, wallet receive-ready, payout-target,
-     and presence as `done`; and the node appears on production
+     and presence as `done`. And the node appears on production
      `https://openagents.com/api/public/pylon-stats`.
    - Evidence: a screenshot of the wizard chain + the pylon-stats entry (npub /
      ref only).
@@ -279,9 +279,9 @@ show seeds, tokens, or raw payout addresses).
 6. **Tassadar join → claim → SETTLE → earn.**
    - Expected: the node joins the Tassadar run, claims a window, and — with a
      live validator pair — the window **settles**, producing a real Bitcoin
-     receipt; the wizard's "First sats earned" step reaches `done` and the chain
+     receipt. The wizard's "First sats earned" step reaches `done` and the chain
      reads `complete`.
-   - Evidence: the settled-window receipt ref + the balance > 0 (public-safe);
+   - Evidence: the settled-window receipt ref + the balance > 0 (public-safe).
      a screenshot of the completed wizard.
      - Gate: *Real claimed + settled Tassadar window with a Bitcoin receipt.*
 
@@ -306,14 +306,14 @@ refs/screenshots for each gate above.
 - AO-6 smoke harness: `apps/autopilot-desktop/scripts/auto-onboarding-e2e-smoke.ts`.
 - Phase-1 headless convergence proof (extended, not duplicated):
   `apps/autopilot-desktop/scripts/auto-onboarding-headless-proof.ts`.
-- Black-screen guard: `apps/autopilot-desktop/tests/black-screen-guard.test.ts`;
+- Black-screen guard: `apps/autopilot-desktop/tests/black-screen-guard.test.ts`.
   the fix it guards: commit `73cada159` (view/crashView must return a Document),
   surfaced in `apps/autopilot-desktop/src/ui/view.ts` (`export const view`) and
   `apps/autopilot-desktop/src/ui/main.ts` (`crashView`).
 - AO-3 identity choice: `apps/autopilot-desktop/src/bun/identity-choice.ts`.
 - AO-1/AO-2 onboarding: `apps/autopilot-desktop/src/bun/agent-onboarding.ts`,
   `apps/autopilot-desktop/src/bun/node-launcher.ts`.
-- AO-4 wizard projection: `apps/autopilot-desktop/src/shared/onboarding-status.ts`;
+- AO-4 wizard projection: `apps/autopilot-desktop/src/shared/onboarding-status.ts`.
   wired in `apps/autopilot-desktop/src/bun/index.ts`.
 - Audit (the gap this closes): `docs/launch/2026-06-18-autopilot-desktop-availability-audit.md`.
 - CS-B1 packaged-node proof (prior, narrower scope):

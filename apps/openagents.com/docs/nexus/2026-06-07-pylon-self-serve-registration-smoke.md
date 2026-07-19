@@ -13,10 +13,10 @@ OpenAgents product surface, send a heartbeat, and appear in the public-safe Pylo
 
 This does not publish a new Pylon release. The Pylon release freeze from #499
 remains active. The registration feature is in the `openagents` source on
-`main`; packaging it for broad `npx @openagentsinc/pylon@latest` use belongs
+`main`. Packaging it for broad `npx @openagentsinc/pylon@latest` use belongs
 to #505 after the full network-readiness sequence passes. The second-host
 smoke also found that Linux currently resolves to a `pylon-v0.2.2` release
-asset, not `pylon-v0.2.4`; that is release-asset alignment evidence for #505,
+asset, not `pylon-v0.2.4`. That is release-asset alignment evidence for #505,
 not a reason to move `latest` now.
 
 ## Source Change
@@ -24,23 +24,23 @@ not a reason to move `latest` now.
 `OpenAgentsInc/openagents@b04ebe4be` updates
 `packages/pylon-bootstrap` with:
 
-- `--register-openagents`;
-- `--openagents-api`;
-- `--openagents-agent-token` with `OPENAGENTS_AGENT_TOKEN` preferred;
-- `--pylon-ref`;
-- `--pylon-display-name`;
-- `--resource-mode`;
+- `--register-openagents`.
+- `--openagents-api`.
+- `--openagents-agent-token` with `OPENAGENTS_AGENT_TOKEN` preferred.
+- `--pylon-ref`.
+- `--pylon-display-name`.
+- `--resource-mode`.
 - repeatable `--capability-ref`.
 
 When enabled, the launcher runs the normal first-run smoke:
 
-1. install or reuse the selected Pylon release asset;
-2. run `pylon --help`;
-3. run `pylon init`;
-4. run `pylon status --json`;
-5. run `pylon inventory --json`;
-6. derive or reuse a public-safe Pylon ref;
-7. `POST /api/pylons/register`;
+1. install or reuse the selected Pylon release asset.
+2. run `pylon --help`.
+3. run `pylon init`.
+4. run `pylon status --json`.
+5. run `pylon inventory --json`.
+6. derive or reuse a public-safe Pylon ref.
+7. `POST /api/pylons/register`.
 8. `POST /api/pylons/{pylonRef}/heartbeat`.
 
 The registration payload uses public-safe refs only. It excludes local paths,

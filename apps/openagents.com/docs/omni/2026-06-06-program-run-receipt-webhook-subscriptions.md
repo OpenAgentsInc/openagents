@@ -21,29 +21,29 @@ payments, escalate auth, or carry raw secret material.
 
 `ProgramRunReceiptWebhookSubscriptionContract` records:
 
-- subscription ref;
-- subscriber refs;
-- selected event families;
-- event topic refs;
-- scoped auth refs;
-- endpoint refs;
-- delivery preparation refs;
-- delivery attempt refs;
-- retry state refs;
-- replay window refs;
-- redaction policy refs;
-- receipt refs;
-- blocker refs;
-- caveat refs;
-- revocation refs;
-- evidence refs;
-- idempotency refs;
-- operator diagnostic refs; and
+- subscription ref.
+- subscriber refs.
+- selected event families.
+- event topic refs.
+- scoped auth refs.
+- endpoint refs.
+- delivery preparation refs.
+- delivery attempt refs.
+- retry state refs.
+- replay window refs.
+- redaction policy refs.
+- receipt refs.
+- blocker refs.
+- caveat refs.
+- revocation refs.
+- evidence refs.
+- idempotency refs.
+- operator diagnostic refs. And
 - last event ref.
 
 The focused contract accepts only these event families:
 
-- `program_run`; and
+- `program_run`. And
 - `receipt`.
 
 Broader webhook families still live in the generic
@@ -54,14 +54,14 @@ contracts from issue #327.
 
 The focused lifecycle states are:
 
-- registration recorded;
-- event selection recorded;
-- delivery prepared;
-- delivery attempt recorded;
-- retry scheduled;
-- replay window recorded;
-- receipt recorded;
-- revoked; and
+- registration recorded.
+- event selection recorded.
+- delivery prepared.
+- delivery attempt recorded.
+- retry scheduled.
+- replay window recorded.
+- receipt recorded.
+- revoked. And
 - blocked.
 
 Projection flags keep those states separate. A delivery preparation ref is not
@@ -88,12 +88,12 @@ The default authority block is
 
 It explicitly denies:
 
-- auth escalation;
-- delivery queue enqueue;
-- external webhook calls;
-- payment mutation;
-- Program Run mutation;
-- receipt mutation; and
+- auth escalation.
+- delivery queue enqueue.
+- external webhook calls.
+- payment mutation.
+- Program Run mutation.
+- receipt mutation. And
 - secret material.
 
 `programRunReceiptWebhookAuthorityIsContractOnly` returns true only when the
@@ -113,12 +113,12 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/webhook-subscriptions.test.ts` covers:
 
-- schema/projection decoding;
-- Program Run/receipt event-family scoping;
-- lifecycle phase separation;
-- retry, replay, and revocation state;
+- schema/projection decoding.
+- Program Run/receipt event-family scoping.
+- lifecycle phase separation.
+- retry, replay, and revocation state.
 - hard false external-send, queue, Program Run, receipt, payment, auth, and
-  secret authority flags;
-- idempotency and replay helper refs; and
+  secret authority flags.
+- idempotency and replay helper refs. And
 - redaction of private endpoint, subscriber, auth, diagnostic, raw payload,
   provider, wallet/payment, and raw timestamp material.

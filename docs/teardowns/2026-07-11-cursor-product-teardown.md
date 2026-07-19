@@ -9,8 +9,8 @@ against what Cursor actually became through mid-2026.
   behind
 - Method: **transcript-grounded retrospective plus archival and public web
   evidence, plus a read-only local bundle survey of the installed Cursor
-  3.11.13 on this Mac (added 2026-07-11; §2) and a privacy-safe persistence
-  audit of that profile (added 2026-07-18; §2.6).** The bundle pass used
+  3.11.13 on this Mac (added 2026-07-11, §2) and a privacy-safe persistence
+  audit of that profile (added 2026-07-18, §2.6).** The bundle pass used
   `plutil`, `codesign`, `spctl`, `file`, `strings`, and bounded `grep` of the
   shipped JS bundles, a names-only look at local state directories, and one
   snapshot of the already-running process table. The persistence pass used
@@ -20,17 +20,17 @@ against what Cursor actually became through mid-2026.
   identifiers, chat titles, workspace names, or secret values. Its evidence
   classes are:
   - `[source]` — the recovered episode-197-era reverse-engineering corpus,
-    pinned in this repository's own Git history (see §1);
+    pinned in this repository's own Git history (see §1).
   - `[bundle]` — observed in the installed signed application bundle at
-    `/Applications/Cursor.app` (3.11.13), surveyed 2026-07-11;
+    `/Applications/Cursor.app` (3.11.13), surveyed 2026-07-11.
   - `[runtime]` — observed in the live process table, socket snapshot, or
-    local filesystem state during those surveys;
+    local filesystem state during those surveys.
   - `[public]` — a named public source (Cursor's own blog/changelog, press,
-    or community forum), fetched 2026-07-11 or 2026-07-18 as identified;
-  - `[inferred]` — reasoned conclusions from multiple observations;
+    or community forum), fetched 2026-07-11 or 2026-07-18 as identified.
+  - `[inferred]` — reasoned conclusions from multiple observations.
   - `[limitation]` — a boundary on what this evidence can prove.
 - Transcripts [`195`](../transcripts/195.md) and [`197`](../transcripts/197.md)
-  are machine-generated; product claims from them are paraphrased intent, not
+  are machine-generated. Product claims from them are paraphrased intent, not
   quote-grade authority. The reconciliation of 195 against the current roadmap
   already exists in
   [`2026-07-10-episode-195-followup-analysis.md`](../sol/2026-07-10-episode-195-followup-analysis.md)
@@ -64,7 +64,7 @@ on this machine [source]:
   addon, `chrome-remote-interface`, and SolidJS panels grafted alongside the
   VS Code webview UI.
 - **No local models shipped.** The bundle confirmed the "heavy compute in the
-  cloud" architecture; tokenization, file walking, and shadow-workspace
+  cloud" architecture. Tokenization, file walking, and shadow-workspace
   process machinery prepared context locally, but inference was cloud-only.
 - The companion `openagents-cursor-integration-plan.md` (3,301 lines) turned
   episode 195's ten upgrades into a differentiation table — hybrid
@@ -74,14 +74,14 @@ on this machine [source]:
   line the episode read on camera: "6 weeks to MVP. 20 weeks to 10x better
   than Cursor."
 
-Episode 195's demand set (paraphrased; see the follow-up analysis for the
+Episode 195's demand set (paraphrased, see the follow-up analysis for the
 full reconstruction) was: a real desktop app over the TUI, mobile parity,
 overnight/scheduled work, CLI agents as subagents in one conversation,
 discoverable history and memory, hassle-free integrations, open source,
 mixed local/cloud inference, idle-compute markets, and revenue sharing.
 
 `[limitation]` The era corpus proves what Cursor 2.0.43 shipped on one
-machine in November 2025 and what OpenAgents intended; current Cursor builds
+machine in November 2025 and what OpenAgents intended. Current Cursor builds
 are covered by the §2 bundle survey of 3.11.13 plus public evidence.
 
 ## 2. Local bundle survey — Cursor 3.11.13 [bundle]
@@ -132,7 +132,7 @@ identity is a personal name rather than "Anysphere, Inc." (the
   Cursor ships mainline Electron.
 - `Resources/app/product.json`: `version 3.11.13`, **`vscodeVersion`
   `1.125.0`** — versus `1.99.3` in the era-197 survey of 2.0.43. Anysphere
-  kept merging upstream VS Code through the agent pivot; the fork is
+  kept merging upstream VS Code through the agent pivot. The fork is
   tracked, not frozen. `quality: stable`, commit
   `3f21b08f0b436a07be29fbfe00b304fa15553350`.
 - `Resources/app/package.json`: `author: "Anysphere, Inc."`, `repository`
@@ -147,7 +147,7 @@ identity is a personal name rather than "Anysphere, Inc." (the
   handler runs with `--url=https://f.a.k/e` — crash upload pointed at a
   deliberately unresolvable URL in this configuration.
 - Extension gallery: `marketplace.cursorapi.com` with a Cursor-controlled
-  `extensions-control` URL on `api2.cursor.sh`;
+  `extensions-control` URL on `api2.cursor.sh`.
   `cursorTrustedExtensionAuthAccess` grants `anysphere.cursor-retrieval`
   and `anysphere.cursor-commits` trusted auth access.
 
@@ -218,7 +218,7 @@ Two native Rust sidecars stand out:
   a local disk index (`index.bin`, `metadata.json`, `postings.bin`) from a
   git commit via gitoxide with memory-bounded disk spilling. Its CI path
   strings (`/Users/runner/work/everysphere/everysphere/.../crates/crepe/`)
-  reveal Anysphere's internal monorepo name, **everysphere**; a backend
+  reveal Anysphere's internal monorepo name, **everysphere**. A backend
   deploy path string in the JS
   (`/home/ubuntu/deploys/everysphere-anybot/backend/scripts`) leaks a
   server-side project name, **anybot**. Cursor now ships local Rust
@@ -232,7 +232,7 @@ inference remains cloud-only.
 ### 2.5 Agent-era fingerprints in the shipped JS
 
 Bounded string counts in `workbench.glass.main.js` (the 46 MB agent-UI
-bundle; `workbench.desktop.main.js` shows the same fingerprints at slightly
+bundle. `workbench.desktop.main.js` shows the same fingerprints at slightly
 lower counts):
 
 | Fingerprint                              | Count  | Fingerprint                      | Count |
@@ -253,16 +253,16 @@ lower counts):
   `"claude-plugin"`, `"claude-project"`, `"claude-user"`) — a migration
   lane for Claude Code users' projects and plugins.
 - **Verbatim strings**: "Turn on Remote Control to keep this computer
-  awake"; "Remote Control runs on a cloud agent, which requires data
+  awake". "Remote Control runs on a cloud agent, which requires data
   storag[e]…" — mobile Remote Control is implemented as a cloud-agent
   relay, exactly the their-cloud-only shape §6 Adapt 2 contrasts with
   portable sessions.
 - **Endpoints**: regional agent backends `agent.api5.cursor.sh`,
   `agent-gcpp-uswest.api5.cursor.sh`,
-  `agentn-gcpp-{uswest,eucentral,apsoutheast}.api5.cursor.sh`;
-  `api2`/`api3`/`api4.cursor.sh`; doc links
+  `agentn-gcpp-{uswest,eucentral,apsoutheast}.api5.cursor.sh`.
+  `api2`/`api3`/`api4.cursor.sh`. Doc links
   `cursor.com/docs/{agent/subagents, agent/hooks, cloud-agent/*,
-  configuration/worktrees, bugbot}`; `cursor.com/dashboard/cloud-agents`;
+  configuration/worktrees, bugbot}`; `cursor.com/dashboard/cloud-agents`.
   `cursor.com/automations/new`.
 
 ### 2.6 Full local-persistence audit — 2026-07-18
@@ -285,13 +285,13 @@ conversation-search index is local, but it is ordinary SQLite FTS5 over chat
 titles and bodies, not an embedding index. Cursor's codebase semantic index is
 the remote one: the current official security description says the client
 hashes the workspace into a Merkle tree, uploads changed files, and the server
-chunks and embeds them into Turbopuffer; search returns an obfuscated path and
+chunks and embeds them into Turbopuffer. Search returns an obfuscated path and
 line range, then the client reads that source range locally. The installed
 client contains local Merkle/git-snapshot and Crepe index-building machinery,
 but this profile had no `index.bin`, `postings.bin`, `metadata.json`, vector
 store, `snapshots/` directory, or populated retrieval checkpoint directory at
 audit time. That distinction matters: **local full text and snapshots are
-present; semantic code embeddings are remote.** [runtime, bundle, public:
+present. Semantic code embeddings are remote.** [runtime, bundle, public:
 [Cursor security](https://cursor.com/security),
 [secure codebase indexing](https://cursor.com/blog/secure-codebase-indexing),
 and [data-use overview](https://cursor.com/data-use)]
@@ -318,7 +318,7 @@ logs, and smaller GPU/WebGPU, code, local/session storage, IndexedDB, Sentry,
 Crashpad, cookie, trust-token, DIPS, transport-security, and shared-dictionary
 stores. Most of the 789 MB `User/` number is not conversation data: 692 MB is
 four retained, complete Cursor Agent runtime versions at roughly 173 MB each.
-The compile cache was keyed `v24.5.0-arm64-<build-id>`; the host-specific
+The compile cache was keyed `v24.5.0-arm64-<build-id>`. The host-specific
 ShipIt filename contains a machine identifier, redacted here.
 
 #### The main SQLite database: chats, tool data, file material, and credentials
@@ -353,7 +353,7 @@ The `cursorDiskKV` families show exactly what fills it:
 | Key family                               |  Rows | Value bytes | Established content class                                                                                                                                                                                                                                    |
 | ---------------------------------------- | ----: | ----------: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `agentKv:blob:<content-id>`              | 2,937 |    30.03 MB | Agent messages and structured events, tool/file payloads, plaintext source-shaped blobs, binary protobuf-like records, and JPEG attachments                                                                                                                  |
-| `bubbleId:<conversation-id>:<bubble-id>` | 1,175 |     8.02 MB | JSON conversation bubbles; the largest single row was 1.49 MB                                                                                                                                                                                                |
+| `bubbleId:<conversation-id>:<bubble-id>` | 1,175 |     8.02 MB | JSON conversation bubbles. The largest single row was 1.49 MB                                                                                                                                                                                                |
 | `composerData:<conversation-id>`         |    32 |      656 KB | Full composer state, including context, text/rich text, model config, usage, attached code-chunk URIs, changed/added/removed files, original-file states, checkpoints, branches/worktrees, subagent links, todos, token breakdown, and encryption-key fields |
 | `ofsContent:<content-id>`                |    24 |      315 KB | Original-file/source content snapshots                                                                                                                                                                                                                       |
 | `checkpointId:<conversation-id>`         |    32 |      198 KB | JSON file checkpoint manifests                                                                                                                                                                                                                               |
@@ -363,26 +363,26 @@ This is not merely a compressed summary or embedding of the user's work. File
 signatures and JSON schemas establish that the database contains recoverable
 full text, source-shaped bytes, images, structured conversation state, and
 file/change snapshots. Some opaque rows appear protobuf-like or otherwise
-binary encoded; encoding is not encryption. The audit did not decode or quote
+binary encoded. Encoding is not encryption. The audit did not decode or quote
 private row contents.
 
 `ItemTable` adds classic workbench state and several privacy-relevant records:
 
-- retained terminal command and directory histories;
+- retained terminal command and directory histories.
 - recently opened paths, workspace metadata, repository paths, tabs, editor
-  view state, layout and startup caches;
+  view state, layout and startup caches.
 - cached server/feature-flag/admin configuration, telemetry state, theme and
-  command catalogs;
-- browser-automation history and AI-code-tracking summaries;
+  command catalogs.
+- browser-automation history and AI-code-tracking summaries.
 - MCP OAuth/client-registration secret envelopes and a per-workspace Git IPC
-  authentication secret;
+  authentication secret.
 - `cursorAuth/accessToken` and `cursorAuth/refreshToken`.
 
 The last point is unusually concrete: both Cursor account-token values were
 424-character, three-segment JWT-shaped **plain text** in `state.vscdb`, not an
 opaque OS-keychain reference. This report did not print or validate them.
 MCP/Git secret records use JSON envelopes whose payload is a byte-array
-`Buffer`; the storage shape alone does not prove whether each byte array is
+`Buffer`. The storage shape alone does not prove whether each byte array is
 encrypted, so they are classified as protected/opaque rather than claimed
 safe. A cached scoped profile is also stored as readable JSON. The database
 file is mode `0644`, but its `~/Library/Application Support` parent is mode
@@ -424,9 +424,9 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
 ```
 
 Sampled stores contained JSON and binary blobs representing durable protocol
-events/messages; the largest store was 668 KB. `~/.cursor/chats/` uses the
+events/messages. The largest store was 668 KB. `~/.cursor/chats/` uses the
 same blob/meta schema for Cursor Agent CLI chats. `~/.cursor/projects/`
-duplicates project association and per-project agent integration state; in
+duplicates project association and per-project agent integration state. In
 this profile it included repo identifiers, MCP authentication/approval state,
 tool schemas and browser artifacts. `plans/`, `agents/`, `skills/`,
 `skills-cursor/`, `plugins/`, and `hooks.json` persist authored and installed
@@ -434,7 +434,7 @@ instruction bundles independently of chat deletion.
 
 This tree has a weaker permission posture than the main profile: `~/.cursor`,
 its session directories, most metadata files, and most session databases were
-mode `0755`/`0644`. The home directory was `0750` and group `staff`; therefore
+mode `0755`/`0644`. The home directory was `0750` and group `staff`. Therefore
 another local account able to traverse that group boundary could potentially
 read the session database and metadata. `mcp.json` was correctly `0600`, but
 that exception does not protect the transcript stores.
@@ -445,14 +445,14 @@ that exception does not protect the transcript stores.
 schema includes:
 
 - `ai_code_hashes`: 491 content hashes tied to source category, file name and
-  extension, request/conversation id, timestamp, and model;
+  extension, request/conversation id, timestamp, and model.
 - `tracked_file_content`: 17 rows containing the actual tracked file content
-  (14 KB total in this snapshot), git path, conversation, model and timestamp;
+  (14 KB total in this snapshot), git path, conversation, model and timestamp.
 - `scored_commits`: 19 commit/branch rows with commit message/date, line
   additions/deletions split among tab/composer/human/blank categories, and two
-  AI-percentage versions;
+  AI-percentage versions.
 - `conversation_summaries`: title, TLDR, overview, bullets, model and mode
-  (empty here); and
+  (empty here). And
 - deletion and tracking-state tables.
 
 So the AI-code attribution feature creates another durable map from source
@@ -516,7 +516,7 @@ Cursor's database even though plaintext used to compute them is request-lived.
 
 #### Caches, logs, telemetry, and embedded browser state
 
-- `CachedData/` retained 11 commit-keyed workbench code caches totaling 219 MB;
+- `CachedData/` retained 11 commit-keyed workbench code caches totaling 219 MB.
   old application versions are therefore represented after update.
 - `logs/` retained 860 files in 11 launch directories from 2026-06-22 through
   2026-07-11, totaling 142 MB. They include window, renderer, extension-host,
@@ -546,9 +546,9 @@ index description. It is **not** a claim of access to Cursor's private design
 documents. Confidence labels mean:
 
 - **high** — the structure or shipped control flow has few plausible alternate
-  explanations;
+  explanations.
 - **medium** — the explanation fits all observed evidence but another design
-  could produce the same artifacts; and
+  could produce the same artifacts. And
 - **low** — useful hypothesis, explicitly awaiting runtime/network proof.
 
 ##### One product surface, at least four persistence systems
@@ -557,17 +557,17 @@ documents. Confidence labels mean:
 the composition of at least four independently evolved products:
 
 1. the inherited VS Code/Electron workbench under
-   `~/Library/Application Support/Cursor`;
+   `~/Library/Application Support/Cursor`.
 2. Cursor's Composer/Agents Window object store inside the global VS Code
-   `state.vscdb`;
-3. the separately shipped Cursor Agent/ACP runtime under `~/.cursor`; and
+   `state.vscdb`.
+3. the separately shipped Cursor Agent/ACP runtime under `~/.cursor`. And
 4. cloud agents plus the server-side semantic index, represented locally by
    ids, caches, fingerprints and sync state rather than a full remote replica.
 
 That layering explains the otherwise odd duplication. The GUI uses VS Code's
-existing storage lifecycle and extension APIs; the CLI needs a home that works
-without Electron and across editors; ACP needs session-local locking and
-resume; remote agents need account-scoped identity rather than a workstation-
+existing storage lifecycle and extension APIs. The CLI needs a home that works
+without Electron and across editors. ACP needs session-local locking and
+resume. Remote agents need account-scoped identity rather than a workstation-
 only row. Shipping each subsystem independently was faster and safer than one
 cross-product migration, at the cost of making retention and deletion
 non-atomic.
@@ -600,12 +600,12 @@ Composer rows remains unproven.
 addressed object/event graph than a normalized relational transcript:
 
 - `composerHeaders` is the small, indexed list projection needed to render
-  recent/archive/workspace views without loading full chats;
+  recent/archive/workspace views without loading full chats.
 - `composerData:<id>` is a mutable conversation aggregate containing UI and
-  orchestration state;
-- `bubbleId:<conversation>:<bubble>` separates renderable turn units;
+  orchestration state.
+- `bubbleId:<conversation>:<bubble>` separates renderable turn units.
 - `agentKv:blob:<content-id>` holds large or polymorphic payloads—messages,
-  tool results, source, images and binary records—outside the aggregate; and
+  tool results, source, images and binary records—outside the aggregate. And
 - `composer.content.<digest>`, `ofsContent`, checkpoint and inline-diff rows
   deduplicate or preserve file/change material by identity.
 
@@ -626,7 +626,7 @@ reference accounting across headers, aggregates, bubbles, blobs, checkpoints,
 FTS and backups. The observed store does not expose foreign keys or cascading
 deletes, so that integrity is application-owned.
 
-##### WAL is for streaming durability; the backup is probably migration insurance
+##### WAL is for streaming durability. The backup is probably migration insurance
 
 `[inferred, high]` `state.vscdb.options.json` explicitly enables WAL. The live
 database reports `journal_mode=wal`, `synchronous=1` (`NORMAL`), 11,846 pages
@@ -657,7 +657,7 @@ have the same authority.
 The likely flow is: discover changed conversations, queue ids, extract title
 and flattened body from the source graph/cache, update FTS and advance the
 reconciliation cursor. Deleting only FTS should lose search performance until
-rebuild; deleting only the source should require reconciliation before stale
+rebuild. Deleting only the source should require reconciliation before stale
 search text disappears. Because the FTS table stores its own content, a
 privacy-safe delete has to prove both sides converged.
 
@@ -687,8 +687,8 @@ of the repository locally.
 ##### Remote embeddings minimize local footprint but make the server the retrieval authority
 
 `[inferred, high]` Cursor chose a split retrieval architecture for economics
-and product speed: local code remains the byte authority; the client computes
-inventory/hashes and reads final ranges; expensive embedding, cache reuse and
+and product speed: local code remains the byte authority. The client computes
+inventory/hashes and reads final ranges. Expensive embedding, cache reuse and
 nearest-neighbor search are centralized. This permits one managed embedding
 model, cross-machine index reuse, team clone reuse, fast model upgrades and a
 thin desktop install. It also explains why `crepectl` can exist without a
@@ -729,8 +729,8 @@ historical blobs until a garbage collector recognizes them.
 
 `[inferred, high]` The AI tracking database exists separately because its
 primary query is not "render this chat" but "attribute these lines/commits to
-an agent request and model." Hashes establish identity; retained file content
-allows later comparison after the working tree changes; commit statistics
+an agent request and model." Hashes establish identity. Retained file content
+allows later comparison after the working tree changes. Commit statistics
 roll that evidence into branch/commit-level percentages. The shipped retrieval
 code's post-commit scoring trigger corroborates this use.
 
@@ -738,7 +738,7 @@ Separation lets attribution survive UI/chat schema migrations and lets Git-
 oriented reporting run without loading Composer. It also creates another
 retention clock: deleting a chat need not delete its content hashes, model/id
 links, tracked source snapshot or scored commit unless an explicit cross-store
-eraser does so. Nothing in the schema proves the database is used for training;
+eraser does so. Nothing in the schema proves the database is used for training.
 the supported inference is local provenance and statistics.
 
 ##### Plain Cursor JWTs reveal a parallel auth subsystem
@@ -780,25 +780,25 @@ reclamation.
 
 The following is the most coherent end-to-end reconstruction:
 
-1. **Open workspace** `[high]`: resolve the real folder from workspace state;
-   load workbench/editor/terminal state; start file watchers and retrieval.
+1. **Open workspace** `[high]`: resolve the real folder from workspace state.
+   load workbench/editor/terminal state. Start file watchers and retrieval.
 2. **Build retrieval frontier** `[medium-high]`: apply ignore/filter rules,
    reuse or refresh the relative embeddable-file manifest, update local
    Merkle/Git state, and sync changed material to the remote index.
 3. **Create/resume conversation** `[high]`: write/update a header and
-   `composerData`; resolve referenced bubble/blob/checkpoint objects lazily.
+   `composerData`. Resolve referenced bubble/blob/checkpoint objects lazily.
 4. **Assemble prompt** `[medium-high]`: remote semantic search returns path and
-   line ranges; local grep/recent files/editor context and attachments add
-   bytes; selected source is read locally and sent through Cursor's backend.
+   line ranges. Local grep/recent files/editor context and attachments add
+   bytes. Selected source is read locally and sent through Cursor's backend.
 5. **Stream execution** `[high]`: append bubble and `agentKv` objects under
    WAL while tool calls, shell output, images, source reads and model events
-   arrive; update the lighter aggregate/header projection for UI responsiveness.
+   arrive. Update the lighter aggregate/header projection for UI responsiveness.
 6. **Protect edits** `[high]`: capture original-file content, checkpoints,
    diffs, branch/worktree state and changed-file totals around mutations.
 7. **Derive secondary state** `[medium-high]`: reconcile conversation FTS,
    update AI-code hashes/content/commit scoring, feature/usage state and logs.
-8. **Resume or hand off** `[medium]`: GUI uses the global object graph; CLI/ACP
-   uses its per-session blob DB; ids/fingerprints or explicit import/handoff
+8. **Resume or hand off** `[medium]`: GUI uses the global object graph. CLI/ACP
+   uses its per-session blob DB. Ids/fingerprints or explicit import/handoff
    bridge local and cloud representations.
 
 This lifecycle explains why the disk footprint contains much more human-
@@ -811,20 +811,20 @@ agent saw, said, executed, changed and could undo_.
 `[inferred]` The structure predicts several recurring bug classes:
 
 - **chat appears missing but bytes survive:** header/projection loss while
-  blobs, composer content, FTS or backup remain;
+  blobs, composer content, FTS or backup remain.
 - **search finds deleted/renamed material:** delayed reconciliation between
-  source graph and derived FTS;
+  source graph and derived FTS.
 - **restore corrupts or resurrects state:** migration fallback to a stale
-  whole-file backup;
+  whole-file backup.
 - **disk growth:** unreachable content blobs, checkpoints, verbose retrieval
   logs, old workbench caches and four side-by-side agent runtimes each require
-  separate cleanup;
+  separate cleanup.
 - **cross-surface mismatch:** GUI, CLI, ACP and cloud each persist sessions
-  differently, so archive/delete/resume semantics can diverge;
+  differently, so archive/delete/resume semantics can diverge.
 - **workspace hash mistaken for anonymity:** `workspace.json`, recent paths,
-  CLI `cwd`, logs and the 100,000-path manifest re-identify the workspace;
+  CLI `cwd`, logs and the 100,000-path manifest re-identify the workspace.
 - **credential copying:** ordinary profile backup or forensic collection also
-  copies readable Cursor JWTs and opaque extension-secret envelopes; and
+  copies readable Cursor JWTs and opaque extension-secret envelopes. And
 - **partial privacy controls:** disabling codebase indexing can stop future
   remote semantic sync without deleting local chat/file/checkpoint/history
   knowledge or proving deletion of an existing remote index.
@@ -845,14 +845,14 @@ macOS HTTP/preferences data. Archive is not deletion: archived state is a bit
 in the composer header and the conversation remains addressable.
 
 Cursor's public history documentation says regular Agent chat history is local
-SQLite while Background Agent chats are remote; exporting is required to keep
+SQLite while Background Agent chats are remote. Exporting is required to keep
 an independent copy. Deleting the application bundle alone leaves both profile
 roots behind. Cursor support has historically identified
 `~/Library/Application Support/Cursor` and `~/.cursor` as the two primary
 clean-reset roots, but that advice omits the observed HTTPStorages,
 Preferences, and compile-cache locations and says nothing about remote
 codebase embeddings or cloud/background-agent data. Account deletion is the
-separate remote-data path; Cursor states complete removal may take up to 30
+separate remote-data path. Cursor states complete removal may take up to 30
 days because of backups. [public: [chat history](https://docs.cursor.com/en/agent/chat/history),
 [security/account deletion](https://cursor.com/security)]
 
@@ -863,7 +863,7 @@ network traffic was not captured, Keychain contents were not requested, and
 no credential was decrypted or tested. Absence of a local vector store is
 bounded to the audited roots and time. Cloud/background-agent history,
 server-side caches, remote embeddings and provider retention cannot be proven
-from local disk; the remote description above is Cursor's current public
+from local disk. The remote description above is Cursor's current public
 claim, not an independent server audit.
 
 #### Runtime snapshot from the original 2026-07-11 pass
@@ -889,7 +889,7 @@ sockets in that snapshot.
 | Fork delta       | observability + agent plumbing (Sentry/OTel, `cursor-proclist`, panels) | **a compiled-in agent platform**: 17 `cursor-*` extensions, 46 MB Glass UI bundle, React runtime, Seatbelt sandbox binary, Crepe local indexer, private Node runtime, update supervisor |
 | Local models     | none                                                                    | **still none** — cloud-only inference confirmed on a 2026-07-10 build                                                                                                                   |
 | Indexing         | cloud-side, local metadata caches                                       | + local Rust index builder (`crepectl`)                                                                                                                                                 |
-| Updater          | Squirrel ("updates disabled by user preference" in logs)                | Squirrel + ShipIt + first-party `cursor-update-supervisor`; feed `api2.cursor.sh/updates`, plain-HTTP backup URL                                                                        |
+| Updater          | Squirrel ("updates disabled by user preference" in logs)                | Squirrel + ShipIt + first-party `cursor-update-supervisor`. Feed `api2.cursor.sh/updates`, plain-HTTP backup URL                                                                        |
 | `~/.cursor`      | extensions only                                                         | agents/chats/projects/plugins/skills/hooks/mcp state tree                                                                                                                               |
 
 ### 2.8 Consequences for the recommendations
@@ -922,8 +922,8 @@ era. The trajectory since:
   turns under 30 seconds, and a redesigned interface "centered around agents
   rather than files," running up to eight parallel agents isolated via git
   worktrees or remote machines, plus a native browser tool for the agent to
-  test its own work [public: Cursor 2.0 blog and changelog;
-  artificialintelligence-news.com; Thurrott]. `[bundle]` corroborated in
+  test its own work [public: Cursor 2.0 blog and changelog.
+  artificialintelligence-news.com. Thurrott]. `[bundle]` corroborated in
   3.11.13: `composer-1`/`composer-2` model slugs, ~21k `composer`
   references, ~2.1k `worktree` references, and a first-party
   `cursor-browser-automation` MCP extension (§2.4–2.5).
@@ -941,7 +941,7 @@ era. The trajectory since:
   [public: cursor.com/changelog/3-0]. `[bundle]` corroborated: `bestOfN`,
   `planMode`, `AwaitTool`/`await_tool`, `subagent`, and `Agents Window`
   strings all compiled into the shipped Glass bundle, and the classic
-  workbench ships beside it as a separate 41 MB bundle (§2.3, §2.5);
+  workbench ships beside it as a separate 41 MB bundle (§2.3, §2.5).
   `[runtime]` the Agents Window ran with its own extension-host process
   during the survey (§2.6).
 - **Automations (3.8, 2026-06-18)**: an `/automate` skill, GitHub triggers
@@ -951,7 +951,7 @@ era. The trajectory since:
   `cursor.com/automations/new` links compiled in (§2.5).
 - **Marketplace and customization (3.9, 2026-06-22)**: one customization
   surface for plugins, skills, MCPs, and subagents, with a marketplace
-  leaderboard; team MCP distribution and org-group access control followed
+  leaderboard. Team MCP distribution and org-group access control followed
   in 3.10 [public: cursor.com/changelog]. `[runtime]` names-only local
   state shows `plugins/`, `skills/`, `hooks.json`, and `mcp.json` under
   `~/.cursor` (§2.6).
@@ -969,34 +969,34 @@ era. The trajectory since:
   survey (§2.6).
 - **Composer provenance controversy (2026-03)**: users discovered via
   internal identifiers that Composer 2 was post-trained on Moonshot AI's
-  open-weights Kimi K2.5; Cursor confirmed within hours, a co-founder called
+  open-weights Kimi K2.5. Cursor confirmed within hours, a co-founder called
   the non-disclosure a mistake, and Cursor stated roughly a quarter of
   Composer 2's total compute came from the base model [public: TechCrunch
-  2026-03-22; VentureBeat; datastudios.org]. `[bundle]` the 3.11.13 client
+  2026-03-22. VentureBeat. Datastudios.org]. `[bundle]` the 3.11.13 client
   still carries only five bounded `kimi` strings against thousands of
   `composer` references — the lineage remains invisible at the product
   surface (§2.5).
 - **Pricing turbulence**: the June 2025 move from 500 "fast requests" to
   usage-based credits produced surprise charges, a public apology, and
-  refunds for the 2025-06-16–07-04 window; June 2026 reworked Teams again,
+  refunds for the 2025-06-16–07-04 window. June 2026 reworked Teams again,
   splitting usage pools between first-party Composer/Auto and third-party
-  API models [public: Vantage; finout.io; wearefounders.uk timeline;
+  API models [public: Vantage. Finout.io. Wearefounders.uk timeline.
   eesel.ai].
 - **Stability and UX churn**: Cursor's own 2.3 changelog is titled "Layout
-  Customization and Stability Improvements"; community forums from April
+  Customization and Stability Improvements". Community forums from April
   through July 2026 track a persistent class of complaints that the Agents
   Window force-opens on startup, ignores the setting meant to disable it,
   and forgets open projects, alongside reports of release-breaking updates
   corrupting chat histories and worktrees [public: forum.cursor.com threads
   "Trapped in Cursor Agents Window", "Cursor always opens in Agent Window
-  mode", "Cursor defaults to Agents Window on application restart";
+  mode", "Cursor defaults to Agents Window on application restart".
   vibecoding.app 2026 problem catalog].
 - **Business posture**: after a $2.3B Series D at $29.3B (2025), third-party
   trackers report ARR estimates near $1B (late 2025) rising toward ~$4B by
-  mid-2026 with a majority-enterprise mix; on 2026-06-16 SpaceX announced an
+  mid-2026 with a majority-enterprise mix. On 2026-06-16 SpaceX announced an
   all-stock acquisition of Anysphere at $60B, expected to close in Q3
   pending approvals, following the SpaceX–xAI merger [public: TechCrunch
-  2026-04-17; CNBC 2026-06-16; Forbes; Yahoo Finance; qz.com. ARR figures
+  2026-04-17. CNBC 2026-06-16. Forbes. Yahoo Finance. Qz.com. ARR figures
   are third-party estimates, not audited disclosures].
 
 `[inferred]` The owner's "from IDE land to wacky agent IDE, shifting sands"
@@ -1022,21 +1022,21 @@ five specific drops:
    complain.
 2. **Editor trust under rapid release cadence.** Corrupted chat histories
    and worktrees after updates, file-save failures, and crash reports form
-   the dominant negative feedback theme [public: vibecoding.app;
+   the dominant negative feedback theme [public: vibecoding.app.
    checkthat.ai review synthesis]. The IDE-era product earned trust as a
-   daily driver; the agent-era product spends that trust on velocity.
+   daily driver. The agent-era product spends that trust on velocity.
 3. **Billing legibility.** The 2025 pricing transition converted a flat,
    understood entitlement into an opaque metered pool without adequate
-   notice, then required an apology and refunds [public: wearefounders.uk;
+   notice, then required an apology and refunds [public: wearefounders.uk.
    Vantage]. Two regimes later, third-party explainers exist because the
    pricing needs explaining. `[inferred]` The durable lesson is not "never
-   change pricing"; it is that usage truth must be visible before the bill —
+   change pricing". It is that usage truth must be visible before the bill —
    the posture OpenAgents encodes as exact-or-`not_measured` usage accounting
    on every receipt.
 4. **Model identity transparency.** Shipping Composer 2 without disclosing
    its base model, until users forensically identified it, converted a
    defensible engineering choice (post-training an open base is normal) into
-   a trust incident [public: TechCrunch; VentureBeat]. `[inferred]` This is
+   a trust incident [public: TechCrunch. VentureBeat]. `[inferred]` This is
    the provider/model axis of OpenAgents' no-silent-substitution law
    surfacing at the vendor level: users treat model identity as part of the
    product contract even when the vendor does not.
@@ -1053,8 +1053,8 @@ five specific drops:
    weaker than a verified negative.
 
 What Cursor did **not** drop, and should be credited for: the parallel-agent
-isolation model (worktrees/remote machines) is genuinely good mechanics; the
-CLI `&` handoff is a clean gesture for local-to-cloud continuation; plan mode
+isolation model (worktrees/remote machines) is genuinely good mechanics. The
+CLI `&` handoff is a clean gesture for local-to-cloud continuation. Plan mode
 before execution and best-of-N comparison are honest concessions that agent
 output needs review structure [public: changelogs cited above].
 
@@ -1064,14 +1064,14 @@ Episode 195's ten demands, scored against what Cursor itself did:
 
 | 195 demand                  | Cursor's own verdict by mid-2026                                                                                                                                          | Status for OpenAgents                                                                                |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Desktop app over TUI        | Validated: rebuilt its product around an agent-first desktop surface [public: 2.0/3.0]                                                                                    | Contested lane; win on reliability, not novelty                                                      |
-| Mobile with the same work   | Validated: iOS app with cloud agents, voice, Remote Control of desktop agents [public: 3.9]                                                                               | Contested; OpenAgents' any-host portable-session model is deeper than remote-controlling one desktop |
-| Overnight/scheduled work    | Validated: Automations with triggers and computer use [public: 3.8]                                                                                                       | Contested; OpenAgents differentiates on budgets, receipts, restart-safety per the 195 follow-up      |
-| CLI agents as subagents     | Partially validated: subagents exist, `Await` coordinates them; single-conversation delegation across foreign harnesses (Codex+Claude in one graph) is not Cursor's shape | Open lane; this is the live #8712/Lane-C direction                                                   |
-| Discoverable history        | Validated late: transcript search with local indexing, side chats [public: 3.11]                                                                                          | Contested; loss-accounting and provenance (#8674 discipline) remain undone there `[inferred]`        |
-| Hassle-free integrations    | Partially: marketplace + one customization surface, but MCP/plugin/skill/subagent vocabulary is still exposed [public: 3.9/3.10]                                          | Contested; lifecycle-not-plumbing (D4) still open                                                    |
+| Desktop app over TUI        | Validated: rebuilt its product around an agent-first desktop surface [public: 2.0/3.0]                                                                                    | Contested lane. Win on reliability, not novelty                                                      |
+| Mobile with the same work   | Validated: iOS app with cloud agents, voice, Remote Control of desktop agents [public: 3.9]                                                                               | Contested. OpenAgents' any-host portable-session model is deeper than remote-controlling one desktop |
+| Overnight/scheduled work    | Validated: Automations with triggers and computer use [public: 3.8]                                                                                                       | Contested. OpenAgents differentiates on budgets, receipts, restart-safety per the 195 follow-up      |
+| CLI agents as subagents     | Partially validated: subagents exist, `Await` coordinates them. Single-conversation delegation across foreign harnesses (Codex+Claude in one graph) is not Cursor's shape | Open lane. This is the live #8712/Lane-C direction                                                   |
+| Discoverable history        | Validated late: transcript search with local indexing, side chats [public: 3.11]                                                                                          | Contested. Loss-accounting and provenance (#8674 discipline) remain undone there `[inferred]`        |
+| Hassle-free integrations    | Partially: marketplace + one customization surface, but MCP/plugin/skill/subagent vocabulary is still exposed [public: 3.9/3.10]                                          | Contested. Lifecycle-not-plumbing (D4) still open                                                    |
 | Open source                 | Not attempted                                                                                                                                                             | **Open lane** — the load-bearing differentiation seam                                                |
-| Local + cloud inference mix | Not attempted (cloud-only; first-party models are cloud models; `[bundle]` no weights in 3.11.13, §2.4)                                                                   | **Open lane** — post-R7 placement-class work                                                         |
+| Local + cloud inference mix | Not attempted (cloud-only, first-party models are cloud models, `[bundle]` no weights in 3.11.13, §2.4)                                                                   | **Open lane** — post-R7 placement-class work                                                         |
 | Idle-compute market         | Not attempted                                                                                                                                                             | Open, deferred behind its revisit gates                                                              |
 | Revenue sharing             | Not attempted (no public evidence)                                                                                                                                        | Open, deferred behind safe extension lifecycle                                                       |
 
@@ -1083,12 +1083,12 @@ truth. And what it never touched — the open engine, the typed public
 protocol, local execution, economic participation — is precisely the
 open-at-the-load-bearing-seam differentiation the adaptation analysis already
 names. The 10x thesis survives, but its content shifted: in 2025 it was a
-feature list; in 2026 it is a trust and openness list, because the features
+feature list. In 2026 it is a trust and openness list, because the features
 are now table stakes.
 
 The 197-era plan's specific technical bets read differently now: codebase
 indexing/semantic search, shadow-workspace validation, and fast-apply remain
-sound reference systems [source: integration plan §§1.1–1.4]; the
+sound reference systems [source: integration plan §§1.1–1.4]. The
 "6 weeks to MVP, 20 weeks to 10x" timeline was wrong the way all such
 timelines are wrong, but its ordering (intelligence core before marketplace
 before mobile) was inverted by events — mobile and continuity turned out to
@@ -1111,7 +1111,7 @@ named roadmap gate, issue, or contract.
    behavior contract in the packages/behavior-contracts registry.
    Owner: decision 16, D0 truthful-baseline gate, CUT-27 (#8707) installed-
    product acceptance.
-2. **Cloud handoff proves the portable-session market; win it on identity.**
+2. **Cloud handoff proves the portable-session market. Win it on identity.**
    Cursor's `&` handoff moves a conversation to _their_ cloud only, and
    Remote Control drives _one_ desktop. The Rev 30/31 portable-session and
    capability-broker packets (move a durable session between authorized
@@ -1119,42 +1119,42 @@ named roadmap gate, issue, or contract.
    authority, secrets, or receipts) are the strictly stronger contract.
    Ship the difference visibly: session movement with receipts, not
    fire-and-forget cloud copies. Owner: the remote-first portable sessions
-   pathway doc and its Revision 30/31 work packets; #8547/#8636 for targets.
+   pathway doc and its Revision 30/31 work packets. #8547/#8636 For targets.
 3. **Best-of-N and plan mode belong in the fleet vocabulary as typed
    comparisons.** Running one task across multiple models/harnesses and
    comparing outcomes is a natural FleetRun shape OpenAgents already has the
-   substrate for (mixed Codex+Claude proof #8640; Lane C per-child usage
+   substrate for (mixed Codex+Claude proof #8640, Lane C per-child usage
    rollups). Adapt it as a typed work-unit fan-out with per-child receipts
    and an explicit comparison record — not as UI garnish. Owner: D5 fleet
-   cockpit within #8574; conversation-native delegation per the 195
+   cockpit within #8574. Conversation-native delegation per the 195
    follow-up Amendment A.
-4. **Transcript search validated demand; do it loss-accounted.** Cursor
+4. **Transcript search validated demand. Do it loss-accounted.** Cursor
    added local-indexed transcript search eight months after the agent pivot.
    OpenAgents' ordering (completeness #8674 first, then discovery) is
-   correct; keep Amendment B (owner-private search with counted gaps and
+   correct. Keep Amendment B (owner-private search with counted gaps and
    exact source navigation) as the D2 follow-on rather than racing to a
    lossy index. Owner: D2 within #8574, post-#8674.
 5. **Worktree/remote isolation as the default parallel-agent mechanic.**
    Cursor's eight-agents-without-interference model matches the CUT graph's
    worktree discipline and the Firecracker Agent Computer lane. No new work
-   needed; treat Cursor as market confirmation that isolation-by-default is
+   needed. Treat Cursor as market confirmation that isolation-by-default is
    the correct consumer-visible posture, and keep "which host, which
-   isolation, which account" on the receipt. Owner: CUT graph #8681–#8707;
+   isolation, which account" on the receipt. Owner: CUT graph #8681–#8707.
    #8547.
 6. **Model provenance is part of the product contract.** Composer/Kimi shows
    users will forensically audit model identity. OpenAgents' model-level
    no-substitution pin (EP250: Fable pinned to claude-fable-5, refusing
-   substitution) is the right posture; extend the same disclosure honesty to
+   substitution) is the right posture. Extend the same disclosure honesty to
    any future first-party or fine-tuned model: name the base, the
    post-training, and the serving path in public docs from day one.
-   Owner: no-silent-substitution law (all identity axes); harness-selector
+   Owner: no-silent-substitution law (all identity axes). Harness-selector
    surfaces from #8712.
 7. **Price with usage truth in the loop.** Both Cursor pricing crises came
    from bills users could not predict from what they could see. OpenAgents'
    exact-or-`not_measured` receipts must reach the _pre-spend_ surface:
-   before a fleet run, show the account/lane/budget that will be consumed;
+   before a fleet run, show the account/lane/budget that will be consumed.
    after, reconcile against exact rows. Owner: capability-truthful
-   affordances ("no lane, no Send") and the usage-receipt law; D5 fleet
+   affordances ("no lane, no Send") and the usage-receipt law. D5 fleet
    controls.
 8. **Make local knowledge inspectable, bounded, and erasable as one product
    contract.** Cursor's state is recoverable but fragmented across primary and
@@ -1170,31 +1170,31 @@ named roadmap gate, issue, or contract.
 ### Reject
 
 1. **Do not fight for VS-Code-fork parity.** The incumbent itself demoted
-   the editor; the era-197 corpus shows the fork's runtime delta was mostly
+   the editor. The era-197 corpus shows the fork's runtime delta was mostly
    telemetry and glue [source]. _Correction 2026-07-11:_ the 3.11.13 bundle
    shows that description is stale — the delta is now a compiled-in agent
    platform (§2.4) — but it ships as extensions plus native sidecars beside
    a tracked upstream base, which strengthens the conclusion: the valuable
    layer is separable from the editor. OpenAgents Desktop's OpenCode-parity
-   workbench target (R5 exit) is the right editor scope; a full IDE is not.
+   workbench target (R5 exit) is the right editor scope. A full IDE is not.
 2. **Do not ship computer-use-on-by-default in unattended paths.** Cursor
    enables the computer-use tool by default for Automations [public: 3.8
    changelog]. Under OpenAgents law that is an authority grant inside an
    unattended lane and must remain deny/ask-by-default with typed policy,
    per the 195 follow-up's Automations slice (budgeted, pauseable,
-   Inbox-visible). Owner: Amendment D boundary; approvals authority classes.
+   Inbox-visible). Owner: Amendment D boundary. Approvals authority classes.
 3. **Do not let defaults evangelize.** Force-opening the flagship surface on
    startup is growth pressure expressed as UI. OpenAgents surfaces earn
    attention through the Inbox/attention model, never by overriding the
-   user's last chosen context. Owner: decision 16; behavior contracts.
+   user's last chosen context. Owner: decision 16. Behavior contracts.
 4. **Do not copy the closed-marketplace shape.** A leaderboard of closed
    extensions for a closed host is the weakest form of ecosystem. The A10
    signed-catalog lifecycle (provenance, capability review, rollback) plus
-   eventual economic receipts is the stronger form; keep payment out of the
-   install gate. Owner: D4 integration lifecycle; deferred revenue-sharing
+   eventual economic receipts is the stronger form. Keep payment out of the
+   install gate. Owner: D4 integration lifecycle. Deferred revenue-sharing
    horizon.
 5. **Do not treat valuation as verdict.** `[inferred]` The $60B SpaceX
-   outcome proves distribution and enterprise demand for agent coding; it
+   outcome proves distribution and enterprise demand for agent coding. It
    does not prove the product posture is right, and the acquisition
    consolidates Cursor further into one closed corporate stack — widening,
    not narrowing, the open-seam lane.
@@ -1214,11 +1214,11 @@ named roadmap gate, issue, or contract.
   with receipts, capability-truthful UI, and economic participation.
 - `[limitation]` Remaining boundaries after the §2 bundle and persistence
   passes: no network capture or interactive UI/feature pass was performed (one read-only
-  process/socket snapshot only, no launch or sign-in); server-side behavior
+  process/socket snapshot only, no launch or sign-in). Server-side behavior
   — Composer training lineage, cloud-agent internals, pricing enforcement —
-  is unprovable from the client; compiled strings prove a feature surface
-  exists in the build, not that it is enabled for every account; this is one
-  machine's stable-channel build and profile; no access to private forums or usage data;
+  is unprovable from the client. Compiled strings prove a feature surface
+  exists in the build, not that it is enabled for every account. This is one
+  machine's stable-channel build and profile. No access to private forums or usage data.
   community-complaint prevalence is not quantified, and third-party ARR
   figures are estimates. Public claims remain bounded by the named sources
   as of 2026-07-11.
@@ -1227,9 +1227,9 @@ named roadmap gate, issue, or contract.
 
 Primary: read-only local survey of `/Applications/Cursor.app` 3.11.13 on
 2026-07-11 (`plutil`, `codesign`, `spctl`, `file`, `strings`, bounded
-`grep`; one live process/socket snapshot), plus the 2026-07-18 privacy-safe
+`grep`. One live process/socket snapshot), plus the 2026-07-18 privacy-safe
 local-persistence audit (filesystem metadata, SQLite schema/aggregate queries,
-JSON keys/types, signatures, and bounded shipped-code searches; no reproduced
+JSON keys/types, signatures, and bounded shipped-code searches. No reproduced
 private values), the
 recovered era-197 corpus at openagents commit `ecc0a9054e`
 (`docs/re/cursor/`), and the Commander-era corpus in
@@ -1238,7 +1238,7 @@ recovered era-197 corpus at openagents commit `ecc0a9054e`
 [Data Use & Privacy](https://cursor.com/data-use),
 [secure-codebase-indexing](https://cursor.com/blog/secure-codebase-indexing),
 [chat-history](https://docs.cursor.com/en/agent/chat/history), and
-[conversation-search](https://cursor.com/changelog/side-chat) pages;
+[conversation-search](https://cursor.com/changelog/side-chat) pages,
 cursor.com blog/changelog (2.0, 2.3,
 3.0, 3.8–3.11, CLI 2026-01-16), TechCrunch (2026-03-22, 2026-04-17), CNBC
 (2026-06-16), Forbes, Yahoo Finance, qz.com, VentureBeat, datastudios.org,

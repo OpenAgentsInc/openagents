@@ -18,10 +18,10 @@ Implementation:
 
 Supported states:
 
-- `draft`;
-- `package_ready`;
-- `reviewed`;
-- `published`; and
+- `draft`.
+- `package_ready`.
+- `reviewed`.
+- `published`. And
 - `revoked`.
 
 State labels are projected directly, and published claims are allowed only when
@@ -34,28 +34,28 @@ Revoked packages cannot be presented as ready for sharing.
 
 Each package contains:
 
-- artifact digest records;
-- schema manifest;
-- rights manifest;
-- redaction summary;
-- provenance manifest;
-- receipt refs;
-- caveat refs; and
+- artifact digest records.
+- schema manifest.
+- rights manifest.
+- redaction summary.
+- provenance manifest.
+- receipt refs.
+- caveat refs. And
 - optional review state ref.
 
 Artifact digests carry artifact kind, artifact ref, digest algorithm, digest
-ref, and size in bytes. The contract records digest refs only; it does not host
+ref, and size in bytes. The contract records digest refs only. It does not host
 files or create download URLs.
 
 ## Rights
 
 The rights manifest records:
 
-- rights policy ref;
-- rights state;
-- allowed audience refs;
-- license refs;
-- usage caveat refs; and
+- rights policy ref.
+- rights state.
+- allowed audience refs.
+- license refs.
+- usage caveat refs. And
 - optional expiry ref.
 
 License refs and usage caveat refs are required. Revoked rights require revoked
@@ -65,11 +65,11 @@ package state.
 
 The redaction summary records:
 
-- redaction state;
-- redaction policy refs;
-- removed field refs;
-- retained field refs;
-- reviewer refs; and
+- redaction state.
+- redaction policy refs.
+- removed field refs.
+- retained field refs.
+- reviewer refs. And
 - blocked reason refs.
 
 Redacted packages require both policy refs and removed field refs. Blocked
@@ -85,11 +85,11 @@ packages remain tied back to the knowledge source layer.
 
 Data package exports are read-only. They cannot:
 
-- mutate download state;
-- mutate file hosting;
-- spend wallets;
-- upgrade public claims;
-- mutate receipts; or
+- mutate download state.
+- mutate file hosting.
+- spend wallets.
+- upgrade public claims.
+- mutate receipts. Or
 - mutate rights.
 
 Those actions require later approval-gated routes.
@@ -98,8 +98,8 @@ Those actions require later approval-gated routes.
 
 The first projections are:
 
-- `public`;
-- `team`; and
+- `public`.
+- `team`. And
 - `operator`.
 
 Public projections redact private package, schema, rights, artifact, digest,
@@ -112,10 +112,10 @@ safe ref set.
 
 Coverage includes:
 
-- published package projection;
-- package-ready, reviewed, published, and revoked state separation;
-- public redaction;
+- published package projection.
+- package-ready, reviewed, published, and revoked state separation.
+- public redaction.
 - artifact digest, schema, rights, redaction, provenance, receipt, review, and
-  revocation requirements; and
+  revocation requirements. And
 - false authority, invalid digest size, raw source archive, private repo,
   payment, wallet, provider, and timestamp rejection.

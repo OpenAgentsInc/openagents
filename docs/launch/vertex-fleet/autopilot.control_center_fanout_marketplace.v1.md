@@ -22,7 +22,7 @@ from the code whether a class like `data_labeling` was real or aspirational.
   satisfy to be listable: `requiredCapabilityRefs`, `verificationCommandRef`,
   `settlementStream`, and an explicit `status` (`live` | `inert_scaffold`).
 - `MARKETPLACE_WORK_CLASS_CATALOG` — the catalog. `code_task` is the **only**
-  `live` class (the class #4783 settled under); `data_labeling`,
+  `live` class (the class #4783 settled under). `data_labeling`,
   `content_writing`, and `research_brief` are registered `inert_scaffold`
   entries — contracts only, nothing wired, no money moves.
 - `assertCatalogInvariants` — enforces honesty **in code**: ids are unique,
@@ -30,7 +30,7 @@ from the code whether a class like `data_labeling` was real or aspirational.
   `live`**. A misedit that flips a plugin class to live throws rather than
   silently over-claiming.
 - `isPluginMarketplaceBeyondCodeTaskLive` — the single predicate a future
-  green flip must make true; today it is always `false`.
+  green flip must make true. Today it is always `false`.
 - `projectMarketplaceWorkClassCatalog` — a public-safe projection (yellow,
   inert, `live_at_read`) that reports the still-uncleared plugin blocker.
 
@@ -38,7 +38,7 @@ from the code whether a class like `data_labeling` was real or aspirational.
 
 - **Cleared:** none. This change clears no blocker.
 - **Stays:** `blocker.product_promises.plugin_marketplace_beyond_code_task_missing`
-  — only `code_task` is live; every plugin class beyond it is an inert scaffold.
+  — only `code_task` is live. Every plugin class beyond it is an inert scaffold.
   The catalog enforces this invariant and reports the blocker on every
   projection. The promise STAYS yellow.
 
@@ -63,7 +63,7 @@ flip a class to `live` against (per `proof.claim_upgrade_receipts.v1`).
   duplicate/missing-live rejection, honest projection)
 - `workers/api/src/marketplace-work-class-catalog-routes.ts` — public read-only
   route `GET /api/public/autopilot/marketplace-work-classes` exposing the catalog
-  projection (optional `?workClass=` narrows to one class). No flag/store; honest
+  projection (optional `?workClass=` narrows to one class). No flag/store. Honest
   envelope (yellow/inert, plugin blocker uncleared) on every response.
 - `workers/api/src/marketplace-work-class-catalog-routes.test.ts` — 4 route tests
   (non-GET 405, honest listing, `?workClass=` narrowing, unknown-id → null)
@@ -71,7 +71,7 @@ flip a class to `live` against (per `proof.claim_upgrade_receipts.v1`).
 
 ## 2026-06-20 follow-up — catalog made observable
 
-The catalog projection previously had no public surface; a reviewer could only
+The catalog projection previously had no public surface. A reviewer could only
 see it via unit tests. This change exposes it at
 `GET /api/public/autopilot/marketplace-work-classes` (read-only, alongside
 `/api/public/autopilot/self-serve-fanout`). The blocker still STAYS uncleared —

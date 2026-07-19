@@ -12,10 +12,10 @@ Cursor registry rows were still non-runnable placeholders.
   renderer stream channels.
 - Registry admission is fail-closed on the real executable probe, pinned profile
   compatibility, and authentication state. Both providers remain visibly
-  `experimental`; this change does not promote either release claim.
+  `experimental`. This change does not promote either release claim.
 - Full Auto has explicit Grok and Cursor policies. Their experimental runtimes
   install no question extensions or filesystem/terminal authority, so a
-  background turn cannot park on an owner interaction; unsupported reverse
+  background turn cannot park on an owner interaction. Unsupported reverse
   authority remains denied by the runtime.
 
 ## Real local peer proof
@@ -25,8 +25,8 @@ response, path, credential, environment, or native payload.
 
 | Provider | Pinned CLI | Driver result | Canonical observations |
 | --- | --- | --- | --- |
-| Grok CLI | `0.2.101` | success, 18.831 s | 103 events; start, reasoning, tool, text, finish; expected text observed |
-| Cursor Agent CLI | `2026.6.24` | success, 8.816 s | 19 events; start, session info, reasoning, text, finish; expected text observed |
+| Grok CLI | `0.2.101` | success, 18.831 s | 103 events. Start, reasoning, tool, text, finish. Expected text observed |
+| Cursor Agent CLI | `2026.6.24` | success, 8.816 s | 19 events. Start, session info, reasoning, text, finish. Expected text observed |
 
 Both runs used `createAcpProviderHost(...).driver(provider).runTurn(...)`, the
 same driver instance registered by Desktop main. Both returned a provider
@@ -66,7 +66,7 @@ credential store was inspected.
   13.446 seconds. The real peer made and committed one harmless README change
   in the disposable repository (`1a41dae`).
 - The control API then durably disabled the thread. Final state was
-  `enabled: false`, `continuationCount: 0`, `live.state: turn_completed`; no
+  `enabled: false`, `continuationCount: 0`, `live.state: turn_completed`. No
   second turn fired. Desktop shut down cleanly.
 
 This closes the L6 actual-ACP-loop evidence gap. Release support language

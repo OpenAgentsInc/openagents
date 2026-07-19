@@ -1,7 +1,7 @@
 # Pylon TUI Parity Roadmap — Evolving Toward the opencode Baseline
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-10
@@ -46,7 +46,7 @@ the Textual Pilot model on @opentui/solid's testRender) with programmatic
 key injection, character-frame capture, bun:test snapshots at three
 terminal sizes, dialog/palette interaction tests, and protocol tests that
 drive the real runtime+bridge with fake PylonEvent streams. All six
-roadmap phases are complete; the TUI is at the targeted opencode parity.
+roadmap phases are complete. The TUI is at the targeted opencode parity.
 
 ## Goal and non-goals
 
@@ -59,7 +59,7 @@ node, unbounded operational log) demands it.
 
 **Non-goals (explicitly out of scope for parity):**
 - opencode's plugin runtime (no external TUI plugin authors yet)
-- 39-theme catalog (one good theme on the right schema; catalog imports later)
+- 39-theme catalog (one good theme on the right schema, catalog imports later)
 - the full 2,500-LOC composer with parts/mentions (staged subset only)
 - matching opencode's *absence* of feed virtualization and TUI tests — on both
   we target better than the baseline, per the Textual audit
@@ -72,22 +72,22 @@ assignments, forum) are Pylon-specific.
 
 ## Architecture decisions locked in by the audits
 
-These are the decisions the phases below assume; revisit them only with cause.
+These are the decisions the phases below assume. Revisit them only with cause.
 
 1. **Adopt `@opentui/solid` for the view layer.** Every harvestable opencode
-   pattern is written against it; staying imperative means re-deriving each
+   pattern is written against it. Staying imperative means re-deriving each
    one. (opencode audit §2)
 2. **Effect stops at the view boundary.** Node services remain Effect programs
-   (house convention; `nostr-effect` for all Nostr behavior) exposing
+   (house convention, `nostr-effect` for all Nostr behavior) exposing
    `SubscriptionRef`/`Stream` state. One adapter subscribes and writes Solid
    stores. No fibers inside components. (opencode audit §9)
 3. **Event-stream seam between node-core and TUI.** In-process Effect
-   `Stream`/`PubSub` first; HTTP/SSE attach transport later without changing
+   `Stream`/`PubSub` first. HTTP/SSE attach transport later without changing
    the view. (opencode audit §1)
 4. **Single command registry** feeding footer, help dialog, palette, and
-   which-key. (opencode audit §3; Textual audit §6)
+   which-key. (opencode audit §3, Textual audit §6)
 5. **Virtualize the log feed Textual-style**, not opencode-style bounding
-   alone. (Textual audit §2/§5; opencode audit §6)
+   alone. (Textual audit §2/§5, opencode audit §6)
 
 ## Phase 0 — Seam and supervision (prerequisite for everything)
 
@@ -98,7 +98,7 @@ shows. No new user-visible features.*
    renderable refs in `apps/pylon/src/index.ts` with typed state owned by
    services: `WalletState`, `TelemetryState`, `OperatorState`, `LogFeedState`,
    each behind a `SubscriptionRef` (or `Stream` for the log). Service loops
-   update state; nothing in a service touches a renderable.
+   update state. Nothing in a service touches a renderable.
    - Pattern source: opencode `context/sync.tsx` (normalized store fed by
      events), translated to Effect on the producer side.
 2. **Define the node event stream.** A single typed `PylonEvent` union
@@ -106,15 +106,15 @@ shows. No new user-visible features.*
    This is the future attach wire format — design the types as if they will be
    serialized, because in Phase 4 they will be.
 3. **Scoped supervision.** Replace `runBackgroundEffect` fire-and-forget with
-   `Effect.forkScoped` inside one root `Scope`; Ctrl+C interrupts fibers,
+   `Effect.forkScoped` inside one root `Scope`. Ctrl+C interrupts fibers,
    flushes the renderer, restores the terminal deliberately. Add an exit
    provider equivalent (opencode `context/exit.tsx`).
 4. **First tests.** With state out of the view, test the state machines with
-   no TTY: wallet poll failure → `WalletState` OFFLINE; heartbeat cadence;
+   no TTY: wallet poll failure → `WalletState` OFFLINE. Heartbeat cadence.
    log ring-buffer behavior. `bun:test`, plain Effect tests.
 
-**Exit criteria:** dashboard looks identical; `index.ts` no longer contains
-business logic; killing the TUI is a clean interruption; ≥10 state-machine
+**Exit criteria:** dashboard looks identical. `index.ts` no longer contains
+business logic. Killing the TUI is a clean interruption. ≥10 State-machine
 tests pass in CI.
 
 ## Phase 1 — View layer migration to `@opentui/solid`
@@ -123,30 +123,30 @@ tests pass in CI.
 features — this phase buys leverage, not surface.*
 
 1. Add `@opentui/solid` + `vite-plugin-solid` build wiring (reference:
-   opencode `packages/opencode` build scripts; OpenTUI source at
+   opencode `packages/opencode` build scripts. OpenTUI source at
    `projects/repos/opentui`).
 2. **Bridge adapter:** `subscriptionRefToSignal` / `streamToStore` helpers —
    subscribe to Phase-0 state, apply with `batch()` on a ~16ms window
    (opencode `context/sdk.tsx` batching pattern).
 3. Recreate the dashboard as components: `<Dashboard>`, `<LogFeed>`,
-   `<WalletPane>`, `<TelemetryPane>`, `<OperatorPane>`, `<Composer>`; layout
+   `<WalletPane>`, `<TelemetryPane>`, `<OperatorPane>`, `<Composer>`. Layout
    stays the same flexbox shape.
 4. **Theme tokens:** port opencode's theme JSON schema (`context/theme.tsx`
    schema portion only — defs, ~10 semantic slots, `SyntaxStyle.fromTheme`)
    with a single `openagents` theme. Delete every inline `parseColor` from
    view code.
 5. **Error boundary + root lifecycle:** Solid `ErrorBoundary` with a formatted
-   fallback (opencode `component/error-component.tsx` pattern); resize via
+   fallback (opencode `component/error-component.tsx` pattern). Resize via
    `useTerminalDimensions()`.
 
-**Exit criteria:** feature-identical dashboard rendered from Solid components;
-zero direct renderable mutation outside the bridge; all colors via theme
-tokens; a thrown error in a pane shows a fallback instead of killing the node.
+**Exit criteria:** feature-identical dashboard rendered from Solid components.
+zero direct renderable mutation outside the bridge. All colors via theme
+tokens. A thrown error in a pane shows a fallback instead of killing the node.
 
 ## Phase 2 — Interaction grammar: keymap, dialogs, palette
 
 *Theme: this is the phase an operator actually feels. Highest user-visible
-value; everything harvests near-verbatim from opencode.*
+value. Everything harvests near-verbatim from opencode.*
 
 1. **`@opentui/keymap`** with the `opentui` addons: leader key, mode stack,
    sequence handling, managed-textarea commands (opencode `tui/keymap.tsx`,
@@ -168,8 +168,8 @@ value; everything harvests near-verbatim from opencode.*
 7. **User-configurable keybinds** file (validated with Effect schema, matching
    opencode's config approach) — low cost once the registry exists.
 
-**Exit criteria:** no hardcoded `onKeyDown` dispatch outside the keymap; footer
-shows live hints; palette and help dialog enumerate every command; no wallet
+**Exit criteria:** no hardcoded `onKeyDown` dispatch outside the keymap. Footer
+shows live hints. Palette and help dialog enumerate every command. No wallet
 mutation reachable without a confirm dialog.
 
 ## Phase 3 — Feed engine: virtualization and richer rendering
@@ -178,8 +178,8 @@ mutation reachable without a confirm dialog.
 
 1. **Virtualized log feed:** replace per-entry `MarkdownRenderable`s with one
    feed component over a ring buffer of pre-rendered lines, rendering only the
-   visible window (Textual Line-API concept; OpenTUI `TextBuffer` as
-   substrate). Width-keyed render cache; re-render on resize only for visible
+   visible window (Textual Line-API concept, OpenTUI `TextBuffer` as
+   substrate). Width-keyed render cache. Re-render on resize only for visible
    window.
 2. **Bounding tricks from opencode** as complements: collapse large entries by
    default (`util/collapse-tool-output.ts` idea), cap in-memory history with
@@ -192,29 +192,29 @@ mutation reachable without a confirm dialog.
 5. Optional: syntax/markdown caching keyed on content+width.
 
 **Exit criteria:** 100k-entry log session keeps a flat memory profile and
-smooth scroll; restart shows persisted scrollback; streaming responses render
+smooth scroll. Restart shows persisted scrollback. Streaming responses render
 without full-feed reflow.
 
 ## Phase 4 — Process split and attach mode
 
-*Theme: the node earns unattended; the TUI becomes a client.*
+*Theme: the node earns unattended. The TUI becomes a client.*
 
 1. **Split binary roles:** `pylon` runs node-core headless by default
-   (services + event stream + small control API); `pylon tui` (or default
+   (services + event stream + small control API). `pylon tui` (or default
    interactive launch) starts node-core and attaches in one process — the
    opencode `thread.ts` worker pattern, with node-core in the worker.
 2. **Serialize the Phase-0 event stream** over HTTP+SSE (or WebSocket) with
-   the reconnect/backoff pattern (1s→30s) from opencode `context/sdk.tsx`;
-   commands go over a typed HTTP API. Auth via local token; over Tailnet this
+   the reconnect/backoff pattern (1s→30s) from opencode `context/sdk.tsx`.
+   commands go over a typed HTTP API. Auth via local token. Over Tailnet this
    gives remote node supervision for free (aligns with the `control` iOS
    direction).
 3. **`pylon attach <addr>`** — the opencode `attach.ts` equivalent.
 4. **Detach-safe semantics:** killing an attached TUI never interrupts node
-   fibers; confirm dialogs for money flows execute node-side with explicit
+   fibers. Confirm dialogs for money flows execute node-side with explicit
    acknowledgement events.
 
-**Exit criteria:** node survives TUI exit; second terminal can attach to a
-running node and see identical state including scrollback; a money confirm
+**Exit criteria:** node survives TUI exit. Second terminal can attach to a
+running node and see identical state including scrollback. A money confirm
 round-trips through the protocol.
 
 ## Phase 5 — Surfaces and routing
@@ -225,7 +225,7 @@ round-trips through the protocol.
    `assignments` | `wallet` | `forum`, plus the dialog stack for everything
    transient. Quick-switch bindings (1–9 style).
 2. **Assignments/jobs table:** rows keyed by job id (Textual DataTable's
-   key-vs-position separation), virtualized via the Phase-3 engine; accept/
+   key-vs-position separation), virtualized via the Phase-3 engine. Accept/
    decline through confirm dialogs.
 3. **Wallet surface:** balance history, receive/send, payout targets — all
    operations already dialog-gated from Phase 2.
@@ -237,8 +237,8 @@ round-trips through the protocol.
    code-organization device for sidebar/footer extensions — no dynamic plugin
    loading.
 
-**Exit criteria:** ≥2 non-dashboard surfaces shipped; navigation discoverable
-via palette/help; composer history works across restarts.
+**Exit criteria:** ≥2 non-dashboard surfaces shipped. Navigation discoverable
+via palette/help. Composer history works across restarts.
 
 ## Phase 6 — Owned test harness
 
@@ -251,12 +251,12 @@ built and owned in this repo.*
    `bun:test` snapshots — Textual's Pilot model, implemented in-repo.
    Spike first against what the Zig core already exposes
    (`projects/repos/opentui/packages/core`) versus what we wrap ourselves.
-2. **Snapshot the dashboard and each surface** at 2–3 terminal sizes; snapshot
+2. **Snapshot the dashboard and each surface** at 2–3 terminal sizes. Snapshot
    dialog stacking and focus restore.
-3. **Protocol tests:** fake event stream → assert rendered frames; this is the
+3. **Protocol tests:** fake event stream → assert rendered frames. This is the
    payoff of the Phase 4 split.
 
-**Exit criteria:** TUI render regressions caught in CI; harness usable by
+**Exit criteria:** TUI render regressions caught in CI. Harness usable by
 runtime package renderers (`opentui-renderer.ts`) too.
 
 ## Sequencing rationale and dependencies
@@ -280,24 +280,24 @@ Phase 0 (seam/supervision)
   would attach to an empty screen.
 - **Phase 6 is a thread, not a tail:** the headless-buffer investigation
   (one-day spike into the OpenTUI Zig core) should happen during Phase 1 so
-  snapshot tests can accrete from Phase 2 onward; it is listed last only
+  snapshot tests can accrete from Phase 2 onward. It is listed last only
   because its full payoff needs the seam and the split.
 
 Rough effort ordering (not estimates): P0 and P2 are the high-leverage small
-phases; P1 is mechanical but touchy; P3 and P4 are the real engineering; P5 is
-product work on a paid-down foundation; P6 is a spike plus accretion.
+phases. P1 is mechanical but touchy. P3 and P4 are the real engineering. P5 is
+product work on a paid-down foundation. P6 is a spike plus accretion.
 
 ## Standing rules for all phases
 
 - Patterns from `projects/repos/opencode` and `projects/repos/textual` are
-  ported, never vendored; cite the source file in the commit/doc when a
+  ported, never vendored. Cite the source file in the commit/doc when a
   pattern is adopted.
 - All Nostr-facing behavior continues through `nostr-effect` — the TUI never
   grows parallel Nostr primitives.
-- No fiber, layer, or Effect import in Solid component files; the bridge
+- No fiber, layer, or Effect import in Solid component files. The bridge
   adapter is the only module that touches both worlds.
 - Every new command is registered in the command registry (no ad hoc
   `onKeyDown` dispatch), and every state-mutating money command goes through a
   confirm dialog, including over the attach protocol.
 - Keep `apps/pylon/README.md` honest: when Phase 2 lands, document the TUI for
-  the first time (the README currently doesn't mention it at all).
+  the first time (the README currently does not mention it at all).

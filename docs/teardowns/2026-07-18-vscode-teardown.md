@@ -27,19 +27,19 @@ adopt a substantial fraction of the workbench.
 
 The correct OpenAgents split is therefore:
 
-- **consume** Monaco and a narrowly admitted package portfolio;
+- **consume** Monaco and a narrowly admitted package portfolio.
 - **adapt** VS Code's document, lifecycle, command, language, terminal,
-  remote, and agent-session patterns into OpenAgents-owned contracts;
+  remote, and agent-session patterns into OpenAgents-owned contracts.
 - **retain** Zed as the main integrated agent-IDE architecture reference,
   Pierre as the tree/diff projection choice, and Cursor as the product-breadth
-  and fork-delta comparison;
+  and fork-delta comparison.
 - **reject** a Code-OSS fork, internal `vs/*` imports, an extension-host clone,
   and a second authority plane beside Effect Native, WorkContext, the generated
   engine protocol, and Electron main.
 
 The most important new finding is that current VS Code is itself moving toward
 an agent-first overlay. `src/vs/sessions/` is a new top-level layer above the
-workbench; `src/vs/platform/agentHost/` runs Copilot, Claude, and Codex harnesses
+workbench. `src/vs/platform/agentHost/` runs Copilot, Claude, and Codex harnesses
 through a provider-neutral protocol, session database, worktree isolation,
 checkpoint, changeset, approval, and remote-host system. This validates the
 idea that agent sessions should be a distinct plane over an editor substrate.
@@ -66,7 +66,7 @@ before inspection.
 | Commit subject | `Merge pull request #326406 from microsoft/connor/fix-local-ipc-tool-timeout` |
 | Nearest description | `1.106.0-20797-gf4e18ff9f2d` |
 | Root package metadata | `code-oss-dev`, version `1.130.0`, private ESM package |
-| Repository license | MIT; dependencies retain their own licenses and notices |
+| Repository license | MIT. Dependencies retain their own licenses and notices |
 
 The root package version and Git description are development metadata from the
 pinned checkout, not a claim about the latest stable Visual Studio Code
@@ -75,10 +75,10 @@ release.
 The 53-file source corpus used for the focused architecture and package audit
 has aggregate SHA-256
 `14ee1bd16db9b86d198eb1fe1625ece9a7d5b747035ed9e964f6cf7aba7d2c53`.
-It covers the layer rules; Monaco build seam; Explorer, tree, file, text-file,
-theme, extension, and language-service surfaces; sessions specifications;
+It covers the layer rules. Monaco build seam. Explorer, tree, file, text-file,
+theme, extension, and language-service surfaces. Sessions specifications.
 agent-host protocol, persistence, worktree, checkpoint, changeset, and handler
-code; and agent-SDK packaging.
+code. And agent-SDK packaging.
 
 ### OpenAgents target pin at authoring
 
@@ -97,7 +97,7 @@ Cursor, Pierre, and Zed analyses.
 
 At authoring, VS Code was not registered as a source in `FASTFOLLOW.md`. The
 2026-07-19 catalog reconciliation registered this already-completed teardown
-as a formal research source; that registration does not make it an
+as a formal research source. That registration does not make it an
 implementation candidate or change the accepted IDE packet order.
 
 ### Evidence labels
@@ -119,7 +119,7 @@ base → platform → editor → workbench → code/server
                                    ↘ sessions
 ```
 
-`sessions` may import `workbench`; `workbench` may not import `sessions`.
+`sessions` may import `workbench`. `workbench` may not import `sessions`.
 Within each layer, `common`, `browser`, `node`, `electron-browser`,
 `electron-utility`, and `electron-main` encode runtime availability. Services
 use decorator-identified dependency injection, and contribution entry points
@@ -145,11 +145,11 @@ servers. The root is one private `code-oss-dev` application package. [source]
 
 The architecture is worth copying conceptually:
 
-- dependency direction is a product invariant, not a convention;
-- runtime environment appears in the folder/API boundary;
-- services are injected and delayed instead of imported as ambient globals;
-- feature code registers through contribution points;
-- entry points determine load and startup cost;
+- dependency direction is a product invariant, not a convention.
+- runtime environment appears in the folder/API boundary.
+- services are injected and delayed instead of imported as ambient globals.
+- feature code registers through contribution points.
+- entry points determine load and startup cost.
 - tests are colocated at every layer. The pin contains 1,396 `*.test.ts` or
   `*.integrationTest.ts` files under base/platform/editor/workbench/sessions.
 
@@ -168,14 +168,14 @@ surfaces. [source]
 
 The standalone editor API exposes the useful mechanics directly:
 
-- code, diff, and multi-file-diff editor construction;
-- stable text models identified by URI;
-- language assignment and tokenization;
-- markers and marker-change events;
-- commands, editor actions, and keybinding rules;
-- themes;
-- web workers;
-- link and editor openers;
+- code, diff, and multi-file-diff editor construction.
+- stable text models identified by URI.
+- language assignment and tokenization.
+- markers and marker-change events.
+- commands, editor actions, and keybinding rules.
+- themes.
+- web workers.
+- link and editor openers.
 - model/editor lifecycle events.
 
 This seam is why Monaco is reusable and Explorer is not. Monaco contains a text
@@ -207,19 +207,19 @@ The cost is the boundary. At the pin:
 | `explorerView.ts` | 1,145 lines | 53 | 781 files |
 | `asyncDataTree.ts` | 1,739 lines | 23 | 156 files |
 
-The closure numbers come from a lexical traversal of local relative imports;
+The closure numbers come from a lexical traversal of local relative imports.
 they are an architectural pressure gauge, not a compiler-accurate bundle
 graph. [limitation]
 
 OpenAgents should continue using `@pierre/trees` for projection and its own
 workspace index/file service for authority. The VS Code donor behaviors are:
 
-- stable identity independent of a rendered row;
-- lazy directory hydration with explicit unresolved state;
-- merge rather than wholesale replacement after refresh;
-- cancellation and stale-result rejection;
-- deterministic sorting, filter, selection, reveal, focus, and keyboard laws;
-- bounded persistence of expansion and view state;
+- stable identity independent of a rendered row.
+- lazy directory hydration with explicit unresolved state.
+- merge rather than wholesale replacement after refresh.
+- cancellation and stale-result rejection.
+- deterministic sorting, filter, selection, reveal, focus, and keyboard laws.
+- bounded persistence of expansion and view state.
 - file operations routed through one typed authority service.
 
 Those behaviors belong in the Pierre adapter and WorkContext contracts, not in
@@ -261,7 +261,7 @@ filesystem/provider revision
 ```
 
 An editor widget is never the file authority. Monaco may own an attached
-model's undo stack, selections, decorations, folds, and scoped edit mechanics;
+model's undo stack, selections, decorations, folds, and scoped edit mechanics.
 the app still owns workspace identity, version admission, save, recovery,
 external-change reconciliation, permissions, and retention. [inferred]
 
@@ -279,8 +279,8 @@ sessions contribute actions through the same graph. [source]
 
 Two constraints are especially useful:
 
-- runtime state belongs in models/services; context keys are projections for
-  declarative enablement, not a hidden state database;
+- runtime state belongs in models/services. Context keys are projections for
+  declarative enablement, not a hidden state database.
 - capabilities gate actions structurally. The new session UI derives multi-chat
   and fork actions from advertised capabilities rather than provider-name
   switches.
@@ -332,30 +332,30 @@ candidate evidence, not automatic OpenAgents pins.
 
 | Package | Observed version | License in lock | What VS Code uses it for | OpenAgents disposition |
 | --- | --- | --- | --- | --- |
-| `monaco-editor` | OpenAgents accepted `0.55.1`; VS Code builds core from source | MIT | editor/model/language API | **Adopt already decided; implement the app adapter** |
-| `vscode-uri` | `3.1.0` | MIT | standards-compatible URI values | **Evaluate only at LSP boundary; never expose absolute paths to renderer** |
-| `vscode-jsonrpc` | `8.2.0` stable lineage; `9.0.0-next.12` in newer built-ins | MIT where declared | LSP transport | **Evaluate; prefer a compatible stable set** |
+| `monaco-editor` | OpenAgents accepted `0.55.1`. VS Code builds core from source | MIT | editor/model/language API | **Adopt already decided. Implement the app adapter** |
+| `vscode-uri` | `3.1.0` | MIT | standards-compatible URI values | **Evaluate only at LSP boundary. Never expose absolute paths to renderer** |
+| `vscode-jsonrpc` | `8.2.0` stable lineage. `9.0.0-next.12` in newer built-ins | MIT where declared | LSP transport | **Evaluate. Prefer a compatible stable set** |
 | `vscode-languageserver-protocol` | `3.17.5` / `3.17.6-next.18` | MIT | typed LSP messages | **Evaluate behind Effect schemas** |
-| `vscode-languageserver-textdocument` | `1.0.12` / `1.0.13` | MIT | versioned text documents | **Evaluate; do not make it canonical document storage** |
-| `vscode-json-languageservice` | `6.0.0-next.2` | MIT | JSON intelligence | **Worker spike; avoid prerelease admission without reason** |
+| `vscode-languageserver-textdocument` | `1.0.12` / `1.0.13` | MIT | versioned text documents | **Evaluate. Do not make it canonical document storage** |
+| `vscode-json-languageservice` | `6.0.0-next.2` | MIT | JSON intelligence | **Worker spike. Avoid prerelease admission without reason** |
 | `vscode-css-languageservice` | `7.0.0-next.1` | MIT | CSS/SCSS/LESS intelligence | **Worker spike** |
 | `vscode-html-languageservice` | `6.0.0-next.1` | MIT | HTML intelligence | **Worker spike** |
-| `vscode-markdown-languageservice` | `0.5.0` | MIT | Markdown links/symbols/validation | **Later spike; compare against existing Markdown stack** |
+| `vscode-markdown-languageservice` | `0.5.0` | MIT | Markdown links/symbols/validation | **Later spike. Compare against existing Markdown stack** |
 | `@xterm/xterm` | `6.1.0-beta.288` | MIT | terminal emulator | **Strong later candidate behind typed Terminal host** |
 | xterm search/serialize/WebGL add-ons | matching beta line | MIT | terminal UX/performance | **Admit only with xterm and packaged GPU/accessibility proof** |
-| `@vscode/ripgrep-universal` | `1.18.0` | MIT | platform Ripgrep distribution | **Benchmark against current search worker; main process only** |
+| `@vscode/ripgrep-universal` | `1.18.0` | MIT | platform Ripgrep distribution | **Benchmark against current search worker. Main process only** |
 | `@vscode/tree-sitter-wasm` | `0.3.1` | MIT | tokenization and command parsing | **Later parse/symbol candidate, not required for Monaco launch** |
-| `@vscode/vscode-languagedetection` | `1.0.23` | MIT | model-based language detection | **Defer; extension/path mapping is cheaper and more explainable** |
-| `vscode-textmate` | `9.3.2` | MIT | TextMate grammar execution | **Defer; avoid duplicating Monaco/Pierre/Shiki tokenization** |
+| `@vscode/vscode-languagedetection` | `1.0.23` | MIT | model-based language detection | **Defer. Extension/path mapping is cheaper and more explainable** |
+| `vscode-textmate` | `9.3.2` | MIT | TextMate grammar execution | **Defer. Avoid duplicating Monaco/Pierre/Shiki tokenization** |
 | `vscode-oniguruma` | `1.7.0` | review package notice | regex WASM for TextMate | **Only with a TextMate decision** |
-| `@vscode/diff` | `0.0.2-7` | MIT | editor line diff computation | **Do not add now; Pierre/Monaco already own presentation paths** |
+| `@vscode/diff` | `0.0.2-7` | MIT | editor line diff computation | **Do not add now. Pierre/Monaco already own presentation paths** |
 | `@vscode/codicons` | `0.0.46-21` | CC-BY-4.0 | product/editor icon font | **Reject for product identity and extra attribution plane** |
-| `@vscode/sqlite3` | `5.1.12-vscode` | BSD-3-Clause | native SQLite | **Reject; OpenAgents already owns a SQLite runtime** |
+| `@vscode/sqlite3` | `5.1.12-vscode` | BSD-3-Clause | native SQLite | **Reject. OpenAgents already owns a SQLite runtime** |
 | `@vscode/debugadapter` / `@vscode/debugprotocol` | `1.68.0` in Copilot extension | MIT | DAP adapter/protocol | **Later DAP study, not basic editor scope** |
 
 `@vscode/diff` has only a handful of source call sites. `@xterm/xterm` has 87,
 reflecting a large terminal integration surface. Package adoption removes the
-need to write an emulator; it does not provide the surrounding commands,
+need to write an emulator. It does not provide the surrounding commands,
 process lifecycle, shell integration, accessibility, reconnection, or security
 policy. [source][inferred]
 
@@ -383,8 +383,8 @@ The `vscode` module imported by extensions is supplied by the VS Code extension
 host. It is not an ordinary application package. Reusing built-in extension
 source generally requires either:
 
-1. porting the useful logic below the extension API;
-2. consuming a separately published server/library package; or
+1. porting the useful logic below the extension API.
+2. consuming a separately published server/library package. Or
 3. implementing a compatible extension host.
 
 Only the first two fit the accepted OpenAgents plan. A future OpenAgents plugin
@@ -431,11 +431,11 @@ as an overlay layer. [inferred]
 The sessions architecture separates:
 
 - `ISessionsManagementService`: aggregate sessions, create/send/CRUD, recency,
-  drafts, and provider routing;
+  drafts, and provider routing.
 - `ISessionsService`: active/visible session views, focus, layout,
-  back/forward, and persistence;
-- `ISessionsProvidersService`: provider registration;
-- `ISession`: observable provider-neutral session facade;
+  back/forward, and persistence.
+- `ISessionsProvidersService`: provider registration.
+- `ISession`: observable provider-neutral session facade.
 - providers: local chat, Copilot, local Agent Host, and remote Agent Host.
 
 A provider-scoped session ID is distinct from the provider's raw session ID,
@@ -446,7 +446,7 @@ colliding routing or model catalogs. [source]
 Chats have explicit interactivity: Full, ReadOnly, or Hidden. Archived and
 subagent histories can remain visible without exposing a composer or mutating
 actions. Provider capabilities gate multiple chats, forking, deletion, and
-other actions; core UI does not switch on provider name. [source]
+other actions. Core UI does not switch on provider name. [source]
 
 ### Layout and responsive projection
 
@@ -491,11 +491,11 @@ not the AHP types themselves. [proposal]
 
 VS Code distinguishes:
 
-- harness SDK session;
-- chat channel within that session;
+- harness SDK session.
+- chat channel within that session.
 - orchestrator session containing the chat catalog and persisted state.
 
-The orchestrator records and routes; the harness creates and drives chats.
+The orchestrator records and routes. The harness creates and drives chats.
 User-created and harness-spawned chats enter one catalog path. Provider data is
 opaque. Session URIs and chat URIs are structurally distinct. Capability flags
 gate multi-chat and fork UI. Persisted peer chats and transient spawned chats
@@ -554,11 +554,11 @@ lists. [source]
 This is one of the strongest source-grounded agent-review patterns in the
 repository. OpenAgents should adapt:
 
-- host-owned isolation shared across runtimes;
-- exact worktree provenance and serialized lifecycle;
-- checkpoint refs that include terminal edits, not only recognized edit tools;
-- session/branch/turn changesets as separate named evidence;
-- lazy subscription and summary projection;
+- host-owned isolation shared across runtimes.
+- exact worktree provenance and serialized lifecycle.
+- checkpoint refs that include terminal edits, not only recognized edit tools.
+- session/branch/turn changesets as separate named evidence.
+- lazy subscription and summary projection.
 - cleanup that knows exactly which refs it owns.
 
 OpenAgents should strengthen it with its existing receipts, placement,
@@ -572,12 +572,12 @@ Every Agent Host session gets
 `{userDataPath}/agentSessionData/{sessionId}/session.db` plus an `attachments/`
 directory. SQLite migrations currently define:
 
-- turns and SDK event IDs;
-- file edits with before/after blobs, rename metadata, and line counts;
-- arbitrary session metadata;
-- per-turn checkpoint refs;
-- per-chat drafts;
-- reviewed-file URI/content-nonce pairs;
+- turns and SDK event IDs.
+- file edits with before/after blobs, rename metadata, and line counts.
+- arbitrary session metadata.
+- per-turn checkpoint refs.
+- per-chat drafts.
+- reviewed-file URI/content-nonce pairs.
 - host-injected local turns.
 
 Session summary caches are also stored through the workbench storage service so
@@ -592,7 +592,7 @@ orchestrator catalog, session database, workbench summary cache, hidden Git
 refs, attachments, and optional telemetry DB. [inferred]
 
 OpenAgents should learn from both sides: lazy summaries and on-demand blobs are
-good; every persisted class still needs a declared inventory, authority,
+good. Every persisted class still needs a declared inventory, authority,
 retention, export, and verified deletion law. [proposal]
 
 ## 16. Skills, instructions, hooks, MCP, and harness customizations
@@ -605,7 +605,7 @@ The active session worktree becomes the sessions-window project root. [source]
 
 This is a useful answer to a common product mistake: storage location and
 runtime consumer are separate concepts. The same file can exist in a workspace
-but be ignored by a given harness; a remote harness can contribute its own
+but be ignored by a given harness. A remote harness can contribute its own
 items, disable controls, and plugin actions. [inferred]
 
 OpenAgents should retain its own typed skill/tool/plugin admission and policy
@@ -631,8 +631,8 @@ between build and runtime pins. Web builds omit the Node-only SDK surface.
 
 At the pin:
 
-- `@anthropic-ai/claude-agent-sdk` is exactly `0.3.198`;
-- `@openai/codex` is exactly `0.142.0`;
+- `@anthropic-ai/claude-agent-sdk` is exactly `0.3.198`.
+- `@openai/codex` is exactly `0.142.0`.
 - `@github/copilot-sdk` is a normal root dependency at
   `^1.0.7-preview.0` and is packaged differently.
 
@@ -675,71 +675,71 @@ stable editor substrate
 ```
 
 OpenAgents should use that shape with owned TypeScript packages rather than a
-fork: Effect Native and the Desktop React projection above Monaco/Pierre;
-typed main-process project/document/Git/terminal/language services; separate
-real harness adapters; and one canonical project/evidence graph. [proposal]
+fork: Effect Native and the Desktop React projection above Monaco/Pierre.
+typed main-process project/document/Git/terminal/language services. Separate
+real harness adapters. And one canonical project/evidence graph. [proposal]
 
 ## 19. What to take, study, and reject
 
 ### Take as dependencies after explicit admission
 
-- `monaco-editor@0.55.1` through the already accepted lazy app adapter;
+- `monaco-editor@0.55.1` through the already accepted lazy app adapter.
 - a compatible stable `vscode-uri` + `vscode-jsonrpc` + LSP protocol/document
-  set for the language-host boundary;
-- selected standalone language services after worker/package proof;
-- xterm and only the add-ons justified by the Terminal contract;
+  set for the language-host boundary.
+- selected standalone language services after worker/package proof.
+- xterm and only the add-ons justified by the Terminal contract.
 - optionally Ripgrep's platform package after a benchmark and release-matrix
-  spike;
+  spike.
 - DAP protocol packages only when debugging becomes an admitted product rung.
 
 ### Adapt as architecture and behavior
 
-- layer and runtime dependency rules;
-- file-provider capabilities and operation events;
-- stable document models above editor widgets;
-- one command/context/menu/keybinding graph;
-- lazy tree merge, reveal, selection, and accessibility laws;
-- LSP lifecycle, cancellation, versioning, and Problems projection;
-- local/remote placement symmetry;
-- sessions model/view/provider separation;
-- explicit session/chat/provider/runtime identity;
-- capability-gated multi-chat and read-only histories;
-- shared worktree isolation, hidden-ref checkpoints, changesets, and review;
-- harness customization source/consumer separation;
+- layer and runtime dependency rules.
+- file-provider capabilities and operation events.
+- stable document models above editor widgets.
+- one command/context/menu/keybinding graph.
+- lazy tree merge, reveal, selection, and accessibility laws.
+- LSP lifecycle, cancellation, versioning, and Problems projection.
+- local/remote placement symmetry.
+- sessions model/view/provider separation.
+- explicit session/chat/provider/runtime identity.
+- capability-gated multi-chat and read-only histories.
+- shared worktree isolation, hidden-ref checkpoints, changesets, and review.
+- harness customization source/consumer separation.
 - exact platform runtime artifacts and drift tests.
 
 ### Study behind explicit spikes
 
-- Tree-sitter WASM for local symbols or safe command parsing;
-- TextMate/Oniguruma only if Monaco/Pierre/Shiki cannot cover a required grammar;
-- language detection only if unknown-file UX warrants its model/runtime cost;
-- Ripgrep packaging versus the current OpenAgents search worker;
-- xterm WebGL, image, ligature, search, and serialization add-ons;
-- remote filesystem/language/terminal protocol behavior;
+- Tree-sitter WASM for local symbols or safe command parsing.
+- TextMate/Oniguruma only if Monaco/Pierre/Shiki cannot cover a required grammar.
+- language detection only if unknown-file UX warrants its model/runtime cost.
+- Ripgrep packaging versus the current OpenAgents search worker.
+- xterm WebGL, image, ligature, search, and serialization add-ons.
+- remote filesystem/language/terminal protocol behavior.
 - DAP adapter and debug state once the basic IDE rung is complete.
 
 ### Reject
 
-- forking Code-OSS or Cursor's private delta;
-- importing unpublished `src/vs/*` modules;
+- forking Code-OSS or Cursor's private delta.
+- importing unpublished `src/vs/*` modules.
 - porting Explorer, `AsyncDataTree`, workbench layout, settings, or extension
-  host wholesale;
-- treating `vscode-languageclient` as a standalone app library;
-- Codicons as OpenAgents product identity;
-- a second SQLite/native runtime where OpenAgents already owns one;
-- provider-name switches in shared UI;
-- agent mutation of Monaco or renderer state;
-- a second agent protocol/session authority beside OpenAgents;
+  host wholesale.
+- treating `vscode-languageclient` as a standalone app library.
+- Codicons as OpenAgents product identity.
+- a second SQLite/native runtime where OpenAgents already owns one.
+- provider-name switches in shared UI.
+- agent mutation of Monaco or renderer state.
+- a second agent protocol/session authority beside OpenAgents.
 - claims of VS Code/Cursor parity based only on Monaco, a tree, and a terminal.
 
 ## 20. Failure modes to avoid
 
 | Failure | Why the source makes it likely | OpenAgents guard |
 | --- | --- | --- |
-| “Internal TypeScript is reusable” | Explorer/workbench files have very large local closures | only import published packages; port concepts through owned contracts |
+| “Internal TypeScript is reusable” | Explorer/workbench files have very large local closures | only import published packages. Port concepts through owned contracts |
 | Two document owners | Monaco can look authoritative while disk/recovery is elsewhere | versioned main document boundary + one model binding per document ref |
 | Two command systems | Monaco and React can each register shortcuts | one typed command registry projected into adapters |
-| LSP path leakage | LSP uses real URIs while renderer uses opaque refs | main-owned URI translation; diagnostics return document refs/generations |
+| LSP path leakage | LSP uses real URIs while renderer uses opaque refs | main-owned URI translation. Diagnostics return document refs/generations |
 | Native package release breakage | Ripgrep/xterm WebGL/SQLite/PTY have platform assets | exact lock, staged artifact inventory, packaged six-target proof |
 | Duplicate tokenizers | Monaco, Shiki/Pierre, TextMate, and Tree-sitter overlap | assign one purpose to each admitted parser/tokenizer |
 | Provider semantic flattening | Claude/Copilot/Codex multi-chat behavior differs | capability and runtime identity in every projection |
@@ -772,17 +772,17 @@ workbench. [proposal]
 
 | Area | Primary pinned source |
 | --- | --- |
-| Layer rules | `.github/instructions/source-code-organization.instructions.md`; `src/vs/sessions/LAYERS.md` |
-| Monaco public seam | `build/monaco/`; `src/vs/editor/editor.api.ts`; `src/vs/editor/standalone/browser/standaloneEditor.ts`; `src/tsconfig.monaco.json` |
-| Explorer/tree | `src/vs/workbench/contrib/files/common/explorerModel.ts`; `.../browser/views/explorerView.ts`; `src/vs/base/browser/ui/tree/asyncDataTree.ts` |
-| File and document model | `src/vs/platform/files/common/files.ts`; `src/vs/workbench/services/textfile/common/textFileEditorModel.ts` |
-| Themes | `src/vs/platform/theme/common/themeService.ts`; `src/vs/workbench/services/themes/common/colorThemeData.ts` |
-| Extensions | `src/vscode-dts/vscode.d.ts`; `src/vs/workbench/api/common/extHost.protocol.ts`; `src/vs/workbench/services/extensions/common/extensions.ts` |
+| Layer rules | `.github/instructions/source-code-organization.instructions.md`. `src/vs/sessions/LAYERS.md` |
+| Monaco public seam | `build/monaco/`. `src/vs/editor/editor.api.ts`. `src/vs/editor/standalone/browser/standaloneEditor.ts`. `src/tsconfig.monaco.json` |
+| Explorer/tree | `src/vs/workbench/contrib/files/common/explorerModel.ts`. `.../browser/views/explorerView.ts`. `src/vs/base/browser/ui/tree/asyncDataTree.ts` |
+| File and document model | `src/vs/platform/files/common/files.ts`. `src/vs/workbench/services/textfile/common/textFileEditorModel.ts` |
+| Themes | `src/vs/platform/theme/common/themeService.ts`. `src/vs/workbench/services/themes/common/colorThemeData.ts` |
+| Extensions | `src/vscode-dts/vscode.d.ts`. `src/vs/workbench/api/common/extHost.protocol.ts`. `src/vs/workbench/services/extensions/common/extensions.ts` |
 | Language packages | `extensions/{json,css,html,markdown}-language-features/**/package*.json` and server sources |
-| Sessions architecture | `src/vs/sessions/README.md`; `SESSIONS.md`; `LAYOUT.md`; `MOBILE.md`; `SESSIONS_LIST.md`; provider docs |
-| Agent state/protocol | `src/vs/platform/agentHost/common/state/`; `node/agentHostStateManager.ts`; `MULTI_CHAT_ARCHITECTURE.md` |
-| Persistence | `common/sessionDataService.ts`; `node/sessionDataService.ts`; `node/sessionDatabase.ts`; `OTEL.md` |
-| Isolation/checkpoint/review | `node/shared/worktreeIsolation.ts`; `common/node agentHostCheckpointService.ts`; `common/node agentHostChangesetService.ts` |
+| Sessions architecture | `src/vs/sessions/README.md`. `SESSIONS.md`. `LAYOUT.md`. `MOBILE.md`. `SESSIONS_LIST.md`. Provider docs |
+| Agent state/protocol | `src/vs/platform/agentHost/common/state/`. `node/agentHostStateManager.ts`. `MULTI_CHAT_ARCHITECTURE.md` |
+| Persistence | `common/sessionDataService.ts`. `node/sessionDataService.ts`. `node/sessionDatabase.ts`. `OTEL.md` |
+| Isolation/checkpoint/review | `node/shared/worktreeIsolation.ts`. `common/node agentHostCheckpointService.ts`. `common/node agentHostChangesetService.ts` |
 | Harness UI bridge | `src/vs/workbench/contrib/chat/browser/agentSessions/agentHost/agentHostSessionHandler.ts` |
 | Runtime artifact packaging | `build/agent-sdk/` and packaging sections of `build/gulpfile.vscode.ts` |
 | Cursor fork comparison | `docs/teardowns/2026-07-11-cursor-product-teardown.md` |

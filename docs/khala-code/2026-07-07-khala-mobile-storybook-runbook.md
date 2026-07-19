@@ -113,7 +113,7 @@ iOS Bundled ... clients/khala-mobile/.rnstorybook/index.ts
 ```
 
 If the command opens the app shell anyway, confirm `clients/khala-mobile/index.tsx`
-still imports `./src/app`; Storybook should be selected by Metro's
+still imports `./src/app`. Storybook should be selected by Metro's
 `STORYBOOK_ENABLED=true` resolver in `clients/khala-mobile/metro.config.cjs`,
 which aliases that import to `.rnstorybook/app-root.ts`.
 

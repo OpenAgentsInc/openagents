@@ -20,35 +20,35 @@ and a pre/post proof-state report.
 
 The route requires:
 
-- OpenAgents admin browser session or admin API token;
-- `Idempotency-Key`;
+- OpenAgents admin browser session or admin API token.
+- `Idempotency-Key`.
 - public-safe request refs.
 
 It does not:
 
-- spend bitcoin;
-- create invoices;
-- mutate Pylons;
-- publish Pylon releases;
-- expose raw payment material;
+- spend bitcoin.
+- create invoices.
+- mutate Pylons.
+- publish Pylon releases.
+- expose raw payment material.
 - bypass the lower-level settlement bridge evidence checks.
 
 ## Request Shape
 
 The request includes:
 
-- `assignmentRef`;
-- `artanisRunRef`;
-- optional `settlementIntentRef`;
-- `amountSats`;
-- optional `spendCapSats`;
-- `payoutTargetApprovalRef`;
-- `payoutTargetRef`;
-- `policySnapshotRef`;
-- optional `providerRef`;
-- optional `pylonJobRef`;
-- optional `buyerPaymentRef`;
-- optional `redactedDestinationRef`;
+- `assignmentRef`.
+- `artanisRunRef`.
+- optional `settlementIntentRef`.
+- `amountSats`.
+- optional `spendCapSats`.
+- `payoutTargetApprovalRef`.
+- `payoutTargetRef`.
+- `policySnapshotRef`.
+- optional `providerRef`.
+- optional `pylonJobRef`.
+- optional `buyerPaymentRef`.
+- optional `redactedDestinationRef`.
 - optional `adapterKind`.
 
 The Pylon assignment event log must already contain accepted work,
@@ -59,11 +59,11 @@ missing, the route returns the pre/post trace states plus the bridge blocker.
 
 The response includes:
 
-- `proofRunRef`;
-- pre-bridge proof trace state;
-- lower-level bridge status and response body;
-- post-bridge proof trace state;
-- public receipt URL when available;
+- `proofRunRef`.
+- pre-bridge proof trace state.
+- lower-level bridge status and response body.
+- post-bridge proof trace state.
+- public receipt URL when available.
 - idempotency state.
 
 Raw invoices, preimages, payment hashes, mnemonics, exact wallet balances,

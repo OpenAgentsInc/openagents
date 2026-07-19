@@ -1,6 +1,6 @@
 # `openagents.gce_capacity_class.v1`
 
-Status: live (lease lifecycle + real GCE provisioner; cloud#88 leg landed)
+Status: live (lease lifecycle + real GCE provisioner, cloud#88 leg landed)
 
 The lease state machine (`acquire -> ready -> in_use -> release`), reconciliation
 labels, provision/cleanup receipts, TTL/idle caps, and idempotent release are
@@ -31,7 +31,7 @@ Real Compute Engine calls are gated behind `OA_CODEX_GCE_PROVISIONER`:
   provisioner (and lane resolution falls back to SHC when GCE is marked
   unavailable). Raw GCP project id / zone / instance name are used only
   transiently inside the provisioner and never retained in projections,
-  receipts, or logs; the deterministic VM name is derived from the redacted
+  receipts, or logs. The deterministic VM name is derived from the redacted
   `instance_ref` digest so acquire and release agree without retaining it.
 
 Enable the live lane on a control host that has `gcloud` + ADC:
@@ -58,7 +58,7 @@ VM for a workroom or benchmark session, attach only the bootstrap material
 needed to reach it, and destroy the VM when the lease is released or expires.
 
 This is private managed-cloud infrastructure. Public contributor Pylon should
-only see refs, digests, and public-safe capability shape; it must not learn raw
+only see refs, digests, and public-safe capability shape. It must not learn raw
 GCP project ids, instance names, external IPs, credentials, firewall topology,
 or placement details.
 
@@ -66,11 +66,11 @@ or placement details.
 
 `openagents.gce_capacity_class.v1` gives Cloud a refs-only contract for:
 
-- acquiring an ephemeral Compute Engine VM in an OpenAgents-owned GCP project;
+- acquiring an ephemeral Compute Engine VM in an OpenAgents-owned GCP project.
 - declaring SSH metadata, managed firewall policy, labels, and reconciliation
-  refs without retaining raw cloud identifiers;
-- tracking the lease state from `acquire` to `ready`, `in_use`, and `release`;
-- enforcing TTL and idle-timeout cleanup;
+  refs without retaining raw cloud identifiers.
+- tracking the lease state from `acquire` to `ready`, `in_use`, and `release`.
+- enforcing TTL and idle-timeout cleanup.
 - minting receipt refs for provisioning, readiness, use, release, and cleanup.
 
 The class is compute capacity, not open-ended labor. Workroom assignment,
@@ -130,10 +130,10 @@ must be session scoped.
 
 Retained state may record:
 
-- `ssh_metadata_ref`;
-- public-key fingerprint digest;
-- bootstrap user ref;
-- expiry timestamp;
+- `ssh_metadata_ref`.
+- public-key fingerprint digest.
+- bootstrap user ref.
+- expiry timestamp.
 - provisioning receipt digest.
 
 Retained state must not record SSH private keys, raw authorized-key material,
@@ -199,7 +199,7 @@ to `idle_timeout_ms`.
 
 `in_use` means the VM is attached to one declared workroom, benchmark task, or
 Cloud session. In-use leases remain subject to both `ttl_ms` and
-`idle_timeout_ms`; activity refreshes idle state only through explicit,
+`idle_timeout_ms`. Activity refreshes idle state only through explicit,
 redacted heartbeat receipts.
 
 `release` is terminal for the capacity lease. Release deletes the managed VM,
@@ -278,7 +278,7 @@ checks used by other Cloud contracts.
   non-secret strings.
 - `gcp_project_ref` must be a redacted ref, never a raw GCP project id or
   project number.
-- ADC may be used only at provisioning time; retained state must not include
+- ADC may be used only at provisioning time. Retained state must not include
   raw ADC tokens, service-account keys, OAuth material, or metadata-server
   credentials.
 - `ttl_ms` and `idle_timeout_ms` must be positive and bounded by Cloud fleet

@@ -13,18 +13,18 @@ Ownership rule (current):
 - Cloud rows are implemented in `openagents` under `crates/oa-*` and
   `docs/cloud/*` (tracking epic: openagents#8591).
 - `openagents`-only rows protect public contributor Pylon (`apps/pylon`).
-- Forge and Probe remain their own authorities; Cloud integrates through typed
+- Forge and Probe remain their own authorities. Cloud integrates through typed
   adapters.
 - **Deprecated:** do not treat Vortex, Autopilot-as-Cloud-control, Treasury
   product, or Nexus-as-registry as current owners. Current product/durable
   state lives on the `openagents.com` Worker and Khala Sync. Customer credits
-  live on the Worker; outbound payout/custody uses the **MDK/Nexus payout
+  live on the Worker. Outbound payout/custody uses the **MDK/Nexus payout
   bridge** only where that path is still active.
 
 Historical intro (kept for archaeology):
 
 This file began as the private `cloud` implementation backlog. Issue IDs
-(`CND-*`) and many “Repo: cloud” rows are frozen labels; land code in
+(`CND-*`) and many “Repo: cloud” rows are frozen labels. Land code in
 openagents, not private cloud.
 
 ---
@@ -81,7 +81,7 @@ Acceptance:
 
 - Public docs say contributor Pylon remains open source.
 - Contributor payout behavior remains auditable without private repo access.
-- Public Pylon may depend on public Cloud contracts; managed daemons stay in `crates/*`.
+- Public Pylon may depend on public Cloud contracts. Managed daemons stay in `crates/*`.
 
 ### CND-005 Bootstrap Private `cloud` Repo
 
@@ -835,9 +835,9 @@ Acceptance:
   KVM-gated live firecracker/jailer lane (owner-gated, default-OFF, honest
   refusal — never falls back to local, never fakes a green).
 - HTTP route satisfies the `CloudVmProvisionerV2` wire shape (contract test
-  `tests/cloud_vm_contract.rs`); fake-runtime unit tests prove the lifecycle +
+  `tests/cloud_vm_contract.rs`). Fake-runtime unit tests prove the lifecycle +
   refs-only receipts with no KVM.
 - Live boot on a Linux KVM host is the deploy step
-  (`docs/bootstrap/CND-056-cloud-vm-firecracker-provisioner.md`); the
+  (`docs/bootstrap/CND-056-cloud-vm-firecracker-provisioner.md`). The
   `#[ignore]` live proof drives the on-hardware run. macOS/Windows tiers refuse
   until a host pool exists.

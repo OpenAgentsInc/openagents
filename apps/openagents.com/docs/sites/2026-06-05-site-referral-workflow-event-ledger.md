@@ -58,10 +58,10 @@ parsing English status text.
 
 `workers/api/src/site-referral-workflow-events.ts` exposes:
 
-- `recordReferralWorkflowEvent`;
-- `listReferralWorkflowEventsByAttribution`;
-- `listReferralWorkflowEventsBySource`;
-- `listReferralWorkflowEventsByOrder`;
+- `recordReferralWorkflowEvent`.
+- `listReferralWorkflowEventsByAttribution`.
+- `listReferralWorkflowEventsBySource`.
+- `listReferralWorkflowEventsByOrder`.
 - `listReferralWorkflowEventsBySite`.
 
 `recordReferralWorkflowEvent` validates refs, rejects secret-shaped payment or
@@ -76,12 +76,12 @@ accepted-work ref.
 
 It must not store:
 
-- raw Lightning invoices;
-- preimages or payment secrets;
-- wallet keys, mnemonic text, or private keys;
-- MDK access tokens or provider/OAuth tokens;
-- webhook secrets;
-- private user contact data;
+- raw Lightning invoices.
+- preimages or payment secrets.
+- wallet keys, mnemonic text, or private keys.
+- MDK access tokens or provider/OAuth tokens.
+- webhook secrets.
+- private user contact data.
 - private prompt/run logs.
 
 ## Relationship To Existing Site Commerce

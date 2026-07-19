@@ -64,5 +64,5 @@ temporary directory: the OpenAgents dogfood node profile, signed bundle
 manifest, fresh-install receipt, routed internal workload receipts, exact local
 metering receipts, the policy-refused Qwen refresh, and the aggregate
 `openagents.reactor.dogfood_run_receipt.v1` record. It remains internal
-dogfood evidence only; it does not authorize external pilots or public
+dogfood evidence only. It does not authorize external pilots or public
 availability copy.

@@ -63,8 +63,8 @@ Money-safety, by construction:
 The closed-loop end-to-end proof (5 tests):
 
 1. **feed → dispatch (staging adapter) → settled D1 row → public receipt
-   dereferences.** A referred + paid Bitcoin event records an eligible row; the
-   staging-test dispatch (readiness gate armed for staging) settles it; then
+   dereferences.** A referred + paid Bitcoin event records an eligible row. The
+   staging-test dispatch (readiness gate armed for staging) settles it. Then
    `makeD1SiteReferralPayoutReceiptStore` resolves the produced receipt as a
    `staging_test` settlement with `amountSats`, `attributionLinked`,
    `qualifyingEventKind`, policy/caveat refs, and live-at-read staleness — and

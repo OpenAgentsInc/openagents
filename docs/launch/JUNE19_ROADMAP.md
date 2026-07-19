@@ -3,7 +3,7 @@
 Date: 2026-06-19. Rolls forward from
 [`JUNE18_ROADMAP.md`](./JUNE18_ROADMAP.md) (CLOSED 2026-06-19). Overnight the
 revenue-loop clearing layer (EPIC #5457) and the desktop auto-onboarding from-DMG
-proof (EPIC #5441) both landed and closed; the product-promises registry destaled
+proof (EPIC #5441) both landed and closed. The product-promises registry destaled
 to `2026-06-19.2`. Since then: **EPIC #5461 (Autopilot Desktop → full coding agent)
 is COMPLETE** (be2378066), the post-EPIC **styles.css launch-fix** landed
 (`b6e523a77` — repaired styles.css mangled by the #5461 serial merges), the three
@@ -22,23 +22,23 @@ the section below for the live-verification record.
 
 ## P0 — CLOSE THE REVENUE LOOP ($1 in → >$1 out)
 
-**THE priority, full stop. If we close the revenue loop we have a company; if not, we're
+**THE priority, full stop. If we close the revenue loop we have a company. If not, we are
 wasting time.** Grounded in the "Let's Make Money" thesis
 (`../../../launch-videos/2026-06-18-video-2-referral-revenue-share.md`): OpenAgents has
 repeatedly shipped *supply* and left the *buy-side* open — agentic coding is the first demand
-people already pay for. The loop has three legs; honest status as of 2026-06-19:
+people already pay for. The loop has three legs. Honest status as of 2026-06-19:
 
-- **MONEY IN** — credits purchase. Stripe checkout is real + fully wired; gated only on keys
-  (NEEDS-OWNER: Stripe test keys → staging, live → prod; no Stripe secrets on prod yet). BTC
+- **MONEY IN** — credits purchase. Stripe checkout is real + fully wired. Gated only on keys
+  (NEEDS-OWNER: Stripe test keys → staging, live → prod, no Stripe secrets on prod yet). BTC
   top-up is future. **#5497 (MERGED)** bridges purchased USD credits → inference-spendable msat
   (asset-boundary enforced: USD-funded balance is spendable on inference, never withdrawable as
   Bitcoin).
 - **VALUE — 🟢 LIVE:** the inference gateway is enabled in prod (Gemini 3.5 Flash free tier,
   $10/owner-claim Sybil-resistant pool) and the Autopilot coding agent is the demand wedge.
-- **MONEY OUT / MARGIN** — serving-node + referral revshare (built, owner-armed); margin = the
+- **MONEY OUT / MARGIN** — serving-node + referral revshare (built, owner-armed). Margin = the
   spread over our owned supply cost.
 - **CLOSED =** real $/sat in → value delivered → margin + revshare out, end-to-end. Today value
-  is LIVE; money-in waits on Stripe keys; the full buy→fund→spend loop is exercisable now on the
+  is LIVE. Money-in waits on Stripe keys. The full buy→fund→spend loop is exercisable now on the
   isolated **staging** env (own D1/KV/R2, migration 0211 applied, inference keys set).
 
 The afternoon thrust turned the day's product spine toward the **buy-side**. Two pieces:
@@ -49,7 +49,7 @@ The entire OpenAgents inference gateway shipped to `main` behind
 `INFERENCE_GATEWAY_ENABLED` (12 issues): OpenAI-compatible `/v1/chat/completions` →
 key-auth → balance gate → **cheapest-viable routing** (claude→Vertex, open→Fireworks,
 +passthrough) with 429/503 overflow → adapter dispatch → **live credit decrement metered
-from real `usage`** via the pricing engine (idempotent, never-negative); plus the
+from real `usage`** via the pricing engine (idempotent, never-negative). Plus the
 `openagents-network` **fabric supply lane** + **serving-node payout** (parity-gated,
 owner-armed), the **referral subsystem** (#5475: attribution → ongoing-accrual-on-ALL →
 three-way split → payout → dashboard), and **abuse/KYC/rate-limit** controls. Design +
@@ -57,10 +57,10 @@ strategy: `docs/inference/` (7 docs incl. the Agent-Cloud capstone). Docs `prici
 + `pricing-model` set the multiplier/margin/BTC-discount mechanics.
 
 **Go-live (in flight):** enable Autopilot's **free inference on Gemini 3.5 Flash** — free
-until **$10 per verified owner-claim identity** (Sybil-resistant shared pool; unclaimed gets
+until **$10 per verified owner-claim identity** (Sybil-resistant shared pool, unclaimed gets
 only a taste), earn more via contribution, **premium models (Opus/etc.) owner-grant
 allowlist only**. Server build (Vertex Gemini adapter + free pool + allowlist) + the
-Autopilot client (#5485) are landing; then flip the flag + deploy + live-verify a real
+Autopilot client (#5485) are landing. Then flip the flag + deploy + live-verify a real
 free-Gemini call. **Posture: nothing stays inert — we enable it.**
 
 ### Collect money now — credits purchase path (audit in flight)
@@ -76,7 +76,7 @@ the top near-term priority: a customer/business can pay → get credits → use 
 ### Mobile remote-control gap — EPIC #5492 Wave-1 (in progress)
 
 Audit `docs/launch/2026-06-19-desktop-mobile-remote-control-gap-audit.md`. G2 (live
-session streaming) + G1 (6 steer-actions onto the secure bridge) merged; G3 (artifact/diff
+session streaming) + G1 (6 steer-actions onto the secure bridge) merged. G3 (artifact/diff
 viewer) reconciling. G4 (chat/turn.steer) is a follow-on. Goal: mobile steers all relevant
 desktop capabilities over the capability-scoped bridge (no dev token on the wire).
 
@@ -94,8 +94,8 @@ canonical Pylon homes + server-probe fall-through). Chat now works and looks rig
 pane-registration seam, b0c3aa554) and all 7 Phase-2 connection issues integrated to main:
 #5466 chat-live, #5467 autonomous-loop view, #5468 bounded auto-approve, #5469 swarm
 batch/failover/nesting, #5470 diff/artifact browser, #5471 repo/worktree picker, #5472
-functional settings. Built in parallel on branches, integrated serially against the seam;
-every merge kept builds + the full desktop test suite + the black-screen guard green; no
+functional settings. Built in parallel on branches, integrated serially against the seam.
+every merge kept builds + the full desktop test suite + the black-screen guard green. No
 GitHub Actions. EPIC #5461 closed.
 
 This was the day's main thrust. Past onboarding (now proven from a clean-Mac DMG),
@@ -128,7 +128,7 @@ Receipt (the dereferenceable ref promises now cite):
 at-volume, packaged-stable-binary, or public-settlement.
 
 Registry edit (bumped `PublicProductPromisesVersion` `2026-06-19.2` →
-`2026-06-19.3`; new `Registry 2026-06-19.3` caveat note added):
+`2026-06-19.3`. New `Registry 2026-06-19.3` caveat note added):
 
 - **STAYED GREEN, evidence re-anchored on the new receipt (green→green, no flip,
   no `promise_transition` required):**
@@ -144,7 +144,7 @@ Registry edit (bumped `PublicProductPromisesVersion` `2026-06-19.2` →
   - `autopilot.desktop_gui_client.v1` (yellow) — gap: the owner-gated **from-DMG
     clean-Mac** render/presence/settled-Bitcoin proof plus the live
     PDF/preview/ingest/browser runtime wiring. (Note: a separate overnight DMG
-    proof `cc27f122e` addresses the from-DMG blocker independently of this lane;
+    proof `cc27f122e` addresses the from-DMG blocker independently of this lane.
     this live-verification receipt only re-anchors the execution-lane dependency.)
 
 No yellow→green flips were made here, consistent with the green-flip guardrail:
@@ -152,9 +152,9 @@ the only promises this receipt genuinely satisfies were already green, and the
 yellow candidates' gates need more than local single-task exec.
 
 Scope guard: stay inside the **yellow, local-only** promise
-`autopilot.desktop_gui_client.v1`; cloud lanes are the separate **red** promise
+`autopilot.desktop_gui_client.v1`. Cloud lanes are the separate **red** promise
 `autopilot.cloud_coding_sessions.v1`. Semantic routing only for intent→signature
-(Blueprint `signature-lookup`); no ad-hoc keyword matching. Foldkit +
+(Blueprint `signature-lookup`). No ad-hoc keyword matching. Foldkit +
 `@openagentsinc/autopilot-ui` — no hand-DOM, no Cargo/Tauri.
 
 ### P0.1 — Nav shell + command palette (anti-clutter foundation) — sub-EPIC #5462
@@ -165,7 +165,7 @@ more top-level buttons makes clutter worse — so this lands first.
 
 - **#5463** — group the flat 13-button NAV into ~5 grouped sections
   (Chat · Code · Supervise · Explore · Settings) with a secondary in-section tab
-  strip; top level never grows past the group count.
+  strip. Top level never grows past the group count.
 - **#5464** — command palette (Cmd-K) over a typed command registry
   (navigate / spawn / approve / intent / coordinator / replay commands).
 - **#5465** — keyboard shortcut layer + Settings shortcut listing.
@@ -183,7 +183,7 @@ more top-level buttons makes clutter worse — so this lands first.
   *(Coordinate: the Blueprint chat files in `apps/autopilot-desktop` and
   `workers/api/src/blueprint` are concurrently edited by a separate lane.)*
 - **#5467 — Autonomous-loop view.** Surface intent → plan → fanout → reconcile →
-  ship-gate as a first-class view (today it's only an "ask" card + header
+  ship-gate as a first-class view (today it is only an "ask" card + header
   pause/resume toggle).
 - **#5468 — Bounded auto-approve.** Expose the `--on-approval auto` policy + audit
   trail in the approvals roll-up.
@@ -196,25 +196,25 @@ more top-level buttons makes clutter worse — so this lands first.
   listing from #5465.
 
 **Definition of done (EPIC #5461):** a Blueprint-driven chat with live signature
-selection + real Tassadar-module steps + inline replay receipts; the composer loop
-as the day-to-day CLI replacement; swarm with batch/failover/nesting visible;
+selection + real Tassadar-module steps + inline replay receipts. The composer loop
+as the day-to-day CLI replacement. Swarm with batch/failover/nesting visible.
 approvals (incl. bounded auto-approve) and the autonomous loop first-class and
-honest; inspectable diff/artifacts — all behind a clean ~5-group nav + Cmd-K
+honest. Inspectable diff/artifacts — all behind a clean ~5-group nav + Cmd-K
 palette, no sidebar clutter.
 
 ---
 
-## P1 — Blueprint × Tassadar chat (EPIC #5449 CLOSED; live wiring continues as #5466)
+## P1 — Blueprint × Tassadar chat (EPIC #5449 CLOSED, live wiring continues as #5466)
 
 The backend seams + presentational chat pane landed under #5449 (CLOSED). The
 remaining work — making the chat **real** rather than seeded — is tracked as
-**#5466** above (a P0 child). A separate lane is actively building the chat pane;
+**#5466** above (a P0 child). A separate lane is actively building the chat pane.
 coordinate on the shared `src/ui/*` and `workers/api/src/blueprint` files and do
 not stomp concurrent edits.
 
 ---
 
-## P2 — Owner-action items (gated; pull other work while these wait)
+## P2 — Owner-action items (gated, pull other work while these wait)
 
 These are owner-armed/owner-gated. Write a clear `NEEDS-OWNER:` note and keep
 moving on P0 — none of these stall the day.
@@ -231,7 +231,7 @@ moving on P0 — none of these stall the day.
   referral/firm-up payout receipt, `sites.referral_bitcoin_stream.v1` (yellow) and
   `payments.accepted_outcome_economics.v1` (red) cannot advance. `NEEDS-OWNER:` arm
   the first gated payout.
-- **Windows Authenticode cert.** Pylon + desktop are proven on darwin-arm64;
+- **Windows Authenticode cert.** Pylon + desktop are proven on darwin-arm64.
   Windows is not a supported signed-install target. The Windows/WSL coverage gap is
   one of the explicit blockers on
   `pylon.consumer_compute_earns_bitcoin_self_serve.v1` (red). `NEEDS-OWNER:` procure
@@ -242,17 +242,17 @@ moving on P0 — none of these stall the day.
 ## P3 — Test-suite reconciliation (8 pre-existing api-suite failures)
 
 Eight pre-existing api-suite failures predate today and are **not** introduced by
-the overnight work; they are doc/fixture drift, not product regressions. Reconcile
+the overnight work. They are doc/fixture drift, not product regressions. Reconcile
 honestly (and coordinate — do **not** touch the concurrently-edited Blueprint chat
 files in `apps/autopilot-desktop` or `workers/api/src/blueprint`):
 
 - **Blueprint `tassadar-modules` route drift** — the route/contract moved ahead of
-  its test expectations; realign the test fixtures to the current route shape
+  its test expectations. Realign the test fixtures to the current route shape
   (after the concurrent Blueprint lane settles, to avoid churn).
 - **Stale `AGENTS.md` doc-link assertions** — link-coverage tests reference doc
-  paths that moved; refresh the expected link set.
+  paths that moved. Refresh the expected link set.
 - **Artanis fixtures** — fixture data drifted from the current tick/monitor
-  projection; refresh the fixtures to the live shape.
+  projection. Refresh the fixtures to the live shape.
 
 Goal: api-suite green from a clean `origin/main` so money-movement and
 public-claim changes keep a trustworthy `check:deploy` gate.
@@ -261,7 +261,7 @@ public-claim changes keep a trustworthy `check:deploy` gate.
 
 ## P4 — Other genuinely-open work
 
-- **EPIC #5335 — Codebase hygiene & refactoring lane** (OPEN; open for a lead
+- **EPIC #5335 — Codebase hygiene & refactoring lane** (OPEN, open for a lead
   contributor). The funded, benchmark-verified hygiene lane keeps producing
   (first 75-sat hygiene Bitcoin settled June 18 on the `hygiene_merged_reviewed`
   basis). Feed it studied-knowledge (the studying track is built + dogfood-proven)
@@ -276,10 +276,10 @@ public-claim changes keep a trustworthy `check:deploy` gate.
 
 Reviewed `apps/openagents.com/workers/api/src/product-promises.ts` (registry
 version **`2026-06-19.3`** after the coding-agent live-verification destale in
-P0.0 above; this analysis was authored against `2026-06-19.2`), `docs/promises/`,
+P0.0 above. This analysis was authored against `2026-06-19.2`), `docs/promises/`,
 and how the gate computes
 green/red. The registry shape is `{ promiseId, state, claim, safeCopy, unsafeCopy,
-evidenceRefs, blockerRefs, verification, authorityBoundary }`; a promise is GREEN
+evidenceRefs, blockerRefs, verification, authorityBoundary }`. A promise is GREEN
 only when its `blockerRefs` are cleared and its `verification` bar is met with
 dereferenceable evidence, and a state change is recorded receipt-first via
 `proof.claim_upgrade_receipts.v1` (a `promise_transition` exception receipt + owner
@@ -302,9 +302,9 @@ touch — DO NOT edit the registry here**, owner/registry-lane to update):
   reality and the blocker should be retired.
 - **`sites.referral_bitcoin_stream.v1`** (yellow) — copy is accurate post-RL-1 but
   could note RL-3's live asset-boundary guard now enforces the Bitcoin-only
-  rev-share path (`471be0f61`). Minor; still honestly yellow (no real payout).
+  rev-share path (`471be0f61`). Minor. Still honestly yellow (no real payout).
 - **`payments.accepted_outcome_economics.v1`** (red) — the clearing-layer wiring
-  (RL-1/2/3) is new evidence the copy doesn't yet cite; still correctly red (no
+  (RL-1/2/3) is new evidence the copy does not yet cite. Still correctly red (no
   end-to-end real settled accepted-outcome receipt).
 
 ### 2. Next 5 promises to assess for a GREEN flip (training / Autopilot / coder / adjacent)
@@ -318,10 +318,10 @@ recommended for a flip**.
 
 | # | Promise | Current | Receipt that would flip it (or the gap) | Gate it must satisfy | Confidence |
 |---|---------|---------|------------------------------------------|----------------------|------------|
-| 1 | `autopilot.desktop_gui_client.v1` | **yellow** | **Receipt EXISTS for the from-DMG blocker:** `cc27f122e` — notarized DMG `…20260619T010148` (SHA-256 `22db620c…`, Gatekeeper Notarized Developer ID), rendered clean-Mac window, **production presence** `pylon.fa4e9049a4329f3d56e2`, Verified `exact_trace_replay` challenge `training.verification.challenge.9fd49062-f82c-46ee-a2a0-242d36dd126e`, settled receipt `receipt.nexus.tassadar_run_settlement.idempotency.tassadar.ao6.patched2.20260619T010148.manual.v1` (`realBitcoinMoved:true`, `spark_treasury`). Artifacts: `docs/launch/artifacts/ao6-20260619T010148/`. **Remaining gap:** the promise's *stated* green bar also lists PDF/preview/ingest/browser live runtimes wired + cloud-lane sessions + decided distribution/pricing — those are NOT met. **Honest verdict: the from-DMG blocker is cleared and the copy should be destaled; a full GREEN requires either narrowing the green bar to "local-only onboarding + coding client proven from DMG" (a scoped green is defensible and owner-decidable) or clearing the runtime/distribution blockers.** | `blocker…from_dmg_proof_owner_gated` cleared; `verification` from-DMG clause met; remaining `live_runtimes_not_wired` / `remote_cloud_lane_not_wired` / `pricing_distribution_undecided` blockers for full scope. Receipt-first transition + owner sign-off. | **HIGH** for the from-DMG blocker / destale + scoped green; **LOW** for an unscoped green (other blockers open). |
-| 2 | `autopilot.builtin_compute_agent.v1` | **yellow** | The from-DMG proof produced a **signed/notarized recut** (`…20260619T010148`), which clears the `builtin_compute_agent_signed_recut_missing` blocker *if* that build carries the built-in-agent source. **Gap:** the proof was a **Tassadar earning** run, not a from-install **Go-online built-in-agent session doing useful coding work with no user API key**; `openagents_compute_metering_live_smoke` and `live_from_install_smoke` blockers are still uncleared. | Signed recut containing built-in-agent source + packaged OpenAgents compute credentials + metered/bounded path + a from-install go-online useful-work smoke. | **LOW** (recut exists; the go-online useful-work + metering smokes do not). |
-| 3 | `pylon.consumer_compute_earns_bitcoin_self_serve.v1` | **red** | The Episode 238 core promise. Overnight didn't move its blockers. **Gap (all three open):** Windows/WSL install coverage missing; Spark-helper auto-start/readiness not receipt-proven for normal contributors; participant/scale methodology missing. The from-DMG proof is a single owner-run node + a manual settlement, not multi-contributor no-operator earning at scale. | Documented install proven on named platforms (incl. Windows/WSL); helper-readiness evidence; replay/receipt for >1 normal contributor; scale methodology. Receipt-first. | **LOW** (no blocker cleared; needs Windows cert + helper auto-start + scale). |
-| 4 | `training.verification_classes.v1` | **yellow** | Registry, three classes on real work, and a paid weak-device validator closeout are already met. **Gap:** one open blocker — `aggregate_only_policy_redecision_missing` (#4674): the April-era aggregate-only validation compromise must be **re-decided per class in writing**; `seeded_replication` + `statistical_cross_check` also have not run on real dispatched work. Overnight produced no such decision/receipt. | Written per-class aggregate-vs-per-contribution decision + (ideally) the two unexercised classes on real work. | **LOW** (gated on a written policy decision, not a receipt the overnight work produced). |
+| 1 | `autopilot.desktop_gui_client.v1` | **yellow** | **Receipt EXISTS for the from-DMG blocker:** `cc27f122e` — notarized DMG `…20260619T010148` (SHA-256 `22db620c…`, Gatekeeper Notarized Developer ID), rendered clean-Mac window, **production presence** `pylon.fa4e9049a4329f3d56e2`, Verified `exact_trace_replay` challenge `training.verification.challenge.9fd49062-f82c-46ee-a2a0-242d36dd126e`, settled receipt `receipt.nexus.tassadar_run_settlement.idempotency.tassadar.ao6.patched2.20260619T010148.manual.v1` (`realBitcoinMoved:true`, `spark_treasury`). Artifacts: `docs/launch/artifacts/ao6-20260619T010148/`. **Remaining gap:** the promise's *stated* green bar also lists PDF/preview/ingest/browser live runtimes wired + cloud-lane sessions + decided distribution/pricing — those are NOT met. **Honest verdict: the from-DMG blocker is cleared and the copy should be destaled. A full GREEN requires either narrowing the green bar to "local-only onboarding + coding client proven from DMG" (a scoped green is defensible and owner-decidable) or clearing the runtime/distribution blockers.** | `blocker…from_dmg_proof_owner_gated` cleared. `verification` from-DMG clause met. Remaining `live_runtimes_not_wired` / `remote_cloud_lane_not_wired` / `pricing_distribution_undecided` blockers for full scope. Receipt-first transition + owner sign-off. | **HIGH** for the from-DMG blocker / destale + scoped green. **LOW** for an unscoped green (other blockers open). |
+| 2 | `autopilot.builtin_compute_agent.v1` | **yellow** | The from-DMG proof produced a **signed/notarized recut** (`…20260619T010148`), which clears the `builtin_compute_agent_signed_recut_missing` blocker *if* that build carries the built-in-agent source. **Gap:** the proof was a **Tassadar earning** run, not a from-install **Go-online built-in-agent session doing useful coding work with no user API key**. `openagents_compute_metering_live_smoke` and `live_from_install_smoke` blockers are still uncleared. | Signed recut containing built-in-agent source + packaged OpenAgents compute credentials + metered/bounded path + a from-install go-online useful-work smoke. | **LOW** (recut exists, the go-online useful-work + metering smokes do not). |
+| 3 | `pylon.consumer_compute_earns_bitcoin_self_serve.v1` | **red** | The Episode 238 core promise. Overnight did not move its blockers. **Gap (all three open):** Windows/WSL install coverage missing. Spark-helper auto-start/readiness not receipt-proven for normal contributors. Participant/scale methodology missing. The from-DMG proof is a single owner-run node + a manual settlement, not multi-contributor no-operator earning at scale. | Documented install proven on named platforms (incl. Windows/WSL). Helper-readiness evidence. Replay/receipt for >1 normal contributor. Scale methodology. Receipt-first. | **LOW** (no blocker cleared, needs Windows cert + helper auto-start + scale). |
+| 4 | `training.verification_classes.v1` | **yellow** | Registry, three classes on real work, and a paid weak-device validator closeout are already met. **Gap:** one open blocker — `aggregate_only_policy_redecision_missing` (#4674): the April-era aggregate-only validation compromise must be **re-decided per class in writing**. `seeded_replication` + `statistical_cross_check` also have not run on real dispatched work. Overnight produced no such decision/receipt. | Written per-class aggregate-vs-per-contribution decision + (ideally) the two unexercised classes on real work. | **LOW** (gated on a written policy decision, not a receipt the overnight work produced). |
 | 5 | `artanis.tassadar_evolution_loop.v1` | **yellow** | The spine is deployed and the first autonomous dispatch-execute-closeout span ran (2026-06-11). **Gap:** two open blockers — `artanis_unattended_tick_streak_missing` (needs ≥10 consecutive unattended ticks with executor-dispatch + exact-replay verdicts) and `tassadar_distillation_dataset_receipt_missing` (the first `dataset_curation` receipt). Overnight produced neither. | ≥10 consecutive unattended ticks with replay verdicts + first distillation-dataset receipt. Receipt-first. | **LOW** (needs a sustained unattended streak + a dataset receipt). |
 
 ### 3. Recommendation (NO flips here — owner approval required)
@@ -335,10 +335,10 @@ recommended for a flip**.
   (`autopilot.cloud_coding_sessions.v1`) honest. Record the transition receipt-first
   per `proof.claim_upgrade_receipts.v1` with owner sign-off.
 - **Do NOT flip** candidates 2–5: each still lacks a dereferenceable receipt for at
-  least one open blocker (built-in-agent go-online smoke; Windows/helper/scale;
-  written per-class verification decision; unattended tick streak + distillation
+  least one open blocker (built-in-agent go-online smoke, Windows/helper/scale,
+  written per-class verification decision. Unattended tick streak + distillation
   receipt). The honest move is to clear the named blocker first, then upgrade
   receipt-first.
-- The **green-flip guardrail stands**: receipts + owner sign-off required; this
+- The **green-flip guardrail stands**: receipts + owner sign-off required. This
   section is analysis + recommendation only. No registry edits were made in this
   roadmap.

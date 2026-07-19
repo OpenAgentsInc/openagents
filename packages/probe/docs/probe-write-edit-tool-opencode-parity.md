@@ -56,7 +56,7 @@ OpenCode V2 lives in `packages/core/src/tool/`. It has two file-mutation tools:
 Full-file overwrite with:
 
 - **Location-scoped path resolution** (`LocationMutation.resolve`) —
-  relative paths resolve within the active Location; external absolute paths
+  relative paths resolve within the active Location. External absolute paths
   require `external_directory` approval. Rejects escape attempts and symlink
   traversal.
 - **Permission gating** (`assertPermission`) — user must approve the edit
@@ -80,7 +80,7 @@ Partial file edit via exact string replacement with:
   before matching.
 - **BOM detection and preservation** — splits BOM from content before matching,
   re-joins on write.
-- **Occurrence counting** — rejects if `oldString` not found; rejects if
+- **Occurrence counting** — rejects if `oldString` not found. Rejects if
   multiple matches found and `replaceAll !== true`.
 - **Stale-content guard** (`writeIfUnchanged`) — under lock, re-reads the file
   and only writes if the bytes are unchanged since initial read. Returns
@@ -107,7 +107,7 @@ Full-file overwrite with all V2 features plus:
 
 - **Diff preview before permission approval** — generates a unified diff via
   `createTwoFilesPatch` and shows it in the permission prompt.
-- **Auto-format after write** — runs `format.file(filepath)` after writing;
+- **Auto-format after write** — runs `format.file(filepath)` after writing.
   re-syncs BOM if format changes it.
 - **LSP diagnostics after write** — calls `lsp.touchFile(filepath)`, collects
   diagnostics, and reports them in the output (up to 5 files).
@@ -157,7 +157,7 @@ Implementation (in `file-mutation.ts`):
    matches when `replaceAll !== true`.
 3. Reads file with BOM detection, normalizes line endings, matches/replaces
    oldString, restores line endings, re-joins BOM, writes back.
-4. Wrapped in per-file lock; stale-content guard re-reads and compares bytes
+4. Wrapped in per-file lock. Stale-content guard re-reads and compares bytes
    before final write.
 5. Checks permission handler before proceeding.
 
@@ -317,7 +317,7 @@ Try replacers in order:
 1. Exact match (simple string replace).
 2. Line-trimmed: trim each line before matching.
 3. Block-anchor: require first and last lines to match with high Levenshtein
-   similarity; inner lines can vary more.
+   similarity. Inner lines can vary more.
 4. Whitespace-normalized: collapse all whitespace runs to single spaces.
 5. Indentation-flexible: ignore leading whitespace differences.
 6. Escape-normalized: unescape both strings before matching.
@@ -416,7 +416,7 @@ as they are completed.
 ### Existing `write_file` Upgrades
 
 - [x] Add BOM preservation (read existing BOM, preserve on write)
-- [ ] Add line-ending normalization (low value for write; defer)
+- [ ] Add line-ending normalization (low value for write, defer)
 - [x] Add per-file locking
 - [ ] Add revalidation before write (P2)
 
@@ -466,7 +466,7 @@ as they are completed.
 
 | File | Purpose |
 |------|---------|
-| `src/cli.ts` | Tool registration in `makeGeminiChatTools` (write_file, edit_file, apply_patch, read_file, list_files, search_code, current_time); interactive chat with permission handler |
+| `src/cli.ts` | Tool registration in `makeGeminiChatTools` (write_file, edit_file, apply_patch, read_file, list_files, search_code, current_time). Interactive chat with permission handler |
 | `src/llm/tool.ts` | `ProbeLlmTool` type + `defineProbeLlmTool` helper |
 | `src/llm/tool-runtime.ts` | `dispatchProbeLlmTool` — tool execution dispatch |
 | `src/file-mutation.ts` | All file mutation logic: `writeAnyWorkspaceFile` (BOM+locking), `editAnyWorkspaceFile` (partial replace with BOM+line endings+stale-content guard+locking), `applyAnyWorkspaceFilePatch`, BOM utils, line-ending utils, diff preview, per-file locking, stale-content guard |

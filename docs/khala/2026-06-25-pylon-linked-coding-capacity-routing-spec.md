@@ -7,7 +7,7 @@
 > openagents.com account, so the router can delegate coding workflows to that
 > user's OWN coding agents — orchestrated **through Khala**.
 >
-> **Khala is a model/agent ORCHESTRATOR** (Episode 232; see
+> **Khala is a model/agent ORCHESTRATOR** (Episode 232, see
 > `docs/transcripts/232.md` — "electrons in, orchestration, tokens out", and the
 > "accepted outcomes per kilowatt hour" thesis). The orchestrator framing changes
 > two earlier recommendations in this doc, now reversed by owner decision:
@@ -15,7 +15,7 @@
 > 1. **The public `khala-tokens-served` counter is SOURCE-AGNOSTIC total served
 >    volume.** Every real token Khala orchestrates counts —
 >    local, crowd, swarm, cloud, subscription, "beamed down from space." It does
->    not matter that our own inference engine did not serve them; if they flow
+>    not matter that our own inference engine did not serve them. If they flow
 >    through the Khala system they hit the counter. So **own-capacity Codex/Claude
 >    coding tokens orchestrated through Khala DO increment the public counter.**
 >    `demand_kind=internal` dogfood/ops probes also increment the public counter:
@@ -33,27 +33,27 @@
 > exists and a phased plan. Every other existing invariant holds: evidence-only,
 > no keyword/string intent routing, no self-promotion, no exactness inflation,
 > identity guard, one model (`openagents/khala`, no variants). Labels used below:
-> **NOW** = firm scope for this phase; **FUTURE** = explicitly deferred /
-> speculative; **DEFAULT-ON** = armed and live by default (no owner flip needed).
+> **NOW** = firm scope for this phase. **FUTURE** = explicitly deferred /
+> speculative. **DEFAULT-ON** = armed and live by default (no owner flip needed).
 >
 > Owner decisions applied (override all prior recommendations in this doc):
 > (1) counter counts all real Khala-served tokens, including internal dogfood,
 > stress, own-capacity, external, and unlabeled rows, with a
-> `demand_kind`/source tag for honest analytics; (2) build OpenAuth
-> account ↔ many-Pylons + many-keys linking NOW; (3) coding-workflow classifier:
-> full typed/semantic version (no keyword routing); (4) execution rides our
+> `demand_kind`/source tag for honest analytics. (2) Build OpenAuth
+> account ↔ many-Pylons + many-keys linking NOW. (3) Coding-workflow classifier:
+> full typed/semantic version (no keyword routing). (4) Execution rides our
 > **Durable Streams** resumable-SSE model (every request returns an interruptible,
-> resumable SSE); (5) capacity reporting includes ALL dimensions (Codex×N /
-> Claude×M / busy / available / queued); (6) routing is **default-ON, armed now**
-> (not owner-gated-off); (7) ship **Codex first**, Claude Code flagged as the
+> resumable SSE). (5) Capacity reporting includes ALL dimensions (Codex×N /
+> Claude×M / busy / available / queued). (6) Routing is **default-ON, armed now**
+> (not owner-gated-off). (7) Ship **Codex first**, Claude Code flagged as the
 > next-sophistication step (both executors already exist).
 >
 > Companion reading: Episode 232 transcript `docs/transcripts/232.md` (Khala as
-> orchestrator); the Pylon presence auth contract in
-> `apps/openagents.com/AGENTS.md`; the no-resale gate in
+> orchestrator). The Pylon presence auth contract in
+> `apps/openagents.com/AGENTS.md`. The no-resale gate in
 > `apps/openagents.com/INVARIANTS.md` (Provider Capacity Marketplace Gate,
-> lines ~981–1043); `apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md`;
-> `docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md`;
+> lines ~981–1043). `apps/pylon/docs/2026-06-15-pylon-cli-only-agent-steerable-audit.md`.
+> `docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md`.
 > the Durable Streams primitive `packages/durable-stream/` and the inference
 > resume route `apps/openagents.com/workers/api/src/inference/durable-inference-read-routes.ts`.
 
@@ -63,8 +63,8 @@
 
 The surprising headline of this audit: **most of the pipeline already exists.** A
 Pylon already discovers, probes, and runs a local Codex (`@openai/codex-sdk`) and
-local Claude Code (`@anthropic-ai/claude-agent-sdk`) install; it already advertises
-those as capabilities in its heartbeat; the server already has a typed
+local Claude Code (`@anthropic-ai/claude-agent-sdk`) install. It already advertises
+those as capabilities in its heartbeat. The server already has a typed
 **assignment-lease** mechanism that carries a `codingAssignment` payload down to a
 Pylon, and the Pylon already has executors (`executeCodexAgentAssignment`,
 `executeClaudeAgentAssignment`) that run the local agent in a bounded workspace and
@@ -75,7 +75,7 @@ What is missing is the **bridge between the Khala inference router and that
 assignment pipeline**, plus three smaller gaps:
 
 1. **The router never looks at the caller.** `selectAdapterPlan(model)` in
-   `model-router.ts` is pure on model id; `accountRef` is resolved at the request
+   `model-router.ts` is pure on model id. `accountRef` is resolved at the request
    edge but is used only for credits/quota/gates — never for lane selection. There
    is no branch that asks "does this caller own coding capacity?"
 2. **There is no typed coding-workflow classifier.** The only intent seam,
@@ -96,7 +96,7 @@ assignment pipeline**, plus three smaller gaps:
    many-keys linking model NOW** (P1), anchored on the OpenAuth account, designed
    from the start for multi-Pylon / multi-key aggregation in the web UI.
    **Execution stays single-user / own-capacity** (a caller only ever uses their
-   OWN linked capacity — firm invariant); the OpenAuth account is purely the
+   OWN linked capacity — firm invariant). The OpenAuth account is purely the
    *linking and aggregation* anchor, not a pooling mechanism.
 
 So this is less "build a system" and more "wire two existing systems together
@@ -163,16 +163,16 @@ Pylon drives the local agents as **lazy-imported SDK libraries, not CLI spawn**:
   Package constant `CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"`,
   default tool allowlist `["Read","Edit","Write","Bash","Glob","Grep"]`.
 - Readiness probes (no interactive CLI): `codex-agent.ts probeCodexAgentReadiness()`
-  checks SDK importability + `~/.codex/auth.json`; `claude-agent.ts
+  checks SDK importability + `~/.codex/auth.json`. `claude-agent.ts
   probeClaudeAgentReadiness()` checks the SDK + `~/.claude/.credentials.json` or a
   one-shot macOS Keychain query (`security find-generic-password -s "Claude Code-credentials"`).
 
 **Assignment intake already exists.** `apps/pylon/src/assignment.ts` defines
 `PylonAssignmentLease` (`schema: "openagents.pylon.assignment_lease.v0.3"`) carrying
-an optional `codingAssignment` field; `pollAssignments()` GETs
+an optional `codingAssignment` field. `pollAssignments()` GETs
 `/api/pylons/<ref>/assignments`. The two executors dispatch on the payload shape:
 `codexAgentTaskFrom()` keys on `codingAssignment.codex` (schema
-`openagents.pylon.codex_agent_task.v0.3`, agentKind `codex_sdk`);
+`openagents.pylon.codex_agent_task.v0.3`, agentKind `codex_sdk`).
 `claudeAgentTaskFrom()` keys on `codingAssignment.claudeAgent` (schema
 `openagents.pylon.claude_agent_task.v0.3`, agentKind `claude_agent_sdk`).
 
@@ -190,7 +190,7 @@ A Pylon is associated with an identity **only** through an `oa_agent_` bearer to
   own-capacity-only).
 - The presence-auth contract is token-only and deliberate (see
   `apps/openagents.com/AGENTS.md` "Pylon Presence Auth Contract"): a node's
-  self-held Nostr key is NOT accepted; NIP-98 presence returns a typed 401.
+  self-held Nostr key is NOT accepted. NIP-98 presence returns a typed 401.
 
 The **Claim-Your-Agent / X(Twitter) verification** flow lives in
 `agent-owner-claim-routes.ts` (`StartXOwnerClaimRequest`, `VerifyXOwnerClaimRequest`,
@@ -225,9 +225,9 @@ account does not let any caller use another caller's capacity.
   library. There is **no relational `accounts` table and no `sessions` table.**
 - The real identity tables are custom (`migrations/0002_auth_identity_and_agent_registration.sql`):
   - `users(id, kind CHECK in ('human','agent'), ...)`. Human ids are namespaced
-    (`github:<id>`, `email:<addr>`); agent ids are `user_<uuid>`.
+    (`github:<id>`, `email:<addr>`). Agent ids are `user_<uuid>`.
   - `auth_identities(id, user_id, provider, provider_subject, ...)`,
-    `UNIQUE(provider, provider_subject)`. Humans can have multiple (github + email);
+    `UNIQUE(provider, provider_subject)`. Humans can have multiple (github + email).
     agents get one `provider='agent_programmatic'`.
   - `agent_credentials(id, user_id, token_hash UNIQUE, token_prefix, status, ...)`.
   - `agent_profiles(user_id, slug, metadata_json)`.
@@ -245,15 +245,15 @@ already share one identity as long as they share the same agent-user. What was
 FUTURE to NOW.** P1 builds an `openauth_user_id` linkage on `agent_credentials`
 (and the registry join through them to Pylon registrations), so one human OpenAuth
 account aggregates many keys and many Pylons. Own-capacity-only execution is still
-scoped to the agent-user `ownerAgentUserId` at dispatch time; the OpenAuth account
+scoped to the agent-user `ownerAgentUserId` at dispatch time. The OpenAuth account
 is the *aggregation/linking* layer above it, not a cross-user pool.
 
-### 1.4 The Khala router — **EXISTS; caller-blind**
+### 1.4 The Khala router — **EXISTS. Caller-blind**
 
 `apps/openagents.com/workers/api/src/inference/model-router.ts`:
 
 - `selectAdapterPlan(model)` (≈L288–314) returns an ordered adapter-id list. Special
-  Khala/Hydralisk ids route to explicit plans; everything else goes through
+  Khala/Hydralisk ids route to explicit plans. Everything else goes through
   `classifyModel()` → `LANE_PLAN_BY_CLASS` (`claude`/`gemini`/`open`/`unknown`).
 - `classifyModel()` (≈L191–207) is a **bounded provider-family enum** — the only
   allowed deterministic classification (model id → provider family). Comment at the
@@ -270,7 +270,7 @@ is the *aggregation/linking* layer above it, not a cross-user pool.
   caller-agnostic for lane choice.
 
 `model-serving-policy.ts`: `resolveSupplyLaneArming()` (≈L366–392) reads only
-credential-presence env flags; no caller field.
+credential-presence env flags. No caller field.
 
 **Where the new branch slots in:** extend `selectAdapterPlan(model, callerCapacityHint?)`
 or post-process in `decideCacheAwareRouting()`. The cleanest seam is: at
@@ -279,7 +279,7 @@ workflow classifier runs, branch *before* the normal plan when (workflowClass is
 coding workflow) AND (caller owns available coding capacity). Account resolution
 needs no change — `accountRef` is already threaded everywhere.
 
-### 1.5 Coding-workflow detection — **MISSING; must be typed, not keyword**
+### 1.5 Coding-workflow detection — **MISSING. Must be typed, not keyword**
 
 The only intent seam is `inference/acceptance-spec.ts` `intentToAcceptanceSpec()`
 (≈L171–184). Its own comment (≈L103–115) flags it as a *bounded keyword placeholder*
@@ -307,10 +307,10 @@ the *route* is selected by a typed/semantic mechanism, not prose keywords):
 2. **Central typed semantic selector / embedding search** for free-form chat where
    no field is set — cosine-similarity against a small labeled exemplar set, behind
    a typed `classifyCodingWorkflow` boundary. This is the workspace-sanctioned path
-   for genuinely free-form intent; it must be one central selector, not scattered
+   for genuinely free-form intent. It must be one central selector, not scattered
    string checks.
 
-### 1.6 Capacity discovery + own-capacity-only — **partial; coarse capacity**
+### 1.6 Capacity discovery + own-capacity-only — **partial. Coarse capacity**
 
 A Pylon heartbeat (`apps/pylon/src/presence.ts`, `PylonHeartbeatRequest` schema
 `openagents.pylon.heartbeat.v0.3`) sends:
@@ -360,7 +360,7 @@ pull** (the Pylon already polls `/assignments`), so no new server→node push ch
 is strictly required for P1–P4 — the router just *creates* the assignment and the
 caller's Pylon picks it up. Results return via the existing closeout/artifacts path.
 
-### 1.8 Accounting + invariants — **own-capacity is allowed; counter counts every real served token**
+### 1.8 Accounting + invariants — **own-capacity is allowed. Counter counts every real served token**
 
 - **No-resale (INVARIANTS.md, Provider Capacity Marketplace Gate ≈L981–1043).**
   Exact scope: *"The no-resale rule stays scoped to consumer SUBSCRIPTION accounts
@@ -379,16 +379,16 @@ caller's Pylon picks it up. Results return via the existing closeout/artifacts p
   `SUM(input_tokens)+SUM(output_tokens)` over all `token_usage_events` served
   rows (`token-usage-ledger.ts`). The ledger
   carries a `demand_kind` column (`internal`/`internal_stress`/`own_capacity`/
-  `external`/`unlabeled`) and a `demand_source` column; private reads can filter
+  `external`/`unlabeled`) and a `demand_source` column. Private reads can filter
   on them. **Khala is an orchestrator** (Episode 232): the headline rule is that
   **work Khala orchestrates counts on the public counter, source-agnostic** —
   local, crowd, swarm, cloud, subscription, dogfood, "beamed down from
   space." It does not matter that our own inference engine did not serve the
-  completion bytes; if the work flows through the Khala system, it hits the
+  completion bytes. If the work flows through the Khala system, it hits the
   counter. **Therefore own-capacity Codex/Claude coding tokens orchestrated
   through Khala DO increment the public `khala-tokens-served` scalar.** We still
   record honest tags — `demand_kind` and `demand_source` — for analytics, so we
-  can always break the number down by source; first-party dogfood/ops probes
+  can always break the number down by source. First-party dogfood/ops probes
   tagged exactly `internal` are included in the headline scalar but must not be
   used as external market-demand evidence. The prior
   "do-NOT-add-them-to-the-counter" recommendation is **withdrawn.**
@@ -417,20 +417,20 @@ caller's Pylon picks it up. Results return via the existing closeout/artifacts p
   matching on prose. Deterministic enum parsing is allowed only after the typed route
   is chosen.
 - **All real orchestrated tokens count (owner decision).** Khala is
-  an orchestrator; every token it orchestrates counts on the public
+  an orchestrator. Every token it orchestrates counts on the public
   `khala-tokens-served` scalar, **source-agnostic** (local / crowd / swarm /
   cloud / subscription / own-capacity / internal dogfood). Own-capacity coding tokens orchestrated
   through Khala therefore DO increment the public counter. Keep `demand_kind` and
-  `demand_source` tags for honest analytics; do not subtract `internal`
+  `demand_source` tags for honest analytics. Do not subtract `internal`
   dogfood/ops probes from the public count. (Reverses the earlier
   public-counter-honesty recommendation for own-capacity work.)
 - **Default-on routing (owner decision).** The coding-workflow routing is **armed
   and live by default** — not owner-gated-off. No flag flip is required to enable
-  it; it is on. (If a kill switch is wired at all, it is an off-by-default *disable*
+  it. It is on. (If a kill switch is wired at all, it is an off-by-default *disable*
   switch, never an off-by-default *enable* gate.)
 - **Codex-first execution (owner decision).** Ship **Codex** as the delegate agent
   for now. Both on-Pylon executors already exist (`executeCodexAgentAssignment`,
-  `executeClaudeAgentAssignment`); **Claude Code is flagged as the
+  `executeClaudeAgentAssignment`). **Claude Code is flagged as the
   next-sophistication step** and must be called out in code comments and the
   roadmap, but Codex ships first.
 
@@ -445,7 +445,7 @@ Each task lists scope, the seam it touches, and acceptance. Code is NOT written 
 
 **Owner decision: build this today, on the multi-link model.** The linking process
 is anchored on the **OpenAuth account**, not just the agent bearer. Execution stays
-single-user / own-capacity (firm invariant); the OpenAuth account is the
+single-user / own-capacity (firm invariant). The OpenAuth account is the
 aggregation/linking anchor designed from the start for multi-Pylon / multi-key.
 
 - **P1.1 OpenAuth-anchored link model (data model).**
@@ -455,7 +455,7 @@ aggregation/linking anchor designed from the start for multi-Pylon / multi-key.
   - Scope: add an `openauth_user_id` linkage so one human OpenAuth account ties
     together its many `agent_credentials` (keys) AND its many Pylon registrations
     (through `ownerAgentUserId`). Design for aggregation: one human → many keys →
-    many agent-users → many Pylons. No cross-user pooling; the link is purely the
+    many agent-users → many Pylons. No cross-user pooling. The link is purely the
     human's own set.
   - Acceptance: a fixture proves one OpenAuth account resolves to its full set of
     linked keys and Pylons, and another account's keys/Pylons are never returned.
@@ -468,13 +468,13 @@ aggregation/linking anchor designed from the start for multi-Pylon / multi-key.
     account, building the link rows from P1.1. Linking is authorized by the OpenAuth
     browser session, not just the agent bearer.
   - Acceptance: linking endpoints create/read/revoke link rows under the OpenAuth
-    session; a non-owner session cannot link or read another account's set.
+    session. A non-owner session cannot link or read another account's set.
 - **P1.3 Own-capacity-only execution invariant, enforced.**
   - Seam: existing `registration.ownerAgentUserId !== session.user.id` guard in
-    `pylon-api-routes.ts`; new dispatch path (P4).
+    `pylon-api-routes.ts`. New dispatch path (P4).
   - Scope: linking many capacities under one human account must NOT let any caller
     use another caller's capacity. Dispatch stays scoped to the caller's own
-    `ownerAgentUserId`; the OpenAuth aggregation never widens execution scope.
+    `ownerAgentUserId`. The OpenAuth aggregation never widens execution scope.
   - Acceptance: a test proves a request authenticated as account A can only ever
     target A's own linked Pylons, never B's, even when both are linked under
     different OpenAuth accounts.
@@ -485,14 +485,14 @@ aggregation/linking anchor designed from the start for multi-Pylon / multi-key.
   support it. When a user logs into openagents.com via OpenAuth they must
   (eventually) see ALL their linked Pylons, all activity, balances across all
   linked accounts, all token spend, what is running, and links to traces.
-  - Seam: `apps/web/` Foldkit surfaces; reads over the P1 link model + P2 capacity
-    projection + the token ledger; trace links into existing receipt/closeout
+  - Seam: `apps/web/` Foldkit surfaces. Reads over the P1 link model + P2 capacity
+    projection + the token ledger. Trace links into existing receipt/closeout
     surfaces.
   - Scope: incremental panels (linked Pylons list, per-Pylon capacity/availability,
     aggregated balances/spend, running assignments, trace links). Build behind the
     P1 link model so the aggregation is real, not faked.
   - Acceptance (when built): a logged-in human sees the aggregated set across all
-    linked keys/Pylons; never another account's data.
+    linked keys/Pylons. Never another account's data.
 
 ### P2 — Pylon capacity discovery / reporting (NOW)
 
@@ -508,10 +508,10 @@ aggregation/linking anchor designed from the start for multi-Pylon / multi-key.
     `load.coding.codex.busy=<k>`, `load.coding.codex.queued=<q>`,
     `load.coding.codex.available=<a>`. Bump heartbeat schema minor (`v0.4`).
   - Acceptance: heartbeat round-trips per-service ready/busy/available/queued
-    counts for both Codex and Claude; absent service omitted; tests cover 0/1/N
+    counts for both Codex and Claude. Absent service omitted. Tests cover 0/1/N
     Codex and Claude and the busy/available/queued states.
 - **P2.2 Server-side capacity projection.**
-  - Seam: `pylon-api.ts` registry read; `oa-node-managed-machine.ts` projection.
+  - Seam: `pylon-api.ts` registry read. `oa-node-managed-machine.ts` projection.
   - Scope: persist/parse the new capacity refs so the registry can answer "for
     owner X, which Pylons expose which coding services, available now?" Feed the
     managed-machine `availability`/`supportedRuntimes`/`workloadClasses` from real
@@ -526,43 +526,43 @@ aggregation/linking anchor designed from the start for multi-Pylon / multi-key.
 
 - **P3a — Typed/semantic coding-workflow classifier (full version, owner decision).**
   - Seam: new `inference/coding-workflow-intent.ts`, mirroring
-    `acceptance-spec.ts` shape; do NOT extend the keyword placeholder
+    `acceptance-spec.ts` shape. Do NOT extend the keyword placeholder
     (`intentToAcceptanceSpec` is a self-described keyword placeholder — replace,
     don't grow it).
   - Scope: `classifyCodingWorkflow(request): CodingWorkflowClass` (bounded enum:
     `pull_request | bug_fix | refactor | none`). Owner decision: **do the full
     version if not too difficult** — a typed/semantic classifier per the workspace
     no-keyword rule. Explicit typed request field/header takes precedence (fully
-    deterministic, allowed only *after* the semantic route is chosen); for free-form
+    deterministic, allowed only *after* the semantic route is chosen). For free-form
     chat, use the central typed semantic / cosine-similarity embedding selector
     against a small labeled exemplar set, behind the one typed boundary. **No
     ad-hoc keyword/string matching on prose** anywhere.
-  - Acceptance: unit tests; explicit-field cases deterministic; semantic-path cases
-    behind the typed boundary with exemplar coverage; defaults to `none` when
-    unparseable; a guard test asserts no raw keyword/string match on prose exists in
+  - Acceptance: unit tests. Explicit-field cases deterministic. Semantic-path cases
+    behind the typed boundary with exemplar coverage. Defaults to `none` when
+    unparseable. A guard test asserts no raw keyword/string match on prose exists in
     the classifier.
 - **P3b — Caller-capacity resolver + router branch (DEFAULT-ON).**
   - Seam: `model-router.ts selectAdapterPlan(model, callerCapacityHint?)` (or a
-    post-plan branch in `chat-completions-routes.ts` after `accountRef` is known);
+    post-plan branch in `chat-completions-routes.ts` after `accountRef` is known).
     `model-serving-policy.ts`.
   - Scope (owner decision: **default-ON, armed now** — not owner-gated-off): when
     `classifyCodingWorkflow != none` AND `listCallerCodingCapacity(accountRef)`
     shows an available own coding service, select the delegate branch instead of the
-    normal model lane. The routing is live by default; any switch wired is an
+    normal model lane. The routing is live by default. Any switch wired is an
     off-by-default *disable* (kill switch), never an off-by-default *enable* gate.
     Plain chat (`none`, or no own capacity) falls through to today's behavior
     unchanged (no regression).
   - Acceptance: with a coding workflow + available own capacity, the request takes
-    the delegate branch **by default** (no flag flip); with no coding workflow or no
-    capacity, routing is byte-identical to today; another user's capacity is never
-    selectable; the caller resolves its capacity via P1's OpenAuth-account
+    the delegate branch **by default** (no flag flip). With no coding workflow or no
+    capacity, routing is byte-identical to today. Another user's capacity is never
+    selectable. The caller resolves its capacity via P1's OpenAuth-account
     aggregation (own set only).
 
 ### P4 — Resumable-SSE coding-workflow execution via Durable Streams (NOW, Codex-first)
 
 **Owner decision: execution rides our Durable Streams resumable-SSE model.** Every
 coding-workflow request **starts by returning an interruptible, resumable SSE** —
-if the client disconnects it does not matter; they can resume / come back later and
+if the client disconnects it does not matter. They can resume / come back later and
 replay the suffix. This is the same model already implemented for durable
 inference: the Durable Streams primitive `packages/durable-stream/`
 (offset-addressed replay, `Stream-Next-Offset` / `Stream-Closed` resumability,
@@ -574,7 +574,7 @@ durable, resumable stream of the same shape.
 
 - **P4.1 Router-originated coding assignment over a durable stream.**
   - Seam: reuse `pylon-api.ts buildPylonApiAssignmentRecord` / `createAssignment`
-    and the `codingAssignment` payload; today only `/api/operator/pylons/assignments`
+    and the `codingAssignment` payload. Today only `/api/operator/pylons/assignments`
     creates assignments — add an internal, server-side create path callable from the
     inference route, bound to the caller's own `ownerAgentUserId` and gated by the
     existing dispatch gate (`controlledPylonAssignmentDispatchGate`). Open a durable
@@ -586,15 +586,15 @@ durable, resumable stream of the same shape.
     `openagents.pylon.codex_agent_task.v0.3` schema) targeting the caller's available
     Pylon. The Pylon picks it up via its existing `pollAssignments()` loop and runs
     `executeCodexAgentAssignment`. **Claude Code is the next-sophistication step:**
-    `executeClaudeAgentAssignment` already exists; wire a `claudeAgent` payload path
+    `executeClaudeAgentAssignment` already exists. Wire a `claudeAgent` payload path
     next, and flag this in code comments at the dispatch + executor seams so the
     Codex-first / Claude-next ordering is explicit. Reuse `codex-fleet` auth-lease
     and per-task `CODEX_HOME` / workspace-isolation patterns where the executor needs
     central auth.
   - Acceptance: an end-to-end fixture (no live spend) shows: coding request → initial
     resumable SSE returned → assignment created with caller's `ownerAgentUserId` →
-    fixture Pylon executes Codex → closeout frames appended to the durable stream;
-    a dropped client reconnects via the durable read route and replays the suffix;
+    fixture Pylon executes Codex → closeout frames appended to the durable stream.
+    a dropped client reconnects via the durable read route and replays the suffix.
     a second account cannot see, poll, or resume that assignment/stream.
 - **P4.2 Results back through Khala (resumable, never blocks the turn).**
   - Seam: the durable stream + the chat-completions response / `OpenAgentsReceipt`
@@ -606,8 +606,8 @@ durable, resumable stream of the same shape.
     so the caller can resume the stream or poll the handle and see the delegated
     result without leaving the Khala API.
   - Acceptance: the response/receipt carries the durable `requestId` + assignment
-    ref + status; a client that disconnected mid-run resumes from its last offset and
-    receives the terminal closeout; the durable read replay path never meters.
+    ref + status. A client that disconnected mid-run resumes from its last offset and
+    receives the terminal closeout. The durable read replay path never meters.
 
 ### P5 — Accounting, invariant enforcement, tests (NOW)
 
@@ -616,7 +616,7 @@ durable, resumable stream of the same shape.
   `token_usage_events` with an honest `own_capacity` `demand_kind` and
   `demand_source` tag, **and include them in the public `khala-tokens-served`
   scalar** — they are orchestrated through Khala, so they count. Internal
-  dogfood and stress also count when tokens are actually served; the
+  dogfood and stress also count when tokens are actually served. The
   `demand_kind` split is for analytics and corpus hygiene, not subtraction from
   the public scalar. Seam: `token-usage-ledger.ts`,
   `served-tokens-recorder.ts`, `public-khala-tokens-served-routes.ts`,
@@ -628,7 +628,7 @@ durable, resumable stream of the same shape.
   - **Own-capacity-only property test.** Model the bounded state (callers × Pylons ×
     assignments × OpenAuth links) and assert no assignment/stream is ever
     readable / pollable / executable / resumable by a non-owner, even across
-    different OpenAuth accounts that each link many Pylons; convert any
+    different OpenAuth accounts that each link many Pylons. Convert any
     counterexample into a regression test (per workspace invariant discipline).
   - **No-resale reconciliation.** Add a test asserting the own-capacity path routes
     only to the caller's own `ownerAgentUserId` and never triggers
@@ -661,13 +661,13 @@ durable, resumable stream of the same shape.
    Every request starts by returning an **interruptible, resumable SSE** (our
    Durable Streams model, `packages/durable-stream/` +
    `durable-inference-read-routes.ts`). The turn never blocks: a dropped client
-   resumes from its last offset and replays the suffix; long-running PR work returns
+   resumes from its last offset and replays the suffix. Long-running PR work returns
    a durable handle immediately (P4).
 4. **Public counter policy. RESOLVED → counter counts all real
-   orchestrated tokens.** Khala is an orchestrator; every token it
+   orchestrated tokens.** Khala is an orchestrator. Every token it
    orchestrates counts on the public `khala-tokens-served` scalar,
    **source-agnostic** (local / crowd / swarm / cloud / subscription /
-   own-capacity). Own-capacity coding tokens **DO** increment the public counter;
+   own-capacity). Own-capacity coding tokens **DO** increment the public counter.
    keep `demand_kind`/`demand_source` tags for honest analytics, and include
    `demand_kind=internal` dogfood/ops probes in the headline scalar while keeping
    external market-demand claims segmented (P5a). (This
@@ -676,7 +676,7 @@ durable, resumable stream of the same shape.
    is **live by default**, not owner-gated-off. Any switch wired is an
    off-by-default *disable* (kill switch) only, never an off-by-default *enable* gate
    (P3b).
-6. **Codex vs Claude preference. RESOLVED → Codex for now.** Ship **Codex first**;
+6. **Codex vs Claude preference. RESOLVED → Codex for now.** Ship **Codex first**.
    **Claude Code is the next-sophistication step** (both executors exist —
    `executeCodexAgentAssignment` / `executeClaudeAgentAssignment` — flag the
    Codex-first / Claude-next ordering in code comments and ship Codex first) (P4).
@@ -686,29 +686,29 @@ durable, resumable stream of the same shape.
 
 ---
 
-## 5. Sharpest findings (TL;DR)
+## 5. Sharpest findings (TL,DR)
 
 1. **The execution pipeline already exists end to end.** Pylon already runs local
    Codex (`@openai/codex-sdk`) and Claude Code (`@anthropic-ai/claude-agent-sdk`)
    via assignment-leases carrying a `codingAssignment`, with executors and closeout.
    The server already builds/dispatches those assignments (operator-only today). This
    is a wiring job, not a greenfield build.
-2. **Pylon↔identity is bearer-token today; owner decision builds OpenAuth multi-link
+2. **Pylon↔identity is bearer-token today. Owner decision builds OpenAuth multi-link
    NOW.** Claim-Your-Agent is X-verified and OpenAuth-approved *at claim time*, but
-   the human OpenAuth account is dropped afterward; all Pylon ops use the agent
+   the human OpenAuth account is dropped afterward. All Pylon ops use the agent
    bearer token bound to `ownerAgentUserId`. **Owner decision (P1): anchor linking on
    the OpenAuth account NOW** — one human OpenAuth account links MANY keys and MANY
    Pylons, designed for web-UI aggregation (linked Pylons, activity, balances, spend,
-   traces; UI itself is FUTURE/incremental, P1b). **Execution stays single-user /
-   own-capacity** (firm invariant): aggregation never widens execution scope; a
+   traces. UI itself is FUTURE/incremental, P1b). **Execution stays single-user /
+   own-capacity** (firm invariant): aggregation never widens execution scope. A
    caller only ever uses their own linked capacity, scoped at dispatch to their own
    `ownerAgentUserId`.
 3. **The router is caller-blind and has no coding-workflow classifier.** Two real
-   gaps: (a) `selectAdapterPlan(model)` never sees `accountRef`; (b) the only intent
+   gaps: (a) `selectAdapterPlan(model)` never sees `accountRef`. (B) the only intent
    seam is a self-described keyword *placeholder* (`intentToAcceptanceSpec`). Both
-   must be built; the classifier must be typed/semantic per the workspace rule.
+   must be built. The classifier must be typed/semantic per the workspace rule.
 4. **Capacity is reported as presence, not quantity/availability.** Heartbeat sends
-   one static `capacityRefs` ref + capability presence; there is no Codex×N / Claude×M
+   one static `capacityRefs` ref + capability presence. There is no Codex×N / Claude×M
    or busy/available signal, and the richer `oa-node-managed-machine` record is
    display-only. P2 (per-service capacity heartbeat + server projection) is the real
    net-new work, alongside P3's router branch and classifier.

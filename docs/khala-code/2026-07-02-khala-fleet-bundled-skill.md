@@ -27,14 +27,14 @@ skills into the user-scope shared skills root:
 - Wiring: `src/bun/index.ts` → `ensureKhalaCodeDesktopBundledSkillsInstalled`
   (`src/bun/khala-bundled-skills.ts`). Fail-soft: a write failure logs a
   warning and never blocks startup.
-- The Codex harness picks the skill up via its normal skills discovery;
+- The Codex harness picks the skill up via its normal skills discovery.
   it appears in `skills/list` (surfaced through the ecosystem/Inbox
   diagnostics) and is invocable like any other skill.
 
 ### Toggle
 
 Default-on. Disable with `KHALA_CODE_DESKTOP_BUNDLED_SKILLS=0` (also accepts
-`false`/`off`). The env key is registered in `khala-code-config.ts`; a
+`false`/`off`). The env key is registered in `khala-code-config.ts`. A
 Settings-panel toggle can layer on later without changing the seam.
 
 ### Overwrite policy
@@ -61,7 +61,7 @@ Every bundled copy carries the marker `managed-by: khala-code`:
 ## Invariants kept
 
 - The skill text is public-safe: no owner paths, no secrets, no private
-  refs; it teaches the same guardrails the runbooks enforce (isolated homes,
+  refs. It teaches the same guardrails the runbooks enforce (isolated homes,
   never `~/.codex`, exact-only token accounting, approval-per-run-start,
   counter movement is never proof).
 - Installation only ever writes inside `~/.agents/skills/<name>/` and only

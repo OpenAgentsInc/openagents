@@ -199,7 +199,7 @@ settlement.paid
 settlement.failed
 ```
 
-These can all flow through the same SyncRoom/D1 outbox model. But they should be modeled as **market memory**, not just UI e[118;1:3uvents.
+These can all flow through the same SyncRoom/D1 outbox model. But they should be modeled as **market memory**, not just UI e[118.1:3Uvents.
 
 The moat you keep circling is accumulated routing memory: which machines finished work, which validators caught problems, which job classes were profitable, and which contributors returned. That needs to exist in the data plane from the beginning.
 

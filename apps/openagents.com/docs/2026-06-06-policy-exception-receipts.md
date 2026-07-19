@@ -22,32 +22,32 @@ itself.
 
 The current exception families are:
 
-- `research_policy`;
-- `provider_placement`;
-- `access_control`;
-- `environment_secret_policy`;
-- `public_proof`;
-- `payment_l402`;
-- `email_delivery`;
-- `forum_moderation`;
-- `site_deployment`; and
+- `research_policy`.
+- `provider_placement`.
+- `access_control`.
+- `environment_secret_policy`.
+- `public_proof`.
+- `payment_l402`.
+- `email_delivery`.
+- `forum_moderation`.
+- `site_deployment`. And
 - `legal_sensitive_rule`.
 
 ## Receipt Shape
 
 `OpenAgentsPolicyExceptionReceipt` records:
 
-- exception family;
-- review state;
-- requested-by ref;
-- approved-by ref when approved;
-- subject refs;
-- scope refs;
-- expiration;
-- risk refs;
-- blocker refs;
-- evidence refs;
-- created/updated timestamps for internal records; and
+- exception family.
+- review state.
+- requested-by ref.
+- approved-by ref when approved.
+- subject refs.
+- scope refs.
+- expiration.
+- risk refs.
+- blocker refs.
+- evidence refs.
+- created/updated timestamps for internal records. And
 - an authority block.
 
 Projections convert timestamps into friendly display labels and never expose
@@ -59,11 +59,11 @@ The default authority block is `OPENAGENTS_POLICY_EXCEPTION_NO_AUTHORITY`.
 
 It denies:
 
-- access grant;
-- deployment;
-- email send;
-- runtime dispatch;
-- source mutation; and
+- access grant.
+- deployment.
+- email send.
+- runtime dispatch.
+- source mutation. And
 - spend.
 
 `openAgentsPolicyExceptionHasRuntimeAuthority` detects any receipt that tries
@@ -74,19 +74,19 @@ to carry authority. Such a receipt cannot apply through
 
 `openAgentsPolicyExceptionAppliesNow(receipt, nowIso)` returns true only when:
 
-- review state is `approved`;
-- an approved-by ref exists;
-- the receipt is not expired;
-- the receipt is not overbroad;
-- the receipt is evidence-only; and
+- review state is `approved`.
+- an approved-by ref exists.
+- the receipt is not expired.
+- the receipt is not overbroad.
+- the receipt is evidence-only. And
 - no runtime authority is present.
 
 Helpers also detect:
 
-- expired receipts;
-- rejected receipts;
-- revoked receipts;
-- unreviewed receipts; and
+- expired receipts.
+- rejected receipts.
+- revoked receipts.
+- unreviewed receipts. And
 - overbroad receipts.
 
 A receipt is overbroad when it has no subject refs, no scope refs, or scope refs
@@ -104,23 +104,23 @@ secrets or raw payloads.
 
 The contract rejects:
 
-- raw secrets and token-shaped refs;
-- provider grants, provider tokens, and provider payloads;
-- wallet material;
-- payment proofs, preimages, raw invoices, and payout targets;
-- raw emails;
-- private repo refs;
-- raw runner logs;
-- raw source archives; and
+- raw secrets and token-shaped refs.
+- provider grants, provider tokens, and provider payloads.
+- wallet material.
+- payment proofs, preimages, raw invoices, and payout targets.
+- raw emails.
+- private repo refs.
+- raw runner logs.
+- raw source archives. And
 - raw timestamps.
 
 ## Tests
 
 `workers/api/src/policy-exception-receipts.test.ts` covers:
 
-- schema/projection decoding;
-- approved evidence-only applicability;
-- expired, rejected, revoked, unreviewed, and overbroad state helpers;
-- no-runtime-authority behavior;
-- required exception families; and
+- schema/projection decoding.
+- approved evidence-only applicability.
+- expired, rejected, revoked, unreviewed, and overbroad state helpers.
+- no-runtime-authority behavior.
+- required exception families. And
 - public/customer redaction plus unsafe ref rejection.

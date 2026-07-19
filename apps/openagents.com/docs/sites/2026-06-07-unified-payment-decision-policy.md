@@ -8,13 +8,13 @@ Issue: `#447`
 OpenAgents product surface now has a single typed decision contract for route and action payment
 state across:
 
-- free-beta allowance;
-- internal account credits;
-- Stripe-funded credit top-up state;
-- L402/MDK payment evidence;
-- existing product entitlements;
-- safety and private-authority blocks;
-- manual review; and
+- free-beta allowance.
+- internal account credits.
+- Stripe-funded credit top-up state.
+- L402/MDK payment evidence.
+- existing product entitlements.
+- safety and private-authority blocks.
+- manual review. And
 - unavailable payment provider state.
 
 The implementation lives in `workers/api/src/unified-payment-decision.ts` with
@@ -24,10 +24,10 @@ focused coverage in `workers/api/src/unified-payment-decision.test.ts`.
 
 The unified policy composes existing OpenAgents product surface payment surfaces:
 
-- `payment-limit-policy`;
-- `buyer-payment-ledger`;
-- `buyer-payment-entitlement-policy`;
-- existing billing credit refs; and
+- `payment-limit-policy`.
+- `buyer-payment-ledger`.
+- `buyer-payment-entitlement-policy`.
+- existing billing credit refs. And
 - redacted Stripe top-up state refs.
 
 It does not create Stripe Checkout Sessions, migrate Stripe billing, debit real
@@ -38,24 +38,24 @@ intents, or settle revenue-share records.
 
 The helper returns stable statuses:
 
-- `allow`;
-- `recoverable_by_credits`;
-- `recoverable_by_l402_mdk`;
-- `recoverable_by_either`;
-- `manual_review`;
-- `hard_blocked`;
-- `exhausted`; and
+- `allow`.
+- `recoverable_by_credits`.
+- `recoverable_by_l402_mdk`.
+- `recoverable_by_either`.
+- `manual_review`.
+- `hard_blocked`.
+- `exhausted`. And
 - `provider_unavailable`.
 
 The projection also carries agent-safe `nextActions`, including:
 
-- `spend_internal_credits`;
-- `use_entitlement`;
-- `use_free_beta`;
-- `add_credits`;
-- `pay_l402_mdk`;
-- `request_manual_review`;
-- `retry_later`; and
+- `spend_internal_credits`.
+- `use_entitlement`.
+- `use_free_beta`.
+- `add_credits`.
+- `pay_l402_mdk`.
+- `request_manual_review`.
+- `retry_later`. And
 - `stop`.
 
 If L402/MDK recovery is not configured, the agent-facing next action does not
@@ -66,12 +66,12 @@ not claim credits can be added.
 
 The safe projection can include:
 
-- credit ledger refs;
-- Stripe top-up state refs;
-- L402 redemption refs;
-- MDK checkout receipt refs;
-- entitlement refs;
-- spend-cap refs; and
+- credit ledger refs.
+- Stripe top-up state refs.
+- L402 redemption refs.
+- MDK checkout receipt refs.
+- entitlement refs.
+- spend-cap refs. And
 - payment policy refs.
 
 It rejects Stripe customer IDs, payment method data, invoice IDs, raw webhooks,

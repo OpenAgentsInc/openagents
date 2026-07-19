@@ -6,8 +6,8 @@ Use `Schedule` for retry, polling, pacing, and repeated background work instead 
 
 ## Core Rules
 
-- `Effect.retry(...)` retries typed failures; defects and interruptions are not retried.
-- `Effect.repeat(...)` repeats successful effects; failures stop repetition unless the pass handles them first.
+- `Effect.retry(...)` retries typed failures. Defects and interruptions are not retried.
+- `Effect.repeat(...)` repeats successful effects. Failures stop repetition unless the pass handles them first.
 - The source effect runs once before the schedule is stepped.
 - `Schedule.recurs(3)` means three retries/repetitions after the initial run.
 - `Schedule.spaced(...)` waits after work completes.
@@ -131,5 +131,5 @@ Use this for operation-level retries over typed provider errors. For Effect Http
 - Use `Effect.timeout(...)` when the operation has a real deadline.
 - Use `Effect.delay(...)` when one operation should start later.
 - Use `Effect.sleep(...)` inside production workflows only when sleeping itself is the domain behavior.
-- Avoid manual sleep loops; use `Effect.repeat(...)` with `Schedule` for recurring work.
+- Avoid manual sleep loops. Use `Effect.repeat(...)` with `Schedule` for recurring work.
 - In tests, use `TestClock` rather than real time. Read `TESTING.md`.

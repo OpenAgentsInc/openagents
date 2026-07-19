@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 Issue: [#9021](https://github.com/OpenAgentsInc/openagents/issues/9021)
-Status: implemented; IDE-07 remains the daily-use release gate
+Status: implemented. IDE-07 remains the daily-use release gate
 
 ## Outcome
 
@@ -10,13 +10,13 @@ Desktop now has two explicit, visible language tiers without giving Monaco or
 a helper process project authority:
 
 1. the lazy packaged Monaco JSON, CSS, HTML, JavaScript, and TypeScript workers
-   remain document-local mechanics inside the replaceable editor island; and
+   remain document-local mechanics inside the replaceable editor island. And
 2. a separate Effect-owned, project-local TypeScript 6.0.3 service owns
    project intelligence, lifecycle, cancellation, restart, and receipts.
 
 The production workbench projects the same exact-generation result set into
-Monaco markers, semantic styling, inlay hints, and folding; Problems; Outline;
-breadcrumbs; definitions; references; and rename, format, and code-action edit
+Monaco markers, semantic styling, inlay hints, and folding. Problems. Outline.
+breadcrumbs. Definitions. References. And rename, format, and code-action edit
 previews. An edit preview can change the canonical draft only when its
 document ref, document generation, Monaco model version, path, and expected
 edit versions still match. Older results are stripped of items and never
@@ -51,13 +51,13 @@ flowchart LR
 | absolute root and filesystem reads | main workspace service | never serialized to the renderer |
 | document bytes, dirty state, undo/recovery, save conflict | Effect document reducer/workspace authority | Monaco and language results cannot claim a save |
 | project language lifecycle | `IdeLanguageService` | renderer receives tagged snapshots and bounded receipts |
-| TypeScript compiler/language mechanics | project-local utility worker | receives the root only from main; emits relative paths |
+| TypeScript compiler/language mechanics | project-local utility worker | receives the root only from main. Emits relative paths |
 | Monaco completion/syntax mechanics | lazy editor-island workers | explicitly labeled `document_local` |
-| diagnostics/symbol/navigation presentation | shared workbench projection | exact receipt refs; no independent cache or inferred success |
+| diagnostics/symbol/navigation presentation | shared workbench projection | exact receipt refs. No independent cache or inferred success |
 | edit application | canonical document reducer | exact same-document `TextEdit` receipt only |
 
 No Rust is used. The measured persistent TypeScript service has sub-2 ms p95
-warm diagnostics and document-symbol latency on the admitted 151-file corpus;
+warm diagnostics and document-symbol latency on the admitted 151-file corpus.
 there is no evidence that a native kernel is needed. TypeScript/Effect also
 owns the policy and state-machine plane, so moving it to Rust would violate the
 architecture boundary even if parsing were faster.
@@ -73,19 +73,19 @@ the Monaco local-worker state, and the bounded project-to-Monaco projection.
 Every project result carries:
 
 - project, root, worktree, attachment, file, document, service, start, and
-  placement refs;
-- attachment, language, document, Monaco model, and service generations;
-- provider executable and exact version;
-- requested/observed timestamps and freshness;
-- `project_local` evidence tier;
-- capability availability;
+  placement refs.
+- attachment, language, document, Monaco model, and service generations.
+- provider executable and exact version.
+- requested/observed timestamps and freshness.
+- `project_local` evidence tier.
+- capability availability.
 - explicit complete, partial, truncated, degraded, unavailable, cancelled, or
-  stale state; and
+  stale state. And
 - at most 5,000 schema-decoded root-relative items.
 
-The service uses `Context.Service`; its implementation is constructed through
-`Layer.effect`; non-trivial operations use named `Effect.fn`; failures are
-`Schema.TaggedErrorClass` values; and IPC/provider data is decoded. The host is
+The service uses `Context.Service`. Its implementation is constructed through
+`Layer.effect`. Non-trivial operations use named `Effect.fn`. Failures are
+`Schema.TaggedErrorClass` values. And IPC/provider data is decoded. The host is
 the one intentional manual runtime perimeter for Electron IPC.
 
 ## Two language tiers
@@ -114,22 +114,22 @@ replaced or closed.
 
 The service owns:
 
-- lazy startup with a five-second bound;
-- executable/version/capability validation;
-- a 64-request bound;
-- per-document/per-capability supersession;
-- cancellation propagation and late-result suppression;
-- request timeouts;
-- explicit active/queued counts;
-- project-local placement and evidence;
-- bounded restart backoff state;
-- generation advance after provider failure;
-- supervised worker replacement on the next admitted request; and
+- lazy startup with a five-second bound.
+- executable/version/capability validation.
+- a 64-request bound.
+- per-document/per-capability supersession.
+- cancellation propagation and late-result suppression.
+- request timeouts.
+- explicit active/queued counts.
+- project-local placement and evidence.
+- bounded restart backoff state.
+- generation advance after provider failure.
+- supervised worker replacement on the next admitted request. And
 - zero-pending stop/teardown.
 
 A provider crash is not hidden behind transparent worker recreation. The
 first request after the crash receives typed provider-unavailable truth and
-advances supervision to a new service generation; the next admitted request
+advances supervision to a new service generation. The next admitted request
 starts the replacement. Results from the dead generation cannot commit.
 
 ## Capability corpus
@@ -161,7 +161,7 @@ the current document. No positional guess is applied to an unversioned target.
   and selects the exact range through the canonical editor state.
 - Breadcrumbs append the innermost current symbol only when the current
   selection is inside its exact range.
-- Definition and reference actions share location item refs; current-document
+- Definition and reference actions share location item refs. Current-document
   locations navigate exactly, while other admitted relative paths open through
   workspace authority.
 - Rename, format, and code-action results show a bounded edit count and require
@@ -180,15 +180,15 @@ empty response.
 
 | Failure | Observable behavior | Fence/recovery |
 | --- | --- | --- |
-| unsupported document | document-local syntax label; project controls disabled | no project worker starts |
+| unsupported document | document-local syntax label. Project controls disabled | no project worker starts |
 | invalid request/path | typed rejected response | no provider result admitted |
 | queue full | explicit `queue_full` rejection | caller can retry after pending work settles |
 | startup timeout/malformed start | degraded service snapshot | bounded-backoff/manual retry truth |
 | request timeout | typed timeout and provider cancel | late response has no active request ref |
-| superseded request | cancel propagated; result cancelled or stale | items removed; only newest receipt may commit |
+| superseded request | cancel propagated. Result cancelled or stale | items removed. Only newest receipt may commit |
 | document/model generation changes | no Monaco/workbench projection match | refresh produces a new request binding |
 | malformed provider result | typed malformed rejection | no unvalidated item reaches renderer |
-| provider crash | provider-unavailable and degraded state | service generation advances; replacement is supervised |
+| provider crash | provider-unavailable and degraded state | service generation advances. Replacement is supervised |
 | workspace close/replacement | stop and worker termination | zero active/queued requests and handles |
 
 ## Evidence and measurements
@@ -201,14 +201,14 @@ corpus, and enforces IDE boundaries.
 The checked receipt is
 `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-language.json`:
 
-- Node 24.13.1, Darwin arm64;
-- TypeScript 6.0.3 via `typescript/lib/tsserverlibrary`;
-- 151 files / 21,712 source bytes / 12 warm samples;
-- first diagnostics: 209.05 ms in the latest gate run;
-- warm diagnostics p50/p95/p99: 0.60 / 0.86 / 0.86 ms;
-- document symbols p50/p95/p99: 0.66 / 1.76 / 1.76 ms;
-- 100 scheduled superseding requests: 1 committed, 99 suppressed;
-- forced worker crash recovered at service generation 2 in 198.41 ms; and
+- Node 24.13.1, Darwin arm64.
+- TypeScript 6.0.3 via `typescript/lib/tsserverlibrary`.
+- 151 files / 21,712 source bytes / 12 warm samples.
+- first diagnostics: 209.05 ms in the latest gate run.
+- warm diagnostics p50/p95/p99: 0.60 / 0.86 / 0.86 ms.
+- document symbols p50/p95/p99: 0.66 / 1.76 / 1.76 ms.
+- 100 scheduled superseding requests: 1 committed, 99 suppressed.
+- forced worker crash recovered at service generation 2 in 198.41 ms. And
 - 2 workers started across crash/recovery, 0 workers and 0 pending requests
   after stop.
 
@@ -233,7 +233,7 @@ worker answers for the current model.
   matrix before “basic IDE” language is allowed.
 - The initial project provider is TypeScript/JavaScript only. JSON/CSS/HTML
   have document-local Monaco help, not a claimed project server.
-- The worker snapshot is refreshed by current document requests; a future
+- The worker snapshot is refreshed by current document requests. A future
   general LSP host needs explicit filesystem-change notifications and protocol
   version/range conversion rather than pretending this TypeScript service is
   universal.

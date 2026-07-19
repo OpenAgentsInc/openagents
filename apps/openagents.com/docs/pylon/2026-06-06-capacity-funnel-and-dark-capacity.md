@@ -19,15 +19,15 @@ The pure projection contract lives in
 
 The v1 stage model is:
 
-- `registered`;
-- `benchmarked`;
-- `eligible`;
-- `assigned`;
-- `running`;
-- `artifact_producing`;
-- `accepted`;
-- `paid`;
-- `settled`;
+- `registered`.
+- `benchmarked`.
+- `eligible`.
+- `assigned`.
+- `running`.
+- `artifact_producing`.
+- `accepted`.
+- `paid`.
+- `settled`.
 - `dark`.
 
 The model keeps capacity position separate from accepted-work economics and
@@ -38,14 +38,14 @@ and paid without being settlement-proof.
 
 Dark capacity requires explicit reason refs. The current examples include:
 
-- no work assigned;
-- missing payout target;
-- not benchmarked;
-- not eligible;
-- blocked by trust policy;
-- low connectivity;
-- insufficient liquidity;
-- failed run;
+- no work assigned.
+- missing payout target.
+- not benchmarked.
+- not eligible.
+- blocked by trust policy.
+- low connectivity.
+- insufficient liquidity.
+- failed run.
 - not accepted.
 
 Reason refs are public-safe labels, not raw host identifiers, payout targets,
@@ -68,17 +68,17 @@ The live public route projects assigned, running, artifact-producing, and
 accepted stages from durable `pylon_provider_job_lifecycle` rows, then falls
 back to the public-safe assignment state when a lifecycle row is missing or
 lagging. Assignment creation and assignment-state updates write the assignment
-row and matching lifecycle row in one D1 `db.batch`; the fallback prevents the
+row and matching lifecycle row in one D1 `db.batch`. The fallback prevents the
 public count route from showing zero accepted work if a lifecycle projection
 lags behind the accepted-work assignment row.
 
 Lifecycle stages are:
 
-- `offered`;
-- `accepted`;
-- `running`;
-- `artifact_submitted`;
-- `closeout_submitted`;
+- `offered`.
+- `accepted`.
+- `running`.
+- `artifact_submitted`.
+- `closeout_submitted`.
 - `accepted_work`.
 
 The public funnel remains count-only. Lifecycle rows are keyed by Pylon and
@@ -101,17 +101,17 @@ artifacts, or provider-private details.
 
 Retention policy:
 
-- hourly snapshots: 14 days;
+- hourly snapshots: 14 days.
 - daily snapshots: 180 days.
 
 Closeout evidence recorded 2026-06-11:
 
 - the live history route retained hourly and daily buckets for both
-  2026-06-10 and 2026-06-11;
-- provider lifecycle accounting from #4659 was already deployed;
+  2026-06-10 and 2026-06-11.
+- provider lifecycle accounting from #4659 was already deployed.
 - transition receipt `promise_transition_cd1c3145-eccd-4985-b48a-99f8b1b20fbe`
   proposed `pylon.no_dark_capacity_accounting.v1` from yellow to green before
-  the registry edit;
+  the registry edit.
 - registry version `2026-06-10.27` marks the promise green while preserving
   the boundary that capacity presence is not accepted work, payment,
   settlement, or withdrawal evidence.
@@ -120,11 +120,11 @@ Closeout evidence recorded 2026-06-11:
 
 `aggregatePylonCapacityFunnel` returns count-only funnel data:
 
-- total count;
-- count by stage;
-- count by dark-capacity reason;
+- total count.
+- count by stage.
+- count by dark-capacity reason.
 - individual stage counters for registered, benchmarked, eligible, assigned,
-  running, artifact-producing, accepted, paid, settled, and dark;
+  running, artifact-producing, accepted, paid, settled, and dark.
 - `settledClaimAllowedCount`, which only counts records with settlement
   evidence.
 
@@ -136,33 +136,33 @@ private node or provider details.
 Issue #362 adds `accountPylonCapacityFunnel`, a stricter accounting projection
 for investor/operator reporting. It keeps the same stage model but adds:
 
-- read-only capacity-accounting authority flags;
+- read-only capacity-accounting authority flags.
 - dark-capacity reason summaries with capacity refs, caveat refs, evidence
-  refs, and work class refs;
-- fresh, stale, and unknown freshness counts;
-- stale capacity refs;
-- paid-but-not-settled count;
-- visible settlement-claim count;
-- settled-without-visible-receipt count;
+  refs, and work class refs.
+- fresh, stale, and unknown freshness counts.
+- stale capacity refs.
+- paid-but-not-settled count.
+- visible settlement-claim count.
+- settled-without-visible-receipt count.
 - public-safe claim-boundary caveats.
 
 This matters because a capacity record can be in the `settled` stage while the
 public or customer projection cannot see the settlement receipt. The accounting
 projection therefore separates:
 
-- stage count;
-- paid-but-not-settled count;
-- settlement receipts visible to the current audience;
+- stage count.
+- paid-but-not-settled count.
+- settlement receipts visible to the current audience.
 - settlement refs that may exist but are hidden from the current audience.
 
 The accounting projection does not:
 
-- spend from a wallet;
-- dispatch a provider payout;
-- mutate provider eligibility;
-- mutate payout targets;
-- mutate settlement;
-- assign capacity;
+- spend from a wallet.
+- dispatch a provider payout.
+- mutate provider eligibility.
+- mutate payout targets.
+- mutate settlement.
+- assign capacity.
 - upgrade a public claim.
 
 ## Settlement Boundary
@@ -177,22 +177,22 @@ counted as settled without a visible receipt for that audience.
 
 `workers/api/src/pylon-capacity-funnel.test.ts` covers:
 
-- public/operator projection splits;
-- private provider/node redaction;
-- friendly time labels and raw timestamp omission;
-- funnel and dark-reason aggregation;
+- public/operator projection splits.
+- private provider/node redaction.
+- friendly time labels and raw timestamp omission.
+- funnel and dark-reason aggregation.
 - capacity accounting projection, detailed dark-reason summaries, stale
   capacity counts, paid-but-not-settled counts, visible settlement receipt
-  counts, and no-mutation authority;
-- required refs for benchmarked/eligible/running/paid/dark stages;
+  counts, and no-mutation authority.
+- required refs for benchmarked/eligible/running/paid/dark stages.
 - rejection of raw host, private hardware, wallet, payment, provider, runner,
   customer, and payout-destination material.
 
 `workers/api/src/pylon-capacity-funnel-live-routes.test.ts` and
 `workers/api/src/pylon-api-routes.test.ts` cover:
 
-- lifecycle-backed live funnel stages;
-- unchanged public route shape with counts only;
-- assignment/lifecycle atomic D1 batch writes and mid-batch failure behavior;
+- lifecycle-backed live funnel stages.
+- unchanged public route shape with counts only.
+- assignment/lifecycle atomic D1 batch writes and mid-batch failure behavior.
 - retained hourly/daily history snapshots, retention pruning, and the public
   history route's count-only output.

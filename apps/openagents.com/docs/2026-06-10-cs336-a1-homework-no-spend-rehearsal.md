@@ -13,10 +13,10 @@ rail and binds the returned closeout evidence to the verification queue.
 
 OpenAgents owns:
 
-- the CS336 A1 dispatch payload shape;
-- public-safe run, window, assignment, closeout, and verification refs;
-- the buy-mode/NIP-90 dispatch rail;
-- deterministic recompute and Freivalds/Merkle verification challenge records;
+- the CS336 A1 dispatch payload shape.
+- public-safe run, window, assignment, closeout, and verification refs.
+- the buy-mode/NIP-90 dispatch rail.
+- deterministic recompute and Freivalds/Merkle verification challenge records.
 - no-spend rehearsal receipts and blockers.
 
 Psionic owns actual training execution, release manifests, job contracts,
@@ -28,15 +28,15 @@ spend approval are both present.
 
 `src/cs336-a1-homework.ts` defines:
 
-- `jobKind`: `cs336_a1_homework`;
-- `psionicLaneRef`: `psion_cs336_a1_demo_v1`;
-- request schema: `psion.cs336_a1_demo_automatic_execution_request.v1`;
+- `jobKind`: `cs336_a1_homework`.
+- `psionicLaneRef`: `psion_cs336_a1_demo_v1`.
+- request schema: `psion.cs336_a1_demo_automatic_execution_request.v1`.
 - output schema: `psion.cs336_a1_demo_automatic_execution_outputs.v1`.
 
 The dispatch payload includes verification bindings:
 
-- tokenizer/BPE shard work uses `deterministic_recompute`;
-- training-step matrix work uses `freivalds_merkle`;
+- tokenizer/BPE shard work uses `deterministic_recompute`.
+- training-step matrix work uses `freivalds_merkle`.
 - sampling policy is `per_contribution`.
 
 ## Smoke
@@ -54,7 +54,7 @@ verdicts, and projects a no-spend accepted rehearsal.
 
 The projection intentionally includes:
 
-- `blocker.cs336_a1.paid_settlement_requires_operator_spend_approval`;
+- `blocker.cs336_a1.paid_settlement_requires_operator_spend_approval`.
 - `blocker.cs336_a1.psionic_execution_boundary_external`.
 
 Those blockers prevent the rehearsal from being mistaken for a paid live

@@ -1,6 +1,6 @@
 # Autopilot Task: R10 Pylon Campaign Continuation
 
-Status: dispatched; first OpenAgents product surface public-surface slice merged, continuation needed
+Status: dispatched. First OpenAgents product surface public-surface slice merged, continuation needed
 
 Target repo: `OpenAgentsInc/openagents`
 
@@ -40,10 +40,10 @@ the foreground operator reviewed and merged the PR:
 Merged first-slice behavior:
 
 - public goal activity now carries sanitized public-safe `commitRefs`,
-  `artifactRefs`, and `receiptRefs`;
+  `artifactRefs`, and `receiptRefs`.
 - unsafe control-plane/provider/callback/secret-shaped refs are filtered out of
-  public projection;
-- `/artanis` shows current run ID and public-safe refs in activity rows;
+  public projection.
+- `/artanis` shows current run ID and public-safe refs in activity rows.
 - stale Nexus stats timestamps are treated as unavailable rather than live.
 
 Merged verification on `main`:
@@ -71,10 +71,10 @@ Do not launch this task until the programmatic Autopilot runbook recommendations
 are complete enough for reliable delegation:
 
 - operator preflight exists and reports migrations, project/agent presence,
-  provider health, SHC health, callback config, and GitHub writeback readiness;
-- reconnect-required provider states are caught before dispatch;
-- SHC callback payload contracts and retry/backfill paths are covered;
-- run continuation attaches to the same durable goal;
+  provider health, SHC health, callback config, and GitHub writeback readiness.
+- reconnect-required provider states are caught before dispatch.
+- SHC callback payload contracts and retry/backfill paths are covered.
+- run continuation attaches to the same durable goal.
 - public/team goal observation can show the current run without exposing
   private delivery mechanics.
 
@@ -90,11 +90,11 @@ honest execution or reporting.
 Continue the R10 Pylon campaign by having Artanis publicly drive the next Pylon
 release:
 
-- release the next version of Pylon;
-- connect Pylon more deeply to the current OpenAgents product surface `openagents.com` codebase;
-- send increasing inference and fine-tuning work to the live Pylon wave;
+- release the next version of Pylon.
+- connect Pylon more deeply to the current OpenAgents product surface `openagents.com` codebase.
+- send increasing inference and fine-tuning work to the live Pylon wave.
 - use the new Bitcoin infrastructure as the settlement/accounting layer for
-  accepted Pylon work;
+  accepted Pylon work.
 - keep the public Artanis route useful as a livestream/referral proof page even
   while the work is still in progress.
 
@@ -183,13 +183,13 @@ paths, or private runner prompts in the launch payload.
 4. Add or complete the live public sync path for Artanis goal/activity/Pylon
    stats if the snapshot-only path is still current at dispatch time.
 5. Identify the current Pylon implementation home and the OpenAgents product surface integration
-   points. Do not guess across repositories; if a required repo or branch is
+   points. Do not guess across repositories. If a required repo or branch is
    unavailable, record a typed blocker instead of fabricating the integration.
 6. Implement the next Pylon release work in bounded slices:
-   - OpenAgents product surface-facing registration/status surface;
-   - workload assignment path for inference and fine-tuning;
-   - accepted-work accounting and receipt projection;
-   - Bitcoin settlement/accounting integration;
+   - OpenAgents product surface-facing registration/status surface.
+   - workload assignment path for inference and fine-tuning.
+   - accepted-work accounting and receipt projection.
+   - Bitcoin settlement/accounting integration.
    - public artifact/receipt links suitable for the `/artanis` audience.
 7. Keep public projection safe. Public routes may show statuses, counts,
    summaries, commits, receipts, artifacts, and sanitized run events. They must

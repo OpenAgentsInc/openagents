@@ -19,7 +19,7 @@ refs after the external Lane B work exists.
 The accepted bounded claim is exactly the gate scope language:
 
 > Remote Pylon Qwen 3.6 sampled-projection LoRA run is receipt-backed,
-> evaluated, admitted, and settled; this is a bounded LoRA/adaptation report,
+> evaluated, admitted, and settled. This is a bounded LoRA/adaptation report,
 > not a full Qwen 3.6 transformer backprop fine-tune or private benchmark
 > performance claim.
 
@@ -44,11 +44,11 @@ bun run smoke:qwen-remote-training -- --preflight \
 
 The preflight is green only when at least two selected or discovered Pylons are:
 
-- `status: active`;
-- fresh and online in the public Pylon list;
-- wallet-ready;
-- advertising `capability.pylon.assignment_ready`;
-- advertising `capability.public.pylon.fine_tuning_training`;
+- `status: active`.
+- fresh and online in the public Pylon list.
+- wallet-ready.
+- advertising `capability.pylon.assignment_ready`.
+- advertising `capability.public.pylon.fine_tuning_training`.
 - not smoke, canary, demo, fixture, packaged-smoke, or loopback registrations.
 
 ## Bundle Shape

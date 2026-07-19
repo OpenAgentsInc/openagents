@@ -3,7 +3,7 @@
 - Date: 2026-07-09
 - Registry version: `2026-07-09.1`
 - Owner direction: retire the Khala Code mobile and Electrobun desktop product
-  shells; build greenfield OpenAgents mobile and Electron desktop apps
+  shells. Build greenfield OpenAgents mobile and Electron desktop apps
 - Implementation issues: #8566, #8574, #8597, #8634
 
 ## Promise transition
@@ -15,9 +15,9 @@ The registry keeps stable history while changing current product truth:
 | `autopilot.desktop_gui_client.v1` | planned | withdrawn | `openagents.desktop_app.v1` |
 | `khala_code.desktop_codex_wrapper.v1` | yellow | withdrawn | `openagents.desktop_app.v1` |
 | `khala_code.mobile_mvp.v1` | planned | withdrawn | `openagents.mobile_app.v1` |
-| `khala_code.forum_hotbar.v1` | planned | withdrawn | exact old-shell placement retired; Forum capability dispositioned under #8574 |
-| `khala_code.bundled_fleet_skill.v1` | yellow | planned | canonical skill remains real; new-app packaging is unproven |
-| other `khala_code.*` capability/economics IDs | planned/yellow | same conservative state | stable-ID carry-forward only; old app wiring is historical evidence |
+| `khala_code.forum_hotbar.v1` | planned | withdrawn | exact old-shell placement retired. Forum capability dispositioned under #8574 |
+| `khala_code.bundled_fleet_skill.v1` | yellow | planned | canonical skill remains real. New-app packaging is unproven |
+| other `khala_code.*` capability/economics IDs | planned/yellow | same conservative state | stable-ID carry-forward only. Old app wiring is historical evidence |
 
 Two planned successor records are new:
 
@@ -38,19 +38,19 @@ No green promise changes state. The post-transition registry shape is 145 total:
 
 ## Integrity preservation
 
-Withdrawal removes current product copy; it does not erase history. Preserve:
+Withdrawal removes current product copy. It does not erase history. Preserve:
 
-- every stable legacy promise ID and registry version note;
+- every stable legacy promise ID and registry version note.
 - `/promises`, the stable `/docs/product-promises` meaning/alias, and
-  `/api/public/product-promises`;
+  `/api/public/product-promises`.
 - public transition/audit/readiness projections and owner-gated transition
-  authority;
-- existing promise-transition receipts;
+  authority.
+- existing promise-transition receipts.
 - exact `khala_code_download_events` rows and the public-safe download-count
-  read;
-- existing outside-user run receipts and their public-safe GET route;
-- trace/plugin precedent receipts and public-safe read route;
-- historical plan/status, entitlement, privacy, payment, and receipt reads;
+  read.
+- existing outside-user run receipts and their public-safe GET route.
+- trace/plugin precedent receipts and public-safe read route.
+- historical plan/status, entitlement, privacy, payment, and receipt reads.
 - every still-valid evidence ref or an explicit stable redirect/archive ref.
 
 These are compatibility/evidence surfaces, not product destinations. #8634 may
@@ -73,7 +73,7 @@ Khala Code idea is classified as fold into Sarah, retain as a specialist
 OpenAgents capability, or extract as a shared engine consumed by the
 Sarah-first apps. Only an obsolete legacy implementation may be retired after
 its idea has a recorded successor disposition. Legacy source can prove
-lineage and help parity; it cannot prove a greenfield app behavior, a store or
+lineage and help parity. It cannot prove a greenfield app behavior, a store or
 desktop release, cross-device continuity, or safe Electron authority.
 
 The binding app decision and exact cutover gates live in

@@ -9,10 +9,10 @@ composer.
 
 The selected context contains:
 
-- a bounded selector;
-- a normalized tag;
-- bounded visible text;
-- allowlisted attributes only; and
+- a bounded selector.
+- a normalized tag.
+- bounded visible text.
+- allowlisted attributes only. And
 - a bounded HTML snippet such as
   `<a class="button" href="#returns">Investment case</a>`.
 

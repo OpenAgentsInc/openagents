@@ -1,7 +1,7 @@
-# P1 (#4777) live run: provider quoting works; offer-ingestion bridge is the gap
+# P1 (#4777) live run: provider quoting works. Offer-ingestion bridge is the gap
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -22,7 +22,7 @@ Date: 2026-06-14
   real **kind-7000 quote** `3d7ec6bb9f96fd241f2fd9729f55f087c9e67a4875f25ee16bc36b69a13152cd`
   for **1 sat** (1000 msats).
 - The fix that unblocked quoting: **`PYLON_LABOR_MARKET_AUTO_QUOTE=true`**
-  (labor quoting is opt-in; default false → `refusal.labor_market.auto_quote_disabled`).
+  (labor quoting is opt-in, default false → `refusal.labor_market.auto_quote_disabled`).
   Also set `PYLON_NIP90_RELAYS=wss://relay.openagents.com`,
   `PYLON_NIP90_PRICE_MSATS=1000`.
 
@@ -60,9 +60,9 @@ The negotiation chain breaks exactly here: relay quote → (no bridge) → API o
 Steps 1–3 above are **done and deployed**:
 - `POST /api/forum/work-requests/{id}/offers` (agent-authed, idempotent on
   quoteRef), `POST …/results`, and `POST …/release` shipped in
-  `forum-routes.ts` + `forum-work-request-negotiation.ts`; migration `0179`
+  `forum-routes.ts` + `forum-work-request-negotiation.ts`. Migration `0179`
   (`forum_work_request_offers.provider_pubkey` + `forum_work_request_results`)
-  applied to production D1; Worker deployed.
+  applied to production D1. Worker deployed.
 - The provider's live kind-7000 quote was ingested as a DB offer
   (`offerId c40dc95c…`, `state offered`).
 - Requester accepted: work request is `quote_accepted`, **escrow reserved**
@@ -80,7 +80,7 @@ because `runtime.runLabor` throws: the local agent (`codex exec`) is handed a
 prompt built by `laborPrompt()` that contains **only opaque refs** —
 `objective.public.pylon_work.7b5a38b0…`, `repo.public.github…`, and the
 verification-command ref — with **no readable task detail**
-(`request.request.content` is empty; the relay kind-5934 is ref-only by design,
+(`request.request.content` is empty, the relay kind-5934 is ref-only by design,
 per the runbook's "no raw prompts on the relay" boundary).
 
 Two coupled problems make the current target unverifiable-in-sandbox:
@@ -91,7 +91,7 @@ Two coupled problems make the current target unverifiable-in-sandbox:
 2. **Sandbox vs. repo objective.** Execution runs in an isolated empty
    workspace (`cache/labor-market/<ref>`), but the A1 parity slice is a
    repo-dependent objective — even with the title, a self-contained `bun test`
-   in an empty dir can't meaningfully verify it. The runbook's own fixture
+   in an empty dir cannot meaningfully verify it. The runbook's own fixture
    shape (the `sum.ts`/`sum.test.ts` `fixingRunner`) is **self-contained** for
    exactly this reason.
 
@@ -104,7 +104,7 @@ Minimal plumbing:
   `GET /api/forum/work-requests/{id}`) into `laborPrompt()`.
 - Point the first job at a self-contained slice (e.g. "create `parity.ts`
   exporting a typed MVP-surface parity matrix + `parity.test.ts` asserting every
-  row has an api peer; `bun test` passes") that still references #4773 honestly
+  row has an api peer. `bun test` passes") that still references #4773 honestly
   as the subject in the title.
 - Then: quote → accept (escrow) → codex executes the self-contained task →
   `bun test` genuinely passes → kind-6934 result → `POST /results` → validator

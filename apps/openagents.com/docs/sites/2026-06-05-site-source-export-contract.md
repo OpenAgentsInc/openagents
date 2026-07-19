@@ -17,22 +17,22 @@ POST /api/operator/sites/:siteId/versions/:versionId/source-exports
 
 It requires:
 
-- an OpenAgents admin browser session;
-- an `Idempotency-Key` header;
+- an OpenAgents admin browser session.
+- an `Idempotency-Key` header.
 - a saved Site version with at least one exportable source ref:
   `source_archive_r2_key`, `artifact_manifest_r2_key`,
-  `worker_module_r2_key`, or an explicit `sourceArtifactRef`;
-- a passed secret scan;
+  `worker_module_r2_key`, or an explicit `sourceArtifactRef`.
+- a passed secret scan.
 - a bounded destination contract for `download`, `github_branch`, or
   `github_pull_request`.
 
 The API records:
 
-- actor and approver user refs;
-- destination provider, owner, repository, branch, PR URL, or download URL;
-- source archive, artifact manifest, worker module, or source artifact refs;
-- token ref, token hash, and token expiry;
-- secret scan status/ref;
+- actor and approver user refs.
+- destination provider, owner, repository, branch, PR URL, or download URL.
+- source archive, artifact manifest, worker module, or source artifact refs.
+- token ref, token hash, and token expiry.
+- secret scan status/ref.
 - redacted receipt metadata.
 
 ## Token Boundary

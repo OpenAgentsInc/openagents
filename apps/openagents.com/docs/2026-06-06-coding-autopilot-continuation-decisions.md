@@ -19,22 +19,22 @@ The implementation lives in
 
 `CodingAutopilotContinuationDecisionRecord` captures:
 
-- mission ref;
-- workroom refs;
-- Program Run ref;
-- Program Type id;
-- Program Signature id;
-- Module Version id;
-- selected Blueprint continuation action;
-- mapped Coding on Autopilot queue action kind;
-- confidence and confidence bucket;
-- constraints;
-- guardrail state;
-- evidence refs;
-- receipt refs;
-- source-authority refs;
-- rejected alternative refs;
-- risk refs;
+- mission ref.
+- workroom refs.
+- Program Run ref.
+- Program Type id.
+- Program Signature id.
+- Module Version id.
+- selected Blueprint continuation action.
+- mapped Coding on Autopilot queue action kind.
+- confidence and confidence bucket.
+- constraints.
+- guardrail state.
+- evidence refs.
+- receipt refs.
+- source-authority refs.
+- rejected alternative refs.
+- risk refs.
 - customer explanation ref.
 
 ## Evidence-Only Rule
@@ -42,8 +42,8 @@ The implementation lives in
 The record is only accepted if the source Blueprint continuation decision is
 evidence-only. The projection carries:
 
-- `evidenceOnly: true`;
-- `directEffectPermitted: false`;
+- `evidenceOnly: true`.
+- `directEffectPermitted: false`.
 - `actionSubmissionRequiredForDirectEffects: true`.
 
 If a Blueprint decision has write-authority flags, the conversion fails.
@@ -68,9 +68,9 @@ timestamps.
 
 `workers/api/src/coding-autopilot-continuation-decisions.test.ts` covers:
 
-- public/customer/operator projection splits;
-- confidence buckets;
-- Blueprint action to queue-action mapping;
-- evidence-only conversion enforcement;
-- no raw timestamps in projections;
+- public/customer/operator projection splits.
+- confidence buckets.
+- Blueprint action to queue-action mapping.
+- evidence-only conversion enforcement.
+- no raw timestamps in projections.
 - unsafe provider, runner, private repo, and customer ref rejection.

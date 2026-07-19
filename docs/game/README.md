@@ -1,7 +1,7 @@
 # Game Direction
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -13,7 +13,7 @@ Current transcript anchor: [`docs/transcripts/240.md`](../transcripts/240.md)
 demos the live-facing shape this folder is aiming at — a walkable Autopilot
 Tassadar run board with Pylon bases, assignment markers, training metrics, refs
 ticker, avatar movement, and an initial multiplayer direction. Treat it as
-visual/product intent; authority for real run state remains with the public
+visual/product intent. Authority for real run state remains with the public
 Worker/D1. Live Verse presence and local interaction now flow through the
 Cloudflare Verse World Service (`apps/openagents-world`) with Region Durable
 Objects, D1, `packages/world-contract`, and `packages/world-client`. Older

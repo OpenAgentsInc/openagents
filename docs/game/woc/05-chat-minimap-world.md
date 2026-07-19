@@ -1,7 +1,7 @@
 # WoC Chat, Minimap, Nameplates, and Procedural World
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -20,8 +20,8 @@ WoC's chat is split into pure models plus a DOM renderer in `hud.ts`:
 - **Timestamps** (`chat_timestamp.ts`, pure): optional `[HH:MM]` via `Intl.DateTimeFormat`,
   locale-aware.
 - **Profanity** (`profanity.ts`, pure): cosmetic client-side masking with confusable
-  normalization (leet folding) to match the server's soft-word list; toggleable.
-- **Rendering** (`hud.ts`): `Enter` focuses `#chat-input`; each message is a `<div>` with
+  normalization (leet folding) to match the server's soft-word list. Toggleable.
+- **Rendering** (`hud.ts`): `Enter` focuses `#chat-input`. Each message is a `<div>` with
   `data-chan` for tab filtering, an optional timestamp, a clickable player-name span
   (right-click -> context menu), profanity masking, and a localized template split on
   `__WOC_CHAT_NAME__` / `__WOC_CHAT_MESSAGE__` placeholders so punctuation localizes. Caps
@@ -56,13 +56,13 @@ Each is a tiny pure core plus canvas rendering in `hud.ts`:
 
 ### Relevance to us
 
-**Adopt the pure cores (`compass`, `minimap_zoom`, `coords`, `subzone`) directly**; they
+**Adopt the pure cores (`compass`, `minimap_zoom`, `coords`, `subzone`) directly**. They
 are trivial, tested, and dependency-free. A Verse minimap is high-value: it would render
 Pylon bases, the central Tassadar run core, assignment markers, and remote avatars as
 blips, with the same hysteresis on subzone/region labels. The blip-iteration approach maps
 straight onto our `packages/world-client` read model: Region DO avatar deltas plus Worker/D1
 run projection rows. Note the discipline: **the minimap reads the same world the 3D scene
-reads**, so it cannot drift. Build the canvas/Foldkit rendering ourselves; reuse the math.
+reads**, so it cannot drift. Build the canvas/Foldkit rendering ourselves. Reuse the math.
 
 ## Nameplates (world-space labels)
 
@@ -86,7 +86,7 @@ assignment markers) all want world-anchored labels with name + state + a small s
 `nameplate_projection.ts` is the exact world->screen anchor logic we need, and it is
 renderer-agnostic enough to drive from a `three-effect` label primitive (we already track a
 "port drei/troika text into three-effect" note). The threat/combo specifics are game
-mechanics; the projection + pooled-label pattern is the reusable core.
+mechanics. The projection + pooled-label pattern is the reusable core.
 
 ## Player context menu and player card
 
@@ -102,7 +102,7 @@ mechanics; the projection + pooled-label pattern is the reusable core.
 **Medium/low.** The context-menu action model is the right pattern for right-clicking a
 Pylon or agent avatar in the Verse (inspect, message, tip, view-run, report). The player
 card is a nice polish reference for a shareable Pylon/agent or run card (OG image), and it
-aligns with our existing forum/share surfaces; build only if we want shareable Verse
+aligns with our existing forum/share surfaces. Build only if we want shareable Verse
 cards. Both are pure and easy to adapt later.
 
 ## Procedural world (terrain, sky, water, foliage, weather, characters)
@@ -115,7 +115,7 @@ our owned-asset policy):
   shading (per-vertex weights from slope/height/road distance) on the high tier, vertex-color
   Lambert on the low tier.
 - **Sky** (`sky.ts`): equirect HDRIs per biome cross-faded by zone with PMREM IBL on high
-  tier; canvas gradient dome on low tier. One canonical sun direction shared across sky,
+  tier. Canvas gradient dome on low tier. One canonical sun direction shared across sky,
   water glints, and shadows.
 - **Water** (`water.ts`): dual-scroll normal-map ripples + broad swell, Fresnel sky tint,
   HDR sun glints, shoreline foam from precomputed shore depth.
@@ -131,9 +131,9 @@ our owned-asset policy):
   run/cast/swim/sit/jump from velocity/state, and LOD (baked-pose far, shadow proxy mid,
   full rig close). Offscreen WebGL captures class/skin headshots to PNG for the HUD.
 - **Quality tiers + material dedup** (`gfx.ts`, `render_budget.ts`): programs reused by
-  signature; shadow resolution scales with tier.
+  signature. Shadow resolution scales with tier.
 
-The renderer reads `IWorld` and never mutates it; characters are the only real 3D model
+The renderer reads `IWorld` and never mutates it. Characters are the only real 3D model
 files, everything else is procedural.
 
 ### Relevance to us
@@ -147,7 +147,7 @@ pooled camera-relative weather, and the velocity-driven character animation stat
 The single most transferable idea is **one canonical sun/seed shared by every system so
 sky, water, shadows, and minimap agree**, and **deterministic placement from a seed shared
 with the logic layer**. We do not adopt the GLB rig dispatch (different assets) or the
-WoW biomes; we port the patterns into `three-effect` primitives (terrain, sky, water,
+WoW biomes. We port the patterns into `three-effect` primitives (terrain, sky, water,
 label, particle, avatar) as our game-direction docs already plan.
 
 ## Net for the adaptation plan

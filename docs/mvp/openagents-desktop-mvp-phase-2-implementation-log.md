@@ -3,7 +3,7 @@
 - ProductSpec: `openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md`
 - Parent issue: [#8817](https://github.com/OpenAgentsInc/openagents/issues/8817)
 - Started: 2026-07-14
-- Rule: packets land sequentially on `main`; this log records the shipped
+- Rule: packets land sequentially on `main`. This log records the shipped
   boundary, verification, and remaining compatibility scope after each packet.
 
 ## MVP-02A — React projection boundary (#8818)
@@ -15,20 +15,20 @@ Canonical Effect Native revision:
 
 Delivered:
 
-- one React 19 root and one Scope-owned Effect stream subscription;
-- stable synchronous snapshots consumed through `useSyncExternalStore`;
-- explicit, mutually exclusive `react` and `compatibility` surface backends;
+- one React 19 root and one Scope-owned Effect stream subscription.
+- stable synchronous snapshots consumed through `useSyncExternalStore`.
+- explicit, mutually exclusive `react` and `compatibility` surface backends.
 - ordinary semantic React lowerings for Stack, Text, Button, Card, Spacer, and
   Divider, preserving keys, bounded a11y, typed style tokens, and existing
-  `IntentReporter` identities;
-- public loading, failed, and incompatible states with React error recovery;
-- shared canonical token/component stylesheet for both DOM backends;
+  `IntentReporter` identities.
+- public loading, failed, and incompatible states with React error recovery.
+- shared canonical token/component stylesheet for both DOM backends.
 - exact React/React DOM pins in canonical Effect Native and app-owned dedupe in
-  Desktop;
-- Tailwind default theme namespaces disabled; its semantic aliases derive only
-  from canonical `--en-*` variables;
+  Desktop.
+- Tailwind default theme namespaces disabled. Its semantic aliases derive only
+  from canonical `--en-*` variables.
 - an explicit Desktop compatibility selection until later packets cover the
-  complete workbench subset; and
+  complete workbench subset. And
 - invariant, vendor, import-boundary, and backend-selection guards.
 
 Verification:
@@ -39,7 +39,7 @@ Verification:
 - Desktop typecheck and complete suite — 133 files passed, 1,312 tests passed,
   39 skipped
 - production build — `boot.js` 819.22 kB and `app.css` 11.68 kB
-- built Electron smoke and reload path — all checks passed; lifecycle teardown
+- built Electron smoke and reload path — all checks passed. Lifecycle teardown
   reported zero active owners
 
 Remaining compatibility boundary:
@@ -51,7 +51,7 @@ Remaining compatibility boundary:
 
 ## MVP-02B — React workbench shell and session rail (#8819)
 
-Status: implemented; the scoped React path is available with
+Status: implemented. The scoped React path is available with
 `?renderer=react-shell`. The complete app stays on the compatibility default
 until MVP-02F because the timeline, composer, decisions, and review surfaces
 are intentionally owned by their following packets.
@@ -63,25 +63,25 @@ Delivered:
 
 - a generic value parameter on the existing Scope-owned React external store,
   preserving the `View` default while allowing Desktop to consume the
-  authoritative `DesktopShellState` without a React-owned domain store;
+  authoritative `DesktopShellState` without a React-owned domain store.
 - ordinary React `WorkbenchShell`, `SessionRail`, and `ConversationHeader`
   components with one React root, Strict Mode, shared failure containment, and
-  one Effect subscription;
+  one Effect subscription.
 - metadata-first globally ordered local and Codex session rows, deterministic
-  deduplication, selection, search, load-more, and honest scanning/empty states;
+  deduplication, selection, search, load-more, and honest scanning/empty states.
 - existing intent identities for new, select, resume/open, archive, two-step
-  delete, recovery, and catalog pagination;
+  delete, recovery, and catalog pagination.
 - lifecycle and bounded repository context in the conversation header, without
-  provider/account/model controls or absolute paths;
+  provider/account/model controls or absolute paths.
 - a below-980-pixel overlay rail with Escape close, focus restoration, visible
   focus treatment, keyboard row traversal, reduced-motion compatibility, and a
-  760-by-520 supported minimum; and
+  760-by-520 supported minimum. And
 - renderer-private CSS derived only from canonical Effect Native variables.
 
 Runtime clarification:
 
 - Phase 2 does not use or plan to add the Vercel AI SDK. React owns
-  presentation only; the existing Codex Runtime Gateway, compatible app-server,
+  presentation only. The existing Codex Runtime Gateway, compatible app-server,
   Effect services, and typed intent registry retain streaming, tools, sessions,
   and command authority.
 - The pinned T3 Code reference likewise declares no `ai` or `@ai-sdk/*`
@@ -91,21 +91,21 @@ Runtime clarification:
 
 Verification:
 
-- canonical React store focused tests — 5 passed;
-- canonical Effect Native TypeScript build — passed;
+- canonical React store focused tests — 5 passed.
+- canonical Effect Native TypeScript build — passed.
 - canonical full suite — 639 passed, with two unrelated committed visual
   baseline mismatches (`counter-phone` and `counter-desktop`) retained as a
-  transparent repository gate caveat;
-- Desktop typecheck — passed;
+  transparent repository gate caveat.
+- Desktop typecheck — passed.
 - Desktop complete suite against the rebuilt artifact — 134 files passed,
-  1,319 tests passed, 39 skipped;
+  1,319 tests passed, 39 skipped.
 - focused typography and release-preflight gates — 19 passed, including the
-  production-bundle local-path rejection;
+  production-bundle local-path rejection.
 - production build — `boot.js` 888.28 kB and `app.css` 167.72 kB (the CSS now
   contains the checked-in shadcn utilities and locally bundled variable font
-  faces);
+  faces).
 - wide, narrow, and narrow-open-overlay headed visual proofs confirmed the
-  scoped React shell, responsive rail, scrim, and initial search focus; and
+  scoped React shell, responsive rail, scrim, and initial search focus. And
 - ProductSpec validation passed under both OpenAgents and upstream profiles
   (the repository ProductSpec suite passed 102 tests), and the built Electron
   smoke completed every compatibility-path check with zero active lifecycle
@@ -117,15 +117,15 @@ Status: integrated into the React shell packet.
 
 Preset:
 
-- code `b3Zg9L0M8A`;
-- `base-vega` style with zinc base, blue theme, cyan chart intent;
-- Oxanium variable body font and Geist variable heading font;
-- small radius, Lucide icons, subtle menu accent, default-translucent menu;
+- code `b3Zg9L0M8A`.
+- `base-vega` style with zinc base, blue theme, cyan chart intent.
+- Oxanium variable body font and Geist variable heading font.
+- small radius, Lucide icons, subtle menu accent, default-translucent menu.
 - pointer cursor enabled.
 
 The exact Vite initializer initially rejected the custom Electron package
 because it lacked a conventional `vite.config.ts`. Desktop now exposes one
-conventional config shared by its production build and component tooling; the
+conventional config shared by its production build and component tooling. The
 same exact initializer then completed successfully. Modern package-import
 aliases (`#components`, `#lib`, `#hooks`) keep generated source resolvable by
 Vite, tests, and TypeScript without the deprecated `baseUrl` option.
@@ -133,18 +133,18 @@ Vite, tests, and TypeScript without the deprecated `baseUrl` option.
 The preset is implemented as a Khala extension, not a second theme:
 
 - generated Button, Input, ScrollArea, and Separator source lives under
-  `apps/openagents-desktop/src/components/ui`;
+  `apps/openagents-desktop/src/components/ui`.
 - the React shell prefers those components for its controls, search, scrolling,
-  and separation;
+  and separation.
 - `shadcn-khala.css` retains preset fonts, shape, menu behavior, animation, and
   component utilities but maps background, foreground, surface, primary,
   secondary, muted, accent, destructive, border, focus, chart, radius, and
-  sidebar semantics onto canonical `--en-*` roles; and
+  sidebar semantics onto canonical `--en-*` roles. And
 - a conformance oracle rejects independent `oklch(...)` or hex palette values
   in that extension.
 
 The Vercel AI SDK remains absent. shadcn changes the React component source
-layer only; Codex Runtime Gateway/app-server and Effect authorities are
+layer only. Codex Runtime Gateway/app-server and Effect authorities are
 unchanged.
 
 The typography assurance contract was extended in the same packet: Oxanium is
@@ -163,25 +163,25 @@ Delivered:
 
 - ordinary React timeline and item components over the existing bounded
   `CodexHistoryItem` and local `DesktopNoteEntry` projections, with no provider
-  event parser or React-owned transcript array;
+  event parser or React-owned transcript array.
 - stable authoritative item-ref keys, sequence ordering, duplicate collapse,
   and assistant segments that remain separated by display-bearing non-text
-  records;
-- in-place tool invocation/result correlation at the invocation key;
+  records.
+- in-place tool invocation/result correlation at the invocation key.
 - distinct text, reasoning, plan, tool, approval, usage, metadata, context,
-  error, gap, redaction, lifecycle, terminal, and local-question treatments;
+  error, gap, redaction, lifecycle, terminal, and local-question treatments.
 - exactly one newest authoritative terminal disposition when a recovered
-  prefix contains superseded terminal lifecycle records;
+  prefix contains superseded terminal lifecycle records.
 - the existing bounded Markdown parser lowered to safe React text, headings,
   emphasis, lists, quotes, and code, with links remaining inert visible text
-  and no HTML injection surface;
+  and no HTML injection surface.
 - per-item error containment that reports an unavailable presentation item
-  without fabricating completion or dropping sibling rows;
+  without fabricating completion or dropping sibling rows.
 - a pre-mutation `getSnapshotBeforeUpdate` anchor receipt plus pre-paint
-  correction for variable-height prepends and offscreen height changes;
+  correction for variable-height prepends and offscreen height changes.
 - manual-reader position preservation, bounded live-edge following, a shadcn
   new-activity affordance, top/bottom typed pagination intents, atomic session
-  replacement, and bounded live-region summaries; and
+  replacement, and bounded live-region summaries. And
 - a 500-item maximum-page projection/render/update/teardown corpus. It passed
   without a virtualizer, retained exactly 500 keyed rows through an in-place
   stream update, and removed every row on unmount, so no virtualization
@@ -190,15 +190,15 @@ Delivered:
 The React module receives only the same bounded/redacted typed projection the
 compatibility renderer already receives. Effect services, Runtime Gateway,
 history completeness, persistence, terminal truth, and intent identities are
-unchanged; Vercel AI SDK remains absent.
+unchanged. Vercel AI SDK remains absent.
 
 Verification:
 
-- Desktop typecheck — passed;
+- Desktop typecheck — passed.
 - focused timeline, shell, renderer-boundary, design-conformance, and release
-  preflight suites — 74 tests passed;
-- production build — `boot.js` 898.23 kB and `app.css` 171.84 kB;
-- full Desktop suite — 136 files passed, 1,333 tests passed, 39 skipped; and
+  preflight suites — 74 tests passed.
+- production build — `boot.js` 898.23 kB and `app.css` 171.84 kB.
+- full Desktop suite — 136 files passed, 1,333 tests passed, 39 skipped. And
 - ProductSpec validation passed under OpenAgents and upstream profiles, its
   repository suite passed 102 tests, and built Electron compatibility smoke
   passed with zero active lifecycle owners after teardown.
@@ -211,31 +211,31 @@ Delivered:
 
 - a controlled shadcn Textarea composer that focuses a ready session, captures
   the first keystroke, blocks Enter while an IME composition is active,
-  preserves Shift+Enter, and grows from 64px to a 180px internal-scroll cap;
+  preserves Shift+Enter, and grows from 64px to a 180px internal-scroll cap.
 - the existing Send, Stop, Steer, Queue, pending-mode, and input intents with
   an unavailable-lane explanation and no provider, model, account, reasoning,
-  permission, attachment, plugin, MCP, or voice controls;
+  permission, attachment, plugin, MCP, or voice controls.
 - a shadcn Command/Dialog palette over the canonical Desktop command registry,
   including registry-id search, platform chords, availability gating,
   no-results/status output, keyboard navigation, Escape dismissal, and focus
-  restoration supplied by the reviewed source components;
+  restoration supplied by the reviewed source components.
 - modal question, tool-approval, and plan-review surfaces correlated by the
   exact `questionRef`, with complete option descriptions, explicit close
   semantics, read-only unavailable state, pending/submitting/failed copy, and
-  no presentation-side inference of acceptance or rejection;
+  no presentation-side inference of acceptance or rejection.
 - an Effect-owned in-flight marker before the typed answer bridge call. Rapid
   duplicate choice/submit intents therefore produce one bridge effect, a
   refused or failed bridge call returns to retryable pending with visible
-  failure, and only a confirmed bridge handoff marks the local submission;
+  failure, and only a confirmed bridge handoff marks the local submission.
 - resolved/expired/revoked/timeout/denied decision status retained in the
-  typed timeline after the modal is gone; and
+  typed timeline after the modal is gone. And
 - renderer-boundary invariants expanded only for the React composer host and
   its ephemeral IME, focus, overlay, and palette-query mechanics.
 
 Dependency and boundary receipt:
 
 - `cmdk@1.1.1` is the only runtime dependency added by the generated shadcn
-  Command source. Its input is the closed local command registry; it receives
+  Command source. Its input is the closed local command registry. It receives
   no host object, arbitrary command callback, provider payload, credential,
   filesystem path, or model output. Dialog framing remains the preset's Base
   UI source component. The component-source oracle permits only reviewed UI
@@ -245,7 +245,7 @@ Dependency and boundary receipt:
   171.84 kB to `boot.js` 1,007.56 kB / `app.css` 185.51 kB: +109.33 kB JS and
   +13.67 kB CSS before packaging compression. This is accepted for the MVP
   because it supplies the requested shadcn command/dialog keyboard and focus
-  behavior; later bundle work may replace the implementation behind the same
+  behavior. Later bundle work may replace the implementation behind the same
   source-component and typed-intent boundary.
 
 Focused verification passed Desktop typecheck plus 151 composer, decision,
@@ -258,7 +258,7 @@ ProductSpec validated under both OpenAgents and upstream profiles and its
 repository suite passed 102 tests, the production build emitted the bundle
 sizes above, and built Electron compatibility smoke completed with zero active
 lifecycle owners after teardown. The production audit passed the high-severity
-gate; its one moderate finding is the pre-existing Expo/mobile `uuid` path,
+gate. Its one moderate finding is the pre-existing Expo/mobile `uuid` path,
 not `cmdk` or this Desktop dependency path. The installed whole-surface React
 turn/decision journey remains the explicit MVP-02F cutover receipt rather than
 being inferred from the compatibility smoke.
@@ -273,26 +273,26 @@ Delivered:
 - a shadcn-triggered repository review surface over the existing Effect-owned
   Git projection: adjacent drawer at 1120 CSS pixels and above, Base UI Sheet
   below that threshold, independent transcript/review scroll, explicit close,
-  focus return, and reduced-motion behavior;
+  focus return, and reduced-motion behavior.
 - relative-path file rows and exact diff requests using the existing correlated
   repository/status snapshot authority, without exposing repository refs,
-  absolute roots, host objects, or ambient paths;
+  absolute roots, host objects, or ambient paths.
 - semantic addition/deletion labels that do not rely on color, exact hunk and
   causal-item presentation, and a visible read-only boundary with no edit,
   apply, stage, discard, commit, branch, push, PR, terminal, or arbitrary Git
-  affordance;
+  affordance.
 - stable typed refusal presentation for every `GitGithubErrorCode`, including
   stale snapshot, unsafe/conflicting state, invalid path, binary, secret-shaped,
-  oversized, unavailable, authentication, and not-found results; the Effect
-  Git loop now retains the refusal code separately from bounded display copy;
+  oversized, unavailable, authentication, and not-found results. The Effect
+  Git loop now retains the refusal code separately from bounded display copy.
 - a bounded `runtimeFailure` disposition on the Effect-owned shell state. Local
   runtime adapters preserve signed-out, incompatible-workflow, offline,
   interrupted, quota, rate-limit, and policy outcomes instead of asking React
-  to classify error strings; unknown failures remain explicitly `failed`;
+  to classify error strings. Unknown failures remain explicitly `failed`.
 - React StatusNotice projection for those dispositions, canonical lane
   availability, unavailable workspace grants, durable stream gaps, and
-  interrupted/errored history agents; only existing typed Settings/workspace
-  actions are offered; and
+  interrupted/errored history agents. Only existing typed Settings/workspace
+  actions are offered. And
 - Alert, Badge, and Sheet source components generated from the locked shadcn
   preset and styled through the dark-zinc Khala token extension.
 
@@ -306,13 +306,13 @@ and terminal surfaces remain compatibility-owned.
 
 The Vercel AI SDK remains intentionally absent: it would duplicate the current
 Codex Runtime Gateway/app-server stream, tool, approval, and persistence
-authority. shadcn/Base UI is the presentation layer; Effect remains state and
+authority. shadcn/Base UI is the presentation layer. Effect remains state and
 effects authority.
 
 ## MVP-02F — Default React cutover and integrated receipt (#8823)
 
 Status: implementation cutover, signed release-boundary proof, and exact
-commit-pinned revision-1 owner admission complete; release-proof issue remains
+commit-pinned revision-1 owner admission complete. Release-proof issue remains
 open for real-account, accessibility/performance, and independent-review
 evidence.
 
@@ -345,7 +345,7 @@ bound to commit `de1180b2da937922c2a8724915cf761f8fb78617` and SHA-256
 
 Later shadcn and explicit Vercel AI SDK scope additions had changed the
 canonical file without changing its revision. That identity defect is now
-reconciled by marking the current expanded document as proposed revision 2;
+reconciled by marking the current expanded document as proposed revision 2.
 the admission is not silently transferred. The disposition authorizes RC14
 construction and evaluation against the pinned revision 1. It does not accept
 an installed candidate, waive evidence, admit an AssuranceSpec, or authorize
@@ -370,7 +370,7 @@ causally withheld until the answer arrives.
 
 OpenAgents proves that lifecycle through the production-built Electron/React
 path with a protocol-speaking app-server peer installed only at the process
-spawn seam. It originates command-approval request `91`; the ordinary
+spawn seam. It originates command-approval request `91`. The ordinary
 main-process pending registry projects the decision through the existing
 Fable-local event envelope, IPC bridge, Effect intent runtime, and React
 dialog. Clicking `Approve` returns `{ decision: "accept" }` to request `91`.
@@ -381,12 +381,12 @@ decision reconciles.
 
 The peer itself is covered against the real app-server client, and the
 production runtime suite separately proves the native request/answer mapping.
-This is deterministic integrated evidence for the installed authority path;
+This is deterministic integrated evidence for the installed authority path.
 it is not represented as a live-account or private-provider receipt, which
 remains a separate #8823 gate.
 
 Exact `origin/main` commit `a66b8d4ea7` was then packaged as the ARM64 RC13
-candidate. Apple accepted the app and outer DMG; Gatekeeper, stapler,
+candidate. Apple accepted the app and outer DMG. Gatekeeper, stapler,
 `syspolicy_check`, DMG verification, and a read-only-DMG pristine-profile
 React smoke passed. The real update client/applier also passed the exact
 notarized RC12-to-RC13 interrupted-stage, atomic update, downgrade refusal,
@@ -438,7 +438,7 @@ following, manual-reader anchoring, paging, Markdown safety, and Effect-owned
 state/intent boundaries remain intact.
 
 This owner-directed correction changes AC-5 and is recorded as proposed
-ProductSpec revision 3. It is post-RC15 source work; it does not relabel the
+ProductSpec revision 3. It is post-RC15 source work. It does not relabel the
 RC15 artifact or claim a new release candidate.
 
 ### Revision-3 gate and RC16 closeout
@@ -471,7 +471,7 @@ Codex installation.
 Runtime Gateway v12 now requires the literal `codex` on the maintenance status
 query and update command and exposes a bounded, nullable Codex release-notes
 projection. The app bundle pin and bundled binary probe remain version
-authority; GitHub notes are best-effort display content. This source change is
+authority. GitHub notes are best-effort display content. This source change is
 a rapid dev iteration and does not relabel RC16
 or claim a new release candidate.
 
@@ -482,14 +482,14 @@ uses a reusable shadcn/Khala sensitive-text primitive adapted from the local
 T3 Code reference: deterministic same-length fake text is blurred and
 unselectable by default, click toggles the actual value, and tooltip guidance
 never contains the secret. Focused component and gateway tests cover the
-redaction transition and Codex-only projection; no release build or broad
+redaction transition and Codex-only projection. No release build or broad
 assurance run was performed during this rapid dev iteration.
 
 ### Sidebar launch-stage badge
 
 The React session rail now carries the launch stage directly beside the
 OpenAgents brand. It adapts the local T3 Code reference's renderer rule and
-quiet pill treatment: Vite development mode resolves to `Dev`; packaged
+quiet pill treatment: Vite development mode resolves to `Dev`. Packaged
 production renderer assets resolve to `Alpha`. The visible pill is uppercase,
 8px, widely tracked, and deliberately subordinate to the product name. A pure
 mode resolver test covers both labels and the mounted React test proves the
@@ -520,7 +520,7 @@ typed Desktop command registry and are hidden when unavailable in the current
 state. Recent rows come only from the actual local/Codex session catalogs.
 No T3-only project, clone, submenu, provider, or thread action was introduced.
 Component tests prove the groups, icon action, footer, exact intent dispatch,
-and absence of copied T3-only labels; the design oracle pins the structural
+and absence of copied T3-only labels. The design oracle pins the structural
 geometry.
 
 ### Post-RC16 launch, control, custody, and performance reconciliation
@@ -529,9 +529,9 @@ The next UI pass made the ordinary empty-chat path workspace-aware: Desktop
 adopts the launcher directory, sizes to the active display work area, focuses
 the composer, and centers the current directory with one accessible Change
 action whose cancel path is non-mutating. The primary rail is now exactly New
-session, Chat, Project home, and Settings; Back/Forward use the bounded typed
-history; timestamps and active work status stay inline; hover no longer shifts
-row geometry; Files and read-only review remain registry-reachable supporting
+session, Chat, Project home, and Settings. Back/Forward use the bounded typed
+history. Timestamps and active work status stay inline. Hover no longer shifts
+row geometry. Files and read-only review remain registry-reachable supporting
 views rather than primary destinations.
 
 The React composer restored the bounded image capability through picker,
@@ -546,7 +546,7 @@ Provider text, PTY output, and workspace watch updates are cadence-bounded and
 flush at semantic completion/teardown boundaries instead of publishing one
 renderer state change per source event. The React timeline now memoizes stable
 rows and the command palette performs no filtering or session sorting while
-closed; reduced-motion preference also stops the update spinner. These are
+closed. Reduced-motion preference also stops the update spinner. These are
 renderer-work reductions, not a second state authority.
 
 ProductSpec revision 4 and its proposed AssuranceSpec make these additions
@@ -558,7 +558,7 @@ admission, publish an artifact, or authorize a public claim.
 
 The 2026-07-15 verification pass validated the ProductSpec under both
 OpenAgents and upstream profiles and validated the parser-bound AssuranceSpec
-with all 20 criteria mapped. Six post-RC16 obligations are proof-design ready;
+with all 20 criteria mapped. Six post-RC16 obligations are proof-design ready.
 the earlier fourteen remain explicitly `needs_design`, so no full Phase 2
 admission is implied. The focused ProductSpec/AssuranceSpec suite passed 208
 tests, the complete Desktop sweep passed 1,422 tests with 39 intentional skips,
@@ -567,9 +567,9 @@ interactive shell at 444.38 ms median and 504.76 ms p95, below the 1,500 ms
 median and 2,500 ms p95 ProductSpec budgets.
 
 A headed isolated-profile Computer Use pass then exercised real Chromium and
-native macOS semantics. The empty composer owned accessibility focus; Cmd-K
-opened the registry-only palette; typing `settings` and pressing Enter opened
-Codex-only Settings; pointer input opened the native Change working directory
-dialog; and Cancel returned to the same exact WorkContext. No DOM mutation,
+native macOS semantics. The empty composer owned accessibility focus. Cmd-K
+opened the registry-only palette. Typing `settings` and pressing Enter opened
+Codex-only Settings. Pointer input opened the native Change working directory
+dialog. And Cancel returned to the same exact WorkContext. No DOM mutation,
 test-only state injection, provider turn, or filesystem selection was used as
 visible-route evidence.

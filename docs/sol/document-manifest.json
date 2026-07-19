@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-19",
-  "sourceTreeSha256": "ef0858144bea212b7623d895b67fc8e07b56d6bd50b9b0432b6a71c222890362",
+  "sourceTreeSha256": "6e969b6ae43b3c8d9c2666f7e779656660251f31ae47030abb0a0b2d532a3e5a",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2273,8 +2273,8 @@
       "owner": "OpenAgents documentation",
       "disposition": "retain-active-audit",
       "dispatch": false,
-      "sha256": "3be1569f9414f232cbca07cc2a000e190e44fc1c8467fc6979b65956c6c47931",
-      "status": "P0 through P5 complete. P6 legacy conversion remains.",
+      "sha256": "2c808bc7cc5377c5e264627160b9457f973621b4a1915715772218153b834942",
+      "status": "P0 through P6 complete. Final controls are active.",
       "snapshot": "`030754d52632673f17cdd7b2a71a93866dd34800`",
       "reviewedAt": "2026-07-19",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",

@@ -30,7 +30,7 @@ Phase 0 shipped under epic
   contract usage docs and Phase 1 handoff.
 
 Runtime MCP transports remain out of scope until Phase 1. The current package
-defines typed contracts, validation helpers, import markers, and docs only; it
+defines typed contracts, validation helpers, import markers, and docs only. It
 does not start a stdio server, loopback listener, remote bridge, or external
 MCP client connector.
 
@@ -47,12 +47,12 @@ served over MCP.
   bound tenant). Mint/list/revoke at `POST/GET/DELETE /api/operator/crm/mcp-grants`.
 - **Tools (grant-filtered, ungranted = absent):** read tools (`operator_read`)
   over contacts/accounts/lists/activities/engagement/opportunities/imports/
-  templates/commands/queue + `crm.contact.render`; `crm.send.command.propose`
-  (proposes only — sends nothing); `crm.template.upsert` (workspace_write);
-  `crm.send.command.approve`/`.reject` (approval_resolution); `crm.import.run`
-  (workspace_write); `crm.batch.send` (dry-run only over MCP).
-- **Safety:** results output-safety-projected (operator class); tenant bound to
-  the credential (client `args.tenant` ignored); agent sends are
+  templates/commands/queue + `crm.contact.render`. `crm.send.command.propose`
+  (proposes only — sends nothing). `crm.template.upsert` (workspace_write).
+  `crm.send.command.approve`/`.reject` (approval_resolution). `crm.import.run`
+  (workspace_write). `crm.batch.send` (dry-run only over MCP).
+- **Safety:** results output-safety-projected (operator class). Tenant bound to
+  the credential (client `args.tenant` ignored). Agent sends are
   propose → human-approve. Built on `@openagentsinc/mcp-contract`.
 
 The read-only **local Pylon stdio server** is the next MCP server after this

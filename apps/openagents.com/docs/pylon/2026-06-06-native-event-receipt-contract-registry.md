@@ -19,14 +19,14 @@ upload an artifact, or mutate any runtime state.
 
 The registry currently covers:
 
-- `ai_agent`;
-- `openagents_worker`;
-- `oa_node`;
-- `oa_workroomd`;
-- `probe`;
-- `psionic`;
-- `pylon`;
-- `nexus`; and
+- `ai_agent`.
+- `openagents_worker`.
+- `oa_node`.
+- `oa_workroomd`.
+- `probe`.
+- `psionic`.
+- `pylon`.
+- `nexus`. And
 - `treasury`.
 
 These are consumer identifiers for contracts and fixtures. They are not proof
@@ -36,37 +36,37 @@ that the corresponding runtime is live.
 
 The seed registry includes entries for:
 
-- assignment refs;
-- heartbeat refs;
-- lifecycle event refs;
-- artifact refs;
-- receipt refs;
-- route refs;
-- capability refs;
-- redaction refs; and
+- assignment refs.
+- heartbeat refs.
+- lifecycle event refs.
+- artifact refs.
+- receipt refs.
+- route refs.
+- capability refs.
+- redaction refs. And
 - policy refs.
 
 Each entry carries:
 
-- producer refs;
-- consumer refs;
-- event or receipt refs;
-- payload and receipt schema refs;
-- correlation refs;
-- idempotency refs;
-- source-authority refs;
-- policy refs;
-- redaction policy refs;
-- caveat refs;
-- privacy policy; and
+- producer refs.
+- consumer refs.
+- event or receipt refs.
+- payload and receipt schema refs.
+- correlation refs.
+- idempotency refs.
+- source-authority refs.
+- policy refs.
+- redaction policy refs.
+- caveat refs.
+- privacy policy. And
 - stability.
 
 ## Authority Boundary
 
 The registry distinguishes:
 
-- `evidence_only`;
-- `approval_required_action`; and
+- `evidence_only`.
+- `approval_required_action`. And
 - `executed_action_receipt`.
 
 Most entries are evidence-only. Assignment contracts are modeled as
@@ -89,25 +89,25 @@ show broader safe refs but still reject raw secrets and raw payload material.
 The contract rejects refs containing:
 
 - secrets, bearer tokens, callback tokens, cookies, OAuth material, and API
-  keys;
+  keys.
 - provider grants, provider tokens, provider accounts when unsafe, and raw
-  provider payloads;
-- private repo material;
+  provider payloads.
+- private repo material.
 - wallet material, payment proofs, payment hashes, preimages, invoices, and
-  payout targets;
-- raw auth payloads;
-- raw runner logs;
-- raw source archives;
-- raw prompts, raw webhooks, raw payloads, and raw emails; and
+  payout targets.
+- raw auth payloads.
+- raw runner logs.
+- raw source archives.
+- raw prompts, raw webhooks, raw payloads, and raw emails. And
 - raw timestamps.
 
 ## Tests
 
 `workers/api/src/native-contract-registry.test.ts` covers:
 
-- schema decoding for the registry seed;
-- consumer and ref-kind coverage;
-- evidence-only versus authority-boundary classification;
-- public-safe projection with friendly times;
-- no raw timestamp projection; and
+- schema decoding for the registry seed.
+- consumer and ref-kind coverage.
+- evidence-only versus authority-boundary classification.
+- public-safe projection with friendly times.
+- no raw timestamp projection. And
 - unsafe fixture rejection.

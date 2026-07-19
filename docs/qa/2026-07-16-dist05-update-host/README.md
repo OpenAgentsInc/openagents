@@ -25,7 +25,7 @@ Scope: code-owned common update host plus the existing macOS applier
 - Runtime B is allowed to continue startup. It must observe renderer load and
   provider startup, then complete the awaited six-class lifecycle drain. A
   failed drain writes no receipt. The receipt is the final durable action
-  immediately before the drained process exits; it is never written from the
+  immediately before the drained process exits. It is never written from the
   start of Electron's `before-quit` event. Only Runtime C
   may accept the typed receipt (schema, app, exact version, exact transaction,
   renderer/provider readiness, clean-shutdown timestamp) and expose the
@@ -34,7 +34,7 @@ Scope: code-owned common update host plus the existing macOS applier
   parses every typed receipt field exactly, and re-verifies bundle ID, version,
   executable architecture, Developer ID signature, team, Gatekeeper policy,
   and notarization immediately before a timeout swap. A failed verification is
-  persisted as `rollback_failed`; the unverified slot is never installed.
+  persisted as `rollback_failed`. The unverified slot is never installed.
 - The native transaction temporary file and parent directory are explicitly
   synchronized through Foundation `NSFileHandle.synchronizeFile` before the live app is replaced through
   Foundation's atomic `replaceItemAtURL` primitive. The exact JXA selector is
@@ -46,7 +46,7 @@ Scope: code-owned common update host plus the existing macOS applier
   host durably publishes `rollback_cleanup_pending` (state temp fsync, rename,
   and parent fsync) before deleting the native transaction or retained slot,
   then durably publishes idle. Every cleanup crash point resumes idempotently.
-- The renderer receives only bounded phase, channel, versions, and typed reason;
+- The renderer receives only bounded phase, channel, versions, and typed reason.
   artifact URLs, local paths, and transport errors remain main-owned. Update
   IPC is request/response only, so there is no renderer subscription to leak.
 
@@ -66,9 +66,9 @@ pnpm exec vp test --run --max-concurrency 1 \
 ```
 
 Focused repair result at handoff: 64 tests passed across the eight update and
-release contract files, zero failed; Desktop typecheck passed. The production
+release contract files, zero failed. Desktop typecheck passed. The production
 build passed. The full Electron smoke now registers before the renderer-ready
-await and passes every step through `codex-trace-acceptance`; it then reaches
+await and passes every step through `codex-trace-acceptance`. It then reaches
 the same unrelated current-main settings/account-link assertion failure as an
 untouched `origin/main` worktree (`openAgentsLinkPresent:true`) and tears down
 with `{"ok":true,"active":0}`. The full Desktop suite reached 1,819 passed with 39
@@ -80,6 +80,6 @@ the current shared renderer does not emit. DIST-05 does not modify that file.
 
 No privileged Windows or Linux installer was invoked on this Darwin host.
 DIST-05 supplies their shared target/applier/lifecycle contract and fake-host
-coverage; native NSIS, AppImage, DEB, and RPM execution receipts remain the
+coverage. Native NSIS, AppImage, DEB, and RPM execution receipts remain the
 close rules of DIST-06 through DIST-08. Live promoted-feed proof also depends
 on DIST-09. Those dependencies do not weaken the fail-closed local host path.

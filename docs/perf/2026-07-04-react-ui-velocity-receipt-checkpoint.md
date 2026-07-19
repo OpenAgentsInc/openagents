@@ -35,7 +35,7 @@ plus Khala Code desktop surface. For the React era they map to:
 
 This intentionally excludes `clients/khala-mobile/` and shared token/package
 work. Those are important ONE-UI work, but TS-10a did not count mobile or shared
-package edits; adding them here would cherry-pick a wider React-era sample.
+package edits. Adding them here would cherry-pick a wider React-era sample.
 
 ## Reusable Method
 

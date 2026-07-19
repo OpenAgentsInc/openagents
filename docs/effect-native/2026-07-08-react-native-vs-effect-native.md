@@ -12,7 +12,7 @@ the Foldkit comparison. Grounded in a deep read of the real
 > domain/state authority, not to renderer implementation. The current
 > `@effect-native/render-rn` legitimately injects React/React Native, lowers
 > the typed `View` to React elements, and subscribes through a hook-backed
-> `createEffectNativeSurface`; app ViewPrograms remain React-free. The same
+> `createEffectNativeSurface`. App ViewPrograms remain React-free. The same
 > layering is now recommended for DOM in the
 > [React web renderer harmonization gap analysis](./2026-07-14-react-web-renderer-harmonization-gap-analysis.md):
 > React may render Effect Native, but JSX, callbacks, class strings, and
@@ -24,7 +24,7 @@ the Foldkit comparison. Grounded in a deep read of the real
 > is a native host for React — is in
 > `2026-07-08-effect-native-is-a-framework-for-native-apps-using-effect.md`.
 > This doc is the renderer-level half: which parts of RN to use as a backend,
-> and which to leave. **Effect is our React** — the app is authored in Effect;
+> and which to leave. **Effect is our React** — the app is authored in Effect.
 > RN only paints.
 
 The short version: **React Native and Effect Native are not the same layer,
@@ -40,7 +40,7 @@ them is the design.
 
 ## 1. What React Native actually is (précis)
 
-RN's pitch is "learn once, write anywhere": you write React components; RN
+RN's pitch is "learn once, write anywhere": you write React components. RN
 renders **real native views** (`UIView` / `android.view.View`), not a webview
 or a canvas. Under the "New Architecture," a component tree becomes pixels
 through a precise pipeline:
@@ -52,12 +52,12 @@ through a precise pipeline:
   RN "just React."
 - **JSI** (`ReactCommon/jsi`) gives synchronous, zero-copy C++↔JS calls
   (replacing the old async JSON "bridge").
-- Each element becomes an immutable C++ **ShadowNode**; the **Shadow Tree**
-  is committed off the main thread; **Yoga** (Meta's Flexbox engine,
+- Each element becomes an immutable C++ **ShadowNode**. The **Shadow Tree**
+  is committed off the main thread. **Yoga** (Meta's Flexbox engine,
   `ReactCommon/yoga`) computes layout.
 - A **Differentiator** produces a mutation list (create/insert/update/…),
   and the **mounting layer** applies it on the UI thread to real native
-  views (`RCTMountingManager.mm` on iOS; JNI/Fabric on Android).
+  views (`RCTMountingManager.mm` on iOS, JNI/Fabric on Android).
 - **TurboModules + Codegen**: native capabilities are exposed to JS through
   machine-generated, statically-typed JSI interfaces built from spec files.
 
@@ -88,7 +88,7 @@ This distinction is the entire analysis, so it gets its own section.
 
 The proof that these separate cleanly is in RN's own repo: **the reconciler
 host-config seam is how out-of-tree renderers exist.** react-native-windows
-and react-native-macos plug a different native backend under the same JS;
+and react-native-macos plug a different native backend under the same JS.
 **react-native-web** swaps the host entirely so the same component API
 renders to the DOM. RN is already "one component tree, many renderers" — it
 just happens to fix the *authoring* model to React. Effect Native fixes the
@@ -102,13 +102,13 @@ RN's engine underneath.
 | **What it is** | A native rendering engine **+** the React programming model | A typed component substrate that needs a renderer |
 | **Layer** | Renderer + authoring model (fused) | Authoring contract (component set + intents), renderer-agnostic |
 | **Owns** | Fabric, Yoga, shadow tree, JSI, mounting, TurboModules | The catalog, the intent algebra, the Effect runtime, tokens |
-| **State model** | React hooks / component-local state / context | One typed model in Effect; no component-local state |
+| **State model** | React hooks / component-local state / context | One typed model in Effect. No component-local state |
 | **Interactions** | Callbacks (`onPress={() => …}`) | Named typed intents (data, not closures) |
 | **Styling** | `StyleSheet` inline objects → Yoga Flexbox + native attrs | Typed props + design tokens → compiled to the renderer's styles |
-| **Typing** | TypeScript on top of a JS/React core (optional, erasable) | Effect Schema at the core; invalid UI can't be represented |
+| **Typing** | TypeScript on top of a JS/React core (optional, erasable) | Effect Schema at the core. Invalid UI cannot be represented |
 | **Platforms** | iOS + Android native (out-of-tree: web, Windows, macOS) | Web + mobile + desktop + canvas via swappable adapters |
-| **Adoption** | The framework you build the app in | Incremental; wraps existing renderers, migrates on touch |
-| **Relationship** | A candidate **renderer** for Effect Native (adapter #1) | Sits **above** a renderer; can use RN's engine as one |
+| **Adoption** | The framework you build the app in | Incremental. Wraps existing renderers, migrates on touch |
+| **Relationship** | A candidate **renderer** for Effect Native (adapter #1) | Sits **above** a renderer. Can use RN's engine as one |
 
 The table's punchline: they are not on the same rung. RN answers "how do
 pixels happen on a phone." Effect Native answers "how do I define UI once,
@@ -125,16 +125,16 @@ This is the concrete design, matching EN-0/EN-3 in the roadmap:
   shipping khala-mobile primitives as the first adapter's targets — zero new
   native work.
 - Effect Native **layout** (Stack row/column + spacing tokens) compiles to
-  **Yoga** Flexbox — we adopt Yoga's model rather than invent one; it's the
+  **Yoga** Flexbox — we adopt Yoga's model rather than invent one. It is the
   layout engine already under our mobile app.
 - Effect Native **intents** replace React callbacks: the view tree carries
-  named typed intents; the runtime (Effect) dispatches them. No closures in
+  named typed intents. The runtime (Effect) dispatches them. No closures in
   the data, no `useState` in the components.
 - **State lives in the Effect runtime**, bound from Khala Sync — not in
   hooks or context. RN's job shrinks to "render this host tree and emit
   these events," which is exactly what its engine is best at.
 - The seam is philosophically identical to react-native-web's: same
-  component contract above, different host below. We're doing to RN what
+  component contract above, different host below. We are doing to RN what
   react-native-web does to the DOM — treating RN as a *rendering target* for
   a component contract we own.
 
@@ -146,7 +146,7 @@ components and intents, and only the thin adapter speaks React/RN.
 
 The owner's direct question — use what, not what:
 
-**USE (it's decades of solved native work; do not reinvent it):**
+**USE (it is decades of solved native work, do not reinvent it):**
 - **The Fabric rendering engine as the mobile renderer** (adapter #1). Do
   not attempt to render native pixels ourselves for v0 — that road is
   Fabric+Yoga+mounting, and it is enormous.
@@ -166,14 +166,14 @@ The owner's direct question — use what, not what:
 - **React's authoring model as our app architecture** — no JSX-authored
   screens, no `useState`/`useEffect` as the state model, no
   component-local state, no context-as-state. State is one typed Effect
-  model; interactions are typed intents.
+  model. Interactions are typed intents.
 - **Callbacks in the view** — intents, not closures. This is what keeps the
   tree serializable, replayable, and agent-safe (the Foldkit lesson).
 - **RN/React as the *contract*** — RN is a backend below our contract, never
-  the contract itself. App code must not import React or RN directly; only
+  the contract itself. App code must not import React or RN directly. Only
   the adapter does. A lint boundary enforces it (EN-9).
 - **The RN component *API* as our public component API** — we expose the
-  Effect Native catalog with typed props + tokens, not RN's prop shapes;
+  Effect Native catalog with typed props + tokens, not RN's prop shapes.
   the RN prop mapping is an adapter detail that can change per platform.
 
 ## 6. The "go fully native" question (RN vs Swift/Compose)
@@ -189,11 +189,11 @@ The Effect Native roadmap keeps a native Swift (iOS) / Jetpack Compose
 - Because Effect Native's contract is renderer-agnostic, native rendering can
   be **per-component and incremental** — swap the five highest-value
   components (e.g. a perf-critical list, a bespoke animated control) to a
-  native renderer while everything else stays on the RN adapter. That's the
+  native renderer while everything else stays on the RN adapter. That is the
   right shape: native as a *targeted escape hatch*, not a wholesale RN
   replacement.
 - Practically: **RN is likely the mobile renderer for a long time**, and
-  that's fine — the architecture just guarantees we're never *locked* to it.
+  that is fine — the architecture just guarantees we are never *locked* to it.
   The value of renderer-agnosticism here is insurance and per-component
   fidelity, not a plan to delete RN.
 
@@ -209,7 +209,7 @@ brittle.
 
 So the recommendation is precise: **adopt React Native as Effect Native's
 mobile rendering backend and reject React as the way we author UI.** Use
-Fabric, Yoga, the host components, and the out-of-tree seam; author in the
+Fabric, Yoga, the host components, and the out-of-tree seam. Author in the
 typed Effect Native component set with intent-based interactions and
 Effect-held state. Keep the native Swift/Compose renderer as a per-component
 escape for fidelity, never a from-scratch replacement for RN's engine. This

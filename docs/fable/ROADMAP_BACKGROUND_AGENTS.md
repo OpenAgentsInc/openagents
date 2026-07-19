@@ -1,7 +1,7 @@
 # Background-Agents Roadmap — Open-Inspect Harvest Execution
 
 > **Sequencing note (2026-07-07):** top-level execution sequencing is now
-> owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md); this document
+> owned by [`docs/fable/MASTER_ROADMAP.md`](MASTER_ROADMAP.md). This document
 > remains the content authority for the background-agent (BA-*) lanes.
 
 Date: 2026-07-03
@@ -44,10 +44,10 @@ Process: identical to [`ROADMAP.md`](./ROADMAP.md)'s program — one issue per
 task, one PR per issue, worktrees from clean `origin/main`, verify-green
 before review, merged-to-main is the only "done"
 ([`EXECUTION.md`](./EXECUTION.md)). Reading guide: **WS-x** = workstream
-(parallelization unit), **BA-xn** = task (issue unit). Deps are hard;
+(parallelization unit), **BA-xn** = task (issue unit). Deps are hard.
 "soft-after" is preferred order. Delegability: **HIGH** = fleet worker with
-bounded prompt + pinned verify; **MED** = tightly-written issue + reviewer
-attention on the seam; **LOW** = supervising agent or strongest worker +
+bounded prompt + pinned verify. **MED** = tightly-written issue + reviewer
+attention on the seam. **LOW** = supervising agent or strongest worker +
 mandatory review. This doc flips no promise state and broadens no public
 copy.
 
@@ -84,13 +84,13 @@ immediately in parallel. WS-F/G/H ride behind.
 
 ### WS-A — Agent definitions + dispatch spine
 
-Source: definitions audit §4.1–4.2; harvest audit §7. The durable object is
+Source: definitions audit §4.1–4.2. Harvest audit §7. The durable object is
 the *definition*, not the harness. Runs that produce code changes flow
 through the Forge intake path so background work inherits verification
 receipts and gated promotion for free.
 
 BA-A1 status (2026-07-03): the schema authority remains
-`packages/agent-runtime-schema`; the Worker now exposes owner-scoped
+`packages/agent-runtime-schema`. The Worker now exposes owner-scoped
 registered-agent CRUD at `POST/GET/PATCH /v1/agent-definitions`, backed by
 the `agent_definitions` D1 table and migration `0279_agent_definitions.sql`.
 Downstream BA-A2 work should consume this endpoint/schema instead of adding
@@ -132,11 +132,11 @@ default deny before a tool body runs or a git token is minted.
 
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
-| BA-A1 | `openagents.agent_definition.v1`: Effect Schema (name/goal/harness/toolset allow-deny-ask/triggers/lane/budget/escalation), D1 table + migration, owner-scoped CRUD `POST/GET/PATCH /v1/agent-definitions` on the Worker (same auth as agent registration). Harness is a field, never load-bearing | — (shared seam; lands first and alone) | MED | [#8188](https://github.com/OpenAgentsInc/openagents/issues/8188) |
-| BA-A2 | Dispatch: `POST /v1/agent-definitions/:id/runs` turns definition + trigger payload into a run on `lane=own_pylon` via the existing assignment path; run rows carry definitionRef + triggerRef; runs register a **Forge work record** so produced changes link into coordination; `SessionEvent`s on a Durable Stream; exact accounting settles per run | BA-A1 | MED | [#8189](https://github.com/OpenAgentsInc/openagents/issues/8189) |
-| BA-A3 | `agent_harness_adapter.v1` contract (`start(definition, triggerPayload) → sessionRef`, normalize events, report terminal state) + Codex adapter on the existing Pylon `codex_agent_task` lane; fixture-backed conformance test | BA-A2 | MED | [#8190](https://github.com/OpenAgentsInc/openagents/issues/8190) |
-| BA-A4 | Claude adapter on `claude_agent_task` — proves harness-swap on an unchanged definition (the headline property); parity fixture asserting one definition runs on both harnesses | BA-A3 | HIGH | [#8191](https://github.com/OpenAgentsInc/openagents/issues/8191) |
-| BA-A5 | Toolset enforcement: definition `toolset` compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access; `ask` entries route to escalation instead of failing; INVARIANTS entry + enforcement tests at both boundaries | BA-A1 | LOW | [#8192](https://github.com/OpenAgentsInc/openagents/issues/8192) |
+| BA-A1 | `openagents.agent_definition.v1`: Effect Schema (name/goal/harness/toolset allow-deny-ask/triggers/lane/budget/escalation), D1 table + migration, owner-scoped CRUD `POST/GET/PATCH /v1/agent-definitions` on the Worker (same auth as agent registration). Harness is a field, never load-bearing | — (shared seam, lands first and alone) | MED | [#8188](https://github.com/OpenAgentsInc/openagents/issues/8188) |
+| BA-A2 | Dispatch: `POST /v1/agent-definitions/:id/runs` turns definition + trigger payload into a run on `lane=own_pylon` via the existing assignment path. Run rows carry definitionRef + triggerRef. Runs register a **Forge work record** so produced changes link into coordination. `SessionEvent`s on a Durable Stream. Exact accounting settles per run | BA-A1 | MED | [#8189](https://github.com/OpenAgentsInc/openagents/issues/8189) |
+| BA-A3 | `agent_harness_adapter.v1` contract (`start(definition, triggerPayload) → sessionRef`, normalize events, report terminal state) + Codex adapter on the existing Pylon `codex_agent_task` lane. Fixture-backed conformance test | BA-A2 | MED | [#8190](https://github.com/OpenAgentsInc/openagents/issues/8190) |
+| BA-A4 | Claude adapter on `claude_agent_task` — proves harness-swap on an unchanged definition (the headline property). Parity fixture asserting one definition runs on both harnesses | BA-A3 | HIGH | [#8191](https://github.com/OpenAgentsInc/openagents/issues/8191) |
+| BA-A5 | Toolset enforcement: definition `toolset` compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access. `ask` entries route to escalation instead of failing. INVARIANTS entry + enforcement tests at both boundaries | BA-A1 | LOW | [#8192](https://github.com/OpenAgentsInc/openagents/issues/8192) |
 
 ### WS-B — Triggers/automations engine (harvest H4)
 
@@ -147,7 +147,7 @@ nothing owns today.
 
 Consolidation note (2026-07-03): this engine is also the cadence layer two
 sibling plans currently assume they must build separately — behavior-contract
-nightly enforcement (#8184: per-contract receipts + deviation alerts; see
+nightly enforcement (#8184: per-contract receipts + deviation alerts, see
 [`ROADMAP_QA.md`](./ROADMAP_QA.md) §9d) and the QA-1.1 nightly matrix. Both
 should ride BA-B2/BA-B5 as cron-triggered definitions once this lands: a
 contract-enforcement sweep and the QA nightly are ideal first *real*
@@ -158,7 +158,7 @@ on-deploy webhook trigger, BA-B4 budget caps, BA-G1 result callback).
 BA-B1 status (2026-07-03): definitions now use the explicit trigger shapes
 `cron(expr, tz)` and `inbound_webhook(source, typed conditions)`. The Worker
 persists owner-scoped trigger rows in `agent_definition_triggers` via
-`0281_agent_definition_triggers.sql`; rows carry enable/pause state,
+`0281_agent_definition_triggers.sql`. Rows carry enable/pause state,
 `consecutive_failures`, optional pause reason, and precomputed cron
 `next_run_at` from `agent-definition-cron.ts`. Definition create/patch syncs
 that store, while webhook verification/normalization and auto-pause remain
@@ -170,7 +170,7 @@ binding. The DO reads due cron trigger rows oldest-first through
 `listDueCronTriggers`, applies a per-tick cap, treats overdue rows as the
 recovery sweep, and dispatches through the shared BA-A2
 `dispatchAgentDefinitionRun` helper instead of fabricating HTTP auth. Successful
-dispatches reset `consecutive_failures`; refused/failed dispatches advance the
+dispatches reset `consecutive_failures`. Refused/failed dispatches advance the
 cron `next_run_at` while preserving/incrementing the failure streak, preventing
 duplicate tight-loop dispatch. Wrangler migration `v7` registers the DO class,
 and deterministic scheduler/store tests cover cap, owner scope, next-run
@@ -210,16 +210,16 @@ fixtures for cron, inbound-webhook, inbox-match, and manual triggers.
 
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
-| BA-B1 | Trigger schema + D1 store: `cron(expr, tz)` and `inbound_webhook(source, typed conditions)` trigger types on definitions; `next_run_at` precomputed via a cron utility; `consecutive_failures`; enable/pause state | BA-A1 | HIGH | [#8193](https://github.com/OpenAgentsInc/openagents/issues/8193) |
-| BA-B2 | Scheduler: Worker cron trigger → singleton Durable Object tick; overdue triggers processed with a per-tick backpressure cap + recovery sweep; dispatches through BA-A2; deterministic time-controlled tests | BA-B1, BA-A2 | MED | [#8194](https://github.com/OpenAgentsInc/openagents/issues/8194) |
-| BA-B3 | Webhook ingress + typed per-source normalization: authenticated inbound webhook route with signature verification; per-source normalizers (GitHub first) in a shared package; normalized events evaluate trigger conditions → dispatch | BA-B1 | MED | [#8195](https://github.com/OpenAgentsInc/openagents/issues/8195) |
-| BA-B4 | Budget enforcement: auto-pause after N consecutive failures (copy the invariant verbatim); `maxRunsPerDay` / `maxRunSeconds` / `maxCreditsPerDay` enforced at dispatch with typed refusals — a buggy background watcher must never be a money pump | BA-B2 | HIGH | [#8196](https://github.com/OpenAgentsInc/openagents/issues/8196) |
+| BA-B1 | Trigger schema + D1 store: `cron(expr, tz)` and `inbound_webhook(source, typed conditions)` trigger types on definitions. `next_run_at` precomputed via a cron utility. `consecutive_failures`. Enable/pause state | BA-A1 | HIGH | [#8193](https://github.com/OpenAgentsInc/openagents/issues/8193) |
+| BA-B2 | Scheduler: Worker cron trigger → singleton Durable Object tick. Overdue triggers processed with a per-tick backpressure cap + recovery sweep. Dispatches through BA-A2. Deterministic time-controlled tests | BA-B1, BA-A2 | MED | [#8194](https://github.com/OpenAgentsInc/openagents/issues/8194) |
+| BA-B3 | Webhook ingress + typed per-source normalization: authenticated inbound webhook route with signature verification. Per-source normalizers (GitHub first) in a shared package. Normalized events evaluate trigger conditions → dispatch | BA-B1 | MED | [#8195](https://github.com/OpenAgentsInc/openagents/issues/8195) |
+| BA-B4 | Budget enforcement: auto-pause after N consecutive failures (copy the invariant verbatim). `maxRunsPerDay` / `maxRunSeconds` / `maxCreditsPerDay` enforced at dispatch with typed refusals — a buggy background watcher must never be a money pump | BA-B2 | HIGH | [#8196](https://github.com/OpenAgentsInc/openagents/issues/8196) |
 | BA-B5 | Run history + manual trigger: per-definition run list route (status, trigger, receipt refs), manual "run now" endpoint, fixtures for every trigger type | BA-B2 | HIGH | [#8197](https://github.com/OpenAgentsInc/openagents/issues/8197) |
 
 ### WS-C — Subscription-auth custody (harvest H2)
 
 Source: harvest audit §4 H2 — rotating refresh tokens persisted centrally
-so subscription auth survives ephemeral/isolated execution; kills the
+so subscription auth survives ephemeral/isolated execution. Kills the
 documented identity/token footgun class and hardens the subscription-rail
 economics the oh-my-pi audit banked on.
 
@@ -246,8 +246,8 @@ unavailable.
 
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
-| BA-C1 | Owner-scoped token custody service on the Worker: encrypted refresh-token storage (AES-GCM, D1), refresh flow persisting rotated refresh tokens atomically, audit log rows, typed errors; refresh tokens never exposed outward — only short-lived access tokens are served | — | MED | [#8198](https://github.com/OpenAgentsInc/openagents/issues/8198) |
-| BA-C2 | Fleet re-prime via custody: Pylon fleet accounts (and desktop, where applicable) refresh through custody with a pre-expiry buffer on resume/rotation instead of relying on tokens embedded in isolated homes; isolated-home invariant preserved; typed blocker when custody is unreachable | BA-C1 | MED | [#8199](https://github.com/OpenAgentsInc/openagents/issues/8199) |
+| BA-C1 | Owner-scoped token custody service on the Worker: encrypted refresh-token storage (AES-GCM, D1), refresh flow persisting rotated refresh tokens atomically, audit log rows, typed errors. Refresh tokens never exposed outward — only short-lived access tokens are served | — | MED | [#8198](https://github.com/OpenAgentsInc/openagents/issues/8198) |
+| BA-C2 | Fleet re-prime via custody: Pylon fleet accounts (and desktop, where applicable) refresh through custody with a pre-expiry buffer on resume/rotation instead of relying on tokens embedded in isolated homes. Isolated-home invariant preserved. Typed blocker when custody is unreachable | BA-C1 | MED | [#8199](https://github.com/OpenAgentsInc/openagents/issues/8199) |
 
 ### WS-D — Brokered per-task credentials on Forge (harvest H1)
 
@@ -262,7 +262,7 @@ mints one short-TTL Forge git token per admitted run, scopes it to the task
 repository and `refs/heads/background-agents/<run>`, stores only token refs on
 the Forge work record and run row, rejects denied/ask scopes before minting, and
 revokes recorded token refs from Pylon closeout. The D1 migration is
-`0284_agent_definition_forge_git_tokens.sql`; regression coverage lives in the
+`0284_agent_definition_forge_git_tokens.sql`. Regression coverage lives in the
 definition-run, Forge auth-store, smart-Git intake, and coordination-store
 tests.
 
@@ -282,7 +282,7 @@ sweep across `git_checkout` materialize/run/closeout. The shared
 tokens, credentialed Git URLs, and Git authorization extraheaders in bounded
 worker roots while allowing the short-lived helper cache under Git admin
 state. Codex and Claude runs scan the checkout plus selected isolated account
-home (`CODEX_HOME` / `CLAUDE_CONFIG_DIR`) before verification or PR publishing;
+home (`CODEX_HOME` / `CLAUDE_CONFIG_DIR`) before verification or PR publishing.
 findings become typed `scm_credential_policy_failed` refusals, and lease
 cleanup removes token-leaked workspaces even when dirty. Regression coverage
 lives in the Pylon materializer, worktree, Codex executor, and Claude executor
@@ -290,9 +290,9 @@ tests named in `docs/fable/background-agent-behavior-contracts.md`.
 
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
-| BA-D1 | Per-task short-TTL scoped git tokens: dispatch mints a Forge tenant git token scoped to the task's repository ref with a bounded TTL and (where the scope model allows) ref-level restriction; token refs recorded on the work record; revocation on closeout | — | MED | [#8200](https://github.com/OpenAgentsInc/openagents/issues/8200) |
+| BA-D1 | Per-task short-TTL scoped git tokens: dispatch mints a Forge tenant git token scoped to the task's repository ref with a bounded TTL and (where the scope model allows) ref-level restriction. Token refs recorded on the work record. Revocation on closeout | — | MED | [#8200](https://github.com/OpenAgentsInc/openagents/issues/8200) |
 | BA-D2 | Worker-side git credential helper: the Pylon workspace materializer installs a credential helper in each task workspace so every git operation fetches a fresh short-lived token (protocol+host scoped, bounded cache, explicit fallback rules) instead of reading embedded credentials | BA-D1 | MED | [#8201](https://github.com/OpenAgentsInc/openagents/issues/8201) |
-| BA-D3 | Enforcement: tests prove no long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout; INVARIANTS updated so the brokered-credentials rule cites the implementation + tests | BA-D1, BA-D2 | HIGH | [#8202](https://github.com/OpenAgentsInc/openagents/issues/8202) |
+| BA-D3 | Enforcement: tests prove no long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout. INVARIANTS updated so the brokered-credentials rule cites the implementation + tests | BA-D1, BA-D2 | HIGH | [#8202](https://github.com/OpenAgentsInc/openagents/issues/8202) |
 
 ### WS-E — Warm dispatch (harvest H3)
 
@@ -305,7 +305,7 @@ warm-on-intent. The UX delta between "fire and forget in seconds" and
 BA-E1 status (2026-07-03): the Pylon workspace materializer now has a
 prepared-worktree cache keyed by repository full name plus pinned baseline
 commit. Clean closeout snapshots record the typed
-`post_completion_snapshot` reason; matching future materializations restore by
+`post_completion_snapshot` reason. Matching future materializations restore by
 local clone plus `git reset --hard` / `git clean -ffdx` and report
 `restore_quick_sync_reset`. Entries carry integrity metadata, dirty/stale cache
 entries are evicted before reuse, and a byte budget removes the oldest prepared
@@ -318,7 +318,7 @@ prebuilt-baseline cache keyed by repository full name plus branch. The registry
 row records the latest upstream commit observed under a bounded refresh cadence
 (default 15 minutes), setup result, local prebuilt directory, and hit/miss
 metrics. Matching cold dispatches restore from the setup-prepared baseline and
-preserve ignored setup artifacts such as installed dependencies; requested
+preserve ignored setup artifacts such as installed dependencies. Requested
 commits that do not match the current prebuild record an honest miss and fall
 back to normal `git_worktree` materialization. Codex, Claude, and local control
 session `git_checkout` materialization now pass the prepared and prebuilt cache
@@ -329,8 +329,8 @@ roots when using the real materializer. Regression coverage lives in
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
 | BA-E1 | Prepared-worktree cache in the Pylon workspace materializer: typed reuse reasons (post-completion snapshot, restore = quick sync + reset), cache keyed by repo+baseline, integrity checks, bounded disk budget with eviction | — | MED | [#8203](https://github.com/OpenAgentsInc/openagents/issues/8203) |
-| BA-E2 | Prebuilt baselines: staleness check against upstream commits with a bounded refresh cadence; cold dispatches start from the newest prebuilt baseline (deps installed, setup pre-run) instead of full clone+setup; registry rows + honest metrics on hit/miss | BA-E1 soft | MED | [#8204](https://github.com/OpenAgentsInc/openagents/issues/8204) |
-| BA-E3 | Warm-on-intent: Khala Code composer emits a typed, debounced, owner-scoped pre-materialize signal while a fleet/background run is being composed; honest no-op when the target lane has no warm path; test coverage for debounce + gating | BA-E1 | HIGH | [#8205](https://github.com/OpenAgentsInc/openagents/issues/8205) |
+| BA-E2 | Prebuilt baselines: staleness check against upstream commits with a bounded refresh cadence. Cold dispatches start from the newest prebuilt baseline (deps installed, setup pre-run) instead of full clone+setup. Registry rows + honest metrics on hit/miss | BA-E1 soft | MED | [#8204](https://github.com/OpenAgentsInc/openagents/issues/8204) |
+| BA-E3 | Warm-on-intent: Khala Code composer emits a typed, debounced, owner-scoped pre-materialize signal while a fleet/background run is being composed. Honest no-op when the target lane has no warm path. Test coverage for debounce + gating | BA-E1 | HIGH | [#8205](https://github.com/OpenAgentsInc/openagents/issues/8205) |
 
 ### WS-F — Dispatch reliability (harvest H5 + H7)
 
@@ -348,10 +348,10 @@ behavior contract is enforced by orchestration-store and Khala planner tests.
 
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
-| BA-F1 | Lane/account error taxonomy + circuit breaker: typed transient/permanent classification for dispatch failures in the delegate program + orchestration store; per-account/lane breaker with cooldown feeding capacity/readiness instead of repeated failed dispatches | — | MED | [#8206](https://github.com/OpenAgentsInc/openagents/issues/8206) |
-| BA-F2 | Critical-event ack/replay in Pylon: a named critical class (closeout, push/PR, receipt, claim-release) gets ack-id buffering + re-send-until-ack in the lifecycle/reporting path; bulk raw-event chunks remain fail-soft; ingest-side dedupe by ack id | — | MED | [#8207](https://github.com/OpenAgentsInc/openagents/issues/8207) |
+| BA-F1 | Lane/account error taxonomy + circuit breaker: typed transient/permanent classification for dispatch failures in the delegate program + orchestration store. Per-account/lane breaker with cooldown feeding capacity/readiness instead of repeated failed dispatches | — | MED | [#8206](https://github.com/OpenAgentsInc/openagents/issues/8206) |
+| BA-F2 | Critical-event ack/replay in Pylon: a named critical class (closeout, push/PR, receipt, claim-release) gets ack-id buffering + re-send-until-ack in the lifecycle/reporting path. Bulk raw-event chunks remain fail-soft. Ingest-side dedupe by ack id | — | MED | [#8207](https://github.com/OpenAgentsInc/openagents/issues/8207) |
 
-### WS-G — Client surfaces (harvest H6 + H8; definitions audit §4.5)
+### WS-G — Client surfaces (harvest H6 + H8, definitions audit §4.5)
 
 BA-G1 status (2026-07-03): the openagents.com Worker now has a reusable
 bot-integration dispatch template shared by GitHub and Forum ingress. Forum
@@ -377,7 +377,7 @@ contract is
 BA-G3 status (2026-07-04): the per-run live surface is documented and pinned
 as an inert thin-DO spike in
 [`2026-07-04-background-agent-per-run-live-surface-thin-do.md`](./2026-07-04-background-agent-per-run-live-surface-thin-do.md).
-Durable Streams remain the default; the future DO candidate stays behind the
+Durable Streams remain the default. The future DO candidate stays behind the
 WS-10 client-facing live-channel gate plus operator enablement. The executable
 spike in
 `apps/openagents.com/workers/api/src/agent-definition-live-surface-spike.ts`
@@ -388,10 +388,10 @@ route.
 
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
-| BA-G1 | Integration template + Forum-triggered runs: external event → verify → normalize → definition run → completion callback posts the result back to the source thread; Forum first (Forum stays posting/moderation authority) | BA-A2, BA-B3 | MED | [#8208](https://github.com/OpenAgentsInc/openagents/issues/8208) |
-| BA-G2 | GitHub @mention runs on the same template: mention → bounded definition run → result comment; strict-bug/issue-form policy respected (no loose issue spam) | BA-G1 | HIGH | [#8209](https://github.com/OpenAgentsInc/openagents/issues/8209) |
-| BA-G3 | Per-run live surface (thin-DO pattern) — design doc + spike: per-run Durable Object with injected services, in-DO migrations, hibernation-safe client mapping, single multiplexed alarm; adopted only when the WS-10 status spine grows a client-facing live channel (Durable Streams remain the default) | BA-A2 | LOW | [#8210](https://github.com/OpenAgentsInc/openagents/issues/8210) |
-| BA-G4 | Khala Code Agents panel + escalation inbox + CLI parity: definitions list (name, goal, harness badge, lane, last run, next trigger), typed create/edit form, per-agent run history off Durable Streams, `ask`-escalations inbox view; `khala agents list\|create\|run\|logs` | BA-A2, BA-B5 | MED | [#8211](https://github.com/OpenAgentsInc/openagents/issues/8211) |
+| BA-G1 | Integration template + Forum-triggered runs: external event → verify → normalize → definition run → completion callback posts the result back to the source thread. Forum first (Forum stays posting/moderation authority) | BA-A2, BA-B3 | MED | [#8208](https://github.com/OpenAgentsInc/openagents/issues/8208) |
+| BA-G2 | GitHub @mention runs on the same template: mention → bounded definition run → result comment. Strict-bug/issue-form policy respected (no loose issue spam) | BA-G1 | HIGH | [#8209](https://github.com/OpenAgentsInc/openagents/issues/8209) |
+| BA-G3 | Per-run live surface (thin-DO pattern) — design doc + spike: per-run Durable Object with injected services, in-DO migrations, hibernation-safe client mapping, single multiplexed alarm. Adopted only when the WS-10 status spine grows a client-facing live channel (Durable Streams remain the default) | BA-A2 | LOW | [#8210](https://github.com/OpenAgentsInc/openagents/issues/8210) |
+| BA-G4 | Khala Code Agents panel + escalation inbox + CLI parity: definitions list (name, goal, harness badge, lane, last run, next trigger), typed create/edit form, per-agent run history off Durable Streams, `ask`-escalations inbox view. `khala agents list\|create\|run\|logs` | BA-A2, BA-B5 | MED | [#8211](https://github.com/OpenAgentsInc/openagents/issues/8211) |
 
 ### WS-H — Event ledger / unified inbox (definitions audit §4.4)
 
@@ -405,7 +405,7 @@ per-owner `EVENT_LEDGER_OWNER` Durable Object, which assigns stable ordering
 sequences and dedupes by `source:externalRef` before persisting private
 `event_ledger_entries` D1 rows via migration `0285_event_ledger.sql`. Rows
 store bounded refs and summaries only (source, externalRef, actorRef,
-contentRef, subjectRef, sourceRefs, timestamps) with `training_consent = 0`;
+contentRef, subjectRef, sourceRefs, timestamps) with `training_consent = 0`.
 there is no public projection or model-visible raw source payload. The BA-H1
 behavior contract is
 `background_agents.inbox.event_ledger_owner_scoped_private.v1`.
@@ -416,7 +416,7 @@ definition/run refs, timestamp, and reason ref via migration
 `0286_event_ledger_handled_state.sql`. Definition-backed reads go through the
 owner-authenticated `/v1/agent-definitions/:id/event-ledger` gateway, which
 enforces the definition toolset (`tool.openagents.event_ledger.read`) and
-redacts by `secretPolicy`; handled-state updates require
+redacts by `secretPolicy`. Handled-state updates require
 `tool.openagents.event_ledger.handled_state.write` and a run owned by the same
 definition before the ledger row is touched. The BA-H2 behavior contract is
 `background_agents.inbox.event_ledger_handled_gateway_redacted.v1`.
@@ -428,16 +428,16 @@ normalizing, matches only owner-scoped `source: "slack"` trigger rows, and
 enqueues one ledger message per matched owner. Migration
 `0287_event_ledger_slack_source.sql` widens the D1 source contract to
 `github|slack` while preserving BA-H2 handled-state columns. Slack rows store
-bounded team/channel/actor/message timestamp refs and summaries only; raw
+bounded team/channel/actor/message timestamp refs and summaries only. Raw
 Slack message text, Slack signatures, tokens, and webhook bodies stay out of
 trigger payloads and ledger rows. The BA-H3 behavior contract is
 `background_agents.inbox.slack_event_ledger_ingest.v1`.
 
 | Task | Description | Deps | Delegable | Issue |
 | --- | --- | --- | --- | --- |
-| BA-H1 | `event_ledger.v1`: Queues ingest → D1 rows (source, externalRef, actor, content ref, timestamps) + per-owner DO for ordering/dedup; GitHub source first; owner-scoped, never training data, never leaves the account boundary | BA-B3 | MED | [#8212](https://github.com/OpenAgentsInc/openagents/issues/8212) |
+| BA-H1 | `event_ledger.v1`: Queues ingest → D1 rows (source, externalRef, actor, content ref, timestamps) + per-owner DO for ordering/dedup. GitHub source first. Owner-scoped, never training data, never leaves the account boundary | BA-B3 | MED | [#8212](https://github.com/OpenAgentsInc/openagents/issues/8212) |
 | BA-H2 | Handled-state as first-class (`open\|handled\|responded\|ignored`, which run touched it) + a gateway read tool for definitions with redaction per `secretPolicy` | BA-H1 | MED | [#8213](https://github.com/OpenAgentsInc/openagents/issues/8213) |
-| BA-H3 | Slack source ingest → normalized ledger rows; same owner-scope + privacy invariants | BA-H1 | HIGH | [#8214](https://github.com/OpenAgentsInc/openagents/issues/8214) |
+| BA-H3 | Slack source ingest → normalized ledger rows. Same owner-scope + privacy invariants | BA-H1 | HIGH | [#8214](https://github.com/OpenAgentsInc/openagents/issues/8214) |
 
 ### Behavior-contract tie-ins (cross-cutting, [#8218](https://github.com/OpenAgentsInc/openagents/issues/8218))
 
@@ -479,26 +479,26 @@ fire-and-forget alerts.
 - **Wave 3:** BA-A4 · BA-B4 · BA-B5 · BA-G1 · BA-H1.
 - **Wave 4:** BA-G2 · BA-G4 · BA-H2 · BA-H3 · BA-G3 (design-first).
 
-Seam rule (same as ROADMAP §3): BA-A1 and BA-B1 land first and alone;
+Seam rule (same as ROADMAP §3): BA-A1 and BA-B1 land first and alone.
 everything downstream codes against their merged interfaces.
 
 ## 4. Milestones
 
-- **M1 — Definition spine**: BA-A1..A3 merged; a definition dispatches a
+- **M1 — Definition spine**: BA-A1..A3 merged. A definition dispatches a
   real Codex run on the owner's Pylon with receipts and a linked Forge work
   record.
-- **M2 — Background for real**: BA-B1/B2/B4/B5 merged; a cron-triggered
+- **M2 — Background for real**: BA-B1/B2/B4/B5 merged. A cron-triggered
   definition runs unattended with budget caps, auto-pause, inspectable run
   history, and explicit manual run-now. Smallest end-to-end proof: the "what
   do I need to follow up on" definition against GitHub notifications.
 - **M3 — Harness-swap proof**: BA-A4 — one unchanged definition runs on
-  Codex and Claude; demo-grade.
+  Codex and Claude. Demo-grade.
 - **M4 — Hardened + warm dispatch**: WS-C + WS-D + BA-E1 — no long-lived
-  credentials in worker workspaces; custody-backed subscription auth; warm
+  credentials in worker workspaces. Custody-backed subscription auth. Warm
   worktree reuse measured.
 - **M5 — Surfaces**: BA-G1 + BA-G4 — Forum-triggered runs and the Agents
-  panel; escalation inbox usable.
-- **M6 — Inbox substrate**: WS-H; the triage-query definitions become
+  panel. Escalation inbox usable.
+- **M6 — Inbox substrate**: WS-H. The triage-query definitions become
   definable.
 
 ## 5. Invariants (Non-Negotiable Across All Workstreams)
@@ -507,34 +507,34 @@ Inherited from the harvest audit §5, the definitions audit §6, and the
 Forge boundary contract:
 
 - **Owner-scoped everything.** No shared-App single-tenant shortcuts: every
-  definition, run, token, and ledger row is owner-scoped; the dispatch gate
-  remains the admission authority; Forge tenant isolation rules hold.
+  definition, run, token, and ledger row is owner-scoped. The dispatch gate
+  remains the admission authority. Forge tenant isolation rules hold.
   Nothing from Open-Inspect's authorization model ports.
 - **Execution stays ours.** Background runs execute on the owner's Pylon
   fleet (or a future owner-approved cloud lane) — never third-party sandbox
   vendors, never in-session agents.
 - **Exact-only accounting.** Runs settle exact `token_usage_events` (and
-  receipts where applicable); no informal cost accumulation; budget caps
+  receipts where applicable). No informal cost accumulation. Budget caps
   enforced at dispatch, not advisory.
 - **Enforced toolsets or no product claim.** If any lane lets a background
   agent reach tools outside its compiled policy, the feature claim is
-  false; INVARIANTS entries + boundary tests land before any public
+  false. INVARIANTS entries + boundary tests land before any public
   promise. Approvals (`ask`) must be one keystroke or users will widen
   allowlists.
 - **Claims + verification authority.** Parallel background runs use the
-  claim registry; Forge verification receipts and gated promotion (and
-  verify commands on the Pylon lane) stay the merge authority; advisory
+  claim registry. Forge verification receipts and gated promotion (and
+  verify commands on the Pylon lane) stay the merge authority. Advisory
   judgment never overrides them.
 - **Auth-plane separation.** Tenant git tokens never authorize
-  control-plane calls (Forge boundary contract); definition dispatch uses
+  control-plane calls (Forge boundary contract). Definition dispatch uses
   `forge:*` / service scopes only.
-- **Isolated homes; neutral commit metadata.** Never `~/.codex` or the live
-  `~/.claude`; attribution via work records/closeouts, not commit
+- **Isolated homes. Neutral commit metadata.** Never `~/.codex` or the live
+  `~/.claude`. Attribution via work records/closeouts, not commit
   authorship.
 - **Patterns-only harvesting.** `projects/repos/background-agents` stays
-  read-only; ideas port, code does not; no product-surface naming.
+  read-only. Ideas port, code does not. No product-surface naming.
 - **Copy gates.** No public copy or promise flips from this program without
-  `docs/promises/` records; the smallest honest demo (M2/M3) precedes any
+  `docs/promises/` records. The smallest honest demo (M2/M3) precedes any
   claim.
 - **Headline invariants become behavior contracts.** Where a workstream's
   claim-bearing invariant gains a test (BA-A4/A5/B4/D3/E3/G4), the same PR
@@ -546,7 +546,7 @@ Forge boundary contract:
 The following harvest items apply only to the private `cloud/` repo's
 GCE/Firecracker workroom lane, which is **not assumed active** for this
 program. They are recorded for revival if/when the owner re-opens that
-lane; they must not be started from this roadmap:
+lane. They must not be started from this roadmap:
 
 - Workroom short-lived token pull via `oa-workroomd` gateway (H2's cloud
   half).

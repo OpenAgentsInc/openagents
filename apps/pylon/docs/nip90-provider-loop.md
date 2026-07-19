@@ -31,7 +31,7 @@ long-running headless serve entrypoint: it runs the persistent loop against
 the configured relays with the real Pylon home, the default local Apple FM
 runtime, and the MDK agent wallet for payment-required quotes
 (`PYLON_MDK_WALLET_HOME` points the wallet subprocess at a wallet home that
-can actually create invoices). It only ever issues receive invoices; it
+can actually create invoices). It only ever issues receive invoices. It
 never pays.
 
 `pnpm run smoke:nip90-provider` uses a temporary Pylon home and the scoped market
@@ -50,21 +50,21 @@ wss://relay.openagents.com
 
 The loop:
 
-- publishes NIP-89 handler info for kind `5050`;
+- publishes NIP-89 handler info for kind `5050`.
 - stays subscribed through quiet periods: an idle relay (no frames for the
   60s message window) is treated as keep-waiting, not an error, and any
   dropped socket or transient relay/runtime failure logs and resubscribes
   after a short delay instead of stopping the service (#4866 root-cause fix
-  for `[NIP-90] Service stopped with error: ... relay message timed out`);
-- subscribes to targeted and broad kind `5050` text-inference requests;
+  for `[NIP-90] Service stopped with error: ... relay message timed out`).
+- subscribes to targeted and broad kind `5050` text-inference requests.
 - rejects malformed, encrypted, wrong-target, stale, missing-bid, underbid,
-  duplicate, and over-capacity requests before local execution;
+  duplicate, and over-capacity requests before local execution.
 - executes admitted jobs on the local Apple FM runtime through a
-  runtime-neutral `ProviderTextRuntime` contract;
+  runtime-neutral `ProviderTextRuntime` contract.
 - publishes NIP-90 kind `7000` states: `payment-required`, `processing`,
-  `success`, and `error`;
+  `success`, and `error`.
 - publishes kind `6050` results with `amount` and BOLT 11 data for NIP-90
-  settlement;
+  settlement.
 - records local earnings as public-safe refs and amounts.
 
 ## Wallet Boundary
@@ -76,11 +76,11 @@ local persisted provider state, issue comments, or commits.
 
 Persisted earnings include:
 
-- request event id;
-- requester pubkey;
-- amount in msats/sats;
-- public-safe receipt ref;
-- result event id;
+- request event id.
+- requester pubkey.
+- amount in msats/sats.
+- public-safe receipt ref.
+- result event id.
 - timestamp.
 
 They do not include raw invoice or wallet material.

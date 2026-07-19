@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -153,7 +153,7 @@ run or reported externally.
 - Persist each Harbor job's `result.json`, trial `result.json`, verifier
   `ctrf.json`, and trajectory summary into normalized `BenchmarkResult` and
   proof-bundle records.
-- Add a cost guardrail before running larger sweeps; this 8-task run cost
+- Add a cost guardrail before running larger sweeps. This 8-task run cost
   `$3.697649`, so a naive 89-task sweep could be material.
 - Re-run `filter-js-from-html` later to compare agent regression after prompt
   or harness improvements.

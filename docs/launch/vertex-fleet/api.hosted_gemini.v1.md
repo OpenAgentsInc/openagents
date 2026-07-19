@@ -20,8 +20,8 @@ route harness:
   `apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts`
   (3 new cases, full file 40 pass): the armed binding delivers a paid hosted
   Gemini work order end-to-end through the route harness (closeout carries the
-  model + response-digest proof refs and usage verification ref); the un-armed
-  binding stays INERT (no delivery, provider never called); an unsafe inference
+  model + response-digest proof refs and usage verification ref). The un-armed
+  binding stays INERT (no delivery, provider never called). An unsafe inference
   ref aborts delivery instead of leaking.
 
 Prior to this, the only thing that could satisfy `executeReadyWork` for a
@@ -31,12 +31,12 @@ production binding shape the harness was missing.
 ### Honest / inert by construction
 
 - **Flag-gated, INERT by default**: when `config.enabled` is false the executor
-  returns `undefined` — exactly the current production behaviour (no execution,
+  returns `undefined` — exactly the current production behavior (no execution,
   no closeout). Wiring it in changes nothing until an operator arms it.
 - **No secrets, no raw output**: the injected caller returns public-safe REFS
   only (response digest ref, optional usage ref, model ref). Every emitted ref
   is re-validated with the same public-safe guard the route uses
-  (`publicSafeExecutionCloseoutRef`, now exported); any unsafe ref aborts the
+  (`publicSafeExecutionCloseoutRef`, now exported). Any unsafe ref aborts the
   execution rather than leaking it.
 - No settlement, no spend, no payout, no implied accepted work.
 
@@ -86,18 +86,18 @@ production binding shape the harness was missing.
   - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-inference-bridge.ts`
     — `projectGeminiResultToPublicSafeRefs(result, digestHex)` maps a real
     `InferenceResult` to `{ modelRef, responseDigestRef, usageRef }` (model id +
-    SHA-256 digest of the completion + token COUNTS only); the raw completion is
+    SHA-256 digest of the completion + token COUNTS only). The raw completion is
     hashed (`hostedGeminiResponseDigestHex`) and never returned. Every emitted
-    ref is re-validated with `publicSafeExecutionCloseoutRef`; any unsafe/empty
+    ref is re-validated with `publicSafeExecutionCloseoutRef`. Any unsafe/empty
     ref aborts the projection. `createVertexGeminiHostedCaller(config)` wraps an
     injected runner into a `HostedGeminiInferenceCaller`, FLAG-GATED + INERT by
     default (disabled → returns `undefined`, never calls the runner).
   - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-inference-bridge.test.ts`
-    (new, 10 cases): projection is refs-only + public-safe; secret-bearing
-    completion content never appears in any ref; cached-prompt split surfaces;
-    empty model/digest abort; negative/NaN token counts clamp to zero; the
+    (new, 10 cases): projection is refs-only + public-safe. Secret-bearing
+    completion content never appears in any ref. Cached-prompt split surfaces.
+    empty model/digest abort. Negative/NaN token counts clamp to zero. The
     caller is INERT when disabled, drives the runner + projects when armed,
-    declines cleanly when the runner returns undefined; and the SHA-256 digest
+    declines cleanly when the runner returns undefined. And the SHA-256 digest
     matches the known `sha256("hello world")`.
 
   **Honest scope:** this is the public-safe *projection + caller seam* only. It
@@ -128,7 +128,7 @@ production binding shape the harness was missing.
   - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-request-runner.test.ts`
     (new, 10 cases): request is non-streaming + refs-only (no raw content),
     carries the work-order refs, omits an empty objectives line, declines on an
-    empty work-order/task ref; the runner is INERT when disabled, drives the
+    empty work-order/task ref. The runner is INERT when disabled, drives the
     adapter + returns the result when armed, defaults model + max_tokens,
     declines without calling the adapter on an unframeable order, and folds a
     typed adapter failure into `undefined`.
@@ -162,9 +162,9 @@ production binding shape the harness was missing.
     harness — the persisted closeout carries the served-model ref + a SHA-256
     response-digest ref PROJECTED from the real adapter result (the raw
     completion text never appears in any ref) and a token-count usage
-    verification ref, and the adapter saw a non-streaming refs-only request;
+    verification ref, and the adapter saw a non-streaming refs-only request.
     the composed binding stays INERT (no delivery, adapter never invoked) when
-    the single flag is off; and a failing adapter declines to deliver (no
+    the single flag is off. And a failing adapter declines to deliver (no
     closeout) instead of throwing.
 
   **Honest scope:** this is the composition seam only. The binding is still
@@ -231,14 +231,14 @@ production binding shape the harness was missing.
   - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-request-runner.ts`
     — `buildHostedGeminiInferenceRequest` accepts an optional `resolvedContext`
     and appends the public-safe `task_content` + `objective_content[i]` lines
-    (refs retained for provenance); the runner config gains an optional
+    (refs retained for provenance). The runner config gains an optional
     `resolveRefContent` resolver that, when armed, enriches the prompt and
     otherwise falls back to the existing refs-only frame.
   - Tests: `autopilot-hosted-gemini-content-resolver.test.ts` (new, 11 cases:
     whitespace/control collapse, length bound, secret-fingerprint drops for PEM +
     token shapes, full dereference, decline on unresolvable/secret-only task,
     skip of empty/missing/unsafe objectives, blank-task short-circuit) and 2 new
-    runner cases (resolved content embedded when armed; refs-only frame retained
+    runner cases (resolved content embedded when armed, refs-only frame retained
     when the resolver yields nothing safe). Resolver + runner suites: 22 pass.
 
   **Honest scope:** the resolver remains INJECTED — no live datastore-backed
@@ -258,13 +258,13 @@ production binding shape the harness was missing.
   - `apps/openagents.com/workers/api/src/inference/model-serving-policy.ts`
     — `resolveSupplyLaneArming(env)` derives which supply lanes are armed from
     credential PRESENCE only (`VERTEX_SA_KEY` → both Vertex lanes incl. the
-    hosted-Gemini lane; `FIREWORKS_API_KEY` → Fireworks; the openagents-network
+    hosted-Gemini lane. `FIREWORKS_API_KEY` → Fireworks. The openagents-network
     serving fabric is never armed — roadmap). It reads only whether a secret is a
     non-blank string — never the value — so it neither handles nor leaks a
     credential. `filterServableCatalog` / `isModelServable` / `isLaneArmed` are
-    pure helpers; `ALL_LANES_UNARMED` is the safe default.
+    pure helpers. `ALL_LANES_UNARMED` is the safe default.
   - `apps/openagents.com/workers/api/src/inference/models-routes.ts`
-    — `ModelsListDeps` gains an OPTIONAL `laneArming`; when supplied,
+    — `ModelsListDeps` gains an OPTIONAL `laneArming`. When supplied,
     `/v1/models` advertises only servable models and `/v1/models/{id}` reports
     `model_not_found` for a known model on an unarmed lane. Omitting it preserves
     the prior list-everything behaviour (no breaking change to other callers).
@@ -303,10 +303,10 @@ production binding shape the harness was missing.
     NOT gated, since the estimator prices unknown ids at the conservative fallback
     rate). Presence-only, no secret read.
   - `apps/openagents.com/workers/api/src/inference/quote-routes.ts`
-    — `QuoteDeps` gains an OPTIONAL `laneArming`; when supplied, a quote for a
+    — `QuoteDeps` gains an OPTIONAL `laneArming`. When supplied, a quote for a
     KNOWN model on an unarmed lane returns `404 { error: 'model_unavailable',
     model }` instead of a price. Omitting it preserves the prior quote-everything
-    behaviour (no breaking change); an unknown id still falls through to the
+    behaviour (no breaking change). An unknown id still falls through to the
     fallback quote.
   - `apps/openagents.com/workers/api/src/index.ts` — the live `/v1/quote` call
     site now passes `laneArming: resolveSupplyLaneArming(env)`, so the LIVE
@@ -337,7 +337,7 @@ production binding shape the harness was missing.
     — `HostedGeminiExecutorBindingConfig` gains an optional
     `resolveRefContent?: HostedGeminiRefContentResolver`, propagated to
     `createHostedGeminiRequestRunner`. Omitted → existing refs-only frame
-    (current production behaviour); no other layer changes.
+    (current production behaviour). No other layer changes.
   - `apps/openagents.com/workers/api/src/autopilot-hosted-gemini-executor-env.ts`
     — `HostedGeminiExecuteReadyWorkDeps` gains the same optional
     `resolveRefContent`, passed straight into the composed binding, so a
@@ -369,7 +369,7 @@ production binding shape the harness was missing.
   for a model the catalog deliberately hides and the quote 404s. This change
   closes the advertise == quote == serve consistency gap:
   - `apps/openagents.com/workers/api/src/inference/chat-completions-routes.ts`
-    — `ChatCompletionsDeps` gains an OPTIONAL `laneArming`; when supplied, a
+    — `ChatCompletionsDeps` gains an OPTIONAL `laneArming`. When supplied, a
     request for a KNOWN model on an unarmed lane returns `400 { error:
     'model_unavailable', model }` BEFORE the premium/balance/spend-cap gates and
     before dispatch (servability is a model+supply property, independent of the
@@ -441,7 +441,7 @@ production binding shape the harness was missing.
     `/v1/chat/completions`), 405 on a non-GET. The body carries only
     servable/hidden model COUNTS + per-lane arming booleans + dereferenceable
     reason refs (no prompts/credentials/prices/balances), `no-store`. Catalog is
-    injectable for tests; defaults to the live published catalog.
+    injectable for tests. Defaults to the live published catalog.
   - `apps/openagents.com/workers/api/src/index.ts` — registers
     `GET /v1/gateway/readiness`, gated by the same `INFERENCE_GATEWAY_ENABLED`
     flag and fed `laneArming: resolveSupplyLaneArming(env)`, so the LIVE endpoint

@@ -22,10 +22,10 @@ the Coding on Autopilot lens.
 Each situational-awareness record wraps a
 `BlueprintMissionBriefingMetricRecord` and adds safe refs for:
 
-- Coding mission records;
-- Coding artifacts;
-- Decision Queue actions;
-- account failover state;
+- Coding mission records.
+- Coding artifacts.
+- Decision Queue actions.
+- account failover state.
 - repo trust state.
 
 The projected record exposes the briefing metric's comprehension result,
@@ -37,11 +37,11 @@ under-two-minute target result.
 Public, customer, team, and operator projections use the same redaction stance
 as the underlying briefing metric:
 
-- no raw timestamps in user-facing projections;
-- no raw runner logs;
-- no provider tokens, provider accounts, cookies, or OAuth material;
-- no private repo URLs;
-- no customer emails or raw email bodies;
+- no raw timestamps in user-facing projections.
+- no raw runner logs.
+- no provider tokens, provider accounts, cookies, or OAuth material.
+- no private repo URLs.
+- no customer emails or raw email bodies.
 - no payment preimages, invoices, wallet material, or secrets.
 
 The public projection filters private artifact, decision-action, repo-trust,
@@ -65,10 +65,10 @@ state quickly.
 
 `workers/api/src/coding-autopilot-situational-awareness.test.ts` covers:
 
-- Coding refs projected with the base briefing metric;
-- understood/not-understood and under-two-minute state;
-- missing-context and follow-up action projection;
-- reviewer-kind projection;
-- public/customer/operator redaction splits;
-- safe aggregate refs and counts;
+- Coding refs projected with the base briefing metric.
+- understood/not-understood and under-two-minute state.
+- missing-context and follow-up action projection.
+- reviewer-kind projection.
+- public/customer/operator redaction splits.
+- safe aggregate refs and counts.
 - rejection of provider-account, raw-runner, and raw-timestamp refs.

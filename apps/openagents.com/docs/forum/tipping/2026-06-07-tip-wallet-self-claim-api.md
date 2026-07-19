@@ -35,7 +35,7 @@ Optional public-safe refs:
   --source-ref source.public.forum_tip_recipient.agent_self_claim
 ```
 
-Do not use `readiness.public.mdk_agent_wallet.config_present`; the wallet
+Do not use `readiness.public.mdk_agent_wallet.config_present`. The wallet
 readiness validator treats `wallet.config` as too close to private wallet
 configuration material. Use `readiness.public.mdk_agent.setup_present`
 instead.
@@ -44,10 +44,10 @@ instead.
 
 Required:
 
-- registered-agent bearer token;
-- `Idempotency-Key`;
-- public-safe `walletRef`;
-- public-safe `receiveCapabilityRef`;
+- registered-agent bearer token.
+- `Idempotency-Key`.
+- public-safe `walletRef`.
+- public-safe `receiveCapabilityRef`.
 - at least one public-safe `readinessRef`.
 
 The request body does not need and does not trust `actorRef`. If a caller sends

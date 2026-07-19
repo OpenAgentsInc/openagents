@@ -31,12 +31,12 @@ pylon wallet migrate-spark
 
 The preflight checks:
 
-- whether legacy spendable Spark balance was detected;
-- whether the helper can initialize;
+- whether legacy spendable Spark balance was detected.
+- whether the helper can initialize.
 - whether a Breez/Spark credential is available through the supported local
-  helper path;
+  helper path.
 - whether the original identity mnemonic file exists or the user has selected a
-  private mnemonic-recovery flow;
+  private mnemonic-recovery flow.
 - whether the destination MDK invoice is ready.
 
 The command only moves past preflight when every blocker is clear and the user
@@ -67,7 +67,7 @@ pylon wallet migrate-spark --mnemonic-recovery --destination-invoice-ready
 ```
 
 That mode keeps the mnemonic private. The flag only tells Pylon to use the
-local recovery path; it does not print, upload, or ask for the phrase. The
+local recovery path. It does not print, upload, or ask for the phrase. The
 command returns `consent-required` until the user reviews the local recovery
 plan and reruns with `--yes --execute`.
 
@@ -88,10 +88,10 @@ prepared and the user explicitly reruns with `--yes --execute`.
 If the helper reports `Missing Breez API key` and the user has not selected
 local mnemonic recovery, Pylon returns:
 
-- `blocker.wallet.legacy_spark.breez_api_key_missing`;
-- `blocker.wallet.legacy_spark.helper_init_failed`;
+- `blocker.wallet.legacy_spark.breez_api_key_missing`.
+- `blocker.wallet.legacy_spark.helper_init_failed`.
 - `action.wallet.legacy_spark.rerun_with_mnemonic_recovery_local_only` when an
-  identity mnemonic is present; otherwise
+  identity mnemonic is present. Otherwise
 - `action.wallet.legacy_spark.configure_supported_local_spark_credential`.
 
 That is an actionable blocked state, not a recommendation to run
@@ -101,25 +101,25 @@ threads for raw API keys.
 If the user selects `--mnemonic-recovery`, old balance is detected, and the
 destination invoice is prepared, Pylon sets:
 
-- `recoveryMode: "local-recovery"`;
-- `mnemonicBackedRecoveryReady: true`;
-- `state: "consent-required"` for dry-run/no-consent calls;
-- `action.wallet.legacy_spark.review_private_local_recovery_plan`;
+- `recoveryMode: "local-recovery"`.
+- `mnemonicBackedRecoveryReady: true`.
+- `state: "consent-required"` for dry-run/no-consent calls.
+- `action.wallet.legacy_spark.review_private_local_recovery_plan`.
 - `action.wallet.legacy_spark.review_and_confirm_migrate_spark_yes`.
 
 Destination readiness remains load-bearing. `--mnemonic-recovery` is not send
-readiness and does not prove outbound capacity; the new MDK destination must be
+readiness and does not prove outbound capacity. The new MDK destination must be
 prepared before any migration can execute.
 
 The guided projection uses:
 
 - `guidedRecovery.localRecoveryAvailable` to show that local recovery is a
-  supported path for the detected old balance;
+  supported path for the detected old balance.
 - `guidedRecovery.localRecoverySelected` to show whether the local recovery
-  path was selected for this preflight;
+  path was selected for this preflight.
 - `guidedRecovery.destinationState` to separate destination preparation from
-  old balance detection;
-- `guidedRecovery.consentState` to make the explicit consent step visible;
+  old balance detection.
+- `guidedRecovery.consentState` to make the explicit consent step visible.
 - `guidedRecovery.nextStepSummary` for concise CLI copy without exposing
   private material.
 
@@ -128,12 +128,12 @@ The guided projection uses:
 The migration projection may include public refs, counts, and redacted balance
 numbers. It must not include:
 
-- the 12-word mnemonic;
-- Breez/Spark API keys;
-- raw SDK state;
-- raw invoices;
-- payment preimages or payment hashes;
-- raw Spark transfer targets;
+- the 12-word mnemonic.
+- Breez/Spark API keys.
+- raw SDK state.
+- raw invoices.
+- payment preimages or payment hashes.
+- raw Spark transfer targets.
 - wallet home paths.
 
 ## Verification

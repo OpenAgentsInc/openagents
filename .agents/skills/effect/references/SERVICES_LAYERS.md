@@ -4,7 +4,7 @@ Use this when defining service tags, module surfaces, layer implementations, run
 
 ## Module Surface
 
-One opinionated application-module style uses file-local role names and one canonical ES module namespace projection. Follow the existing codebase's module style when it has one; this convention is not required by Effect.
+One opinionated application-module style uses file-local role names and one canonical ES module namespace projection. Follow the existing codebase's module style when it has one. This convention is not required by Effect.
 
 ```ts
 export interface Interface {
@@ -59,12 +59,12 @@ export { UserRepo } from "./user-repo.js"
 
 Guidance:
 
-- Do not name the tag class `UserRepo` inside `user-repo.ts`; the module namespace is the domain name.
+- Do not name the tag class `UserRepo` inside `user-repo.ts`. The module namespace is the domain name.
 - In this module style, single-file modules self-export their canonical namespace at the bottom: `export * as UserRepo from "./user-repo.js"`.
-- Sibling modules import that namespace from the owning leaf; they do not import through their own aggregate barrel.
+- Sibling modules import that namespace from the owning leaf. They do not import through their own aggregate barrel.
 - Folder and package barrels relay established leaf identities with `export { UserRepo } from "./user-repo.js"`.
-- The resulting `UserRepo.UserRepo === UserRepo` self-reference is unusual. Use this pattern only where the runtime and toolchain support it; otherwise use named exports or a separate barrel.
-- Export only intentional surface; keep local schemas, row codecs, helpers, and implementation details unexported.
+- The resulting `UserRepo.UserRepo === UserRepo` self-reference is unusual. Use this pattern only where the runtime and toolchain support it. Otherwise use named exports or a separate barrel.
+- Export only intentional surface. Keep local schemas, row codecs, helpers, and implementation details unexported.
 - Do not introduce TypeScript `namespace` declarations for organization.
 - Use a named service class such as `class UserRepo extends Context.Service...` when an external library or existing codebase does not use module namespace style.
 
@@ -150,7 +150,7 @@ Guidance:
 
 - Keep the generator body focused on the core workflow.
 - Use transforms when the wrapper needs original arguments.
-- Do not build long clever pipelines; one or two transforms is usually enough.
+- Do not build long clever pipelines. One or two transforms is usually enough.
 - Do not use this for local branch-level handling inside the workflow.
 
 ## Operation Error Helpers

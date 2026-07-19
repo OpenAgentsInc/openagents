@@ -18,12 +18,12 @@ without reading private runner logs.
 
 `buildBlueprintMissionBriefing` consumes:
 
-- a `BlueprintContinuationDecisionQueueProjection`;
-- work kind: `site` or `coding`;
-- a workroom ref;
-- public-safe changed artifact refs;
+- a `BlueprintContinuationDecisionQueueProjection`.
+- work kind: `site` or `coding`.
+- a workroom ref.
+- public-safe changed artifact refs.
 - evidence, build, test, email, cost, route, public link, and acceptance
-  request refs;
+  request refs.
 - `updatedAtIso` and `nowIso`, which are rendered as friendly labels rather
   than raw timestamps.
 
@@ -31,15 +31,15 @@ without reading private runner logs.
 
 The projection includes deterministic sections:
 
-- `changed`;
-- `evidence`;
-- `verification`;
-- `email`;
-- `blocked`;
-- `costs`;
-- `route`;
-- `acceptanceRequest`;
-- `links`;
+- `changed`.
+- `evidence`.
+- `verification`.
+- `email`.
+- `blocked`.
+- `costs`.
+- `route`.
+- `acceptanceRequest`.
+- `links`.
 - `nextAction`.
 
 Each item contains a section kind, customer-safe ref, summary ref, status,
@@ -59,12 +59,12 @@ but still reject raw secrets and raw logs.
 
 Continuation Mission Briefing does not:
 
-- mutate order, queue, Site, Forum, or workroom state;
-- send email;
-- deploy Sites;
-- approve or reject work;
-- execute retries;
-- create payment or payout claims;
+- mutate order, queue, Site, Forum, or workroom state.
+- send email.
+- deploy Sites.
+- approve or reject work.
+- execute retries.
+- create payment or payout claims.
 - fetch private logs.
 
 Those actions remain behind Action Submissions, route-specific APIs, and later

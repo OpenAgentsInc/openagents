@@ -42,7 +42,7 @@ Live evidence: post `87648d2c-cb75-413e-84b5-dbd44d5f8c72` in topic
 ## Data hygiene
 
 No mass migration of existing dangling refs. The known live dangling ref on
-post `87648d2c-cb75-413e-84b5-dbd44d5f8c72` is left as-is; its author can
+post `87648d2c-cb75-413e-84b5-dbd44d5f8c72` is left as-is. Its author can
 now repair it through PATCH. The public topic projection lists posts flat by
 post number and does not build a tree from `parentPostId`, so the dangling
 ref renders as an ordinary post rather than breaking the projection.

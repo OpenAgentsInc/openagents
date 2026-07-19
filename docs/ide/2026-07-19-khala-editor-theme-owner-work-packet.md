@@ -41,7 +41,7 @@ gate. Function blue moves onto Khala blue so code and product chrome share the
 same energy signal.
 
 Tokyo Night remains registered for Monaco and Pierre and remains available as
-an owned fallback projection. Khala editor is the only default mounted theme;
+an owned fallback projection. Khala editor is the only default mounted theme.
 theme choice is still not a mutable preference.
 
 ## Rollback
@@ -55,12 +55,12 @@ theme re-import, model migration, or persisted-data migration.
 - TypeScript typecheck: pass.
 - Focused theme/Monaco/Pierre/preferences/startup/accessibility/design suites:
   8 files, 262 assertions passed, 11 intentional skips.
-- Full Desktop regression before rebase: 273 files passed; 2,656 assertions passed; 39
+- Full Desktop regression before rebase: 273 files passed. 2,656 Assertions passed. 39
   intentional skips. One unrelated 256 MiB history timing assertion first
   measured 55.53 ms against its 50 ms budget, then passed alone and in the
   complete rerun.
 - Post-rebase full Desktop regression on the IDE-07/rc.25 main line: 274 files
-  passed; 2,658 assertions passed; 39 intentional skips.
+  passed. 2,658 Assertions passed. 39 Intentional skips.
 - Behavior-contract registry: 36 assertions passed.
 - IDE schema/authority boundary: pass.
 - Production workbench and lazy editor-island builds: pass.
@@ -70,7 +70,7 @@ theme re-import, model migration, or persisted-data migration.
   energy-blue active/focus treatment mounted consistently in the real Files
   workbench.
 - Contrast on `#05070d`: primary 18.13:1, muted 9.54:1, faint 6.38:1,
-  energy blue 5.48:1; retained Tokyo syntax roles range from 7.61:1 to 11.74:1.
+  energy blue 5.48:1. Retained Tokyo syntax roles range from 7.61:1 to 11.74:1.
 - `vp lint --quiet` and `git diff --check`: pass.
 
 ## CLAIM-RELEASE

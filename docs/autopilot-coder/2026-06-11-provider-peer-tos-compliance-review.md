@@ -1,7 +1,7 @@
 # Provider-Peer ToS-Compliance Review — OpenAI/ChatGPT-Codex, Anthropic, Google Gemini
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-11. Rung: M13 (#4771) of
@@ -30,7 +30,7 @@ foreclose even that, the product narrows honestly for that provider.
 
 This review evaluates three connection shapes per provider:
 
-1. **API-key BYOK** — the user pastes their own provider API key; the
+1. **API-key BYOK** — the user pastes their own provider API key. The
    platform stores it as a secret ref and uses it only for that
    user's runs.
 2. **Subscription-account connect** — the user signs into their
@@ -49,11 +49,11 @@ This review evaluates three connection shapes per provider:
 flow (`/api/provider-accounts/chatgpt-codex/device-login/*`), which is
 OpenAI's own published auth flow for Codex
 (`https://auth.openai.com/codex/device`). The user authenticates their
-own ChatGPT/Codex account through OpenAI's own device-code ceremony;
+own ChatGPT/Codex account through OpenAI's own device-code ceremony.
 the platform never captures the user's password and the resulting
 credential drives Codex — the product OpenAI built that credential
 for. OpenAI also documents API-key auth (`OPENAI_API_KEY` /
-`CODEX_API_KEY`) for programmatic Codex use; the CX1 review
+`CODEX_API_KEY`) for programmatic Codex use. The CX1 review
 (2026-06-11, `apps/pylon/docs/codex-bridge.md`) already cleared both
 key sources and the owner's own `codex login` for owner-jobs.
 
@@ -64,7 +64,7 @@ key sources and the owner's own `codex login` for owner-jobs.
   their team's own connected pool — never a cross-customer pool.
 - The CX1 scope boundary stands: serving *other people's* jobs on
   subscription-login auth raises resale questions that remain
-  uncleared; provider-mode (Lane C / P6) work on subscription auth is
+  uncleared. Provider-mode (Lane C / P6) work on subscription auth is
   blocked pending its own review. API-key sources are the safe
   default for provider-mode work.
 - No resale metering: the platform charges for agentic work and
@@ -74,7 +74,7 @@ key sources and the owner's own `codex login` for owner-jobs.
 **Verdict:** device-login connect for the user's own runs — compliant
 as shipped. Multi-account rotation within the user's own accounts —
 compliant (the accounts are all the user's own identity). Background
-usage — Codex is built for delegated background work; compliant.
+usage — Codex is built for delegated background work. Compliant.
 
 ### 2. Anthropic
 
@@ -109,7 +109,7 @@ usage — Codex is built for delegated background work; compliant.
 **Per-shape conclusions:**
 
 - **API-key BYOK: COMPLIANT.** The user creates their own Claude
-  Console API key and connects it; the platform uses it only for that
+  Console API key and connects it. The platform uses it only for that
   user's runs (Claude API / Claude Agent SDK executor lanes). This is
   the exact shape Anthropic's documentation prescribes for products
   built on the Agent SDK. Design constraints bound: the key is
@@ -121,7 +121,7 @@ usage — Codex is built for delegated background work; compliant.
   explicitly forbids third parties offering Claude.ai login or
   routing requests through Free/Pro/Max credentials on behalf of
   users, and enforces without notice. There is no "user consents"
-  carve-out; the prohibition runs against the third-party developer.
+  carve-out. The prohibition runs against the third-party developer.
 - **Multi-account routing:** compliant only across the user's own
   connected API keys (e.g., personal + team workspace keys). Pooling
   keys across customers, or platform-held keys resold as user
@@ -141,7 +141,7 @@ usage — Codex is built for delegated background work; compliant.
   govern API-key access for "developers building with Google AI
   models for professional or business purposes." They contain no
   prohibition on a user authorizing a third-party platform to call
-  the API with the user's own key; the standard developer obligations
+  the API with the user's own key. The standard developer obligations
   (key confidentiality, Prohibited Use Policy, age limits) apply.
 - Google explicitly distinguishes the OAuth/subscription path: using
   third-party software to access the services powering Gemini CLI /
@@ -155,7 +155,7 @@ usage — Codex is built for delegated background work; compliant.
 - Operational note: Google is migrating Gemini API "standard" keys to
   service-account-bound "auth" keys, with standard keys rejected from
   September 2026. Key format and validation must therefore stay
-  opaque on our side — store, redact, and probe; never pattern-gate
+  opaque on our side — store, redact, and probe. Never pattern-gate
   beyond redaction-safety bounds.
 
 **Per-shape conclusions:**
@@ -171,18 +171,18 @@ usage — Codex is built for delegated background work; compliant.
   terms violation and suspends accounts, including paying
   subscribers.
 - **Multi-account routing / background usage:** compliant across the
-  user's own keys; unattended programmatic use is the API's intended
+  user's own keys. Unattended programmatic use is the API's intended
   shape. The existing platform-key Gemini broker
   (`GEMINI_API_KEY` worker secret, token-usage-metered) is the
   platform acting as its own Gemini API customer for platform-paid
-  usage — a separate, already-bounded lane; it is not account
+  usage — a separate, already-bounded lane. It is not account
   leasing and is unaffected by this review.
 
 ## Summary table
 
 | Provider | API-key BYOK connect | Subscription-account connect | Multi-account routing (own accounts) | Delegated/background |
 | --- | --- | --- | --- | --- |
-| OpenAI / ChatGPT-Codex | Compliant (CX1) | Compliant via OpenAI's own Codex device-login only; owner-jobs scope | Compliant | Compliant |
+| OpenAI / ChatGPT-Codex | Compliant (CX1) | Compliant via OpenAI's own Codex device-login only. Owner-jobs scope | Compliant | Compliant |
 | Anthropic | **Compliant — build** | **Forbidden — do not build** | Compliant (own keys only) | Compliant (API keys) |
 | Google Gemini | **Compliant — build** | **Forbidden — do not build** | Compliant (own keys only) | Compliant (API keys) |
 
@@ -198,29 +198,29 @@ usage — Codex is built for delegated background work; compliant.
    requesting user/team's own connected accounts
    (`provider-account-lease-policy.ts`, provider-tagged candidates).
 3. **Redaction law unchanged:** raw keys live only in the auth KV
-   under `provider-auth:<providerAccountRef>`; D1 rows, projections,
+   under `provider-auth:<providerAccountRef>`. D1 rows, projections,
    events, grants, logs, tests, and fixtures carry secret refs only
    (`@openagentsinc/provider-account-schema` markers cover `sk-ant-*`
    via the `sk-` marker, `AIza*`, `ANTHROPIC_API_KEY=`,
    `GEMINI_API_KEY=`).
 4. **Honest copy:** a provider is described as connectable, not
    "supported", until a real run consumes a leased account
-   end-to-end; executor copy says "Claude Agent" (never
+   end-to-end. Executor copy says "Claude Agent" (never
    "Claude Code") for the Anthropic lane.
 5. **No resale metering:** the platform bills for agentic work and
-   accepted outcomes; connected-key inference is billed by the
+   accepted outcomes. Connected-key inference is billed by the
    provider to the user's own provider account
    (INVARIANTS.md, Provider Capacity Marketplace Gate, unchanged).
 
 ## Sources
 
 - https://code.claude.com/docs/en/legal-and-compliance (fetched
-  2026-06-11; "Authentication and credential use" quoted above)
+  2026-06-11. "Authentication and credential use" quoted above)
 - https://www.anthropic.com/legal/commercial-terms /
   https://www.anthropic.com/legal/consumer-terms (linked from the
   page above as the governing agreements)
 - https://www.theregister.com/2026/02/20/anthropic_clarifies_ban_third_party_claude_access/
-- https://ai.google.dev/gemini-api/terms (fetched 2026-06-11; last
+- https://ai.google.dev/gemini-api/terms (fetched 2026-06-11, last
   updated 2026-03-23)
 - https://google-gemini.github.io/gemini-cli/docs/tos-privacy.html
   (per-auth-method governing terms)

@@ -43,7 +43,7 @@ Reference sources in the archive (study, do not copy verbatim):
 
 What we bring back from Onyx:
 
-1. **Press-and-hold push-to-talk.** Press to start recording; release to stop
+1. **Press-and-hold push-to-talk.** Press to start recording. Release to stop
    and transcribe. A quick tap (below a minimum hold time, ~200ms in Onyx) is
    discarded as an accidental tap rather than sent. Onyx's `VoiceSession`
    state machine is the model:
@@ -56,12 +56,12 @@ What we bring back from Onyx:
    - Success — green (`hsl(120, 60%, 50%)`)
    - Idle — neutral dim (dark theme)
 3. **A single, calm, dark screen** with a large central press-to-talk control.
-   The archive itself has **no animated background**; the animated background is
+   The archive itself has **no animated background**. The animated background is
    the *new* aesthetic direction for Khala (a quiet, "alive" backdrop that
    reacts to voice state — see Section 4). It must stay subtle and dark, not a
    marketing gradient.
 
-(There was no React-Native/Expo Onyx app in the archive; the "translate Onyx's
+(There was no React-Native/Expo Onyx app in the archive, the "translate Onyx's
 UI/UX into SwiftUI" intent is satisfied by re-creating its press-and-hold voice
 loop and color-coded state in SwiftUI, plus the new animated backdrop.)
 
@@ -111,13 +111,13 @@ back to [idle]
 - **Animated background (new):** a subtle, dark, "alive" backdrop built with
   native SwiftUI drawing — e.g. `TimelineView` + `Canvas`, a `Shape` with an
   animated path, or `MeshGradient`/`AngularGradient` animation. It should:
-  - idle: slow, low-amplitude ambient motion;
-  - recording: react to live mic amplitude (breathe/expand with the voice);
-  - transcribing: a steady "thinking" motion;
+  - idle: slow, low-amplitude ambient motion.
+  - recording: react to live mic amplitude (breathe/expand with the voice).
+  - transcribing: a steady "thinking" motion.
   - stay within the dark, operational aesthetic (no bright marketing look).
   - **No third-party graphics deps.** SwiftUI `Canvas`/`TimelineView` only for
-    v1; a richer Metal/visualizer pass is a roadmap item.
-- **Typography:** system font; keep it minimal and legible on dark.
+    v1. A richer Metal/visualizer pass is a roadmap item.
+- **Typography:** system font. Keep it minimal and legible on dark.
 
 ## 5. Khala API contract
 
@@ -139,9 +139,9 @@ The app talks to the public Khala inference endpoint. Source of truth:
   }
   ```
 
-- **Response:** OpenAI-style chat completion; read
+- **Response:** OpenAI-style chat completion. Read
   `choices[0].message.content`.
-- **Streaming (later):** `"stream": true` returns SSE. v1 is **non-stream**;
+- **Streaming (later):** `"stream": true` returns SSE. v1 is **non-stream**.
   streaming is a roadmap item.
 - **Quota / errors:** free tier is rate/token limited (per the live contract,
   currently ~2,000 requests/day · 2,500,000 tokens/day, UTC reset). Over quota
@@ -204,7 +204,7 @@ is pure local Xcode:
 
 - **Build/run locally:** open `clients/khala-ios/Khala/Khala.xcodeproj` in Xcode
   and run on a simulator or device. (The project is generated via `xcodegen`
-  from `clients/khala-ios/Khala/project.yml`; run `xcodegen generate` in
+  from `clients/khala-ios/Khala/project.yml`. Run `xcodegen generate` in
   `clients/khala-ios/Khala/` first if the `.xcodeproj` is absent — see the app
   README.)
 - **Archive → TestFlight:** local `xcodebuild archive` + `-exportArchive`, then

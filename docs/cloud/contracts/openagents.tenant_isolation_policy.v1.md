@@ -10,7 +10,7 @@ running managed remote execution on OpenAgents Cloud. No session for an external
 tenant may be provisioned until each requirement in this contract is met.
 
 This is private managed-cloud infrastructure. Public contributor Pylon should
-only see refs, digests, and public-safe tenant shape; it must not learn raw
+only see refs, digests, and public-safe tenant shape. It must not learn raw
 tenant identifiers, internal user ids, email addresses, IP addresses,
 WorkOS-internal cursor tokens, raw org ids, credentials, fleet topology, or
 placement details.
@@ -21,14 +21,14 @@ placement details.
 checklist and ongoing enforcement contract for:
 
 - authenticating external tenants via WorkOS and mapping them to stable,
-  redacted refs;
+  redacted refs.
 - isolating each session in a dedicated ephemeral VM (v1) or microVM (v2+)
-  with no shared kernel or shared storage across tenants;
-- capping per-tenant spend, active sessions, and lease slots before allocation;
-- restricting outbound network access to a declared allowlist per session;
-- prohibiting classes of use that violate platform policy;
-- detecting abuse patterns and providing a synchronous kill switch;
-- producing redacted, auditable evidence for every enforcement decision;
+  with no shared kernel or shared storage across tenants.
+- capping per-tenant spend, active sessions, and lease slots before allocation.
+- restricting outbound network access to a declared allowlist per session.
+- prohibiting classes of use that violate platform policy.
+- detecting abuse patterns and providing a synchronous kill switch.
+- producing redacted, auditable evidence for every enforcement decision.
 - retaining only refs-only projections that contain no raw tenant identifiers,
   IPs, or credentials.
 
@@ -71,10 +71,10 @@ This contract enforces that rule for every external session. Sessions running
 under `danger_full_access` are only admitted when:
 
 - the session VM is externally isolated (no shared kernel or storage with any
-  other session or tenant);
-- the workroom carries no wallet authority;
-- the workroom carries no broad host or cloud credentials;
-- provider auth is session-scoped and expires with the VM lease;
+  other session or tenant).
+- the workroom carries no wallet authority.
+- the workroom carries no broad host or cloud credentials.
+- provider auth is session-scoped and expires with the VM lease.
 - a cleanup receipt is required before the session is declared closed.
 
 ## Tenant Identity
@@ -166,10 +166,10 @@ A later revision of this contract will permit Firecracker microVM isolation as
 a lower-latency alternative to full Compute Engine VMs, provided:
 
 - each microVM runs on a dedicated bare-metal or physical-host-isolated worker
-  node that is not shared with other tenants at the hypervisor level;
+  node that is not shared with other tenants at the hypervisor level.
 - the microVM lifecycle, firewall, and cleanup receipt requirements in
   `openagents.gce_capacity_class.v1` (or a successor microVM capacity class)
-  are fully satisfied;
+  are fully satisfied.
 - the same no-shared-kernel, no-shared-storage, and no-cross-tenant-network
   guarantees apply.
 
@@ -208,7 +208,7 @@ Spend caps are enforced in layers:
 
 | Cap Layer | Scope | Enforcement Point |
 | --- | --- | --- |
-| Per-session resource budget | Single session VM | Before VM acquire; re-checked at heartbeat |
+| Per-session resource budget | Single session VM | Before VM acquire. Re-checked at heartbeat |
 | Per-tenant daily compute budget | Tenant × calendar day (UTC) | Before VM acquire |
 | Per-tenant monthly compute budget | Tenant × calendar month (UTC) | Before VM acquire |
 | Org-tier hard ceiling | All sessions under `org_tier` | Before VM acquire |
@@ -289,11 +289,11 @@ The default allowlist for an external tenant session permits:
 
 | Destination Class | Permitted Endpoints |
 | --- | --- |
-| Managed DNS resolver | Cloud-controlled recursive resolver only; no direct port-53 to arbitrary hosts |
+| Managed DNS resolver | Cloud-controlled recursive resolver only. No direct port-53 to arbitrary hosts |
 | Model provider APIs | Declared provider domains from `allowed_model_endpoints` in the plan policy, e.g. `api.anthropic.com`, `api.openai.com` |
 | OpenAgents local gateways | Link-local gateway paths under `/openagents/` on the node sidecar |
 | Cloud artifact store | Declared artifact sink ref from the workroom policy |
-| Package mirrors (optional) | Declared, content-addressed package mirror refs in the session policy; not enabled by default |
+| Package mirrors (optional) | Declared, content-addressed package mirror refs in the session policy. Not enabled by default |
 | GitHub (Codex workrooms only) | `github.com` and `api.github.com` only when a scoped Codex auth grant is active |
 
 All other outbound destinations are denied by default. Requests to denied
@@ -348,13 +348,13 @@ and raw firewall rule names must not appear in egress-denied events.
 Managed remote execution is permitted only for the following workload classes:
 
 - agentic software development tasks (code generation, testing, review,
-  debugging, refactoring);
+  debugging, refactoring).
 - benchmark evaluation and capability assessment runs with declared inputs,
-  policies, and required outputs;
+  policies, and required outputs.
 - data processing and analysis tasks that operate on tenant-supplied or
-  tenant-authorized data;
+  tenant-authorized data.
 - model inference and orchestration tasks using declared model provider
-  endpoints;
+  endpoints.
 - artifact production tasks with declared artifact policies and closeout
   requirements.
 
@@ -363,19 +363,19 @@ Managed remote execution is permitted only for the following workload classes:
 The following activities are prohibited and constitute grounds for immediate
 session termination and tenant suspension:
 
-- cryptocurrency mining or proof-of-work computation;
+- cryptocurrency mining or proof-of-work computation.
 - network scanning, port scanning, or reconnaissance of infrastructure not
-  owned or authorized by the tenant;
+  owned or authorized by the tenant.
 - exploitation of vulnerabilities in systems not owned or authorized by the
-  tenant;
-- distributed denial-of-service (DDoS) or volumetric attack activity;
+  tenant.
+- distributed denial-of-service (DDoS) or volumetric attack activity.
 - exfiltration of data from other tenants, Cloud infrastructure, or
-  OpenAgents systems;
+  OpenAgents systems.
 - attempts to escape the session VM boundary or access host-level resources
-  not granted by policy;
+  not granted by policy.
 - generation or distribution of content that violates applicable law or
-  OpenAgents terms of service;
-- use of the session VM as a proxy or relay for prohibited traffic;
+  OpenAgents terms of service.
+- use of the session VM as a proxy or relay for prohibited traffic.
 - any action designed to circumvent spend caps, session caps, egress policy,
   or abuse detection.
 
@@ -434,10 +434,10 @@ addresses, raw domain names, or raw WorkOS user identifiers.
 
 | Severity | Default Automated Response |
 | --- | --- |
-| `low` | Monitor; append abuse-signal event; no session impact |
-| `medium` | Throttle session; cap heartbeat refresh rate; alert ops |
-| `high` | Terminate the triggering session; deny new sessions until human review |
-| `critical` | Invoke kill switch; suspend tenant immediately; alert ops with high-priority page |
+| `low` | Monitor. Append abuse-signal event. No session impact |
+| `medium` | Throttle session. Cap heartbeat refresh rate. Alert ops |
+| `high` | Terminate the triggering session. Deny new sessions until human review |
+| `critical` | Invoke kill switch. Suspend tenant immediately. Alert ops with high-priority page |
 
 ### Kill Switch
 
@@ -448,7 +448,7 @@ Kill switch activation:
 
 1. The Cloud control plane marks the tenant ref as `suspended` in the
    tenant-state store.
-2. All active sessions for the tenant receive a `policy` release signal; their
+2. All active sessions for the tenant receive a `policy` release signal. Their
    VM leases transition to `release` via the `openagents.gce_capacity_class.v1`
    release path.
 3. All pending session requests for the tenant are denied with `tenant_suspended`
@@ -460,8 +460,8 @@ Kill switch activation:
 
 Kill switch invocation is available to:
 
-- Cloud automated abuse detection at `critical` severity;
-- Cloud operations staff via an authenticated internal control-plane action;
+- Cloud automated abuse detection at `critical` severity.
+- Cloud operations staff via an authenticated internal control-plane action.
 - WorkOS-triggered account suspension events received through a verified
   webhook.
 
@@ -540,12 +540,12 @@ paths applies to all durable persistence for external tenant sessions.
 Audit evidence must be sufficient for a Cloud operator or compliance reviewer
 to determine:
 
-- which tenant (by `tenant_ref`) requested a session;
-- which caps were checked and what the outcome was;
-- which session VM was provisioned (by `lease_ref` and `instance_ref`);
-- what capabilities were attached and revoked;
-- whether any egress denials or abuse signals occurred;
-- whether the session was released normally or via a kill switch;
+- which tenant (by `tenant_ref`) requested a session.
+- which caps were checked and what the outcome was.
+- which session VM was provisioned (by `lease_ref` and `instance_ref`).
+- what capabilities were attached and revoked.
+- whether any egress denials or abuse signals occurred.
+- whether the session was released normally or via a kill switch.
 - whether cleanup receipts were issued for all provisioned resources.
 
 This determination must be possible using only refs, digests, bounded enum
@@ -556,7 +556,7 @@ raw tenant identity material, raw IP addresses, or raw credential material.
 
 Audit evidence is retained in the receipt sink identified by
 `receipt_sink_ref` for no less than the period required by platform compliance
-policy. Evidence digests are sufficient for cross-referencing; raw secret
+policy. Evidence digests are sufficient for cross-referencing. Raw secret
 material must not be retained beyond the session VM lifetime.
 
 ## Refs-Only Retained Projections

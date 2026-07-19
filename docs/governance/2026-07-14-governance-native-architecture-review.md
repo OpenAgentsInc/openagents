@@ -6,7 +6,7 @@
 
 ---
 
-## TL;DR
+## TL.DR
 
 The Smith paper's core thesis is that programmable systems fail not at the execution layer but at the **governance layer** — the continuous, machine-speed coordination of authority, permissions, identity, and policy across interoperable systems. The OpenAgents repo is already building in exactly this layer. The gaps below are architectural omissions, not directional errors. This document is a prioritized action list.
 
@@ -143,9 +143,9 @@ That insight should be retained. The submitted priority stack should not be
 adopted as the OpenAgents implementation roadmap, however. It mixes three
 different categories of statement without consistently separating them:
 
-1. accurate descriptions of controls that already exist in OpenAgents;
+1. accurate descriptions of controls that already exist in OpenAgents.
 2. useful but incomplete design directions, especially around mid-run
-   revocation and runtime observability; and
+   revocation and runtime observability. And
 3. recommendations that conflict with current product scope or established
    authority boundaries, particularly mandatory relay governance, mandatory
    Nostr identity binding, revival of NIP-AC-shaped money semantics, and a
@@ -165,22 +165,22 @@ names (`9c65c7a`) and with the authority boundaries that remain on current
 
 - the [root invariant ledger](../../INVARIANTS.md), particularly Authority
   Boundaries, Background Agent Definition Tool Authority, Desktop Release
-  Artifact Authority, live-agent projection, and Retired Client Boundary;
+  Artifact Authority, live-agent projection, and Retired Client Boundary.
 - the shared
   [`openagents.agent_definition.v1` contract](../../packages/agent-runtime-schema/src/index.ts)
-  and its deny-by-default tool-policy compiler;
+  and its deny-by-default tool-policy compiler.
 - the Worker
   [definition routes](../../apps/openagents.com/workers/api/src/agent-definition-routes.ts),
   [run dispatch](../../apps/openagents.com/workers/api/src/agent-definition-run-routes.ts),
   and
-  [trigger store](../../apps/openagents.com/workers/api/src/agent-definition-trigger-store.ts);
+  [trigger store](../../apps/openagents.com/workers/api/src/agent-definition-trigger-store.ts).
 - the [Nostr relay contract](../../apps/nostr-relay/README.md) and
-  [market transport policy](../../apps/nostr-relay/src/market-policy.ts);
+  [market transport policy](../../apps/nostr-relay/src/market-policy.ts).
 - the [NIP draft status](../nips/README.md), which explicitly says those drafts
-  are postponed and must not currently drive new work;
+  are postponed and must not currently drive new work.
 - the shared
   [`openagents.live_agent_graph.v1` schema](../../packages/agent-runtime-schema/src/live-agent-graph.ts)
-  and its Desktop/Sync consumers; and
+  and its Desktop/Sync consumers. And
 - the [CUT-26 installed-artifact closure](../sol/2026-07-12-cut-26-rc5-installed-artifact-closure.md)
   plus the later client-removal invariants.
 
@@ -231,10 +231,10 @@ The submission accurately identifies
 `compileAgentDefinitionToolRuntimePolicy` as important primitives. The current
 contract does more than attach a list of tools to an agent:
 
-- explicit deny rules take precedence over ask and allow rules;
-- ask rules create an operator-escalation outcome without authorizing the tool;
-- an allow applies only to the matched typed tool reference;
-- unmatched tools are denied; and
+- explicit deny rules take precedence over ask and allow rules.
+- ask rules create an operator-escalation outcome without authorizing the tool.
+- an allow applies only to the matched typed tool reference.
+- unmatched tools are denied. And
 - the harness name is never itself authority.
 
 This is a good example of deterministic authorization before execution. It is
@@ -256,10 +256,10 @@ design work.
 The existing background-agent scheduler enforces typed limits rather than
 merely displaying configuration:
 
-- invalid budgets are refused;
-- `maxRunsPerDay` is checked against owner-and-definition usage;
-- `maxCreditsPerDay`, when present, is checked before dispatch;
-- `maxRunSeconds` becomes an assignment timeout; and
+- invalid budgets are refused.
+- `maxRunsPerDay` is checked against owner-and-definition usage.
+- `maxCreditsPerDay`, when present, is checked before dispatch.
+- `maxRunSeconds` becomes an assignment timeout. And
 - the third consecutive failed or refused trigger attempt atomically pauses the
   trigger.
 
@@ -282,7 +282,7 @@ The submission correctly recognizes that OpenAgents chose to retire incomplete
 money surfaces rather than leave ambiguous partial authority in production.
 Under VP-1, payments, markets, tipping, wallet custody, billing credits, payout,
 and settlement are outside the accepted MVP. Retained migrations, protocol
-drafts, receipt records, and historical state are recovery or design evidence;
+drafts, receipt records, and historical state are recovery or design evidence.
 they are not live authority.
 
 This has a direct consequence the original review does not carry through to its
@@ -296,7 +296,7 @@ The preserved NIP documents remain useful interoperability research, but their
 README explicitly marks them postponed and says not to route new work from them
 until the canonical roadmap or owner reactivates the lane.
 
-#### 5. Owned CI is a repo policy; the paper analogy should remain an analogy
+#### 5. Owned CI is a repo policy. The paper analogy should remain an analogy
 
 The factual statement is correct: this repository forbids GitHub-hosted CI and
 runs automation on OpenAgents-owned infrastructure. That gives the project
@@ -386,12 +386,12 @@ systems:
 
 - `openagents.live_agent_graph.v1` carries stable run and agent references,
   provider/runtime/tool facts, status, attention, terminal state, versions,
-  cursors, and typed edges;
+  cursors, and typed edges.
 - definition-trigger rows expose enable/pause state, pause reason,
-  `next_run_at`, and consecutive failures;
+  `next_run_at`, and consecutive failures.
 - runtime events expose typed start, pause, interruption, cancellation,
-  failure, and completion facts;
-- exact token accounting exists for supported completed turns; and
+  failure, and completion facts.
+- exact token accounting exists for supported completed turns. And
 - compiled tool policies and assignment timeouts exist at their enforcement
   boundaries.
 
@@ -408,15 +408,15 @@ design rather than the memo's proposed name.
 
 At minimum, a credible projection needs:
 
-- an exact owner/tenant-safe run reference;
-- the definition ID plus immutable definition revision or digest;
-- the compiled tool-policy digest actually acknowledged by the executor;
-- the configured wall-clock and dispatch limits;
+- an exact owner/tenant-safe run reference.
+- the definition ID plus immutable definition revision or digest.
+- the compiled tool-policy digest actually acknowledged by the executor.
+- the configured wall-clock and dispatch limits.
 - exact observed usage with an explicit completeness state, never an estimate
-  presented as current truth;
-- trigger failure streak and pause/breaker state;
-- policy-delivery and executor-acknowledgement state;
-- `observedAt`, freshness bounds, and typed unavailable/stale reasons; and
+  presented as current truth.
+- trigger failure streak and pause/breaker state.
+- policy-delivery and executor-acknowledgement state.
+- `observedAt`, freshness bounds, and typed unavailable/stale reasons. And
 - public/private redaction rules that exclude raw tool arguments, secrets,
   prompts, credentials, account identifiers, and private paths.
 
@@ -510,13 +510,13 @@ If cross-system identity binding becomes necessary, the shared abstraction
 should be transport-neutral and should reference—not copy—the authoritative
 policy. A possible conceptual shape would include:
 
-- subject identity scheme and subject identifier;
-- issuer and audience;
-- owner/tenant scope;
-- agent definition ID and immutable revision;
-- compiled policy digest;
-- issued/effective/expiry times;
-- revocation reference and resolver policy; and
+- subject identity scheme and subject identifier.
+- issuer and audience.
+- owner/tenant scope.
+- agent definition ID and immutable revision.
+- compiled policy digest.
+- issued/effective/expiry times.
+- revocation reference and resolver policy. And
 - proof or signature references appropriate to the selected identity scheme.
 
 A Nostr adapter could produce or verify that generic binding for a Nostr market
@@ -565,7 +565,7 @@ Hard deterministic ceilings should come before statistical anomaly scoring.
 For every supported signal, the system should define an exact window, cap,
 owner scope, reset rule, persistence rule, and fail-closed outcome. Anomaly
 detection can then operate as an additional conservative signal with explicit
-false-positive handling; it must not be the only containment mechanism.
+false-positive handling. It must not be the only containment mechanism.
 
 An operator acknowledgement should clear only the anomaly hold. It must never
 override an exhausted hard cap, expired authority, revoked policy, unsafe
@@ -580,10 +580,10 @@ controls already present and obscures the actual observability problem.
 This recommendation is based on an incorrect temporal and product premise. At
 the cited repo snapshot:
 
-- the legacy desktop lockout was already armed by default;
+- the legacy desktop lockout was already armed by default.
 - CUT-26 was already closed with a signed, notarized, stapled, installed, and
-  production-feed-verified OpenAgents Desktop artifact;
-- `apps/autopilot-desktop` had been deleted by owner direction; and
+  production-feed-verified OpenAgents Desktop artifact.
+- `apps/autopilot-desktop` had been deleted by owner direction. And
 - the new `openagents.agent_definition.v1` state was not a legacy
   Autopilot-Desktop-owned data model awaiting export.
 
@@ -656,7 +656,7 @@ state.
 
 The system should publish a tested enforcement-capability matrix rather than
 pretend every harness offers the same hooks. One adapter may enforce policy at
-each OpenAgents tool dispatch; another may only observe provider-native events
+each OpenAgents tool dispatch. Another may only observe provider-native events
 and cancel a whole turn. The fallback behavior must be explicit and honest.
 
 #### Formal model and regression conversion
@@ -690,7 +690,7 @@ workstream, the safe local order is:
 | 5 | Transport-neutral authority binding for a concrete cross-system path | Deferred until a real path requires it |
 | 6 | NIP-90 governance/credit envelope and market admission | Deferred unless market and money authority are explicitly reactivated |
 | — | Mandatory Nostr binding for every definition-backed run | Reject |
-| — | Legacy Autopilot export/import migration program | Close; no action |
+| — | Legacy Autopilot export/import migration program | Close. No action |
 
 This order deliberately puts enforceable revision semantics before visibility.
 A dashboard should not become the first implementation of a policy concept it
@@ -758,7 +758,7 @@ commitments.
 The preserved submission describes the Smith paper as a May 2026 paper. The
 canonical [SSRN record](https://ssrn.com/abstract=6864258) lists Jay Smith as
 the author, June 1, 2026 as the written date, and June 18, 2026 as the posting
-date. The original 127-line submission remains unchanged for provenance; this
+date. The original 127-line submission remains unchanged for provenance. This
 addendum records the correction rather than silently rewriting the imported
 text.
 

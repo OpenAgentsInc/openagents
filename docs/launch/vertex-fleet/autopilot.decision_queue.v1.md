@@ -19,7 +19,7 @@ dereferenceable closeout row that is stable under client retry. The receipt is
 still evidence-only: it records the review command closeout and grants no
 deploy, spend, continuation, payout, settlement, or publication authority.
 
-No promise state changes; cross-client desktop/web/mobile exactly-once live
+No promise state changes. Cross-client desktop/web/mobile exactly-once live
 proof remains open.
 
 ---
@@ -32,14 +32,14 @@ proof remains open.
 
 | File | Purpose |
 |---|---|
-| `apps/openagents.com/workers/api/src/autopilot-decision-closeout-ledger.ts` | `createAutopilotDecisionCloseoutLedger()` — the storage + audit-index layer the worker-api closeout receipt was missing. `buildAutopilotDecisionCloseoutReceipt` already produces ONE verifiable closeout per `actOnDecision` review resolution, but those receipts had nowhere to accumulate, so no audit could answer "which queued decisions were closed out, by whom, with what outcome?". This in-memory ledger keys on the receipt's exactly-once `closeoutRef` and mirrors the protocol-side `createDecisionCloseoutLedger` contract — EXCEPT it understands the live review path's applied↔duplicate distinction: an idempotent replay produces the SAME `closeoutRef` but a different `outcome`/`decidedAt`/`line`, which a naive line-equality dedup (what the remote ledger does) would mis-flag as a conflict. Instead it converges on the closeout's stable IDENTITY (decision/work-order/action/state/actor/refs), so a replay is `deduped: true` (keeping the canonical `applied` record) while a genuinely different second closeout for the same `closeoutRef` is refused (`conflict`). Validates on append; serves `get` / `byWorkOrder` / `byActor` / `byOutcome` / `summary`; snapshots are mutation-safe. Pure + in-memory so a D1/KV store can wrap the same contract later without changing callers. |
+| `apps/openagents.com/workers/api/src/autopilot-decision-closeout-ledger.ts` | `createAutopilotDecisionCloseoutLedger()` — the storage + audit-index layer the worker-api closeout receipt was missing. `buildAutopilotDecisionCloseoutReceipt` already produces ONE verifiable closeout per `actOnDecision` review resolution, but those receipts had nowhere to accumulate, so no audit could answer "which queued decisions were closed out, by whom, with what outcome?". This in-memory ledger keys on the receipt's exactly-once `closeoutRef` and mirrors the protocol-side `createDecisionCloseoutLedger` contract — EXCEPT it understands the live review path's applied↔duplicate distinction: an idempotent replay produces the SAME `closeoutRef` but a different `outcome`/`decidedAt`/`line`, which a naive line-equality dedup (what the remote ledger does) would mis-flag as a conflict. Instead it converges on the closeout's stable IDENTITY (decision/work-order/action/state/actor/refs), so a replay is `deduped: true` (keeping the canonical `applied` record) while a genuinely different second closeout for the same `closeoutRef` is refused (`conflict`). Validates on append. Serves `get` / `byWorkOrder` / `byActor` / `byOutcome` / `summary`. Snapshots are mutation-safe. Pure + in-memory so a D1/KV store can wrap the same contract later without changing callers. |
 | `apps/openagents.com/workers/api/src/autopilot-decision-closeout-ledger.test.ts` | 9 tests: empty state, record/get, invalid rejection, applied→duplicate replay convergence (no growth, canonical applied kept), conflict refusal for a differing same-`closeoutRef` closeout, audit slices by work order / actor / outcome, summary by outcome+action, mutation-safe snapshots, ledger isolation. |
 
 **What it proves:** the live review-path closeout receipt is now genuinely
 *accumulable and auditable* — the missing half of "receipt-backed". A reviewer
 can record every resolution into one ledger, replays converge to one canonical
 closeout, and conflicting closeouts are refused, all enforced once in a pure,
-test-backed place. No promise state changes; no persistence/HTTP wiring is
+test-backed place. No promise state changes. No persistence/HTTP wiring is
 claimed (see "What remains").
 
 ---
@@ -52,11 +52,11 @@ claimed (see "What remains").
 
 | File | Purpose |
 |---|---|
-| `apps/openagents.com/workers/api/src/autopilot-decision-closeout.ts` | `buildAutopilotDecisionCloseoutReceipt()` + `validateAutopilotDecisionCloseoutReceipt()` — the canonical, tamper-verifiable closeout receipt for the ONE decision-queue act that is actually wired today: `autopilot-decision-routes.ts#actOnDecision` (the work-order review accept / reject / request_changes path). Until now that live HTTP route recorded a review decision and returned the projection but emitted **no closeout artifact** — nothing a later audit could dereference. The protocol-side `DecisionCloseoutReceipt` covers the *remote Pylon-bridge* path, a different surface unreachable from the worker-api review store. This receipt mirrors that contract (deterministic `line` reconstructed by the validator so any field tamper invalidates it; `closeoutRef` exactly-once key that is IDENTICAL across an idempotent replay, so a downstream ledger records one closeout per decision; public-safe `receiptRefs` only). |
+| `apps/openagents.com/workers/api/src/autopilot-decision-closeout.ts` | `buildAutopilotDecisionCloseoutReceipt()` + `validateAutopilotDecisionCloseoutReceipt()` — the canonical, tamper-verifiable closeout receipt for the ONE decision-queue act that is actually wired today: `autopilot-decision-routes.ts#actOnDecision` (the work-order review accept / reject / request_changes path). Until now that live HTTP route recorded a review decision and returned the projection but emitted **no closeout artifact** — nothing a later audit could dereference. The protocol-side `DecisionCloseoutReceipt` covers the *remote Pylon-bridge* path, a different surface unreachable from the worker-api review store. This receipt mirrors that contract (deterministic `line` reconstructed by the validator so any field tamper invalidates it, `closeoutRef` exactly-once key that is IDENTICAL across an idempotent replay, so a downstream ledger records one closeout per decision, public-safe `receiptRefs` only). |
 | `apps/openagents.com/workers/api/src/autopilot-decision-closeout.test.ts` | 11 tests: applied vs duplicate classification, stable exactly-once `closeoutRef` across replay, action→resolvedState mapping for all three actions, public-safe ref normalization (trim/dedupe/sort/reject-unsafe), and validator tamper-detection (non-object, tampered outcome, action/state mismatch, unknown action, forged line). |
 
 **Wiring (minimal, additive):** `actOnDecision` now builds the closeout and
-returns it under a new `closeout` field on the act response (status unchanged;
+returns it under a new `closeout` field on the act response (status unchanged,
 existing route tests still pass — the field is additive). This makes the live
 review path genuinely receipt-backed end-to-end through the HTTP surface, not
 just a standalone builder. No promise state changes.
@@ -76,14 +76,14 @@ remote-bridge receipt's own persistence + a live paired-node proof.
 
 | File | Purpose |
 |---|---|
-| `apps/openagents.com/workers/api/src/autopilot-decision-act-routing.ts` | `classifyAutopilotDecisionActRoute()` — the branch decision the queue route is missing. `autopilot-decision-routes.ts#actOnDecision` hard-codes a single path (only `approve_pr_draft` → work-order review store; everything else rejected). The full-vocabulary act contract (`authorizeAutopilotDecisionAct`) already exists, but nothing decides *which* handler a given stored decision flows to. This pure module classifies a decision projection into one of three mutually-exclusive routes — `work_order_review` (legacy PR approval), `evidence_command` (the full vocabulary, carrying the `AutopilotDecisionActTarget` the authorizer needs), or `not_actionable` (informational/blocked kinds like `request_customer_input` / `create_followup_mission` / `mark_unavailable`). Routing is decided by kind only; status is carried on the target so `authorizeAutopilotDecisionAct` stays the single owner of the actionability ("too late") refusal. Also exports `isWorkOrderReviewDecision()` and `AUTOPILOT_DECISION_REVIEW_KIND`. |
+| `apps/openagents.com/workers/api/src/autopilot-decision-act-routing.ts` | `classifyAutopilotDecisionActRoute()` — the branch decision the queue route is missing. `autopilot-decision-routes.ts#actOnDecision` hard-codes a single path (only `approve_pr_draft` → work-order review store, everything else rejected). The full-vocabulary act contract (`authorizeAutopilotDecisionAct`) already exists, but nothing decides *which* handler a given stored decision flows to. This pure module classifies a decision projection into one of three mutually-exclusive routes — `work_order_review` (legacy PR approval), `evidence_command` (the full vocabulary, carrying the `AutopilotDecisionActTarget` the authorizer needs), or `not_actionable` (informational/blocked kinds like `request_customer_input` / `create_followup_mission` / `mark_unavailable`). Routing is decided by kind only. Status is carried on the target so `authorizeAutopilotDecisionAct` stays the single owner of the actionability ("too late") refusal. Also exports `isWorkOrderReviewDecision()` and `AUTOPILOT_DECISION_REVIEW_KIND`. |
 | `apps/openagents.com/workers/api/src/autopilot-decision-act-routing.test.ts` | 8 tests: review-kind flag, review route, every evidence-command kind routed with correct target, informational kinds marked not-actionable with kind-named reason, routing-by-kind-carries-status, end-to-end handoff proving the produced target is *accepted* by `authorizeAutopilotDecisionAct` for an available decision and *refused* (`not_actionable`) once completed, and the full-projection convenience wrapper. |
 
 **What it proves:** the route now has a tested, pure way to fan a stored
 decision into the correct handler instead of rejecting all non-review kinds.
 This is the missing link between the queue projection and the existing act
 contract: `classify → (evidence_command) authorizeAutopilotDecisionAct → apply`.
-No promise state changes; no store/route wiring is claimed (see "What remains").
+No promise state changes. No store/route wiring is claimed (see "What remains").
 
 ---
 
@@ -102,7 +102,7 @@ No promise state changes; no store/route wiring is claimed (see "What remains").
 for the *full* decision vocabulary the node can raise — not just the legacy PR
 approval. The route layer can decode → `authorizeAutopilotDecisionAct` → apply,
 with route-authorization and evidence-only safety enforced once, in one pure,
-test-backed place. No promise state changes; no store/route wiring is claimed
+test-backed place. No promise state changes. No store/route wiring is claimed
 (see "What remains").
 
 ---
@@ -115,7 +115,7 @@ test-backed place. No promise state changes; no store/route wiring is claimed
 
 | File | Purpose |
 |---|---|
-| `packages/autopilot-control-protocol/src/decision-closeout-coordinator.ts` | `createDecisionCloseoutCoordinator()` — the composing layer that wires N per-surface `RemoteDecisionQueue`s (desktop / web / Expo) to ONE shared `DecisionCloseoutLedger`. `ingest()` fans a node decision event out to every paired surface; `resolve({client, …})` relays on that surface's own bridge, builds exactly ONE canonical closeout receipt on a terminal outcome, appends it to the shared ledger, and broadcasts the resolution to the OTHER surfaces so their cards disable. A second surface resolving the same decision hits the local exactly-once gate (already-resolved via broadcast), never reaches the wire, and produces NO second receipt (`alreadyClosed: true`). |
+| `packages/autopilot-control-protocol/src/decision-closeout-coordinator.ts` | `createDecisionCloseoutCoordinator()` — the composing layer that wires N per-surface `RemoteDecisionQueue`s (desktop / web / Expo) to ONE shared `DecisionCloseoutLedger`. `ingest()` fans a node decision event out to every paired surface. `resolve({client, …})` relays on that surface's own bridge, builds exactly ONE canonical closeout receipt on a terminal outcome, appends it to the shared ledger, and broadcasts the resolution to the OTHER surfaces so their cards disable. A second surface resolving the same decision hits the local exactly-once gate (already-resolved via broadcast), never reaches the wire, and produces NO second receipt (`alreadyClosed: true`). |
 | `packages/autopilot-control-protocol/src/decision-closeout-coordinator.test.ts` | 9 tests: empty/duplicate-surface guards, `ingest` fan-out to all surfaces, single-closeout-on-resolve with the other surfaces disabled and off-wire, second-surface no-double-closeout proof, answer-verb passthrough, injected shared ledger (persistent-store seam), unknown-surface throw, node-reported duplicate. |
 
 **What it proves:** the dereferenceable cross-client exactly-once flow that was
@@ -159,10 +159,10 @@ The receipt captures:
 - `actor` — who triggered it (owner, autopilot, agent ref)
 - `decidedAt` — ISO timestamp
 - `hasAnswer` — whether a free-text answer was forwarded
-- `line` — deterministic human-readable string; tamper of any field invalidates it
+- `line` — deterministic human-readable string. Tamper of any field invalidates it
 
 Transient outcomes (`offline`, `overloaded`) are excluded by type — they are
-not closed-out; the queue replays them on drain.
+not closed-out. The queue replays them on drain.
 
 The module is exported from `packages/autopilot-control-protocol/src/index.ts`
 and is shared across desktop / web / Expo (the three client surfaces).

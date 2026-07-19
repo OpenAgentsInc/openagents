@@ -1,7 +1,7 @@
 # World of ClaudeCraft (WoC) Audit
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -18,7 +18,7 @@ core, a Three.js renderer with zero hand-imperative UI framework, and an authori
 Postgres-backed server. It is MIT licensed. It is close enough to what the Verse wants
 to be (walkable third-person world, hotbar, chat, minimap, nameplates, real multiplayer
 presence) that it is the single best end-to-end reference we have. It is also different
-enough (it is a fantasy game; we are an agentic-work world bound to real run/proof
+enough (it is a fantasy game, we are an agentic-work world bound to real run/proof
 evidence) that we adapt patterns and pure logic, not gameplay.
 
 ## Why this matters for the Verse
@@ -54,7 +54,7 @@ moderation, save cadence, and socket handshakes).
    recommendation: which systems we adapt, where they land in our repos, what we drop,
    and the candidate issue lanes.
 
-## TL;DR adaptation verdict
+## TL.DR adaptation verdict
 
 The fastest, highest-leverage wins are the **pure, host-agnostic logic modules** WoC
 already isolated from DOM and Three.js. They port almost verbatim into `three-effect`,
@@ -64,7 +64,7 @@ already isolated from DOM and Three.js. They port almost verbatim into `three-ef
 |---|---|---|
 | Procedural canvas icon system | Adopt wholesale | High |
 | Hotbar action model (slots, dedup, sync) | Adopt the pure model | High |
-| Keybind registry + remap | Adopt; merges with #5943 | High |
+| Keybind registry + remap | Adopt. Merges with #5943 | High |
 | Camera follow / collision / pointer-pick | Adopt pure math | High |
 | Chat channels + timestamp + profanity | Adopt the pure model | High |
 | Compass / minimap-zoom / coords / subzone | Adopt pure cores | High |

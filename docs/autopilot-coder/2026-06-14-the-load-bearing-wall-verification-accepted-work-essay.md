@@ -1,7 +1,7 @@
 # The Load-Bearing Wall
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 ## On Drag, Trust, and the Weight That Relocates Instead of Disappearing
@@ -13,7 +13,7 @@ Author: Claude (Opus 4.8)
 > A companion piece to [`2026-06-14-the-two-numbers-autopilot-growth-essay.md`](2026-06-14-the-two-numbers-autopilot-growth-essay.md)
 > and [`2026-06-14-the-second-engine-network-effects-agent-time-growth-essay.md`](2026-06-14-the-second-engine-network-effects-agent-time-growth-essay.md),
 > and a deliberate response to the "Aerodynamics Doctrine" essay circulating
-> this spring. That essay's diagnosis is correct and widely shared; this one is
+> this spring. That essay's diagnosis is correct and widely shared. This one is
 > about the single thing the diagnosis leaves on the floor. You do not need to
 > have read any of them. The argument is restated from the beginning.
 
@@ -92,8 +92,8 @@ diagnosis stripped out without naming.
 When you remove a human from a function, you do not only remove labor. You
 remove the **trust scaffolding that came bundled, for free, inside the
 employment relationship.** A salaried person is not just an execution engine.
-They are a named party who can be held responsible; a body the law already knows
-how to assign liability to; a unit of judgment that carries its own quality
+They are a named party who can be held responsible. A body the law already knows
+how to assign liability to. A unit of judgment that carries its own quality
 control and its own answerability. All of that arrived in one package, priced as
 one salary, because there was no way to buy the execution without buying the
 accountability. You hired the person and got both.
@@ -171,7 +171,7 @@ and settled to everyone who contributed.
 
 The distinction is not pedantic. It is the whole difference between a thesis
 about capability and a thesis about commerce. Capability has been getting cheaper
-for two years and will keep getting cheaper; if capability were the binding
+for two years and will keep getting cheaper. If capability were the binding
 constraint, the market would already have cleared. It has not, because the
 binding constraint was never "can a system do competent work." It is "can a
 stranger pay for that work without trusting the party who did it." The skill is
@@ -214,8 +214,8 @@ authority under which the work ran, the assignment, the execution trace, the
 artifact produced, the grading evidence, the acceptance decision, the settlement.
 Each a separate record, each produced by a separate authority, so that no single
 component can quietly rewrite the others — the grader informs acceptance but does
-not get to declare it; the executor records what happened but does not get to
-rule its own work accepted; the wallet that pays never sits inside the workroom
+not get to declare it. The executor records what happened but does not get to
+rule its own work accepted. The wallet that pays never sits inside the workroom
 that does. Authority separation is not bureaucracy. It is exactly the structure
 that makes the record trustworthy to someone who was not there and does not
 trust the people who were.
@@ -231,9 +231,9 @@ is right. What it misses is that "in the loop" can be a line in a receipt rather
 than a full-time seat, and that the difference between those two is most of the
 cost savings the whole transition is chasing.
 
-A payment a recipient cannot dereference is not a payment; it is a bug wearing
+A payment a recipient cannot dereference is not a payment. It is a bug wearing
 money. A completed task whose correctness no one can reconstruct is not an
-accepted outcome; it is a liability wearing a deliverable. The clearing layer's
+accepted outcome. It is a liability wearing a deliverable. The clearing layer's
 job is to make sure neither of those things can be sold as the real thing.
 
 ## VI. "Good enough" only wins if it can be priced
@@ -241,7 +241,7 @@ job is to make sure neither of those things can be sold as the real thing.
 The aerodynamics frame leans hard on a number: a non-expert with the right tools
 produces work at fifty to sixty percent of expert quality, and that is not a
 failure number, because most of the market was only ever buying that tier
-anyway. The mid-market firm was never hiring the top consultancy; it was hiring
+anyway. The mid-market firm was never hiring the top consultancy. It was hiring
 the competent regional one. So competent-and-cheap beats excellent-and-expensive
 across most of the economy. This is right too — but it is missing the clause that
 makes it operable.
@@ -258,8 +258,8 @@ unlabeled gamble.
 This is the second place the clearing layer does load-bearing work the lean-frame
 cannot. Price every outcome by how tightly "done" can be specified and how soon
 correctness can be known, and route it up an explicit effort ladder: a cheap
-draft with no guarantee; deterministic tests only; a model reviewing itself; an
-independent judge; a second agent re-running and comparing; human review; bonded
+draft with no guarantee. Deterministic tests only. A model reviewing itself. An
+independent judge. A second agent re-running and comparing. Human review. Bonded
 acceptance with a warranty. The buyer-facing catalog becomes a set of honest
 tiers — draft, verified, reviewed, covered, bonded — and the scheduler picks the
 cheapest rung that is actually *sufficient* for the stakes. Hard-to-verify work
@@ -288,8 +288,8 @@ of faster-moving people. It may be a network of agents. And agents do not run on
 the human clock. A human adopts a tool at the speed of attention and word of
 mouth — a few people told over dinner, onboarded over hours, bounded by how many
 relationships one mind can hold. An agent onboards by reading an instruction
-file and calling an API; it can be spun up by the thousand; it works while its
-owner sleeps; and it recruits *other agents* at the speed of software, not the
+file and calling an API. It can be spun up by the thousand. It works while its
+owner sleeps. And it recruits *other agents* at the speed of software, not the
 speed of conversation. When the participants in a market are agents, the rate at
 which the market grows is set by network latency, not by social cadence.
 
@@ -337,14 +337,14 @@ dominates is the cost of trust — verification and retries — exactly the weig
 that relocated off payroll. So the real cost engineering of the new economy is
 not "buy cheaper GPUs." It is *drive down the cost of verification* without
 dropping the confidence the buyer is paying for: amortize it, by paying once for
-a verified solution and reusing it instead of re-solving from scratch every time;
+a verified solution and reusing it instead of re-solving from scratch every time.
 decompose it, by breaking a hard task into small typed pieces that admit cheap
-deterministic checks; downshift it, by routing the checking to the cheapest idle
-machines on the network; and price it, as the confidence tiers of the previous
+deterministic checks. Downshift it, by routing the checking to the cheapest idle
+machines on the network. And price it, as the confidence tiers of the previous
 section, so that verification stops being an internal cost center and becomes a
 line the buyer is knowingly purchasing. The frontier labs are structurally happy
 to let ten thousand customers pay ten thousand times to re-solve the same
-problem; the redundancy is their margin. The clearing-layer business eliminates
+problem. The redundancy is their margin. The clearing-layer business eliminates
 that redundancy, which is a thing the incumbents cannot copy without
 cannibalizing their own per-seat economics.
 
@@ -352,7 +352,7 @@ And underneath the variable cost sits a floor the pure-software framing has no
 analogue for. Capacity that has a fallback use — a machine that can do baseline
 work when no accepted-outcome demand is clearing — can wait for the work to
 arrive without bleeding. Capacity financed purely on speculative AI demand
-cannot; it has to find a buyer or burn. The discipline that follows is one line:
+cannot. It has to find a buyer or burn. The discipline that follows is one line:
 finance capacity from demonstrated margin, never ahead of it. That single rule is
 what turns the subsidy risk the frame correctly identifies from a fatal exposure
 into a survivable one — and what makes the whole structure stronger, not weaker,
@@ -390,7 +390,7 @@ than the frame does. It observes that in a hollow business the founder is the
 load-bearing wall — the one person holding up a structure that looks solid from
 outside. The aerodynamic move is to replace that wall with systems so the
 building stands without the founder inside it. Correct. But a building still
-needs a load-bearing wall; you do not get to remove the last one. The question
+needs a load-bearing wall. You do not get to remove the last one. The question
 the frame stops short of is *which* wall, in a business made of autonomous
 systems, is the one you cannot take out. It is not the execution — that is now
 abundant and cheap. It is not the capability — that ships in a skill anyone can

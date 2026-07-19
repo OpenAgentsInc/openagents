@@ -4,7 +4,7 @@ Owner-approved **Option B** corrective UPDATE, executed 2026-07-05 against
 production D1 (`openagents-autopilot`), for the two historical `pay_in_legs`
 rows corrupted by the now-fixed parameter-order bug in
 `usdCreditGrantStatements` (`apps/openagents.com/workers/api/src/inference/usd-credit-bridge.ts`).
-Filed from #8337 / epic #8282; this doc is the audit trail for closing #8412.
+Filed from #8337 / epic #8282. This doc is the audit trail for closing #8412.
 
 Full pre-change snapshot: [`2026-07-05-pay-in-legs-8412-remediation-backup.json`](./2026-07-05-pay-in-legs-8412-remediation-backup.json).
 
@@ -27,7 +27,7 @@ corrupted values — no drift since the issue was filed.
 
 ## 2. Determined correct values, with three independent cross-checks
 
-The swap direction (party_ref currently holds the msat amount as text;
+The swap direction (party_ref currently holds the msat amount as text,
 amount_msat currently holds the account ref string) was corroborated three
 independent ways before writing anything:
 
@@ -136,9 +136,9 @@ bun scripts/backfill-billing.ts --verify --table pay_in_legs
 ```
 
 A full-domain `--verify` (all 22 billing tables) was also run to confirm no
-regression elsewhere; every table — including `pay_ins` and `pay_in_legs` —
+regression elsewhere. Every table — including `pay_ins` and `pay_in_legs` —
 came back with exact row-count, sum, and newest-N-hash matches (`21/21`
-tables `VERIFY OK` individually; one transient `wrangler d1 execute`
+tables `VERIFY OK` individually. One transient `wrangler d1 execute`
 network hiccup on `khala_code_paid_plan_payment_intents` during the combined
 sweep resolved cleanly on retry in isolation and is unrelated to this
 remediation).
@@ -155,7 +155,7 @@ remediation).
 
 Deleted a spam/malware-link comment from GitHub user `dasubene23` linking to
 `bareneguboko/patch_fix` (a suspicious `.rar` release download — not
-visited/downloaded). GitHub had already auto-minimized it as `ABUSE`; it was
+visited/downloaded). GitHub had already auto-minimized it as `ABUSE`. It was
 additionally deleted via `gh api -X DELETE
 repos/OpenAgentsInc/openagents/issues/comments/4885513286`. Recommend the
 account `dasubene23` be reported/blocked at the org level — no further action

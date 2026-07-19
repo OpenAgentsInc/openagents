@@ -1,7 +1,7 @@
 # AgentCL Incorporation Synthesis
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 How much of the AgentCL evaluation framework OpenAgents should adopt, where it
@@ -49,11 +49,11 @@ Key empirical findings (the part that should change our behavior):
 
 - Naive streams have **weak discriminative power** — methods look similar.
   Compositional streams spread methods far apart (e.g. CodeEval-Pro complex-task
-  accuracy std-dev 9.4/8.8 compositional vs 3.0/1.9 naive; BrowseComp+ 14.9/16.0
+  accuracy std-dev 9.4/8.8 compositional vs 3.0/1.9 naive. BrowseComp+ 14.9/16.0
   vs 2.3/5.7). If you only run naive/long-history evals, you cannot tell good
   memory from bad memory.
 - **Plasticity is real but stability/generalization are not solved.** Top
-  methods (ExpRAG/ReMem/MemProbe) hit large PG (+17.7/+13.5/+21.9 on coding;
+  methods (ExpRAG/ReMem/MemProbe) hit large PG (+17.7/+13.5/+21.9 on coding,
   MemProbe +40 on deep research) yet flat-or-negative SG (+0.0/-2.0/-2.1) and
   held-out GG *below* the memoryless ReAct baseline. Memoryless ReAct stays
   strongest on held-out coding (72.5). Memory that helps in-stream can *degrade*
@@ -63,7 +63,7 @@ Key empirical findings (the part that should change our behavior):
   (distilled pattern / failure mode), `skill` (procedure or reusable snippet) —
   retrieves top-k semantically, solves with that as *reference context*, then
   consolidates with a syntactic check + LLM judge. Ablations show all three
-  views matter on compositional streams; an oracle judge barely beats the real
+  views matter on compositional streams. An oracle judge barely beats the real
   judge (memory construction is not the bottleneck — *what to abstract/ignore*
   is).
 - **Retrieval hit-rate is not the metric.** A case study shows a topically
@@ -75,7 +75,7 @@ Scope boundary the paper draws: it studies **non-parametric memory** only
 learning — though it says using AgentCL to diagnose training-based approaches is
 interesting future work.
 
-## 2. Why it's relevant to OpenAgents
+## 2. Why it is relevant to OpenAgents
 
 We are accumulating exactly the surfaces where "the agent got better from prior
 work" is becoming a product claim, and we have almost no apparatus to separate
@@ -98,9 +98,9 @@ Component-by-component:
   already has typed run/report schemas (`openagents.gym.run_progress.v1`,
   `openagents.gym.terminal_bench_comparison_report.v1`) and a cost-per-accepted-
   outcome honesty gate. AgentCL is the missing *axis*: the gym today scores
-  one-shot capability; it does not score *continual* reuse. Adding a
+  one-shot capability. It does not score *continual* reuse. Adding a
   compositional-stream environment + PG/SG/GG to the ladder is a direct fit and
-  reinforces #6309's "don't claim more than you measured" stance.
+  reinforces #6309's "do not claim more than you measured" stance.
 
 - **MirrorCode (#6377–#6379, under epic #6376)** — `apps/openagents.com/scripts/
   mirrorcode/`. MirrorCode points an external eval framework at Khala over the
@@ -114,7 +114,7 @@ Component-by-component:
   `tassadar-trace-factory/`, `docs/training/`. This is the one area the paper
   *explicitly excludes* (parameter-update CL). That is itself useful: it tells
   us the AgentCL gains are the wrong metric for Tassadar weight training, but
-  the *stream construction* idea (source tasks before complex tasks; held-out
+  the *stream construction* idea (source tasks before complex tasks, held-out
   rows never used to build the corpus) directly improves how we build and
   partition the trace corpus (`tassadar-trace-corpus.v0_*.manifest.json`). Today
   the corpus risks the naive-stream pathology: lots of adjacent traces, no
@@ -180,7 +180,7 @@ Component-by-component:
 - **Held-out discipline for the Tassadar trace corpus and MirrorCode.** Add an
   isolated held-out split to the trace-corpus manifest that is never used to
   build memory/training context, referenced by checksum only. MirrorCode already
-  enforces the spirit of this; formalize it as the GG set.
+  enforces the spirit of this. Formalize it as the GG set.
 
 ### Experiment (worth a bounded spike, not yet load-bearing)
 
@@ -197,7 +197,7 @@ Component-by-component:
 - **GEPA skill-promotion gate**: require a distilled skill candidate to clear
   PG>0 and SG/GG≥0 on the compositional environment before promotion.
 
-### Watch (track upstream; do not build yet)
+### Watch (track upstream, do not build yet)
 
 - **The AgentCL HuggingFace dataset** (`osunlp/AgentCL`) and the related
   benchmarks it builds on (CodeEval-Pro / BigCodeBench-Lite-Pro, BrowseComp+,
@@ -216,13 +216,13 @@ Component-by-component:
   market work. We borrow the *protocol*, not the datasets, for internal product
   claims.
 - **Treating PG/SG/GG as the metric for Tassadar parameter training.** The
-  paper deliberately excludes parametric CL; its gains assume frozen-weights
+  paper deliberately excludes parametric CL. Its gains assume frozen-weights
   non-parametric memory. Using them to grade weight updates would be a category
   error. Use them only for our non-parametric memory/skill/trace layers.
 - **Building a full memory architecture off this paper.** AgentCL offers no
   solved memory design — only a measurement methodology and the finding that
   stability/generalization are open. Anyone proposing "adopt MemProbe as our
-  memory system" is over-reading it; MemProbe is a *diagnostic probe*.
+  memory system" is over-reading it. MemProbe is a *diagnostic probe*.
 
 ## 4. Concrete roadmap items
 
@@ -245,16 +245,16 @@ Owning repo is `openagents` unless noted.
 3. **Held-out split for the Tassadar trace corpus.** Add an isolated held-out
    partition to `tassadar-trace-corpus.v0_*.manifest.json` that the trace-
    homework loop (`tassadar-executor-trace-homework.ts`) and trace-factory
-   replay are forbidden to use for memory/context construction; reference by
+   replay are forbidden to use for memory/context construction. Reference by
    checksum only.
    - System: Tassadar trace factory / training. **NOW.** Dep: none (independent
-     of #1; format-only).
+     of #1. Format-only).
 
 4. **Formalize MirrorCode's no-RAG rule as the GG set.** Document in
    `apps/openagents.com/scripts/mirrorcode/README.md` that MirrorCode public
    tasks are the held-out generalization set for Khala memory, and emit the GG
    field in the MirrorCode result JSON.
-   - System: MirrorCode (#6377–#6379, epic #6376). **SOON.** Dep: #1; coordinate
+   - System: MirrorCode (#6377–#6379, epic #6376). **SOON.** Dep: #1. Coordinate
      with in-flight MirrorCode phases.
 
 5. **Compositional-stream gym environment (spike).** Build one small
@@ -303,13 +303,13 @@ Owning repo is `openagents` unless noted.
 11. **Artanis held-out drift check.** Give the Artanis loop (#6359) a periodic
     held-out task family its accumulated context never trains on, surfaced as a
     GG metric on the admin-ticks surface, to detect self-reinforcing drift.
-    - System: Artanis (`artanis-scheduled-runner.ts`). **LATER.** Dep: #6;
+    - System: Artanis (`artanis-scheduled-runner.ts`). **LATER.** Dep: #6.
       coordinate with #6359.
 
 12. **Per-account memory isolation test.** Use the naive/held-out streams from
     #5 across two accounts in the per-account fleet to verify one account's
     memory does not degrade another's tasks (cross-account harmlessness).
-    - System: Pylon per-account fleet. **LATER.** Dep: #5, #6; coordinate with
+    - System: Pylon per-account fleet. **LATER.** Dep: #5, #6. Coordinate with
       the multi-tenant codex-fleet enablement doc.
 
 ## 5. Risks, open questions, owner decisions
@@ -318,7 +318,7 @@ Owning repo is `openagents` unless noted.
   build — the source→target relation must be real, not "same topic," or we
   reproduce the naive-stream weakness we are trying to avoid. The paper's own
   BrowseComp+ subtasks were synthesized with privileged access to parent
-  answers; we must build ours without leaking answers into the source tasks.
+  answers. We must build ours without leaking answers into the source tasks.
   Risk: a sloppy stream produces flattering-but-meaningless PG. Mitigation: keep
   #5 small and hand-audited first.
 - **We will probably look bad first.** Per the paper, expect positive PG but
@@ -329,15 +329,15 @@ Owning repo is `openagents` unless noted.
   gated like #6309.)
 - **Reputation/payout basis change (#9).** Tying trace value to measured reuse
   outcome changes the economic incentive surface and could be gamed (farming
-  "reused" traces). Owner decision required before #9; keep it experiment-only
+  "reused" traces). Owner decision required before #9. Keep it experiment-only
   until the measurement (#7) is trusted.
 - **Scope creep into a memory architecture.** The paper does not give us one.
-  We must resist "implement MemProbe as our memory" framing; #8 is a *record
+  We must resist "implement MemProbe as our memory" framing. #8 Is a *record
   shape + provenance* change for measurement, not a new memory engine.
 - **Tassadar boundary.** Confirm with the training owners that PG/SG/GG are used
   only for the non-parametric trace/memory layer, not as a weight-training
   metric. #3 (held-out corpus split) is safe and valuable regardless.
-- **No vendoring.** The AgentCL dataset and reference methods stay external; if
+- **No vendoring.** The AgentCL dataset and reference methods stay external. If
   we want a citable external number we run public splits through MirrorCode.
   This respects the workspace no-vendor rule.
 
@@ -347,7 +347,7 @@ Owning repo is `openagents` unless noted.
 | --- | --- | --- | --- |
 | PG/SG/GG vocabulary + claim discipline | `docs/promises/`, #6309 honesty gate | adopt now | #2 |
 | Typed memory-experiment contract | gym/inference schemas | adopt now | #1 |
-| Held-out set never used to build memory | Tassadar trace corpus; MirrorCode | adopt now | #3, #4 |
+| Held-out set never used to build memory | Tassadar trace corpus. MirrorCode | adopt now | #3, #4 |
 | Two-pass (baseline/F/frozen-S/held-out) protocol | Khala + gym runner | experiment | #6 |
 | Compositional vs naive stream construction | new gym environment | experiment | #5 |
 | First real measurement of our memory | Pylon TAS + omni retrieval | experiment | #7 |

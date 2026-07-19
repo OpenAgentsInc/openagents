@@ -98,7 +98,7 @@ its own compatibility test without depending on the private `cloud` repo.
 `oa-node init --org <id>` creates local managed-node state under
 `$OPENAGENTS_CLOUD_NODE_HOME` or `$HOME/.openagents/cloud/oa-node`. Status JSON
 loads that state and projects the identity into this contract. The state keeps a
-signing-key reference only; key material and other raw secrets are not tracked.
+signing-key reference only. Key material and other raw secrets are not tracked.
 
 `admin-store.json` persists desired mode, observed status, inventory/update/
 quarantine placeholders, and receipt cursors. `health-events.jsonl` is
@@ -120,7 +120,7 @@ local state. Receipts include previous version, target version, signer,
 signature digest, result, and receipt digest. Successful applies promote the
 current version. Failed applies roll back to the previous version when possible
 or quarantine the node when no previous version exists. Fleet policy can pin an
-exact version or defer updates; deferred updates become pending updates instead
+exact version or defer updates. Deferred updates become pending updates instead
 of changing the current version.
 
 ## Quarantine
@@ -196,7 +196,7 @@ worker degrades only its own inference, training, or sandbox product/profile
 row.
 
 `oa-node psionic receipt append` emits
-`openagents.psionic_execution_receipt.v1`; status projects the local receipt
+`openagents.psionic_execution_receipt.v1`. Status projects the local receipt
 digest into `evidence.job_receipts`, while the receipt body cites the upstream
 `psionic_evidence_digest`.
 
@@ -207,5 +207,5 @@ scopes Probe to one workroom workspace root and explicit capability names while
 requiring `raw_secret_access=false`.
 
 `oa-node probe closeout append` emits
-`openagents.probe_closeout_receipt.v1`; status projects closeout receipt
+`openagents.probe_closeout_receipt.v1`. Status projects closeout receipt
 digests into `evidence.artifact_receipts`.

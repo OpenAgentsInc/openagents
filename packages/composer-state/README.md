@@ -5,14 +5,14 @@ accepted in ADR-0013.
 
 The package intentionally owns only serializable composer state:
 
-- draft document blocks;
-- attachment metadata;
-- selections;
-- typed editing steps;
-- transactions and history;
+- draft document blocks.
+- attachment metadata.
+- selections.
+- typed editing steps.
+- transactions and history.
 - collaboration-ready transaction envelopes, rebase mapping, and public-safe
-  change summaries;
-- input-rule and keymap helpers;
+  change summaries.
+- input-rule and keymap helpers.
 - Markdown parse/serialize helpers for the v1 source-first subset.
 
 It does not render DOM, own uploads, or make routing decisions from user text.
@@ -45,7 +45,7 @@ Attachments move through `staged`, `uploading`, `ready`, and `error` states.
 Upload plans separate authority by surface:
 
 - `desktop-local` registers a local attachment and keeps local-only refs local.
-- `native-local` registers a content-addressed file in the native app sandbox;
+- `native-local` registers a content-addressed file in the native app sandbox.
   picker URIs and platform handles stay outside serialized composer state.
 - `web-hosted` uploads to hosted storage before scan, parse, and thumbnail work.
 

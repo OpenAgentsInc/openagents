@@ -69,14 +69,14 @@ boundaries.
 
 The accepted shape is:
 
-* a Markdown-first, textarea-backed editable substrate;
+* a Markdown-first, textarea-backed editable substrate.
 * a typed Effect Schema contract for drafts, selections, attachments, steps, and
-  submit payloads;
+  submit payloads.
 * a pure state/transform layer with ProseMirror-like steps, transactions,
-  input rules, keymaps, commands, and history;
+  input rules, keymaps, commands, and history.
 * a shared `@openagentsinc/ui` command-composer element that renders the text
   well, attachment rail, status strip, resize controls, command controls, and
-  accessibility mirrors;
+  accessibility mirrors.
 * a `three-effect` HUD projection for the futuristic command-console shell,
   focus energy, dropcursor effects, attachment holograms, and scanner motion.
 
@@ -108,16 +108,16 @@ the user's authoritative editable content and use structured state beside it.
 Compliance is confirmed by:
 
 * composer contract/state tests for every step type, inverse where practical,
-  selection mapping, history grouping, and attachment operations;
+  selection mapping, history grouping, and attachment operations.
 * Markdown parse/serialize tests that preserve unsupported user text rather
-  than dropping it;
+  than dropping it.
 * keyboard tests proving OS text shortcuts pass through and explicit composer
-  keymaps work;
+  keymaps work.
 * browser or desktop smoke tests for autofocus, focus-after-submit, streaming
   while typing, resize, drag/drop, paste, large prompt, Markdown render, and
-  stop/retry behavior;
+  stop/retry behavior.
 * three-effect visual smoke tests proving the HUD is visible, framed, and
-  reduced-motion compatible;
+  reduced-motion compatible.
 * code review rejecting app-local WebGL/canvas HUD renderers, direct
   ProseMirror vendoring, and public projection of raw private prompt or file
   content.
@@ -129,26 +129,26 @@ The audited ProseMirror lane contains 23 reference repos:
 | Repo | What It Owns | OpenAgents Composer Takeaway |
 | --- | --- | --- |
 | `.profile` | Project overview and package map. | Confirms the separation of core packages from optional editor features. |
-| `buildhelper` | Package build/test helpers. | Not runtime-relevant; reinforces package independence. |
+| `buildhelper` | Package build/test helpers. | Not runtime-relevant. Reinforces package independence. |
 | `prosemirror` | Central project and issue tracker package. | Use as an architecture map, not a runtime dependency. |
-| `prosemirror-model` | Persistent document tree, schema, nodes, marks, fragments, DOM parse/serialize. | Borrow immutable schema-shaped content; simplify to chat blocks, inline marks, and attachment refs. |
-| `prosemirror-transform` | Step, StepMap, Mapping, Transform, replace/wrap/split/join/mark operations. | Borrow "every edit is a typed step" and selection mapping; skip general tree surgery in v1. |
+| `prosemirror-model` | Persistent document tree, schema, nodes, marks, fragments, DOM parse/serialize. | Borrow immutable schema-shaped content. Simplify to chat blocks, inline marks, and attachment refs. |
+| `prosemirror-transform` | Step, StepMap, Mapping, Transform, replace/wrap/split/join/mark operations. | Borrow "every edit is a typed step" and selection mapping. Skip general tree surgery in v1. |
 | `prosemirror-state` | EditorState, Transaction, Selection, Plugin, PluginKey. | Borrow state fields, transaction metadata, plugin shape, and serialized selections. |
-| `prosemirror-view` | EditorView, DOM input handling, decorations, clipboard, coordinates, observers. | Borrow view-as-adapter and decoration ideas; do not borrow the full contentEditable machinery. |
+| `prosemirror-view` | EditorView, DOM input handling, decorations, clipboard, coordinates, observers. | Borrow view-as-adapter and decoration ideas. Do not borrow the full contentEditable machinery. |
 | `prosemirror-commands` | Command functions over state and dispatch. | Borrow command shape for submit, stop, newline, indent, attach, resize, preview, undo, and redo. |
 | `prosemirror-keymap` | Declarative keyboard binding plugin. | Borrow normalized keymap assembly while preserving Mod-C/Mod-V/Mod-A and platform shortcuts. |
 | `prosemirror-inputrules` | Text-triggered transforms and undo of the last rule. | Borrow Markdown triggers for lists, blockquotes, code fences, mentions, and tool tokens. |
 | `prosemirror-history` | Undo/redo grouping around transactions. | Borrow grouped undo for typing, input rules, resize, and attachments. |
-| `prosemirror-markdown` | Schema-bound Markdown parse/serialize. | Borrow round-trip discipline; seed from the existing `packages/ui` Markdown subset. |
-| `prosemirror-schema-basic` | Basic paragraphs, headings, code, links, images, and marks. | Use as an upper-bound reference; the composer schema remains narrower. |
+| `prosemirror-markdown` | Schema-bound Markdown parse/serialize. | Borrow round-trip discipline. Seed from the existing `packages/ui` Markdown subset. |
+| `prosemirror-schema-basic` | Basic paragraphs, headings, code, links, images, and marks. | Use as an upper-bound reference. The composer schema remains narrower. |
 | `prosemirror-schema-list` | List schema and commands. | Borrow list input behavior, not arbitrary nested list editing at first. |
 | `prosemirror-gapcursor` | Cursor positions around non-text blocks. | Borrow the idea for keyboard focus before/after attachment chips. |
 | `prosemirror-dropcursor` | Drop target feedback while dragging. | Borrow the dropcursor concept for file/image drag targets and insertion rails. |
-| `prosemirror-collab` | Versioned sendable steps and receive/rebase. | Defer; stable steps keep this possible later. |
-| `prosemirror-changeset` | Human-readable changes distilled from step history. | Useful later for draft diffs or "what changed before submit"; not v1. |
+| `prosemirror-collab` | Versioned sendable steps and receive/rebase. | Defer. Stable steps keep this possible later. |
+| `prosemirror-changeset` | Human-readable changes distilled from step history. | Useful later for draft diffs or "what changed before submit". Not v1. |
 | `prosemirror-search` | Query plugin and match decorations. | Defer except for expanded large-text mode. |
-| `prosemirror-menu` | Menu primitives over commands. | Avoid v1; build an app-native command card instead. |
-| `prosemirror-example-setup` | Example plugin composition. | Use as setup inspiration; do not copy its one-size package. |
+| `prosemirror-menu` | Menu primitives over commands. | Avoid v1. Build an app-native command card instead. |
+| `prosemirror-example-setup` | Example plugin composition. | Use as setup inspiration. Do not copy its one-size package. |
 | `prosemirror-test-builder` | Schema-aware test document builders. | Borrow test ergonomics for composer state tests. |
 | `website` | Documentation and demos. | Behavior reference only. |
 
@@ -219,11 +219,11 @@ The implementation should land as a sequence:
 | ADR confirmation | Status |
 | --- | --- |
 | Typed Effect Schema state, transactions, history, input rules, keymaps, and Markdown round-trip tests | Satisfied by `@openagentsinc/composer-state` and its test suite. |
-| Native textarea editing while borrowing ProseMirror model/transaction concepts | Satisfied by the shared `command-composer` AI Element and app integrations; platform copy/paste/select-all remain native. |
+| Native textarea editing while borrowing ProseMirror model/transaction concepts | Satisfied by the shared `command-composer` AI Element and app integrations. Platform copy/paste/select-all remain native. |
 | Shared DOM composer with attachments, large text, resize, preview, status, accessibility, and focus hooks | Satisfied by `packages/ui/src/ai-elements/command-composer.ts`, `command-composer.css`, and package tests. |
 | Khala Code desktop integration | Satisfied by `clients/khala-code-desktop`, including pending-turn editability, native edit menu accelerators, Markdown transcript rendering, attachment/large-paste state, and HUD projection wiring. |
 | OpenAgents web integration | Satisfied for the selected public `/chat` Khala surface. Other pre-existing app-local composers are not part of this v1 acceptance and should not be represented as v1 command-composer surfaces until migrated deliberately. |
-| three-effect HUD path | Satisfied for v1 consumption through Khala Code desktop's `createCommandComposerHud` projection and reduced-motion flag; automated visual-regression captures are deferred to #7649. |
+| three-effect HUD path | Satisfied for v1 consumption through Khala Code desktop's `createCommandComposerHud` projection and reduced-motion flag. Automated visual-regression captures are deferred to #7649. |
 | No public projection of raw private prompt or file content | Satisfied for v1 artifacts by the new composer privacy fixture guard and the documented metadata-only attachment boundary. |
 | Product-promise records | No new record was added because this work hardens existing input surfaces and does not broaden public product claims. |
 

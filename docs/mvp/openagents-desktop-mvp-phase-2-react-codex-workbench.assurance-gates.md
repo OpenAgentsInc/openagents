@@ -4,7 +4,7 @@ Date: 2026-07-15
 
 ProductSpec: `openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md`
 revision 4. Lifecycle: proposed. Revision 3 remains the accepted RC16
-construction identity; this revision has no inherited admission, release, or
+construction identity. This revision has no inherited admission, release, or
 publication authority.
 
 ## Reference boundary
@@ -31,7 +31,7 @@ theme, and host authority.
    render as one-line work entries with label, bounded preview, and textual
    status. Raw inputs and results are collapsed by default and bounded when
    expanded.
-4. **Settled work folds; active work stays legible.** Consecutive completed work
+4. **Settled work folds. Active work stays legible.** Consecutive completed work
    folds behind one `Worked · N activities` disclosure. During a run, prior work
    folds while the latest active item and a quiet working indicator remain
    visible.
@@ -45,7 +45,7 @@ theme, and host authority.
 ## Shell and interaction gates
 
 7. **The session rail scrolls at its real boundary.** The shadcn `ScrollArea`
-   owns a bounded flex height and viewport scrolling; session rows do not create
+   owns a bounded flex height and viewport scrolling. Session rows do not create
    a competing nested scroller. Selection and keyboard traversal remain stable.
 8. **The composer remains continuous.** Streaming and work disclosure do not
    remount the composer, drop the first keystroke, break IME composition, or
@@ -61,18 +61,18 @@ theme, and host authority.
     adjacent destinations, preserve forward history until a successful branch,
     and traverse local, Codex-history, coding-session, and admitted workspace
     destinations without React or `window.history` ownership. Disabled means
-    no reachable target; enabled clicks dispatch exactly one typed intent.
+    no reachable target. Enabled clicks dispatch exactly one typed intent.
 
 ## Post-RC16 interaction gates
 
 12. **Launch and WorkContext are coherent.** Ordinary launch fills the active
     display work area without fullscreen, adopts launcher cwd, focuses the
     composer, and centers the current directory plus one accessible Change
-    action in an empty chat. Cancel/failure retains context; confirmation
+    action in an empty chat. Cancel/failure retains context. Confirmation
     updates every workspace consumer.
 13. **The shell is exact, not aspirational.** The primary rail is exactly New
     session, Chat, Project home, and Settings. Compact rows do not move on
-    hover; status/timestamps stay inline; the command palette contains only
+    hover. Status/timestamps stay inline. The command palette contains only
     currently available registry actions and real recent sessions.
 14. **Images remain bounded capabilities.** Picker, paste, and drop accept only
     PNG/JPEG/WebP/GIF, at most eight and 10 MB each. Removable previews are
@@ -91,7 +91,7 @@ theme, and host authority.
 17. **Programmatic and visible steering are congruent.** Every expected-working
     action maps to one canonical typed identity and one visible accessible
     keyboard or pointer route. Headed Electron proof drives real Chromium
-    focus/accessibility/input semantics suitable for external Computer Use;
+    focus/accessibility/input semantics suitable for external Computer Use.
     DOM mutation and test-only state injection are not visible-route proof.
 
 ## Proposed AssuranceSpec binding
@@ -110,7 +110,7 @@ production build, signed hardened-runtime packaging, Apple notarization,
 stapler/Gatekeeper/deep-signature checks, mounted-DMG React smoke, monotonic
 prior-candidate update with interruption recovery, downgrade refusal, rollback,
 diagnostic export, uninstall, reinstall, cleanup, and zero-owner teardown.
-For the historical accepted path this includes the exact RC15-to-RC16 update;
+For the historical accepted path this includes the exact RC15-to-RC16 update.
 revision 4 must bind its own monotonic prior-candidate lifecycle receipt.
 
 The receipt must bind the exact source commit, revision-4 ProductSpec and proposed/admitted AssuranceSpec digests, artifact

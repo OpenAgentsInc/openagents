@@ -1,7 +1,7 @@
 # Autopilot Coder — Claude Lane
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Dated audits and planning records for Claude support in Pylon: the Claude
@@ -16,7 +16,7 @@ the level the Codex lane reached in #4839-#4842.
   vs the Codex-only composer/danger/dev surface), the CL1-CL4 suggested issue
   set plus amendments to #4838/#4842/#4843, end states E1-E5, and the
   decision to consume — not expand — the terminal-agent-systems packs
-  (cite Pack A/B/C; no new pack).
+  (cite Pack A/B/C, no new pack).
 
 Canonical lane docs live with the implementation:
 

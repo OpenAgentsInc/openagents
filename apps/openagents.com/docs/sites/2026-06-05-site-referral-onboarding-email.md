@@ -41,10 +41,10 @@ The hook is idempotent, suppression-aware, and public-safe.
 
 The transactional email uses:
 
-- `EmailService.renderSiteReferralOnboardingEmail`;
-- `EmailService.sendSiteReferralOnboardingEmailWithLedger`;
-- template slug `site_referral.onboarding.v1`;
-- metadata policy `system.site_referral_onboarding.v1`;
+- `EmailService.renderSiteReferralOnboardingEmail`.
+- `EmailService.sendSiteReferralOnboardingEmailWithLedger`.
+- template slug `site_referral.onboarding.v1`.
+- metadata policy `system.site_referral_onboarding.v1`.
 - idempotency key `site_referral_onboarding:<userId>:<attributionId>`.
 
 The ledger reservation path prevents duplicate provider sends for the same
@@ -60,9 +60,9 @@ settlement.
 
 The hook also calls `enrollInOnboardingDrip` with referral metadata:
 
-- referral attribution id;
-- referral source id;
-- public-safe source label;
+- referral attribution id.
+- referral source id.
+- public-safe source label.
 - public source Site URL when available.
 
 The existing onboarding drip dispatcher still controls day 0/day 1/day 2 send
@@ -73,11 +73,11 @@ orders are handled through the existing drip enrollment policy.
 
 The referral onboarding hook must not read or render:
 
-- referrer email addresses or private profile data;
-- provider account grants;
-- OAuth tokens, API keys, or device-flow material;
-- wallet keys, preimages, invoices, or checkout secrets;
-- payout, settlement, revshare, or guaranteed-credit claims;
+- referrer email addresses or private profile data.
+- provider account grants.
+- OAuth tokens, API keys, or device-flow material.
+- wallet keys, preimages, invoices, or checkout secrets.
+- payout, settlement, revshare, or guaranteed-credit claims.
 - private order details from another user.
 
 The source label is sanitized before it can enter email copy. Unsafe or

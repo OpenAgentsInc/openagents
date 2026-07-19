@@ -3,7 +3,7 @@
 Date: 2026-07-16  
 Issue: #8872  
 Epic: #8857  
-Proof base: `d06523c656f92a3d179020af2c087513be7672e1` (`origin/main`; includes the QA-3 baseline refresh at `b3f1fd5874`)
+Proof base: `d06523c656f92a3d179020af2c087513be7672e1` (`origin/main`, includes the QA-3 baseline refresh at `b3f1fd5874`)
 
 ## Verdict
 
@@ -18,7 +18,7 @@ composer sizing regression before closeout.
 This receipt does not claim authenticated Khala Sync. The local
 `/khala/chat-sync` capture correctly stops at its credential gate, while the
 focused render test proves its shared message component path. It also does not
-claim that a pending approval was produced in the live Codex run; approval
+claim that a pending approval was produced in the live Codex run. Approval
 variants are present in the component-family pixel proof and exercised by the
 shared component tests.
 
@@ -46,7 +46,7 @@ ES2022 library. Desktop runs on the repository's Node 24 / current Electron
 baseline, and both owning shared packages already declare ES2023. Advancing the
 Desktop `lib` declaration to ES2023 restores the source-level contract without
 changing its emitted target. That compatibility fix landed independently on
-main as `e03268f7a7`; Desktop typecheck and the focused build/preflight suite pass
+main as `e03268f7a7`. Desktop typecheck and the focused build/preflight suite pass
 with it.
 
 The final current-main Desktop capture then exposed a third integration defect
@@ -56,7 +56,7 @@ visible overlap. The shared workbench stylesheet now gives those text controls
 content width, an upper bound, and ellipsis behavior. The five affected Desktop
 baselines (`composer-idle`, `thread-plan-card`, `approval-card`,
 `reasoning-disclosure`, and `full-auto-running`) and their manifest were
-deliberately regenerated; the complete 16-state visual lane then passed with
+deliberately regenerated. The complete 16-state visual lane then passed with
 zero changed pixels against the refreshed baselines.
 
 ## Automated verification
@@ -67,7 +67,7 @@ recorded here.
 | Gate | Result |
 | --- | --- |
 | `pnpm run check` | pass |
-| Desktop `pnpm run verify` | pass: typecheck; 179 files / 1,730 tests, 39 skipped; production build; native smoke; React smoke |
+| Desktop `pnpm run verify` | pass: typecheck. 179 Files / 1,730 tests, 39 skipped. Production build. Native smoke. React smoke |
 | build/preflight race stress | pass: 3 consecutive runs, 2 files / 10 tests each |
 | focused Start route sweep | pass: 5 files / 27 tests |
 | Start production build | pass |
@@ -118,13 +118,13 @@ kind without using private data. Each image was visually inspected after capture
    notice, compaction, and context meter rendered through the shared dispatch.
    SHA-256 `00c74655c63e4bf79c6657bb054d2db2b3533bde0866e4095b4a24ebe2754100`.
 4. [`04-khala-chat-sync.png`](./04-khala-chat-sync.png) — 1600 × 1000. Honest
-   unauthenticated route state and credential boundary; no fake synced messages.
+   unauthenticated route state and credential boundary. No fake synced messages.
    SHA-256 `e66dafcd634e1b4c25eda2d38c042f2ba909c736bc5d09297b694c6b4d76ba57`.
 5. [`05-desktop-real-full-auto.png`](./05-desktop-real-full-auto.png) — 1225 ×
    768. A retained real Codex Full Auto task in OpenAgents Dev, durably toggled
    off after dogfooding, with reasoning and typed activity cards expanded. The
    live accessibility inspection also
-   observed typed command and aggregate turn-diff/file rows; this committed
+   observed typed command and aggregate turn-diff/file rows. This committed
    frame was chosen because it contains no host filesystem paths. SHA-256
    `e3ad4d659223bffa6d76c20a29193001a2ff7610c881463dd06592109666f9dc`.
 

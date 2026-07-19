@@ -19,51 +19,51 @@ or call a model provider.
 
 The contract defines:
 
-- `OpenAgentsProbeRunRequest`;
-- `OpenAgentsProbeTurnEvent`;
-- `OpenAgentsProbeToolCallSummary`;
-- `OpenAgentsProbeRunRecord`; and
+- `OpenAgentsProbeRunRequest`.
+- `OpenAgentsProbeTurnEvent`.
+- `OpenAgentsProbeToolCallSummary`.
+- `OpenAgentsProbeRunRecord`. And
 - `OpenAgentsProbeRunProjection`.
 
 Run requests carry:
 
-- workroom refs;
-- assignment refs;
-- Program Run refs;
-- objective refs;
-- runtime refs;
-- route refs;
-- source-authority refs;
-- policy refs;
-- idempotency refs;
-- correlation refs; and
+- workroom refs.
+- assignment refs.
+- Program Run refs.
+- objective refs.
+- runtime refs.
+- route refs.
+- source-authority refs.
+- policy refs.
+- idempotency refs.
+- correlation refs. And
 - workload trust.
 
 Run records carry:
 
-- normalized turn events;
-- tool-call summaries;
-- diff refs;
-- artifact refs;
-- test result refs;
-- preview refs;
-- cost refs;
-- failure refs;
-- retained-failure refs; and
+- normalized turn events.
+- tool-call summaries.
+- diff refs.
+- artifact refs.
+- test result refs.
+- preview refs.
+- cost refs.
+- failure refs.
+- retained-failure refs. And
 - closeout receipt refs.
 
 ## Status Model
 
 Probe run statuses are:
 
-- queued;
-- running;
-- succeeded;
-- failed;
-- cancelled;
-- timed out;
-- needs context;
-- needs review; and
+- queued.
+- running.
+- succeeded.
+- failed.
+- cancelled.
+- timed out.
+- needs context.
+- needs review. And
 - retained failure.
 
 The helpers distinguish terminal states and terminal evidence requirements.
@@ -76,7 +76,7 @@ Cancelled runs require closeout receipt refs.
 `OPENAGENTS_PROBE_CONFORMANCE_FIXTURES` contains two seed fixtures:
 
 - a successful coding run with a tool-call summary, test refs, diff/artifact
-  refs, preview refs, cost refs, and closeout receipt refs; and
+  refs, preview refs, cost refs, and closeout receipt refs. And
 - a retained-failure run with failure refs and retained-failure refs.
 
 Future Rust Probe adapters can mirror these fixtures without making OpenAgents product surface
@@ -90,16 +90,16 @@ diagnostic refs.
 
 The contract rejects:
 
-- raw tool logs;
-- raw runner logs;
-- raw provider payloads;
-- raw auth payloads;
-- credentials, tokens, cookies, OAuth material, and API keys;
-- local paths;
-- private repo refs;
-- raw source archives;
-- wallet/payment material;
-- payout targets; and
+- raw tool logs.
+- raw runner logs.
+- raw provider payloads.
+- raw auth payloads.
+- credentials, tokens, cookies, OAuth material, and API keys.
+- local paths.
+- private repo refs.
+- raw source archives.
+- wallet/payment material.
+- payout targets. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -108,9 +108,9 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/probe-coding-runtime-contract.test.ts` covers:
 
-- conformance fixture decoding;
-- successful run projection;
-- retained-failure projection;
-- terminal evidence requirements; and
+- conformance fixture decoding.
+- successful run projection.
+- retained-failure projection.
+- terminal evidence requirements. And
 - unsafe log, provider payload, credential, private repo, wallet/payment, and
   timestamp rejection.

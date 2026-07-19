@@ -41,7 +41,7 @@ just subscription quota.
 | `fetch-codex-auth.mjs` | **The auth crux.** Pulls a Codex OAuth blob from the central device-flow provider-account store and materializes a codex-native `auth.json` under an isolated `CODEX_HOME`. Subcommands: `lease`, `release`, `sanity-all`.                                                                                                                                                                                          |
 | `install-rg-guard.mjs` | Installs the per-run `rg` wrapper used by `worker.sh` so agent searches respect ignore files and cannot traverse heavy generated directories.                                                                                                                                                                                                                                                                       |
 | `worker.sh`            | Given one assignment: `git worktree add` from `origin/main`, `pnpm install`, fetch central Codex auth into a per-promise `CODEX_HOME`, run `codex exec "<brief>" -m gpt-5.5 -c model_reasoning_effort=xhigh --dangerously-bypass-approvals-and-sandbox --json`, release the lease, run `check:deploy`, commit to branch `codex-fleet/<promise>`, push, open a PR. Emits a one-line JSON result (incl. token usage). |
-| `run.sh`               | Orchestrator. Runs a few workers (sequential by default; `--parallel` opt-in), then prints PR URLs + per-worker `check:deploy` status + total tokens.                                                                                                                                                                                                                                                               |
+| `run.sh`               | Orchestrator. Runs a few workers (sequential by default, `--parallel` opt-in), then prints PR URLs + per-worker `check:deploy` status + total tokens.                                                                                                                                                                                                                                                               |
 
 ## Usage
 
@@ -67,9 +67,9 @@ bash scripts/codex-fleet/run.sh --count 2 --no-pr
 Flags: `--count N`, `--state red|yellow|planned|any`, `--model <codex model>`,
 `--ids a,b,c`, `--priority business|any`, `--parallel`, `--dry-run`, `--no-pr`.
 
-Results are written to `/tmp/cf-results.jsonl`; per-worker logs to
-`/tmp/cf-logs/<promise>.agent.log`; assignments + briefs to
-`/tmp/cf-assignments/`; full `codex exec --json` traces to
+Results are written to `/tmp/cf-results.jsonl`. Per-worker logs to
+`/tmp/cf-logs/<promise>.agent.log`. Assignments + briefs to
+`/tmp/cf-assignments/`. Full `codex exec --json` traces to
 `~/work/codex-fleet-traces/<date>/` (indexed in `index.jsonl`).
 
 ## Auth: the central device-flow provider-account store (the crux)
@@ -84,7 +84,7 @@ we reuse the **central device-flow provider-account system already built into
 openagents.com** (operator runbook:
 `apps/openagents.com/docs/2026-06-05-chatgpt-device-login-operator-runbook.md`).
 The owner connects ChatGPT/Codex accounts **once**, via the device-code ceremony
-(`scripts/provider-chatgpt-device-login.mjs start/poll`); the worker then pulls a
+(`scripts/provider-chatgpt-device-login.mjs start/poll`). The worker then pulls a
 short-lived auth blob over HTTP. No browser, no `codex login`, on the worker.
 
 ### How `fetch-codex-auth.mjs lease` works (no secrets)
@@ -164,5 +164,5 @@ connected accounts.
 
 Each worker leases **one** account for its run and gets its **own** `CODEX_HOME`.
 With `--parallel`, keep `--count` at or below the number of healthy connected
-Codex accounts (check `fetch-codex-auth.mjs sanity-all`) so workers don't contend
+Codex accounts (check `fetch-codex-auth.mjs sanity-all`) so workers do not contend
 for the same seat. The lease selector spreads load by fewest-active-leases.

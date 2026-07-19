@@ -10,7 +10,7 @@
 > receipt-first design.
 
 How the OpenAgents inference API accepts per-call machine payments (MPP / x402),
-how it's armed/rolled back, how to prove it, and how to watch for the Stripe
+how it is armed/rolled back, how to prove it, and how to watch for the Stripe
 Directory **Machine Payments** badge.
 
 > Authoritative protocol spec is the local mirror at `docs/reference/mpp/`
@@ -19,13 +19,13 @@ Directory **Machine Payments** badge.
 
 ---
 
-## 1. Status (2026-06-23) — all three rails LIVE on prod; badge pending
+## 1. Status (2026-06-23) — all three rails LIVE on prod. Badge pending
 
 | Rail | State |
 |---|---|
-| **⚡ Lightning** (BOLT11 via Spark, local preimage verify) | ✅ **LIVE — leads the 402.** Spark PRIMARY / MDK FALLBACK issuer; real mainnet BOLT11 (see §6). ~0.9–2.4s warm |
+| **⚡ Lightning** (BOLT11 via Spark, local preimage verify) | ✅ **LIVE — leads the 402.** Spark PRIMARY / MDK FALLBACK issuer. Real mainnet BOLT11 (see §6). ~0.9–2.4s warm |
 | **USDC / crypto** (Tempo/Base/Solana USDC, Stripe deposit-mode) | ✅ **LIVE on prod**, full pay-loop proven end-to-end on staging |
-| **Card / SPT** (Stripe Shared Payment Tokens, `profile_…` networkId) | ✅ **LIVE on prod** (unit-tested + fail-closed; no live SPT round-trip yet) |
+| **Card / SPT** (Stripe Shared Payment Tokens, `profile_…` networkId) | ✅ **LIVE on prod** (unit-tested + fail-closed, no live SPT round-trip yet) |
 | **Stripe Directory badge** | ⏳ pending Stripe's async crawl of `/openapi.json` (≤~24h) — our side is complete |
 
 Prod worker: `openagents-autopilot` (verify current deploy version with
@@ -34,11 +34,11 @@ Prod worker: `openagents-autopilot` (verify current deploy version with
 `402` with a real BOLT11 + deposit address. **402 offer ordering: lightning → base/usdc
 → stripe/card.** `GET /openapi.json` is live and advertises the offers with **lightning
 first** (`x-service-info categories:["ai"]`). Profile `@openagents` is live (Network ID
-`profile_61Uug9…`); crypto payins enabled (live + test).
+`profile_61Uug9…`). Crypto payins enabled (live + test).
 
 **Primary sale model (#6169 follow-up):** the MPP default and only external model
 id is `openagents/khala`. Inside OpenAgents-owned callers the model slug is
-`khala`; external/OpenAI-compatible clients and MPP discovery use
+`khala`. External/OpenAI-compatible clients and MPP discovery use
 `openagents/khala`. Raw GPT-OSS ids are internal Hydralisk supply only and are
 not public, not listed, and not MPP-payable.
 
@@ -49,10 +49,10 @@ slug collapse. The flow was `402 Payment` (Lightning mainnet, amount `1 sat`) ->
 MDK wallet payment ->
 `Authorization: Payment ...` retry -> `200` OpenAI-compatible
 `chat.completion` with `Payment-Receipt` method `lightning`, status `success`.
-The Base USDC and Stripe SPT rails also remain advertised live; USDC test-helper
+The Base USDC and Stripe SPT rails also remain advertised live. USDC test-helper
 settlement is sandbox-only because prod issues live-mode Stripe PaymentIntents.
 Current raw-id requests are expected to fail with `model_not_public` before a
-payment challenge; repeat paid smokes should use `openagents/khala`.
+payment challenge. Repeat paid smokes should use `openagents/khala`.
 
 ## 2. Architecture (Worker-native, no Node sidecar)
 
@@ -60,20 +60,20 @@ payment challenge; repeat paid smokes should use `openagents/khala`.
   binding in `workers/api/src/inference/mpp/mpp-canonical.ts` (WebCrypto SHA-256,
   RFC-8785 JCS, base64url) per `draft-httpauth-payment-00`. The crypto deposit
   PaymentIntent id / Lightning paymentHash ride in the challenge `opaque` for
-  stateless recovery; verification is fail-closed.
-- **Crypto:** Stripe deposit-mode PaymentIntent; deposit addresses are
+  stateless recovery. Verification is fail-closed.
+- **Crypto:** Stripe deposit-mode PaymentIntent. Deposit addresses are
   `next_action.crypto_display_details.deposit_addresses` — a **network-keyed
   object** `{ "base": { "address": "0x…", "supported_tokens": [...] }, … }` (NOT
   an array). API version `2026-03-04.preview`.
-- **Card/SPT:** create+confirm a PaymentIntent with the client's SPT; the
+- **Card/SPT:** create+confirm a PaymentIntent with the client's SPT. The
   `profile_…` id is the `networkId`. Single-use SPT replay guard in D1.
 - **Lightning:** mint a BOLT11 invoice as the challenge, client returns the
   preimage, verify locally with `sha256(preimage) == paymentHash` (no node call).
   The issuer is **Spark** (`@breeztech/breez-sdk-spark`) — **PRIMARY** per the rail
   invariant — minted through the existing **`MDK_TREASURY` container's
-  `/spark/funding-invoice`** endpoint (returns `paymentHash`; `/spark/received/:hash`
+  `/spark/funding-invoice`** endpoint (returns `paymentHash`, `/spark/received/:hash`
   confirms the offline receipt). The **MDK sidecar is the explicit FALLBACK issuer
-  only**. Spark supports the offline receives that the agent/MPP rail needs; MDK is
+  only**. Spark supports the offline receives that the agent/MPP rail needs. MDK is
   checkouts-only (`apps/openagents.com/INVARIANTS.md` › Payment Rail Separation). See
   §6 for the live status and the deploy gotcha.
 - **Credit semantics (RL-3):** USDC/card mint **USD-origin** credit
@@ -83,11 +83,11 @@ payment challenge; repeat paid smokes should use `openagents/khala`.
 - **Discovery:** `GET /openapi.json` (OpenAPI 3.1, `x-service-info
   categories:["ai"]`, `x-payment-info.offers[]`). Offers are **flag-gated** — a
   rail is advertised only when it is actually armed AND can fulfill (honesty
-  gate; never advertise an unfulfillable rail).
+  gate. Never advertise an unfulfillable rail).
 
 ## 3. Config / arming (Worker secrets — never committed)
 
-Set from `apps/openagents.com/workers/api` (prod = no `--env`; staging =
+Set from `apps/openagents.com/workers/api` (prod = no `--env`, staging =
 `--env staging`). Key material lives in `~/work/.secrets/openagents-stripe-mpp.env`
 (gitignored) — pipe into wrangler via stdin, never echo:
 
@@ -96,7 +96,7 @@ Set from `apps/openagents.com/workers/api` (prod = no `--env`; staging =
 | `KHALA_MPP_ENABLED` | secret `true` | master arm |
 | `STRIPE_API_KEY` | secret (`rk_live` restricted, PaymentIntents:Write) | crypto + card settle |
 | `KHALA_MPP_SIGNING_SECRET` | secret (`openssl rand -hex 32`) | HMAC challenge binding |
-| `STRIPE_MPP_NETWORK_PROFILE_ID` | var (`profile_…`) | card/SPT networkId; presence enables the card offer |
+| `STRIPE_MPP_NETWORK_PROFILE_ID` | var (`profile_…`) | card/SPT networkId. Presence enables the card offer |
 | `KHALA_MPP_LIGHTNING_ENABLED` | secret/flag | Lightning rail (Spark mint via the `MDK_TREASURY` container) — set on prod |
 
 All five are **set on prod** (`openagents-autopilot`) — all three rails are LIVE.
@@ -125,17 +125,17 @@ Always deploy from a clean `origin/main` worktree.
   with `KHALA_MPP_PAYLOOP_BASE_URL` + `KHALA_MPP_PAYLOOP_STRIPE_TEST_KEY`. Proves
   402 → settle → 200 + `Payment-Receipt` + credit. The settle step calls
   `POST /v1/test_helpers/payment_intents/{id}/simulate_crypto_deposit`
-  (`Stripe-Version: 2026-03-04.preview`; params `transaction_hash` (`…testsuccess`),
-  `network`, `token_currency=usdc`, `buyer_wallet`). Testnets aren't auto-detected,
-  so the simulate helper is required in sandbox; **prod/mainnet uses real on-chain
+  (`Stripe-Version: 2026-03-04.preview`, params `transaction_hash` (`…testsuccess`),
+  `network`, `token_currency=usdc`, `buyer_wallet`). Testnets are not auto-detected,
+  so the simulate helper is required in sandbox. **Prod/mainnet uses real on-chain
   settlement — no simulate**.
-  Default model: `openagents/khala`. Do not override to raw GPT-OSS model ids;
+  Default model: `openagents/khala`. Do not override to raw GPT-OSS model ids.
   those are internal Hydralisk supply and the route must return
   `model_not_public` before issuing a payment challenge.
 - **Full Lightning pay-loop** (prod/mainnet, tiny live payment): request
   `openagents/khala` without a credential, pay the returned BOLT11 with the
   MDK agent wallet, then retry with the preimage credential. This was proven on
-  2026-06-24T01:51:12Z for 1 sat on the earlier raw-id path; the current smoke
+  2026-06-24T01:51:12Z for 1 sat on the earlier raw-id path. The current smoke
   target is `openagents/khala`.
 
 ## 6. Lightning (LIVE on Spark, leads the 402 — 2026-06-23)
@@ -143,7 +143,7 @@ Always deploy from a clean `origin/main` worktree.
 Lightning is armed on prod and **leads the 402** with a real mainnet BOLT11.
 - **Issuer:** Spark (`@breeztech/breez-sdk-spark`) is primary — the rail mints via the
   existing **`MDK_TREASURY` container's `/spark/funding-invoice`** (Breez `receivePayment`
-  BOLT11; #6152 added the returned `paymentHash` + a `/spark/received/:hash` confirm). The
+  BOLT11. #6152 Added the returned `paymentHash` + a `/spark/received/:hash` confirm). The
   **MDK sidecar** is the explicit *fallback* issuer only. Verify is local
   (`sha256(preimage)==paymentHash`). Bounded per-leg timeouts + per-rail isolation (#6149)
   guarantee a slow/failed Lightning leg only drops Lightning — never hangs the endpoint.
@@ -154,17 +154,17 @@ Lightning is armed on prod and **leads the 402** with a real mainnet BOLT11.
 > **DEPLOY GOTCHA (this caused a multi-hour saga).** The Spark mint code lives in the
 > `MDK_TREASURY` **container**. Prod deploys default to `--containers-rollout=none` because
 > **the container image build needs Docker Desktop running locally** — if Docker is down,
-> the container can't rebuild, so the running container stays an OLD image (its
+> the container cannot rebuild, so the running container stays an OLD image (its
 > `/spark/funding-invoice` lacked `paymentHash` → the Spark issuer fail-closed → Lightning
 > silently dropped). **Fix:** start Docker Desktop, then deploy **without**
 > `--containers-rollout=none` (`wrangler deploy --assets ../../apps/web/dist`) so the
 > `MdkTreasuryContainer` image rolls. The wallet derives from `MDK_TREASURY_MNEMONIC` and
 > re-syncs across the rollout — verify treasury balance/health via
 > `GET /api/operator/treasury/status` before and after (custody check). Rolled out at prod
-> version `271a3720`; treasury balance was 15 sat and stayed unchanged across the rollout.
+> version `271a3720`. Treasury balance was 15 sat and stayed unchanged across the rollout.
 
 Per the rail invariant (`apps/openagents.com/INVARIANTS.md` › Payment Rail Separation):
-Spark is the primary agent/MPP rail (offline receives); MDK is checkouts-only + the
+Spark is the primary agent/MPP rail (offline receives). MDK is checkouts-only + the
 fallback issuer only.
 
 ## 7. Watching for the Stripe Directory badge
@@ -181,8 +181,8 @@ stripe directory me                                           # see note below
 
 > **Known CLI quirk:** `stripe directory me` persistently returns "Your account
 > does not have a Stripe profile" even though the Dashboard shows `@openagents`
-> live/public (Network ID `profile_61Uug9…`). Treat the Dashboard as truth; this
-> is most likely network-index lag. If the badge hasn't appeared well after the
+> live/public (Network ID `profile_61Uug9…`). Treat the Dashboard as truth. This
+> is most likely network-index lag. If the badge has not appeared well after the
 > crawl window, the profile may need a poke (re-save, or contact Stripe).
 
 **Expedite discovery** (broader than the Stripe badge): register on
@@ -195,9 +195,9 @@ Dashboard agentic-commerce/directory area for any submit.
 - `deposit_addresses` is a **network-keyed object**, not an array.
 - `simulate_crypto_deposit` lives under `/v1/test_helpers/…`.
 - `check-contract-drift.test.ts` **false-fails when run from inside `.worktrees/`**
-  (its own SKIP_DIR regex skips `.worktrees`); the file passes 5/5 from a normal
-  checkout. Don't chase a contract-drift-only red in a worktree.
-- Build outputs to `apps/openagents.com/apps/web/dist`; deploy `--assets
+  (its own SKIP_DIR regex skips `.worktrees`). The file passes 5/5 from a normal
+  checkout. Do not chase a contract-drift-only red in a worktree.
+- Build outputs to `apps/openagents.com/apps/web/dist`. Deploy `--assets
   ../../apps/web/dist` is **mandatory** or you ship stale UI / a 404 `/`.
 - The Spark mint code lives in the **`MDK_TREASURY` container**, not the Worker.
   Prod deploys default to `--containers-rollout=none`, which leaves an OLD container
@@ -206,7 +206,7 @@ Dashboard agentic-commerce/directory area for any submit.
 
 ## 8a. Open items (2026-06-23)
 
-1. **The badge** — purely external; waiting on Stripe's async crawler indexing
+1. **The badge** — purely external. Waiting on Stripe's async crawler indexing
    `/openapi.json` (≤~24h). A 30-min watch loop is running. Our side is complete.
 2. ✅ **Trivial fallback cleanup shipped** — the MDK fallback sidecar route now
    normalizes stale/doubled `/api/mdk/api/mdk` configs back to exactly
@@ -219,14 +219,14 @@ Dashboard agentic-commerce/directory area for any submit.
 
 ## 9. References
 
-- Epic [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049); PRs:
+- Epic [#6049](https://github.com/OpenAgentsInc/openagents/issues/6049). PRs:
   #6131 (profile id), #6132 (deposit-address parser), #6138 (Worker-native HMAC
   verify), #6139 (`/openapi.json`), #6141/#6144 (pay-loop smoke), #6146 (initial
   MDK Lightning — superseded), #6149 (mint timeout + per-rail isolation),
   #6152 (**Spark primary + MDK fallback** + container `/spark/funding-invoice`
   `paymentHash` + `/spark/received`), #6153/#6157 (mint budgets), #6159 (leg
   diagnostics).
-- Plan: `docs/stripe/2026-06-22-khala-mpp-integration-plan.md`; survey:
+- Plan: `docs/stripe/2026-06-22-khala-mpp-integration-plan.md`. Survey:
   `docs/stripe/2026-06-22-stripe-directory-mpp-khala.md`.
 - Protocol mirror: `docs/reference/mpp/`.
 - Production-proof gate: `apps/openagents.com/docs/launch/2026-06-23-khala-billing-mpp-production-proof.md`.

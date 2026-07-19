@@ -13,7 +13,7 @@ Not product roadmap. Promote to issues only with clear ownership.
 How long until a new user (or a new employee template) earns a promotion
 step (observe → draft → act-with-approval) without operator babysitting?
 
-**Explore:** ladder UX on mobile; default deny toolsets; what "earned
+**Explore:** ladder UX on mobile. Default deny toolsets. What "earned
 trust" means in receipts.
 
 ---
@@ -24,7 +24,7 @@ H2 is the highest conversion claim for the observed operator market.
 Measure trigger latency, cold-boot cost, and auto-pause correctness
 before marketing "never dies when the laptop closes."
 
-**Explore:** warm pools vs cold Firecracker economics; maxCreditsPerDay
+**Explore:** warm pools vs cold Firecracker economics. MaxCreditsPerDay
 as payroll UX.
 
 ---
@@ -35,7 +35,7 @@ Blueprint-lite vocabulary (objects, properties, links, action
 submissions, access explanation) must feel like "my business memory,"
 not a consulting engagement.
 
-**Explore:** prefilled brain from public data; export formats; slice
+**Explore:** prefilled brain from public data. Export formats. Slice
 isolation between two employees as the demo that sells.
 
 ---
@@ -46,8 +46,8 @@ Consented capture, plugin packaging, revenue share, forum identity —
 the Dixon bridge. Design the minimum honest path where a private solved
 problem becomes optional network inventory without dark patterns.
 
-**Explore:** disclosure UX; opt-in defaults; attribution splits that
-don't require understanding Lightning.
+**Explore:** disclosure UX. Opt-in defaults. Attribution splits that
+do not require understanding Lightning.
 
 ---
 
@@ -56,14 +56,14 @@ don't require understanding Lightning.
 Customer #1 is ourselves. The shareable verdict board is both engineering
 and GTM.
 
-**Explore:** what a third-party app needs for onboarding; chill evals
-across MCP/config changes; demo-PR sales motion without overclaiming.
+**Explore:** what a third-party app needs for onboarding. Chill evals
+across MCP/config changes. Demo-PR sales motion without overclaiming.
 
 ---
 
 ## Theme F — Fulfillment connective tissue
 
-Meditations claim: FULFILL substrate is rich; ACQUIRE→CONVERT and
+Meditations claim: FULFILL substrate is rich. ACQUIRE→CONVERT and
 PROVE→MULTIPLY connective tissue is thin. Buyers still get hand-carried.
 
 **Explore:** minimum path from `/business` intake to receipted deliverable
@@ -76,7 +76,7 @@ with zero human glue for one fixed package.
 Quota-aware `auto`, typed account_exhausted, never-silent substitution.
 Product must tell truth when an account dies mid-turn.
 
-**Explore:** UX for multi-account readiness; ToS/broker-only invariant
+**Explore:** UX for multi-account readiness. ToS/broker-only invariant
 education without scaring users.
 
 ---
@@ -84,9 +84,9 @@ education without scaring users.
 ## Theme H — Assurance levels as a menu
 
 Hosted → BYO model → regulated private placement → Reactor. Same
-employees/brain/receipts; placement is a setting.
+employees/brain/receipts. Placement is a setting.
 
-**Explore:** one comparison table; install-time honesty; what "US-origin
+**Explore:** one comparison table. Install-time honesty. What "US-origin
 only" looks like when a nonconforming pull is refused (Reactor Zero
 pattern).
 
@@ -94,11 +94,11 @@ pattern).
 
 ## Theme I — ONE-UI and Effect Native without thrash
 
-React/TanStack/shadcn Protoss system; Effect services for process and
+React/TanStack/shadcn Protoss system. Effect services for process and
 contracts. Convert critical paths first.
 
 **Explore:** which desktop RPC methods deserve Schema-first decode this
-month; which Foldkit surfaces are allowed to die unmigrated.
+month. Which Foldkit surfaces are allowed to die unmigrated.
 
 ---
 

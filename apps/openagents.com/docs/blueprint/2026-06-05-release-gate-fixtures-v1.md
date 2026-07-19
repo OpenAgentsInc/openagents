@@ -12,13 +12,13 @@ email policies, and proof projectors from self-promoting into production.
 
 Promotion requires:
 
-- fixture pass state;
-- review approval;
-- policy compliance;
-- rollback posture;
-- scorecard;
-- receipt evidence;
-- explicit gate decision;
+- fixture pass state.
+- review approval.
+- policy compliance.
+- rollback posture.
+- scorecard.
+- receipt evidence.
+- explicit gate decision.
 - no self-promotion attempt.
 
 ## Current Limits

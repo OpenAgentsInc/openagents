@@ -4,11 +4,11 @@ Source studied: `projects/repos/codex` @ `9163c0a335`. Question: is there code t
 **programmatically trigger a rate-limit reset** for our usage-limited Codex
 accounts (e.g. codex-3, codex-6)?
 
-## TL;DR — there is NO programmatic rate-limit reset
+## TL.DR — there is NO programmatic rate-limit reset
 
 Codex cannot force-reset a rate limit, because the limit is **server-side**
 (the ChatGPT/Codex backend's per-account usage windows). Codex only **reads**
-the limit status; it has no "reset my limit" operation, and one cannot exist —
+the limit status. It has no "reset my limit" operation, and one cannot exist —
 you cannot client-side clear a server-enforced usage cap. Every `reset_*` symbol
 in the repo is unrelated (websocket session, TUI state, plugin checkout, memory,
 cursor). The backend OpenAPI `apis/` directory is empty (data models only, no
@@ -35,7 +35,7 @@ each one exactly when its window resets.
   `rate_limit_reached_type`.
 - **`AdditionalRateLimitDetails`** — `limit_name`, `metered_feature`, `rate_limit`.
 
-These are deserialized from the backend; there is **primary + secondary window**
+These are deserialized from the backend. There is **primary + secondary window**
 modeling (e.g. a short rolling window and a longer plan window), each with its
 own `reset_at`. There is no mutating/reset counterpart anywhere.
 
@@ -58,7 +58,7 @@ reset a usage window — a usage-limited account stays limited after reconnect.
 1. Poll/parse the Codex rate-limit status per account (the same payload the TUI
    surfaces) and store `used_percent`, `reset_at`, `rate_limit_reached_type`.
 2. Health-gate the dispatch rotation on it: `ready` only when `allowed == true`
-   and `limit_reached == false`; otherwise `usage_limited until <reset_at>`.
+   and `limit_reached == false`. Otherwise `usage_limited until <reset_at>`.
 3. Auto-resume each limited account at its `reset_at` instead of probing blindly.
 4. Surface per-account status (with `reset_at`) on the operator/`/artanis`
    accounts dashboard (#6640) so "why is throughput low" is answerable at a
@@ -72,7 +72,7 @@ in N min" — the durable fix, since a forced reset is impossible.
 While diagnosing codex-2, `auth codex --account codex-2` printed `✓ Linked`
 **without** prompting a device login and **without** writing new credentials
 (`auth.json` mtime unchanged). In `apps/pylon/src/account-connect.ts`,
-`forceDeviceLogin` defaults to `false`; for an already-registered account the
+`forceDeviceLogin` defaults to `false`. For an already-registered account the
 flow returns `"unchanged"` and prints "Linked" while skipping the device-login.
 
 **Correct re-auth for a revoked account:**

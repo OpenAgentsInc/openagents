@@ -16,7 +16,7 @@ bootstrap and seal barrier (#4850/#4851,
 P0.2 made `steps_behind` a contract field on the window-seal record. This
 change makes it load-bearing at acceptance time. Every contribution carries
 `stepsBehind` (how many optimizer steps behind the window head its base
-state was); each verification class carries a staleness dimension; and a
+state was). Each verification class carries a staleness dimension. And a
 contribution **beyond** the effective threshold routes to `sync_reentry` —
 re-ramped through the shadow window (P1.1, psionic#1125) — rather than
 being **rejected** (wasting a willing device) or **merged** (importing
@@ -35,7 +35,7 @@ arXiv:2505.01099. Read-only reference lane:
 `projects/pluralis/repos/AsyncPP` (workspace root). The paper's core move
 is to treat gradient delay as a first-class measured quantity the optimizer
 compensates for, instead of assuming synchronous freshness. Pluralis node0
-ships `max_allowed_stale: 5` as the dispatch-side prior art; our run-level
+ships `max_allowed_stale: 5` as the dispatch-side prior art. Our run-level
 default (`DefaultMaxAllowedStaleSteps = 5` in
 `workers/api/src/training-run-window-authority.ts`) remains a stated
 per-run contract value, not an inherited constant.
@@ -43,7 +43,7 @@ per-run contract value, not an inherited constant.
 ## Decision function
 
 `decideTrainingStalenessAcceptance` in
-`workers/api/src/training-staleness-acceptance.ts` — a pure function;
+`workers/api/src/training-staleness-acceptance.ts` — a pure function.
 timestamps and event ids are passed in, never read from a clock.
 
 Inputs: `contributionRef`, `stepsBehind`, the `TrainingRunRecord`
@@ -65,7 +65,7 @@ A contribution at **exactly** `maxAllowedStale` is **accepted**. The
 contract reads "beyond max_allowed_stale" — strictly greater — matching
 the run-authority comment ("more than this many steps behind") and the
 Pluralis `max_allowed_stale` reading. `stepsBehind = 5` against the
-default run contract is the last accepted value; `6` routes to
+default run contract is the last accepted value. `6` routes to
 sync re-entry.
 
 ### Effective threshold and clamping
@@ -73,9 +73,9 @@ sync re-entry.
 `effectiveMaxStepsBehindFor(policy, runMaxAllowedStale)`:
 
 - no policy or `inherit_run_default` → run's `maxAllowedStale`,
-  `thresholdSource: 'run_default'`;
+  `thresholdSource: 'run_default'`.
 - `max_steps_behind_override` **tighter** than the run default → the
-  override, `thresholdSource: 'class_override'`;
+  override, `thresholdSource: 'class_override'`.
 - an override **looser** than the run default clamps to the run default
   and reports `run_default` — the run-level contract is a ceiling, so a
   verification class can never import more divergence than the run
@@ -90,9 +90,9 @@ sync re-entry.
 
 | Verification class | Staleness policy | Effective vs default run (5) | Rationale |
 | --- | --- | --- | --- |
-| `deterministic_recompute` | inherit run default | 5 | verifies against the contribution's own declared base; staleness threatens merge divergence, not verification power |
+| `deterministic_recompute` | inherit run default | 5 | verifies against the contribution's own declared base. Staleness threatens merge divergence, not verification power |
 | `exact_trace_replay` | inherit run default | 5 | same: replay is pinned to the declared trace, not the live head |
-| `freivalds_merkle` | inherit run default | 5 | algebraic check against committed matrices; head-independent |
+| `freivalds_merkle` | inherit run default | 5 | algebraic check against committed matrices. Head-independent |
 | `seeded_replication` | override `maxStepsBehind: 3` | 3 | replication with pinned seeds tolerates some drift, but compares against near-head behavior |
 | `statistical_cross_check` | override `maxStepsBehind: 2` | 2 | distribution-level comparison loses discriminating power fastest as the base state diverges from the head |
 
@@ -113,17 +113,17 @@ vocabulary:
   (`join_lifecycle.public.beyond_max_allowed_stale`) then
   `lagged -> sync_reentry`
   (`join_lifecycle.public.sync_reentry_started`), each emitting a
-  receipt-compatible lifecycle event;
-- a contributor already `lagged` takes only the second edge;
+  receipt-compatible lifecycle event.
+- a contributor already `lagged` takes only the second edge.
 - a contributor already in `sync_reentry` gets an idempotent
-  `already_in_sync_reentry` outcome (not an error);
+  `already_in_sync_reentry` outcome (not an error).
 - states with no ladder edge toward re-entry (`registered`, `qualified`,
   `state_synced`, `warmup`) get a typed `not_routable` outcome — only a
   device that has been on the live ladder can have produced a stale
   contribution.
 
 From `sync_reentry` the device re-ramps through the existing
-`sync_reentry -> state_synced` edge and the warmup/shadow path; the
+`sync_reentry -> state_synced` edge and the warmup/shadow path. The
 willing device is recycled, not discarded.
 
 ## Pre-registered falsifier
@@ -138,20 +138,20 @@ condition for the per-class dimension.)
 ## Tests
 
 `workers/api/src/training-staleness-acceptance.test.ts` covers: fresh
-contribution accepted under the run default; boundary value (exactly
-`maxAllowedStale`) accepted; over-stale contribution routed to
-`sync_reentry` with the full typed event (never a bare reject);
+contribution accepted under the run default. Boundary value (exactly
+`maxAllowedStale`) accepted. Over-stale contribution routed to
+`sync_reentry` with the full typed event (never a bare reject).
 class-level override (`statistical_cross_check`, 2) beating the run
-default (5); a loosening override clamped to the run ceiling; typed
-validation errors for non-integer/negative `stepsBehind`; threshold
-resolution unit cases; and lifecycle composition (active routed through
+default (5). A loosening override clamped to the run ceiling. Typed
+validation errors for non-integer/negative `stepsBehind`. Threshold
+resolution unit cases. And lifecycle composition (active routed through
 lagged into sync_reentry with both reason-coded events, lagged routed in
 one edge, sync_reentry idempotent, registered typed `not_routable`).
 
 ## Explicitly not claimed (hardware/rehearsal-gated)
 
 - **R2-scope receipts showing a real contribution re-ramped** through
-  sync re-entry: requires live contributor devices at R2 scale; no such
+  sync re-entry: requires live contributor devices at R2 scale. No such
   receipt is claimed here. The decision and routing are contract-tested
   only.
 - **Shadow-window ramp execution** (P1.1) is the psionic-side companion

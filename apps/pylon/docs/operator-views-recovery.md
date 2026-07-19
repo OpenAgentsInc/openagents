@@ -10,13 +10,13 @@ labor mode.
 Implemented surfaces:
 
 - operate: desired mode, intake state, earnings state, recent job refs, market
-  activity refs, receipt refs, and blocker refs;
+  activity refs, receipt refs, and blocker refs.
 - wallet: MDK readiness, network ref, known/unknown balance state, payout
-  target refs, settlement refs, and wallet blocker refs;
+  target refs, settlement refs, and wallet blocker refs.
 - inspect: host inventory freshness, eligible inventory count, backend health
-  refs, resource mode, and inventory blockers;
+  refs, resource mode, and inventory blockers.
 - recovery: headless command refs plus explicit operator opt-in, sandbox
-  profile, budget, and no-wallet-secret evidence gates;
+  profile, budget, and no-wallet-secret evidence gates.
 - transcript/log: bounded in-memory retention for the latest 1000 log entries,
   mouse wheel routing, page up/down, home/end, and line up/down key handling.
 

@@ -12,16 +12,16 @@ bypass instructions.
 
 The view model shows:
 
-- campaign and target domain;
-- capture policy state;
-- static, rendered, and provider capture refs;
-- audit score label;
-- source authority card count;
-- remake brief state;
-- preview URL and preview state;
-- outreach draft readiness;
-- meeting CTA readiness;
-- suppression state;
+- campaign and target domain.
+- capture policy state.
+- static, rendered, and provider capture refs.
+- audit score label.
+- source authority card count.
+- remake brief state.
+- preview URL and preview state.
+- outreach draft readiness.
+- meeting CTA readiness.
+- suppression state.
 - action availability with disabled reasons.
 
 Timestamps are formatted into operator-readable labels such as:
@@ -60,10 +60,10 @@ Each decision maps to a durable next state:
 
 `approve_outreach` is disabled unless:
 
-- the preview is generated;
-- the preview URL exists;
-- an outreach draft ref exists;
-- a meeting CTA ref exists;
+- the preview is generated.
+- the preview URL exists.
+- an outreach draft ref exists.
+- a meeting CTA ref exists.
 - suppression state is `clear`.
 
 All decisions require at least one evidence ref and an operator actor ref.

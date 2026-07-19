@@ -17,13 +17,13 @@ sats, treasury, payout, or settlement actions.
 
 `site_referral_policy_events`
 
-- records the policy subject being evaluated;
+- records the policy subject being evaluated.
 - links optional referral source, invite, attribution, workflow event, order,
-  and Site refs;
+  and Site refs.
 - stores previous state, decision state, reason, eligibility, customer status,
-  and operator override refs;
+  and operator override refs.
 - uses `idempotency_key` so repeated payment, workflow, or operator attempts do
-  not create duplicate policy records;
+  not create duplicate policy records.
 - stores only bounded metadata and public-safe refs.
 
 This table is eligibility evidence. It is not payout authority.
@@ -60,33 +60,33 @@ This table is eligibility evidence. It is not payout authority.
 
 `workers/api/src/site-referral-policy.ts` exposes:
 
-- `evaluateSiteReferralPolicy`;
-- `publicSiteReferralPolicyDecision`;
-- `operatorSiteReferralPolicyDecision`;
-- `recordSiteReferralPolicyEvent`;
-- `recordOperatorSiteReferralPolicyOverride`;
-- `listSiteReferralPolicyEventsByAttribution`;
-- `listSiteReferralPolicyEventsBySource`;
+- `evaluateSiteReferralPolicy`.
+- `publicSiteReferralPolicyDecision`.
+- `operatorSiteReferralPolicyDecision`.
+- `recordSiteReferralPolicyEvent`.
+- `recordOperatorSiteReferralPolicyOverride`.
+- `listSiteReferralPolicyEventsByAttribution`.
+- `listSiteReferralPolicyEventsBySource`.
 - `listSiteReferralPolicyEventsByWorkflowEvent`.
 
 The evaluator enforces:
 
-- self-referral hold;
-- first-verified-wins duplicate behavior;
-- expired source or attribution rejection;
-- disabled/disputed/manual-review holds;
+- self-referral hold.
+- first-verified-wins duplicate behavior.
+- expired source or attribution rejection.
+- disabled/disputed/manual-review holds.
 - collusion, duplicate-account, sanctions/compliance, chargeback/refund, and
-  clawback signals;
-- paid-workflow refund, reversal, eligibility-hold, and dispute-hold states;
-- max workflow-event and amount caps;
+  clawback signals.
+- paid-workflow refund, reversal, eligibility-hold, and dispute-hold states.
+- max workflow-event and amount caps.
 - operator override recording without inline private notes.
 
 ## Projection Rules
 
 Customer-safe projections expose only:
 
-- high-level customer status;
-- decision state;
+- high-level customer status.
+- decision state.
 - whether the referral is eligible for a future reward.
 
 They do not expose abuse heuristics, compliance reasons, operator notes,
@@ -99,10 +99,10 @@ notes still remain outside the record behind an `operator_note_ref`.
 
 Referral owner and operator inspection metrics now include aggregate counts for:
 
-- held policy decisions;
-- disputed policy decisions;
-- capped policy decisions;
-- reversed policy decisions;
+- held policy decisions.
+- disputed policy decisions.
+- capped policy decisions.
+- reversed policy decisions.
 - operator overrides.
 
 These are aggregate operational signals. They are not public explanations of

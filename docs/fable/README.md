@@ -108,7 +108,7 @@ each source doc.
   catalog the QA Swarm sells (indicator truthfulness, stated-flow
   availability, latency budgets, error honesty, dead controls, consistency,
   copy safety) and the standing rule that new OpenAgents services ship with
-  contracts from day one. Internal layer landed 2026-07-03 (ROADMAP_QA §9d;
+  contracts from day one. Internal layer landed 2026-07-03 (ROADMAP_QA §9d,
   Khala Code registry + doc at `docs/khala-code/khala-code-ux-contract.md`).
 - [`2026-07-02-site-speed-lane-spec.md`](./2026-07-02-site-speed-lane-spec.md)
   — spec for the standing site-speed lane on the deployed website (landing
@@ -135,11 +135,11 @@ each source doc.
   into the BF-7.2 business factory query pack as a caveated review-ledger floor
   with `not_measured` empty-month behavior.
 - [`EXECUTION.md`](./EXECUTION.md) — how the roadmap is executed: Artanis
-  (fleet-manager role) supervises; **Khala Code fleet delegation is the
-  primary mechanism**; one GitHub issue per roadmap task, closed only via a
-  reviewed PR merged to `main`, built in a clean worktree; final review by
+  (fleet-manager role) supervises. **Khala Code fleet delegation is the
+  primary mechanism**. One GitHub issue per roadmap task, closed only via a
+  reviewed PR merged to `main`, built in a clean worktree. Final review by
   the supervisor or a tightly-controlled subagent, never the authoring
-  worker; every delegated run's tokens verified through the exact
+  worker. Every delegated run's tokens verified through the exact
   `token_usage_events` chain (`POST /api/pylon/{codex,claude}/turns` →
   ledger → `GET /api/public/khala-tokens-served`) into the public
   `openagents.com/stats` counters. The run doubles as the final stress test
@@ -164,10 +164,10 @@ each source doc.
 - `2026-07-04-khala-sync-implementation-status.md` — end-of-run status for
   the 2026-07-04 Khala Sync build: the engine (contracts → substrate →
   mutators → capture → hub DOs → client) live in production on Cloud SQL via
-  Hyperdrive; the tokens-served counter served from the Postgres projection;
+  Hyperdrive. The tokens-served counter served from the Postgres projection.
   every audited domain dual-writing to Postgres twins (migrations 0001–0028
-  applied to staging+prod); the 2× June-peak load test passing with zero
-  overload-class failures; and the remaining owner-gated destructive batch
+  applied to staging+prod). The 2× June-peak load test passing with zero
+  overload-class failures. And the remaining owner-gated destructive batch
   (per-domain read cutover + D1 decommission, money/auth last).
 - `2026-07-04-database-alternatives-and-postgres-sync-engine.md` — why the
   single `openagents-autopilot` D1 database overloads under internal-only
@@ -176,7 +176,7 @@ each source doc.
   full-table `SUM()` counter, a 25-task/minute cron, zero retry/backoff),
   the immediate Cloudflare-side mitigation ladder, a costed comparison of
   GCP database targets against the $70k credit (Cloud SQL Postgres HA
-  recommended; Spanner ruled out — no logical decoding; AlloyDB as upgrade
+  recommended. Spanner ruled out — no logical decoding. AlloyDB as upgrade
   path), and the full design for the owned **Khala Sync** engine on
   Postgres (always the two-word compound — bare "Khala" stays the
   collective-intelligence product from Episode 242):
@@ -221,10 +221,10 @@ each source doc.
 - `2026-07-01-khala-code-effect-integration-audit.md` — deep Effect-usage
   audit of Khala Code Desktop and everything it consumes, grounded in the
   Effect v4 source (`projects/repos/effect-smol`), its `.patterns/` rules,
-  and `effect-solutions`. Headline: the desktop links Effect but doesn't
-  adopt it (5/55 files import it; zero services/layers/Config/Scope/Clock;
-  five hand-rolled subprocess implementations; an unvalidated 57-method RPC
-  contract; a 2,598-line vanilla-DOM shell) and takes the imperative escape
+  and `effect-solutions`. Headline: the desktop links Effect but does not
+  adopt it (5/55 files import it, zero services/layers/Config/Scope/Clock,
+  five hand-rolled subprocess implementations. An unvalidated 57-method RPC
+  contract. A 2,598-line vanilla-DOM shell) and takes the imperative escape
   hatch out of every Effect/Foldkit surface it consumes. Includes a v4
   best-practices baseline, ranked debt with failure modes, and a four-phase
   plan: Schema-first contracts → scoped process/protocol services
@@ -237,13 +237,13 @@ each source doc.
   (`stablyai/orca`, MIT reference at `projects/repos/orca`): a terminal
   multiplexer + worktree manager + SQLite message bus whose breadth comes
   from PTY/glyph heuristics, versus our typed/verified/exact-accounted
-  spine. Audits the five-port adoption scoreboard (runner registry live;
-  the orchestration task-DAG store built+tested but dormant; dashboard
-  mock-only; Artanis verbs partial; mobile companion never filed) and lays
+  spine. Audits the five-port adoption scoreboard (runner registry live,
+  the orchestration task-DAG store built+tested but dormant. Dashboard
+  mock-only. Artanis verbs partial. Mobile companion never filed) and lays
   out the adoption order: wire the dormant orchestration store as the
   FleetRun spine, unify on the runner-neutral status contract end to end,
   build the mobile companion as an E2EE-paired DO-relayed allowlisted
-  projection (observe/notify/approve/steer; rough desktop parity minus
+  projection (observe/notify/approve/steer, rough desktop parity minus
   terminals/design-mode/local execution), then the annotate-diff review
   loop — while explicitly not copying PTY status detection,
   trust-the-summary completion, unclaimed parallelism, or 30-harness
@@ -265,19 +265,19 @@ each source doc.
   audit + launch alignment: reconciles the product-promise registry
   (`2026-06-29.5`, 120 records — versioned before the Khala Code arc
   existed) against the unified roadmap and the **released Episode 245**
-  (the Khala Code launch video; the fleet-demo transcript the other fable
+  (the Khala Code launch video, the fleet-demo transcript the other fable
   docs call "245" is now the unreleased draft `24X1.md`). Maps every 245
   claim to its registry record, traces the "coding agent pays you"
   escalation across episodes 220–244 (Ep 228 "Get Paid to Code" is the
-  direct ancestor of the 245 economics loop; Ep 222's launch-truth-contract
+  direct ancestor of the 245 economics loop. Ep 222's launch-truth-contract
   header is the claim-sheet pattern 245 should repeat), proposes the
   owner-gated
-  `khala_code.*` promise family (wrapper product yellow; plans, trace
+  `khala_code.*` promise family (wrapper product yellow, plans, trace
   capture, plugins, and revenue-share planned), stale-record
   reconciliations (incl. withdrawing the retired-Expo mobile record), the
   roadmap↔promise pairings, and the Khala-Code-as-gateway funnel across
   the registry's green substrate. **Implemented as registry `2026-07-01.1`**
-  (owner-directed, no green flips; see the doc's §4 status banner).
+  (owner-directed, no green flips, see the doc's §4 status banner).
 - `2026-07-01-promissory-nongreen-assault-runbook.md` — the PROMISSORY
   standing runbook: one repeatable formula any agent (or ten concurrently)
   follows to claim and assault the next non-green product promise. Scoring
@@ -328,7 +328,7 @@ each source doc.
   autonomous operator/administrator persona): its split architecture (Khala
   operator chat + Gemini cron ticks), current see-vs-do capability (the
   #6359 "see-but-not-act gap" closed for the bounded no-spend lane), the two
-  visions (Vision A: administrator of the shared org fleet; Vision B:
+  visions (Vision A: administrator of the shared org fleet, Vision B:
   per-user fleet manager / Artanis-as-a-Service), the owner-intent history
   reconstructed from past sessions (birth → first autonomy → rebirth on
   Khala → the "Artanis is your boss" inversion → the 10×-tokens mission),

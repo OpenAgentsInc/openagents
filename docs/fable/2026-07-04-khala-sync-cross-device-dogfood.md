@@ -25,7 +25,7 @@ has happened yet.
   into public evidence.
 - `scripts/validate-khala-sync-cross-device-evidence.ts` validates the public
   dogfood bundle shape. It accepts counts, latency values, public route/scope
-  refs, receipt refs, and owner sign-off metadata; it rejects raw body/content,
+  refs, receipt refs, and owner sign-off metadata. It rejects raw body/content,
   prompts, transcripts, private paths, and secret-shaped strings.
 
 ## Owner Run
@@ -34,7 +34,7 @@ has happened yet.
 2. On phone, send one Khala chat turn. Confirm the phone shows Khala Sync
    updated.
 3. On Khala Code Desktop, run with `KHALA_SYNC_CHAT=1` and the owner
-   `KHALA_SYNC_CHAT_OWNER_USER_ID`; confirm the new thread appears in the
+   `KHALA_SYNC_CHAT_OWNER_USER_ID`. Confirm the new thread appears in the
    sidebar without restart.
 4. On the Start staging web chat-sync panel, confirm the same synced thread
    metadata is visible or record the current web gap if the route is still in
@@ -59,7 +59,7 @@ The committed preflight bundle is:
 docs/khala-sync/receipts/2026-07-04-cross-device-chat-dogfood.pending.json
 ```
 
-It is deliberately `pending_owner_signoff`; #8354 should close only after an
+It is deliberately `pending_owner_signoff`. #8354 Should close only after an
 owner-signed replacement or follow-up bundle records the real device run.
 
 ## Verification

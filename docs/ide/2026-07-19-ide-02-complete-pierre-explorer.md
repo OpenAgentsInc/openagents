@@ -3,7 +3,7 @@
 Date: 2026-07-19  
 Issue: `#9017`  
 Roadmap packet: `IDE-02`  
-Status: implemented and locally verified; this closes the Explorer packet, not
+Status: implemented and locally verified. This closes the Explorer packet, not
 the Monaco editor or the daily-use/full-parity rungs
 
 ## Result
@@ -52,13 +52,13 @@ workspace pages.
 from Effect Schema rather than declared as parallel raw unions. The graph
 contains:
 
-- branded scan, node, and operation refs;
+- branded scan, node, and operation refs.
 - exact project, root, worktree, attachment, attachment-generation, and
-  path-index-generation identity;
+  path-index-generation identity.
 - tagged scanning, partial, truncated, degraded, unavailable, error, empty,
-  ready, and stopped states;
+  ready, and stopped states.
 - tagged node policy, load, badge, pending-operation, interaction, filter, and
-  command states;
+  command states.
 - the bounded `IdePierreTreeProjectionSchema`, which intentionally omits
   authority fields.
 
@@ -75,13 +75,13 @@ stopped scope. There is no generic string-error control plane.
 The same service supports two truthful modes:
 
 - `root_and_expanded` returns a usable partial tree quickly and marks unloaded
-  directories as unloaded; it never renders them as known-empty;
+  directories as unloaded. It never renders them as known-empty.
 - `complete` breadth-first scans every admitted directory in bounded pages,
   yields between chunks, reports progress, and ends ready, empty, partial, or
   truncated as the facts require.
 
 Every scan owns a sequence. A newer scan or explicit cancellation advances the
-sequence; the older scan checks before and after every asynchronous read and
+sequence. The older scan checks before and after every asynchronous read and
 before publication. A blocked read therefore cannot publish into a newer
 generation after it resumes.
 
@@ -135,7 +135,7 @@ so a file inserted after initial mount can be selected and opened.
 The typed command graph covers open, reveal, create file/folder, rename, move,
 copy, duplicate, delete, terminal, compare, refresh, retry, and rescan.
 Move/drop always includes the current expected revision. Context-menu commands
-use the same graph; no menu action calls a bridge directly.
+use the same graph. No menu action calls a bridge directly.
 
 The workspace host now has bounded expected-version move, copy, and duplicate
 operations alongside create, rename, delete, and reveal. It enforces the
@@ -180,7 +180,7 @@ serialization, packaging, cancellation, observability, failure, and teardown.
 
 The packaged large-repository receipt and screenshot are:
 
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-journey.json`;
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-journey.json`.
 - `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-explorer.png`.
 
 The archive contains 10,868 filesystem entries and the ready index contains
@@ -192,7 +192,7 @@ with pointer and Home/End, opens the keyboard context menu, activates a file,
 checks screen-reader relationships, checks that the absolute corpus root is
 absent, and captures the rendered result. The fallback is disclosed because
 the screenshot is evidence of the packaged Explorer, not evidence that this
-isolated packaged driver validated global shortcut delivery; the ordinary
+isolated packaged driver validated global shortcut delivery. The ordinary
 React smoke owns that separate command-binding journey.
 
 ## Verification map

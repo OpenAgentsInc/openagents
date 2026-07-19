@@ -62,7 +62,7 @@ The evidence gate can publish releases or spend bitcoin.
 | --- | --- |
 | `blocked` | Required public-safe evidence is missing, partial, duplicate, non-terminal, or unsafe to project. |
 | `ready_for_operator_release_review` | Evidence is complete enough for a human/operator release review, but no release approval or public-claim-upgrade authority is granted by the gate. |
-| `network_not_ready_for_release` | A stronger #499 release freeze is active even though review evidence exists; no new release, npm latest move, or broad download/earning claim is allowed until the full network-readiness sequence passes. |
+| `network_not_ready_for_release` | A stronger #499 release freeze is active even though review evidence exists. No new release, npm latest move, or broad download/earning claim is allowed until the full network-readiness sequence passes. |
 | `approved_for_release` | A retained operator decision explicitly approves the stronger release claim and records rollback posture. This state is not currently recorded. |
 | `released` | The approved release action has been performed and verified. Package publication already exists for `0.2.4`, but general availability remains unapproved. |
 
@@ -75,35 +75,35 @@ The evidence gate can publish releases or spend bitcoin.
 | Local package smoke | #490 local macOS arm64 clean HOME/cache no-launch smoke: `version: 0.2.4`, `tagName: pylon-v0.2.4`, `installMethod: release_asset`, target `darwin/arm64`, desired offline mode. |
 | Local status smoke | #490 forwarded `status --json` smoke: runtime mode `offline`, authoritative status `ready`, no runtime error, and two sellable offline launch products. |
 | Second-host smoke | Not proven. Local Tailscale daemon access failed, Arch SSH refused, and known macOS Tailnet IPs timed out. Linux, WSL Ubuntu, native Windows, and clean second-host evidence remain future general-availability work. |
-| Pylon registration/heartbeat | `api.public.pylon.registration_heartbeat`; `workers/api/src/pylon-api-routes.test.ts`. |
-| Wallet readiness | `wallet_readiness.public.bucketed.minimum_satisfied`; #436 bucketed wallet readiness only. |
+| Pylon registration/heartbeat | `api.public.pylon.registration_heartbeat`. `workers/api/src/pylon-api-routes.test.ts`. |
+| Wallet readiness | `wallet_readiness.public.bucketed.minimum_satisfied`. #436 Bucketed wallet readiness only. |
 | First real movement receipt | `receipt.nexus.issue_431.settlement.issue_431_authority_1780818513507`. |
 | First Artanis assignment receipt | `receipt.nexus.issue_438.settlement.issue_438_artanis_1780822221`. |
 | Second Artanis bridge receipt | `receipt.nexus_pylon.settlement.artanis_mdk_bridge_8b378373002501f3e896dcd3`. |
-| Distinct Pylon refs | `pylon.public.artanis.bridge.8b378373`; `pylon.public.issue_438_edge_wallet`. |
-| Paid-work proof refs | `artanis-mdk-bridge-8b378373002501f3e896dcd3`; `assignment.public.issue_438.issue_438_artanis_1780822221`; `proof.public.mdk_agent_wallet.real_bitcoin_moved.8b378373002501f3e896dcd3`. |
+| Distinct Pylon refs | `pylon.public.artanis.bridge.8b378373`. `pylon.public.issue_438_edge_wallet`. |
+| Paid-work proof refs | `artanis-mdk-bridge-8b378373002501f3e896dcd3`. `assignment.public.issue_438.issue_438_artanis_1780822221`. `proof.public.mdk_agent_wallet.real_bitcoin_moved.8b378373002501f3e896dcd3`. |
 | Public report | `GET https://openagents.com/api/public/artanis/report`, `pylonOpenAgents product surfaceReleaseGate.state = ready_for_operator_release_review`, two distinct Pylons, no blocker refs, authority flags false. |
 | Rendered public page | `https://openagents.com/artanis` renders `OpenAgents product surface release gate`, the evidence-complete label, and `2 / 2 distinct Pylons`. |
 | Forum publication | `https://openagents.com/forum/t/88888888-4004-4004-8004-888888888888`, Artanis post #3. |
 | Psionic stale-label cleanup | `OpenAgentsInc/psionic@ce3b0e0c` retitled the Qwen legal source docs as a Psionic boundary, not the OpenAgents public Pylon release. |
-| Rollback drill evidence | Not yet drilled. This document is the retained rollback plan; drill receipts remain future work. |
+| Rollback drill evidence | Not yet drilled. This document is the retained rollback plan. Drill receipts remain future work. |
 
 ## Authority Boundary
 
 This record separates four different things:
 
-- release artifact publication: done for `pylon-v0.2.4`;
-- runtime readiness: partially proven through local clean launcher/status smoke;
+- release artifact publication: done for `pylon-v0.2.4`.
+- runtime readiness: partially proven through local clean launcher/status smoke.
 - paid-work and settlement readiness: proven for the retained public-safe
-  evidence set only;
+  evidence set only.
 - autonomous Artanis readiness: not proven and not approved.
 
 The public report authority flags remain false:
 
-- `releasePublicationAllowed`;
-- `walletSpendAllowed`;
-- `settlementMutationAllowed`;
-- `providerMutationAllowed`;
+- `releasePublicationAllowed`.
+- `walletSpendAllowed`.
+- `settlementMutationAllowed`.
+- `providerMutationAllowed`.
 - `publicClaimUpgradeAllowed`.
 
 ## Rollback Plan
@@ -253,7 +253,7 @@ movement, or includes material that should remain private.
 1. Stop new payment-backed dispatch through the narrowest applicable pause
    from `docs/nexus/2026-06-07-nexus-payout-policy-emergency-pause-runbook.md`.
 2. Patch the receipt projection or redaction logic.
-3. Keep immutable historical receipt refs visible where possible; add a
+3. Keep immutable historical receipt refs visible where possible. Add a
    correction event or public correction rather than silently rewriting history.
 4. Deploy through `bun run --cwd workers/api deploy`.
 5. Verify the affected public receipt:
@@ -272,10 +272,10 @@ webhook secrets, customer data, or operator-only notes.
 Before moving from `ready_for_operator_release_review` to
 `approved_for_release`, retain:
 
-- an explicit operator approval record;
-- second-host or target-host launcher smoke evidence for the intended audience;
+- an explicit operator approval record.
+- second-host or target-host launcher smoke evidence for the intended audience.
 - rollback drill receipts for bad public copy, bad Forum post, duplicate or
-  stuck tick, and bad receipt projection;
-- a reviewed copy block for public announcement;
+  stuck tick, and bad receipt projection.
+- a reviewed copy block for public announcement.
 - confirmation that the scheduled Artanis runner remains disabled unless the
   separate production launch gate is also ready.

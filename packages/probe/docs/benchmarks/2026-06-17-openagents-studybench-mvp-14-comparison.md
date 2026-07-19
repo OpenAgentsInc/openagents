@@ -59,7 +59,7 @@ hidden gold answers, private customer source, or raw repo archives.
 | GEPA packet | 15 | 8300 bps | 7333 bps | 9333 bps |
 
 Patch-mode rows are reported separately from answer-mode rows in the JSON
-metrics. Patch-mode carries test pass rate and tool budget use; answer-mode
+metrics. Patch-mode carries test pass rate and tool budget use. Answer-mode
 keeps those fields null or zero because no repo patch is allowed.
 
 ## Boundary

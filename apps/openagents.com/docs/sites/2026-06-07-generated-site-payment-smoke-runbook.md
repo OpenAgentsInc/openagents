@@ -183,20 +183,20 @@ Before claiming live generated-Site MDK checkout support, an operator must
 verify:
 
 - the Worker environment has a configured MDK-compatible checkout route or
-  sidecar;
+  sidecar.
 - the route kind is `hosted_platform` or `self_hosted_mdkd_sidecar`, not the
-  fake provider;
+  fake provider.
 - server-only MDK credentials and webhook verification material are present as
-  secrets or equivalent server-only bindings;
+  secrets or equivalent server-only bindings.
 - the exact webhook source is selected: dashboard Standard Webhooks, daemon
-  invoice HMAC, or SDK node-control;
-- the live callback writes a durable checkout status transition;
-- duplicate callbacks are replay-safe;
+  invoice HMAC, or SDK node-control.
+- the live callback writes a durable checkout status transition.
+- duplicate callbacks are replay-safe.
 - receipt, entitlement, reconciliation, checkout-return, and payment-proof
-  projections stay public-safe;
+  projections stay public-safe.
 - no public output contains raw invoices, payment hashes, preimages, wallet
   state, MDK credentials, webhook secrets, provider grants, customer private
-  values, private payout targets, or exact private balances; and
+  values, private payout targets, or exact private balances. And
 - any payment-to-payout bridge uses separate Nexus/Treasury authority and does
   not rely on browser return state or client success claims.
 
@@ -214,13 +214,13 @@ verify:
 Public runbooks, manifests, emails, proof pages, logs, and issue comments must
 not include:
 
-- MDK access tokens, mnemonics, webhook secrets, or route secrets;
-- raw invoices or offers;
-- raw payment hashes or preimages;
-- wallet paths, wallet config, exact private balances, or wallet material;
-- provider grants, provider credentials, or raw provider payloads;
-- private customer identifiers or customer-submitted values;
-- private payout targets; or
+- MDK access tokens, mnemonics, webhook secrets, or route secrets.
+- raw invoices or offers.
+- raw payment hashes or preimages.
+- wallet paths, wallet config, exact private balances, or wallet material.
+- provider grants, provider credentials, or raw provider payloads.
+- private customer identifiers or customer-submitted values.
+- private payout targets. Or
 - raw source archives, private repositories, or runner logs.
 
 If any of those appear in a projected response, public doc, issue comment, or

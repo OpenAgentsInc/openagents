@@ -237,14 +237,14 @@ curl -sS "$OPENAGENTS_BASE_URL/api/public/adjutant/activity" \
 
 The operator review payload must show:
 
-- `assignment.currentRunId` linked to the launched run;
-- `review.order.id = $ADJUTANT_SOFTWARE_ORDER_ID`;
-- `review.site.id = $ADJUTANT_SITE_ID`;
+- `assignment.currentRunId` linked to the launched run.
+- `review.order.id = $ADJUTANT_SOFTWARE_ORDER_ID`.
+- `review.site.id = $ADJUTANT_SITE_ID`.
 - at least one `review.versions[]` row with
   `sourceKind = autopilot_generated`, `buildStatus = saved`, and
-  `createdByRunId` set;
-- `review.usageReceipts[]` entries for generation and any artifact storage;
-- customer-safe `usageReceipts[]` in the customer order projection;
+  `createdByRunId` set.
+- `review.usageReceipts[]` entries for generation and any artifact storage.
+- customer-safe `usageReceipts[]` in the customer order projection.
 - only sanitized public activity at `/api/public/adjutant/activity`.
 
 9. Deploy only after operator review.
@@ -296,18 +296,18 @@ Browser checks:
   against the same assignment and durable goal instead of launching an
   unrelated duplicate.
 - If a saved version is unsafe, reject or replace it through the Sites review
-  lifecycle; do not deploy to the public Site target.
+  lifecycle. Do not deploy to the public Site target.
 
 ## Closeout
 
 Record the launch closeout in the relevant issue or operator note:
 
-- assignment ID;
-- goal ID;
-- run ID;
-- Site ID;
-- saved version ID;
-- deployment ID and URL;
-- test commands run;
-- customer/public projection links checked;
+- assignment ID.
+- goal ID.
+- run ID.
+- Site ID.
+- saved version ID.
+- deployment ID and URL.
+- test commands run.
+- customer/public projection links checked.
 - blockers or follow-up adjustments.

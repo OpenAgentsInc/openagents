@@ -18,39 +18,39 @@ closeout receipts. It does not build, publish, or run a Container image.
 
 `workers/api/src/cloudflare-container-runner-manifest.ts` adds:
 
-- `OpenAgentsCloudflareContainerRunnerImageLifecycleManifest`;
+- `OpenAgentsCloudflareContainerRunnerImageLifecycleManifest`.
 - command phase refs for workspace prep, grant resolution, health, start,
-  progress, artifact collection, grant scrub, closeout, and cancel;
-- health probe refs;
-- cancel semantics;
-- resource profile refs;
-- status caveat refs;
-- public/customer/operator projection;
-- manifest validation and private-material detection;
-- readiness derivation for the real adapter from #285;
+  progress, artifact collection, grant scrub, closeout, and cancel.
+- health probe refs.
+- cancel semantics.
+- resource profile refs.
+- status caveat refs.
+- public/customer/operator projection.
+- manifest validation and private-material detection.
+- readiness derivation for the real adapter from #285.
 - gateway artifact-manifest derivation for real and fake/staging conformance.
 
 ## Manifest Fields
 
 The manifest models:
 
-- image ref;
-- runtime ref;
-- workspace ref;
-- class name ref;
-- Durable Object binding ref;
-- callback ref;
-- artifact root ref;
-- public artifact refs;
-- closeout receipt refs;
-- trust tier;
-- timeout;
-- resource refs;
-- cost refs;
-- allowed tool refs;
-- command phases;
-- health probes;
-- cancel semantics;
+- image ref.
+- runtime ref.
+- workspace ref.
+- class name ref.
+- Durable Object binding ref.
+- callback ref.
+- artifact root ref.
+- public artifact refs.
+- closeout receipt refs.
+- trust tier.
+- timeout.
+- resource refs.
+- cost refs.
+- allowed tool refs.
+- command phases.
+- health probes.
+- cancel semantics.
 - public summary and status caveats.
 
 All fields are refs or caveats. The manifest must not include raw repositories,
@@ -61,12 +61,12 @@ material, payment material, callback secrets, or customer private data.
 
 Public and customer projections expose only:
 
-- manifest ref;
-- version ref;
-- backend kind;
-- trust tier;
-- status;
-- public summary ref;
+- manifest ref.
+- version ref.
+- backend kind.
+- trust tier.
+- status.
+- public summary ref.
 - status caveat refs.
 
 They do not expose image refs, runtime refs, workspace refs, callback refs,
@@ -75,12 +75,12 @@ allowed tools, or closeout mechanics.
 
 Operator projection can include safe refs for the full manifest mechanics:
 
-- image/runtime/workspace;
-- command phases;
-- health probes;
-- cancel refs;
-- resource and cost refs;
-- allowed tools;
+- image/runtime/workspace.
+- command phases.
+- health probes.
+- cancel refs.
+- resource and cost refs.
+- allowed tools.
 - artifact root and closeout receipts.
 
 Even operator projection filters secret-shaped values.
@@ -89,7 +89,7 @@ Even operator projection filters secret-shaped values.
 
 The manifest can derive:
 
-- `OpenAgentsRealCloudflareContainerRunnerReadiness` for the real adapter;
+- `OpenAgentsRealCloudflareContainerRunnerReadiness` for the real adapter.
 - `OpenAgentsRunnerGatewayArtifactManifest` for real/fake runner conformance.
 
 This keeps the fake/staging runner and future real runner pointed at the same
@@ -99,11 +99,11 @@ artifact and closeout shape.
 
 This issue does not:
 
-- create a Dockerfile;
-- build or publish a Container image;
-- mount customer repositories;
-- resolve provider credentials;
-- run customer code;
+- create a Dockerfile.
+- build or publish a Container image.
+- mount customer repositories.
+- resolve provider credentials.
+- run customer code.
 - enable live dispatch or automatic failover.
 
 Those remain later runtime, closeout, and rollout tasks.

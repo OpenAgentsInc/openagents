@@ -20,15 +20,15 @@ Implementation:
 
 The loop record carries:
 
-- retained failure records;
-- candidate records;
-- eval rerun records;
-- adapter validation records;
-- promotion gate records;
-- attribution records;
-- source refs;
-- blocker refs;
-- caveat refs; and
+- retained failure records.
+- candidate records.
+- eval rerun records.
+- adapter validation records.
+- promotion gate records.
+- attribution records.
+- source refs.
+- blocker refs.
+- caveat refs. And
 - authority.
 
 Projection timestamps use friendly labels and never expose raw ISO strings.
@@ -37,13 +37,13 @@ Projection timestamps use friendly labels and never expose raw ISO strings.
 
 Supported states:
 
-- `retained`;
-- `candidate_created`;
-- `eval_rerun`;
-- `adapter_validated`;
-- `gate_passed`;
-- `attributed`;
-- `blocked`; and
+- `retained`.
+- `candidate_created`.
+- `eval_rerun`.
+- `adapter_validated`.
+- `gate_passed`.
+- `attributed`.
+- `blocked`. And
 - `archived`.
 
 Each later state requires the evidence that justifies it. Candidate-created
@@ -76,7 +76,7 @@ Adapter validations link candidate refs to adapter, dataset, provider,
 evidence, and receipt refs. Passed adapter validations require adapter,
 provider, evidence, and receipt refs.
 
-This is validation evidence only; it does not install adapters.
+This is validation evidence only. It does not install adapters.
 
 ## Promotion Gates And Rollback
 
@@ -84,13 +84,13 @@ Promotion gates link candidates, eval reruns, adapter validations, policy refs,
 review receipt refs, rollback refs, and a rollback posture. Passed gates
 require:
 
-- passed eval refs;
-- passed adapter validation refs when adapter validation is cited;
-- policy refs;
-- evidence refs;
-- review receipt refs;
-- rollback refs;
-- `ready` or `verified` rollback posture; and
+- passed eval refs.
+- passed adapter validation refs when adapter validation is cited.
+- policy refs.
+- evidence refs.
+- review receipt refs.
+- rollback refs.
+- `ready` or `verified` rollback posture. And
 - no self-promotion attempt.
 
 The projection still reports `runtimePromotionAllowed: false`.
@@ -106,13 +106,13 @@ evidence, not payout authority.
 
 Model Lab retained-failure loops cannot:
 
-- execute evals;
-- mutate model training;
-- install adapters;
-- promote runtime behavior;
-- mutate routing;
-- mutate payouts;
-- mutate settlement; or
+- execute evals.
+- mutate model training.
+- install adapters.
+- promote runtime behavior.
+- mutate routing.
+- mutate payouts.
+- mutate settlement. Or
 - upgrade public claims.
 
 Any training, deployment, promotion, or payout workflow must be a separate
@@ -122,10 +122,10 @@ server-authoritative path with explicit approval and receipts.
 
 Supported audiences are:
 
-- `public`;
-- `agent`;
-- `customer`;
-- `team`; and
+- `public`.
+- `agent`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public and agent projections redact private adapter, candidate, dataset, eval,
@@ -139,14 +139,14 @@ repos, raw logs, raw traces, and raw timestamps.
 
 Coverage includes:
 
-- full retained-failure loop projection;
-- lifecycle separation;
-- retained failure validation;
-- candidate and eval linkage;
-- passed eval and adapter validation requirements;
-- promotion gate requirements;
-- rollback posture and no-self-promotion checks;
-- attribution receipt requirements;
-- public redaction; and
+- full retained-failure loop projection.
+- lifecycle separation.
+- retained failure validation.
+- candidate and eval linkage.
+- passed eval and adapter validation requirements.
+- promotion gate requirements.
+- rollback posture and no-self-promotion checks.
+- attribution receipt requirements.
+- public redaction. And
 - hard false eval, training, adapter install, runtime promotion, routing,
   payout, settlement, and public-claim mutation authority.

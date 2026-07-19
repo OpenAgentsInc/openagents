@@ -23,9 +23,9 @@ untouched by anything here.
 | Loop | Path | Status on staging |
 | --- | --- | --- |
 | Free allowance (Gemini Flash, zero balance) | agent token → `POST /v1/chat/completions` | **WORKS today** (no credentials beyond a self-registered agent token) |
-| Funded balance via operator admin grant | admin token → `POST /api/omni/operator/billing/inference-credit` | **Route deployed**, but needs the **staging `OPENAGENTS_ADMIN_API_TOKEN`** (a Worker secret; the prod admin token is rejected on staging by design) — NEEDS-OWNER |
+| Funded balance via operator admin grant | admin token → `POST /api/omni/operator/billing/inference-credit` | **Route deployed**, but needs the **staging `OPENAGENTS_ADMIN_API_TOKEN`** (a Worker secret, the prod admin token is rejected on staging by design) — NEEDS-OWNER |
 | Funded balance via #5497 self-serve bridge | browser session → `POST /api/billing/inference-credit` | Blocked: browser sign-in on staging needs the **prod auth issuer** to accept the staging callback (a one-line WIDEN-only allowlist in `index.ts` that only takes effect on a **prod** deploy) — NEEDS-OWNER |
-| Spend a funded balance on a premium model | agent token → `POST /v1/chat/completions` (e.g. `claude-*`) | Works once a balance exists AND the owner identity is on the premium allowlist; a zero-balance unclaimed agent correctly gets `403 premium_model_not_allowed` |
+| Spend a funded balance on a premium model | agent token → `POST /v1/chat/completions` (e.g. `claude-*`) | Works once a balance exists AND the owner identity is on the premium allowlist. A zero-balance unclaimed agent correctly gets `403 premium_model_not_allowed` |
 
 The free loop is fully self-serviceable. The funded loop is implemented,
 unit-verified against real SQL (asset boundary + idempotency), and deployed to
@@ -35,7 +35,7 @@ credential/deploy (see NEEDS-OWNER below).
 ## Part 1 — Free allowance (works today, no owner action)
 
 A zero-balance agent gets a real Gemini Flash completion. The balance gate's
-free-allowance pre-flight admits the request; the metering hook eats the cost
+free-allowance pre-flight admits the request. The metering hook eats the cost
 under the owner's Sybil-resistant free pool, so the balance never decrements.
 
 ### 1a. Register a fresh staging agent (gets an agent token)
@@ -46,7 +46,7 @@ curl -s -X POST https://openagents-staging.openagents.workers.dev/api/agents/reg
   -d '{"displayName":"Credit Loop Probe '"$(date +%s)"'"}'
 ```
 
-- Use a **unique** `displayName`; do **not** reuse a `slug`/`externalId` from a
+- Use a **unique** `displayName`. Do **not** reuse a `slug`/`externalId` from a
   previous registration.
 - The agent token is in the response at `credential.token` (prefix
   `oa_agent_...`). Treat it as a secret — never print or commit it.
@@ -126,7 +126,7 @@ staging.
 ### 2c. Spend the funded balance and watch it decrement
 
 After funding, point the agent token at a model that actually meters. A premium
-model (`claude-*`) requires the owner identity to be on the premium allowlist;
+model (`claude-*`) requires the owner identity to be on the premium allowlist.
 an over-free-allowance Gemini request also meters. Then:
 
 ```sh
@@ -158,12 +158,12 @@ and the spend's receipt/activity ref as evidence.
 - Part 1 free loop: a zero-balance staging agent
   (`user_121631a7-bbec-4ae8-b1c8-87432c4c9a7c`) got `STAGING_FREE_OK` from
   `gemini-3.5-flash` (`chatcmpl_e705677324854ac9afade68ea1d57eb7`,
-  `usage.total_tokens: 164`); balance stayed `availableMsat: 0` before and after.
+  `usage.total_tokens: 164`). Balance stayed `availableMsat: 0` before and after.
 - The free-allowance pre-flight bypass admits a zero-balance free-eligible
   request (no false `402`), and correctly does **not** apply to a non-free model
   (`claude-opus-4-8` → `403 premium_model_not_allowed`, not a free grant).
 - Part 2 operator route is deployed on staging (`401` without the staging admin
-  token) and **not** on prod yet (`404`); funded live spend is gated on the
+  token) and **not** on prod yet (`404`). Funded live spend is gated on the
   NEEDS-OWNER items above. The grant→spendable→asset-boundary→idempotent
   behavior is covered by the real-SQL unit test in
   `workers/api/src/operator-billing-routes.test.ts`.

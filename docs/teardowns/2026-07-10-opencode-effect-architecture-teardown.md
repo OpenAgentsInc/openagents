@@ -32,23 +32,23 @@ Evidence labels:
 No OpenCode source or user data was changed. Counts below are point-in-time
 navigation aids, not quality scores.
 
-## TL;DR
+## TL.DR
 
 OpenCode is not merely an application that calls `Effect.runPromise` around a
 few operations. Effect is its application kernel.
 
 It owns:
 
-- service definition and dependency injection;
-- resource lifetime, cleanup, and hot replacement;
-- structured concurrency and interruption;
-- typed failures and defects;
-- schema-backed domain, wire, and persistence values;
-- HTTP contracts, handlers, clients, and in-memory embedding;
-- filesystem, process, HTTP, and database platform services;
-- durable and volatile event flows;
-- observability;
-- deterministic time and service substitution in tests; and
+- service definition and dependency injection.
+- resource lifetime, cleanup, and hot replacement.
+- structured concurrency and interruption.
+- typed failures and defects.
+- schema-backed domain, wire, and persistence values.
+- HTTP contracts, handlers, clients, and in-memory embedding.
+- filesystem, process, HTTP, and database platform services.
+- durable and volatile event flows.
+- observability.
+- deterministic time and service substitution in tests. And
 - the native plugin API, with Promise compatibility adapted inward.
 
 The important evolution is not “V1 used Promises and V2 uses Effect.” V1 was
@@ -84,22 +84,22 @@ services out of each Location runtime. This is the most valuable architectural
 lesson in the codebase.
 
 Its second-best lesson is boundary discipline. Browser-safe Schema contracts
-sit below Core and Protocol. Protocol owns Effect `HttpApi`; Server owns
+sit below Core and Protocol. Protocol owns Effect `HttpApi`. Server owns
 handlers and middleware implementations. Promise and Effect clients are
 generated from the same contract. The embedded SDK installs a memory-backed
 `fetch` into the same router instead of calling Core directly. The Effect
-plugin API is canonical; the Promise plugin API is a scope-preserving adapter.
+plugin API is canonical. The Promise plugin API is a scope-preserving adapter.
 
 OpenAgents should adapt:
 
 1. an explicit service-scope topology—process, WorkContext, request/run, and
-   foreign-host lifetimes;
-2. one canonical Schema identity per public value;
-3. one request processor for embedded, desktop, remote, mobile, and tests;
-4. scope-owned registrations and fibers;
-5. interruption as cancellation, never an ordinary tool error;
-6. native Effect internals with Promise adapters only at compatibility edges;
-7. graph-aware test replacements and deterministic clocks; and
+   foreign-host lifetimes.
+2. one canonical Schema identity per public value.
+3. one request processor for embedded, desktop, remote, mobile, and tests.
+4. scope-owned registrations and fibers.
+5. interruption as cancellation, never an ordinary tool error.
+6. native Effect internals with Promise adapters only at compatibility edges.
+7. graph-aware test replacements and deterministic clocks. And
 8. structured Effect logging and tracing from the application boundary.
 
 OpenAgents should not blindly copy OpenCode's custom framework, Effect beta
@@ -149,7 +149,7 @@ branded values, and `Schema.TaggedErrorClass` define domain data and failures.
 ### 2.2 Application composition
 
 `Context.Service` declares capabilities. `Layer` constructs implementations.
-V1 aggregates them into application runtimes; V2 compiles an explicit
+V1 aggregates them into application runtimes. V2 compiles an explicit
 application graph. [source]
 
 ### 2.3 Host integration
@@ -180,13 +180,13 @@ server routes, database lifecycle, runtime flags, and events. [history]
 
 The migration established several durable practices:
 
-- services are `Context.Service` values rather than imported singletons;
-- application operations are named with `Effect.fn`;
-- resources install finalizers or use `acquireRelease`;
-- background work uses scoped fibers;
-- platform services are preferred over direct host calls;
-- `Effect.cached` provides in-flight deduplication;
-- errors are Schema-tagged where callers can recover; and
+- services are `Context.Service` values rather than imported singletons.
+- application operations are named with `Effect.fn`.
+- resources install finalizers or use `acquireRelease`.
+- background work uses scoped fibers.
+- platform services are preferred over direct host calls.
+- `Effect.cached` provides in-flight deduplication.
+- errors are Schema-tagged where callers can recover. And
 - tests run Effects through supplied Layers. [source]
 
 This is a credible brownfield migration strategy. It let OpenCode improve one
@@ -212,11 +212,11 @@ Promise/callback caller
 As an adoption device, this is good. It centralizes provisioning and keeps
 resource initialization lazy. As a permanent architecture, it has costs:
 
-- lifecycle ownership is distributed across multiple runtime wrappers;
-- a shared unsafe memo map makes freshness an implicit global concern;
-- imperative call sites can repeatedly exit Effect instead of composing;
-- services may appear injectable while still depending on ambient context;
-- runtime disposal is less visible than an explicit application Scope; and
+- lifecycle ownership is distributed across multiple runtime wrappers.
+- a shared unsafe memo map makes freshness an implicit global concern.
+- imperative call sites can repeatedly exit Effect instead of composing.
+- services may appear injectable while still depending on ambient context.
+- runtime disposal is less visible than an explicit application Scope. And
 - callback and Promise bridges become correctness-critical infrastructure.
 
 The V2 reduction from 41 to 11 `runPromise` occurrences in the measured lanes
@@ -236,7 +236,7 @@ permits compatibility context fallback. [source]
 
 `EffectBridge` captures fiber references plus ambient workspace context so a
 Promise callback or external library callback can re-enter with the expected
-identity. Its existence is honest and useful; it also documents the
+identity. Its existence is honest and useful. It also documents the
 architectural mismatch. [source]
 
 The result is a split context model:
@@ -270,10 +270,10 @@ made the ownership tree easier to see and compose.
 V2 introduces `LayerNode`, a project-specific graph representation above
 Effect `Layer`. A node records:
 
-- stable name and optional service identity;
-- implementation Layer;
-- explicit dependency nodes;
-- output and error types; and
+- stable name and optional service identity.
+- implementation Layer.
+- explicit dependency nodes.
+- output and error types. And
 - a scope tag. [source]
 
 The type system verifies that the declared dependencies provide every service
@@ -299,12 +299,12 @@ That is the central V2 Effect decision.
 Effect Layer already models construction and requirements. OpenCode adds a
 graph because it needs operations that are awkward once Layers become opaque:
 
-- enumerate and inspect the service topology;
-- enforce global-versus-Location dependency laws;
-- replace a node together with its rewritten downstream graph;
-- reject replacements that add errors or cross scope tags;
-- detect cycles introduced through replacements;
-- hoist global dependencies from a Location graph; and
+- enumerate and inspect the service topology.
+- enforce global-versus-Location dependency laws.
+- replace a node together with its rewritten downstream graph.
+- reject replacements that add errors or cross scope tags.
+- detect cycles introduced through replacements.
+- hoist global dependencies from a Location graph. And
 - build only the graph required by a selected root. [source/test]
 
 This solves real V1 migration failures. Tests specifically cover cycles through
@@ -322,7 +322,7 @@ V2 defines two node tags:
 
 - **global** — process-wide services such as database, event log, global
   project/session coordination, HTTP platform, plugin runtime registry, and
-  observability;
+  observability.
 - **Location** — services bound to a canonical directory and optional workspace
   identity, including filesystem, config, agents, providers, plugins, tools,
   permissions, MCP, PTY, shell, instructions, and the session runner. [source]
@@ -382,11 +382,11 @@ generation, tool work, and cleanup jobs have explicit owners. [source]
 
 The session runner is especially deliberate:
 
-- it tracks owned tool fibers in a `FiberSet`;
-- it clears them when the provider stream is interrupted or fails;
+- it tracks owned tool fibers in a `FiberSet`.
+- it clears them when the provider stream is interrupted or fails.
 - it uses uninterruptible masks around state settlement, while restoring
-  interruptibility around external work;
-- user decline becomes interruption rather than a fabricated success; and
+  interruptibility around external work.
+- user decline becomes interruption rather than a fabricated success. And
 - background subagents install interruption handlers that stop the child
   session. [source]
 
@@ -404,15 +404,15 @@ host-local implementations. [source]
 
 Its rules are unusually strong:
 
-- one canonical exported Schema value per contract;
-- Core facades re-export the same identity rather than wrapping it;
+- one canonical exported Schema value per contract.
+- Core facades re-export the same identity rather than wrapping it.
 - current contracts are unversioned while retained legacy contracts are
-  explicitly V1;
-- public records are readonly;
-- optional fields omit `undefined` unless preserving it is intentional;
-- public identifiers and brands are stable and unique;
+  explicitly V1.
+- public records are readonly.
+- optional fields omit `undefined` unless preserving it is intentional.
+- public identifiers and brands are stable and unique.
 - `Schema.Any` is excluded from current contracts except documented unsafe
-  compatibility boundaries; and
+  compatibility boundaries. And
 - tests protect identity, optional encoding, identifier uniqueness, and V1
   event exclusion. [source/test]
 
@@ -451,8 +451,8 @@ Form, and Session middleware. [source]
 
 Generated outputs include:
 
-- a Promise client;
-- a rich Effect client; and
+- a Promise client.
+- a rich Effect client. And
 - OpenAPI/contract metadata. [source]
 
 The server compiles its application service graph, installs handlers and
@@ -493,7 +493,7 @@ cache, foreign-key, and checkpoint pragmas before migrations. The database
 path is resolved lazily so tests and embedders can override it. [source]
 
 The adapter preserves the Effect transaction context. Nested transaction work
-discovers the current reserved connection through services; transaction scope
+discovers the current reserved connection through services. Transaction scope
 and cleanup are explicit, including rollback after failed deferred constraints.
 [source]
 
@@ -504,7 +504,7 @@ finalizers. Tests substitute in-memory SQLite Layers. [source/test]
 The weakness is error policy. Database initialization and many operational
 queries use `Effect.orDie`. In the measured current lane, 49 files contain
 `orDie`. Some operations genuinely treat storage failure as an invariant or
-fatal infrastructure defect; others collapse recoverable operational detail.
+fatal infrastructure defect. Others collapse recoverable operational detail.
 OpenAgents should define this boundary deliberately rather than inherit the
 habit. [source/inferred]
 
@@ -512,15 +512,15 @@ habit. [source/inferred]
 
 `EventV2` combines:
 
-- durable per-aggregate SQLite events and sequence reservation;
-- atomic optional projection work during publication;
-- replay and follow streams with a synchronization marker;
-- volatile live `PubSub` channels;
-- typed per-event subscriptions; and
+- durable per-aggregate SQLite events and sequence reservation.
+- atomic optional projection work during publication.
+- replay and follow streams with a synchronization marker.
+- volatile live `PubSub` channels.
+- typed per-event subscriptions. And
 - bounded queue adapters that fail on subscriber overflow. [source]
 
 Finalizers shut down every PubSub and subscription. `Stream` is the public
-consumption model. Durable reads page through the database; live streams are
+consumption model. Durable reads page through the database. Live streams are
 explicitly documented as lossy across disconnects. [source]
 
 Effect makes these mechanisms composable, but the architecture does not confuse
@@ -565,20 +565,20 @@ prefer `async`/`await`.
 ## 19. Plugin design records reveal the future direction
 
 The checked-in V2 plugin plan says internal and external plugins should share
-one public API; Core types should remain private; registrations should be
-scope-owned, ordered, independently disposable, and snapshot-based; domain
-transforms should replay into fresh state; and Promise support should wrap the
+one public API. Core types should remain private. Registrations should be
+scope-owned, ordered, independently disposable, and snapshot-based. Domain
+transforms should replay into fresh state. And Promise support should wrap the
 same capabilities. [history]
 
 Much of that target is already implemented. The plan is partially stale—the
 Promise wrapper it describes as later work now exists—but it still reveals the
 direction:
 
-- domain state is rebuilt from ordered transforms rather than mutated forever;
-- registration changes coalesce rebuilds;
-- in-flight hook invocations use captured snapshots;
-- post-commit events publish only after new state is visible;
-- cross-domain transactions are intentionally absent; and
+- domain state is rebuilt from ordered transforms rather than mutated forever.
+- registration changes coalesce rebuilds.
+- in-flight hook invocations use captured snapshots.
+- post-commit events publish only after new state is visible.
+- cross-domain transactions are intentionally absent. And
 - plugin contexts expose purpose-built capabilities, not unrestricted Core
   objects. [source/history]
 
@@ -638,7 +638,7 @@ globals threaded manually through every domain.
 Core's `testEffect` helper runs every test inside `Effect.scoped`, logs pretty
 causes, supplies TestConsole, and chooses TestClock or live time explicitly.
 At the pinned V2 snapshot, Core's test tree contains 184 files, including 159
-`*.test.ts`/`*.test.tsx` files; 70 test files use `AppNodeBuilder.build`, and 51
+`*.test.ts`/`*.test.tsx` files. 70 Test files use `AppNodeBuilder.build`, and 51
 install custom `Layer.succeed` or `Layer.effect` implementations. [source/test]
 
 Tests replace graph nodes rather than monkey-patch modules. Examples substitute
@@ -659,10 +659,10 @@ capturing the intended boundaries.
 
 OpenCode distinguishes:
 
-- expected domain failures as Schema-tagged errors;
-- transport and schema failures in HttpApi contracts;
-- interruption as runtime control flow;
-- defects for violated invariants or unavailable internal facilities; and
+- expected domain failures as Schema-tagged errors.
+- transport and schema failures in HttpApi contracts.
+- interruption as runtime control flow.
+- defects for violated invariants or unavailable internal facilities. And
 - startup infrastructure failures often collapsed with `orDie`. [source]
 
 The strong parts are typed endpoint errors, operation-level `catchTag`, defect
@@ -689,12 +689,12 @@ Effect-heavy TypeScript can produce slow type checking, import cycles, and
 large eager graphs. OpenCode responds with contributor rules and history that
 favor:
 
-- flat modules instead of broad barrels;
-- self-exported namespaces rather than alias webs;
-- dynamic imports for heavy optional modules;
-- branch-local imports in startup-sensitive paths;
-- explicit application nodes instead of exported default Layers everywhere;
-- lazily resolved database paths and service maps; and
+- flat modules instead of broad barrels.
+- self-exported namespaces rather than alias webs.
+- dynamic imports for heavy optional modules.
+- branch-local imports in startup-sensitive paths.
+- explicit application nodes instead of exported default Layers everywhere.
+- lazily resolved database paths and service maps. And
 - measured boot-duration logging. [source/history]
 
 Several June refactors removed domain Layer exports, converted tests to nodes,
@@ -724,7 +724,7 @@ composition had become difficult to govern at scale. [history/inferred]
 
 The commit history supports a coherent sequence rather than a sudden rewrite:
 
-1. **March 2026:** individual legacy domains become Effect services; scoped
+1. **March 2026:** individual legacy domains become Effect services. Scoped
    per-instance state appears.
 2. **Late March–April:** instance/workspace propagation, session processing,
    child process, callback bridges, unified app runtime, Effect logging, and
@@ -732,13 +732,13 @@ The commit history supports a coherent sequence rather than a sudden rewrite:
 3. **Late April–May:** Core package extraction, Effect HttpApi, typed errors,
    SQLite lifecycle, runtime flags, and Effect-native events reduce legacy
    facades.
-4. **Late May–early June:** database ownership moves to Core; Location-scoped
+4. **Late May–early June:** database ownership moves to Core. Location-scoped
    config and an embedded V2 session/tool foundation appear.
 5. **June 9:** a typed application Layer graph lands.
 6. **June 24–29:** Schema and Protocol boundaries, tiered Layer nodes,
    Location hoisting, graph tests, replacement refinement, and node-built
    runtimes establish the current topology.
-7. **Late June–July:** tools move into internal plugins; Effect and Promise
+7. **Late June–July:** tools move into internal plugins. Effect and Promise
    plugin APIs, scoped generations, reload, restoration, and durable event
    refinements continue on V2. [history]
 
@@ -750,17 +750,17 @@ generations, and one current unversioned API after V1 retirement.
 
 The pinned code also identifies what has not fully converged:
 
-- `packages/opencode` still exists and Desktop still embeds it;
-- default Location service-map exports remain for compatibility;
+- `packages/opencode` still exists and Desktop still embeds it.
+- default Location service-map exports remain for compatibility.
 - current namespaces still contain some V2 naming that the Schema contract
-  intends to remove;
+  intends to remove.
 - V1 provider/config types remain inside a current provider compatibility
-  path;
+  path.
 - the plugin design plan and implementation have drifted as Promise support
-  landed;
-- several HttpApi and Effect modules are still marked unstable upstream;
-- plugin code remains trusted in-process code;
-- platform-specific direct APIs remain mixed with injected services; and
+  landed.
+- several HttpApi and Effect modules are still marked unstable upstream.
+- plugin code remains trusted in-process code.
+- platform-specific direct APIs remain mixed with injected services. And
 - cross-machine Location placement is reserved rather than implemented.
   [source/limitation]
 
@@ -894,7 +894,7 @@ for forbidden scope dependencies and cycles.
 
 Every command/run should inherit trace, owner, WorkContext, authority-manifest,
 runtime generation, and receipt correlation without services passing logger
-objects manually. Optional exporters may fail open to local logs; authority
+objects manually. Optional exporters may fail open to local logs. Authority
 and receipt persistence must not.
 
 ## 32. Effect Native consequences
@@ -903,15 +903,15 @@ The OpenCode audit sharpens what “Effect Native” must mean for OpenAgents.
 
 It should not mean only React components that accept Effects. It should mean:
 
-- one application service graph beneath every renderer;
-- renderer components consume narrow services and emit typed intents;
-- foreign hosts are acquired resources with Scopes and finalizers;
-- platform implementations are replaceable Layers;
-- WorkContext services are separate from process-global and view-local state;
+- one application service graph beneath every renderer.
+- renderer components consume narrow services and emit typed intents.
+- foreign hosts are acquired resources with Scopes and finalizers.
+- platform implementations are replaceable Layers.
+- WorkContext services are separate from process-global and view-local state.
 - embedded composition substitutes transport into the canonical request
-  processor;
+  processor.
 - native callbacks re-enter a captured Effect context only at explicit bridge
-  modules; and
+  modules. And
 - tests can replace host services without Electron, React Native, or browser
   globals.
 
@@ -933,15 +933,15 @@ validation cannot remain clear with native Effect primitives.
 
 ## 33. What OpenAgents should not copy
 
-- multiple application runtimes as ordinary internal call paths;
-- ambient workspace recovery as a permanent context model;
-- a process-global unsafe memo map without ownership rules;
-- trusted third-party plugins in the main authority process;
-- `orDie` as a convenient substitute for failure design;
-- a custom graph DSL broader than the topology problem requires;
-- direct host APIs scattered through domain modules;
-- separate embedded and network business logic;
-- Promise-first internals with Effect wrappers; or
+- multiple application runtimes as ordinary internal call paths.
+- ambient workspace recovery as a permanent context model.
+- a process-global unsafe memo map without ownership rules.
+- trusted third-party plugins in the main authority process.
+- `orDie` as a convenient substitute for failure design.
+- a custom graph DSL broader than the topology problem requires.
+- direct host APIs scattered through domain modules.
+- separate embedded and network business logic.
+- Promise-first internals with Effect wrappers. Or
 - beta framework upgrades without contract, typecheck, startup, and resource
   regression gates.
 

@@ -65,7 +65,7 @@ agent-wallet mnemonic alias. Do not print the entered value.
 
 #500 adds source support in `OpenAgentsInc/openagents@b04ebe4be` for an
 explicit Pylon launcher registration path. It does not publish a new Pylon
-release; #499 release freeze remains active and #505 owns the next downloadable
+release. #499 Release freeze remains active and #505 owns the next downloadable
 release.
 
 Current source-controlled command:
@@ -123,7 +123,7 @@ Issue #500 smoke evidence is retained in:
 
 #501 adds source support in `OpenAgentsInc/openagents@6983d0512` for opt-in
 MDK agent-wallet readiness reporting after registration. It does not publish a
-new Pylon release; #499 release freeze remains active and #505 owns the next
+new Pylon release. #499 Release freeze remains active and #505 owns the next
 downloadable release.
 
 Current source-controlled command:
@@ -162,10 +162,10 @@ bucketed balance readiness state, creates receive readiness, posts wallet
 readiness, and requests payout-target admission. It must only submit redacted
 refs such as:
 
-- `wallet.public.mdk_agent_wallet.<digest>`;
-- `receive.redacted.mdk_agent_wallet.<digest>`;
-- `payout_target.public.mdk_agent_wallet.<digest>`;
-- `balance.mdk_agent_wallet.minimum_satisfied`;
+- `wallet.public.mdk_agent_wallet.<digest>`.
+- `receive.redacted.mdk_agent_wallet.<digest>`.
+- `payout_target.public.mdk_agent_wallet.<digest>`.
+- `balance.mdk_agent_wallet.minimum_satisfied`.
 - `balance.mdk_agent_wallet.minimum_not_satisfied`.
 
 Never copy raw MDK mnemonics, config files, invoices, payment hashes,
@@ -335,7 +335,7 @@ curl -X POST https://openagents.com/api/operator/pylons/assignments/assignment.p
 ```
 
 Rejected closeout uses `accepted:false` and at least one public-safe
-`rejectionRefs` value. Accepted closeout requires prior artifact or proof refs;
+`rejectionRefs` value. Accepted closeout requires prior artifact or proof refs.
 payment remains gated by payout authority.
 
 ## Settle Accepted Work
@@ -360,12 +360,12 @@ curl -X POST https://openagents.com/api/operator/nexus-pylon/assignments/assignm
 
 The route requires:
 
-- assignment state `accepted_work`;
-- at least one accepted-work ref;
-- retained artifact or proof refs;
+- assignment state `accepted_work`.
+- at least one accepted-work ref.
+- retained artifact or proof refs.
 - fresh wallet-readiness evidence from the Pylon registration and latest
-  wallet-readiness event;
-- payout-target approval, policy, and spend-cap refs; and
+  wallet-readiness event.
+- payout-target approval, policy, and spend-cap refs. And
 - the admin API token or an admin browser session.
 
 For hosted MDK, `privatePayoutDestination` is consumed by the adapter boundary
@@ -417,10 +417,10 @@ receipt with `realBitcoinMoved: true`.
 `docs/nexus/2026-06-08-pylon-multi-host-network-smoke.md`. The current proven
 state is:
 
-- local macOS source launcher registration and MDK wallet readiness passed;
+- local macOS source launcher registration and MDK wallet readiness passed.
 - Arch Linux source-copy launcher registration, wallet readiness, assignment,
-  accepted-work closeout, payment, and receipt passed;
-- two distinct Pylons now have public real-bitcoin accepted-work receipts; and
+  accepted-work closeout, payment, and receipt passed.
+- two distinct Pylons now have public real-bitcoin accepted-work receipts. And
 - npm/latest, WSL Ubuntu, native Windows, and hosted MDK direct payout remain
   release-readiness gaps for #505.
 

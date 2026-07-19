@@ -1,7 +1,7 @@
 # Hygiene Lane Experiment Journal
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -81,7 +81,7 @@ Evidence:
 Lesson:
 
 Readable refs are useful, but truncation should not be the collision boundary
-for settlement-adjacent records. The readable part can be public and stable; the
+for settlement-adjacent records. The readable part can be public and stable. The
 identity boundary should come from a digest.
 
 Operating rule:
@@ -160,5 +160,5 @@ because merge, review, payable classification, and settlement stayed distinct.
 Operating rule:
 
 Do not call hygiene work paid until a public settlement receipt exists and
-reports real movement. After settlement, the `DebtReceiptKey` is retired; any
+reports real movement. After settlement, the `DebtReceiptKey` is retired. Any
 same-key replay is duplicate work, not a second payable claim.

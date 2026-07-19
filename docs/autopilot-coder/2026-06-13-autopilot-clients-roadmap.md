@@ -1,7 +1,7 @@
 # Autopilot Clients Roadmap — Web, Desktop, Mobile
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > **⚠️ BUILD/SHIP POLICY — UPDATED 2026-06-13.**
@@ -18,27 +18,27 @@ date). Not current direction; consult MASTER_ROADMAP.**
 Date: 2026-06-13
 Status: implementation roadmap. Sequences the buildout of the three Autopilot
 Coder client surfaces and the shared spine that unifies them, from first
-local handshake through TUI parity and cloud integration. Planning doc; each
+local handshake through TUI parity and cloud integration. Planning doc. Each
 milestone's rungs are tracked as issues. No runtime invariant changes here.
 
 ## The three clients + one spine
 
 - **Web** — Foldkit/Effect/Tailwind (`apps/openagents.com/apps/web`), exists.
 - **Desktop** — Autopilot Desktop, Bun/Electrobun + Foldkit
-  (`apps/autopilot-desktop`); audit
+  (`apps/autopilot-desktop`). Audit
   `2026-06-13-autopilot-desktop-app-audit.md`.
-- **Mobile** — Autopilot Remote Control, React Native/Expo (`clients/khala-ios`);
+- **Mobile** — Autopilot Remote Control, React Native/Expo (`clients/khala-ios`).
   audit `2026-06-13-autopilot-remote-control-mobile-app-audit.md`.
 
 **Spine:** `packages/autopilot-control-protocol` (Effect Schema + typed client +
 cursor/dedup/decision logic). All three clients speak the same control + bridge
-vocabulary (`openagents.pylon.control.v0.3` today; the system-#39 bridge verbs
-next). Desktop reaches the local node over loopback; mobile reaches it over the
-bridge (and, dev-only, over the host network from a simulator); web over the
+vocabulary (`openagents.pylon.control.v0.3` today, the system-#39 bridge verbs
+next). Desktop reaches the local node over loopback. Mobile reaches it over the
+bridge (and, dev-only, over the host network from a simulator). Web over the
 existing API. One protocol, implemented and tested once.
 
 Authority and projection rules come from the remote session bridge audit
-(system #39) and the mobile/web companion audit; this roadmap is the *sequencing*
+(system #39) and the mobile/web companion audit. This roadmap is the *sequencing*
 of building against them.
 
 ## Milestones at a glance
@@ -53,19 +53,19 @@ of building against them.
 | **M5** | Cross-client polish | Perfect interop: dedup across clients, notifications, theming parity, distribution, conformance suite |
 | **M6** | **The Self-Driving Loop** ◀ **ASAP** | A message composed on the **phone** is heard by **Pylon**, a **coordinator agent fans it out** to coding agents, and at the right moment it **auto-ships back to the phone** — an **OTA update** through our **OpenAgents Updates** server for JS/mobile changes, or a **local binary build** on our own Mac (`expo prebuild` → `xcodebuild`/`fastlane`) uploaded **straight to Apple** for native changes. No Expo cloud, no GitHub |
 
-> **Issue tracker:** the full roadmap is now filed. M0–M2 = **#4902–#4916** (CL-0…CL-14); M3 = **#4921–#4930** (CL-15…CL-24); M4 = **#4931–#4934** (CL-25…CL-28); M5 = **#4935–#4939** (CL-29…CL-33); **M6 (self-driving loop) = #4940–#4947 (CL-34…CL-41)**; theming fast-track CL-42 = **#4948**. Plus fast-track #4919 (TestFlight) and #4920 (self-hosted Expo Updates).
+> **Issue tracker:** the full roadmap is now filed. M0–M2 = **#4902–#4916** (CL-0…CL-14). M3 = **#4921–#4930** (CL-15…CL-24). M4 = **#4931–#4934** (CL-25…CL-28). M5 = **#4935–#4939** (CL-29…CL-33). **M6 (self-driving loop) = #4940–#4947 (CL-34…CL-41)**. Theming fast-track CL-42 = **#4948**. Plus fast-track #4919 (TestFlight) and #4920 (self-hosted Expo Updates).
 
 > **Fast-track (out of milestone order, owner request):** ship the mobile
-> **shell to TestFlight ASAP** so it's on a personal device now — local build +
+> **shell to TestFlight ASAP** so it is on a personal device now — local build +
 > Apple-native upload (#4919). Distribution normally lives in M5 (CL-32), but TestFlight for
 > the shell is pulled forward and does not block the M1–M4 sequence. iOS bundle
-> `com.openagents.autopilot-mobile`, Apple team OpenAgents, Inc. `HQWSG26L43`;
+> `com.openagents.autopilot-mobile`, Apple team OpenAgents, Inc. `HQWSG26L43`.
 > runbook `clients/khala-ios/AutopilotRemoteControl/TESTFLIGHT.md`. The desktop
 > equivalent (sign/notarize + BSDIFF feed) remains M5.
 >
 > **Fast-track follow-on:** once on TestFlight, adopt self-hosted
 > **Expo Updates** so JS-only fixes ship OTA without a rebuild — #4920.
-> Formal home is M5 (CL-32); pulled forward with TestFlight, also non-blocking.
+> Formal home is M5 (CL-32). Pulled forward with TestFlight, also non-blocking.
 
 > **★ ASAP critical path (owner priority) — M6, the Self-Driving Loop.** The
 > headline goal, prioritized ahead of finishing M2–M5: **I compose a message in
@@ -77,20 +77,20 @@ of building against them.
 > **straight to Apple** when there are native/config changes. **No Expo cloud,
 > no GitHub:** OTA publishes through our self-hosted
 > **OpenAgents Updates** server (cloud audit
-> `cloud/docs/2026-06-13-openagents-updates-and-deployment-infra-audit.md`);
+> `cloud/docs/2026-06-13-openagents-updates-and-deployment-infra-audit.md`).
 > binaries build locally (`expo prebuild` → `xcodebuild`/`fastlane`) and upload directly to App Store Connect. Apple
 > is the only external party. The MVP runs on the **M1 dev transport + local
 > tooling + #4920 fingerprinting** — it does **not** wait for the full M2 bridge.
-> Rungs **CL-34…CL-41 (#4940–#4947)**; see **M6** below. Theming the three
+> Rungs **CL-34…CL-41 (#4940–#4947)**. See **M6** below. Theming the three
 > clients off the website's dark mode is pulled forward as **CL-42 (#4948)**.
 
 > **Dark-mode theming (owner request):** the website's dark theme is the single
 > source of truth for look-and-feel across **all three** clients. Desktop and web
 > share the canonical dark **tokens** (`cssVars`/`darkTokens` from
-> `@openagentsinc/autopilot-ui`); mobile (RN) maps the same tokens. UPDATE
+> `@openagentsinc/autopilot-ui`). Mobile (RN) maps the same tokens. UPDATE
 > (2026-06-13): desktop now **also renders through the shared Foldkit
 > components** — the webview was converted from hand-DOM to a Foldkit TEA app
-> (CL-53 #4966), so web + desktop share one component library and look-and-feel;
+> (CL-53 #4966), so web + desktop share one component library and look-and-feel.
 > mobile (RN) still maps the same tokens. The desktop webview is Foldkit-only
 > going forward (`apps/autopilot-desktop/AGENTS.md`). Tokens tracked as the
 > fast-tracked **CL-42 (#4948)**.
@@ -141,7 +141,7 @@ Rungs:
   loopback, Foldkit webview via Vite → `views://`), added to workspace globs.
   Repo: openagents. *Parallel.*
 - **CL-4** (#4906) Mobile scaffold: `clients/khala-ios` vanilla Expo app (SDK 55 / RN 0.81 /
-  React 19 / React Navigation v7; MMKV, edge-to-edge, EAS, Maestro patterns
+  React 19 / React Navigation v7. MMKV, edge-to-edge, EAS, Maestro patterns
   borrowed from Ignite) consuming `packages/autopilot-control-protocol`. Repo:
   openagents. *Parallel.*
 - **CL-5** (#4907) Desktop P0: connect to local node, render session list + live
@@ -149,11 +149,11 @@ Rungs:
   CL-0, CL-3.*
 - **CL-6** (#4908) Mobile P0 (dev transport): connect from the simulator to the host
   control server (localhost / `10.0.2.2`, dev token in `expo-secure-store`),
-  render session list + live timeline. Explicitly dev-only; real transport is
+  render session list + live timeline. Explicitly dev-only. Real transport is
   M2. Repo: openagents. *After CL-0, CL-4.*
 - **CL-7** (#4909) **Handshake demo + doc:** a scripted local demo — start a bounded
-  Autopilot Coder session; show it live in desktop and the mobile emulator
-  simultaneously (same session ref, same event timeline; bonus: a decision
+  Autopilot Coder session. Show it live in desktop and the mobile emulator
+  simultaneously (same session ref, same event timeline, bonus: a decision
   request appears on both). Capture a short runbook + screenshots. Repo:
   openagents. *After CL-5, CL-6.* **This is the M1 milestone gate.**
 
@@ -164,20 +164,20 @@ transport so mobile (and remote desktop) work off the local machine.
 
 - **CL-8** (#4910) Pylon control/bridge binding reachable over **both transports**
   (same handshake, only the address differs): **(a) same-LAN** — bind the LAN
-  interface so a device on the same Wi-Fi reaches `http://<lan-ip>:4716`; **(b)
+  interface so a device on the same Wi-Fi reaches `http://<lan-ip>:4716`. **(B)
   Tailnet** — reachable at `http://<tailnet-ip>:4716` across networks
-  (**prioritize Tailnet**, both required ASAP). Loopback still default; explicit
+  (**prioritize Tailnet**, both required ASAP). Loopback still default. Explicit
   refusal of **unauthenticated** non-loopback traffic (pairing credential
   required off-loopback). The reachable address(es) are what the QR/bootstrap
-  payload carries (CL-13); the client resolves them tailnet-first, LAN fallback.
+  payload carries (CL-13). The client resolves them tailnet-first, LAN fallback.
   Repo: openagents/apps/pylon. *Parallel.*
 - **CL-9** (#4911) Bridge pairing + scoped credentials: short-lived one-time QR/bootstrap
   secret exchanged for a capability-scoped credential (issuer/audience/expiry/
-  client id/device class/pairing id/`jti`/projection level); node stores hash +
+  client id/device class/pairing id/`jti`/projection level). Node stores hash +
   revocation, client stores the credential. + `bridge.clients.list`/`revoke`.
   Repo: openagents/apps/pylon. *After CL-0.*
 - **CL-10** (#4912) Cursor-resumable streams: event ids + sequences, lossless/best-effort
-  tiers, duplicate-safe replay, lag caveats, bounded backpressure; atomic
+  tiers, duplicate-safe replay, lag caveats, bounded backpressure. Atomic
   subscribe that replays pending decisions first. Repo: openagents/apps/pylon.
   *After CL-0.*
 - **CL-11** (#4913) Decision relay: server-originated decision requests, single-use
@@ -190,7 +190,7 @@ transport so mobile (and remote desktop) work off the local machine.
   payload encodes the **reachable address(es)** (tailnet first, then LAN) +
   bootstrapId + secret + projectionLevel/capabilities, so a phone scan works on
   same-Wi-Fi (no Tailnet) OR over Tailnet with the identical handshake. Node side
-  in the Pylon TUI/CLI; the mobile client gets a QR-scan + paste pairing screen.
+  in the Pylon TUI/CLI. The mobile client gets a QR-scan + paste pairing screen.
   Repo: openagents/apps/pylon (+ clients/khala-ios). *After CL-9.*
 - **CL-14** (#4916) Wire desktop + mobile clients onto the bridge transport (replacing
   the M1 dev transport), behind the same client interface. Repo: openagents.
@@ -214,7 +214,7 @@ does today. Parity dimensions (map of TUI capability → client work):
 | wallet/balance/earnings (read) | CL-23 (#4929) earnings/balance read-only panel (no spend authority) |
 
 - Each rung implements its capability across the **shared protocol** first, then
-  web/desktop/mobile UI. Read surfaces (CL-18..CL-23) are largely parallel; the
+  web/desktop/mobile UI. Read surfaces (CL-18..CL-23) are largely parallel. The
   effectful ones (CL-15..CL-17) depend on M2 (CL-11/CL-12) and honor read-only
   capability gating. Repo: openagents.
 - **CL-24** (#4930) Parity conformance checklist: a doc + test asserting each
@@ -239,17 +239,17 @@ operator console for OpenAgents Cloud.
 ## M5 — Cross-client polish ("all three working perfectly together")
 
 - **CL-29** (#4935) Cross-client decision consistency: if two clients answer the
-  same prompt, exactly-once wins and the others show "resolved elsewhere";
+  same prompt, exactly-once wins and the others show "resolved elsewhere".
   cancellation propagates. Repo: openagents (+ pylon).
 - **CL-30** (#4936) Notifications: `expo-notifications` (mobile) + desktop OS
   notifications + web, all projections of the #4765 spine, refs-only payloads,
-  quiet hours; notification-open routes to the right node/session/decision.
+  quiet hours. Notification-open routes to the right node/session/decision.
 - **CL-31** (#4937) Theming/UX parity (full): shared design tokens so web/desktop
-  (Foldkit) and mobile (RN) feel consistent; status/staleness/lag chips identical
+  (Foldkit) and mobile (RN) feel consistent. Status/staleness/lag chips identical
   in meaning. Builds on the fast-tracked dark-mode tokens **CL-42 (#4948)**.
 - **CL-32** (#4938) Distribution: desktop code-sign/notarize + BSDIFF auto-update
-  feed; mobile local build/TestFlight + owner-approved App Store submission
-  ($4.99); mobile OTA JS updates via self-hosted `expo-updates` (#4920,
+  feed. Mobile local build/TestFlight + owner-approved App Store submission
+  ($4.99). Mobile OTA JS updates via self-hosted `expo-updates` (#4920,
   fast-tracked after #4919). Repo: openagents.
 - **CL-33** (#4939) **Cross-client conformance suite**: one fixture-driven test
   matrix (the CL-1 fixtures) every client runs, proving identical protocol
@@ -260,9 +260,9 @@ operator console for OpenAgents Cloud.
 
 The headline outcome, prioritized ahead of finishing M2–M5: **the phone commands
 the factory, and the factory ships itself back to the phone.** Concretely — I
-compose a message in Autopilot Remote Control; Pylon hears it; a coordinator
+compose a message in Autopilot Remote Control. Pylon hears it. A coordinator
 agent (the productized version of the loop a human coordinator runs today) fans
-it out to coding agents across the account pool; and at the appropriate time the
+it out to coding agents across the account pool. And at the appropriate time the
 result is shipped back to my device automatically.
 
 **MVP runs now, no full bridge required:** it builds on the **M1 dev transport**,
@@ -284,13 +284,13 @@ local Expo tooling, the **#4918 campaign scheduler**, and the
 - **CL-37** (#4943) **Ship-mode classifier (Expo fingerprint)** — after the
   fan-out merges, compute the Expo Updates runtime fingerprint of `clients/khala-ios`
   vs the deployed build: unchanged ⇒ **OTA-eligible** (JS only), changed ⇒
-  **rebuild required** (native/config). Pure, testable; decides CL-38 vs CL-39.
+  **rebuild required** (native/config). Pure, testable. Decides CL-38 vs CL-39.
   Depends on #4920. Repo: openagents.
 - **CL-38** (#4944) **Auto OTA publish** — when OTA-eligible, the coordinator
   publishes a JS-only update to the build's channel so it reaches the phone with
   no rebuild by shelling out to **`apps/oa-updates/scripts/publish-ota.sh`**.
   The self-hosted "OpenAgents Updates" service on Cloud serves the signed
-  manifest and assets; `app.config.ts updates.url` points at
+  manifest and assets. `app.config.ts updates.url` points at
   `updates.openagents.com`. Emits an update-id receipt. Repo: openagents (+ cloud).
 - **CL-39** (#4945) **Auto local build + submit (no Expo cloud)** — when a
   rebuild is required, the coordinator runs a **local build on our own Mac** and
@@ -304,15 +304,15 @@ local Expo tooling, the **#4918 campaign scheduler**, and the
   N on its way to TestFlight"), as a projection of the intent status. Closes the
   loop visibly on the phone. Repo: openagents.
 - **CL-41** (#4947) **Loop safety** — authority/spend gating for autonomous,
-  cost-bearing EAS builds and for OTA pushes to a live device; escalation for
-  native builds; per-intent receipts (what changed, ship mode, artifact/update/
+  cost-bearing EAS builds and for OTA pushes to a live device. Escalation for
+  native builds. Per-intent receipts (what changed, ship mode, artifact/update/
   build id), honoring the default-yes-with-escalation autonomy model. Repo:
   openagents (+ pylon).
 
 ## Theming fast-track
 
 - **CL-42** (#4948) **Shared website dark-mode tokens across desktop + mobile** —
-  the openagents.com web app's dark theme is the single source of truth; extract
+  the openagents.com web app's dark theme is the single source of truth. Extract
   its tokens (the `--bg`/`--text`/`--outline`/`--primary` palette the
   `autopilot-ui` components already reference) into one shared source, ensure
   desktop (Foldkit) sets those CSS vars, and map them into the React Native theme
@@ -343,14 +343,14 @@ CL-0 ─┬─ CL-1/CL-2 (parallel)
 ```
 
 Parallelizable now (fan-out friendly): CL-0 first, then CL-1/CL-2/CL-3/CL-4 and
-the M2 pylon rungs CL-8/CL-9/CL-10 can run concurrently; M3 read surfaces
+the M2 pylon rungs CL-8/CL-9/CL-10 can run concurrently. M3 read surfaces
 (CL-18..CL-23) are broadly parallel once M2 lands. **M6's MVP can start
 immediately** — CL-34/CL-35/CL-36 on the dev transport, with CL-37/CL-38/CL-39
 on the Expo EAS MCP — and CL-42 is independent.
 
 ## How this connects to the existing plans
 
-- The desktop and mobile audits define *what* each client is; this roadmap
+- The desktop and mobile audits define *what* each client is. This roadmap
   defines *the order* and the shared spine that makes them one system.
 - M2 here is the same "remote session bridge (system #39)" the audits depend on.
 - M4 consumes the cloud commercial plan's coordinator + the quota-aware routing
@@ -366,9 +366,9 @@ on the Expo EAS MCP — and CL-42 is independent.
    on both clients. (Recommended.)
 2. **Workspace integration of `clients/khala-ios`** — RESOLVED: `clients/khala-ios` is a
    bun workspace member with a `workspace:*` dep on
-   `packages/autopilot-control-protocol`; Metro is monorepo-aware (CL-6 follow-on:
+   `packages/autopilot-control-protocol`. Metro is monorepo-aware (CL-6 follow-on:
    `watchFolders`/`nodeModulesPaths` to the repo root). Standalone publish not used.
 3. **When to claim "TUI parity"** — gate on CL-24's conformance checklist, not
    vibes.
-4. **Desktop pricing/channel** — still open (mobile is $4.99 App Store; desktop
+4. **Desktop pricing/channel** — still open (mobile is $4.99 App Store, desktop
    TBD per its audit).

@@ -60,11 +60,11 @@ and closeout evidence as first-class runtime data.
 
 The current Blueprint-related docs already define the direction:
 
-- no Probe-only signature registry;
-- lookup against OpenAgents product surface/OpenAgents Blueprint authority;
-- backends get projected tool menus from the same signature lookup path;
+- no Probe-only signature registry.
+- lookup against OpenAgents product surface/OpenAgents Blueprint authority.
+- backends get projected tool menus from the same signature lookup path.
 - Apple FM, Codex-style remote models, local Qwen, swarm inference, and Pylon
-  workers should all consume the same signature registry concepts;
+  workers should all consume the same signature registry concepts.
 - unsafe registry mutation, missing context, failed release gates, unsupported
   surfaces, and excessive risk ceilings are blocked before tool projection.
 
@@ -179,22 +179,22 @@ The workspace GEPA audit reached the right ownership split:
 Probe should not embed GEPA's Python runtime. The useful parts to port are the
 ideas:
 
-- explicit candidate components;
-- typed evaluator results;
-- shared and per-component reflective feedback;
-- minibatch-gated mutation;
-- full retained evaluation before promotion;
-- frontier tracking;
-- lineage-aware merge;
-- resumable state and evaluation cache;
+- explicit candidate components.
+- typed evaluator results.
+- shared and per-component reflective feedback.
+- minibatch-gated mutation.
+- full retained evaluation before promotion.
+- frontier tracking.
+- lineage-aware merge.
+- resumable state and evaluation cache.
 - callbacks as durable receipts.
 
 The parts to avoid are also clear:
 
-- raw dictionary candidate models;
-- pickle or cloudpickle persistence;
-- hidden synthetic params;
-- stdout capture as feedback;
+- raw dictionary candidate models.
+- pickle or cloudpickle persistence.
+- hidden synthetic params.
+- stdout capture as feedback.
 - conflating optimizer acceptance with runtime promotion.
 
 The Pylon GEPA run plan now narrows the first optimizer milestone. Before LoRA,
@@ -211,22 +211,22 @@ only after that lane produces clean traces and split-aware evidence.
 
 Probe should own:
 
-- executing the coding-agent run;
+- executing the coding-agent run.
 - selecting and recording backend, prompt candidate, Blueprint Program
-  Signatures, tool menu, and context pack;
-- streaming tool calls and tool results;
-- writing replayable transcripts and decision exports;
-- producing benchmark closeout evidence for each run;
+  Signatures, tool menu, and context pack.
+- streaming tool calls and tool results.
+- writing replayable transcripts and decision exports.
+- producing benchmark closeout evidence for each run.
 - admitting a candidate into shadow or active runtime only after external gates
   pass.
 
 public benchmark-cloud should own:
 
-- Terminal-Bench 2 through Harbor;
-- benchmark task normalization;
-- SHC and remote runner scheduling;
-- artifact and proof bundle collection;
-- resource usage receipts;
+- Terminal-Bench 2 through Harbor.
+- benchmark task normalization.
+- SHC and remote runner scheduling.
+- artifact and proof bundle collection.
+- resource usage receipts.
 - live benchmark run custody.
 
 Private `cloud` should own nothing long term. It can provide source material
@@ -234,31 +234,31 @@ while we rebuild the apparatus in public.
 
 Psionic should own:
 
-- GEPA-style optimizer jobs;
-- prompt and Blueprint candidate manifests;
-- Qwen3.6 LoRA, SFT, DPO, and GRPO training jobs;
-- adapter merge and registration;
-- distributed Pylon worker receipts;
-- optimizer frontier and lineage state;
+- GEPA-style optimizer jobs.
+- prompt and Blueprint candidate manifests.
+- Qwen3.6 LoRA, SFT, DPO, and GRPO training jobs.
+- adapter merge and registration.
+- distributed Pylon worker receipts.
+- optimizer frontier and lineage state.
 - promotion reports for model and prompt candidates.
 
 Pylon should own:
 
-- device enrollment;
-- worker capability advertisement;
-- owned assignment lease acceptance and progress events;
-- public-safe artifact/proof refs;
-- accepted or rejected closeout receipts;
-- signed job acceptance and completion receipts;
-- local/swarm compute availability;
+- device enrollment.
+- worker capability advertisement.
+- owned assignment lease acceptance and progress events.
+- public-safe artifact/proof refs.
+- accepted or rejected closeout receipts.
+- signed job acceptance and completion receipts.
+- local/swarm compute availability.
 - payment and settlement evidence when jobs are compensated.
 
 OpenAgents product surface should own:
 
-- Blueprint authority and release gates;
-- operator-facing benchmark evidence;
-- candidate approval and promotion UI;
-- public/private claim projection;
+- Blueprint authority and release gates.
+- operator-facing benchmark evidence.
+- candidate approval and promotion UI.
+- public/private claim projection.
 - cross-repo issue and workroom tracking.
 
 ### Core Loop
@@ -312,13 +312,13 @@ The continual learning loop should run as:
 Terminal-Bench 2 should be the first live apparatus because it already catches
 the behaviors Probe needs to get right:
 
-- shell command planning;
-- filesystem edits;
-- service readiness;
-- package and dependency setup;
-- parser correctness;
-- evidence closeout;
-- long-horizon recovery after failed commands;
+- shell command planning.
+- filesystem edits.
+- service readiness.
+- package and dependency setup.
+- parser correctness.
+- evidence closeout.
+- long-horizon recovery after failed commands.
 - avoiding false completion.
 
 The SHC box should be the primary testing environment for live Terminal-Bench
@@ -349,12 +349,12 @@ public benchmark-cloud artifact contract.
 
 GEPA-style prompt candidates should mutate explicit prompt components only:
 
-- system instruction module;
-- coding-agent loop instruction;
-- benchmark closeout instruction;
-- shell safety and retry policy;
-- evidence checklist;
-- failure-family playbook references;
+- system instruction module.
+- coding-agent loop instruction.
+- benchmark closeout instruction.
+- shell safety and retry policy.
+- evidence checklist.
+- failure-family playbook references.
 - backend-specific formatting adapter.
 
 Each prompt candidate should be a manifest, not loose text:
@@ -383,11 +383,11 @@ Blueprint candidates should not rewrite the registry from Probe. They should
 propose new or revised Blueprint module versions through OpenAgents product surface's Blueprint
 authority. The candidate should say:
 
-- which Program Signature family it targets;
-- which task family justified it;
-- which traces were used;
-- what tool-menu projection changes;
-- what safety/risk constraints apply;
+- which Program Signature family it targets.
+- which task family justified it.
+- which traces were used.
+- what tool-menu projection changes.
+- what safety/risk constraints apply.
 - which retained and live benchmark gates it passed.
 
 The optimizer may suggest a new module version, but only OpenAgents product surface can accept it as
@@ -407,10 +407,10 @@ Candidate examples:
 Probe's signature lookup and tool-menu projection should be optimized as a
 typed product surface. Candidate changes can include:
 
-- adding a required shell tool for a benchmark family;
-- removing a tool that causes failures or unsafe behavior;
-- changing upfront tool schema projection for Apple FM;
-- changing when a backend receives a compact tool menu versus a full one;
+- adding a required shell tool for a benchmark family.
+- removing a tool that causes failures or unsafe behavior.
+- changing upfront tool schema projection for Apple FM.
+- changing when a backend receives a compact tool menu versus a full one.
 - adding an evidence tool requirement for service or verifier readiness.
 
 Tool-menu optimization must remain backend-neutral. Apple FM has a special
@@ -424,10 +424,10 @@ failures: stopping too early, failing to inspect logs, not checking service
 readiness, or not rerunning a verifier after a repair. Candidate policies
 should therefore cover:
 
-- when to continue after a failing command;
-- when to inspect logs;
-- when to run a minimal verifier before final answer;
-- when to summarize uncertainty instead of closing;
+- when to continue after a failing command.
+- when to inspect logs.
+- when to run a minimal verifier before final answer.
+- when to summarize uncertainty instead of closing.
 - when to escalate a missing dependency versus install or build it.
 
 These policies should be represented as typed runtime candidates and evaluated
@@ -442,10 +442,10 @@ self-generated benchmark traces only.
 
 Useful training data shapes:
 
-- SFT positives from successful Probe traces;
-- DPO pairs from raw failed runs versus improved runs;
-- reward traces from verifier outcomes and tool-result receipts;
-- failure-family examples from retained Terminal-Bench tasks;
+- SFT positives from successful Probe traces.
+- DPO pairs from raw failed runs versus improved runs.
+- reward traces from verifier outcomes and tool-result receipts.
+- failure-family examples from retained Terminal-Bench tasks.
 - Blueprint-selection examples from signature lookup decisions.
 
 No hidden verifier content, private benchmark tasks, production secrets, or
@@ -503,14 +503,14 @@ promotion are proven.
 
 A Pylon worker should advertise capabilities, not vague availability:
 
-- benchmark runner support;
-- Harbor/Terminal-Bench support;
-- local model support;
-- Apple FM support;
-- Qwen adapter training support;
-- MLX-class local training support;
-- disk, memory, and accelerator constraints;
-- maximum cost/time budget;
+- benchmark runner support.
+- Harbor/Terminal-Bench support.
+- local model support.
+- Apple FM support.
+- Qwen adapter training support.
+- MLX-class local training support.
+- disk, memory, and accelerator constraints.
+- maximum cost/time budget.
 - proof and receipt support.
 - assignment lease and closeout support.
 
@@ -537,20 +537,20 @@ Probe and Psionic should converge on typed records like:
 
 The benchmark run record should include:
 
-- task id and suite;
-- benchmark split membership;
-- backend;
-- model or adapter id;
-- prompt candidate id;
-- Blueprint signature refs;
-- tool menu id;
-- tool call/event stream digest;
-- artifact manifest digest;
-- resource usage receipt digest;
-- score;
-- verifier status;
-- failure classification;
-- candidate lineage;
+- task id and suite.
+- benchmark split membership.
+- backend.
+- model or adapter id.
+- prompt candidate id.
+- Blueprint signature refs.
+- tool menu id.
+- tool call/event stream digest.
+- artifact manifest digest.
+- resource usage receipt digest.
+- score.
+- verifier status.
+- failure classification.
+- candidate lineage.
 - promotion status.
 
 ## Failure Taxonomy
@@ -635,7 +635,7 @@ retained fixture set.
 
 `docs/benchmarks/plan.md` is the source of truth for the first implementation
 sequence and GitHub issue creation. This apparatus document describes the
-target learning loop; `plan.md` decides how to break it into executable work.
+target learning loop. `plan.md` decides how to break it into executable work.
 
 The current issue sequence is:
 
@@ -666,14 +666,14 @@ gates, and Pylon/OpenAgents own worker envelopes and benchmark work slices.
 The first useful milestone is the GEPA-only Stage 0 and Stage 1 lane:
 
 - public benchmark-cloud has a split manifest for retained
-  Terminal-Bench failures and local Probe acceptance fixtures;
+  Terminal-Bench failures and local Probe acceptance fixtures.
 - Probe can run a supplied text-bundle candidate and emit normalized evaluator
-  side information;
+  side information.
 - Pylon can run 20 to 40 smoke metric calls, then 200 to 400 retained-failure
-  metric calls;
+  metric calls.
 - candidate hashes, rollout receipts, policy findings, artifact manifests, and
-  resource receipts are preserved;
-- no candidate is promoted automatically;
+  resource receipts are preserved.
+- no candidate is promoted automatically.
 - no LoRA or model-training work is part of this first milestone.
 
 The first live SHC milestone after that is:

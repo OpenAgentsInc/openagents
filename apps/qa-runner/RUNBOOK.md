@@ -35,7 +35,7 @@ cat runs/login/result.json | python3 -c "import json,sys;print(json.load(sys.std
 
 ## 2. Publish the run as a shareable trace (`/trace/{uuid}`)
 
-Env-armed (honest no-op if unset). The token is the registered Khala/agent bearer; the
+Env-armed (honest no-op if unset). The token is the registered Khala/agent bearer. The
 endpoint is the live trace ingest. Redaction runs automatically before upload.
 
 ```sh
@@ -59,7 +59,7 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
   `curl -X POST https://openagents.com/api/keys/free`, export
   `QA_API_KEY` from `.credential.token`, then run
   `node --import tsx src/byo.ts run --url <url> --out ./runs/x`. The default model/base
-  are `openagents/khala` and `https://openagents.com/api/v1`; the runner sends
+  are `openagents/khala` and `https://openagents.com/api/v1`. The runner sends
   public-safe `internal` / `qa-runner` attribution headers only to the
   OpenAgents endpoint so served-token analytics can split first-party QA
   dogfood from external demand.
@@ -83,7 +83,7 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
   `QA_NATIVE_DESKTOP=1`, then run
   `pnpm --dir apps/qa-runner run khala:flagship-demo -- --out ../../var/qa-8026/flagship-demo --seeded-bug-text "<public AX marker>"`.
   It writes the headed native evidence report, distiller trace, and committed
-  regression `generated/khala-code-packaged-seeded-bug.e2e.test.ts`; see
+  regression `generated/khala-code-packaged-seeded-bug.e2e.test.ts`. See
   [`docs/qa/khala-code-flagship-demo.md`](../../docs/qa/khala-code-flagship-demo.md).
 
 ## Honest defaults
@@ -91,5 +91,5 @@ published <https://openagents.com/trace/db838bdc-3bc6-48a5-8715-a6669f6b10c5> (1
 - No publish, no spend, no network beyond the target unless explicitly armed.
 - `--wrong` (or any real deviation) yields an honest FAIL with the failure visible in the
   video — never a fake green.
-- Secrets/PII/paths are redacted before any trace upload; the ingest tripwire rejects
+- Secrets/PII/paths are redacted before any trace upload. The ingest tripwire rejects
   real leaked values.

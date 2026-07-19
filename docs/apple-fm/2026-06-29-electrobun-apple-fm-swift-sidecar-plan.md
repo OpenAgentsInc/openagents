@@ -129,7 +129,7 @@ desktop app should make local Apple FM available through the same Pylon/Khala
 authority path.
 
 The change is implementation shape, not authority shape. The SwiftUI app shell
-is no longer the first integration target; the Swift bridge remains the sidecar.
+is no longer the first integration target. The Swift bridge remains the sidecar.
 
 ## Target Architecture
 

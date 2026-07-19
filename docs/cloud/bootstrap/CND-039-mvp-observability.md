@@ -2,15 +2,15 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
 Status: implemented scaffold
 
 MVP observability uses one trace id across node, workroom, ingress, artifact,
-and receipt observations. The goal is not a full metrics platform yet; it is a
+and receipt observations. The goal is not a full metrics platform yet. It is a
 repeatable way to prove local and GCP test events are visible, correlated, and
 redacted.
 
@@ -76,9 +76,9 @@ scripts/collect-mvp-observability.sh \
 
 GCP collection prints or runs:
 
-- recent `openagents-oa-node` journald entries over IAP SSH;
+- recent `openagents-oa-node` journald entries over IAP SSH.
 - recent Cloud Logging entries for `oa_node_startup_complete`,
-  `openagents-oa-node`, and the selected GCE instance;
+  `openagents-oa-node`, and the selected GCE instance.
 - local artifact, receipt, and lifecycle JSONL tails under
   `/var/lib/openagents/workrooms`.
 
@@ -86,5 +86,5 @@ GCP collection prints or runs:
 
 The collector calls `scripts/verify-redacted-config.sh` and scans its own
 output bundle for common raw-secret markers. Observability logs may contain
-secret references such as `gcp-secret://...`; they must not contain raw bearer
+secret references such as `gcp-secret://...`. They must not contain raw bearer
 tokens, API keys, auth JSON, wallet seed material, or private keys.

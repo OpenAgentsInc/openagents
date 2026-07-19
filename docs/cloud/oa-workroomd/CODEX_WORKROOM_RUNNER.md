@@ -22,13 +22,13 @@ after each active turn.
 
 This runner is intentionally narrow:
 
-- one structured assignment;
-- one private no-wallet workspace;
-- one session-scoped `CODEX_HOME`;
+- one structured assignment.
+- one private no-wallet workspace.
+- one session-scoped `CODEX_HOME`.
 - `opencode run --format json --model <openai GPT-5 model>` by default, or raw
-  `codex exec` when requested;
-- declared artifacts only;
-- redacted event and receipt logs;
+  `codex exec` when requested.
+- declared artifacts only.
+- redacted event and receipt logs.
 - workspace and auth cleanup after completion or failure.
 
 ## One-Shot Command
@@ -132,7 +132,7 @@ When the `opencode_codex` path converts a materialized Codex `auth.json` into
 cache provides one. If the cache omits expiry metadata, `oa-workroomd` sets the
 OpenCode expiry to `0` so OpenCode refreshes the ChatGPT/Codex account token
 before the first OpenAI request. Do not synthesize a future expiry for a cache
-that did not include one; that can make OpenCode reuse an invalidated access
+that did not include one. That can make OpenCode reuse an invalidated access
 token and produce a `token_invalidated` run failure immediately after
 reconnect.
 
@@ -244,7 +244,7 @@ On success it emits a refs-only `git.writeback.completed` runner event and
 writes a `git-writeback.json` receipt carrying only the commit sha and branch
 ref. Committer identity is set per-invocation with `git -c`, never in global
 config. The token is supplied to `git push` only through the askpass helper and
-the process environment; it never enters the commit, git config, remotes,
+the process environment. It never enters the commit, git config, remotes,
 events, the receipt, or logs (INVARIANTS.md "Capability And Secret Handling").
 
 ### Write token sources
@@ -253,8 +253,8 @@ The writeback (and the existing repo checkout) accept a GitHub write token from,
 in order:
 
 1. `GITHUB_TOKEN` — the run-scoped credential materialized by `oa-codex-control`
-   from a `github_write_grant_ref`;
-2. `GH_TOKEN` — alias for the same;
+   from a `github_write_grant_ref`.
+2. `GH_TOKEN` — alias for the same.
 3. `OA_CODEX_GITHUB_TOKEN` — a statically-configured fallback for
    operator-driven runs without a grant resolver.
 
@@ -279,17 +279,17 @@ exactly as today (no writeback, no checkout).
 
 `crates/oa-workroomd/tests/codex_run.rs` covers:
 
-- session auth materialization before a run;
-- `codex login status` verification before `codex exec`;
-- artifact capture and closeout;
-- workspace cleanup;
-- auth cleanup;
+- session auth materialization before a run.
+- `codex login status` verification before `codex exec`.
+- artifact capture and closeout.
+- workspace cleanup.
+- auth cleanup.
 - redaction of fake secret-looking process output.
-- multi-turn session create/start/continue/events/closeout/archive/destroy;
-- workspace preservation across session turns;
-- auth scrub after each session turn;
+- multi-turn session create/start/continue/events/closeout/archive/destroy.
+- workspace preservation across session turns.
+- auth scrub after each session turn.
 - cancel marking without leaving auth material.
-- resource usage receipt emission for one-shot and session turns;
+- resource usage receipt emission for one-shot and session turns.
 - observed Codex and OpenCode token usage events plus receipt-backed
   `usage.unavailable` fallback when no usage payload is emitted.
 
@@ -333,7 +333,7 @@ install path documented in `docs/bootstrap/CND-041-shc-katy-01-bootstrap.md`.
 
 Install `bubblewrap` for host diagnostics, but do not assume it makes Codex
 `workspace-write` usable on this nested VPS. On 2026-06-01, SHC returned
-`loopback: Failed RTM_NEWADDR` inside the Codex sandbox; `danger_full_access`
+`loopback: Failed RTM_NEWADDR` inside the Codex sandbox. `danger_full_access`
 was the working profile for the first real account-backed run.
 
 The Cloud source was copied to `~/openagents-cloud` without `.git` or `target`.
@@ -347,7 +347,7 @@ cargo test -p oa-workroomd --test codex_run -- --nocapture
 The fake-Codex runner test proves the same VM-local behavior as the GCP smoke:
 assignment validation, session auth state, event redaction, artifact capture,
 closeout, workspace cleanup, and auth cleanup. It still does not prove a real
-ChatGPT/Codex account-backed run; that requires the product-issued provider
+ChatGPT/Codex account-backed run. That requires the product-issued provider
 account grant and brokered auth material.
 
 ## Product Boundary

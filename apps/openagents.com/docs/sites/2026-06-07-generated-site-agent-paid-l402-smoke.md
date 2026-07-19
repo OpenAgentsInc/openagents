@@ -28,22 +28,22 @@ an `Idempotency-Key`.
 The smoke proves:
 
 - discovery exposes the generated paid action through public-safe Site commerce
-  metadata;
+  metadata.
 - spend-cap preview runs as a dry run before proof acceptance and does not call
   MDK, create an entitlement, debit credits, redeem credentials, or mutate
-  payout state;
-- unauthenticated L402 challenge creation is rejected;
+  payout state.
+- unauthenticated L402 challenge creation is rejected.
 - authenticated challenge creation returns a machine-readable `402` response
   with `WWW-Authenticate: L402 ...`, redacted invoice refs, redacted payment
-  hash refs, and no wallet material;
-- over-cap challenge creation is rejected before a challenge is accepted;
-- unsafe proof refs such as preimage-shaped values are rejected;
+  hash refs, and no wallet material.
+- over-cap challenge creation is rejected before a challenge is accepted.
+- unsafe proof refs such as preimage-shaped values are rejected.
 - a public-safe `mdk_payment_proof_*` ref can be accepted by the current
-  contract route as an entitlement stub;
+  contract route as an entitlement stub.
 - replaying the same redemption with the same idempotency key returns the same
-  deterministic stub projection;
+  deterministic stub projection.
 - the post-redemption retry projection is allowed only for the intended action
-  scope; and
+  scope. And
 - the response set is scanned for prohibited payment or credential material.
 
 ## What It Does Not Prove
@@ -52,22 +52,22 @@ This is still contract smoke evidence, not production payment settlement.
 
 The smoke does not prove:
 
-- a live MDK invoice was created;
-- bitcoin moved;
-- a real proof preimage was verified;
-- mismatched real provider proof was rejected by a durable verifier;
-- durable L402 redemption state has been reconciled against an MDK event;
+- a live MDK invoice was created.
+- bitcoin moved.
+- a real proof preimage was verified.
+- mismatched real provider proof was rejected by a durable verifier.
+- durable L402 redemption state has been reconciled against an MDK event.
 - a generated Worker route actually executed the protected action after the
-  entitlement stub;
-- accepted-work payout authority exists; or
+  entitlement stub.
+- accepted-work payout authority exists. Or
 - Pylon/Nexus/Treasury settlement occurred.
 
 Those are intentionally left to the next release-gate issues:
 
 - #457 for MDK webhook and checkout-return reconciliation smoke evidence,
   now covered for the generated human-checkout product with deterministic
-  dashboard Standard Webhooks evidence;
-- #458 for public-safe smoke runbooks and evidence surfaces; and
+  dashboard Standard Webhooks evidence.
+- #458 for public-safe smoke runbooks and evidence surfaces. And
 - the Nexus/Pylon release-gate work for accepted-work payout claims.
 
 ## Production Boundary

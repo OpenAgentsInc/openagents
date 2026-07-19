@@ -1,4 +1,4 @@
-# three-effect and Effect Native — Split, Don't Choose
+# three-effect and Effect Native — Split, Do not Choose
 
 Date: 2026-07-08
 Status: analysis / decision input. Companion to the Effect Native decision
@@ -10,7 +10,7 @@ The short version: **the standalone-vs-fold question has a false binary in
 it.** three-effect is really two things wearing one name — a **large domain
 library** of Three.js building blocks (the Verse world, VFX, HUD, Drei
 ports) and a **small renderer kernel** (a scene reconciler + a frame clock +
-a resource scope, ~600 LOC). The domain library should **stay standalone**;
+a resource scope, ~600 LOC). The domain library should **stay standalone**.
 the renderer kernel should **fold into the Effect Native canvas renderer**.
 That split is the answer, and it also happens to realize the "Effect" the
 name currently only claims.
@@ -20,7 +20,7 @@ name currently only claims.
 three-effect is an **Effect-owned, React-free Three.js runtime**: a curated,
 React-free port of the highest-volume Drei / react-three-fiber primitives,
 plus a Foldkit custom-element adapter, giving our web/desktop surfaces
-3D/VFX without React or `@react-three/fiber` at runtime. It's real and
+3D/VFX without React or `@react-three/fiber` at runtime. It is real and
 load-bearing (the autopilot-desktop **Verse world**, several openagents.com
 web scenes, khala-code-desktop).
 
@@ -39,7 +39,7 @@ But the architecture is not what the name suggests. Two honest findings:
   deliberately outside Effect**. The name "three-**effect**" oversells the
   Effect content today.
 
-This isn't a criticism of its usefulness — it's the fact that decides how it
+This is not a criticism of its usefulness — it is the fact that decides how it
 should relate to Effect Native.
 
 ## 2. The two things inside it (the architectural cut)
@@ -66,12 +66,12 @@ The ~50 primitive modules — Drei ports (cameras, controls, fat lines,
 text/labels, postprocessing/bloom), the sci-fi **HUD** kit, the **Verse**
 VFX (crackling arcs, spark bursts, pylon-network glow), and the MMO-ish
 entity/controller/spatial systems — are reusable Three.js building blocks
-that don't care *how* they're mounted or scheduled. They're valuable
+that do not care *how* they are mounted or scheduled. They are valuable
 unchanged whether three-effect is standalone or folded.
 
 ## 3. The recommendation: split along that seam
 
-**Fold the kernel (A) into the Effect Native canvas renderer; keep the
+**Fold the kernel (A) into the Effect Native canvas renderer. Keep the
 domain library (B) standalone as a package the renderer draws from.** This
 refines the roadmap's EN-6 ("canvas unification") from "fold three-effect
 in" to something precise:
@@ -84,7 +84,7 @@ in" to something precise:
 - **The canvas renderer's catalogue is populated by three-effect's domain
   primitives** as leaf factories — a beam, a spark burst, a HUD meter
   become `kind`s the reconciler knows. Nothing in the VFX/Verse/HUD library
-  is rewritten; it's *consumed* by the renderer.
+  is rewritten. It is *consumed* by the renderer.
 - **A 3D surface becomes an Effect Native component** whose canvas subtree
   is a typed descriptor tree, rendered by this adapter — so the Verse world,
   proof-replay, and pylon scenes sit under the same component contract as
@@ -97,53 +97,53 @@ in" to something precise:
    which the 2026-07-04 decision marked migration-era legacy** ("do not
    start new Foldkit surfaces"). Its canvas surfaces need a *new* host seam
    regardless of Effect Native — and the Effect Native canvas adapter is
-   precisely that replacement. There is no "leave it alone" option here; the
+   precisely that replacement. There is no "leave it alone" option here. The
    integration layer has to move.
 2. **Folding realizes the thesis the name already claims.** three-effect's
    "Effect" is nominal (§1). An Effect Native canvas renderer would *give it*
    the real `Scope`/`Stream`/`Layer` backbone it currently fakes by hand —
    deterministic, resource-safe, testable — turning "three-effect" from
    aspirational to accurate.
-3. **The canvas renderer is already on the roadmap (EN-6).** We're building
-   a canvas adapter anyway; the kernel triad is the ~600 LOC head start.
+3. **The canvas renderer is already on the roadmap (EN-6).** We are building
+   a canvas adapter anyway. The kernel triad is the ~600 LOC head start.
    Reimplementing it on Effect is a bounded, well-understood task, not a
    research project.
 
 ## 5. Why keep the domain library standalone
 
-- **It's renderer-independent by nature.** VFX, HUD, Verse entities, and
-  Drei ports are Three.js content; they don't need — and shouldn't be
+- **It is renderer-independent by nature.** VFX, HUD, Verse entities, and
+  Drei ports are Three.js content. They do not need — and should not be
   coupled to — the Effect Native contract. Coupling them would bloat the
   substrate and violate the "keep v0 ruthlessly small" discipline.
-- **It's production-load-bearing and must not break.** The Verse world in
+- **It is production-load-bearing and must not break.** The Verse world in
   autopilot-desktop (the heavyweight consumer — `trainingRun.ts` alone is
   ~190k) and the openagents.com scenes depend on these primitives *as they
   are*. A standalone package with a stable factory API lets the renderer
   evolve underneath without a risky rewrite of 24k LOC of working VFX.
 - **Standalone keeps the boundary honest.** The domain library is a
-  Three.js library; the canvas renderer is a UI renderer; the seam between
+  Three.js library. The canvas renderer is a UI renderer. The seam between
   them (the factory catalogue) is the same clean boundary React uses between
   host components and the reconciler.
 
 So: **package `three-effect-core` stays a standalone Three.js primitive
-library; its renderer kernel migrates into `@effect-native/render-canvas`;
+library. Its renderer kernel migrates into `@effect-native/render-canvas`.
 its Foldkit adapter is retired in favor of the Effect Native canvas
 adapter.**
 
 ## 6. Risks and caveats (so this is decided with eyes open)
 
-- **Don't break the Verse.** autopilot-desktop and the web scenes are live.
+- **Do not break the Verse.** autopilot-desktop and the web scenes are live.
   The migration is: build the Effect Native canvas renderer *beside* the
   existing mounts, move surfaces one scene at a time under capture-smoke
   parity (three-effect already has headless Playwright capture smokes over
   9 scenes — reuse them as the migration oracle), and retire the Foldkit
   adapter last.
-- **Version skew is real.** three-effect pins `effect@4.0.0-beta.70`;
+- **Version skew is real.** three-effect pins `effect@4.0.0-beta.70`.
   Foldkit is on `beta.88`. Any shared-Effect story (Effect Native runtime +
   three-effect) needs the versions reconciled — a pre-req, not a surprise.
 - **Reimplementing the kernel on Effect has a cost** (rebuilding frame-clock
-  + scope on `Stream`/`Scope`). It's bounded (~600 LOC of known behavior +
-  its tests), but it is real work; sequence it inside EN-6, not v0.
+  + scope on `Stream`/`Scope`). It is bounded (~600 LOC of known behavior +
+  its tests), but it is real work. Sequence it inside EN-6, not v0.
 - **Resist over-folding.** The temptation will be to "make everything
   Effect." The domain primitives should stay plain, fast, imperative
   Three.js under the hood — the Effect discipline belongs in the
@@ -152,8 +152,8 @@ adapter.**
 
 ## 7. Recommendation
 
-**Split, don't choose.** three-effect is not a monolith to fold or preserve
-whole — it's a domain library with a small renderer kernel bolted on.
+**Split, do not choose.** three-effect is not a monolith to fold or preserve
+whole — it is a domain library with a small renderer kernel bolted on.
 
 1. **Keep the domain primitive library standalone** (`three-effect-core`):
    stable factory API, the Verse/VFX/HUD/Drei-port content, unchanged and
@@ -162,16 +162,16 @@ whole — it's a domain library with a small renderer kernel bolted on.
    reconciler + frame clock + scope, reimplemented on real Effect
    `Scope`/`Stream`/`Layer`, drawing the standalone library's primitives as
    its catalogue.
-3. **Retire the Foldkit adapter** (`three-effect-foldkit`) — it's on the
+3. **Retire the Foldkit adapter** (`three-effect-foldkit`) — it is on the
    deprecated path — replacing it with the Effect Native canvas adapter so
    3D surfaces become Effect Native components.
 4. **Migrate live scenes one at a time** under the existing capture-smoke
-   parity; never rewrite the working VFX library to move it.
+   parity. Never rewrite the working VFX library to move it.
 
 This gives us the canvas renderer Effect Native needs, finally puts a real
 Effect backbone under three-effect, retires the last Foldkit dependency in
 the 3D stack, and does it all without a risky rewrite of the 24k LOC of Verse
-and VFX work that's already carrying products.
+and VFX work that is already carrying products.
 
 ## 8. Open questions
 

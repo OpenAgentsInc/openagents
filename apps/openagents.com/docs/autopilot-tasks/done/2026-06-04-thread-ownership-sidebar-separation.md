@@ -1,6 +1,6 @@
 # Autopilot Task: Thread Ownership Sidebar Separation
 
-Status: complete; merged
+Status: complete. Merged
 
 Target repo: `OpenAgentsInc/openagents`
 
@@ -12,7 +12,7 @@ OpenAgents product surface implementation agent selected by preflight.
 Team: OpenAgents core / `team_openagents_core`
 
 Project: OpenAgents product surface workroom navigation and thread ownership clarity. Resolve the
-concrete project ID through operator preflight before dispatch; do not invent
+concrete project ID through operator preflight before dispatch. Do not invent
 one in the runner prompt.
 
 Visibility: private/operator-visible during implementation. The resulting
@@ -89,10 +89,10 @@ Do not launch this task until the programmatic Autopilot runbook gate is
 satisfied:
 
 - operator preflight reports migrations, project/agent presence, provider
-  health, SHC health, callback config, and GitHub writeback readiness;
-- reconnect-required provider states are caught before dispatch;
-- SHC callback payload contracts and retry/backfill paths are covered;
-- run continuation attaches to the same durable goal;
+  health, SHC health, callback config, and GitHub writeback readiness.
+- reconnect-required provider states are caught before dispatch.
+- SHC callback payload contracts and retry/backfill paths are covered.
+- run continuation attaches to the same durable goal.
 - private goal/run observation can show current progress without exposing
   private delivery mechanics.
 
@@ -101,11 +101,11 @@ Source runbook:
 
 Thread-sidebar-specific preflight must also confirm:
 
-- the browser bundle and Worker are on current `main`;
+- the browser bundle and Worker are on current `main`.
 - the sidebar status-dot mapping and newest-first sort from commits
-  `499cc3a8` and `54142b8e` are present;
+  `499cc3a8` and `54142b8e` are present.
 - the current product policy for project workrooms is known before deciding
-  whether project threads are visible, hidden, or nested under team context;
+  whether project threads are visible, hidden, or nested under team context.
 - no UI copy introduces implementation mechanics, sync internals, SHC, gcloud,
   callback, provider, or grant language.
 
@@ -125,13 +125,13 @@ snapshots reproject the same row.
 
 Implement a product model where:
 
-- personal runs appear under `My threads`;
-- team runs appear under `Team threads`;
+- personal runs appear under `My threads`.
+- team runs appear under `Team threads`.
 - project-scoped runs appear as team-owned project work, not as ambiguous
-  personal work;
+  personal work.
 - the active `/t/:threadId` row remains visible and highlighted even if it is
-  project-scoped or no longer newest;
-- each section sorts by most recent activity descending;
+  project-scoped or no longer newest.
+- each section sorts by most recent activity descending.
 - status dots only indicate run state, never ownership.
 
 Recommended UX direction:
@@ -156,12 +156,12 @@ task is only about thread ownership clarity in the workroom sidebar.
 Recent foreground work already changed several adjacent behaviors:
 
 - `499cc3a8 Sort sidebar threads by latest activity`
-  - mission rows carry `updatedAt`;
-  - thread rows sort newest-first;
-  - queued rows are neutral gray;
+  - mission rows carry `updatedAt`.
+  - thread rows sort newest-first.
+  - queued rows are neutral gray.
   - failed/canceled rows are red instead of blue queued.
 - `54142b8e Keep current thread visible in sidebar`
-  - the current `/t/:threadId` row remains visible even when project-scoped;
+  - the current `/t/:threadId` row remains visible even when project-scoped.
   - the active thread row has a yellow border/background distinct from the
     status dot.
 
@@ -190,9 +190,9 @@ The current ownership model is still too coarse:
 Known live confusion that this task must resolve:
 
 - a completed project-scoped thread could show as green, be opened, and then no
-  longer be obviously present in the thread list;
+  longer be obviously present in the thread list.
 - users cannot tell whether a thread is personal work or OpenAgents core team
-  work;
+  work.
 - color alone is being read as ownership or queue state, which is wrong.
 
 ## Relevant Repo Files
@@ -244,14 +244,14 @@ strings.
 Recommended model shape:
 
 - add an ownership field to sidebar mission/session items, for example
-  `owner: 'personal' | 'team' | 'project'`;
+  `owner: 'personal' | 'team' | 'project'`.
 - carry `teamId`, `projectId`, and `ownerUserId` or equivalent nullable fields
-  through sync mission projections where available;
+  through sync mission projections where available.
 - derive section membership from typed ownership fields:
-  - no team ID: `My threads`;
-  - team ID and no project ID: `Team threads`;
-  - team ID and project ID: `Team threads`, with project detail retained;
-- keep active-route visibility as a separate rule from section filtering;
+  - no team ID: `My threads`.
+  - team ID and no project ID: `Team threads`.
+  - team ID and project ID: `Team threads`, with project detail retained.
+- keep active-route visibility as a separate rule from section filtering.
 - keep status as a separate enum from ownership.
 
 If the existing sync schema cannot carry these fields without a shared schema
@@ -268,13 +268,13 @@ typed boundary is available.
 3. Split the sidebar model into `My threads` and `Team threads` sections while
    preserving newest-first sort inside each section.
 4. Preserve current active-thread behavior:
-   - active row stays visible;
-   - active row is visibly highlighted;
+   - active row stays visible.
+   - active row is visibly highlighted.
    - active state is independent of status dot color.
 5. Preserve current project-workroom policy:
-   - do not globally enable project workrooms to make this task pass;
+   - do not globally enable project workrooms to make this task pass.
    - when project workrooms are disabled, show only active project-scoped
-     threads if necessary for context;
+     threads if necessary for context.
    - when enabled, show project-scoped rows under team ownership.
 6. Add tests for personal/team/project row separation, active project-thread
    visibility, newest-first ordering inside each section, and status/ownership
@@ -295,16 +295,16 @@ Allowed sidebar labels:
 
 Allowed row details:
 
-- repository name;
-- project name or slug;
-- short run status such as `running`, `completed`, `failed`, or `queued`;
+- repository name.
+- project name or slug.
+- short run status such as `running`, `completed`, `failed`, or `queued`.
 - small owner/project metadata only if it fits the compact sidebar.
 
 Disallowed user-facing copy:
 
 - implementation mechanics such as sync, SHC, callback, dispatch, provider
-  grants, runner IDs, gcloud, or internal route policy;
-- explanatory paragraphs in the sidebar;
+  grants, runner IDs, gcloud, or internal route policy.
+- explanatory paragraphs in the sidebar.
 - color legends in the main product chrome.
 
 ## Safety Rules
@@ -339,9 +339,9 @@ Disallowed user-facing copy:
 - Worker or shared-schema tests cover any added mission ownership fields.
 - `bun run check:deploy` passes.
 - If deployed, production smoke checks include:
-  - `/` authenticated workroom shell;
-  - a known personal thread;
-  - a known team/project thread;
+  - `/` authenticated workroom shell.
+  - a known personal thread.
+  - a known team/project thread.
   - row visibility and active highlight after opening `/t/:threadId`.
 
 ## Commit Input For Dispatch

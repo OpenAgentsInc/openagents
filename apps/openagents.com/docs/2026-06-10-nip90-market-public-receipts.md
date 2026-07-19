@@ -33,7 +33,7 @@ The public receipt projection includes:
 The projection structurally excludes raw invoices, preimages, payment hashes,
 mnemonics, private keys, wallet material, provider credentials, customer data,
 and counterparty destination details. Current buy-mode rows project as the
-`compute` stream; the data and labor stream counters are present for the next
+`compute` stream. The data and labor stream counters are present for the next
 plan steps.
 
 ## Counting Rules

@@ -50,7 +50,7 @@ One run, bounded end to end:
 Exit code 0 means the probe ran cleanly — including the honest
 zero-responder baseline (`verdict.zeroRegisteredResponders: true`), which is
 a _passed_ run, not a failure. Exit 2 means a blocker (for example the relay
-rejected the request); exit 1 means the harness itself failed.
+rejected the request). Exit 1 means the harness itself failed.
 
 ### Flags and environment
 
@@ -72,7 +72,7 @@ explicit `--paid` flag and `PYLON_STRANGER_PROBE_ALLOW_SPEND=1` are present
 yields a typed refusal (`blocker.pylon.stranger_probe.spend_env_guard_missing`
 / `blocker.pylon.stranger_probe.paid_flag_missing`) and the wallet runner is
 never invoked. Even when authorized, the paid leg settles only a
-payment-required quote from a **registered** responder; if only strangers
+payment-required quote from a **registered** responder. If only strangers
 quoted, it records
 `blocker.pylon.stranger_probe.no_registered_payment_required_quote` and stays
 no-spend.
@@ -80,7 +80,7 @@ no-spend.
 ## How the first paid run becomes the first settlement row
 
 `nip90MarketSettlementStats` on the platform side counts settled receipts
-only (caveats `settled_receipts_only`, `pending_records_excluded`); during
+only (caveats `settled_receipts_only`, `pending_records_excluded`). During
 Orrery's probe it honestly stayed at 0 jobs / 0 sats across compute, data,
 and labor. The first operator-authorized paid run of this smoke that settles
 a registered provider's invoice and receives the delivered result closes the

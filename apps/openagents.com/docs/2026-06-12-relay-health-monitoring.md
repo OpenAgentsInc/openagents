@@ -35,7 +35,7 @@ Each probe tick runs two legs:
    10s budget, recording outcome (`eose_received` / `connect_failed` /
    `timeout` / `closed_before_eose`) and latency.
 
-Status derivation: both legs ok → `healthy`; exactly one ok → `degraded`;
+Status derivation: both legs ok → `healthy`. Exactly one ok → `degraded`.
 neither → `unhealthy`.
 
 ## The websocket-leg implementation truth
@@ -60,7 +60,7 @@ probe traffic. Skipped ticks return the typed reason
 `relay_health.skipped.cadence_not_due`.
 
 Time discipline: the probe timestamp authority is the scheduled
-controller's `event.scheduledTime`; leg latencies use the injected clock
+controller's `event.scheduledTime`. Leg latencies use the injected clock
 defaulting to the `currentEpochMillis` runtime primitive. No raw
 `Date.now()` / `new Date()` in the module (enforced by the zero-debt
 architecture check).
@@ -70,7 +70,7 @@ architecture check).
 Migration `workers/api/migrations/0176_relay_health_probes.sql`:
 
 - `relay_health_probes` — one row per executed probe (both legs flattened
-  into columns). Retained **7 days** (≈2016 rows at the 5-minute cadence);
+  into columns). Retained **7 days** (≈2016 rows at the 5-minute cadence).
   each tick prunes older rows.
 - `relay_health_transitions` — one row per status change. Retained
   **30 days**.
@@ -88,7 +88,7 @@ The first retained probe establishes a baseline without emitting. Events
 carry `fromStatus` / `toStatus` / `probeId` / `occurredAt` and are
 persisted plus served publicly, so a future alerting hook can subscribe to
 `relay_health.transition.unhealthy` without re-deriving status pairs.
-Events are monitoring evidence only; they grant no relay-mutation, payout,
+Events are monitoring evidence only. They grant no relay-mutation, payout,
 settlement, or public-claim authority.
 
 ## Public route

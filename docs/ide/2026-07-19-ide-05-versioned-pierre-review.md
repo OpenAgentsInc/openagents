@@ -6,7 +6,7 @@ Roadmap packet: IDE-05
 
 Issue: [#9020](https://github.com/OpenAgentsInc/openagents/issues/9020)
 
-Depends on: IDE-03 Monaco document runtime; IDE-04 daily workbench
+Depends on: IDE-03 Monaco document runtime. IDE-04 daily workbench
 
 ## Result
 
@@ -22,16 +22,16 @@ authorities distinct:
 
 | Source tag | Exact comparison | Additional fence | Production mutation |
 | --- | --- | --- | --- |
-| `GitHeadIndex` | HEAD → index | Git snapshot ref and generation | none; read-only |
-| `GitIndexWorktree` | index → working tree | Git snapshot ref and generation | none; read-only |
-| `GitHeadWorktree` | HEAD → aggregate working tree | Git snapshot ref and generation | none; read-only |
+| `GitHeadIndex` | HEAD → index | Git snapshot ref and generation | none. Read-only |
+| `GitIndexWorktree` | index → working tree | Git snapshot ref and generation | none. Read-only |
+| `GitHeadWorktree` | HEAD → aggregate working tree | Git snapshot ref and generation | none. Read-only |
 | `SavedDraft` | saved disk revision → unsaved draft | disk revision and document generation | typed document command only |
 | `DraftExternalConflict` | draft → externally changed disk | expected/actual disk refs and draft generation | typed document command only |
 | `CheckpointCurrent` | checkpoint → current document/project | checkpoint and attachment/document generations | typed checkpoint/workspace command only |
-| `AgentProposal` | exact base → proposed result | proposal, attachment, base/current document generations | contract fixture; IDE-08 owns the real workflow |
+| `AgentProposal` | exact base → proposed result | proposal, attachment, base/current document generations | contract fixture. IDE-08 owns the real workflow |
 | `CandidateComparison` | candidate A → candidate B | two candidate refs and generations | none |
 
-The last six classes are an executable source/adapter corpus in this packet;
+The last six classes are an executable source/adapter corpus in this packet.
 they are not claims that checkpoint creation, agent proposal generation, or
 candidate selection UI has landed. That separation lets those later producers
 join the same review plane without inventing a second diff contract.
@@ -42,17 +42,17 @@ join the same review plane without inventing a second diff contract.
 is derived from the schema. Every variant carries the shared fields below in
 addition to its source-specific refs and generations:
 
-- schema version and opaque review ref;
-- exact project, root, and worktree refs;
-- nullable exact file, document, and relative path refs for aggregate cases;
-- single-file or aggregate scope;
+- schema version and opaque review ref.
+- exact project, root, and worktree refs.
+- nullable exact file, document, and relative path refs for aggregate cases.
+- single-file or aggregate scope.
 - base and target endpoint labels, opaque version refs, and positive
-  generations;
-- encoding and line-ending classification for both endpoints;
+  generations.
+- encoding and line-ending classification for both endpoints.
 - an explicit tagged content state: available, binary, secret, too large,
-  truncated, or unavailable;
-- a bounded patch and language hint only when display is admitted;
-- typed origin and allowed actions;
+  truncated, or unavailable.
+- a bounded patch and language hint only when display is admitted.
+- typed origin and allowed actions.
 - a tagged ready, stale, or unavailable lifecycle with typed reason and
   refreshability.
 
@@ -95,7 +95,7 @@ bounded context count. It has no mutation function or service handle.
 1. Refuse an action absent from the source's allowed-action set.
 2. Refuse unavailable content.
 3. Permit only a typed read-only refresh when a stale source explicitly says
-   it is refreshable; refuse every stale mutation.
+   it is refreshable. Refuse every stale mutation.
 4. For accept, reject, apply, or undo, compare both endpoint version refs and
    generations again.
 5. Refuse a moved base or target before command construction.
@@ -113,18 +113,18 @@ authority.
 `projectReviewSourceToPierre` is the only domain-to-library conversion. The
 decoded Pierre projection contains exactly:
 
-- review ref and a projection file ref;
-- bounded patch;
-- unified or split layout;
-- context count from 1 through 100;
-- optional controlled line selection;
+- review ref and a projection file ref.
+- bounded patch.
+- unified or split layout.
+- context count from 1 through 100.
+- optional controlled line selection.
 - at most 500 typed diagnostic, conflict, comment, proposal-rationale, stale,
   or unavailable annotations.
 
 The output schema has no field for root, worktree, grant, preload bridge, Git
 or filesystem callback, process access, approval policy, document mutation,
 persistence, or allowed-action authority. Pierre is invoked with
-`disableWorkerPool`; Tokyo Night is registered from the one owned semantic
+`disableWorkerPool`. Tokyo Night is registered from the one owned semantic
 projection. Annotation kind is rendered as text, and additions/deletions have
 line markers and a screen-reader explanation rather than relying on red/green
 alone.
@@ -138,16 +138,16 @@ renderer.
 
 The production Git review surfaces now expose:
 
-- explicit source tag and base → target labels;
-- unified/split controls;
-- bounded context expansion controls;
-- Pierre line/range selection;
-- selected-range or whole bounded-diff attachment to the composer;
-- a selected-line comment form projected into typed Pierre annotations;
-- open-in-editor through the existing grant-scoped canonical open intent;
-- changed-file selection, refresh, and close/back controls;
+- explicit source tag and base → target labels.
+- unified/split controls.
+- bounded context expansion controls.
+- Pierre line/range selection.
+- selected-range or whole bounded-diff attachment to the composer.
+- a selected-line comment form projected into typed Pierre annotations.
+- open-in-editor through the existing grant-scoped canonical open intent.
+- changed-file selection, refresh, and close/back controls.
 - existing secret, binary, large, invalid-path, stale, unsafe-state, and
-  unavailable refusal copy;
+  unavailable refusal copy.
 - keyboard-focusable native controls and screen-reader source/non-color copy.
 
 Selected composer disclosure does not rediscover selection after the click.
@@ -190,7 +190,7 @@ create/dispose cycles, renders all eight source tags through
 200-file virtualized collection, observes no external URL, and reaches zero
 tracked workers and Monaco models after every dispose. The fixture also keeps
 the injected worker-construction failure closed and leak-free. The receipt is
-`apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-spike.json`;
+`apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-spike.json`.
 the Tokyo Night visual is
 `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-tokyo-night.png`.
 
@@ -202,11 +202,11 @@ test files and 185 passing assertions.
 
 - IDE-06 owns TypeScript/LSP lifecycle, symbols, diagnostics, Problems,
   formatting, code actions, and rename.
-- IDE-07 owns the packaged daily-editor acceptance matrix over IDE-02–06; it
+- IDE-07 owns the packaged daily-editor acceptance matrix over IDE-02–06. It
   does not add unrestricted Git mutation.
 - IDE-08 owns real agent proposal creation, review orchestration, application,
   backlinks, and post-apply evidence.
-- IDE-10 owns xterm/PTY process mechanics; IDE-12 owns safe Git mutation,
+- IDE-10 owns xterm/PTY process mechanics. IDE-12 owns safe Git mutation,
   worktrees, and delivery.
 - Cloud review storage, guessed-line application, a second diff authority, and
   direct Pierre mutation remain absent.

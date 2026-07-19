@@ -18,7 +18,7 @@ envelope builder (`buildSubscribeEnvelope`) + a strict parser existed in
 package `index.ts` nor wired into `BridgeTransport`. So a remote client
 (Expo/web/desktop) had no transport-level way to stream a session's event tail
 over the bridge. The node comment is explicit that this is the intended remote
-path: "RN fetch can't consume the SSE stream cleanly... render a live
+path: "RN fetch cannot consume the SSE stream cleanly... render a live
 session-detail timeline by polling POST /command { session.events }."
 
 ## What I built
@@ -65,7 +65,7 @@ session-detail timeline by polling POST /command { session.events }."
   **remote-reachability transport** itself (a phone reaching a Pylon node off the
   LAN: relay/tunnel addressing, #5000 system #39) is still the larger open piece.
   This change closes the client-side subscribe leg over an already-reachable
-  `baseUrl`; it does not establish remote reachability.
+  `baseUrl`. It does not establish remote reachability.
 - No Expo client consumes `subscribe` yet (Phase 2 read-only app, #5001).
 - `cloud.gce.*` event-kind round-trip to the desktop timeline (#5005) and live
   GCE provisioning (`OA_CODEX_GCE_PROVISIONER=fake`) remain open and gate green.

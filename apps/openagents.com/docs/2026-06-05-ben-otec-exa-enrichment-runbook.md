@@ -300,8 +300,8 @@ await fetch(
 
 Expected review state:
 
-- `enrichment.status` is `approved`;
-- `researchBrief.status` is `approved`;
+- `enrichment.status` is `approved`.
+- `researchBrief.status` is `approved`.
 - source cards are approved or rejected, with no proposed cards remaining.
 - if a task packet was already generated from older or missing research, the
   assignment detail and preflight surfaces report
@@ -328,15 +328,15 @@ const { packet, taskPacketFreshness } = await packetResponse.json()
 
 Confirm the packet contains:
 
-- `## Approved Research Brief`;
-- `researchBriefId`;
-- concise grounded facts;
+- `## Approved Research Brief`.
+- `researchBriefId`.
+- concise grounded facts.
 - approved source URLs only.
 
 Confirm freshness after generation:
 
-- `taskPacketFreshness.status` is `current`;
-- `taskPacketFreshness.researchBriefId` is the approved brief ID;
+- `taskPacketFreshness.status` is `current`.
+- `taskPacketFreshness.researchBriefId` is the approved brief ID.
 - `taskPacketFreshness.taskSpecPath` is `TASK_PACKET_PATH`.
 
 If an operator reviews a stale packet and intentionally keeps it for this pass,
@@ -384,14 +384,14 @@ const preflight = await preflightResponse.json()
 
 Required checks before launch:
 
-- `exa_enrichment: ok`;
-- `research_required_gate: ok`;
-- `research_brief: ok`;
-- `research_review: ok`;
-- `task_packet_freshness: ok`;
-- `task_packet: ok`;
-- `commit_sha: ok`;
-- `sites_launch_checklist: ok`;
+- `exa_enrichment: ok`.
+- `research_required_gate: ok`.
+- `research_brief: ok`.
+- `research_review: ok`.
+- `task_packet_freshness: ok`.
+- `task_packet: ok`.
+- `commit_sha: ok`.
+- `sites_launch_checklist: ok`.
 - provider, GitHub, SHC, and callback checks are `ok`.
 
 ### 9. Launch Adjutant/Sitebuilder
@@ -453,9 +453,9 @@ The response is a no-store JSON projection for the canonical production OTEC
 order (`software_order_c34f3a52d60b41d699b71525365b6ee5`). It can expose:
 
 - customer-safe order, Site, assignment, version, deployment, compatibility,
-  build-validation, research, and receipt status;
-- Site URL only when the active deployment is recorded as `active`;
-- approved research/source counts without raw Exa payloads;
+  build-validation, research, and receipt status.
+- Site URL only when the active deployment is recorded as `active`.
+- approved research/source counts without raw Exa payloads.
 - public receipt refs, evidence refs, claim-state labels, caveats, and next
   action.
 
@@ -471,7 +471,7 @@ closed with `public_otec_proof_unsafe`.
 - Explicit source refs are public-safe and not guessed from "Ben".
 - Plan has no private identity inference or private repo/social refs.
 - Exa run completes or returns a typed blocker.
-- Source cards are reviewed; rejected/internal-only cards are not projected.
+- Source cards are reviewed. Rejected/internal-only cards are not projected.
 - Approved research brief exists and has `approvedAt`.
 - Task packet includes the approved brief and source URLs.
 - Preflight reports `exa_enrichment`, `research_required_gate`,
@@ -496,20 +496,20 @@ closed with `public_otec_proof_unsafe`.
 | Rejected source card        | card hidden from public-safe context                | Regenerate/reapprove brief from remaining approved cards.                          |
 | Task packet missing         | `task_packet_ref_missing`                           | Push the packet path at the referenced commit and retry.                           |
 | Launch blocked              | `adjutant_launch_blocked`                           | Resolve the named blocked check before retrying launch.                            |
-| Bad saved Site version      | no deploy until review                              | Reject/adjust the version; do not activate.                                        |
+| Bad saved Site version      | no deploy until review                              | Reject/adjust the version. Do not activate.                                        |
 | Bad deployment              | disable or rollback deployment routes               | Record the rollback event and request an adjustment.                               |
 
 ## Verification Evidence To Record
 
 When closing the smoke, record:
 
-- assignment ID;
-- Exa enrichment run ID;
-- research brief ID;
-- task packet path and commit SHA;
-- preflight status and failed/warning check names, if any;
-- Adjutant run ID;
-- Site version ID;
+- assignment ID.
+- Exa enrichment run ID.
+- research brief ID.
+- task packet path and commit SHA.
+- preflight status and failed/warning check names, if any.
+- Adjutant run ID.
+- Site version ID.
 - deployment ID or reason deployment was skipped.
 - public proof closeout URL and claim state.
 

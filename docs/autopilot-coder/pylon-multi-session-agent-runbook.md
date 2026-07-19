@@ -1,7 +1,7 @@
 # Pylon Multi-Session Agent Runbook
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Status: operational handoff, 2026-06-13.
@@ -91,7 +91,7 @@ Expected result:
 
 Provider limit snapshots may still be `missing`. That is honest: Pylon records
 provider rate-limit snapshots when the underlying SDK or event stream emits a
-structured rate-limit payload; token usage is available on completed turns.
+structured rate-limit payload. Token usage is available on completed turns.
 
 ## 3. Register Multiple Local Accounts
 
@@ -156,16 +156,16 @@ and writes:
 Each session must use exactly one workspace selector:
 
 - `worktreePath`: an existing local worktree/directory.
-- `repoRef`: a public GitHub repository and pinned 40-character commit SHA;
+- `repoRef`: a public GitHub repository and pinned 40-character commit SHA.
   Pylon materializes an isolated detached worktree from the shared cache.
 
 The workspace may be on a named branch or in detached HEAD. The bounded proof
 verification runs over isolated worktrees, so it tolerates a detached HEAD (the
-`repoRef` path materializes one); the detached state is still reported honestly
+`repoRef` path materializes one). The detached state is still reported honestly
 in the retained proof's change summary. The run never touches the branch or
 commit. Earlier builds blocked verification on a detached HEAD with
 `blocker.dev_loop.branch_unknown_or_detached`, which silently failed every
-`repoRef` session; that is fixed (openagents #4873).
+`repoRef` session. That is fixed (openagents #4873).
 
 Each session may use exactly one account selector:
 
@@ -186,7 +186,7 @@ replaced instantly, within the same run, by another available account — no
 second pass required. The fallback pool is:
 
 - the optional run-level `accountPool` (a top-level array on an object-shaped
-  plan, `{ "sessions": [...], "accountPool": [ { "codexHome": "..." }, ... ] }`);
+  plan, `{ "sessions": [...], "accountPool": [ { "codexHome": "..." }, ... ] }`).
   plus
 - every other account selector used anywhere in the plan's own sessions.
 
@@ -213,7 +213,7 @@ dependencies.
 
 Detached-HEAD worktrees are supported for proof verification. This includes the
 isolated detached worktrees materialized from `repoRef`. Earlier builds
-silently failed those runs with `blocker.dev_loop.branch_unknown_or_detached`;
+silently failed those runs with `blocker.dev_loop.branch_unknown_or_detached`.
 that failure mode was fixed in openagents issue #4873.
 
 Worked examples:
@@ -242,7 +242,7 @@ Worked examples:
 ```
 
 For the `bun test` example, provision
-`../task-worktrees/preprovisioned-bun-test` first; one local shortcut is
+`../task-worktrees/preprovisioned-bun-test` first. One local shortcut is
 symlinking its `node_modules` to a sibling checkout of the same repo.
 
 Example plan for two Codex accounts and one Claude account:
@@ -285,7 +285,7 @@ Example plan for two Codex accounts and one Claude account:
 }
 ```
 
-Use a real commit SHA in `repoRef`; the placeholder above is invalid by
+Use a real commit SHA in `repoRef`. The placeholder above is invalid by
 design.
 
 Run the batch from the repository root:
@@ -312,7 +312,7 @@ Interpretation:
 
 - `completedCount == totalSessions` means all sessions completed and their
   verification commands passed.
-- `failedCount > 0` means inspect each listed failure artifact; the runner is
+- `failedCount > 0` means inspect each listed failure artifact. The runner is
   failure-tolerant and continues other sessions.
 - `deviation.pylon.multi_session.some_sessions_failed` is an honest retained
   deviation, not a reason to hide or rewrite artifacts.
@@ -386,7 +386,7 @@ curl -sS "$BASE/command" \
 Control sessions reject local danger modes. Do not send
 `danger-full-access`, `bypassPermissions`, `codexDanger`, or `claudeDanger`.
 Codex sessions run in `local_bounded` mode with `approvalPolicy: "never"` and
-network disabled for the composer call; Claude sessions run with
+network disabled for the composer call. Claude sessions run with
 `permissionMode: "acceptEdits"`. Both run the supplied verification command
 and retain a proof/failure artifact under the Pylon home.
 

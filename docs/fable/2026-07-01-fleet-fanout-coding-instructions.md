@@ -13,7 +13,7 @@ failure modes. Companion analyses: the episode-245 doc (delegation state) and
 the Khala Code summary in this folder. This doc flips no promise state and
 broadens no public copy.
 Execution: the lane/issue breakdown in §10 is consolidated into the unified
-[`ROADMAP.md`](./ROADMAP.md); see also the Orca adoption plan (Priority 1:
+[`ROADMAP.md`](./ROADMAP.md). See also the Orca adoption plan (Priority 1:
 build Lanes A/B **on** the dormant `apps/pylon/src/orchestration/` store —
 one state store, not two) and the Effect integration audit (Phases 1–2 are
 the spine the supervisor and cockpit should be built on).
@@ -23,7 +23,7 @@ the spine the supervisor and cockpit should be built on).
 When you are done, all of the following are true and proven:
 
 1. The owner types one message in Khala Code — e.g. *"run 15 workers against
-   the open backlog until it's empty"* — approves one MCP prompt, and a
+   the open backlog until it is empty"* — approves one MCP prompt, and a
    sustained fan-out starts: workers spin up to the target concurrency, each
    claims a unique unit of work, and finished slots refill automatically.
 2. The Fleet screen shows the whole thing live: every worker with state and
@@ -32,7 +32,7 @@ When you are done, all of the following are true and proven:
    every problem (auth expired, blocker, cooldown) as an actionable flag.
 3. Every UI control has an RPC method, so the identical run can be started,
    observed, and stopped programmatically, and the QA framework's scenarios
-   cover all of it (fixture tier always; live tiers skip-safe).
+   cover all of it (fixture tier always, live tiers skip-safe).
 4. A supervised overnight acceptance run produces ≥ 2B tokens/day of exact
    accounted usage with **zero duplicate PRs** and 100% verified closeouts.
 
@@ -48,7 +48,7 @@ overnight spend window.
 The stats page (2026-07-01) tells the story: 06/27 1.9B → 06/28 1.7B →
 **06/29 2.4B** (≈2B of it in the midnight–09:00 window, ~18 concurrent Codex
 sessions) → 06/30 429.5M → 07/01 ~315M (projected ~500M). Model mix is 90%
-Pylon-Codex; **Pylon-Claude has served 2,887 tokens total** — an entire
+Pylon-Codex. **Pylon-Claude has served 2,887 tokens total** — an entire
 delegation lane sitting idle.
 
 What made June 29 work:
@@ -60,16 +60,16 @@ What made June 29 work:
 What went wrong (read `docs/afteraction/2026-06-29-codex-fleet-throughput-collapse-after-action.md`
 and `docs/ops/2026-06-29-khala-codex-fleet-manager-runbook.md` before coding):
 
-- **Duplicative PRs and wasted work.** Workers picked overlapping targets;
+- **Duplicative PRs and wasted work.** Workers picked overlapping targets.
   nothing enforced one-worker-per-work-unit. Dedup was manual and after the
   fact.
 - **Config brittleness.** Wrong env vars silently capped a 10-wide fanout at
-  3; heartbeat 409s; stale capacity — the exact class the deterministic
+  3. Heartbeat 409s. Stale capacity — the exact class the deterministic
   `khala.fleet.delegate` program has since fixed for a *single* dispatch.
 - **Shell choreography.** The engine was `/tmp` scripts and operator
   knowledge, invisible to the product, unpausable, unauditable mid-run.
 - **Quality unguarded.** Merges were gated by an agent watcher's judgment,
-  not typed verification; "green" was not uniformly defined.
+  not typed verification. "Green" was not uniformly defined.
 - Throughput then *collapsed* after the pivot days — because the loop lived
   in shells and context windows, not in the product. That is the whole
   argument for this work: **the throughput must be a product feature, not an
@@ -90,7 +90,7 @@ You are wiring existing engines together, not inventing them:
 - **Deterministic dispatch**: `packages/khala-tools/src/fleet-delegate-program.ts`
   (`khala.fleet.delegate`: ensure_pylon → advertise_capacity →
   select_account → prepare_work → dispatch → verify_closeout, with recovery
-  loops). Proven; the `0/1 available` class is dead.
+  loops). Proven. The `0/1 available` class is dead.
 - **Batch spawn**: `clients/khala-code-desktop/src/bun/khala-codex-fleet-tools.ts`
   — `spawnCodexInstances`/`runDelegatedBatchSpawn`, account planning,
   `MAX_SPAWN_COUNT = 10` (a per-call bound, not the concurrency ceiling).
@@ -109,7 +109,7 @@ You are wiring existing engines together, not inventing them:
 - **Live lifecycle stream**: Pylon already emits
   `assignment_run_lifecycle_event.v0.1` NDJSON in real time (see
   `docs/khala-code/2026-06-30-codex-spawn-live-progress-streaming-audit.md`
-  — the consumer design is written; implement it, do not redesign it).
+  — the consumer design is written. Implement it, do not redesign it).
 - **Fleet/Inbox UI seeds**: `src/ui/fleet-status.ts` (delegate form, board
   graph, optimization preview), `fleet-board-projection.ts`, Unified Inbox
   routing (`approval_required`, `run_blocked`, `ready_for_review`).
@@ -134,7 +134,7 @@ Pylons"), `docs/ops/2026-06-27-khala-codex-own-capacity-burn-runbook.md`.
 
 **Goal**: a single chat message or one Fleet-panel action starts a *standing
 run*: target concurrency N (arbitrary, not capped at 10), a work source, and
-a refill policy; it runs until the backlog is empty or the owner stops it.
+a refill policy. It runs until the backlog is empty or the owner stops it.
 
 Build:
 
@@ -159,35 +159,35 @@ Build:
    `khala.fleet.delegate` bundle per free slot (respecting advertised
    per-account capacity and cooldowns from `codex-rate-limits`) → stream
    lifecycle events into the run's counters. `MAX_SPAWN_COUNT` stays as the
-   per-tick batch bound; the supervisor achieves arbitrary N by refilling
+   per-tick batch bound. The supervisor achieves arbitrary N by refilling
    across ticks. One supervisor per Pylon (the one-fanout-controller
-   invariant); refuse to start a second run against the same Pylon.
+   invariant). Refuse to start a second run against the same Pylon.
 3. **Chat entry**: extend the `khala_fleet` MCP server with
    `fleet_run_start`, `fleet_run_status`, `fleet_run_control`
    (pause/resume/drain/stop) so the single casual message works in default
    Codex mode. Keep approval mode `prompt`. `codex_spawn` stays as the
-   bounded one-shot; the new verbs own sustained mode.
+   bounded one-shot. The new verbs own sustained mode.
 4. **Fleet panel entry**: The
    Fleet panel renders a "Start fleet run" form beside the existing delegate
    runner: objective, work source, target concurrency, worker kind
-   (`codex | claude | auto` accepted in the UI; `codex` wired to
+   (`codex | claude | auto` accepted in the UI, `codex` wired to
    `fleetRunStart`), and a public-safe dry-run preview showing the planned
    first wave (accounts × slots × first claims) before starting.
 5. **RPC parity**: `fleetRunStart`, `fleetRunStatus`, `fleetRunControl`,
-   `fleetRunList` methods; everything the UI can do, the bridge can do.
+   `fleetRunList` methods. Everything the UI can do, the bridge can do.
 
 T9.4 extends the same FleetRun entry point with a fourth work source,
 `plan_dag`, for Claude/Fable plan-mode decomposition. It is still supervised
 dispatch: Claude emits typed DAG data, the planner exposes dependency-ready
 nodes as work units, and the supervisor/claim registry decide what runs.
-Claude review verdicts stay advisory; verify and merge gates remain the
+Claude review verdicts stay advisory. Verify and merge gates remain the
 authority.
 
 Acceptance:
 
 - Fixture tier: a fixture FleetRun with target 25 on a mocked Pylon runner
   reaches 25 simulated concurrent assignments through refill ticks, then
-  drains cleanly; state survives a host restart (reconcile test).
+  drains cleanly. State survives a host restart (reconcile test).
 - Live tier (skip-safe, env-armed): target 2 against the real fleet produces
   2 concurrent real assignments with accepted closeouts and exact token rows.
 - The MCP verbs round-trip: a scripted app-server fixture calls
@@ -195,7 +195,7 @@ Acceptance:
 
 ## 4. Lane B — Work Planner With Claims (Kill The Duplicate-PR Class)
 
-**Goal**: no two workers ever do the same work; no worker does dead work;
+**Goal**: no two workers ever do the same work. No worker does dead work.
 nothing merges unverified. This is the June 29 fix.
 
 Build:
@@ -213,10 +213,10 @@ Build:
    reasons** (`already_claimed`, `pr_exists`, `merged`, `closed`,
    `needs_owner`, `label_excluded`) — port the #7595 planner semantics into
    the shared package rather than the retired shell loop. The planner output
-   is data; log every skip with its reason (no silent drops).
+   is data. Log every skip with its reason (no silent drops).
 3. **Prompt/pin discipline**: every real-work dispatch carries pinned `repo`,
    `commit`, `branch`, and a named `verify` command (existing
-   `prepare_work` fields) plus the claimRef; the worker prompt cites the
+   `prepare_work` fields) plus the claimRef. The worker prompt cites the
    public issue number and the claim, and instructs the standard PR
    convention. Fixture mode never claims real units.
 4. **The verification gate**: a closeout is `ready_for_review` only if the
@@ -262,7 +262,7 @@ per the Orca adoption plan's Priority 2, make
 consumes (runner → orchestration store → cockpit → Worker → mobile),
 instead of extending bespoke `codexFleetStatus` shapes. The mobile
 companion (Orca plan Priority 3) is a projection of exactly these cards
-and flags; keep every projection public-safe with that in mind.
+and flags. Keep every projection public-safe with that in mind.
 
 1. **Run header**: the active FleetRun with state, objective, target vs
    actual concurrency, backlog remaining/claimed/done, elapsed, and controls
@@ -292,7 +292,7 @@ and flags; keep every projection public-safe with that in mind.
    against `GET /api/public/khala-tokens-served` deltas in the live smoke,
    never synthesize from progress frames. Implementation note: the cockpit
    gauges consume only the exact token summaries already surfaced by
-   `codex_fleet_status` / `khala apm`; pending or unavailable rows render as
+   `codex_fleet_status` / `khala apm`. Pending or unavailable rows render as
    `pending` / `not_measured`, and the public counter reconciliation remains
    env-armed live-smoke evidence.
 5. **Flags → Inbox**: every `run_blocked`, `approval_required`,
@@ -315,19 +315,19 @@ Acceptance:
 ## 6. Lane D — Bridge, Programmatic Steering, And QA Rigor
 
 Apply the QA framework doc's spine to everything above (its G-gaps are
-prerequisites; implement them here if not already landed):
+prerequisites. Implement them here if not already landed):
 
 1. **G1**: preview bridge auth (loopback bearer) + `GET /rpc/events` SSE
    carrying chat turn events, fleet lifecycle events, run counters, console
    errors. The cockpit and the QA driver consume the same stream.
-2. **G2**: typed `KhalaCodeRpcClient` covering the new fleet-run methods;
+2. **G2**: typed `KhalaCodeRpcClient` covering the new fleet-run methods.
    schema oracle on every response.
 3. **Scenario corpus** (fixture tier, runs pre-push): fleet-run lifecycle,
    claim dedupe, every cockpit control, account reconnect flow, throughput
    gauge honesty (`pending`/`not_measured` render), Inbox flag routing.
-   Every phase has expectations; commitments ride to the verifier.
+   Every phase has expectations. Commitments ride to the verifier.
 4. **Seeded monkey night** over the cockpit with 18-worker fixture state:
-   thousands of random control interactions; oracles = no console errors,
+   thousands of random control interactions. Oracles = no console errors,
    no state desync, no claim invariant violation, public-safe DOM.
 5. **Live tiers** (skip-safe, env-armed like `smoke:codex-parity-live`):
    `smoke:fleet-run-live` (target 2, real accounts, real closeouts, counter
@@ -337,10 +337,10 @@ prerequisites; implement them here if not already landed):
    §9.3) with the supervisor: properties — active assignments never exceed
    advertised capacity, a paused run claims nothing, drain terminates, and
    claim uniqueness holds under concurrent supervisors racing one Pylon
-   (should be *prevented*; the spec proves the guard, and the
-   counterexample becomes a fixture if it ever isn't).
-7. **Perf budgets**: cockpit render < 100ms with 50 worker cards; lifecycle
-   event → card update p95 < 500ms; supervisor tick < 1s at target 25.
+   (should be *prevented*, the spec proves the guard, and the
+   counterexample becomes a fixture if it ever is not).
+7. **Perf budgets**: cockpit render < 100ms with 50 worker cards. Lifecycle
+   event → card update p95 < 500ms. Supervisor tick < 1s at target 25.
 
 ## 7. Lane E — Throughput Restoration (The Clean 2B Day)
 
@@ -353,26 +353,26 @@ reason to invent replenishment work. The regression fixture to add when the
 acceptance runner becomes first-class is
 `blocker.fleet_run_acceptance.claimable_units_below_floor`.
 
-1. Preflight: `khala fleet status` shows ≥ 3 ready accounts; rate-limit
-   meters show fresh budgets; backlog source lists ≥ 30 claimable units;
+1. Preflight: `khala fleet status` shows ≥ 3 ready accounts. Rate-limit
+   meters show fresh budgets. Backlog source lists ≥ 30 claimable units.
    `smoke:fleet-run-live` green the same day.
 2. Start from chat: one message, target 15–18, `auto_merge_clean` off for
    the first hour (watch the review queue), on after spot-checking.
 3. Overnight window (the June 29 shape, now supervised): the supervisor
-   refills through the midnight–09:00 window; cooldowns rotate accounts;
+   refills through the midnight–09:00 window. Cooldowns rotate accounts.
    flags land in Inbox instead of dying in a terminal.
 4. Success criteria, measured from exact rows and closeouts (not the public
    counter alone):
-   - tokens/day ≥ 2.0B with `usage_truth='exact'` rows covering it;
-   - sustained concurrency ≥ 15 for ≥ 6 hours;
+   - tokens/day ≥ 2.0B with `usage_truth='exact'` rows covering it.
+   - sustained concurrency ≥ 15 for ≥ 6 hours.
    - **duplicate-PR rate = 0** (every PR ↔ exactly one claim ↔ one work
-     unit);
-   - closeout coverage 100% (no orphaned assignments);
-   - zero unverified merges; merge-wave resolved conflicts without human
-     rebase;
+     unit).
+   - closeout coverage 100% (no orphaned assignments).
+   - zero unverified merges. Merge-wave resolved conflicts without human
+     rebase.
    - Pylon-Claude > 0 meaningfully if Lane B's workerKind landed (even a
      10% Claude share proves the second lane).
-5. Write the after-action doc either way; regressions become fixtures.
+5. Write the after-action doc either way. Regressions become fixtures.
 
 ## 8. Definition Of Done (The Characteristics)
 
@@ -384,53 +384,53 @@ Check every box before calling this complete:
       from UI and RPC, and are scenario-tested.
 - [ ] Account reconnect (expired auth) is a two-click Inbox→device-login
       flow that never touches `~/.codex`.
-- [ ] Rate limits and usage tick down live; tokens/min and projected
-      tokens/day tick up live; all with exact/pending/not_measured honesty.
+- [ ] Rate limits and usage tick down live. Tokens/min and projected
+      tokens/day tick up live. All with exact/pending/not_measured honesty.
 - [ ] The claim registry makes duplicate work structurally impossible, with
       a property test and a live regression fixture proving it.
-- [ ] Every merge is gated by typed verification; auto-merge is a visible,
+- [ ] Every merge is gated by typed verification. Auto-merge is a visible,
       owner-toggled policy.
 - [ ] Every UI capability has an RPC method, a schema, and a fixture
-      scenario; the bridge has auth + an event stream.
-- [ ] The monkey night and the sustained live smoke pass; the TLA+
+      scenario. The bridge has auth + an event stream.
+- [ ] The monkey night and the sustained live smoke pass. The TLA+
       supervisor properties check green.
 - [ ] The clean-2B-day acceptance run (§7) has happened, with evidence.
 - [ ] Docs: cockpit runbook, FleetRun schema doc, and updates to the
       fleet-management spec status table. `check:deploy` and the full
-      relevant suites green at every landing; every lane commits to `main`
+      relevant suites green at every landing. Every lane commits to `main`
       from a clean worktree.
 
 ## 9. Invariants (Non-Negotiable While Building)
 
-- Isolated worker homes only; nothing ever runs `codex login` against the
-  default home; reconnect flows are per-account isolated.
-- One fan-out controller per Pylon; the supervisor respects advertised
-  capacity refs; the dispatch gate remains the admission authority.
-- Exact-only token accounting; public counters are projections; progress
+- Isolated worker homes only. Nothing ever runs `codex login` against the
+  default home. Reconnect flows are per-account isolated.
+- One fan-out controller per Pylon. The supervisor respects advertised
+  capacity refs. The dispatch gate remains the admission authority.
+- Exact-only token accounting. Public counters are projections. Progress
   frames never move counters.
 - Public-safe projections everywhere: no raw prompts, paths, tokens, or
   provider payloads in cards, flags, lifecycle lines, scenarios, or traces.
-- MCP delegation keeps its approval prompt; sustained runs get *one*
+- MCP delegation keeps its approval prompt. Sustained runs get *one*
   approval per run-start, not silent standing authority.
-- Live test tiers are skip-safe by default and env-armed; fixture tiers
+- Live test tiers are skip-safe by default and env-armed. Fixture tiers
   never spend or claim real work.
-- Optimizer candidates are postponed for the current desktop-fleet push; when
+- Optimizer candidates are postponed for the current desktop-fleet push. When
   reopened later, they never auto-promote and remain owner-gated through the
   existing Gym path.
-- No GitHub-hosted CI; Tier-1 pre-push + Tier-2 owned-runner patterns.
+- No GitHub-hosted CI. Tier-1 pre-push + Tier-2 owned-runner patterns.
 
 ## 10. Suggested Issue Breakdown
 
 File as one epic ("Fleet fan-out cockpit: sustained runs, claims, controls,
 throughput") with lanes matching sections: A1 FleetRun schema/store, A2
-supervisor + refill, A3 MCP verbs + chat entry, A4 panel entry + RPC; B1
+supervisor + refill, A3 MCP verbs + chat entry, A4 panel entry + RPC. B1
 claim registry + property tests, B2 planner + skip reasons, B3 verification
-gate + merge policy + merge-wave, B4 workerKind generalization; C1 run
+gate + merge policy + merge-wave, B4 workerKind generalization. C1 run
 header + controls, C2 worker cards + lifecycle streaming, C3 account cards +
-rate limits + reconnect, C4 gauges, C5 Inbox flags + condensed sidebar; D1
+rate limits + reconnect, C4 gauges, C5 Inbox flags + condensed sidebar. D1
 bridge auth+SSE, D2 RPC client + scenarios, D3 monkey night, D4 live smokes,
-D5 TLA+ supervisor spec, D6 perf budgets; E1 acceptance run + after-action.
-Lanes A1/B1 are the shared seams — land them first; C and D lanes fan out
+D5 TLA+ supervisor spec, D6 perf budgets. E1 acceptance run + after-action.
+Lanes A1/B1 are the shared seams — land them first. C and D lanes fan out
 cleanly against their interfaces (same coordination rule as the Codex-port
 epic #7651). Every lane lands with tests green, committed and pushed to
 `main` from a clean worktree, and closes its issue with proof.

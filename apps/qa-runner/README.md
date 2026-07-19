@@ -9,7 +9,7 @@ headline demo for the **Khala autonomous-QA example flow** (epic #6174).
 > **OSS + BYO-model + no login (issue #6191 / Rhys req #5).** The core path runs
 > on YOUR machine, against YOUR target, driven by ANY OpenAI-compatible model you
 > bring (model + base URL + key via flags/env) — **no OpenAgents account or login
-> required**. The fake-model proof needs no key; Khala uses a free `oa_agent_…`
+> required**. The fake-model proof needs no key. Khala uses a free `oa_agent_…`
 > key from `POST /api/keys/free`. It records a video + trace + screenshots and distills the
 > session into a **reviewable e2e candidate**. Khala / OpenAgents Cloud / `/pro` /
 > receipts / settlement are **optional add-ons, not dependencies of the core
@@ -54,22 +54,22 @@ result and watching the video — _no local run_.
 | Piece                                                                                                                                                                                                                                                                                           | Status                                                                                                                                                                   |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `scriptedBrain` (deterministic decision-maker)                                                                                                                                                                                                                                                  | **real now** — deterministic CI + `demo:login`                                                                                                                           |
-| Khala driver (`runKhalaSession`): Khala **autonomously** drives via `openagents/khala`                                                                                                                                                                                                          | **real now** — `demo:khala`; a prompt-based ReAct/JSON-action loop over `/chat/completions` (plain `fetch`, no native function-calling)                                  |
-| `khalaBrain` (BrainStep seam for `runQaSession`)                                                                                                                                                                                                                                                | **inert seam** — throws "not armed" without an injected driver; the live loop is `runKhalaSession`, not this seam                                                        |
+| Khala driver (`runKhalaSession`): Khala **autonomously** drives via `openagents/khala`                                                                                                                                                                                                          | **real now** — `demo:khala`. A prompt-based ReAct/JSON-action loop over `/chat/completions` (plain `fetch`, no native function-calling)                                  |
+| `khalaBrain` (BrainStep seam for `runQaSession`)                                                                                                                                                                                                                                                | **inert seam** — throws "not armed" without an injected driver. The live loop is `runKhalaSession`, not this seam                                                        |
 | `KhalaSessionTrace` capture + `assertSessionTracePublicSafe` tripwire                                                                                                                                                                                                                           | **real now** — deterministic, replayable, public-safe (`session-trace.json`)                                                                                             |
-| session → executor-style e2e scenario **candidate distiller** (spec §E.2)                                                                                                                                                                                                                       | **real now** — `distill(trace)` emits `generated/<slug>.e2e.test.ts`; reviewed lifecycle state is `validated` / `proposed` / `landed`                                    |
+| session → executor-style e2e scenario **candidate distiller** (spec §E.2)                                                                                                                                                                                                                       | **real now** — `distill(trace)` emits `generated/<slug>.e2e.test.ts`. Reviewed lifecycle state is `validated` / `proposed` / `landed`                                    |
 | skill emitter (NIP-SKL marketplace candidate, spec §E.1)                                                                                                                                                                                                                                        | **typed seam + TODO, FUTURE/owner-gated**                                                                                                                                |
 | `localBackend` (real chromium on this host)                                                                                                                                                                                                                                                     | **real now** — the default                                                                                                                                               |
-| `khalaDesktopBackend` (Khala Code Desktop preview + typed RPC)                                                                                                                                                                                                                                  | **real now** — boots headless with fixture Codex app-server by default; live/headed paths remain explicitly armed                                                        |
-| `khala-sync-transport` backend (#8512): headless seam probe driving the REAL `createHttpKhalaSyncTransport` (bootstrap → log page → WS connect) with a cookie-less bearer and classifying outcomes (`live` / `connect_unauthenticated` / `connect_denied` / `silent_retry_loop` / `never_live`) | **real now** — `khala-sync-once`; env-resolved or self-registered bearer, clean SKIP without one; a 401'd/never-live connect is a REFUTED `connect-reaches-live` finding |
+| `khalaDesktopBackend` (Khala Code Desktop preview + typed RPC)                                                                                                                                                                                                                                  | **real now** — boots headless with fixture Codex app-server by default. Live/headed paths remain explicitly armed                                                        |
+| `khala-sync-transport` backend (#8512): headless seam probe driving the REAL `createHttpKhalaSyncTransport` (bootstrap → log page → WS connect) with a cookie-less bearer and classifying outcomes (`live` / `connect_unauthenticated` / `connect_denied` / `silent_retry_loop` / `never_live`) | **real now** — `khala-sync-once`. Env-resolved or self-registered bearer, clean SKIP without one. A 401'd/never-live connect is a REFUTED `connect-reaches-live` finding |
 | `cloudVmBackend` (per-run OpenAgents Cloud firecracker / sek8s microVM)                                                                                                                                                                                                                         | **interface-only, owner-gated** — throws "not armed" unless an injected provisioner is supplied                                                                          |
 | video (mp4 via ffmpeg, webm fallback) + trace + screenshots + `result.json`                                                                                                                                                                                                                     | **real now**                                                                                                                                                             |
 | run = verified receipt / settlement wrapper                                                                                                                                                                                                                                                     | **follow-up, owner-gated (settlement INERT)**                                                                                                                            |
 
-There is **no fake green**: an un-armed cloud backend or khala brain throws; a
-missing-chromium real run fails honestly; a failed assertion produces a `fail`
-result with the failure visible in the video; an unparseable model action is a
-real failure (a bounded corrective re-prompt, never a fabricated action); a
+There is **no fake green**: an un-armed cloud backend or khala brain throws. A
+missing-chromium real run fails honestly. A failed assertion produces a `fail`
+result with the failure visible in the video. An unparseable model action is a
+real failure (a bounded corrective re-prompt, never a fabricated action). A
 session that never reaches a verdict is reported `incomplete`/`fail`.
 
 ## Credentials (no hardcoded secrets)
@@ -91,9 +91,9 @@ The `qa` CLI defaults to the Khala dogfood endpoint:
    `openagents/khala`.
 3. `PROBE_OPENAI_API_KEY` (env or `~/work/.secrets/probe-openai.env`) -> an
    OpenAI-compatible **fallback** model, used ONLY to prove the loop runs for
-   real and clearly labeled; pass `--no-fallback` to forbid it.
+   real and clearly labeled. Pass `--no-fallback` to forbid it.
 
-The credential VALUE is never printed; only its source LABEL is logged.
+The credential VALUE is never printed. Only its source LABEL is logged.
 
 ## One model
 
@@ -179,10 +179,10 @@ pnpm --dir apps/qa-runner run qa -- swarm run \
 The runner is also drivable **programmatically over HTTP** so the whole flow —
 submit → run → fetch artifacts + verdict + `/pro` link — is API-first (for
 `executor.sh`'s CI and "do everything via API"). It is a **qa-runner HTTP
-daemon** (the runner drives a real Chrome, which can't run in a Cloudflare
+daemon** (the runner drives a real Chrome, which cannot run in a Cloudflare
 Worker), running the existing engine **in-process** with an in-memory job store.
-Auth is a **Khala agent bearer token**; a deterministic **mock path** runs with
-no Chrome/network/spend; real runs are owner-gated. Full curl walkthrough:
+Auth is a **Khala agent bearer token**. A deterministic **mock path** runs with
+no Chrome/network/spend. Real runs are owner-gated. Full curl walkthrough:
 [`docs/control-api-quickstart.md`](docs/control-api-quickstart.md).
 
 `POST /swarm-runs` composes the same control-plane runner into a QA Swarm run:
@@ -192,12 +192,12 @@ for GCE Tier-2 and CF Browser Rendering, and an
 URL candidate. `GET /swarm-runs/:id` returns the projection and tier statuses.
 When `QA_SWARM_PUBLISH_TOKEN` is configured, the completed projection is PUT to
 the admin-gated Worker boundary and the returned share URL dereferences that
-exact public document; without it, publication is an honest no-op. The shared contract lives in
+exact public document. Without it, publication is an honest no-op. The shared contract lives in
 `packages/qa-swarm-contract`. Artifact fields are emitted only for observed,
 published artifacts, and evidence edges require exact receipt admission from a
 resolver. The fixture composer has neither, so its artifact/evidence arrays are
 empty, its graph carries blockers, and its verdict is `inconclusive` rather
-than a synthetic green. Real runs still require `QA_CONTROL_ARM_REAL=1`;
+than a synthetic green. Real runs still require `QA_CONTROL_ARM_REAL=1`.
 unarmed live requests fail closed with `not_armed`.
 
 ## Artifacts (`result.json` + receipt)
@@ -234,8 +234,8 @@ checks the produced steps/status against them and writes an **additive**
 ```
 
 It is an **investigator** verdict with strict **anti-fabrication**: a false
-claim is a valid **REFUTED** finding (never a fake pass); an
-unobserved/expected-but-unran outcome is **INCONCLUSIVE**, never CONFIRMED; only
+claim is a valid **REFUTED** finding (never a fake pass). An
+unobserved/expected-but-unran outcome is **INCONCLUSIVE**, never CONFIRMED. Only
 OBSERVED ok evidence yields CONFIRMED. The verdict is surfaced on the `/pro`
 run + eval pages (a CONFIRMED-green / REFUTED-red / INCONCLUSIVE-amber pill +
 the evidence) and led at the top of the PR-evidence comment (`pr-comment.ts`).
@@ -301,7 +301,7 @@ A variant supplies its own `brain` / `backend` factory, so "model A vs B" or
 "MCP-on vs MCP-off" is two variant entries — it does **not** edit
 `khala-config`/`openrouter` (a separate lane owns those). The default
 fixture/CI path is `decisionGrade: false` (illustrative — proves the harness,
-not the lanes); only an owner-armed real seam yields decision-grade numbers.
+not the lanes). Only an owner-armed real seam yields decision-grade numbers.
 `not_measured` is honest (never a fabricated `0`).
 
 The eval renders in `/pro` at a stable, shareable **`/pro/evals/<id>`** URL
@@ -323,7 +323,7 @@ pnpm --dir apps/qa-runner run pr-comment -- \
 
 Videos are uploaded with [`ain3sh/gh-attach`](https://github.com/ain3sh/gh-attach)
 — a Go binary that uses GitHub's **web** upload path the REST API lacks, and
-prints embeddable markdown. **Install in CI** (armed runs only; it builds from
+prints embeddable markdown. **Install in CI** (armed runs only, it builds from
 source so Go must be present):
 
 ```sh
@@ -331,7 +331,7 @@ curl -fsSL https://github.com/ain3sh/gh-attach/releases/latest/download/install.
   | sh -s -- --bin-dir "$HOME/.local/bin"
 ```
 
-gh-attach authenticates from local browser cookies, which CI does not have; when
+gh-attach authenticates from local browser cookies, which CI does not have. When
 the upload is unavailable/unauthenticated the comment falls back to the in-eval
 **relative video ref** — honest, never a broken or fake embed. The composer
 exits non-zero on a real regression, so the CI check is **RED on a failing

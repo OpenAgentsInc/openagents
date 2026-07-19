@@ -25,7 +25,7 @@ WebSocket, Three.js, Foldkit, or rendering code.
 
 ## Projection Bridge Notes
 
-The former backend consumer is deleted. These schemas remain a library only;
+The former backend consumer is deleted. These schemas remain a library only.
 any future backend requires a new Google Cloud design.
 `WorldBridgePayload` is intentionally row-shaped and public-safe: bridge code
 must replay public source refs into `WorldRow` values, run

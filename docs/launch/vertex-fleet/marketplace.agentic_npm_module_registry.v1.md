@@ -27,8 +27,8 @@ This change builds the smallest genuine missing piece: the composition-runtime
     content-addressed `AgenticNpmCompositionPlan` (sha256 `planDigest`).
   - It is **PURE / INERT**: it installs nothing, executes nothing, provisions no
     primitive, moves no money, reads no wallet, writes no receipt, meters nothing,
-    and settles nothing. The `authority` block is all-`false`; `promiseState` is
-    pinned to `planned`; refs pass a public-safe guard (no credential/wallet/
+    and settles nothing. The `authority` block is all-`false`. `promiseState` is
+    pinned to `planned`. Refs pass a public-safe guard (no credential/wallet/
     payment/private material).
 - `apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts`
   - 8 tests: verified-DAG topological resolution, input-order determinism,

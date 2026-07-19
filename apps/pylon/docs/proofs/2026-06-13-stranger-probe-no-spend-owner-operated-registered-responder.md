@@ -9,13 +9,13 @@ Companion note for
   (`pylon.raynor.proof.beta.20260612`, home on the same Mac) and the
   stranger-probe buyer ran on the **same machine**, operated by the same
   operator. It proves registered capacity can serve a stranger-shaped
-  kind-5050 request end to end; it is **NOT** the independent-stranger leg
+  kind-5050 request end to end. It is **NOT** the independent-stranger leg
   that the P6 proof needs (a buyer with no operator relationship to the
   provider). The probe's throwaway customer key and untargeted request shape
   are identical to the baseline, but machine independence is not claimed.
 - **No spend**: the paid leg was not requested
   (`blocker.pylon.stranger_probe.paid_leg_not_requested`). The provider only
-  issued a receive invoice (payment-required quote, 1000 msats); nothing was
+  issued a receive invoice (payment-required quote, 1000 msats). Nothing was
   paid by either side.
 
 ## Delta vs the 2026-06-12 zero-responder baseline
@@ -45,12 +45,12 @@ regression tests in `tests/provider-nip90.test.ts`.
 
 - Worktree at current `origin/main` + the persistence fix, serve entrypoint
   `scripts/nip90-provider-serve.ts` (`bun run provider:serve`).
-- `PYLON_HOME` pointed at the registered raynor-proof-beta home; identity
+- `PYLON_HOME` pointed at the registered raynor-proof-beta home. Identity
   pubkey matches the registered `providerNostrPubkey`.
 - Runtime: local Apple FM (`http://127.0.0.1:11435`, ready).
 - Quotes: MDK agent wallet via `PYLON_MDK_WALLET_HOME` (receive-only).
 - Relay: `wss://relay.openagents.com` (canonical), NIP-89 handler info
-  published at loop start; loop verified alive well past the old 60s death
+  published at loop start. Loop verified alive well past the old 60s death
   window before the probe ran.
 
 Refs: openagents#4866 #4777 #4781 #4782.

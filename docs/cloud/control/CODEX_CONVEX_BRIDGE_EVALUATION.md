@@ -33,7 +33,7 @@ The official Rust crate is viable for a future bridge:
 - `ConvexClient::set_auth_callback` can fetch fresh auth on WebSocket
   reconnect, which is the right shape for a runner service token that can
   expire and rotate.
-- `AuthenticationToken` supports `Admin`, `User`, and `None`; the SHC runner
+- `AuthenticationToken` supports `Admin`, `User`, and `None`. The SHC runner
   path should use a runner-service JWT/OIDC shape and must not store a broad
   Convex admin token on SHC.
 - The 0.10.4 changelog includes a query-subscription memory leak fix and a
@@ -80,12 +80,12 @@ internal.codexRunner.ackCommand
 
 Every function must validate:
 
-- token subject is a runner service identity, not a user browser session;
-- `runnerId` matches the token claims;
-- `externalRunId` or `runId` is assigned to that runner;
-- `externalEventId` is unique/idempotent for the run;
-- event detail is already redacted and bounded;
-- artifact and receipt fields are refs/digests only;
+- token subject is a runner service identity, not a user browser session.
+- `runnerId` matches the token claims.
+- `externalRunId` or `runId` is assigned to that runner.
+- `externalEventId` is unique/idempotent for the run.
+- event detail is already redacted and bounded.
+- artifact and receipt fields are refs/digests only.
 - local-only or opt-out runs cannot leak raw transcript data into Convex.
 
 ## Command Subscription

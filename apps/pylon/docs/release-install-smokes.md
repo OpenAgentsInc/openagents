@@ -1,7 +1,7 @@
 # Pylon v0.3 Release And Install Smokes
 
 Pylon v0.3 release candidates are published as `@openagentsinc/pylon` with the
-`pylon` binary. The first candidate version is `0.3.0-rc1`; do not publish or
+`pylon` binary. The first candidate version is `0.3.0-rc1`. Do not publish or
 document `0.3.0` as stable until the launch gates pass.
 The first operator platforms are macOS and Linux only.
 
@@ -16,9 +16,9 @@ pnpm run smoke:install:local
 This packs the current repo, installs the tarball into a clean temporary Bun
 project, and verifies:
 
-- the package installs as `@openagentsinc/pylon`;
-- the `pylon` binary resolves;
-- `pylon bootstrap --json` emits a supported macOS/Linux summary;
+- the package installs as `@openagentsinc/pylon`.
+- the `pylon` binary resolves.
+- `pylon bootstrap --json` emits a supported macOS/Linux summary.
 - the summary points at the v0.3 home/config/cache/release layout.
 
 ## Release Gate (manual, script-based — no hosted CI by owner decision)
@@ -35,7 +35,7 @@ pnpm pack --dry-run
 pnpm run smoke:install:local
 ```
 
-Run the sequence on both platforms before tagging a release; keep the
+Run the sequence on both platforms before tagging a release. Keep the
 captured output as gate evidence in the release record. The smoke is
 intentionally package-install based. It does not rely on the old v0.2
 launcher or deprecated OpenAgents Rust Pylon implementation homes.
@@ -73,7 +73,7 @@ Fixed 2026-06-18 by guarding `nostr-effect`'s `prepare`
 (`scripts/prepare.mjs`, Node-only) so it no-ops on consumer/git-dep installs
 and when bun is absent, and repinning `nip90` to the fixed
 `nostr-effect#4c52847`. **This ships only after `@openagentsinc/nip90` and
-`@openagentsinc/pylon` are republished** (see npm-publishing-runbook.md);
+`@openagentsinc/pylon` are republished** (see npm-publishing-runbook.md).
 the registry copies of nip90 0.1.0 / pylon 1.0.3 still carry the old pin.
 
 To prevent recurrence, run this **npm + no-bun** smoke before any publish, on

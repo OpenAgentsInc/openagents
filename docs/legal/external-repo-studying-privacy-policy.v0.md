@@ -18,13 +18,13 @@ separately flag-armed, owner-signed pilot run is authorized per
 This policy governs how OpenAgents handles a customer's external (non-OpenAgents)
 repository when that customer participates in the gated external-repo-studying
 pilot (`autopilot.external_repo_studying_pilot.v1`). It does not describe a
-self-serve, generally-available ingestion product; the pilot is admission-gated.
+self-serve, generally-available ingestion product. The pilot is admission-gated.
 
 ## 1. Scope
 
 This policy applies to:
 
-- external (non-OpenAgents) repositories a customer authorizes for study; and
+- external (non-OpenAgents) repositories a customer authorizes for study. And
 - the refs, digests, counts, and attestations exchanged at the pilot boundary.
 
 This policy does **not** apply to public OpenAgents benchmark material, which is
@@ -40,19 +40,19 @@ The pilot control surface operates on **references and counts only**
 (`sourceBoundary = "customer_refs_withheld"`). The following NEVER cross into any
 public projection, log, marketplace listing, or shared record:
 
-- raw repository file content or archive bytes;
-- repository file paths beyond the external repo slug;
-- secrets, credentials, tokens, or wallet/payment material;
-- uploader/contributor PII values; or
+- raw repository file content or archive bytes.
+- repository file paths beyond the external repo slug.
+- secrets, credentials, tokens, or wallet/payment material.
+- uploader/contributor PII values. Or
 - reviewer notes.
 
 The following references MAY be recorded, because they disclose no content:
 
-- a stable customer ref and uploader/contributor ref;
-- a manifest digest (`sha256:…`) and declared byte size / file count;
-- a clean secret/malware scan attestation ref;
+- a stable customer ref and uploader/contributor ref.
+- a manifest digest (`sha256:…`) and declared byte size / file count.
+- a clean secret/malware scan attestation ref.
 - a data-processing-agreement ref, retention-policy ref, and
-  customer-authorization ref; and
+  customer-authorization ref. And
 - a derived `privacyReviewRef` (only once a review would clear).
 
 ## 3. Lawful basis and authorization
@@ -68,9 +68,9 @@ preflight.
 A pilot study may declare only the following PII categories. Any declared
 category outside this closed set blocks the privacy review:
 
-- `none` — the study declares it touches no customer PII;
-- `contributor_handle`;
-- `commit_author_email`; and
+- `none` — the study declares it touches no customer PII.
+- `contributor_handle`.
+- `commit_author_email`. And
 - `code_comment_text`.
 
 This closed set is enforced in code by
@@ -83,7 +83,7 @@ Study artifacts are retained for the declared retention window only, which must
 not exceed **365 days** (`PRIVACY_REVIEW_MAX_RETENTION_DAYS`). A declared window
 that is non-positive, non-integer, or above the cap blocks the privacy review.
 A real armed pilot run additionally enforces retention against the actual DPA and
-durable-storage controls; this published cap is the conservative outer bound.
+durable-storage controls. This published cap is the conservative outer bound.
 
 ## 6. Data subject rights
 
@@ -105,13 +105,13 @@ are all false until a separately flag-armed, owner-signed run is authorized per
 
 This document publishes the customer-facing privacy terms. It does not by itself
 clear the `external_repo_studying_privacy_policy_missing` blocker, which still
-requires: a human/legal review against a real customer study; durable,
-access-controlled storage that enforces the declared retention window; and an
+requires: a human/legal review against a real customer study. Durable,
+access-controlled storage that enforces the declared retention window. And an
 owner-signed armed clearance with a dereferenceable closeout receipt.
 
 ## 9. Versioning
 
 This is version `v0`. Future versions get a new `policy.external_repo_study_privacy.vN`
 ref and a new entry in the published policy registry. A study's references are
-checked against the registry's published versions; an unknown or stale policy ref
+checked against the registry's published versions. An unknown or stale policy ref
 does not satisfy the published-policy check.

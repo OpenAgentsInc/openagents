@@ -13,15 +13,15 @@ prompts, and they do not grant write authority.
 
 The v1 schema models:
 
-- input and output schema refs;
-- instruction refs and instruction version refs;
-- decode and validation policy;
-- evidence requirements;
-- receipt requirements;
-- tool scope;
-- status;
-- risk class;
-- release gates;
+- input and output schema refs.
+- instruction refs and instruction version refs.
+- decode and validation policy.
+- evidence requirements.
+- receipt requirements.
+- tool scope.
+- status.
+- risk class.
+- release gates.
 - direct-mutation policy.
 
 ## Supported Families
@@ -29,15 +29,15 @@ The v1 schema models:
 The first family enum covers the behavior contracts needed by Autopilot Sites
 and the broader Omni roadmap:
 
-- continuation;
-- routing;
-- review;
-- context;
-- proof projection;
-- research policy;
-- email decisioning;
-- source selection;
-- action planning;
+- continuation.
+- routing.
+- review.
+- context.
+- proof projection.
+- research policy.
+- email decisioning.
+- source selection.
+- action planning.
 - artifact review.
 
 ## Safety Boundary

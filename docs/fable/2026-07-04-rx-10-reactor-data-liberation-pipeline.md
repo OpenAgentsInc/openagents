@@ -1,14 +1,14 @@
 # RX-10 Reactor Data Liberation Pipeline Receipt
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
 
 Date: 2026-07-04
 Issue: [#8278](https://github.com/OpenAgentsInc/openagents/issues/8278)
-Status: source fixture landed; no customer migration, package copy, or pricing
+Status: source fixture landed. No customer migration, package copy, or pricing
 authority.
 
 RX-10 adds the machinery-only Data Liberation pipeline for Reactor's
@@ -41,12 +41,12 @@ The seed set is synthetic and public-safe:
   produce a partial report because one row is missing required `Email`.
 
 The partial report keeps the missing-email row in `failedRowRefs` and emits
-`blocker.reactor.data_liberation.pipeline_partial`; it does not silently drop
+`blocker.reactor.data_liberation.pipeline_partial`. It does not silently drop
 the row.
 
 Reports explicitly set `customerDataLogged: false`,
 `customerEngagementAuthorized: false`, and `packageCopyAuthorized: false`.
-Raw fixture values stay in synthetic source rows only; verification reports
+Raw fixture values stay in synthetic source rows only. Verification reports
 carry checksums and spot-diff hashes rather than raw emails or names.
 
 ## Verification

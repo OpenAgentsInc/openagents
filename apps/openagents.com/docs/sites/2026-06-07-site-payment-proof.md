@@ -19,27 +19,27 @@ agent-facing read flow without exposing raw payment material.
 
 The projection summarizes:
 
-- Site id;
-- Site version id;
-- checkout intent ref;
-- checkout status;
-- catalog/product refs;
-- provider/environment refs;
-- buyer payment challenge;
-- buyer payment receipt when it exists;
-- MDK reconciliation event when it exists;
-- entitlement state when it exists;
-- proof state;
-- claim state;
-- public caveat refs; and
+- Site id.
+- Site version id.
+- checkout intent ref.
+- checkout status.
+- catalog/product refs.
+- provider/environment refs.
+- buyer payment challenge.
+- buyer payment receipt when it exists.
+- MDK reconciliation event when it exists.
+- entitlement state when it exists.
+- proof state.
+- claim state.
+- public caveat refs. And
 - friendly customer, agent, and operator labels.
 
 The main proof states are:
 
-- `pending_checkout`;
-- `pending_reconciliation`;
-- `payment_observed`;
-- `verified_entitlement`; and
+- `pending_checkout`.
+- `pending_reconciliation`.
+- `payment_observed`.
+- `verified_entitlement`. And
 - `blocked`.
 
 The proof reaches `verified_entitlement` only when the checkout intent, receipt,
@@ -50,13 +50,13 @@ server-side refs.
 
 This proof is buyer-side checkout evidence only. It does not prove:
 
-- accepted-work completion;
-- provider payout authority;
-- Pylon payout eligibility;
-- wallet state;
-- payout target approval;
-- bitcoin movement to a provider;
-- final settlement; or
+- accepted-work completion.
+- provider payout authority.
+- Pylon payout eligibility.
+- wallet state.
+- payout target approval.
+- bitcoin movement to a provider.
+- final settlement. Or
 - any customer-private data value.
 
 Those states belong to the separate Nexus/Treasury payout and settlement
@@ -66,17 +66,17 @@ surfaces.
 
 The proof route and projector reject or omit:
 
-- raw invoices;
-- payment hashes;
-- preimages;
-- MDK credentials;
-- webhook secrets;
-- wallet material;
-- raw provider payloads;
-- customer private data;
-- payout targets;
-- payout provider grants;
-- checkout query strings; and
+- raw invoices.
+- payment hashes.
+- preimages.
+- MDK credentials.
+- webhook secrets.
+- wallet material.
+- raw provider payloads.
+- customer private data.
+- payout targets.
+- payout provider grants.
+- checkout query strings. And
 - raw timestamps in customer-facing projection copy.
 
 Public proof projections omit customer/operator-only details. Customer and
@@ -110,9 +110,9 @@ state.
 
 Covered tests:
 
-- `workers/api/src/site-payment-proof.test.ts`;
-- `workers/api/src/site-payment-discovery.test.ts`;
-- `workers/api/src/site-commerce-routes.test.ts`;
-- `workers/api/src/openagents-openapi-routes.test.ts`;
-- `workers/api/src/openagents-capability-manifest-routes.test.ts`; and
+- `workers/api/src/site-payment-proof.test.ts`.
+- `workers/api/src/site-payment-discovery.test.ts`.
+- `workers/api/src/site-commerce-routes.test.ts`.
+- `workers/api/src/openagents-openapi-routes.test.ts`.
+- `workers/api/src/openagents-capability-manifest-routes.test.ts`. And
 - `workers/api/src/openagents-agent-onboarding-routes.test.ts`.

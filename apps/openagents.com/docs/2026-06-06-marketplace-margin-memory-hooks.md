@@ -21,19 +21,19 @@ public claims.
 
 `MarketplaceMarginMemoryRecord` tracks:
 
-- accepted count and accepted outcome refs;
-- rejected count and rejected outcome refs;
-- refund count and refunded outcome refs;
-- retry count and retry evidence refs;
-- review burden score and review burden refs;
-- gross-margin evidence refs;
-- revenue evidence refs;
-- modeled marketplace value refs;
-- repeat-buyer signal refs;
-- settlement state refs;
+- accepted count and accepted outcome refs.
+- rejected count and rejected outcome refs.
+- refund count and refunded outcome refs.
+- retry count and retry evidence refs.
+- review burden score and review burden refs.
+- gross-margin evidence refs.
+- revenue evidence refs.
+- modeled marketplace value refs.
+- repeat-buyer signal refs.
+- settlement state refs.
 - capability, market-memory, Program Signature, Module Version, package,
   tool, source, provider, reviewer, route, caveat, evidence, and work-class
-  refs; and
+  refs. And
 - review state.
 
 Counts and evidence refs are intentionally separate so the system can state
@@ -44,13 +44,13 @@ repeat-buyer quality, or marketplace value.
 
 The projection exposes separate booleans for:
 
-- accepted outcome claims;
-- rejected outcome claims;
-- refund claims;
-- modeled marketplace value claims;
-- revenue claims;
-- gross-margin claims;
-- repeat-buyer claims; and
+- accepted outcome claims.
+- rejected outcome claims.
+- refund claims.
+- modeled marketplace value claims.
+- revenue claims.
+- gross-margin claims.
+- repeat-buyer claims. And
 - settlement claims.
 
 Accepted outcomes do not imply revenue. Revenue does not imply gross margin.
@@ -64,10 +64,10 @@ The only allowed authority boundary is `evidence_only`.
 
 The default authority block denies:
 
-- automatic public rank mutation;
-- module promotion;
-- payout mutation;
-- routing mutation; and
+- automatic public rank mutation.
+- module promotion.
+- payout mutation.
+- routing mutation. And
 - settlement mutation.
 
 `marketplaceMarginMemoryHasMutationAuthority` detects accidental authority.
@@ -85,13 +85,13 @@ Draft and unreviewed records cannot become public rank candidates.
 
 Projections reject:
 
-- private customer data;
-- raw source archives;
-- raw prompts, provider payloads, raw webhook material, and raw runner logs;
-- bearer tokens, OAuth material, API keys, provider tokens, and secrets;
+- private customer data.
+- raw source archives.
+- raw prompts, provider payloads, raw webhook material, and raw runner logs.
+- bearer tokens, OAuth material, API keys, provider tokens, and secrets.
 - wallet material, Lightning invoices, payment hashes, preimages, and payout
-  targets;
-- private repo refs; and
+  targets.
+- private repo refs. And
 - raw timestamps.
 
 Public and customer projections also hide private provider, reviewer, revenue,
@@ -104,11 +104,11 @@ timestamps.
 
 `workers/api/src/marketplace-margin-memory.test.ts` covers:
 
-- schema/projection decoding;
-- accepted outcome attribution without mutation authority;
+- schema/projection decoding.
+- accepted outcome attribution without mutation authority.
 - separation of outcome, modeled value, revenue, gross margin, refund,
-  repeat-buyer, and settlement claims;
+  repeat-buyer, and settlement claims.
 - blocking draft, unreviewed, and authoritative records from rank or routing
-  mutation;
-- required evidence refs for counts and economic claims; and
+  mutation.
+- required evidence refs for counts and economic claims. And
 - redaction and rejection of unsafe marketplace memory material.

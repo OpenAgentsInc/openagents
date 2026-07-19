@@ -32,37 +32,37 @@ The surface:
    marketplace (agents + humans compose and sell).
 6. **Monetize / sell access to ANY layer + earn referrals on it** (refer a
    big bulk-inference client → get a piece).
-7. **World firsts being PURSUED (NOT achieved):** largest agentic sales force;
-   largest sales force (Avon ~6.5M referenced; "as soon as we hit seven million
+7. **World firsts being PURSUED (NOT achieved):** largest agentic sales force.
+   largest sales force (Avon ~6.5M referenced, "as soon as we hit seven million
    agents ... selling or equipped to sell"). The video is explicit these are
-   aspirations: "we don't have any relevant world firsts to report to you here
-   aside from we're pursuing two world firsts."
+   aspirations: "we do not have any relevant world firsts to report to you here
+   aside from we are pursuing two world firsts."
 
 The Bitcoin/sound-money framing (real pricing, paying sats on the edge, attacking
-margins) is positioning, not a new product claim; it is already represented by
+margins) is positioning, not a new product claim. It is already represented by
 the payments/compute/training records and needs no new promise.
 
 ## GAP REPORT (video claim → promise → state → what's missing)
 
 | # | Video claim | Promise record | State | What's in place | What's missing (green gate) |
 |---|---|---|---|---|---|
-| 1 | Refer once, earn forever, on ALL purchases | `referral.refer_once_earn_forever.v1` (NEW) | red | Sites 5% referral ledger WIRED in source (attribution → eligibility → readiness-gated approved→dispatched→settled via MDK/Spark, Bitcoin-only); attribution capture live | NO real referral payout has ever settled; no permanent cross-category referral binding; no per-purchase accrual across inference/training/marketplace/etc.; no dereferenceable card/Bitcoin-purchase → referral-payout receipt |
-| 2 | Autopilot = all-in-one business system composed of primitives | `autopilot.all_in_one_business_system.v1` (NEW) | planned | Autopilot Sites, decision queue, mission briefing, coding-agent lanes exist as separate scoped records | No single composed "business system" product where the primitives are bought/run/billed from one balance; cross-primitive composition is design intent |
-| 3 | OpenAgents Cloud primitives (inference·fine-tuning·training·agentic tasks·sandbox·web services) | `cloud.primitives_suite.v1` (NEW, aggregate); `cloud.fine_tuning_service.v1` (NEW); `cloud.sandbox_compute_service.v1` (NEW) | planned / red / red | inference gateway request surface live (free only); training launch green for one bounded settled scope; Autopilot Sites is the web-services layer | Fine-tuning is unbuilt as a sellable service; sandbox compute is unbuilt as a sellable service; no one credit balance spans the primitives; paid loop not collectable end-to-end |
-| 4 | Episode 213 markets (compute·data·labor·liquidity·risk·verification) as open protocols | `markets.open_protocol_markets.v1` (NEW) | planned | labor market green (first settled job #4777), NIP-90 compute/data rails in repo history, verification via exact-trace replay (Tassadar PoC), public unified surface scaffold at `/api/public/markets/open-markets` plus inert liquidity/risk skeleton routes | liquidity market and risk market still skeleton-only; compute/data not broadly live as paid markets; no real participant transactions or settled market receipts across the full set |
-| 5 | Build your own product + list for sale in marketplace | `marketplace.compose_and_list_products.v1` (NEW) | planned | typed product-definition scaffold plus inert read-only composed-products listing/discovery projection at `/api/public/marketplace/composed-products`; `marketplace.agentic_npm_module_registry.v1` (planned) + `marketplace.wasm_plugins.v1` (planned) are adjacent | no live composition runtime that provisions primitives into a buyable product; no self-serve listing write/install/use lifecycle; no marketplace billing or settlement |
-| 6 | Monetize / sell access to ANY layer + earn referrals on it | `marketplace.monetize_any_layer_with_referral.v1` (NEW) | planned | accepted-outcome → receipt → settle spine exists; Sites referral ledger wired | No per-layer access-selling product; no cross-layer referral accrual; no settled receipt for reselling access to any layer |
-| 7 | Pursued world first: largest agentic sales force | `claims.pursued_world_first_largest_agentic_sales_force.v1` (NEW) | planned | Video states it as a pursuit, not an achievement; no agentic sales force exists yet | Aspirational by definition — never green; would require a real, sized, verifiable agentic sales force and an independent prior-art / record review |
-| 7 | Pursued world first: largest sales force | `claims.pursued_world_first_largest_sales_force.v1` (NEW) | planned | Same; "~7 million agents" target named as the bar (Avon ~6.5M) | Aspirational by definition — never green; would require ~7M selling/sell-equipped agents and an independent record review |
+| 1 | Refer once, earn forever, on ALL purchases | `referral.refer_once_earn_forever.v1` (NEW) | red | Sites 5% referral ledger WIRED in source (attribution → eligibility → readiness-gated approved→dispatched→settled via MDK/Spark, Bitcoin-only). Attribution capture live | NO real referral payout has ever settled. No permanent cross-category referral binding. No per-purchase accrual across inference/training/marketplace/etc.. No dereferenceable card/Bitcoin-purchase → referral-payout receipt |
+| 2 | Autopilot = all-in-one business system composed of primitives | `autopilot.all_in_one_business_system.v1` (NEW) | planned | Autopilot Sites, decision queue, mission briefing, coding-agent lanes exist as separate scoped records | No single composed "business system" product where the primitives are bought/run/billed from one balance. Cross-primitive composition is design intent |
+| 3 | OpenAgents Cloud primitives (inference·fine-tuning·training·agentic tasks·sandbox·web services) | `cloud.primitives_suite.v1` (NEW, aggregate). `cloud.fine_tuning_service.v1` (NEW). `cloud.sandbox_compute_service.v1` (NEW) | planned / red / red | inference gateway request surface live (free only). Training launch green for one bounded settled scope. Autopilot Sites is the web-services layer | Fine-tuning is unbuilt as a sellable service. Sandbox compute is unbuilt as a sellable service. No one credit balance spans the primitives. Paid loop not collectable end-to-end |
+| 4 | Episode 213 markets (compute·data·labor·liquidity·risk·verification) as open protocols | `markets.open_protocol_markets.v1` (NEW) | planned | labor market green (first settled job #4777), NIP-90 compute/data rails in repo history, verification via exact-trace replay (Tassadar PoC), public unified surface scaffold at `/api/public/markets/open-markets` plus inert liquidity/risk skeleton routes | liquidity market and risk market still skeleton-only. Compute/data not broadly live as paid markets. No real participant transactions or settled market receipts across the full set |
+| 5 | Build your own product + list for sale in marketplace | `marketplace.compose_and_list_products.v1` (NEW) | planned | typed product-definition scaffold plus inert read-only composed-products listing/discovery projection at `/api/public/marketplace/composed-products`. `marketplace.agentic_npm_module_registry.v1` (planned) + `marketplace.wasm_plugins.v1` (planned) are adjacent | no live composition runtime that provisions primitives into a buyable product. No self-serve listing write/install/use lifecycle. No marketplace billing or settlement |
+| 6 | Monetize / sell access to ANY layer + earn referrals on it | `marketplace.monetize_any_layer_with_referral.v1` (NEW) | planned | accepted-outcome → receipt → settle spine exists. Sites referral ledger wired | No per-layer access-selling product. No cross-layer referral accrual. No settled receipt for reselling access to any layer |
+| 7 | Pursued world first: largest agentic sales force | `claims.pursued_world_first_largest_agentic_sales_force.v1` (NEW) | planned | Video states it as a pursuit, not an achievement. No agentic sales force exists yet | Aspirational by definition — never green. Would require a real, sized, verifiable agentic sales force and an independent prior-art / record review |
+| 7 | Pursued world first: largest sales force | `claims.pursued_world_first_largest_sales_force.v1` (NEW) | planned | Same. "~7 Million agents" target named as the bar (Avon ~6.5M) | Aspirational by definition — never green. Would require ~7M selling/sell-equipped agents and an independent record review |
 
 ### Existing records cross-referenced (not flipped)
 
-- `sites.referral_bitcoin_stream.v1` (yellow) — the narrow Sites 5% surface; the
+- `sites.referral_bitcoin_stream.v1` (yellow) — the narrow Sites 5% surface. The
   new ecosystem-wide referral record explicitly distinguishes itself from it.
 - `inference.referral_on_all_inference.v1` (planned) — the inference-category
-  slice of refer-once-earn-forever; the new ecosystem record is the superset.
+  slice of refer-once-earn-forever. The new ecosystem record is the superset.
 - `cloud.agent_cloud_one_stop_revshare.v1` (planned) — the one-balance Agent
-  Cloud capstone; the new `cloud.primitives_suite.v1` is the primitives list it
+  Cloud capstone. The new `cloud.primitives_suite.v1` is the primitives list it
   composes, kept as a distinct record so each primitive's gate is legible.
 - `marketplace.agentic_npm_module_registry.v1` / `marketplace.wasm_plugins.v1`
   (planned) — adjacent module/plugin marketplace lanes referenced by the new
@@ -85,14 +85,14 @@ the labor-market greens stand on their own prior receipts and are unaffected.
   the coding-agent execution lanes. None of these is the Episode 239 headline.
 - **Built but not collectable / not settled (yellow / red):** the inference
   gateway request surface is live but FREE only (no paid card/Bitcoin → credit →
-  spend receipt); the Sites referral ledger is wired but has paid NO real
+  spend receipt). The Sites referral ledger is wired but has paid NO real
   payout.
 - **Not built (red / planned):** the ecosystem-wide refer-once-earn-forever
   product, fine-tuning as a sellable service, sandbox compute as a sellable
   service, the liquidity and risk markets, compose-and-list-your-own-product,
   monetize-any-layer-with-referral, and the all-in-one composed business system.
 - **Aspirational by the video's own words (never green):** the two pursued
-  world firsts (largest agentic sales force; largest sales force).
+  world firsts (largest agentic sales force, largest sales force).
 
 The Episode 239 video is a vision/closing-the-loop narrative. The honest registry
 state is: the **rails and the spine exist**, but the **revenue loop is not closed

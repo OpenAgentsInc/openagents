@@ -21,8 +21,8 @@ psionic-workers.json
 The attachment uses `openagents.psionic_worker_attachment.v1`. `oa-node
 status --json` projects workers into the matching Cloud node capability lane:
 
-- `inference` workers become `capabilities.inference_products`;
-- `training` workers become `capabilities.training_products`;
+- `inference` workers become `capabilities.inference_products`.
+- `training` workers become `capabilities.training_products`.
 - `sandbox` workers become `capabilities.sandbox_profiles`.
 
 A crashed worker sets only that product/profile to `backend_ready=false` and
@@ -51,7 +51,7 @@ psionic-execution-receipts.jsonl
 
 Each `openagents.psionic_execution_receipt.v1` receipt includes both the local
 receipt digest and the upstream `psionic_evidence_digest`. Status projects local
-receipt digests into `evidence.job_receipts`; the receipt log is the source of
+receipt digests into `evidence.job_receipts`. The receipt log is the source of
 truth for which Psionic evidence digest was cited.
 
 Sandbox Psionic receipts must also pass `--profile-digest <sha256:...>` so the

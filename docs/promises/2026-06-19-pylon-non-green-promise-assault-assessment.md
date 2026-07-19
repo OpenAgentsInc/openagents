@@ -15,14 +15,14 @@ Source registry: `apps/openagents.com/workers/api/src/product-promises.ts`
 
 | Promise | State | Built / assembled this pass | Receipt needed for green | Owner-gated? |
 | --- | --- | --- | --- | --- |
-| `pylon.v03_release_candidate.v1` | yellow | npm latest=1.0.5 verified; release-signing + feed publish path documented | live-network smoke receipt + signed-binary feed rollout receipt (GCP publish) | YES (feed publish + flip) |
-| `pylon.release_tomorrow.v1` | yellow | npm latest=1.0.5; platform scope (macOS/Linux) documented | signed-binary feed rollout receipt | YES (feed publish + flip) |
+| `pylon.v03_release_candidate.v1` | yellow | npm latest=1.0.5 verified. Release-signing + feed publish path documented | live-network smoke receipt + signed-binary feed rollout receipt (GCP publish) | YES (feed publish + flip) |
+| `pylon.release_tomorrow.v1` | yellow | npm latest=1.0.5. Platform scope (macOS/Linux) documented | signed-binary feed rollout receipt | YES (feed publish + flip) |
 | `pylon.first_real_model_training_run.v1` | yellow | bounded two-device A1 run evidence confirmed live | a network-rung `training.model_ladder.v1` run receipt on real devices | YES (run + flip) |
 | `pylon.largest_decentralized_training_claim.v1` | red | participant methodology + comparable-runs research written | a run at comparable contributor scale w/ public per-contributor receipts | YES (scale + flip) |
-| `pylon.consumer_compute_earns_bitcoin_self_serve.v1` | red | scale methodology doc; INERT flag-gated Spark autostart capability + receipt builder | autostart receipt for ≥1 normal contributor + copy narrowed to macOS/Linux + scale | YES (flip) |
+| `pylon.consumer_compute_earns_bitcoin_self_serve.v1` | red | scale methodology doc. INERT flag-gated Spark autostart capability + receipt builder | autostart receipt for ≥1 normal contributor + copy narrowed to macOS/Linux + scale | YES (flip) |
 | `pylon.v0_3_multi_earning_node.v1` | red | per-mode earning inventory recorded | settled receipts for ≥2 earning modes in one install + safe projection | YES (flip) |
 | `pylon.five_bitcoin_revenue_streams.v1` | planned | per-stream readiness inventory recorded | one settled receipt per stream (compute/data/labor/referral) | YES (flip) |
-| `pylon.compute_revenue_modes.v1` | planned | no-spend GEPA loop confirmed; gap is paid settlement | one settled paid GEPA assignment receipt | YES (spend + flip) |
+| `pylon.compute_revenue_modes.v1` | planned | no-spend GEPA loop confirmed. Gap is paid settlement | one settled paid GEPA assignment receipt | YES (spend + flip) |
 | `pylon.data_trace_revenue.v1` | planned | redaction core + marketplace gate confirmed | one settled, redacted trace-sale receipt | YES (flip) |
 | `pylon.gepa_worker_loop_v03.v1` | planned | no-spend production smoke confirmed | one settled paid GEPA assignment receipt | YES (spend + flip) |
 
@@ -31,7 +31,7 @@ Source registry: `apps/openagents.com/workers/api/src/product-promises.ts`
 ### 1. `pylon.v03_release_candidate.v1` (yellow)
 
 - Done: `@openagentsinc/pylon` package metadata is `1.0.5`
-  (`apps/pylon/package.json`); the promise verification already records
+  (`apps/pylon/package.json`). The promise verification already records
   `npm view ... latest=1.0.5` on 2026-06-19. The install guide is Pylon-first
   (`apps/openagents.com/apps/web/public/INSTALL.md`).
 - Remaining: two blockers — `pylon_v1_live_network_smokes_incomplete` and
@@ -48,7 +48,7 @@ Source registry: `apps/openagents.com/workers/api/src/product-promises.ts`
 
 ### 2. `pylon.release_tomorrow.v1` (yellow)
 
-- Done: npm latest=1.0.5; platform scope is macOS + Linux only and is documented
+- Done: npm latest=1.0.5. Platform scope is macOS + Linux only and is documented
   as a deliberate owner scope-out for Windows/WSL
   (`apps/pylon/docs/platform-support.md`).
 - Remaining: `pylon_v1_signed_binary_feed_rollout_incomplete` — same owner-gated
@@ -59,14 +59,14 @@ Source registry: `apps/openagents.com/workers/api/src/product-promises.ts`
 ### 3. `pylon.first_real_model_training_run.v1` (yellow)
 
 - Done: the bounded two-device CS336 A1 real-gradient run is live and evidenced
-  (`apps/openagents.com/docs/2026-06-11-cs336-a1-multi-device-real-gradient-evidence.md`;
+  (`apps/openagents.com/docs/2026-06-11-cs336-a1-multi-device-real-gradient-evidence.md`,
   routes `/api/training/runs/run.cs336.a1.real_gradient.demo` and
   `/api/training/leaderboards/a1`).
 - Remaining: `model_ladder_network_rungs_not_run` — the honest green path is a
   network-rung `training.model_ladder.v1` run on real contributor devices with
   commitment-backed verification and paid closeouts.
 - Receipt for green: a network-rung execution receipt (multiple distinct
-  devices; shard → commit → cross-device verify → merge/eval → payment →
+  devices. Shard → commit → cross-device verify → merge/eval → payment →
   settlement with `realBitcoinMoved:true`).
 - Owner-gated: YES (running the rung + flip).
 
@@ -77,7 +77,7 @@ Source registry: `apps/openagents.com/workers/api/src/product-promises.ts`
   (the qualified-contributor counting rule, as enforced in
   `training-run-window-authority.ts`) and
   `docs/training/2026-06-19-comparable-decentralized-training-runs-research.md`
-  (cited comparable runs: Templar Covenant-72B ~70 contributors; ~200 is the
+  (cited comparable runs: Templar Covenant-72B ~70 contributors, ~200 is the
   transcript target). These clear the "we never wrote the methodology /
   comparables" gap for `largest_training_participant_methodology_missing` and
   `comparable_training_run_evidence_missing`.
@@ -100,12 +100,12 @@ Source registry: `apps/openagents.com/workers/api/src/product-promises.ts`
   - The scale-methodology doc (#4 above) covers
     `consumer_compute_self_serve_scale_methodology_missing`.
 - Remaining:
-  - `spark_helper_autostart_receipt_missing` — the capability now exists INERT;
+  - `spark_helper_autostart_receipt_missing` — the capability now exists INERT.
     green still needs a real autostart-ready receipt captured for ≥1 normal
     contributor on the self-serve path (the flag must be enabled and the helper
     must actually reach readiness).
   - `windows_wsl_consumer_install_coverage_missing` — Windows/WSL is a
-    deliberate owner scope-out; the honest path is to NARROW the broad "anybody
+    deliberate owner scope-out. The honest path is to NARROW the broad "anybody
     on any platform" copy to macOS/Linux, not to build Windows support.
 - Receipt for green: an autostart-ready receipt for a normal contributor, copy
   narrowed to supported platforms, and a scale methodology applied.
@@ -126,7 +126,7 @@ Source registry: `apps/openagents.com/workers/api/src/product-promises.ts`
 ### 7. `pylon.five_bitcoin_revenue_streams.v1` (planned)
 
 - Inventory: tips live (green). Compute/data/labor/referral each need one live
-  settled receipt; the porting plan is recorded in
+  settled receipt. The porting plan is recorded in
   `apps/openagents.com/docs/2026-06-10-five-bitcoin-revenue-streams-promise-audit.md`.
 - Receipt for green: one settled receipt per stream (4) + a stacking proof.
 - Owner-gated: YES.

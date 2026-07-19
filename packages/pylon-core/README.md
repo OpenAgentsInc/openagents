@@ -17,7 +17,7 @@ GitHub issue #8578 (PY-1) for the full plan.
 | `custody` (P1)  | Per-account Codex/Claude homes, registry, quota, usage, status, health ledgers. Never touches `~/.codex`.                            |
 | `executor` (P2) | Local coding-delegation runs: assignment, khala dispatch/requester/spawn, codex/claude executors, workspace materializer, closeouts. |
 | `presence` (P3) | Go-online, heartbeat, counted capacity refs — what makes a machine a dispatch target.                                                |
-| `wallet` (P5)   | The Spark Lightning rail. **A live, preserved payment rail** behind its own service boundary; never inside a GUI process.            |
+| `wallet` (P5)   | The Spark Lightning rail. **A live, preserved payment rail** behind its own service boundary. Never inside a GUI process.            |
 
 ## Extraction status
 
@@ -35,7 +35,7 @@ existing consumers keep compiling.
       account-status) + **wave 4** (account-connect, codex-account-auth-health —
       unblocked once presence landed) done. `defaultCodexAuthValidityProbe`
       (account-connect's real Codex-CLI probe implementation, coupled to
-      `codex-composer.ts`) stays app-side by design; both moved modules take it
+      `codex-composer.ts`) stays app-side by design. Both moved modules take it
       as an injected `probe` and the `apps/pylon` shims default-wire the real one
       so production behavior is unchanged — see those files' header comments.
 - [x] Step 3 — presence (`presence/`) — **landed.** The apple-fm blocker
@@ -47,7 +47,7 @@ existing consumers keep compiling.
       `presence/apple-fm-status.ts` defines a structural mirror of
       `PylonAppleFmStatusProjection` (every `ProbeBackendCapabilityReport["field"]`
       reference inlined as its literal type) plus the two pure capacity-ref
-      helpers; presence's existing (previously test-only) `appleFmStatusProbe`
+      helpers. Presence's existing (previously test-only) `appleFmStatusProbe`
       injection seam is now load-bearing, defaulting to
       `NOT_PROBED_APPLE_FM_STATUS` (no contribution, no blocker) when omitted.
       `apps/pylon/src/presence.ts` is now a wrapper (not a pure re-export): its
@@ -79,36 +79,36 @@ account-status` wave
   coding-**run** persistence, execution-domain state that presence merely reads
   for capacity refs and that `assignment.ts` also consumes, so it homes in
   `executor/`, not a `presence/` folder built around a leaf while presence.ts
-  itself can't yet move. Added `@openagentsinc/effect-boundary` as a pylon-core
+  itself cannot yet move. Added `@openagentsinc/effect-boundary` as a pylon-core
   dep for it. `claude-agent-executor` is now relocated too (after the MH-2
   collision cleared), with the app path reduced to a thin re-export shim.
   `effect-runtime-patterns` (`scopedTimeout`, `PylonRuntimeRetrySchedules`) is a
-  pure `effect`-only leaf used by codex/claude agent runners; extracted in
+  pure `effect`-only leaf used by codex/claude agent runners. Extracted in
   preference to `forge-dispatch-protocol`, which is blocked by type-only
   coupling to top-of-graph `assignment.ts` plus `@openagentsinc/forge-protocol`.
   **Additional pure leaves (this slice):** `proof-redaction` (zero local deps),
   `required-artifact-gate` (node:fs path checks only), and `remote-verify`
   (depends only on in-package `shared/execution-provider` + `shared/ssh-target`,
   both also extracted as foundational shared helpers). App paths are thin
-  re-export shims; unit tests live next to the package modules and the existing
+  re-export shims. Unit tests live next to the package modules and the existing
   `apps/pylon/tests/*` consumers keep green via the shims.
   **Still in `apps/pylon`:**
   - `codex-agent-executor`, `assignment`, `khala-spawn` — now unblocked
     dependency-wise on `presence`/`account-connect` (both landed), but not
-    yet traced/attempted this session; next session should re-verify their
+    yet traced/attempted this session. Next session should re-verify their
     full closures (they're large, top-of-graph files) before moving.
   - `khala-requester`, `khala-dispatch` — extractable dependency-wise, but
     their leaf closure includes `tips` (Spark-tipping / payment-adjacent,
     semantically an earning/wallet-boundary module, NOT executor) and
     `work-requester`. Deferred pending a boundary decision on where `tips`
-    lives; do not shove `tips` into `executor/` just to satisfy the move.
+    lives. Do not shove `tips` into `executor/` just to satisfy the move.
   - `forge-dispatch-protocol` — pure adapter logic, but type-coupled to
-    `assignment.ts` lease/closeout shapes; extract once those types (or a
+    `assignment.ts` lease/closeout shapes. Extract once those types (or a
     structural subset) live in-package, with `@openagentsinc/forge-protocol`
     added as a pylon-core dependency.
-- [x] Step 6 — typed RPC contract (`rpc/`) — **unconsumed seed**; PY-2 (#8579)
+- [x] Step 6 — typed RPC contract (`rpc/`) — **unconsumed seed**. PY-2 (#8579)
       wires it and deletes the desktop stdout seam.
-- [ ] MCP consolidation — **design decision, not a mechanical move; plan
+- [ ] MCP consolidation — **design decision, not a mechanical move. Plan
       recorded in issue #8578.** The two MCP surfaces (`apps/pylon/src/khala-mcp.ts`
       `khala.*` request-delegation tools on the homegrown `tas/mcp-server.ts`, vs
       the retired `clients/khala-code-desktop` runtime's `fleet_run_*`/`codex_*`

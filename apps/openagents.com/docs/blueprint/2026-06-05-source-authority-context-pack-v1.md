@@ -12,15 +12,15 @@ available material, but they cannot widen an actor's underlying authority.
 
 Source Authority records capture:
 
-- source ref;
-- source kind;
-- freshness;
-- consent state;
-- confidence;
-- data classification;
-- trust tier;
-- included/excluded state;
-- public/customer-safe projection flags;
+- source ref.
+- source kind.
+- freshness.
+- consent state.
+- confidence.
+- data classification.
+- trust tier.
+- included/excluded state.
+- public/customer-safe projection flags.
 - public summary ref.
 
 The first source kinds cover orders, Exa briefs, repositories, emails,

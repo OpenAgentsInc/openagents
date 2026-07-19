@@ -14,8 +14,8 @@ real invoices, minting L402 credentials, or settling payouts.
 
 The implementation adds:
 
-- migration `workers/api/migrations/0114_buyer_payment_ledger.sql`;
-- domain/repository helpers in `workers/api/src/buyer-payment-ledger.ts`;
+- migration `workers/api/migrations/0114_buyer_payment_ledger.sql`.
+- domain/repository helpers in `workers/api/src/buyer-payment-ledger.ts`.
 - tests in `workers/api/src/buyer-payment-ledger.test.ts`.
 
 ## Tables
@@ -68,7 +68,7 @@ The ledger accepts only refs and redacted metadata. The domain guard rejects:
   state, wallet material, mnemonics, MDK credentials, webhook secrets, provider
   grants/tokens/payloads, customer emails/names, raw prompts, raw runner logs,
   source archives, bearer tokens, OAuth material, API keys, and secret-shaped
-  values;
+  values.
 - payloads that fail the runner gateway private-material guard.
 
 Public projections omit actor refs, owner IDs, metadata refs, operator refs, and
@@ -82,11 +82,11 @@ material.
 
 This ledger is buyer-side payment evidence only. It does not:
 
-- grant auth by itself;
-- bypass safety, abuse, private-authority, or manual-review gates;
-- settle provider payouts;
-- record accepted-work payout truth;
-- create MDK invoices;
+- grant auth by itself.
+- bypass safety, abuse, private-authority, or manual-review gates.
+- settle provider payouts.
+- record accepted-work payout truth.
+- create MDK invoices.
 - mint L402 credentials.
 
 Provider settlement, accepted work, contributor payout, Pylon accounting, Nexus,

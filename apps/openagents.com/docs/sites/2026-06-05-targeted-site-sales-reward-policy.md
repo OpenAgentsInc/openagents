@@ -27,23 +27,23 @@ Each state is represented independently by public-safe refs.
 
 `targeted_site_sales_reward_policy_events` records:
 
-- `id` and unique `idempotency_key`;
-- `campaign_id`;
-- `agent_ref`;
-- optional `prospect_id`;
-- `outcome_kind`;
-- derived `policy_state`;
-- `reward_asset`;
-- `reward_amount`;
-- optional `buyer_payment_ref`;
-- optional `referral_attribution_ref`;
-- optional `accepted_work_ref`;
-- optional `payout_intent_ref`;
-- optional `settlement_caveat_ref`;
-- optional `dispute_ref`;
-- required `public_receipt_ref`;
-- optional `related_event_id`;
-- bounded `metadata_json`;
+- `id` and unique `idempotency_key`.
+- `campaign_id`.
+- `agent_ref`.
+- optional `prospect_id`.
+- `outcome_kind`.
+- derived `policy_state`.
+- `reward_asset`.
+- `reward_amount`.
+- optional `buyer_payment_ref`.
+- optional `referral_attribution_ref`.
+- optional `accepted_work_ref`.
+- optional `payout_intent_ref`.
+- optional `settlement_caveat_ref`.
+- optional `dispute_ref`.
+- required `public_receipt_ref`.
+- optional `related_event_id`.
+- bounded `metadata_json`.
 - `occurred_at`, `created_at`, and `archived_at`.
 
 ## Outcome Kinds
@@ -77,27 +77,27 @@ Reward assets are `credits`, `sats`, or `internal_payable`.
 
 `recordTargetedSiteSalesRewardPolicyEvent`:
 
-- validates active, unarchived campaign records;
-- validates optional prospects belong to the same campaign;
-- records idempotently by `idempotency_key`;
+- validates active, unarchived campaign records.
+- validates optional prospects belong to the same campaign.
+- records idempotently by `idempotency_key`.
 - rejects raw provider, email, private customer, payment, wallet, token,
-  invoice, preimage, and secret-like material in refs or metadata;
-- requires `reward_eligible` events to include `acceptedWorkRef`;
+  invoice, preimage, and secret-like material in refs or metadata.
+- requires `reward_eligible` events to include `acceptedWorkRef`.
 - requires payout intent events to include `payoutIntentRef` and a related
-  policy event;
+  policy event.
 - requires dispute and complaint events to include `disputeRef` and a related
-  policy event;
+  policy event.
 - requires reversal, refund, and settlement-caveat events to link to a related
-  policy event;
+  policy event.
 - requires settlement-caveat events to include `settlementCaveatRef`.
 
 `projectTargetedSiteSalesRewardPolicy`:
 
-- reads reward policy events for a campaign and agent;
-- can narrow projection to a prospect;
-- returns the latest policy state and reward amount;
+- reads reward policy events for a campaign and agent.
+- can narrow projection to a prospect.
+- returns the latest policy state and reward amount.
 - carries buyer payment, referral, accepted work, payout intent, dispute, and
-  settlement caveat refs as separate fields;
+  settlement caveat refs as separate fields.
 - derives settlement posture without claiming settlement.
 
 Settlement posture can be:
@@ -111,14 +111,14 @@ Settlement posture can be:
 
 `publicTargetedSiteSalesRewardPolicyProjection` exposes only:
 
-- campaign id;
-- agent ref;
-- prospect id;
-- event count;
-- latest event time and kind;
-- policy state;
-- reward amount and asset;
-- public receipt ref;
+- campaign id.
+- agent ref.
+- prospect id.
+- event count.
+- latest event time and kind.
+- policy state.
+- reward amount and asset.
+- public receipt ref.
 - settlement posture.
 
 It excludes raw metadata and private payment/customer/prospect details. Buyer
@@ -130,12 +130,12 @@ until specific public proof rules are reviewed.
 
 This slice does not:
 
-- send outreach;
-- book meetings;
-- accept customers by itself;
-- calculate final legal payment obligations;
-- create payout credentials;
-- dispatch credits, sats, or Bitcoin;
+- send outreach.
+- book meetings.
+- accept customers by itself.
+- calculate final legal payment obligations.
+- create payout credentials.
+- dispatch credits, sats, or Bitcoin.
 - settle through MDK, LDK, Treasury, or Nexus.
 
 It creates the policy ledger that later dashboards, agent campaign tools,

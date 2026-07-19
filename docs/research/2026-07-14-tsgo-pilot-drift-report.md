@@ -4,7 +4,7 @@ Date: 2026-07-14
 Issue: TC-4 (#8775), part of the T3 Code Vite Plus adaptation plan
 (`docs/teardowns/2026-07-13-t3-code-teardown.md` §17).
 Scope: bounded pilot on ONE package. Nothing here is wired into the canonical
-typecheck path; root `typecheck` and the package `typecheck` script are
+typecheck path. Root `typecheck` and the package `typecheck` script are
 unchanged.
 
 ## Target package and why
@@ -48,7 +48,7 @@ pilot pins the T3-Code-proven pair instead: `@effect/tsgo 0.13.2` +
 
 ## The `effect-tsgo patch` story
 
-Yes, the patch is required for the Effect diagnostics; no, it is not required
+Yes, the patch is required for the Effect diagnostics. No, it is not required
 for tsgo to typecheck at all.
 
 What `effect-tsgo patch` does: it locates the platform-specific native Go
@@ -64,7 +64,7 @@ Observed properties:
   it just emits zero Effect-specific diagnostics (verified by running the
   backed-up `tsgo.original` directly: 0 diagnostics, exit 0).
 - The patch mutates `node_modules`, so it must be re-run after every
-  `bun install`. T3 Code runs it from root `prepare`; because TC-1 (#8772) is
+  `bun install`. T3 Code runs it from root `prepare`. Because TC-1 (#8772) is
   concurrently reworking root `package.json`, this pilot keeps it package-local
   as `typecheck:tsgo:patch` and deliberately does NOT chain it into
   `typecheck:tsgo`, because:
@@ -80,7 +80,7 @@ after install, then `bun run typecheck:tsgo` as often as you like.
 
 Both compilers were run repeatedly over the package (tsgo x6+, tsc x5+).
 tsgo output was byte-identical across runs (matching md5 over 3 captured
-runs); tsc output was identical (empty) across runs.
+runs). Tsc output was identical (empty) across runs.
 
 - `tsc -p tsconfig.json --noEmit`: **0 diagnostics**, exit 0.
 - patched `tsgo -p tsconfig.json --noEmit`: **4 diagnostics**, all severity
@@ -92,7 +92,7 @@ Every tsgo-only diagnostic, classified:
 
 | # | Location | Code | Message (abridged) | Class |
 |---|---|---|---|---|
-| 1 | `src/redaction.ts(48,14)` | TS377091 `effect(lazyEffect)` | Service member `revealTransform` returns a lazy Effect; zero-arg wrapper adds unnecessary indirection | Cosmetic (advisory; correct observation, intentional API shape) |
+| 1 | `src/redaction.ts(48,14)` | TS377091 `effect(lazyEffect)` | Service member `revealTransform` returns a lazy Effect. Zero-arg wrapper adds unnecessary indirection | Cosmetic (advisory, correct observation, intentional API shape) |
 | 2 | `src/session-rollout.ts(136,10)` | TS377090 `effect(unnecessaryTypeofType)` | `typeof KhalaToolEvent.Type` query can be `KhalaToolEvent` | Cosmetic (advisory style hint) |
 | 3 | `src/session-rollout.ts(252,18)` | TS377090 | same as #2 | Cosmetic |
 | 4 | `src/session-rollout.ts(253,23)` | TS377090 | same as #2 | Cosmetic |
@@ -122,8 +122,8 @@ file/line/column positions, same messages — with two cosmetic differences:
 
 ## Timings
 
-Median over 4 warm runs each (one untimed warm-up run first; `/usr/bin/time
--l`; whole-process wall clock including startup):
+Median over 4 warm runs each (one untimed warm-up run first, `/usr/bin/time
+-l`. Whole-process wall clock including startup):
 
 | Compiler | Warm runs (real, s) | Median (s) | Max RSS (median) |
 |---|---|---|---|
@@ -134,7 +134,7 @@ tsgo is ~**9x faster** and uses ~**2.5x less peak memory** on this package.
 CPU time tells the same story (tsgo ~0.9 s user vs tsc ~4.4 s user). If the
 ratio holds across the ~40-package root `typecheck` chain, that chain's tsc
 component would drop from minutes to tens of seconds — but that extrapolation
-is exactly what this pilot does NOT claim; it is a one-package measurement.
+is exactly what this pilot does NOT claim. It is a one-package measurement.
 
 ## Recommendation: conditional GO (opt-in parallel lane), NO-GO for cutover
 

@@ -153,7 +153,7 @@ delegates, while the existing target adapter owns execution and its receipt.
 Revision 2 added two exact brokered actions: dispatch bounded coding workers
 through the authenticated owner's linked Pylon capacity, and dispatch
 pause/resume/stop intents for an existing owner Full Auto run. The coding broker
-must pin real public repository bytes and return actual assignment refs; the
+must pin real public repository bytes and return actual assignment refs. The
 Full Auto broker returns a pending intent until Desktop applies it. Revision 3
 adds a bounded Sarah-only terminal-history harness broker: Sarah may inspect
 the active bundle and request a candidate from completed owner-thread turns,

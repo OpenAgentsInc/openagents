@@ -16,7 +16,7 @@ Pylons:
 - `providerNostrNpub` — the same key NIP-19 encoded, matching what the
   Pylon TUI logs as "Pylon Nostr npub".
 - `providerMarketRelayRefs` — the market relay URLs the provider loop
-  actually listens on, in declared order; the first entry is the canonical
+  actually listens on, in declared order. The first entry is the canonical
   market relay.
 - `providerNip90LaneRefs` — the declared NIP-90 lanes, e.g.
   `lane.public.nip90.5050.text_generation` for kind-5050 text inference and
@@ -87,7 +87,7 @@ One deliberate scanner decision (the platform-taxonomy allowlist lesson): a
 dedicated validated identity fields and are intentionally NOT routed
 through `publicScannerSafeRef` — aliasing them would defeat the
 bid-to-capacity mapping the fields exist for. Lane refs still go through
-the scanner-safe path; relay refs are pinned to URL shapes that cannot
+the scanner-safe path. Relay refs are pinned to URL shapes that cannot
 match the raw-id pattern.
 
 ## #4863 relay-cutover interplay
@@ -113,8 +113,8 @@ evidence work.
 
 - `workers/api/src/pylon-api-routes.test.ts` — registration carrying the
   fields projects them through `/api/pylons` list/detail verbatim
-  (including the scanner-shape allowlist pin); absent fields project
-  `null`/`[]`; heartbeat upgrades a pre-upgrade registration; malformed
+  (including the scanner-shape allowlist pin). Absent fields project
+  `null`/`[]`. Heartbeat upgrades a pre-upgrade registration. Malformed
   identity fields are rejected.
 - `apps/pylon/tests/presence.test.ts` — registration and heartbeat bodies
   carry the fields when the provider lane is declared and omit them

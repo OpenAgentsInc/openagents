@@ -7,7 +7,7 @@ roadmap, Reactor plan, agent computers strategy (via fable references)
 
 ## Posture
 
-> Don't trust us — check the receipt.
+> Do not trust us — check the receipt.
 
 Trust is not a brand color. It is a set of systems that make false claims
 expensive and silent failures visible.
@@ -41,7 +41,7 @@ expensive and silent failures visible.
 - Blast-radius sentence (product requirement): a fully compromised agent
   computer exposes that user's scoped work and credentials for that turn
   — **not** other users' worlds.
-- Enforce by contract and test; never aspirational prose alone.
+- Enforce by contract and test. Never aspirational prose alone.
 
 ### 5. Bounded authority
 
@@ -53,9 +53,9 @@ expensive and silent failures visible.
 
 ### 6. Verification culture
 
-- Graders/oracles inform acceptance; they do not silently replace human
+- Graders/oracles inform acceptance. They do not silently replace human
   or product authority where required.
-- QA Swarm points agents at our product nightly; verdicts can auto-file
+- QA Swarm points agents at our product nightly. Verdicts can auto-file
   issues.
 - Research direction (verification by re-execution) is depth, not the
   default commercial claim.
@@ -65,12 +65,12 @@ expensive and silent failures visible.
 - Open weights inside customer boundary behind the same gateway shape.
 - Typed model policy (e.g. origin/license constraints) enforced
   structurally — refuse nonconforming pulls with receipts.
-- Dogfood: run production under own policy first; external claims stay
+- Dogfood: run production under own policy first. External claims stay
   gated until evidence says otherwise.
 
 ## Why this stack is the product
 
-Operators already burned by skill supply chains settle on: *don't trust
+Operators already burned by skill supply chains settle on: *do not trust
 anybody.* Enterprise sovereignty messaging raises the same demand without
 serving the middle market. OpenAgents sells **always-on machines +
 authority ladder + receipts** as the fix for babysitting and trust — the

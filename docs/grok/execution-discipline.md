@@ -36,16 +36,16 @@ From EXECUTION.md (compressed):
 | Business funnel tasks? | `ROADMAP_BIZ.md` |
 | How to run a promise assault? | PROMISSORY runbook |
 
-When documents disagree on order, **MASTER_ROADMAP wins**; file issues
+When documents disagree on order, **MASTER_ROADMAP wins**. File issues
 against its phase lanes.
 
 ## Parallelization rules of thumb
 
 - Land small foundations first (typed contracts, one orchestration state
   model) before wide fan-out.
-- Workstreams are the parallel unit; tasks are the issue unit.
-- Hard deps mean do not start; soft-after means preferred order.
-- Delegability grades (HIGH/MED/LOW) exist so fleets don't eat judgment-
+- Workstreams are the parallel unit. Tasks are the issue unit.
+- Hard deps mean do not start. Soft-after means preferred order.
+- Delegability grades (HIGH/MED/LOW) exist so fleets do not eat judgment-
   heavy seams unsupervised.
 
 ## QA is continuous
@@ -58,8 +58,8 @@ against its phase lanes.
 
 ## Claim discipline during execution
 
-- Fable docs analyze; they do not green promises.
-- PROMISSORY assaults prepare evidence; owner flips green.
+- Fable docs analyze. They do not green promises.
+- PROMISSORY assaults prepare evidence. Owner flips green.
 - Public copy and App Store metadata stay behind promises/copy passes.
 - Label modeled vs measured in any operator-facing metric.
 
@@ -80,7 +80,7 @@ When implementing from fable:
 
 1. Read MASTER_ROADMAP phase status (may be stale — check issues).
 2. Prefer clean worktree if monorepo checkout is dirty.
-3. Keep scope to one issue; do not "helpfully" expand epic surface.
+3. Keep scope to one issue. Do not "helpfully" expand epic surface.
 4. Leave receipts (tests, docs, evidence paths) the next agent can
    dereference.
 5. Append learnings to `docs/grok/` only when analysis — not as a

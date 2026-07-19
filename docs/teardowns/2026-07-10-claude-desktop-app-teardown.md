@@ -18,7 +18,7 @@ were read or copied. Inspection was limited to bundle metadata and file
 listings, public strings, package manifests, names-only user-data listings, and
 a sanitized live UI/process observation.
 
-## TL;DR
+## TL.DR
 
 Claude is a **stock Electron 42.5.1 / Chromium 148** application, not a custom
 runtime. The 718 MB universal macOS bundle contains a small native window shell,
@@ -30,7 +30,7 @@ The main product UI is hybrid: Electron loads a local title/error shell from
 `app.asar`, then places the live `claude.ai` app in a `WebContentsView` (observed
 at `claude.ai/epitaxy`). A full copy of the web SPA is also bundled and served
 through the private `app://localhost` protocol for pinned/local operation. The
-web surface is React 19; the Electron shell is React 18.
+web surface is React 19. The Electron shell is React 18.
 
 For Code, the desktop app uses the Claude Agent SDK to spawn a separately
 downloaded, versioned **Claude Code** executable over newline-delimited
@@ -87,15 +87,15 @@ Anthropic did not fork Chromium to add agent capability. It extended stock
 Electron at the application boundary:
 
 - a private Rust N-API module, `@ant/claude-native` (4.2 MB), built in the
-  internal CI checkout `apps/packages/desktop/claude-native` [bundle];
+  internal CI checkout `apps/packages/desktop/claude-native` [bundle].
 - Swift N-API modules, `swift_addon.node` (36 MB) and
   `computer_use.node` (906 KB), linking AppKit, ScreenCaptureKit, Speech,
   SwiftUI, ServiceManagement, `Virtualization.framework`, and `vmnet`
-  [bundle];
+  [bundle].
 - a 2 MB `chrome-native-host` helper for the Claude-in-Chrome bridge and a
-  small native `disclaimer` helper [bundle];
+  small native `disclaimer` helper [bundle].
 - Electron utility processes for Node/MCP work, rather than a second complete
-  Node distribution [bundle + runtime];
+  Node distribution [bundle + runtime].
 - a host-native Claude Code sidecar and a hardware-virtualized Linux guest for
   agent execution [runtime + public].
 
@@ -204,12 +204,12 @@ React, router, query, Radix, Base UI, Zustand, Motion, Zod, GrowthBook,
 internationalization, virtualization, icons, lodash, Luxon, and Anthropic's own
 design system [bundle]. Other fingerprints include:
 
-- ProseMirror/Tiptap for rich composition;
-- CodeMirror and Monaco for file/code editing;
-- xterm.js and `node-pty` for integrated terminals;
-- Shiki, KaTeX, Mermaid 11.15, and rich Markdown rendering;
+- ProseMirror/Tiptap for rich composition.
+- CodeMirror and Monaco for file/code editing.
+- xterm.js and `node-pty` for integrated terminals.
+- Shiki, KaTeX, Mermaid 11.15, and rich Markdown rendering.
 - PDF, Office document, image, SVG, HTML, React, CSV/TSV, and interactive
-  artifact surfaces;
+  artifact surfaces.
 - Sentry debug IDs/telemetry and GrowthBook feature gates.
 
 The renderer contains several generations of the web stack — React 19 for Ion,
@@ -233,7 +233,7 @@ With the app idle on its Code home [runtime]:
 - No Claude Code child was active while the Code home was idle. The desktop
   downloads and launches the CLI for a session rather than keeping it resident.
 - No Claude-owned TCP listener was present at observation time. Normal UI
-  traffic is outbound HTTPS; local subprocess control uses Electron IPC,
+  traffic is outbound HTTPS. Local subprocess control uses Electron IPC,
   stdio, OS services, or VM sockets rather than a permanent localhost control
   port.
 
@@ -264,7 +264,7 @@ profile]
 
 - Developer ID signed, stapled notarization ticket, hardened runtime.
 - **Not App-Sandboxed**: no `com.apple.security.app-sandbox` entitlement.
-- Renderer helpers carry `allow-jit`; live renderer processes use Chromium's
+- Renderer helpers carry `allow-jit`. Live renderer processes use Chromium's
   renderer sandbox.
 - Main/helper entitlements include audio input, camera, Bluetooth, USB,
   printing, location, Photos, and `com.apple.security.virtualization`.
@@ -292,7 +292,7 @@ Electron fuse state is comparatively hardened [bundle]:
 - WebAssembly trap handlers: enabled
 - file-protocol extra privileges: **enabled**
 
-`Info.plist` pins the SHA-256 hash of `Resources/app.asar`; `codesign --verify
+`Info.plist` pins the SHA-256 hash of `Resources/app.asar`. `codesign --verify
 --deep --strict` passes. The strongest residual boundary is therefore not code
 signature integrity but the deliberate breadth of the host app: it is an
 unsandboxed, networked automation process with filesystem, VM, browser, screen,
@@ -317,7 +317,7 @@ Claude uses **Squirrel.Mac**, not Sparkle [bundle]:
 
 ### Claude Code engine
 
-The desktop manifest pins Claude Agent SDK `0.3.202`; its embedded release
+The desktop manifest pins Claude Agent SDK `0.3.202`. Its embedded release
 manifest downloads a separately versioned Claude Code build from
 `https://downloads.claude.ai/claude-code-releases`, checks its size and SHA-256,
 and installs it under Application Support [bundle + runtime]. The installed
@@ -327,9 +327,9 @@ engine was `2.1.202`.
 
 The app embeds VM bundle version
 `6d1538ba6fecc4e5c5583993c4b30bb1875f0f5a` and per-architecture SHA-256
-checksums. macOS/Linux hosts download `rootfs.img`; Windows downloads a VHDX,
+checksums. macOS/Linux hosts download `rootfs.img`. Windows downloads a VHDX,
 kernel, and initrd. Downloads are staged, checksum-verified, and atomically
-promoted; background warming can prefetch the next app-version mapping
+promoted. Background warming can prefetch the next app-version mapping
 [bundle].
 
 The update story is therefore not “update the app.” It is a compatibility
@@ -339,7 +339,7 @@ Code executable, desktop extensions, and VM rootfs.
 ## 9. Open/closed split
 
 - **Claude Desktop is closed**: `@ant/desktop`, `@ant/claude-native`, and
-  `@ant/claude-swift` are private internal packages; the product is emitted
+  `@ant/claude-swift` are private internal packages. The product is emitted
   from Anthropic's internal `apps` repository [bundle].
 - **Claude Code's core is closed**: the desktop downloads the same versioned
   binary used by the public Agent SDK, but the `anthropics/claude-code` license
@@ -348,7 +348,7 @@ Code executable, desktop extensions, and VM rootfs.
 - **The orchestration wrapper is public**: the Claude Agent SDK repositories
   expose the typed API and subprocess adapter, while resolving/spawning the
   proprietary CLI [public + bundle].
-- **The extension boundary is intentionally open**: MCP is an open protocol;
+- **The extension boundary is intentionally open**: MCP is an open protocol.
   MCPB/Desktop Extensions are zip archives with `manifest.json`, local MCP
   servers, dependencies, and stdio transport. Anthropic published the format
   and toolchain for other desktop apps to implement [public:
@@ -360,18 +360,18 @@ Code executable, desktop extensions, and VM rootfs.
   [anthropics/claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy)].
 
 The split is almost the inverse of ChatGPT/Codex: OpenAI ships an open Rust
-agent engine beneath a closed desktop and plugin layer; Anthropic ships a closed
+agent engine beneath a closed desktop and plugin layer. Anthropic ships a closed
 agent engine beneath public SDK, MCPB, plugin, and hardware integration
 boundaries.
 
 ## 10. SO WHAT for OpenAgents Desktop
 
 Context: OpenAgents Desktop is Electron + Effect Native
-(`apps/openagents-desktop`; Effect Native per `docs/effect-native/`, Sol master
+(`apps/openagents-desktop`, Effect Native per `docs/effect-native/`, Sol master
 roadmap §EN).
 
 **1. Electron is now validated by both frontier desktop strategies.** OpenAI
-uses an Electron-compatible Chromium fork; Anthropic gets Chat, Cowork, Code,
+uses an Electron-compatible Chromium fork. Anthropic gets Chat, Cowork, Code,
 computer use, Chrome control, terminals, native file access, Bluetooth, and a
 hardware VM from stock Electron. The question is not whether Electron can host
 an agentic operating surface. The question is how disciplined its trust and
@@ -393,7 +393,7 @@ make that contract an Effect Schema package, version it independently, and test
 replay/compatibility across engine releases.
 
 **4. Their VM split is more important than their web stack.** The host agent
-owns conversation, selected-folder file access, web fetch, and MCP; untrusted
+owns conversation, selected-folder file access, web fetch, and MCP. Untrusted
 code runs in a Linux guest under the platform hypervisor. That is a crisp
 authority boundary. OpenAgents Desktop should preserve the same conceptual
 split even when the first implementation is a lighter sandbox: host authority,
@@ -419,16 +419,16 @@ hashes, rollback rules, and a user-visible receipt before multiplying release
 planes.
 
 **7. Copy the concrete Electron hardening.** Disable RunAsNode,
-`NODE_OPTIONS`, and inspect flags; enable cookie encryption, asar integrity, and
-asar-only loading; keep renderers sandboxed; validate every privileged IPC
-sender origin; use dedicated schemes and partitions for file/artifact previews;
+`NODE_OPTIONS`, and inspect flags. Enable cookie encryption, asar integrity, and
+asar-only loading. Keep renderers sandboxed. Validate every privileged IPC
+sender origin. Use dedicated schemes and partitions for file/artifact previews.
 sign/notarize every downloaded executable. Claude's file-protocol extra
 privileges and unsandboxed host are reasons to make OpenAgents' exceptions
 explicit, not defaults.
 
 **8. MCPB compatibility is more valuable than a parallel package format.** The
-app associates `.mcpb`, legacy `.dxt`, and `.skill`; ships a direct MCP host and
-built-in Node execution; and exposes extensions, plugins, skills, connectors,
+app associates `.mcpb`, legacy `.dxt`, and `.skill`. Ships a direct MCP host and
+built-in Node execution. And exposes extensions, plugins, skills, connectors,
 and hardware through one product. OpenAgents' typed catalog should ingest the
 open MCPB format, add signatures/provenance/Effect schemas around it, and avoid
 inventing an incompatible zip-with-manifest convention.
@@ -437,10 +437,10 @@ inventing an incompatible zip-with-manifest convention.
 module and Swift bridge are large but conceptually bounded: OS integration,
 permissions, capture, VM lifecycle, hardware, and update cleanup. Effect Native
 should expose comparable capabilities as typed services with mock
-implementations; the renderer should never import native addons or own TCC/VM
+implementations. The renderer should never import native addons or own TCC/VM
 authority directly.
 
-**10. Stack overlap is broad; architecture is the differentiator.** React 19,
+**10. Stack overlap is broad. Architecture is the differentiator.** React 19,
 Radix/Base UI, TanStack-style query/router layers, Zustand, Tailwind, Motion,
 ProseMirror/Tiptap, CodeMirror, Monaco, xterm, Shiki, KaTeX, Mermaid, Vite,
 Forge, Playwright, Oxc, and native TypeScript tooling are all conventional

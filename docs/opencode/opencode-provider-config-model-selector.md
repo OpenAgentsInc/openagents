@@ -1,7 +1,7 @@
 # OpenCode Provider Config & Model Selector
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > Focused note for engineers wiring `openagents/khala` in OpenCode.

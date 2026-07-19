@@ -9,15 +9,15 @@ authority split between public status projection and risky actions.
 
 `authoritySummary` exposes separate booleans for:
 
-- `statusProjectionAllowed`;
-- `dispatchAuthorityAllowed`;
-- `spendAuthorityAllowed`;
-- `settlementAuthorityAllowed`;
-- `providerMutationAuthorityAllowed`;
-- `forumAutoPublishAllowed`;
-- `scheduledRunnerDispatchAllowed`;
-- `dispatcherGateGreen`;
-- `greenLaunchCopyAllowed`;
+- `statusProjectionAllowed`.
+- `dispatchAuthorityAllowed`.
+- `spendAuthorityAllowed`.
+- `settlementAuthorityAllowed`.
+- `providerMutationAuthorityAllowed`.
+- `forumAutoPublishAllowed`.
+- `scheduledRunnerDispatchAllowed`.
+- `dispatcherGateGreen`.
+- `greenLaunchCopyAllowed`.
 - `operatorApprovalRequired`.
 
 The normal retained GEPA scheduled runner may make

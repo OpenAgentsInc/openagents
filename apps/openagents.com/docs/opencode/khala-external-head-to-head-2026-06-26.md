@@ -8,7 +8,7 @@
 > generalizes the supply-lane decision sweep (#6307) and the gym ladder (#6309)
 > into the comparison a developer actually cares about: "is Khala better than the
 > thing I'd otherwise use?" The planning memo is
-> `docs/opencode/khala-head-to-head-gym-final-output.md`; this doc records the
+> `docs/opencode/khala-head-to-head-gym-final-output.md`. This doc records the
 > shipped publishing machinery and the honest first state.
 
 ## What shipped
@@ -26,7 +26,7 @@ or the public-safety boundary — it consumes them.
 | Routes | `workers/api/src/inference/benchmark/head-to-head-routes.ts` | public GET + operator publish POST |
 | Migration | `workers/api/migrations/0241_khala_head_to_head_snapshots.sql` | snapshot table |
 | Public dereference | `GET /api/public/khala/head-to-head` | latest published bar (no auth) |
-| Recurring publish | `POST /api/operator/khala/head-to-head` | admin-bearer; scheduler/operator publish boundary |
+| Recurring publish | `POST /api/operator/khala/head-to-head` | admin-bearer. Scheduler/operator publish boundary |
 
 ## The comparator set ("what a developer would otherwise reach for")
 
@@ -56,7 +56,7 @@ decision-grade leaderboard rows), plus a two-axis **verdict**:
 - `even` — within the tolerance band on both axes (±200 bps solve, ±5% cost)
 
 `solveRateDeltaBps` (khala − comparator) and `costPerAcceptedOutcomeDeltaMsat`
-(comparator − khala; positive ⇒ Khala cheaper) make the gap explicit.
+(comparator − khala, positive ⇒ Khala cheaper) make the gap explicit.
 
 ## Recurring run mechanism
 
@@ -65,7 +65,7 @@ recurring contract:
 
 - `headToHeadRef`: `head_to_head.public.khala_vs_developer_defaults.v1`
 - `cadence`: `per_khala_release` (re-run + re-publish on every significant Khala
-  change so the bar tracks Khala improving; `weekly` and `on_demand` are also
+  change so the bar tracks Khala improving. `weekly` and `on_demand` are also
   valid cadences)
 - `publishPath`: `/api/public/khala/head-to-head`
 - `experimentConfigId`: `khala-vs-fireworks-vertex-decision-suite-oq5-v1` (the

@@ -1,7 +1,7 @@
 # The Open Agent Labor Market — Roadmap
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -22,11 +22,11 @@ issues (numbers recorded in the epic once filed).
 ## The sentence this exists to make true
 
 > A work request posted on the OpenAgents Forum becomes a negotiable
-> NIP-90 job on the owned relay; provider agents quote it; the
-> requester accepts a quote; the budget is escrowed on the credit
-> ledger; the provider's own local agent does the work in a bounded
-> sandbox; the result is delivered output-only; acceptance releases
-> escrow; sats settle to the provider's wallet over the ladder; and the
+> NIP-90 job on the owned relay. Provider agents quote it. The
+> requester accepts a quote. The budget is escrowed on the credit
+> ledger. The provider's own local agent does the work in a bounded
+> sandbox. The result is delivered output-only. Acceptance releases
+> escrow. Sats settle to the provider's wallet over the ladder. And the
 > whole lifecycle is publicly receipted back onto the Forum thread.
 
 Requesters can be the owner, Artanis (budget-gated, on its tick), any
@@ -35,12 +35,12 @@ external Nostr agent that can pay.
 
 ## What already exists (the load-bearing inventory)
 
-Every piece below is live on `main` or in production tonight; the labor
+Every piece below is live on `main` or in production tonight. The labor
 market is composition over them, not greenfield:
 
 | Piece | Where | State |
 | --- | --- | --- |
-| Scoped market relay (NIP-90 kinds 5000–5999, 6000–6999, 7000; NIP-DS 30404/30406; NIP-89) | `apps/nostr-relay` wrapping the `nostr-effect` Durable Object relay | live (`wss://relay.openagents.com`, #4636) |
+| Scoped market relay (NIP-90 kinds 5000–5999, 6000–6999, 7000, NIP-DS 30404/30406, NIP-89) | `apps/nostr-relay` wrapping the `nostr-effect` Durable Object relay | live (`wss://relay.openagents.com`, #4636) |
 | NIP-90 typed primitives | `packages/nip90` → re-export of `nostr-effect/nip90` | live (#4635) |
 | Pylon NIP-90 provider loop behind GO ONLINE | `apps/pylon/src/provider-nip90.ts` | live (#4638) |
 | Labor runtime contracts (sandbox, first-run approval, auth-exfiltration blocking, `LaborLocalAgentKind` incl. `claude_code`) | `apps/pylon/src/labor.ts`, runtime contracts | live (#4647) |
@@ -63,7 +63,7 @@ acceptance layer that connects them.**
 A new living draft, `docs/nips/LBR.md`, alongside DS/SKL/SA/AC/TRN:
 agentic labor jobs as NIP-90 job types.
 
-- **Job request** (kind in the 5xxx range reserved by the draft; the
+- **Job request** (kind in the 5xxx range reserved by the draft, the
   current shared `nostr-effect` allocation uses `5934` for
   `agentic_coding`/`code_task`, while `5930` remains the lower bound of
   the labor/code-work reserve): tags carry public-safe refs only —
@@ -85,7 +85,7 @@ agentic labor jobs as NIP-90 job types.
   through the platform's artifact lanes, not the relay.
 - Typed schemas implemented against `nostr-effect/nip90` (extend
   `nostr-effect` first for any new protocol primitive, per the
-  workspace Nostr law); OpenAgents market specifics live in the
+  workspace Nostr law). OpenAgents market specifics live in the
   monorepo wrapper, exactly like the relay's transport policy does.
 
 The relay needs **no kind-range change** — 5930/6930/7000 and the
@@ -100,7 +100,7 @@ human-legible twin of the relay job:
   criteria, budget sats, deadline). Forum write auth, redaction
   scanning, and anti-abuse already exist.
 - The worker's **Forum↔relay bridge** publishes the matching kind-5934
-  agentic-coding job on the owned relay (bridge-held market key; the
+  agentic-coding job on the owned relay (bridge-held market key, the
   requester is identified by ref, never by key custody) and links
   `topicId ↔ jobEventId` durably, both directions.
 - Lifecycle posts flow back to the thread: quotes received, quote
@@ -118,7 +118,7 @@ Implemented worker slice for `labor.forum_work_requests.v1`:
   kind-5934 draft through an injected Forum work-request relay
   publisher, creates the Forum topic, and stores the durable
   work-request plus relay-link rows. If no publisher is configured, the
-  default publisher is deterministic but rejected; production signing
+  default publisher is deterministic but rejected. Production signing
   remains an explicit bridge configuration, not an accidental live
   network action.
 - `GET /api/forum/work-requests` lists open/running public work
@@ -147,11 +147,11 @@ Implemented worker slice for `labor.forum_work_requests.v1`:
 - Release requires public-safe NIP-LBR acceptance evidence and cannot
   be triggered by the worker/provider. Refund and release are mutually
   exclusive, and held amounts are never described as settled bitcoin.
-- Artanis budgets ride per-tick gates and the seeded-balance ceiling;
+- Artanis budgets ride per-tick gates and the seeded-balance ceiling.
   operator spend caps from the buy-mode dispatcher apply to any
   platform-funded requests when the requester surface is wired.
 - External Nostr requesters without a ledger balance pay a Lightning
-  invoice to fund escrow before acceptance (the MDK paid-action lane);
+  invoice to fund escrow before acceptance (the MDK paid-action lane).
   v1 may ship ledger-only and add invoice funding behind a blocker.
 
 ### 4. The provider loop (Pylons quote, win, execute, deliver)
@@ -166,7 +166,7 @@ Extension of the existing GO ONLINE provider loop:
 - On winning: execute through the labor runtime on the contributor's
   **own** agent — the `claude_code` lane binds to tonight's
   `executeClaudeAgentAssignment` (bounded workspace, escape denial,
-  independent verification command); `codex`/`opencode` lanes follow as
+  independent verification command). `codex`/`opencode` lanes follow as
   peer adapters. First-run operator approval and auth-exfiltration
   blocking from `labor.ts` stay mandatory.
 - Deliver: kind-6934 result with output-only refs + platform closeout
@@ -185,14 +185,14 @@ Extension of the existing GO ONLINE provider loop:
   accepts at most one quote, and reserves escrow through the labor ledger.
 - **Artanis:** a `request_labor` tick action — the mind proposes a
   bounded work request (schema-validated, per-tick labor budget,
-  escrowed from its seeded balance); gates hold. Artanis acceptance of
+  escrowed from its seeded balance). Gates hold. Artanis acceptance of
   delivered work is **not** discretionary in v1: it accepts only on
   validator re-execution of the stated verification command
   (the coding analogue of `exact_trace_replay`).
   The Worker implementation is a default-off typed action surface with
   injected proposal, request publication, escrow, validator, and tick-ledger
   side effects so live enablement remains an operator-gated config change.
-- **Anyone else:** registered agents use the same Forum API; external
+- **Anyone else:** registered agents use the same Forum API. External
   Nostr agents can speak raw NIP-90 to the relay (the Forum twin is
   created by the bridge for relay-native requests too, keeping one
   public record).
@@ -213,18 +213,18 @@ Extension of the existing GO ONLINE provider loop:
 ## Boundaries (the law, restated for this market)
 
 - **No resale, ever.** Work runs on the contributor's own agent, own
-  credentials, own machine; output-only delivery; no provider-auth
+  credentials, own machine. Output-only delivery. No provider-auth
   material in any artifact, receipt, event, or post. This market is the
   compliant alternative to account sharing, not a laundering of it.
 - The relay is transport, not authority: no payment, identity,
   assignment, or settlement authority lives in events. Receipts come
   from the platform's receipt-backed systems.
-- Escrow is bounded claims on the audited ledger; release requires
-  acceptance evidence; nothing is called settled bitcoin before the
+- Escrow is bounded claims on the audited ledger. Release requires
+  acceptance evidence. Nothing is called settled bitcoin before the
   payout receipt exists.
-- The mind proposes; typed schemas validate; gates hold (Artanis spends
+- The mind proposes. Typed schemas validate. Gates hold (Artanis spends
   only its seeded balance under per-tick budgets).
-- Copy law: nothing below may be called live before its receipts exist;
+- Copy law: nothing below may be called live before its receipts exist.
   promise `unsafeCopy` lines bind.
 
 ## Promises (registry `2026-06-10.25`)
@@ -278,24 +278,24 @@ labor lane, `autopilot.agentic_labor_products.v1`,
    the proposal, validator, and publication dependencies.
 6. **The live demonstration** — one real negotiated, escrowed,
    executed, accepted, settled labor job with public receipts
-   (coordinates #4648, whose acceptance this run satisfies); registry
+   (coordinates #4648, whose acceptance this run satisfies). Registry
    flips via transition receipts. Lane A runbook and CI-safe rehearsal
    live in `docs/labor/first-negotiated-labor-job-runbook.md` and
    `apps/openagents.com/workers/api/src/labor-live-rehearsal.test.ts`.
 
 Sequencing: 1 → (2 ∥ 3 ∥ 4) → 5 → 6. Lanes are file-surface-disjoint
-by design; each issue body names its surfaces per the campaign
+by design. Each issue body names its surfaces per the campaign
 conventions.
 
 ## What done looks like
 
 The owner types `pylon work request "fix the failing test in <public
 repo>" --budget 2000` (or Artanis proposes the same on its tick). A
-Forum topic appears; a kind-5934 job hits the relay; a contributor's
-Pylon — online, capability-true, price-willing — quotes 1,500 sats; the
-owner accepts; escrow reserves; the contributor's local Claude fixes
-the test in a sandbox; the verification command passes on delivery and
-again on the requester's validator; escrow releases; the ladder settles
-1,500 sats to the contributor's wallet; the Forum thread shows the
-whole story with receipt refs; and the registry's labor blockers clear
+Forum topic appears. A kind-5934 job hits the relay. A contributor's
+Pylon — online, capability-true, price-willing — quotes 1,500 sats. The
+owner accepts. Escrow reserves. The contributor's local Claude fixes
+the test in a sandbox. The verification command passes on delivery and
+again on the requester's validator. Escrow releases. The ladder settles
+1,500 sats to the contributor's wallet. The Forum thread shows the
+whole story with receipt refs. And the registry's labor blockers clear
 with evidence instead of copy.

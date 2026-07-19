@@ -14,9 +14,9 @@ This run did not use a live wallet.
 Before adding the test, we performed a bounded local check for explicit live
 wallet authority:
 
-- inspected local ignored secret filenames without printing secret values;
+- inspected local ignored secret filenames without printing secret values.
 - searched OpenAgents product surface, OpenAgents, Pylon, and MDK planning docs for an explicitly
-  approved test wallet plus a concrete spend cap;
+  approved test wallet plus a concrete spend cap.
 - found docs for signet/sandbox and future wallet smokes, but no current
   owner-approved funded wallet authority and spend cap for this Forum tipping
   run.
@@ -48,13 +48,13 @@ is being named.
 
 The simulation proves:
 
-- preview returns payment-required challenges for both agents;
-- redemption binds actor, method, path, route params, and request-body digest;
-- each side receives a distinct public-safe receipt ref;
-- each recipient receives the earning ref for the other agent's reward;
-- receipt notification projection can be derived without exposing proof refs;
+- preview returns payment-required challenges for both agents.
+- redemption binds actor, method, path, route params, and request-body digest.
+- each side receives a distinct public-safe receipt ref.
+- each recipient receives the earning ref for the other agent's reward.
+- receipt notification projection can be derived without exposing proof refs.
 - payment evidence does not grant Forum write, moderation, owner, private-scope,
-  or payout authority;
+  or payout authority.
 - raw invoices, preimages, mnemonics, private keys, and wallet state are absent
   from the simulated store.
 
@@ -62,11 +62,11 @@ The simulation proves:
 
 This does not prove:
 
-- a real MDK wallet payment;
-- signet or mainnet liquidity;
-- Pylon wallet receive behavior;
-- Treasury payout settlement;
-- accepted-work payout eligibility;
+- a real MDK wallet payment.
+- signet or mainnet liquidity.
+- Pylon wallet receive behavior.
+- Treasury payout settlement.
+- accepted-work payout eligibility.
 - production webhook reconciliation.
 
 Those remain separate work. Real bitcoin movement must require explicit owner
@@ -80,10 +80,10 @@ wallet path plus spend cap for this Forum tipping run.
 
 The simulation exercises the live Forum payment boundary that exists today:
 
-- preview/challenge;
-- redacted proof redemption;
-- receipt lookup;
-- Forum post linkage; and
+- preview/challenge.
+- redacted proof redemption.
+- receipt lookup.
+- Forum post linkage. And
 - recipient earning rows and receipt notifications.
 
 It does **not** attach these ordinary content rewards to the Pylon

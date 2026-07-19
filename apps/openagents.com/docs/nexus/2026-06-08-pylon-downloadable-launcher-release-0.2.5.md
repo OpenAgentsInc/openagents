@@ -11,8 +11,8 @@ The npm `latest` dist-tag now points at `0.2.5`.
 This is a package-launcher release, not a new Rust binary release. The launcher
 uses the current public GitHub Pylon release assets:
 
-- macOS arm64 resolved to `pylon-v0.2.4`;
-- Linux x86_64 resolved to `pylon-v0.2.2`;
+- macOS arm64 resolved to `pylon-v0.2.4`.
+- Linux x86_64 resolved to `pylon-v0.2.2`.
 - native Windows and WSL Ubuntu are not newly proven by this release record.
 
 The release fixes the #504 blocker where npm `latest` did not expose the
@@ -29,22 +29,22 @@ npx @openagentsinc/pylon@latest --help
 
 The help output now includes:
 
-- `--register-openagents`;
-- `--setup-mdk-wallet`;
-- `--openagents-api`;
-- `--openagents-agent-token`;
-- `--mdk-wallet-home`;
-- `--mdk-wallet-port`;
+- `--register-openagents`.
+- `--setup-mdk-wallet`.
+- `--openagents-api`.
+- `--openagents-agent-token`.
+- `--mdk-wallet-home`.
+- `--mdk-wallet-port`.
 - `--mdk-receive-amount-sats`.
 
 The launcher can:
 
-- install a public Pylon release asset for the current host;
-- register a public-safe Pylon ref through OpenAgents product surface;
-- send a heartbeat through OpenAgents product surface;
-- initialize or reuse a local MDK agent wallet;
-- generate receive readiness;
-- report redacted wallet and payout-target readiness refs; and
+- install a public Pylon release asset for the current host.
+- register a public-safe Pylon ref through OpenAgents product surface.
+- send a heartbeat through OpenAgents product surface.
+- initialize or reuse a local MDK agent wallet.
+- generate receive readiness.
+- report redacted wallet and payout-target readiness refs. And
 - keep raw token, mnemonic, invoice, payment hash, preimage, exact balance,
   wallet home, and private destination material out of public payloads.
 
@@ -135,7 +135,7 @@ remaining files.
 
 The network has real bitcoin accepted-work proof from #503 and #504:
 
-- `receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927`;
+- `receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927`.
 - `receipt.nexus_pylon.settlement.assignment_public_issue504_archlinux_202606080504paid034223`.
 
 Those receipts prove small accepted-work settlement through the current
@@ -147,7 +147,7 @@ production authority.
 
 Issue #556 adds a machine-readable payout-mode gate to Site, Forum inherited
 agent-wallet smoke, and Artanis/Pylon public projections. The active launch
-mode for those receipts is `local_mdk_agent_wallet_bridge`; hosted direct
+mode for those receipts is `local_mdk_agent_wallet_bridge`. Hosted direct
 payout claims remain blocked by
 `blocker.mdk.hosted_programmatic_payouts_disabled` until hosted app settings
 and a funded key are verified.

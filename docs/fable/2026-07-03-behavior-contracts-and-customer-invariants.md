@@ -2,12 +2,12 @@
 
 Date: 2026-07-03
 Status: design + first-cut invariant catalog. The internal layer landed the
-same day (see §9d of [`ROADMAP_QA.md`](./ROADMAP_QA.md)); the customer layer
+same day (see §9d of [`ROADMAP_QA.md`](./ROADMAP_QA.md)). The customer layer
 is the QA Swarm deliverable this document scopes. Episode 246
 (`docs/transcripts/246.md`) walks the whole idea on camera — product
 promises at the macro level, UX Behavior Contracts as the micro level,
 the 36-hour session-history mining pass, and the business-intake vision of
-converting customer "vibing" into enforced contracts; the registry record
+converting customer "vibing" into enforced contracts. The registry record
 is `khala_code.ux_behavior_contracts.v1` (registry `2026-07-03.1`).
 
 ## 1. The idea
@@ -38,7 +38,7 @@ Effect Schema records, registry validation, oracle-coverage checking behind a
 swappable `BehaviorContractOracleSource` service). The contract **data** is
 deliberately plain JSON — any runner in any stack can validate a registry and
 execute oracles against it. Effect gives *us* swappable execution layers
-(file-backed, in-memory, qa-scenario, remote-target); it is not a customer
+(file-backed, in-memory, qa-scenario, remote-target). It is not a customer
 requirement.
 
 ## 2. The invariant catalog — what we offer to enforce
@@ -62,7 +62,7 @@ this menu and writing the client's own statements into their registry.
    `docs/qa/khala-code-latency-budgets.md` pattern: budget ids as data,
    sweep evaluates and files offenders).
 4. **Error-state honesty.** Induced failures surface a visible, accurate
-   error; no silent failure, no infinite spinner, no success copy on a
+   error. No silent failure, no infinite spinner, no success copy on a
    failed action. Oracle: fault-injection scenarios with DOM assertions.
 5. **Dead-control detection.** Every visible interactive control does
    something observable. Oracle: crawler + monkey explorer with an
@@ -83,7 +83,7 @@ this menu and writing the client's own statements into their registry.
    keyboard operability on the flows named in (2). Oracle: AX-tree
    assertions (qa-runner Mode V lineage).
 10. **Money-path integrity** (where applicable). Checkout/billing flows
-    verified in test mode each sweep; live-mode smoke only with the
+    verified in test mode each sweep. Live-mode smoke only with the
     client's explicit arming, mirroring our own live-tier invariants.
 
 ### 2.1 TS-5 starter set for generated Sites
@@ -118,12 +118,12 @@ public claim advanced. Details live in
   budget caps + auto-pause so a flapping customer staging is never a money
   pump (BA-B4), and the result posted back to the client's channel via the
   integration template (BA-G1). The pilot (#8186) should ride those lanes
-  rather than growing a bespoke scheduler; contract deviations can later
+  rather than growing a bespoke scheduler. Contract deviations can later
   land as WS-H ledger rows with handled-state for triage.
 - **Receipts:** every sweep produces a per-contract pass/fail receipt
   (promise-transition-receipt shape: checks, evidence refs, checkedAt) so
   "it was green on date X" is a lookup, not a memory. Receipts never flip
-  registry state by themselves; state changes are maintainer actions.
+  registry state by themselves. State changes are maintainer actions.
 - **Alerts:** a deviation notifies the client (webhook/email/forum thread)
   with the contract id, the statement in their own words, and the failing
   evidence — a screenshot, trace, or diff, not a stack trace.
@@ -141,17 +141,17 @@ public claim advanced. Details live in
 
 1. Intake session: capture stated expectations verbatim (recorded, then
    written as `statement` fields — the client signs off on the wording).
-2. We author the registry + oracle pack against their staging URL; every
+2. We author the registry + oracle pack against their staging URL. Every
    contract starts `pending`.
 3. Contracts flip to `enforced` one by one as oracles land and pass —
    mechanical gate, no vibes.
-4. Cadence + alert channel configured; receipts and the evidence URL go
+4. Cadence + alert channel configured. Receipts and the evidence URL go
    live.
-5. Ongoing: new expectations enter through the same intake rule; deviations
+5. Ongoing: new expectations enter through the same intake rule. Deviations
    file as strict bugs with the contract id in the title.
 
 Pricing/packaging, the swarm board, and the sales motion stay owned by
-[`2026-07-02-qa-swarm-product-plan.md`](./2026-07-02-qa-swarm-product-plan.md);
+[`2026-07-02-qa-swarm-product-plan.md`](./2026-07-02-qa-swarm-product-plan.md).
 this catalog is the substance those packages sell.
 
 ## 5. Internal standing rule for new services
@@ -173,19 +173,19 @@ contract change and needs the owner's sign-off.
 
 ## 6. Boundaries
 
-- Contracts bind behavior claims; they grant no authority — no deploy,
+- Contracts bind behavior claims. They grant no authority — no deploy,
   spend, moderation, or data-access rights follow from a green registry.
-- Client registries and receipts are client-private by default; the public
+- Client registries and receipts are client-private by default. The public
   scoreboard pattern applies only when the client opts in.
-- Fixture tiers never touch client production credentials; live-mode oracles
+- Fixture tiers never touch client production credentials. Live-mode oracles
   run only under the client's explicit arming, mirroring our own live-tier
   invariants in `ROADMAP_QA.md` §11.
 
 ## 7. AssuranceSpec relationship addendum (2026-07-13)
 
 Behavior contracts remain durable micro-promises and retain their statements,
-lifecycle, oracle refs, and enforcement state. An Assurance Spec may reference
+lifecycle, oracle refs, and enforcement state. An AssuranceSpec may reference
 or propose them but cannot copy, silently rewrite, activate, waive, or retire
 them. The canonical relationship is documented in
-[`../assurance/CURRENT_SYSTEM_MAP.md`](../assurance/CURRENT_SYSTEM_MAP.md); no
+[`../assurance/CURRENT_SYSTEM_MAP.md`](../assurance/CURRENT_SYSTEM_MAP.md). No
 AssuranceSpec integration is claimed live here.

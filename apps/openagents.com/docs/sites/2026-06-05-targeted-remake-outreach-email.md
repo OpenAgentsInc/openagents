@@ -11,13 +11,13 @@ operator approval and suppression state, then calls
 
 `TargetedRemakeOutreachEmailInput` renders:
 
-- concept preview link;
-- meeting/review link;
-- sender name and contact;
-- postal/contact address;
-- unsubscribe link;
-- manage-preferences link;
-- a source-safe value proposition;
+- concept preview link.
+- meeting/review link.
+- sender name and contact.
+- postal/contact address.
+- unsubscribe link.
+- manage-preferences link.
+- a source-safe value proposition.
 - explicit concept disclosure that the preview is not operated or endorsed by
   the target organization.
 
@@ -30,26 +30,26 @@ The D1 table is `targeted_site_remake_outreach_email_dispatches`.
 
 Each row links:
 
-- campaign and optional prospect;
-- normalized domain;
-- preview generation ref;
-- operator review event ref;
-- EmailService message ref;
-- recipient ref, not raw recipient email;
-- template slug;
-- suppression state;
-- accepted/failed/blocked/skipped dispatch state;
+- campaign and optional prospect.
+- normalized domain.
+- preview generation ref.
+- operator review event ref.
+- EmailService message ref.
+- recipient ref, not raw recipient email.
+- template slug.
+- suppression state.
+- accepted/failed/blocked/skipped dispatch state.
 - redacted error summary and metadata.
 
 ## Gates
 
 Dispatch requires:
 
-- operator decision `approve_outreach`;
-- operator next state `outreach_approved`;
-- operator suppression state `clear`;
-- generated preview URL;
-- public-safe value proposition and concept disclosure;
+- operator decision `approve_outreach`.
+- operator next state `outreach_approved`.
+- operator suppression state `clear`.
+- generated preview URL.
+- public-safe value proposition and concept disclosure.
 - unsubscribe and preferences URLs in the email input.
 
 The dispatch layer rejects private provider payloads, raw browser logs, secret

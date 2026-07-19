@@ -47,7 +47,7 @@ Command cards use Autopilot's dense scan-readout grammar only through Khala
 roles. The header keeps the command primary, with exit code and duration in a
 right-aligned mono column. The detail well reports `CWD` and `SOURCE`, streams
 a bounded mono output tail, and states when earlier output was omitted. Running,
-completed, and failed states use Khala semantic accent/success/danger roles;
+completed, and failed states use Khala semantic accent/success/danger roles.
 they never introduce a gray page surface or raw donor-palette literal.
 
 Live `item/commandExecution/outputDelta` updates and persisted rollout history
@@ -64,7 +64,7 @@ surface hierarchy. No raw Autopilot literal or parallel theme may be mounted.
 
 Each row expands independently to a bounded unified diff and must state when
 the bound omitted content. The patch lifecycle remains visible in the card
-header. Live file patch updates reconcile by provider item identity; the
+header. Live file patch updates reconcile by provider item identity. The
 latest aggregate turn diff has one stable turn-scoped identity. Persisted
 `apply_patch` records use the identical typed component rather than a generic
 tool or metadata row.
@@ -125,7 +125,7 @@ surface feel technical.
   a replacement family for missing weights.
 - `font-display: swap` preserves first paint while the branded faces load.
 - Web, docs, splash, and Desktop must use `--oa-font-sans` and
-  `--oa-font-mono`; a surface may not redefine competing primary stacks.
+  `--oa-font-mono`. A surface may not redefine competing primary stacks.
 
 ### Licensing
 
@@ -149,5 +149,5 @@ Typography should support the existing Khala visual system: precise,
 high-contrast, information-dense, and calm. Inter carries human-facing
 hierarchy and sustained reading. Disket Mono marks machine-facing detail.
 Zalando Sans contributes only rare marketing emphasis. The contrast between
-those roles is structural; it should not be recreated with arbitrary display
+those roles is structural. It should not be recreated with arbitrary display
 fonts, excessive letter spacing, or all-monospace layouts.

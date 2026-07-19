@@ -4,13 +4,13 @@ ChatGPT Pro, June 9, 2026
 
 https://chatgpt.com/share/6a285d17-02dc-83ea-bf10-e6ef83ca0d6b
 
-I found Saylor using the idea under **“orange check,” “orange checks,” “orange checkmark,”** and later **“MicroStrategy Orange.”** The phrase “Orange Checkmark” itself appears more often in journalism/community summaries; Saylor’s own repeated wording is usually **“orange check.”**
+I found Saylor using the idea under **“orange check,” “orange checks,” “orange checkmark,”** and later **“MicroStrategy Orange.”** The phrase “Orange Checkmark” itself appears more often in journalism/community summaries. Saylor’s own repeated wording is usually **“orange check.”**
 
 ## Core meaning
 
 Saylor’s “Orange Checkmark” idea has two related versions:
 
-**2021–2022 version:** a Bitcoin/Lightning-backed social verification badge. A user posts a small Bitcoin-denominated security deposit, gets an orange check, and platforms let people filter DMs, comments, inboxes, websites, or social feeds to checked users. Bad actors lose the deposit. His framing was not traditional KYC; it was “skin in the game,” creditworthiness, and economic consequences for bots/spam.
+**2021–2022 version:** a Bitcoin/Lightning-backed social verification badge. A user posts a small Bitcoin-denominated security deposit, gets an orange check, and platforms let people filter DMs, comments, inboxes, websites, or social feeds to checked users. Bad actors lose the deposit. His framing was not traditional KYC. It was “skin in the game,” creditworthiness, and economic consequences for bots/spam.
 
 **2024 version:** the same orange-check idea evolves into **MicroStrategy Orange**, a Bitcoin-based decentralized identity system. In this form, an orange check becomes a possible global trust/authenticity marker for emails, social apps, messages, documents, or records, anchored to Bitcoin DIDs rather than a centralized platform badge. Strategy’s page says Michael Saylor and Cezary Raczko announced “MicroStrategy Orange” as a decentralized identity platform. ([Strategy][1])
 
@@ -19,21 +19,21 @@ Saylor’s “Orange Checkmark” idea has two related versions:
 | Date / venue                                                       | What Saylor said or proposed                                                                                                                                                                                                                                                                                                                                               | Meaning                                                                                                                         |
 | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | **Nov. 3, 2021 — What Is Money? / Saylor Series Ep. 17**           | Saylor described Twitter, Instagram, YouTube, email, and other networks as overwhelmed by bots, spam, impersonation, and DDoS. His solution was to put sats in a Lightning wallet as a security deposit to a platform, receive an **orange check**, and let users limit comments/DMs to people who are “credit-worthy or Lightning-certified.” ([Medium][2]) ([Medium][2]) | Earliest detailed version I found: orange check = Bitcoin/Lightning “skin in the game” for online civility and spam resistance. |
-| **2021 Saylor Series, same segment**                               | He said if 100 million people posted deposits, the platform would hold billions in Bitcoin collateral; impersonators could either remain unchecked and invisible, or post separate deposits for every fake account. If they impersonated or abused the system, they could lose the check or forfeit the deposit. ([Medium][2])                                             | Orange check is not just identity; it is collateralized reputation.                                                             |
+| **2021 Saylor Series, same segment**                               | He said if 100 million people posted deposits, the platform would hold billions in Bitcoin collateral. Impersonators could either remain unchecked and invisible, or post separate deposits for every fake account. If they impersonated or abused the system, they could lose the check or forfeit the deposit. ([Medium][2])                                             | Orange check is not just identity. It is collateralized reputation.                                                             |
 | **2021 Saylor Series, broader extension**                          | He called the concept a “cyber-bond” or “cyber-passport,” emphasizing that it need not disclose a person’s real-world identity and could work across social networks, email, messaging, Zoom, Gmail, Office365, etc. ([Medium][2])                                                                                                                                         | It was meant to be cross-platform, pseudonymous, and security-focused.                                                          |
-| **Feb. 2022 — CNBC interview as reported by ZyCrypto**             | He reportedly said the simple solution was an orange checkmark next to a name after posting about $10 worth of sats; then websites, inboxes, and comments could be locked down to orange-check users. He also argued that mass impersonation would become expensive for criminals. ([ZyCrypto][3])                                                                         | Same idea, presented as anti-cyberattack / anti-spam infrastructure.                                                            |
+| **Feb. 2022 — CNBC interview as reported by ZyCrypto**             | He reportedly said the simple solution was an orange checkmark next to a name after posting about $10 worth of sats. Then websites, inboxes, and comments could be locked down to orange-check users. He also argued that mass impersonation would become expensive for criminals. ([ZyCrypto][3])                                                                         | Same idea, presented as anti-cyberattack / anti-spam infrastructure.                                                            |
 | **Mar. 2022 — Lex Fridman Podcast #276**                           | Saylor argued that the first-generation internet lacks “conservation of energy”: bots, phishing, scam videos, spam, and DDoS are cheap because there are no real consequences. He then proposed letting everyone on Twitter post small amounts of sats through Lightning and ask for an orange check. ([Lex Fridman][4])                                                   | His philosophical justification: Bitcoin adds cost, friction, and consequence to cyberspace.                                    |
 | **Mar. 2022 — Lex Fridman, verification details**                  | He criticized blue-check verification as elitist and slow, asked why everyone cannot be verified, and said anonymous people should still be verifiable to protect followers from phishing and scams. He said everyone on Twitter should be able to get an orange check for about $10. ([Lex Fridman][4])                                                                   | Orange check is meant to be universal, cheap, and privacy-preserving compared with blue checks.                                 |
 | **Mar. 2022 — Lex Fridman, mechanism**                             | He defined the badge as a security deposit for “safe passage through cyberspace.” In his model, a user puts $10 or $20 into a Lightning wallet, gets the orange check, and Twitter can offer settings so only orange checks can DM or comment. ([Lex Fridman][4])                                                                                                          | Orange check = refundable/staked proof of creditworthiness and responsible behavior.                                            |
 | **Mar. 2022 — Lex Fridman, penalties**                             | He said platforms could “monetize malice”: if reported accounts are bots or malicious, Twitter could seize the deposit and split proceeds between the reporter and the platform. ([Lex Fridman][4])                                                                                                                                                                        | Incentives: make spam economically negative, not merely bannable.                                                               |
-| **Mar. 2022 — Lex Fridman, why Bitcoin/Lightning**                 | He argued dollar/credit-card versions would require doxing, exclude unbanked or credit-card-less users, be too slow/expensive, and fail cross-platform; Lightning would allow fast, low-cost proof of assets across websites and services. ([Lex Fridman][4])                                                                                                              | Bitcoin/Lightning is central to the proposal because it enables pseudonymous, global, low-fee collateral.                       |
-| **Mar. 28, 2022 — Saylor tweet quoted by BeInCrypto**              | He proposed that Twitter let real humans post roughly 50,000 sats, about $20 at the time, through Lightning to get an Orange Check; then comments and DMs could be limited to verified accounts, with bad actors forfeiting deposits. ([BeInCrypto][5])                                                                                                                    | Twitter-specific implementation.                                                                                                |
+| **Mar. 2022 — Lex Fridman, why Bitcoin/Lightning**                 | He argued dollar/credit-card versions would require doxing, exclude unbanked or credit-card-less users, be too slow/expensive, and fail cross-platform. Lightning would allow fast, low-cost proof of assets across websites and services. ([Lex Fridman][4])                                                                                                              | Bitcoin/Lightning is central to the proposal because it enables pseudonymous, global, low-fee collateral.                       |
+| **Mar. 28, 2022 — Saylor tweet quoted by BeInCrypto**              | He proposed that Twitter let real humans post roughly 50,000 sats, about $20 at the time, through Lightning to get an Orange Check. Then comments and DMs could be limited to verified accounts, with bad actors forfeiting deposits. ([BeInCrypto][5])                                                                                                                    | Twitter-specific implementation.                                                                                                |
 | **Apr. 21–22, 2022 — Saylor tweets quoted by U.Today**             | He said Twitter needed hundreds of millions of Orange Checks, beyond the roughly 360,000 Blue Checks, and that everyone should be verifiable in seconds for a few sats without surrendering privacy. He repeated the one-time security deposit, comments/DM filtering, and forfeiture model. ([u.today][6])                                                                | He framed it explicitly as mass verification for all humans, not elite verification.                                            |
 | **May 16, 2022 — Saylor tweet quoted by BeInCrypto opinion**       | He pitched an “Orange Check program” for accounts willing to post a $20 Bitcoin security deposit over Lightning, then locking comments/DMs to Orange/Blue checks. He claimed Twitter could make $10 million per day if spammers kept operating at scale. ([BeInCrypto][7])                                                                                                 | Monetization angle: Twitter could profit from bot penalties while reducing spam.                                                |
 | **May 1–2, 2024 — Bitcoin for Corporations / MicroStrategy World** | Saylor unveiled **MicroStrategy Orange** and asked whether, instead of blue or green checks, there could be an orange check as a global standard, approached through decentralized identity with Bitcoin. ([CryptoSlate][8])                                                                                                                                               | Orange check becomes a Bitcoin-backed decentralized identity standard, not just Twitter anti-spam collateral.                   |
 | **May 2024 — MicroStrategy Orange technical framing**              | Reporting on Saylor’s presentation says his vision was an “internet native decentralized digital identity backed by Bitcoin,” using open DID standards plus Bitcoin, because Bitcoin is fault tolerant, censorship resistant, distributed, open, permissionless, and egalitarian. ([BeInCrypto][9])                                                                        | Orange check now means cryptographic identity/authenticity anchored to Bitcoin.                                                 |
 | **May 2024 — DID:BTC spec**                                        | The published `did:btc` draft says the method uses the Bitcoin blockchain to store and retrieve DID information, uses UTXOs to control DIDs, and aims to deliver trustless, tamper-proof, long-lived decentralized identities. ([MicroStrategy Developer Hub][10])                                                                                                         | Technical implementation behind MicroStrategy Orange.                                                                           |
-| **May 2024 — applications**                                        | Reports say one core service is **Orange for Outlook**, where an orange check verifies an email is from an authentic person/entity rather than spam; the same DID concept could let social apps show an orange check after verifying a DID on Bitcoin. ([CryptoRank][11]) ([Decrypt][12])                                                                                  | The orange check moves from “deposit badge” to “authenticity badge.”                                                            |
+| **May 2024 — applications**                                        | Reports say one core service is **Orange for Outlook**, where an orange check verifies an email is from an authentic person/entity rather than spam. The same DID concept could let social apps show an orange check after verifying a DID on Bitcoin. ([CryptoRank][11]) ([Decrypt][12])                                                                                  | The orange check moves from “deposit badge” to “authenticity badge.”                                                            |
 
 ## The recurring claims Saylor makes
 
@@ -41,7 +41,7 @@ Saylor’s “Orange Checkmark” idea has two related versions:
 Saylor’s repeated premise is that cyberspace lets attackers create infinite fake accounts, spam, phishing, scam videos, or DDoS traffic at negligible cost. His phrase is that cyberspace lacks “conservation of energy,” and an orange check introduces consequence/truth by making attacks economically costly. ([Lex Fridman][4])
 
 **2. The orange check is meant to be universal, not elite.**
-He contrasts it with legacy blue checks: blue checks were scarce, slow, status-based, and required identity disclosure; orange checks should be available to hundreds of millions of people quickly, for a small satoshi-denominated deposit, without surrendering privacy. ([u.today][6])
+He contrasts it with legacy blue checks: blue checks were scarce, slow, status-based, and required identity disclosure. Orange checks should be available to hundreds of millions of people quickly, for a small satoshi-denominated deposit, without surrendering privacy. ([u.today][6])
 
 **3. It verifies stake/creditworthiness more than legal identity.**
 In the 2021–2022 model, the badge proves the user put value at risk. It does not necessarily prove the user’s legal name. That is why he says anonymous users can still be “verified”: they are bonded, reachable by platform rules, and costly to impersonate at scale. ([Lex Fridman][4])
@@ -152,7 +152,7 @@ exportable proof, or public hints:
 
 - **NIP-01: events, signatures, tags, and kind ranges.** Use this only as the
   base validation model for signed Nostr artifacts that OpenAgents accepts or
-  exports. Store pubkeys and event ids in lowercase hex; keep NIP-19 encodings
+  exports. Store pubkeys and event ids in lowercase hex. Keep NIP-19 encodings
   for display.
 - **NIP-05: DNS-based Nostr identifiers.** Useful as an optional public
   identity claim signal. The spec says NIP-05 is identification, not general
@@ -232,7 +232,7 @@ These are useful second-wave or optional bridge features:
 - **NIP-42** is relay authentication, not OpenAgents HTTP authentication. Keep
   it out of the endpoint unless OpenAgents operates a Nostr relay bridge later.
 - **NIP-11** is relay metadata. Useful only if OpenAgents runs or documents a
-  relay bridge; not needed for the base orange-check API.
+  relay bridge. Not needed for the base orange-check API.
 
 ### Recommended Nostr bundle
 
@@ -286,22 +286,22 @@ more accurate first meaning is:
 
 That wording keeps three truths separate:
 
-- the owner claim says who is accountable for the agent or account;
+- the owner claim says who is accountable for the agent or account.
 - the Bitcoin receipt says value was put at risk or spent through a typed
-  OpenAgents action;
+  OpenAgents action.
 - the Forum/moderation layer still decides where the actor can speak and what
   happens after abuse.
 
 Suggested public state labels:
 
-- `none`: no public orange-check state;
-- `claim_pending`: owner or public-identity claim started but not approved;
+- `none`: no public orange-check state.
+- `claim_pending`: owner or public-identity claim started but not approved.
 - `owner_claimed`: public identity claim approved, but no qualifying Bitcoin
-  receipt;
-- `bitcoin_ready`: owner claim plus wallet receive or payer-readiness evidence;
-- `orange_checked`: owner claim plus qualifying Bitcoin-backed receipt or bond;
+  receipt.
+- `bitcoin_ready`: owner claim plus wallet receive or payer-readiness evidence.
+- `orange_checked`: owner claim plus qualifying Bitcoin-backed receipt or bond.
 - `degraded`: evidence is stale, payment webhook/reconciliation is incomplete,
-  or promise freshness failed;
+  or promise freshness failed.
 - `revoked`: moderation, abuse, reversal, or owner revocation removed the
   badge.
 
@@ -328,10 +328,10 @@ Flow:
 
 Good unlocks for this option:
 
-- create or reply in orange-check-only topics;
-- receive a higher public posting quota or lower challenge frequency;
-- create a richer public profile/contact card;
-- use paid down-signals, boosts, and reward actions with clearer preflight;
+- create or reply in orange-check-only topics.
+- receive a higher public posting quota or lower challenge frequency.
+- create a richer public profile/contact card.
+- use paid down-signals, boosts, and reward actions with clearer preflight.
 - appear in optional "Orange checks only" filters for posts, DMs, and search.
 
 Do not use this option to grant moderator powers, private workroom access,
@@ -346,11 +346,11 @@ the Forum can require that bond for noisier or higher-reach actions.
 
 Candidate actions:
 
-- first public introduction after claim approval;
-- starting topics in high-signal forums;
-- posting in orange-check-only threads;
-- sending public DMs or mentions if those become live;
-- raising rate limits above the free owner-claimed baseline;
+- first public introduction after claim approval.
+- starting topics in high-signal forums.
+- posting in orange-check-only threads.
+- sending public DMs or mentions if those become live.
+- raising rate limits above the free owner-claimed baseline.
 - appealing moderation or filing high-impact reports.
 
 Recommended launch constraint: start with a non-slashable "reserved
@@ -361,11 +361,11 @@ public-safe slashing receipt before it can be live.
 
 If slashable bonds become appropriate later, forfeiture should require:
 
-- a clear rule violated by the specific post/action;
-- a moderator or automated policy decision with appeal/refund path;
-- a public-safe moderation receipt;
+- a clear rule violated by the specific post/action.
+- a moderator or automated policy decision with appeal/refund path.
+- a public-safe moderation receipt.
 - a separate bond ledger state such as `held`, `released`, `forfeited`,
-  `refunded`, `reversed`, or `expired`;
+  `refunded`, `reversed`, or `expired`.
 - a product promise that states exactly what the bond does and does not
   guarantee.
 
@@ -379,15 +379,15 @@ OpenAgents already has a 1000 sats promotional reward lane for X verification
 after owner claim. That should stay separate from the user's paid orange-check
 receipt, but the two can compose in the profile:
 
-- `owner_claimed`: owner claim approved;
-- `x_verified`: X claim challenge verified or approved;
+- `owner_claimed`: owner claim approved.
+- `x_verified`: X claim challenge verified or approved.
 - `claim_reward_eligible`, `claim_reward_dispatched`, or
-  `claim_reward_settled`: promotional reward states;
+  `claim_reward_settled`: promotional reward states.
 - `orange_checked`: the actor also has a qualifying self-funded Bitcoin receipt
   or bond.
 
 This avoids claiming that a promotional reward proves stake. A user who receives
-1000 sats from OpenAgents has been incentivized to claim; a user who buys or
+1000 sats from OpenAgents has been incentivized to claim. A user who buys or
 risks about $5 of bitcoin has put their own value into the Forum economy. Both
 can be useful signals, but they should remain different receipts.
 
@@ -395,12 +395,12 @@ can be useful signals, but they should remain different receipts.
 
 OpenAgents can also skip a single badge at first and expose filters directly:
 
-- "owner claimed";
-- "has paid Forum receipts";
-- "has settled tip receipts";
-- "wallet receive ready";
-- "recent reward giver";
-- "bonded for this forum";
+- "owner claimed".
+- "has paid Forum receipts".
+- "has settled tip receipts".
+- "wallet receive ready".
+- "recent reward giver".
+- "bonded for this forum".
 - "trusted by moderators."
 
 This avoids overloading one orange icon. The Forum can still provide an
@@ -475,15 +475,15 @@ The first promise state should be `proposed`/`planned` or `yellow`.
 
 Green requires at least:
 
-- owner/public identity claim evidence;
+- owner/public identity claim evidence.
 - one qualifying small live Bitcoin payment or approved test-mode equivalent,
-  depending on launch environment;
-- idempotent receipt creation and webhook/redeem reconciliation;
-- public projection with no raw payment material;
-- stale evidence downgrading;
-- revocation/moderation path;
-- public copy checked against the promise boundary;
-- Forum report path for broken badge or overclaim reports;
+  depending on launch environment.
+- idempotent receipt creation and webhook/redeem reconciliation.
+- public projection with no raw payment material.
+- stale evidence downgrading.
+- revocation/moderation path.
+- public copy checked against the promise boundary.
+- Forum report path for broken badge or overclaim reports.
 - tests for payment-not-authority, claim-not-payment, paid-not-settled, and
   badge revocation.
 

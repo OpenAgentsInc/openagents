@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -60,12 +60,12 @@ versioned playbooks for the retained failure families:
 
 For `probe-codex`, the prompt addendum now carries:
 
-- selected signatures;
-- failure fingerprints;
-- required evidence;
-- closeout artifacts;
-- concrete playbook steps;
-- evidence filenames;
+- selected signatures.
+- failure fingerprints.
+- required evidence.
+- closeout artifacts.
+- concrete playbook steps.
+- evidence filenames.
 - retained raw reward to expected signature reward target.
 
 Raw `codex` still receives no signature addendum, preserving the ablation.
@@ -85,7 +85,7 @@ The preserved account-backed rerun in `CND-053` records the first package
 attempt at `0.0` reward and the revised package at `1.0` reward. This rule is
 now present in both:
 
-- the Python benchmark runner prompt addendum for `coding.sqlite_wal_recovery`;
+- the Python benchmark runner prompt addendum for `coding.sqlite_wal_recovery`.
 - the Rust `oa-codex-control` prompt generated from a Worker/Khala Sync
   `openagents.training_run_assignment.v1` assignment carrying
   `probe.signature.db-wal-recovery`.

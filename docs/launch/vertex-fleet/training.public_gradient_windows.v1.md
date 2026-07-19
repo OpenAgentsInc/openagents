@@ -280,7 +280,7 @@ This change adds it:
     receipt ref, plus `acceptedReceiptCount`, `rejectedReceiptCount`,
     `settlementEligibleReceiptCount`, and a de-duplicated sorted
     `rejectionReasonRefs`. It never throws, so it is safe at the edge of a real
-    public feed; an empty input yields an empty feed (the live state today).
+    public feed. An empty input yields an empty feed (the live state today).
   - Schema version
     `openagents.training.public_gradient_window.promotion_receipt_feed.v1`.
 - `tassadar-gradient-window-promotion-receipt-feed.test.ts` — exercises the empty
@@ -377,7 +377,7 @@ This change adds it:
     (each `{ recordRef, windowRef, pendingVerificationStages }`)
     deterministically ordered by record ref, plus `acceptedRecordCount`,
     `rejectedRecordCount`, and a de-duplicated sorted `rejectionReasonRefs`. It
-    never throws, so it is safe at the edge of a real quarantine feed; an empty
+    never throws, so it is safe at the edge of a real quarantine feed. An empty
     input yields an empty feed (the live state today). Every admitted entry is
     residency-only — the feed surfaces no `promotionEligible` and confers no
     promotion, settlement, canonical-checkpoint, compiled-core-gradient, or

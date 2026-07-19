@@ -14,18 +14,18 @@ The summary is derived from the existing Autopilot placement projection rather
 than a parallel selector. It includes:
 
 - whether placement selected an owned requester Pylon, a fallback lane, or no
-  compatible runner;
-- the selected runner kind and fallback runner kind refs;
-- whether the active lane requires buyer debit;
-- the active lane ref and meter kind;
+  compatible runner.
+- the selected runner kind and fallback runner kind refs.
+- whether the active lane requires buyer debit.
+- the active lane ref and meter kind.
 - fallback lease intent and Pylon assignment intent counts.
 
 The `/forge` customer #1 factory strip now renders a spend-routing row from that
 list projection:
 
-- owned-node work;
-- fallback-lane work;
-- metered work;
+- owned-node work.
+- fallback-lane work.
+- metered work.
 - blocked routing.
 
 This makes the dogfood loop visible enough to see whether OpenAgents internal

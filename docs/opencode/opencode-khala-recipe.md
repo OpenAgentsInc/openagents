@@ -1,7 +1,7 @@
 # OpenCode to Khala Recipe
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > Authoritative recipe for issue #6239. This is repo documentation, not public
@@ -14,7 +14,7 @@ date). Not current direction; consult MASTER_ROADMAP.**
 > malformation or stall. Evidence:
 > [`khala-ecosystem-tool-verification.md`](./khala-ecosystem-tool-verification.md).
 > Note: the first `opencode run` after a fresh install pauses while OpenCode
-> fetches the `@ai-sdk/openai-compatible` provider package; let it finish and
+> fetches the `@ai-sdk/openai-compatible` provider package. Let it finish and
 > re-run, or warm it with a simple non-tool query first.
 
 ## What You Get
@@ -116,7 +116,7 @@ base=https://openagents.com/api/v1; model=openagents/khala
 - Streaming: the TUI streams the answer without malformed SSE or dropped
   tool-call deltas.
 - Token counter: read `GET /api/public/khala-tokens-served` before and after
-  the run; the counter increases after the OpenCode request.
+  the run. The counter increases after the OpenCode request.
 - 402/quota path: after a key exhausts either 2,000 requests/day or 2,500,000
   tokens/day, Khala returns HTTP 402 with a readable OpenAI-style error body.
   OpenCode should surface the message instead of crashing.

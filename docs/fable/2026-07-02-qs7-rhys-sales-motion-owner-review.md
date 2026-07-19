@@ -1,7 +1,7 @@
 # QS7 Rhys Sales Motion Owner Review Packet
 
 Date: 2026-07-02
-Status: owner-gated evidence packet; no external PR opened
+Status: owner-gated evidence packet. No external PR opened
 Source issue: OpenAgentsInc/openagents#8067
 FleetRun: `fleet_run.qa8034.fixed.20260703T014152Z`
 Pinned base: `main@e5473b5657678104fe376087adc03d01b55b22d5`
@@ -45,7 +45,7 @@ without running anything locally.
 | --- | --- | --- |
 | Audit run against executor produces full artifact set | Complete for the read-only public-home scenario | Browser video, trace, screenshot, result verdict, terminal asciicast, terminal snapshots, committed e2e test, chill-eval output, and share projection are fingerprinted below. |
 | PR drafted with auto-attached media, distilled test, verdict, share URL | Drafted, not opened | Concrete body below uses public refs and sha256 fingerprints. Media upload/attachment location remains owner-gated. |
-| Chill-evals variant comparison included | Complete for local/fixture no-spend comparison | Baseline public-home scenario passed; deliberately false candidate failed honestly. This proves the comparison harness and public page behavior, not a decision-grade hosted lane. |
+| Chill-evals variant comparison included | Complete for local/fixture no-spend comparison | Baseline public-home scenario passed. Deliberately false candidate failed honestly. This proves the comparison harness and public page behavior, not a decision-grade hosted lane. |
 | Owner sign-off recorded before PR goes public | Recorded as required, not granted | `NEEDS_OWNER.md` carries the QS7 owner gate. |
 
 No external repository content was modified. No public comment or PR was opened
@@ -88,10 +88,10 @@ receipt:
 | --- | --- | --- |
 | Browser webm | `video.qa_swarm.executor.<run>.<browser>` | Must show only target app/browser state intended for the demo. |
 | Terminal video | `video.qa_swarm.executor.<run>.<terminal>` | Must redact local paths, tokens, env values, and raw provider payloads. |
-| Distilled test | `test.qa_swarm.executor.<scenario>.e2e` | Committed in the external PR; should be readable as the verification contract. |
+| Distilled test | `test.qa_swarm.executor.<scenario>.e2e` | Committed in the external PR. Should be readable as the verification contract. |
 | Verdict | `artifact.qa_swarm.executor.<run>.verdict` | CONFIRMED, REFUTED, or INCONCLUSIVE from observed run output only. |
-| Share URL | `qa-run.executor.<run>` rendered at `/qa/{runRef}` or equivalent | Public projection only; private target details stay opaque. |
-| Chill-evals comparison | `trace.compare.qa_swarm.executor.<run>` | Variant axis and outcome deltas only; no raw prompts or credentials. |
+| Share URL | `qa-run.executor.<run>` rendered at `/qa/{runRef}` or equivalent | Public projection only. Private target details stay opaque. |
+| Chill-evals comparison | `trace.compare.qa_swarm.executor.<run>` | Variant axis and outcome deltas only. No raw prompts or credentials. |
 
 ## Draft External PR Body
 
@@ -153,11 +153,11 @@ executor public-home scenario:
 | `variantRef` | `baseline`, `candidate` |
 | `mcpProfileRef` | `executor-public:baseline`, `executor-public:impossible-copy` |
 | `scenarioRef` | `test.qa_swarm.executor.public_home.e2e` |
-| `verdict` | Baseline `CONFIRMED`; candidate `REFUTED` |
-| `durationMs` | Baseline `1176`; candidate `1009` |
+| `verdict` | Baseline `CONFIRMED`. Candidate `REFUTED` |
+| `durationMs` | Baseline `1176`. Candidate `1009` |
 | `traceRef` | `trace.compare.qa_swarm.executor.qs7-executor-public-home-20260703` |
 | `videoRefs` | Baseline/candidate video refs in the live receipt manifest |
-| `deltaSummary` | Candidate pass-rate delta `-100%`; candidate failure is the deliberate impossible-copy assertion. |
+| `deltaSummary` | Candidate pass-rate delta `-100%`. Candidate failure is the deliberate impossible-copy assertion. |
 
 ## Owner Gate
 

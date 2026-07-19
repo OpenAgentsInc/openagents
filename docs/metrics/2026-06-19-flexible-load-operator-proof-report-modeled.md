@@ -30,31 +30,31 @@ Evidence-state labels used per row:
 
 - **receipt_backed** — derived from an OpenAgents settled receipt.
 - **modeled** — an operational estimate from the studied references / public
-  market data; NOT measured OpenAgents telemetry.
+  market data. NOT measured OpenAgents telemetry.
 
 ## State comparison (dollars per MWh consumed/avoided)
 
-A single ~1 MW flexible facility; ERCOT-style hourly LMP regime; figures are
+A single ~1 MW flexible facility. ERCOT-style hourly LMP regime. Figures are
 per-MWh and **modeled** unless marked otherwise. They are illustrative of the
 *ordering and structure* of states, not a measured operator result.
 
 | State | What the load does | Modeled $/MWh basis | Evidence state |
 |---|---|---|---|
-| Accepted outcomes | Run verified accepted-work units (the OpenAgents product) | Revenue per accepted outcome ÷ energy per outcome; seed AO/kWh ≈ 0.033 from #4777 (modeled 100 W, ~30 min) | receipt_backed (numerator) + modeled (energy) |
-| AI inference compute | Serve gateway/open-model inference | sell = provider/serving cost × margin; $/MWh from ML.Energy J/token × token price | modeled |
-| Bitcoin mining | Hash at nameplate when power is cheap | block-by-block reward × hashprice − energy cost; floor revenue per MWh | modeled |
+| Accepted outcomes | Run verified accepted-work units (the OpenAgents product) | Revenue per accepted outcome ÷ energy per outcome. Seed AO/kWh ≈ 0.033 from #4777 (modeled 100 W, ~30 min) | receipt_backed (numerator) + modeled (energy) |
+| AI inference compute | Serve gateway/open-model inference | sell = provider/serving cost × margin. $/MWh from ML.Energy J/token × token price | modeled |
+| Bitcoin mining | Hash at nameplate when power is cheap | block-by-block reward × hashprice − energy cost. Floor revenue per MWh | modeled |
 | Grid service (ancillary/DR) | Offer curtailable load for response/reserve | capacity payment + energy back-off credit during DR events | modeled |
 | AI-load smoothing | Shift compute off price peaks into troughs | avoided peak $/MWh − trough $/MWh, net of deferral cost | modeled |
 | Forward-purchased power capture | Consume against a forward-bought block | spot − forward strike, captured when spot > strike | modeled |
 | Curtailment | Reduce/stop load on a price/grid signal | avoided energy cost at the curtailment-hour LMP (a SAVING, not revenue) | modeled |
 | Reserve (spinning/standby) | Hold capacity ready to ramp | standby capacity payment − holding cost | modeled |
-| Idle | No productive load | $0 revenue; only fixed/standby cost — the baseline floor | modeled (floor) |
+| Idle | No productive load | $0 revenue. Only fixed/standby cost — the baseline floor | modeled (floor) |
 
 Structural ordering the model encodes (not a measured claim): accepted outcomes
-and AI inference are the highest-value uses of a kWh when demand exists; mining is
-the floor that monetizes otherwise-idle cheap power; grid service / curtailment /
+and AI inference are the highest-value uses of a kWh when demand exists. Mining is
+the floor that monetizes otherwise-idle cheap power. Grid service / curtailment /
 reserve convert *flexibility itself* into value during high-price or grid-stress
-hours; idle is the baseline the others must beat. The flexible-load thesis is
+hours. Idle is the baseline the others must beat. The flexible-load thesis is
 that intelligently switching among these states beats any single static state.
 
 ## Flexible-load event history (status)
@@ -74,6 +74,6 @@ that intelligently switching among these states beats any single static state.
   labels (one of the named blockers), explicitly modeled. Still missing for
   green: energy-market ingestion wired to a live source, work-class flex profiles
   from real telemetry, and a real flexible-load event history (the curtailment
-  drill receipt). No state flip; receipt-first + owner sign-off remain required.
-- `metrics.accepted_outcomes_per_kwh.v1` — unchanged (yellow); referenced here as
+  drill receipt). No state flip. Receipt-first + owner sign-off remain required.
+- `metrics.accepted_outcomes_per_kwh.v1` — unchanged (yellow). Referenced here as
   the one receipt-backed quantity feeding this report.

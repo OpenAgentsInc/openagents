@@ -31,14 +31,14 @@ export const layerFromEnvironment = Layer.effect(
 - Use `Config.redacted(...)` for credentials.
 - Use `Config.schema(...)` or `Config.mapOrFail(...)` for refined values.
 - Use `Config.option(...)` for semantic absence.
-- Use `Config.withDefault(...)` for missing-data defaults only; malformed values still fail.
+- Use `Config.withDefault(...)` for missing-data defaults only. Malformed values still fail.
 - Use `Config.orElse(...)` only when intentionally catching any config parse failure.
 - Use `Config.unwrap(...)` / `Config.Wrap<T>` for `layerConfig(...)` helpers.
 
 ## Providers
 
 - Use `ConfigProvider.layer(provider)` to replace the active provider for an app or suite.
-- Use `ConfigProvider.layerAdd(provider)` for fallbacks; pass `{ asPrimary: true }` when the added provider must override the current provider.
+- Use `ConfigProvider.layerAdd(provider)` for fallbacks. Pass `{ asPrimary: true }` when the added provider must override the current provider.
 - Use `ConfigProvider.fromUnknown(...)` for deterministic test config.
 - Use `ConfigProvider.fromEnv(...)` for environment variables.
 - Use `ConfigProvider.constantCase` when camelCase schema keys should read `SCREAMING_SNAKE_CASE` env vars.

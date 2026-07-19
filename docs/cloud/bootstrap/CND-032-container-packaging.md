@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -69,9 +69,9 @@ The build script deliberately accepts no secret arguments.
 
 Runtime secrets must be supplied through one of these paths:
 
-- scoped platform identity;
-- local broker or gateway;
-- mounted secret files outside the image;
+- scoped platform identity.
+- local broker or gateway.
+- mounted secret files outside the image.
 - short-lived workroom grants resolved by the runner.
 
 Do not bake provider tokens, wallet material, bearer tokens, Codex auth files,

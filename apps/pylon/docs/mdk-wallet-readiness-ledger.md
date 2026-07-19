@@ -8,10 +8,10 @@ admission refs, and local ledger events.
 MDK owns wallet operations. Pylon owns launch-safe classification and public
 projection:
 
-- balance unknown/offline is not zero;
-- receive readiness is not send readiness;
-- send readiness is blocked unless explicit MDK evidence proves it;
-- payout-target admission is a public-safe ref, not a raw invoice or offer;
+- balance unknown/offline is not zero.
+- receive readiness is not send readiness.
+- send readiness is blocked unless explicit MDK evidence proves it.
+- payout-target admission is a public-safe ref, not a raw invoice or offer.
 - settlement claims require a settlement/ledger ref.
 
 ## CLI
@@ -79,7 +79,7 @@ Set a free port and rerun, e.g.:
 Or stop the process already holding 3456 before starting the wallet daemon.
 ```
 
-Set `MDK_WALLET_PORT` to any free port to avoid the collision entirely; this is
+Set `MDK_WALLET_PORT` to any free port to avoid the collision entirely. This is
 also what clears `blocker.wallet.mdk_port_unset` in the send-readiness preflight
 above. The classifier emits only the env-var name, the numeric port, and a
 redacted stable ref — never any wallet secret — so it is public-projection safe.
@@ -93,10 +93,10 @@ lets the MDK wallet command start normally.
 
 This is deliberately narrow:
 
-- live PIDs are left untouched;
+- live PIDs are left untouched.
 - PIDs that exist but cannot be signaled because of permissions are treated as
-  live;
-- only the MDK agent-wallet pidfile path is reclaimed;
+  live.
+- only the MDK agent-wallet pidfile path is reclaimed.
 - no wallet material, payment ids, invoices, hashes, preimages, or mnemonics are
   read or projected.
 

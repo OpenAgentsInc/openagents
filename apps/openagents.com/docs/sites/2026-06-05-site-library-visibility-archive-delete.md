@@ -35,10 +35,10 @@ across owners.
 
 The Site library projection includes:
 
-- Site id, slug, title, status, access mode, visibility, owner, and order ref;
-- active deployment id/status/url and active version id;
-- version/deployment counts;
-- creation/update/archive timestamps;
+- Site id, slug, title, status, access mode, visibility, owner, and order ref.
+- active deployment id/status/url and active version id.
+- version/deployment counts.
+- creation/update/archive timestamps.
 - `canManage`, derived from owner/admin authority.
 
 It does not include source archives, build logs, raw prompts, secrets, customer
@@ -58,12 +58,12 @@ keeps customer controls from bypassing the existing public-launch checklist.
 Archive is reversible in future product work, but this slice treats archived
 Sites as hidden from active customer/public projections:
 
-- `site_projects.status = 'archived'`;
-- `site_projects.archived_at` is set;
-- access is reduced to `owner_admins`;
-- visibility is reduced to `private`;
-- active version/deployment pointers are cleared;
-- active deployments are disabled;
+- `site_projects.status = 'archived'`.
+- `site_projects.archived_at` is set.
+- access is reduced to `owner_admins`.
+- visibility is reduced to `private`.
+- active version/deployment pointers are cleared.
+- active deployments are disabled.
 - linked builder sessions are archived.
 
 Because the runtime resolver requires `archived_at IS NULL`, active public
@@ -73,12 +73,12 @@ slugs and dedicated version URLs stop resolving after archive.
 
 Delete is a soft delete:
 
-- `site_projects.status = 'disabled'`;
-- `site_projects.archived_at` is set;
-- access is reduced to `owner_admins`;
-- visibility is reduced to `private`;
-- active version/deployment pointers are cleared;
-- active deployments are disabled;
+- `site_projects.status = 'disabled'`.
+- `site_projects.archived_at` is set.
+- access is reduced to `owner_admins`.
+- visibility is reduced to `private`.
+- active version/deployment pointers are cleared.
+- active deployments are disabled.
 - linked builder sessions are archived.
 
 Physical deletion of source artifacts, build logs, receipts, and historical

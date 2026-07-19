@@ -3,7 +3,7 @@
 Date: 2026-07-19  
 Issue: [#9018](https://github.com/OpenAgentsInc/openagents/issues/9018)  
 Implementation receipt commit: `53ca9a3413f11f5517ec6c134a84c637556f2c83`  
-Status: delivered implementation evidence; no IDE-07, Zed-quality, or Cursor-parity claim
+Status: delivered implementation evidence. No IDE-07, Zed-quality, or Cursor-parity claim
 
 ## Result
 
@@ -17,7 +17,7 @@ draft or selection.
 
 The old controlled textarea is absent from the production React document
 route. `makeStubCodeEditorDriver()` remains only in the explicitly selected
-Effect Native compatibility renderer; it is not a supported production open
+Effect Native compatibility renderer. It is not a supported production open
 route and owns no document state.
 
 ## Authority and data flow
@@ -45,18 +45,18 @@ workspace service: revision/conflict/grant authority
 
 Monaco never receives the workspace root, bridge, grant, filesystem service,
 disk revision authority, or last durable bytes. A model is keyed by a branded
-opaque `IdeDocumentRef`; the mutable relative path is only a label and language
+opaque `IdeDocumentRef`. The mutable relative path is only a label and language
 hint. Finder main-process admission reduces an absolute OS-selected file to a
 containing-directory grant plus one validated relative basename before the
 renderer receives a typed command.
 
 The document service remains the second unsaved copy and source of truth for:
 
-- draft bytes, encoding, EOL, expected disk revision, dirty and conflict state;
+- draft bytes, encoding, EOL, expected disk revision, dirty and conflict state.
 - recovery version 3, including opaque identity, generation, incremental
-  sequence, selection, and every open draft;
+  sequence, selection, and every open draft.
 - save, save all, save as, close, conflict resolution, revocation, and stale
-  generation refusal; and
+  generation refusal. And
 - the distinction between model version, document event sequence, and durable
   disk revision.
 
@@ -70,20 +70,20 @@ rename or move can change the path label without changing model authority.
 The production editor is one lazy ESM island:
 
 - fixed entry URLs:
-  `openagents-app://renderer/ide-editor/editor.js` and `editor.css`;
+  `openagents-app://renderer/ide-editor/editor.js` and `editor.css`.
 - content-hashed editor, JSON, CSS, HTML, and TypeScript worker assets beneath
-  the same packaged private scheme;
+  the same packaged private scheme.
 - no Monaco implementation graph, model, view, listener, or worker on an
-  ordinary chat-only launch;
-- one model per opaque document ref and multiple view instances per model;
+  ordinary chat-only launch.
+- one model per opaque document ref and multiple view instances per model.
 - selection state scoped by `IdeEditorViewRef`, while registers, local marks,
-  and bounded dot-repeat state are shared by the document model; and
+  and bounded dot-repeat state are shared by the document model. And
 - idempotent view, model, listener, Vim-handler, worker, page-hide, and runtime
   finalization.
 
 The runtime exposes only `attach`, `resources`, and `dispose`. It is a mechanic,
 not an application service. Its inputs, events, Vim status, resource snapshot,
-benchmark receipt, and packaged-journey receipt are all Effect Schema values;
+benchmark receipt, and packaged-journey receipt are all Effect Schema values.
 TypeScript types are derived from those schemas.
 
 The build keeps the editor out of `boot.js` and emits a fixed CSS entry so the
@@ -111,11 +111,11 @@ indent/outdent, case toggle, undo/redo, `/`, and bounded `:write`, `:quit`,
 events and therefore cannot bypass revision/conflict/dirty guards.
 
 Normal mappings suspend during IME composition. Escape returns to Normal and
-collapses selection; blur clears pending modal state so editor mappings cannot
+collapses selection. Blur clears pending modal state so editor mappings cannot
 capture global keys. `Ctrl-V` is resolved before plain `v`. Disabling or
 disposing Vim removes both key and blur subscriptions, and packaged teardown
 requires the handler count to return to zero. Volatile modal state does not
-survive restart; only the user's on/off preference does.
+survive restart. Only the user's on/off preference does.
 
 IDE-04 still owns the complete keybinding/conflict inspector and broader
 settings surface. Unsupported Vim/global mapping expansion must remain an
@@ -134,7 +134,7 @@ of depending on color alone.
 
 Tokyo Night remains the only selectable theme through IDE-07. This delivery
 does not claim light, high-contrast light/dark, system-following, or arbitrary
-theme import support; those remain IDE-18 work.
+theme import support. Those remain IDE-18 work.
 
 ## Verification receipts
 
@@ -151,7 +151,7 @@ Environment: Apple Silicon macOS, Node 24.13.1, packaged Electron/Forge
 The controller benchmark used twelve isolated one-megabyte documents and 101
 edit/recovery samples. It measured a 105,415,352-byte heap delta because the
 bounded benchmark deliberately retains one hundred full 1 MB undo/recovery
-snapshots (105,414,504 measured bytes); this is retained-copy cost, not a worker/listener leak. Active
+snapshots (105,414,504 measured bytes). This is retained-copy cost, not a worker/listener leak. Active
 resource delta was zero. The build measured 1,964,887 bytes of ordinary boot
 JavaScript with no Monaco graph, 4,689,027 bytes of editor JavaScript, 487,927
 bytes of editor CSS, and 9,359,261 bytes of worker assets.
@@ -164,9 +164,9 @@ The packaged LaunchServices journey opens `ide03.ts` through the actual macOS
 types through Monaco's native accessible EditContext, observes canonical
 recovery, toggles Vim, mounts two views, and reloads. It proves:
 
-- editable Monaco, recovery, Vim toggle, and exactly two split views;
-- no production textarea and no absolute workspace root in rendered output;
-- fixed private-scheme CSS plus a live packaged worker; and
+- editable Monaco, recovery, Vim toggle, and exactly two split views.
+- no production textarea and no absolute workspace root in rendered output.
+- fixed private-scheme CSS plus a live packaged worker. And
 - after page-hide/runtime stop: zero models, views, workers, listeners, and Vim
   handlers.
 

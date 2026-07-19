@@ -46,5 +46,5 @@ inert accrual (eligibility at most) is NOT a settled resale receipt.
   provenance per `proof.demand_provenance.v1`.
 - Sibling blockers `monetize_any_layer_access_product_unbuilt` and
   `monetize_any_layer_referral_accrual_unbuilt` are out of scope for this run.
-- No wallet/settlement dispatch is wired; settlement stays on the
+- No wallet/settlement dispatch is wired. Settlement stays on the
   readiness-gated, owner-armed rail.

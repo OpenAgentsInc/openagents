@@ -1,7 +1,7 @@
 # Bitcoin, AI, and the Evolution of Digital Life with Dhruv Bansal (Co-founder, Unchained Capital)
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -38,7 +38,7 @@ So, to have you on the show today, man, what a real treat.
 
 Thanks, Max.
 
-It's a pleasure to be here and and for my part too,
+It is a pleasure to be here and and for my part too,
 
 I feel like talking with I sometimes worry that
 
@@ -50,13 +50,13 @@ I can think about great things and
 
 I definitely include you in that number.
 
-I feel like uh we often have great mind expanding conversations that don't get recorded and so great opportunity to kind of uh you know put us on the record.
+I feel like uh we often have great mind expanding conversations that do not get recorded and so great opportunity to kind of uh you know put us on the record.
 
 Yeah man, no likewise.
 
-Over the years it's it's been a real treat to talk to you off the record.
+Over the years it is it is been a real treat to talk to you off the record.
 
-I'm I'm I don't know what's going to happen today.
+I'm I'm I do not know what's going to happen today.
 
 As you said, a lot of our conversations are random walks.
 
@@ -68,11 +68,11 @@ today we have a slightly more structured conversation.
 
 Uh, only slightly.
 
-Uh, for those listening, don't worry.
+Uh, for those listening, do not worry.
 
-There there will, I'm sure, be many detours, which we're not counting on.
+There there will, I'm sure, be many detours, which we are not counting on.
 
-Um, but maybe to give everyone just a little bit of a signpost, you know, there's there's three major topics that
+Um, but maybe to give everyone just a little bit of a signpost, you know, there is there is three major topics that
 
 I'm personally excited about.
 
@@ -80,7 +80,7 @@ And all of them actually, you've inspired my thinking on quite a bit.
 
 They are bitcoin is energybacked money and sort of the fusion of the energy and bitcoin markets which blockchain mine candy talk from 2018 first referenced for me at least and we'll come back to that the idea of how we can build truly decentralized infrastructure that meters potentially via the lightning network uh at the actual packet level which is very interesting to me and then uh digital and evolving autonomous life.
 
-So uh that's kind of where
+So uh that is kind of where
 
 I'm hoping we go and I'm sure we'll we'll touch on a lot of other things.
 
@@ -94,7 +94,7 @@ Okay.
 
 So, let's let's start with the um energy back to money piece.
 
-So, for those of you who haven't seen,
+So, for those of you who have not seen,
 
 I've referenced this many times, but
 
@@ -128,7 +128,7 @@ Nakamoto ratio was a conjecture as you put it that perhaps at its more or less y
 
 Bitcoin is still growing relatively in the size of total world
 
-GDP but that there's some percentage give or take of total world energy supply that is necessary to secure the money supply.
+GDP but that there is some percentage give or take of total world energy supply that is necessary to secure the money supply.
 
 Is that still a
 
@@ -142,7 +142,7 @@ Nakamoto point changed today?
 
 Yeah, definitely.
 
-I mean, I think for to to give some increasingly more specific context to answer that question, that talk um it's a favorite of mine, too, if
+I mean, I think for to to give some increasingly more specific context to answer that question, that talk um it is a favorite of mine, too, if
 
 I'm honest with myself, right?
 
@@ -176,7 +176,7 @@ Bitcoin in space and and how it evolves as as humanity uh you know goes and
 
 settles the the the solar system and beyond.
 
-Um we probably won't have too much time to get into that one today which is probably good.
+Um we probably will not have too much time to get into that one today which is probably good.
 
 I feel like I've said all
 
@@ -188,7 +188,7 @@ We'll come back to aliens at one point and then um you know even even deep conne
 
 Bitcoin and and physics and and
 
-I'm I'm formerly a physicist and um it's just fun to find patterns and try to investigate why those patterns are similar and try to understand that.
+I'm I'm formerly a physicist and um it is just fun to find patterns and try to investigate why those patterns are similar and try to understand that.
 
 So it was a really fun talk for me because
 
@@ -228,9 +228,9 @@ maybe a negative thing.
 
 Uh, certainly in 2018 was was more commonly viewed as a obviously negative thing. uh these days
 
-I think that that attitude is starting to uh thaw and soften and people are starting to realize who maybe aren't even you know dieh hard
+I think that that attitude is starting to uh thaw and soften and people are starting to realize who maybe are not even you know dieh hard
 
-Bitcoiners that there's maybe something powerful and important about
+Bitcoiners that there is maybe something powerful and important about
 
 Bitcoin's energy usage um over and above the simple naked fact that it uses energy right like we sort of starting to contextualize that that energy usage based on the value that
 
@@ -240,7 +240,7 @@ So I'm I'm happy that in the you know intervening six years or seven years the w
 
 Bitcoin and and to me and to my thoughts on it.
 
-But the the ratio you that you describe is like a pretty simple ratio to describe in theory but it's hard to calculate precisely but
+But the the ratio you that you describe is like a pretty simple ratio to describe in theory but it is hard to calculate precisely but
 
 I think we have a rough estimate of it right.
 
@@ -256,37 +256,37 @@ spent on Bitcoin mining. uh on some level and
 
 I think that ratio is probably uh grow like grown.
 
-Um it's probably closer to 1% of the world's electricity right now is being uh spent on
+Um it is probably closer to 1% of the world's electricity right now is being uh spent on
 
 Bitcoin mining.
 
-Um the fact of the ratio is not itself a conjecture like that's a pretty there just is such a ratio.
+Um the fact of the ratio is not itself a conjecture like that is a pretty there just is such a ratio.
 
 Um the conjecture was more that a couple things like number one that that ratio would increase over time.
 
 Um and I believe so at least so far so far so good so far proven out to be correct. um and that eventually it would stabilize and
 
-I think that's the the the the part of the conjecture that
+I think that is the the the the part of the conjecture that
 
-I I personally am least um sure of but it's an interesting part of the conjecture to me um and the reason it boils down to is
+I I personally am least um sure of but it is an interesting part of the conjecture to me um and the reason it boils down to is
 
-I sort of think of like local and global trends that the local trend uh both in space and time is that there's a gap between uh what electricity costs to consume and what
+I sort of think of like local and global trends that the local trend uh both in space and time is that there is a gap between uh what electricity costs to consume and what
 
 Bitcoin is worth on the open market right that uh you you uh if you if you have energy and you choose to sell that energy somehow downstream to consumers for general purposes.
 
-You're kind of
+You are kind of
 
 [0:07:01]
 
 getting an average general rate of at that time again depends on where you live something like 6 to 8 to 12 cents per kilowatt hour.
 
-Uh which is a cursed unit but that's okay.
+Uh which is a cursed unit but that is okay.
 
 Um and uh whereas Bitcoin at the same time was producing you know three four times that amount of revenue if you thought of taking that energy and cycling it through
 
 Bitcoin miners and then selling the
 
-Bitcoin and then comparing in dollar terms right um obviously there's a capex um kind of component to that.
+Bitcoin and then comparing in dollar terms right um obviously there is a capex um kind of component to that.
 
 You have to be able to have
 
@@ -296,9 +296,9 @@ But if you have energy, you also need equipment to to sell that energy, right?
 
 You need to connect to downstream uh grids so you can actually transfer it there.
 
-It's it's not like selling energy is itself free and doesn't require capex either.
+It is it is not like selling energy is itself free and does not require capex either.
 
-So point is there's two things you could do with your energy.
+So point is there is two things you could do with your energy.
 
 You could sell it on the broad market or you could sell it into a specific market and that there was a massive gap in the revenues that you would earn.
 
@@ -306,7 +306,7 @@ Now obviously the Bitcoin mining market at that time was much smaller.
 
 Today it has grown a lot more.
 
-But the conjecture to me was that these don't seem like particularly different use cases for a person who has energy or a company that has energy and that we should expect to see a
+But the conjecture to me was that these do not seem like particularly different use cases for a person who has energy or a company that has energy and that we should expect to see a
 
 [0:08:00]
 
@@ -314,35 +314,35 @@ concordance of uh energy produ producers and bitcoin miners as they sort of merg
 
 AI workloads uh essentially like computing as a market um becomes so energy uh intensive that it starts to be more closely coupled to energy production.
 
-So I feel like that's like not that controversial of a thesis and does seem to be happening uh broadly as as computing develops um across uh use cases.
+So I feel like that is like not that controversial of a thesis and does seem to be happening uh broadly as as computing develops um across uh use cases.
 
 Um the the Nakamoto ratio specifically being like how much of the electricity is used specifically for
 
 Bitcoin um ultimately closes when there is no such premium, right?
 
-Like it it it doesn't once you can make about as much selling to the general market as you can selling to the
+Like it it it does not once you can make about as much selling to the general market as you can selling to the
 
 Bitcoin network.
 
-Um there's no reason to keep growing that share that ratio. it should sort of stabilize, right?
+Um there is no reason to keep growing that share that ratio. it should sort of stabilize, right?
 
-And asically as it approaches that, there's less and less incentive to do selling to the more narrow and and and constrained market.
+And asically as it approaches that, there is less and less incentive to do selling to the more narrow and and and constrained market.
 
 Um, but right now I believe
 
-I I don't know the exact figures today, but like
+I I do not know the exact figures today, but like
 
 [0:09:00]
 
-there's still a gap, right?
+there is still a gap, right?
 
-And there's a reason Bitcoin mining is profitable, especially over the long term as
+And there is a reason Bitcoin mining is profitable, especially over the long term as
 
 Bitcoin appreciates, right?
 
-There there is some, you know, there's a lot of volatility.
+There there is some, you know, there is a lot of volatility.
 
-So, if you're a Bitcoin miner, um the fact that
+So, if you are a Bitcoin miner, um the fact that
 
 Bitcoin may drop a lot in value or experience a having definitely creates tension at a macro level on your um on your installations, but if you can survive through a cycle and you can think on a 4-year basis instead of a one-year basis, um
 
@@ -356,13 +356,13 @@ Bitcoin adoption and the bit and the value of
 
 Bitcoin increases.
 
-Don't know if we'll see it uh freeze, right?
+Do not know if we'll see it uh freeze, right?
 
 I think to see it freeze, we'd sort of have to or or stabilize, we'd sort of have to see
 
 Bitcoin stabilize at some sort of market cap at some sort of broad, you know, base of money in the world.
 
-And I think we're still years to decades away from that.
+And I think we are still years to decades away from that.
 
 So, um, more to be said there.
 
@@ -370,9 +370,9 @@ Um, I think these days I have a slightly different way that
 
 I would even talk about that.
 
-Like I I didn't have the same
+Like I I did not have the same
 
-I didn't have this language as much back in 2018 when
+I did not have this language as much back in 2018 when
 
 I was
 
@@ -386,7 +386,7 @@ But, uh, we really need to think of
 
 Bitcoin as markets, right?
 
-Where voluntary exchange is happening and that's what's propelling the market forward.
+Where voluntary exchange is happening and that is what's propelling the market forward.
 
 And in fact, I no longer like to engage in locations such as
 
@@ -394,7 +394,7 @@ Bitcoin miners create Bitcoin or mine
 
 Bitcoin.
 
-Um, I don't believe they mine
+Um, I do not believe they mine
 
 Bitcoin any longer.
 
@@ -406,7 +406,7 @@ Bitcoin network in exchange for Bitcoin.
 
 And it seems like a pedantic nerdy small difference, but actually
 
-I think really meaningfully changes the frame of what's happening and why it's important and and what's good or bad about it.
+I think really meaningfully changes the frame of what's happening and why it is important and and what's good or bad about it.
 
 Like in particular, I think the notion that
 
@@ -426,21 +426,21 @@ So if the point of Bitcoin mining is that it creates
 
 [0:11:00]
 
-bitcoins, it doesn't seem like a very efficient system, right?
+bitcoins, it does not seem like a very efficient system, right?
 
 But if the point of mining is to create blocks like provable uh provably spent uh um computations and that to exchange that for bitcoin now the size of the industry is really just a reflection on the value of bitcoin right bitcoin are worth a lot of money or or wealth or resources no matter how you choose to measure it.
 
-If you choose to measure it in dollars they're worth approximately $100,000 each.
+If you choose to measure it in dollars they are worth approximately $100,000 each.
 
-If you choose to measure it in computations or in energy they're worth a lot there too.
+If you choose to measure it in computations or in energy they are worth a lot there too.
 
-And that's why miners have to exchange so much energy and so much computation to obtain
+And that is why miners have to exchange so much energy and so much computation to obtain
 
 Bitcoin, right?
 
-They're not producing it.
+They are not producing it.
 
-They're they're buying it, right?
+They are they are buying it, right?
 
 I I think this resolves a bunch of other weirdnesses when you think about it.
 
@@ -450,13 +450,13 @@ Bitcoin every 10 minutes on his laptop in 2009.
 
 Um, yet today we are worse at producing
 
-Bitcoin collectively because we're less efficient at it even though the industry is, you know, orders of magnitude larger.
+Bitcoin collectively because we are less efficient at it even though the industry is, you know, orders of magnitude larger.
 
-And that's a weird growth curve for an industry to experience. and it does seem perverse.
+And that is a weird growth curve for an industry to experience. and it does seem perverse.
 
 [0:12:00]
 
-Um it's much easier to explain if you if it's not being produced, it's just merely being traded.
+Um it is much easier to explain if you if it is not being produced, it is just merely being traded.
 
 And so I really like that way of talking about it now.
 
@@ -468,7 +468,7 @@ And I mean, you've kicked off so many different things and obviously
 
 I'm very much on the same page.
 
-I don't I don't know if you know this, but
+I do not I do not know if you know this, but
 
 I wrote most of a paper with
 
@@ -476,19 +476,19 @@ Block and Arch Invest in 2021 call
 
 Bitcoin is key to an abundant clean energy future, which made a number of arguments.
 
-One of which is that the system is in fact more efficient when you once you realize it's going to scale and you compare it to
+One of which is that the system is in fact more efficient when you once you realize it is going to scale and you compare it to
 
 Visa, Mascard, all the banks, maybe the
 
-US Navy, depending on how you're looking at that. but also that it's, you know, incentivizing.
+US Navy, depending on how you are looking at that. but also that it is, you know, incentivizing.
 
-Um, my my other thing I'm a sort of maximalist of which is solar plus storage and that's its own whole other rabbit hole.
+Um, my my other thing I'm a sort of maximalist of which is solar plus storage and that is its own whole other rabbit hole.
 
-Um, but but I couldn't agree with you more on those points.
+Um, but but I could not agree with you more on those points.
 
 But also the point that um, you know, this is a market.
 
-It's a market for computation or a market potentially for jewels.
+It is a market for computation or a market potentially for jewels.
 
 To that point, I'm curious your take on this because
 
@@ -516,7 +516,7 @@ I thought about Bitcoin and what really sold me coming from the solar industry y
 
 Bitcoin was um you know reading uh books like uh operating manual for spaceship earth from
 
-Buckminister Fuller and a bunch of other folks who talked about look there's only one currency of the known universe which is jewels or kilowatt hours full stop. um whether that's uh in well potentially you could even break it down further into the
+Buckminister Fuller and a bunch of other folks who talked about look there is only one currency of the known universe which is jewels or kilowatt hours full stop. um whether that is uh in well potentially you could even break it down further into the
 
 ATP which we may do when we talk about uh metabolism and the
 
@@ -524,7 +524,7 @@ KB cycle later um but some proxy on energy and you could argue gold was a proxy 
 
 Saudi Arabia could you see a world eventually where
 
-Bitcoin functions as essentially a ledger of kilowatt hours or jewels and you're actually just paying jewels for things
+Bitcoin functions as essentially a ledger of kilowatt hours or jewels and you are actually just paying jewels for things
 
 I think we should be a little careful right like
 
@@ -534,15 +534,15 @@ I'm reminded of in the world programming you often like care a lot about small d
 
 merely connected to something which is an instance of that thing and
 
-I think with Bitcoin there's a certain element of that happening where yeah
+I think with Bitcoin there is a certain element of that happening where yeah
 
 I think once I would have called it energy back energy money and that excited me right like jewels and and as a former physicist the notion that bitcoin is somehow just energy all along is very attractive um and but again as
 
 I thought about it more.
 
-It's like, no, it's not really because if it were, we're we're sort of like like why is it cost so much, right?
+It is like, no, it is not really because if it were, we are we are sort of like like why is it cost so much, right?
 
-And the answer is, well, it costs so much because it's worth so much, right?
+And the answer is, well, it costs so much because it is worth so much, right?
 
 So, it really does feel like energy is being exchanged for
 
@@ -550,23 +550,23 @@ Bitcoin again in that voluntary market uh process between miners and the
 
 Bitcoin network.
 
-Um, and there okay, so now can you say it's energybacked because there's a market that trades directly energy or computations.
+Um, and there okay, so now can you say it is energybacked because there is a market that trades directly energy or computations.
 
 If we really want to be specific, we should say computations, right? um that there is a market because of the existence of a market which trades computations or energy directly for
 
 Bitcoin.
 
-Therefore, it's an energybacked currency.
+Therefore, it is an energybacked currency.
 
 That feels like a more reasonable statement.
 
 But I'm still sort of left wanting with that, right?
 
-Like I think the best way to describe it would be that it's an energy adjacent money that it's the only
+Like I think the best way to describe it would be that it is an energy adjacent money that it is the only
 
 [0:15:01]
 
-money perhaps that you can directly trade like at for computations. that doesn't mean it is computations or that it's backed by computations, but that it's very convenient to trade
+money perhaps that you can directly trade like at for computations. that does not mean it is computations or that it is backed by computations, but that it is very convenient to trade
 
 Bitcoin for computations.
 
@@ -588,9 +588,9 @@ It can be that.
 
 But those markets are less efficient.
 
-They're more centralized.
+They are more centralized.
 
-Um, they're more prone to political manipulation.
+Um, they are more prone to political manipulation.
 
 Bitcoin's market that the the rails that connect
 
@@ -606,25 +606,25 @@ of Bitcoin miners to always, you know, have relatively more hash than other mine
 
 Bitcoin that are being uh wagered as transaction fees and so on.
 
-So in this sense like I don't
+So in this sense like I do not
 
 I'm not trying to diminish the impact that
 
 Bitcoin has on the energy industry, but
 
-I argue it's not because it's made of energy or energybacked so much as it is. just incredibly convenient and and unique in the way that it interacts with energy as a counter uh asset.
+I argue it is not because it is made of energy or energybacked so much as it is. just incredibly convenient and and unique in the way that it interacts with energy as a counter uh asset.
 
 Um and that as Bitcoin because
 
 Bitcoin is money starts to connect to other kinds of markets in novel and interesting ways, we should further expect disruptions in those markets, right?
 
-That we're going to talk for example about how
+That we are going to talk for example about how
 
 Bitcoin maybe disrupts the market for certainly payments in
 
 Lightning and Visa and so on, but maybe that connects to the a market for moving data through the internet through an internet.
 
-Um, and so now it's not that
+Um, and so now it is not that
 
 Bitcoin becomes internetbacked money or Bitcoin is internet money or
 
@@ -632,7 +632,7 @@ Bitcoin is information.
 
 I mean, it sort of is all those things in a loose squinty sense.
 
-It's more that because we built some
+It is more that because we built some
 
 [0:17:01]
 
@@ -640,7 +640,7 @@ unique ways of exchanging Bitcoin for things in this new category that
 
 Bitcoin's uh qualities start to change and disrupt this new category, right?
 
-And it's largely not so much because of um
+And it is largely not so much because of um
 
 I suppose Bitcoin itself as much as it is an interaction with
 
@@ -648,37 +648,37 @@ Bitcoin, right? the opportunity to break down a lot of barriers that make market
 
 If we take that away and we just have a more open programmatically executing market that just scales better and is easier to grow, well then that itself becomes the disruptive change um that we want to benefit from, right?
 
-And that's definitely happening in energy, right?
+And that is definitely happening in energy, right?
 
-It's absolutely energy.
+It is absolutely energy.
 
-I guess I don't fully understand your your distinction between adjacent and backed because to me it's like
+I guess I do not fully understand your your distinction between adjacent and backed because to me it is like
 
-I don't think I understand it to be honest be fair.
+I do not think I understand it to be honest be fair.
 
 Yeah, fair enough.
 
 Fair enough.
 
-So we're still we're still thinking this live because to me what's so interesting about this is
+So we are still we are still thinking this live because to me what's so interesting about this is
 
-I think about whether it's you sort of energybacked or computation backed that that's like a super fair way of
+I think about whether it is you sort of energybacked or computation backed that that is like a super fair way of
 
 [0:18:00]
 
 saying it as well.
 
-But the the killer feature to me of that is it's it's this portal between this digital realm or mental realm where
+But the the killer feature to me of that is it is it is this portal between this digital realm or mental realm where
 
-I'm thinking of things, but it's still backed by some kind of real scarcity in the real world and energy or computations.
+I'm thinking of things, but it is still backed by some kind of real scarcity in the real world and energy or computations.
 
 Those are obviously scarce things today.
 
-Maybe in the future there's other even better proxies on scarcity that one could come up with besides proof of work.
+Maybe in the future there is other even better proxies on scarcity that one could come up with besides proof of work.
 
 Um but as far as I've seen
 
-I I don't think and this is why proof of stake obviously is like a self-real system that will one day collapse if it has to. um versus something that is based on some fundamental scarcity in the real world.
+I I do not think and this is why proof of stake obviously is like a self-real system that will one day collapse if it has to. um versus something that is based on some fundamental scarcity in the real world.
 
 Energy is the best one that
 
@@ -686,17 +686,17 @@ I have sort of come up with today, although computation
 
 I think is another way of saying that.
 
-Um but um I I think to me that that's the key feature is just some way to tie into something that can't go infinite in quote unquote base reality if that's what this is.
+Um but um I I think to me that that is the key feature is just some way to tie into something that cannot go infinite in quote unquote base reality if that is what this is.
 
-I think it's absolutely true and
+I think it is absolutely true and
 
-I don't think there's any way to have built
+I do not think there is any way to have built
 
 Bitcoin other than what we discovered, right?
 
-That's often the way I like to approach it.
+That is often the way I like to approach it.
 
-Wasn't invented, it was discovered.
+Was not invented, it was discovered.
 
 And aliens would have discovered the same kind of a market, right? right that existed between a maybe they have maybe they have right and so that part does
 
@@ -704,13 +704,13 @@ And aliens would have discovered the same kind of a market, right? right that ex
 
 feel very deep to me and
 
-I absolutely agree the backed part is maybe it's a semantics thing right
+I absolutely agree the backed part is maybe it is a semantics thing right
 
 I like for example if we suddenly found a way to access far more energy here on earth right that has no effect on the supply of
 
-Bitcoin so it's not that the the supply of
+Bitcoin so it is not that the the supply of
 
-Bitcoin is backed by energy that's not quite what we mean when we say it's energy backed
+Bitcoin is backed by energy that is not quite what we mean when we say it is energy backed
 
 I think we mean something like the release schedule of
 
@@ -718,7 +718,7 @@ Bitcoin is in some sense like guarded or weighted against our overall energy and
 
 Nakamoto ratio of like how much of our energy are we choosing to spend on money uh supply creation versus protecting the money supply and so on.
 
-So again in that sense like the word back just feels a little strong right like if you were to say you know our currency is backed by a supply of gold right then presumably as that supply of gold changes and increases or decreases that has some effect on the market value or the supply of the currency that is backed by it and that that connection isn't quite there in
+So again in that sense like the word back just feels a little strong right like if you were to say you know our currency is backed by a supply of gold right then presumably as that supply of gold changes and increases or decreases that has some effect on the market value or the supply of the currency that is backed by it and that that connection is not quite there in
 
 Bitcoin.
 
@@ -730,23 +730,23 @@ Bitcoin becomes more valuable more energy is used
 
 exchanged by miners in order to to purchase it uh in its release schedule as well as to purchase it in transaction fees from users.
 
-Um it's a very interesting connection.
+Um it is a very interesting connection.
 
 I'll put it that way.
 
 I I I certainly prefer people to understand the that
 
-Bitcoin is connected to energy in a deep way that isn't inherently evil because uh because energy is being used to to in
+Bitcoin is connected to energy in a deep way that is not inherently evil because uh because energy is being used to to in
 
 Bitcoin's own functioning as soon as we can dismiss that like mistake then and understand that there is a deep connection here like
 
-I feel like that's the most important part.
+I feel like that is the most important part.
 
-I don't need to quibble on the rest of it.
+I do not need to quibble on the rest of it.
 
-Like you know if Michael Sailor wants to say that it's energy hornets or what whatever is the the excited thing about it.
+Like you know if Michael Sailor wants to say that it is energy hornets or what whatever is the the excited thing about it.
 
-It's like okay cool.
+It is like okay cool.
 
 I'm I'm about that excitement too.
 
@@ -754,19 +754,19 @@ I'm excited about that too.
 
 But if we want to be more precise, then
 
-I struggle to say that it's really backed by energy.
+I struggle to say that it is really backed by energy.
 
-It's merely just exchange for energy.
+It is merely just exchange for energy.
 
-And the way that that exchange happens is itself revolutionary, new and disruptive, and that's changing the world of energy.
+And the way that that exchange happens is itself revolutionary, new and disruptive, and that is changing the world of energy.
 
 Sure.
 
 Yeah.
 
-No, I I think that's interesting.
+No, I I think that is interesting.
 
-And maybe to your point, maybe the backing, like you said, is it's not the supply and that that is an important point, but maybe the security that uh upholds the
+And maybe to your point, maybe the backing, like you said, is it is not the supply and that that is an important point, but maybe the security that uh upholds the
 
 [0:21:02]
 
@@ -782,11 +782,11 @@ Austrians and there was research in their field of basically this open question 
 
 GDP or energy production however you want to say it that is necessary to secure the monetary supply and the reason when you said the
 
-Nakamoto consensus it just like pinged a light bulb in me was hey maybe this is an a question that we can't empirically answer um that the gold bugs have been, you know, trying to answer.
+Nakamoto consensus it just like pinged a light bulb in me was hey maybe this is an a question that we cannot empirically answer um that the gold bugs have been, you know, trying to answer.
 
-Um, but now, you know, there's actual data.
+Um, but now, you know, there is actual data.
 
-So, that's that that's what was getting me really excited about it.
+So, that is that that is what was getting me really excited about it.
 
 I mean, it is interesting because when you bring energy into these discussions, you can start to really talk about optimization and and and get kind of hard-edged about it, right?
 
@@ -798,7 +798,7 @@ Earth
 
 right now that we should have, right?
 
-Well, it's not infinity, right? like it's not it's not optimal to have vastly more energy than we're using because we struggle to store energy efficiently.
+Well, it is not infinity, right? like it is not it is not optimal to have vastly more energy than we are using because we struggle to store energy efficiently.
 
 We tend to be optimally provisioned in in terms of both like how we choose to invest in energy infrastructure and so on.
 
@@ -812,9 +812,9 @@ Um, I think what's so again disruptive about
 
 Bitcoin is it changes that calculus, right?
 
-That energy over abundance and over production is actually potentially profitable because you always have a consumer for that extra energy that you didn't previously have.
+That energy over abundance and over production is actually potentially profitable because you always have a consumer for that extra energy that you did not previously have.
 
-Um, I think that's starting to change now with
+Um, I think that is starting to change now with
 
 AI workloads to to a degree, right?
 
@@ -822,9 +822,9 @@ That like AI workloads are becoming another market for
 
 Bitcoin miners to sell their supply into.
 
-It's not the exact same supply.
+It is not the exact same supply.
 
-It's not the same AS6, but there's a lot of adjacent um capabilities that they have around just energy production, cooling, etc.,
+It is not the same AS6, but there is a lot of adjacent um capabilities that they have around just energy production, cooling, etc.,
 
 [0:23:00]
 
@@ -832,13 +832,13 @@ etc.
 
 But um and it is interesting to see like is there a similar ratio right like an optimal amount of energy that we spend on
 
-I don't know AI training collectively or on you know uh if
+I do not know AI training collectively or on you know uh if
 
 AI I tend to think of today's evolution of
 
 AI despite the more heady conversations we might get into at the end of this conversation but like
 
-I tend to think of them as largely search algorithms right so it's kind of like it's almost like asking
+I tend to think of them as largely search algorithms right so it is kind of like it is almost like asking
 
 I have a web application called humanity like how much compute should
 
@@ -856,25 +856,25 @@ I need to spend more time building a richer index and and so on, right?
 
 Versus deciding that I I I have a good enough index and
 
-I don't need to spend any more on it.
+I do not need to spend any more on it.
 
-Um, I don't know, maybe that's a a dismissive opinion of
+Um, I do not know, maybe that is a a dismissive opinion of
 
 AI so far, but um,
 
 [0:24:01]
 
-it's clear that the search is useful enough and good enough that people want to spend more than we're currently spending, right, to to produce it.
+it is clear that the search is useful enough and good enough that people want to spend more than we are currently spending, right, to to produce it.
 
 Totally.
 
 And it can change over time, too, right?
 
-So, that's also interesting to to see.
+So, that is also interesting to to see.
 
 Um, okay.
 
-So, we're we're moving steadily towards the uh the sort of
+So, we are we are moving steadily towards the uh the sort of
 
 AI crescendo, if you will.
 
@@ -886,7 +886,7 @@ Things like bandwidth, storage, computation.
 
 And you argue that until we had a truly peer-to-peer network of these physical resources that those are kind of going to be the central choke points that end up killing things like
 
-Bitcoin um you know one day maybe it's many decades in the future.
+Bitcoin um you know one day maybe it is many decades in the future.
 
 Do you still agree with that?
 
@@ -906,15 +906,15 @@ Like I thought of lightning as the only it was really the only layer 2 proposal
 
 I was super familiar with in in 2018.
 
-Um and it it wasn't uh as
+Um and it it was not uh as
 
-I recall I don't think it was even deployed yet, right?
+I recall I do not think it was even deployed yet, right?
 
 We were still waiting for I think the um
 
 August hard fork that came that year uh to get um segregated witness out there so we could uh you know solve transaction malleability.
 
-There's all these technical obstacles along the way.
+There is all these technical obstacles along the way.
 
 So it was a very early era.
 
@@ -922,11 +922,11 @@ Um, and now I can say many years later, well, the lightning network is not where
 
 I thought it would be today, like truthfully.
 
-Um, but partly I think that's also because what is there to buy with the lightning network?
+Um, but partly I think that is also because what is there to buy with the lightning network?
 
 Like, as most Bitcoiners are using
 
-Bitcoin as a savings vehicle, right, to get ahead of inflation, to to to protect their wealth, they're not necessarily choosing to spend it.
+Bitcoin as a savings vehicle, right, to get ahead of inflation, to to to protect their wealth, they are not necessarily choosing to spend it.
 
 Um, I think there are some places in the world where we have more day-to-day circular economy type activity in
 
@@ -938,21 +938,21 @@ Um,
 
 and I think uh but but ultimately
 
-I think Bitcoin as a medium of exchange starts to make sense when there's uniquely things that you can buy in
+I think Bitcoin as a medium of exchange starts to make sense when there is uniquely things that you can buy in
 
-Bitcoin that you can't buy any other currency.
+Bitcoin that you cannot buy any other currency.
 
-That's the reason you buy you spitcoin on it because it really is just the most convenient way to get that thing that you care about.
+That is the reason you buy you spitcoin on it because it really is just the most convenient way to get that thing that you care about.
 
-Um, and so it's dubious to me that the things that we would choose to spend bitcoin on are going to be coffees because we could always buy coffees with other things. um or or really anything physical in the world probably could be settled um with another currency unless it's an illegal good, right?
+Um, and so it is dubious to me that the things that we would choose to spend bitcoin on are going to be coffees because we could always buy coffees with other things. um or or really anything physical in the world probably could be settled um with another currency unless it is an illegal good, right?
 
 So per potentially uh lightning being used as a black market currency is is is potentially happening.
 
-I mean it could be happening a lot right now and we don't even know it.
+I mean it could be happening a lot right now and we do not even know it.
 
 Um because lightning is not necessarily a public network or a discoverable network.
 
-There can be very many private channels and and lightning black markets are sort of being woven together right now and we wouldn't necessarily know.
+There can be very many private channels and and lightning black markets are sort of being woven together right now and we would not necessarily know.
 
 Yeah. um which I think is is a powerful um uh uh property for any layer 2 to be able to have is to increase the privacy of of what we can do on layer 1.
 
@@ -964,13 +964,13 @@ I think I'm I'm less about lightning
 
 specifically, though I I am not like a lightning network hater or dismissive of it anyway.
 
-Ultimately, I think we're just so incredibly early in the story of
+Ultimately, I think we are just so incredibly early in the story of
 
 Bitcoin that lightning itself is still just very early, right?
 
 Like Bitcoin adoption overall is just super early.
 
-And so these problems aren't as pernicious as they will be in coming years.
+And so these problems are not as pernicious as they will be in coming years.
 
 And humans always tend to solve problems just like just when we need the solution, it emerges somehow.
 
@@ -998,21 +998,21 @@ I'm a little bit more focused on order books and price discovery um and
 
 uh trade structures and things of this nature, right?
 
-Like uh and to put it bluntly like the lightning network is a second layer nonblockchain payment channels network that's designed to allow us to quickly and efficiently and cheaply um uh use
+Like uh and to put it bluntly like the lightning network is a second layer nonblockchain payment channels network that is designed to allow us to quickly and efficiently and cheaply um uh use
 
 Bitcoin as a medium of exchange to actually pay for things in the world with it.
 
-That's its stated purpose.
+That is its stated purpose.
 
 Um but I I think a pattern something
 
-I call the beautiful surprise uh these days is that no matter what you think you're building there's a beautiful surprise in there that you're actually building something like like else in addition not not instead of but in addition like at layer 1 for example uh uh sorry at layer what
+I call the beautiful surprise uh these days is that no matter what you think you are building there is a beautiful surprise in there that you are actually building something like like else in addition not not instead of but in addition like at layer 1 for example uh uh sorry at layer what
 
-I call layer zero actually these days right the exchange of bitcoin for uh for computations as part of the the the release schedule of bitcoin uh we think we're trying to build a money right but we wind up building a clock because in order to release our money on schedule we need to be able to tell time and we can't trust uh you know people's wristwatches and and
+I call layer zero actually these days right the exchange of bitcoin for uh for computations as part of the the the release schedule of bitcoin uh we think we are trying to build a money right but we wind up building a clock because in order to release our money on schedule we need to be able to tell time and we cannot trust uh you know people's wristwatches and and
 
 CPU clocks.
 
-So we have to build a sort of distributed clock and that's required to be able to to have our auction for our money supply
+So we have to build a sort of distributed clock and that is required to be able to to have our auction for our money supply
 
 [0:29:00]
 
@@ -1022,13 +1022,13 @@ Um and then similarly at layer 1 which is the market for settling
 
 Bitcoin transactions which exchanges block space for
 
-Bitcoin. um we think that we're building a payment settlement like auctioning system, right?
+Bitcoin. um we think that we are building a payment settlement like auctioning system, right?
 
 Like things are in the me pool.
 
 They get lifted by miners into the blockchain.
 
-They're selling the block space for it.
+They are selling the block space for it.
 
 But at the same time, we also built a virtual machine that in order to understand what kinds of transactions can possibly be expressed by the system, what what problems would owners of
 
@@ -1042,7 +1042,7 @@ And so just to design the ability to send you a bitcoin,
 
 I need to build a virtual machine.
 
-It turns out there's some good copy that you can find that
+It turns out there is some good copy that you can find that
 
 Satoshi sort of realizes at some point during his work that instead of having to build, you know, different categories of
 
@@ -1066,17 +1066,17 @@ Well, when Bitcoin first came out, there was ways to make it to complete because
 
 So, we've stripped all that out now as a community.
 
-Um, and we're left with um uh nonetheless a programmable kind of money, right?
+Um, and we are left with um uh nonetheless a programmable kind of money, right?
 
-And so, it's just it's fun to me that at
+And so, it is just it is fun to me that at
 
-Lur One, you wind up having to uh litigate what what you have to think about computability and touring machines and all sorts of things like that. you're just trying to move money around.
+Lur One, you wind up having to uh litigate what what you have to think about computability and touring machines and all sorts of things like that. you are just trying to move money around.
 
-But if you don't have if you don't think about that, you get it wrong.
+But if you do not have if you do not think about that, you get it wrong.
 
-So that's really cool.
+So that is really cool.
 
-And at layer two, right, returning to lightning, we think that we're building a second layer um
+And at layer two, right, returning to lightning, we think that we are building a second layer um
 
 IO based payment channel uh network, but we are actually building a kind of an internet, right?
 
@@ -1090,17 +1090,17 @@ So we use this complex onion routing scheme to be able to pass payment informati
 
 This means that we need to think about how we route in the network that we wind up solving a routing and networking problem just to solve them the money passing around problem.
 
-And this problem doesn't exist uh at layer 0 and layer 1, right?
+And this problem does not exist uh at layer 0 and layer 1, right?
 
 Because when we use Bitcoin, we in some sense all want to be in the same place, right?
 
-There's only one blockchain and one meool and we don't have a concept of a payment path, right? because all payments are just occurring on the blockchain directly.
+There is only one blockchain and one meool and we do not have a concept of a payment path, right? because all payments are just occurring on the blockchain directly.
 
-Um there isn't a network aspect to it beyond that.
+Um there is not a network aspect to it beyond that.
 
 I mean there is of course a peer-to-peer network behind
 
-Bitcoin that has a topology and has network paths and all these concepts, but that's not really what comes into play at that layer, right?
+Bitcoin that has a topology and has network paths and all these concepts, but that is not really what comes into play at that layer, right?
 
 Whereas a lightning that stuff is really front and center.
 
@@ -1114,9 +1114,9 @@ Lightning really is a network of cryptographic
 
 [0:32:02]
 
-connections between people which I think is a pretty powerful construct. um it's not something we really have um in other play like we have things like signal and other endto-end encrypted messaging networks but they're very much centrally coordinated um
+connections between people which I think is a pretty powerful construct. um it is not something we really have um in other play like we have things like signal and other endto-end encrypted messaging networks but they are very much centrally coordinated um
 
-I suppose we've had things like uh you know encrypted messaging and all sorts of other uh more decentralized solutions but they never really scaled right like cuz they weren't really deeply connected to money like
+I suppose we've had things like uh you know encrypted messaging and all sorts of other uh more decentralized solutions but they never really scaled right like cuz they were not really deeply connected to money like
 
 I think lightning is has a chance or something like lightning has a chance of being a really interesting you know step in in human connectivity because it is a cryptographically equipped peer-to-peer network that is not centrally managed that is deeply connected to money which means we can build incentives which are really strong and for example a line
 
@@ -1126,33 +1126,33 @@ I often like to trot out is despite being you know not the first uh onion routed
 
 people do it and as a result uh many tour exit nodes are actually just run by intelligence agencies and the network itself is its global anonymity guarantees are now compromised because of the lack of an ability to create economic incentives to drive providers to create to provide services like being a tour node.
 
-Whereas in the world of lightning because it's an open marketplace where uh there's a protocol for trading that that earns bitcoin
+Whereas in the world of lightning because it is an open marketplace where uh there is a protocol for trading that that earns bitcoin
 
 I can plug into that protocol.
 
-I don't necessarily have to go find my customers.
+I do not necessarily have to go find my customers.
 
-They're just sort of out there waiting for me.
+They are just sort of out there waiting for me.
 
-Though that's not quite true in lightning, right?
+Though that is not quite true in lightning, right?
 
-That's or at least it's less true in lightning than it is at
+That is or at least it is less true in lightning than it is at
 
 Bitcoin layer 1.
 
 Right?
 
-If I'm a minor, I I don't do marketing.
+If I'm a minor, I I do not do marketing.
 
-I don't go try to recruit customers to use to use my mining hash rate as prefer.
+I do not go try to recruit customers to use to use my mining hash rate as prefer.
 
-It's just I get to see the entire order book of of requests.
+It is just I get to see the entire order book of of requests.
 
-I get to see every transaction that's in the me pool.
+I get to see every transaction that is in the me pool.
 
 Yeah.
 
-There's only one mempool, right?
+There is only one mempool, right?
 
 In the world of lightning to a degree,
 
@@ -1164,19 +1164,19 @@ I have to go build payment channels with specific entities and the market has a 
 
 as a result and that makes it more difficult to optimize.
 
-I think one of the big challenges for me is like what is the like what is the right way to get to the same point that we kind of already have at layer 1 out the box which is there's a memp pool which is the entire order book that contains the demand for the network and
+I think one of the big challenges for me is like what is the like what is the right way to get to the same point that we kind of already have at layer 1 out the box which is there is a memp pool which is the entire order book that contains the demand for the network and
 
 I know exactly how to make money.
 
 I just plug into that existing demand with my hash rate.
 
-Um, in lightning, we're not quite there.
+Um, in lightning, we are not quite there.
 
-I can't just show up with some
+I cannot just show up with some
 
 Bitcoin um, and park it in some channels and immediately start to make a ton of money because
 
-I'm addressing all the network demand that's out there.
+I'm addressing all the network demand that is out there.
 
 I have to go discover that demand.
 
@@ -1184,31 +1184,31 @@ I have to aggregate uh, and learn and scrape ultimately, right?
 
 Like the lightning network.
 
-We don't think of it that way today because the network is so small um that like there isn't as far as
+We do not think of it that way today because the network is so small um that like there is not as far as
 
 I know like ongoing massive common like economically incentivized scrapers out there like learning the structure of the network so they can resell the most topologically efficient routes back.
 
-I think it's starting.
+I think it is starting.
 
-I think it's very early, but yes,
+I think it is very early, but yes,
 
 I agree.
 
-It's not mainstream yet.
+It is not mainstream yet.
 
-The reason it's And the reason it's not mainstream right now is because there isn't tremendous competit
+The reason it is And the reason it is not mainstream right now is because there is not tremendous competit
 
 [0:35:00]
 
 competitive pressure, right?
 
-Because there just isn't tremendous usage because
+Because there just is not tremendous usage because
 
 Bitcoin is early, right?
 
 So, we always just we need use cases.
 
-We're just so early, right?
+We are just so early, right?
 
 But but I'm excited for there to be use cases um that are unique things that you can buy through
 
@@ -1220,7 +1220,7 @@ Go ahead.
 
 Well, well, so I I do want to jump in there and
 
-I think that's gonna be an excellent segue, but before we do,
+I think that is gonna be an excellent segue, but before we do,
 
 I want to pause on this
 
@@ -1232,25 +1232,25 @@ I think you and Ryan chatted a lot about a couple of years back as well.
 
 Do you still believe that um the lightning network is going to become the new tour that eventually everyone uses for every packet or let's say the vast majority of packets routed online?
 
-I don't know.
+I do not know.
 
-And it's because I don't know that the lightning network today is cares about those problems. number one.
+And it is because I do not know that the lightning network today is cares about those problems. number one.
 
-Um, and two, like it will depend a lot on how the topology of the network grows and how much it becomes more centralized where there's only a few major hubs versus more
+Um, and two, like it will depend a lot on how the topology of the network grows and how much it becomes more centralized where there is only a few major hubs versus more
 
 [0:36:00]
 
-decentralized where there's a lot of routing opportunities.
+decentralized where there is a lot of routing opportunities.
 
 Um, it we have to make it profitable in the lightning network to create the connections that allow us to route the money at the level of payments.
 
-If that network becomes really rich and well-connected that it's that's very um efficient for me to make a payment to you over the lightning network, then we can start to solve the much harder problem of routing packets over that same topology, right?
+If that network becomes really rich and well-connected that it is that is very um efficient for me to make a payment to you over the lightning network, then we can start to solve the much harder problem of routing packets over that same topology, right?
 
-That like it's kind of like um you know when the internet is early and the the bandwidth and connectivity is is rather limited, you you simply can't have something like a
+That like it is kind of like um you know when the internet is early and the the bandwidth and connectivity is is rather limited, you you simply cannot have something like a
 
 YouTube, right?
 
-Like a high bandwidth application like you're stuck on
+Like a high bandwidth application like you are stuck on
 
 Usenet, right?
 
@@ -1288,7 +1288,7 @@ IP to end.
 
 So yeah, me too.
 
-And it's a little stressful maybe but uh but anyway so
+And it is a little stressful maybe but uh but anyway so
 
 I think outcomes like that will start to happen like gradually and then the more capable the applications that we can host within this monetized per packet kind of network um the more new markets start to get disrupted right like
 
@@ -1312,7 +1312,7 @@ Can that be extended to route at a more fine grained level packets themselves?
 
 I think there would have to be you know obviously some changes. uh not every packet you would send through the lightning network necessarily needs to be its own lightning payment.
 
-I think that there are ways to collapse that um and to sort of treat the lightning layer as more of a streaming accounting layer for the actual packets that you're sending back and forth through it.
+I think that there are ways to collapse that um and to sort of treat the lightning layer as more of a streaming accounting layer for the actual packets that you are sending back and forth through it.
 
 Um it'll just be interesting to see that develop and and evolve.
 
@@ -1330,51 +1330,51 @@ IP like not the level of like you know like internet gateways and and
 
 BGP networks and stuff like that but at a higher level of at least
 
-IP you as a user of the internet had to have a list of where everybody else on the internet is and that's how your computer went and found them, right?
+IP you as a user of the internet had to have a list of where everybody else on the internet is and that is how your computer went and found them, right?
 
 It had their address.
 
-Um, that then obviously didn't scale, right?
+Um, that then obviously did not scale, right?
 
 My computer no longer has a list of every other computer on the internet.
 
-Uh, there's a discovery mechanism that has been established,
+Uh, there is a discovery mechanism that has been established,
 
-DNS and other schemes by which we can hierarchically look up the thing on the internet we're seeking to find and sort of get incrementally pointed closer and closer to it as our packets route through that network.
+DNS and other schemes by which we can hierarchically look up the thing on the internet we are seeking to find and sort of get incrementally pointed closer and closer to it as our packets route through that network.
 
 Um, we have to get to that point with lightning, right?
 
-But unlike with lightning, what we don't want is we don't want a bunch of geographically like sort of monopolistic sub networks that together are glued into the internet because that's what the internet really is, right?
+But unlike with lightning, what we do not want is we do not want a bunch of geographically like sort of monopolistic sub networks that together are glued into the internet because that is what the internet really is, right?
 
-It's a bunch
+It is a bunch
 
 [0:40:01]
 
 of autonomous systems that are largely independently controlled by a centralized provider of that system like whoever is running your local area network in your city, let's say, or your neighborhood and then connecting those autonomous systems together.
 
-That's the inter part of the internet, right?
+That is the inter part of the internet, right?
 
-Um we don't want that for lightning. don't want that in this region of
+Um we do not want that for lightning. do not want that in this region of
 
 Los Angeles.
 
-There's one infinity controls my my packet or controls my lightning payments, right?
+There is one infinity controls my my packet or controls my lightning payments, right?
 
-Like that's a problem for us.
+Like that is a problem for us.
 
 And so how can we create the same degree of coordination and performance um but ultimately driven by ultimately more open market um incentives.
 
-That's a hard problem because simple questions like well how can
+That is a hard problem because simple questions like well how can
 
 I get a list of everybody who's waiting to make a lightning payment?
 
-There's no obvious answer to that, right?
+There is no obvious answer to that, right?
 
-There isn't the equivalent of a mempool which which only works because it's so small by the way, right? the the size of people willing to make large
+There is not the equivalent of a mempool which which only works because it is so small by the way, right? the the size of people willing to make large
 
 Bitcoin payments is that that the the cardality of that set is just smaller than the cardality of the number of people who want to make a smaller payment on a more efficient payments network.
 
-It gets to the point where you you can't just go ask one computer for
+It gets to the point where you you cannot just go ask one computer for
 
 [0:41:01]
 
@@ -1386,7 +1386,7 @@ Well, which set of computers?
 
 How do I find that set of computers?
 
-Doesn't that just become this point of centralization for the entire network at that point?
+Does not that just become this point of centralization for the entire network at that point?
 
 Um so this notion of how do you scale an order book right past something like the mempool into a much larger regime of cardality that is like the hardest problem.
 
@@ -1400,13 +1400,13 @@ The hard problem of Bitcoin is how do we replicate the market-based dynamics tha
 
 Yeah.
 
-Well, what you're describing another topic perhaps we'll have time to get into, but is it reminds me a lot the early days of the sort of
+Well, what you are describing another topic perhaps we'll have time to get into, but is it reminds me a lot the early days of the sort of
 
-Usenet you're talking about with what's happening today in
+Usenet you are talking about with what's happening today in
 
 Noster, the web of trust that is emerging there and
 
-I think web of trust could be an answer to a lot of the the issues that you're referring to.
+I think web of trust could be an answer to a lot of the the issues that you are referring to.
 
 But before we jump into that,
 
@@ -1414,13 +1414,13 @@ I I do want to make sure we touch and get to
 
 [0:42:01]
 
-the metabolic pathways because I know that's that that's going to be our next exciting uh path.
+the metabolic pathways because I know that is that that is going to be our next exciting uh path.
 
 You know, you you keep saying, okay, look, lighting network is great.
 
 One day it could be this huge network for all the payments.
 
-The problem is we don't have demand.
+The problem is we do not have demand.
 
 We need services that you can only buy
 
@@ -1434,9 +1434,9 @@ Oh man, like you just need to whip out your, you know, cash app to pay for your 
 
 Like no, like no one's going to do that.
 
-And if you do it, it's a very small segment of the community.
+And if you do it, it is a very small segment of the community.
 
-It's never going to scale.
+It is never going to scale.
 
 So what are the things that we could actually buy only with lightning?
 
@@ -1448,9 +1448,9 @@ I call physical resources delivered digitally bandwidth storage and compute.
 
 I like to joke you know at my fund hide mine
 
-I'm desperate to invest and maybe we're too early but in people that have like looked at all the shitcoin networks like the heliums and the golems and the file coins and said these are great ideas.
+I'm desperate to invest and maybe we are too early but in people that have like looked at all the shitcoin networks like the heliums and the golems and the file coins and said these are great ideas.
 
-Let's build these networks for these resources but we don't need a stupid token.
+Let's build these networks for these resources but we do not need a stupid token.
 
 We can just do this with
 
@@ -1468,21 +1468,21 @@ or metabolism but as a sort of a transition point what are some of your best gue
 
 I honestly I think my my top contender is content.
 
-Like if we like uh there's a collection of tools that are like sort of coalescing um and no one has really put them all together in in the killer app.
+Like if we like uh there is a collection of tools that are like sort of coalescing um and no one has really put them all together in in the killer app.
 
 Um like no one has made the equivalent of
 
 Bitcoin D um or Lightning D even.
 
-Um but it's like it's a mixture of yeah lightning for routing payments um uh pretty traditional file storage you know systems for hosting huge amounts of data um tools like
+Um but it is like it is a mixture of yeah lightning for routing payments um uh pretty traditional file storage you know systems for hosting huge amounts of data um tools like
 
 Plex right which are sort of open- source
 
 Netflix like content browsers.
 
-Um, and they're really interesting.
+Um, and they are really interesting.
 
-Um, like there's there's fewer people doing it now maybe than once in the past or or or uh like but there used to be a time in in what
+Um, like there is there is fewer people doing it now maybe than once in the past or or or uh like but there used to be a time in in what
 
 I what I often refer to now as
 
@@ -1518,11 +1518,11 @@ Hit them with hit them with
 
 DMCA takeown notices and and threaten them with litigation, right?
 
-Um that's scary and and most kids
+Um that is scary and and most kids
 
 [0:45:00]
 
-cuz they're not getting paid, right, are not going to keep doing that and they're going to stop doing it and then people are going to realize, well, it's just five bucks for like the streaming service and it has everything, so
+cuz they are not getting paid, right, are not going to keep doing that and they are going to stop doing it and then people are going to realize, well, it is just five bucks for like the streaming service and it has everything, so
 
 I might as well just do that, right?
 
@@ -1530,7 +1530,7 @@ So, like at the end of the day, people
 
 I think what we prove to ourselves is that people are willing to pay uh per usage, right? or like per per connectivity or volume or whatever.
 
-Um, and they want access to the whole catalog and they don't particularly care about
+Um, and they want access to the whole catalog and they do not particularly care about
 
 IP, right?
 
@@ -1540,11 +1540,11 @@ IP rights of artists, quote unquote, or
 
 IP holders, like they'll do it there.
 
-I don't think most people are really have a moral qual with that.
+I do not think most people are really have a moral qual with that.
 
 Um uh and we can come back to why
 
-I think it's actually actually moral uh with a capital
+I think it is actually actually moral uh with a capital
 
 M maybe in a minute.
 
@@ -1552,7 +1552,7 @@ But like um I think if we could go back to that place, but now you have the inte
 
 Like everyone's got internet in their pocket at this point.
 
-Um it's way faster.
+Um it is way faster.
 
 Um streaming drove a lot of improvements in making internet faster because people wanted to stream so badly that like the internet just got better in a lot of places as a result of that.
 
@@ -1566,9 +1566,9 @@ traffic in America between like 5:00 p.m. and 9:00 p.m., right?
 
 There was certain era when that was true.
 
-Um, that's less true right now of
+Um, that is less true right now of
 
-Netflix in particular, but it's probably still true of streaming as an overall category.
+Netflix in particular, but it is probably still true of streaming as an overall category.
 
 Um, if especially if you include
 
@@ -1582,27 +1582,27 @@ Um, people are already sick of having 10 different uh, streaming providers and h
 
 YouTube is for a VPN service, uh, which is actually to get around content restrictions in the content marketplace.
 
-I think we're, you know, shortly, right, we would be able to put together something like a
+I think we are, you know, shortly, right, we would be able to put together something like a
 
 Plex music, a Plex browser, which is basically the
 
 Netflix web experience, right?
 
-It's it's the exact same experience, but on a private collection of media that that you can stream, you can log into, you can access.
+It is it is the exact same experience, but on a private collection of media that that you can stream, you can log into, you can access.
 
-So it's like it what if your experience of content streaming just becomes logging into these illegal
+So it is like it what if your experience of content streaming just becomes logging into these illegal
 
 Plex uh you know environments um with open login uh maintained by you know pirates
 
 [0:47:01]
 
-ultimately and then paying in lightning paying through lightning in bitcoin to stream the information back to you. you're not purchasing the
+ultimately and then paying in lightning paying through lightning in bitcoin to stream the information back to you. you are not purchasing the
 
 IP, right?
 
-You're paying to stream the bites.
+You are paying to stream the bites.
 
-And that's a very crucial distinction.
+And that is a very crucial distinction.
 
 Um, like if this system starts to take off, like it will be much harder to eradicate,
 
@@ -1626,7 +1626,7 @@ There would be no ads in this environment.
 
 Um uh and the streaming service has gotten to the point now where you pay used to pay them to not see ads and now you pay them but you see fewer ads and they have to pay them even more to get back to no ads.
 
-Sort of classic, you know, initification process, right? that's like now resulting in
+Sort of classic, you know, initification process, right? that is like now resulting in
 
 I think some motivation for
 
@@ -1636,7 +1636,7 @@ people to want to embrace piracy once more.
 
 But if the pirates get paid and they'll treat it like a business and they'll be good at it.
 
-Um and then that might put pressure on the lightning network to grow because now we realize well yeah the reason you want to build lightning nodes is because you want to participate in the golden age of piracy and it's not about coffees it's kind of your notion of phys sort of physical digital things right where it's like uh you know
+Um and then that might put pressure on the lightning network to grow because now we realize well yeah the reason you want to build lightning nodes is because you want to participate in the golden age of piracy and it is not about coffees it is kind of your notion of phys sort of physical digital things right where it is like uh you know
 
 I'm not buying gigabytes of storage because
 
@@ -1646,11 +1646,11 @@ I'm monetizing the bandwidth of like pulling in a movie
 
 I want to watch like over the lightning network.
 
-Um, and it's still again it's still running over the internet and blah blah blah, but because it's onion routed, the minor the the pirates also have protection, right?
+Um, and it is still again it is still running over the internet and blah blah blah, but because it is onion routed, the minor the the pirates also have protection, right?
 
-And so that's that's a critical point
+And so that is that is a critical point
 
-I hadn't considered.
+I had not considered.
 
 Yeah.
 
@@ -1660,27 +1660,27 @@ Exactly.
 
 Much safer than the old age.
 
-Correct. and and and and I think further like there was a problem in the silver age of piracy which was you didn't have strong cryptographically based guarantees on the thing that you were searching for and you had the cedar problem and so oftentimes you would download a file after an hour of waiting for and it would not be the thing that you thought it was right in fact it usually horrific
+Correct. and and and and I think further like there was a problem in the silver age of piracy which was you did not have strong cryptographically based guarantees on the thing that you were searching for and you had the cedar problem and so oftentimes you would download a file after an hour of waiting for and it would not be the thing that you thought it was right in fact it usually horrific
 
 [0:49:01]
 
-thing that you didn't want you didn't want at all um that's a problem that is easier to solve when you have like widespread cryptographic handles on these things so for example like in the lightning network you're often writing like a trade in that marketplace is in some sense a cryptographic construct in which you're only going to get paid as a participant in the route if the payment makes it all the way to the intended recipient at the end, right?
+thing that you did not want you did not want at all um that is a problem that is easier to solve when you have like widespread cryptographic handles on these things so for example like in the lightning network you are often writing like a trade in that marketplace is in some sense a cryptographic construct in which you are only going to get paid as a participant in the route if the payment makes it all the way to the intended recipient at the end, right?
 
 Like either the entire chain gets paid or nobody gets paid.
 
-Um, and that's powerful because it means it's hard for you to sort of subvert like the intent of the payer or the payee like it just because you're part of the delivery of that process.
+Um, and that is powerful because it means it is hard for you to sort of subvert like the intent of the payer or the payee like it just because you are part of the delivery of that process.
 
 Yeah.
 
-Whereas silver in the silver age of piracy, if you just rename the file to look like the file that people are looking for, they're going to download it and not realize what it was, right?
+Whereas silver in the silver age of piracy, if you just rename the file to look like the file that people are looking for, they are going to download it and not realize what it was, right?
 
-There's no like check some hashing.
+There is no like check some hashing.
 
-In this newer world, I'm only going to pay you those bites if they're coming from the thing that was exactly the thing
+In this newer world, I'm only going to pay you those bites if they are coming from the thing that was exactly the thing
 
 I wanted, right?
 
-And so again, you have these great motivations for pirates to just be really good business people and give people exactly what they're looking for.
+And so again, you have these great motivations for pirates to just be really good business people and give people exactly what they are looking for.
 
 Um, and if that
 
@@ -1688,19 +1688,19 @@ Um, and if that
 
 creates pressure on the lightning network to grow, like that could be pretty cool.
 
-Um yeah, and maybe it's not the lightning network.
+Um yeah, and maybe it is not the lightning network.
 
-Maybe it's some other layer 2 that's like a little bit more optimized for the single use case, but it starts to illustrate that like um what we thought of as a payments network was actually a a the beginnings of a new routing table that we're collectively building and we can route arbitrary information over that.
+Maybe it is some other layer 2 that is like a little bit more optimized for the single use case, but it starts to illustrate that like um what we thought of as a payments network was actually a a the beginnings of a new routing table that we are collectively building and we can route arbitrary information over that.
 
 Right?
 
-Another line I like to say is like the existing internet is all about uh payments inside of data, right? sort of engages with internet traffic at the level of it's all just data and sometimes that data represents payments for things like when you you know sort of provide your credit card to
+Another line I like to say is like the existing internet is all about uh payments inside of data, right? sort of engages with internet traffic at the level of it is all just data and sometimes that data represents payments for things like when you you know sort of provide your credit card to
 
-Netflix and so on and but usually payment traffic is very in the it's it's the minority of data moving on the internet because payments are really awkward on the internet and they have to be run through centralized providers like
+Netflix and so on and but usually payment traffic is very in the it is it is the minority of data moving on the internet because payments are really awkward on the internet and they have to be run through centralized providers like
 
 Stripe or credit card companies or or your bank or whatever like the lightning network is an inversion of that pattern right where like everything is a payment and so
 
-I know I'm going to be paid no matter what there may be some additional data attached to that payment, but there doesn't have to be.
+I know I'm going to be paid no matter what there may be some additional data attached to that payment, but there does not have to be.
 
 And that inversion means that everything is really efficient in terms of delivery
 
@@ -1710,7 +1710,7 @@ because everything is monetized from the beginning.
 
 Um, and then we can choose should we need to to inject more information.
 
-And then then now you're playing this interesting thing like did you get paid because the payment represented the one half of a transfer in the real world of some physical asset like a cup of coffee or did you get paid because the payment itself was a delivery vehicle for the very thing that you were buying, namely some metadata attached to that payment.
+And then then now you are playing this interesting thing like did you get paid because the payment represented the one half of a transfer in the real world of some physical asset like a cup of coffee or did you get paid because the payment itself was a delivery vehicle for the very thing that you were buying, namely some metadata attached to that payment.
 
 Um, and that that increasingly I think will start to happen as people discover that the
 
@@ -1718,13 +1718,13 @@ Lightning Network plus Plex plus a few other things are like a wonderful easy ef
 
 IP holder anymore.
 
-And I think that's going to be impossible to eradicate once it gets going.
+And I think that is going to be impossible to eradicate once it gets going.
 
 Um, and I do know some people like you you should talk more we should talk offline about, you know, references of context here, but
 
 I'm I'm increasingly hearing people talk about wanting to build something like this, taking a chance, right?
 
-And of course, where's I'm increasingly interested as well, provided it doesn't put uh your
+And of course, where's I'm increasingly interested as well, provided it does not put uh your
 
 [0:52:00]
 
@@ -1732,17 +1732,17 @@ friendly neighborhood venture capitalist in jail, but
 
 I I think this is very cool.
 
-Well, I mean, it's because I think a lot of people's reaction to
+Well, I mean, it is because I think a lot of people's reaction to
 
-IP is going to go away is like, oh, that's terrible.
+IP is going to go away is like, oh, that is terrible.
 
 Like like how are artists going to make a living?
 
-And it's like, buddy, artists don't make a living right now.
+And it is like, buddy, artists do not make a living right now.
 
 The reason ain't IP, right?
 
-Like most most artists don't own their own
+Like most most artists do not own their own
 
 IP to begin with.
 
@@ -1762,7 +1762,7 @@ Exactly.
 
 Right.
 
-So it's it's not it's not really like um it's not like the local guy with his guitar and his folk songs is benefiting from
+So it is it is not it is not really like um it is not like the local guy with his guitar and his folk songs is benefiting from
 
 IP as strongly as we might hope would be true.
 
@@ -1780,21 +1780,21 @@ When distribution networks consist of musicians and everyday people just
 
 [0:53:00]
 
-memorizing a song they heard at the nearby tavern and then playing that song again when they get to their town, it's imposing it or remixing it or or improvising upon it, right?
+memorizing a song they heard at the nearby tavern and then playing that song again when they get to their town, it is imposing it or remixing it or or improvising upon it, right?
 
-Or it's impossible to or copying sheet music and then just, you know, but you're not paying a premium because someone owns that information.
+Or it is impossible to or copying sheet music and then just, you know, but you are not paying a premium because someone owns that information.
 
-You're just paying to get the information to you, whatever that cost, right?
+You are just paying to get the information to you, whatever that cost, right?
 
 The cost of the vellum and the ink or whatever, right?
 
-That's your cost.
+That is your cost.
 
 Good words.
 
 And so, uh, yeah.
 
-And so in that era, it's like there is no such thing as piracy because there's no such thing as intellectual property because it can't be defended.
+And so in that era, it is like there is no such thing as piracy because there is no such thing as intellectual property because it cannot be defended.
 
 Yes.
 
@@ -1818,27 +1818,27 @@ IP, I agree with you on all of these fronts, but you know, coming back to
 
 Buckminister Fuller, one of the things
 
-I really took away from him was don't fight forces, use them.
+I really took away from him was do not fight forces, use them.
 
-You know, if you go along with the way the universe works, you're going to be a happy guy.
+You know, if you go along with the way the universe works, you are going to be a happy guy.
 
 If you try and fight it
 
 [0:54:01]
 
-because you have some mental abstraction that goes against physical reality, you're not.
+because you have some mental abstraction that goes against physical reality, you are not.
 
 Full stop.
 
 And so to me, the fundamental thing with
 
-IP is it's not real.
+IP is it is not real.
 
-We're trying in a world of information that wants to be free to create artificial scarcity.
+We are trying in a world of information that wants to be free to create artificial scarcity.
 
-No it's not going to work.
+No it is not going to work.
 
-And yes, you can try and like bottle up for a little bit, but it's always going to explode out because it's not real.
+And yes, you can try and like bottle up for a little bit, but it is always going to explode out because it is not real.
 
 Information wants to be duplicated.
 
@@ -1852,13 +1852,13 @@ IP.
 
 But because IP returns on investment, they do it and they share those proceeds.
 
-And and to your point, like it's not that like people will stop engaging in
+And and to your point, like it is not that like people will stop engaging in
 
-IP because they have realized that it's morally wrong or like information wants to be free.
+IP because they have realized that it is morally wrong or like information wants to be free.
 
-It's they'll stop like thinking that it's real because it it will it will die, right?
+It is they'll stop like thinking that it is real because it it will it will die, right?
 
-Because without the ability to defend it, it will cease to exist and will cease to generate a return on investment and people will stop hoarding it and they won't care about it anymore.
+Because without the ability to defend it, it will cease to exist and will cease to generate a return on investment and people will stop hoarding it and they will not care about it anymore.
 
 Um, I think we'll return to an era in which artists rely chiefly on patronage
 
@@ -1866,17 +1866,17 @@ Um, I think we'll return to an era in which artists rely chiefly on patronage
 
 um, and performance in order to make a living.
 
-And I don't know, I think especially in this in this
+And I do not know, I think especially in this in this
 
-AI enriched world that we're entering,
+AI enriched world that we are entering,
 
-I think real life physical performances are going to become more of a premium thing that are instead of um instead of you know, you walk into a shoe store and there's like some pipe music that came from like a centralized company that mixes exactly the right music and figures out the
+I think real life physical performances are going to become more of a premium thing that are instead of um instead of you know, you walk into a shoe store and there is like some pipe music that came from like a centralized company that mixes exactly the right music and figures out the
 
-IP rights thing to make sure that in your shoe store you're getting exactly the right, you know, that's a very industrialized process. instead there might just be a local artist like playing in that shoe store because now that's like a differentiator.
+IP rights thing to make sure that in your shoe store you are getting exactly the right, you know, that is a very industrialized process. instead there might just be a local artist like playing in that shoe store because now that is like a differentiator.
 
-Um and and and it's more real, it's more authentic.
+Um and and and it is more real, it is more authentic.
 
-Um so like I don't know.
+Um so like I do not know.
 
 I I'm not convinced of I
 
@@ -1884,7 +1884,7 @@ I'm actually convinced of the moral superiority of a world without
 
 IP.
 
-And we haven't even got to things like like pharmaceuticals.
+And we have not even got to things like like pharmaceuticals.
 
 Oh yeah.
 
@@ -1900,11 +1900,11 @@ Yeah.
 
 So I I think like this comes back to right like
 
-Bitcoin isn't information money, right?
+Bitcoin is not information money, right?
 
 Yes.
 
-It's just because Bitcoin, if we do this
+It is just because Bitcoin, if we do this
 
 [0:56:00]
 
@@ -1914,19 +1914,19 @@ Now, Bitcoin gets to disrupt the world of information and the world of content d
 
 It it kind of trying to echo our conversation about energy, right?
 
-It's not that Bitcoin is energy.
+It is not that Bitcoin is energy.
 
-It's that it has a unique way to be traded for energy and that starts to disrupt the energy markets and that's what
+It is that it has a unique way to be traded for energy and that starts to disrupt the energy markets and that is what
 
 I'm planning will happen here with information.
 
-Yes, I I couldn't agree more.
+Yes, I I could not agree more.
 
 So, so many things that sparked.
 
 One thing, one acknowledgement.
 
-I like that your your your subtle reference to the old age of piracy is a silver age, implying that we're still have the golden age to come.
+I like that your your your subtle reference to the old age of piracy is a silver age, implying that we are still have the golden age to come.
 
 I like that optimism.
 
@@ -1940,29 +1940,29 @@ I probably I must have first heard this on maybe your
 
 Stacker news interview or something, but this idea of embedding information within the payment versus embedding the payment within the information.
 
-Still think that's an open question on how that's going to evolve.
+Still think that is an open question on how that is going to evolve.
 
-The one thing I wanted to mention to you is um you know we're going to say this a little bit for later but
+The one thing I wanted to mention to you is um you know we are going to say this a little bit for later but
 
 I'll mention it now is in in the
 
-Nostra world a lot of the elements of what you're talking
+Nostra world a lot of the elements of what you are talking
 
 [0:57:01]
 
 about already exist and so just as a as a quick refresher you know in
 
-Nostra you have a public private key pair that's your identity interestingly it's a bitcoin public private key which has been underexplored tabard address um number two you have um you know these servers called relays which are hosting information
+Nostra you have a public private key pair that is your identity interestingly it is a bitcoin public private key which has been underexplored tabard address um number two you have um you know these servers called relays which are hosting information
 
 I personally am less bullish on you know nostster is the protocol across which all information is going to get passed.
 
 I'm much more bullish on these like relays function as bulletin boards where you can find specific people that you maybe want to then go and have a direct
 
-TCP to TCP connection with and do whatever the hell you want or maybe a lightning network connection with um where you're doing like a private channel for for routing information.
+TCP to TCP connection with and do whatever the hell you want or maybe a lightning network connection with um where you are doing like a private channel for for routing information.
 
-But I think that bulletin board is very key and because you do you sign everything with a private key can both be encrypted, people can verify it's you.
+But I think that bulletin board is very key and because you do you sign everything with a private key can both be encrypted, people can verify it is you.
 
-Number three, a lot of the stuff you're talking about for, you know, from whom do you pirate or how do you, you know, secure any kind of market to me, you have to have a web of trust in this new world.
+Number three, a lot of the stuff you are talking about for, you know, from whom do you pirate or how do you, you know, secure any kind of market to me, you have to have a web of trust in this new world.
 
 Like I'm to the point, you know, to your point with
 
@@ -1974,13 +1974,13 @@ where I only believe things if
 
 I can see you IRL face to face or, you know, if
 
-I see you sign this with your your nice nostr private key, um, then, you know, assuming that key wasn't taken from you, uh, or you didn't lose it, then
+I see you sign this with your your nice nostr private key, um, then, you know, assuming that key was not taken from you, uh, or you did not lose it, then
 
-I have a pretty good reason to believe it's actually you.
+I have a pretty good reason to believe it is actually you.
 
-From that you can start to have whether it's pseudonyms or real webs of trust where it's like well if
+From that you can start to have whether it is pseudonyms or real webs of trust where it is like well if
 
-I know Drew is zapping this guy and sending a lightning payment or you know following this guy well that you know that's worth some sort of a score in my mind that this is much better than some rando bot or something like that.
+I know Drew is zapping this guy and sending a lightning payment or you know following this guy well that you know that is worth some sort of a score in my mind that this is much better than some rando bot or something like that.
 
 Um anyways, I think those elements together uh in addition to some similar protocols and
 
@@ -2004,19 +2004,19 @@ do some of this Plex style hosting uh in in a more easily paid way.
 
 So I I I I think um a lot of the
 
-Noster talk you know discusses oh we're going to send everything over
+Noster talk you know discusses oh we are going to send everything over
 
-Noster I think that's kind of silly but
+Noster I think that is kind of silly but
 
 I do think for this pure sort of identity system which gets into your your network of keys ideas maybe this is the dream of
 
-PGP but it's just actually getting adopted.
+PGP but it is just actually getting adopted.
 
 Sure.
 
-I mean there there's a lot of related things going on there, right?
+I mean there there is a lot of related things going on there, right?
 
-And that's in sometimes one of the strengths and
+And that is in sometimes one of the strengths and
 
 I would argue one of the weaknesses of
 
@@ -2032,21 +2032,21 @@ Some Bitcoiners make the mistake with respect to
 
 Noster that a lot of Ethereums made with respect to their project which was that like the writing code is the hard part.
 
-It's like, no, that's not true, right?
+It is like, no, that is not true, right?
 
 Like, you can sit there and you can come up with a protocol and you can figure out a way to get all your
 
-Bitcoin buddies to talk about stuff on your private server, but you haven't accomplished much by doing that, right?
+Bitcoin buddies to talk about stuff on your private server, but you have not accomplished much by doing that, right?
 
 Like, other than maybe
 
 [1:00:00]
 
-build a community, which is not zero, but it's not the thing that you maybe thought you were building, right?
+build a community, which is not zero, but it is not the thing that you maybe thought you were building, right?
 
-If you think if if you think you're re rev or disrupting social media, like you're not quite, right?
+If you think if if you think you are re rev or disrupting social media, like you are not quite, right?
 
-You're building a a more minor community because disrupting social media requires like a whole bunch more stuff that you aren't going to be able to solve with this set of tools, right?
+You are building a a more minor community because disrupting social media requires like a whole bunch more stuff that you are not going to be able to solve with this set of tools, right?
 
 Like, at least not yet.
 
@@ -2060,9 +2060,9 @@ You need people to build you uh feed curation tools and tend to have those be op
 
 And that starts to rebuild social media on a more market based kind of distributed uh sort of foundation.
 
-That's very cool, but that's not that's not what we're doing now.
+That is very cool, but that is not that is not what we are doing now.
 
-That's impossible to do now because we need to do it in a sort of sequenced order, right?
+That is impossible to do now because we need to do it in a sort of sequenced order, right?
 
 We sort of need Bitcoin to work.
 
@@ -2072,9 +2072,9 @@ Then we need to figure out a way to route data within that network.
 
 Then we need a way to figure out how to connect that to places we store data and provision bandwidth and so on.
 
-There's a sequencing problem there, right?
+There is a sequencing problem there, right?
 
-Um, but if you don't say that
+Um, but if you do not say that
 
 Noster is trying
 
@@ -2084,23 +2084,23 @@ to rebuild the social media, if you just say
 
 Noster is like a lot of people exploring patterns for how to like move back and forth between sort of federated
 
-FFTs and like more broad contexts and we're going to learn a lot of tools and techniques and we're going to start to experiment with okay, how do we like like what's like the difference between for example a message board and an order book is like they're kind they're on a spectrum.
+FFTs and like more broad contexts and we are going to learn a lot of tools and techniques and we are going to start to experiment with okay, how do we like like what's like the difference between for example a message board and an order book is like they are kind they are on a spectrum.
 
 You know what I mean?
 
 Like like and they have some of the same problems, right?
 
-Like in theory, if it's replacing social media, well then the message board should be literally everything that everyone is saying on the entire internet, right?
+Like in theory, if it is replacing social media, well then the message board should be literally everything that everyone is saying on the entire internet, right?
 
-That's what I want.
+That is what I want.
 
-That's what Twitter sort of is, right?
+That is what Twitter sort of is, right?
 
-But that's very hard to achieve in a relay based structure unless we build, you know, markets that that that help relay solve that syncing problem.
+But that is very hard to achieve in a relay based structure unless we build, you know, markets that that that help relay solve that syncing problem.
 
-Um whereas conversely, if it's more narrow than that, well, it's like that's a much easier problem, right?
+Um whereas conversely, if it is more narrow than that, well, it is like that is a much easier problem, right?
 
-Like we're we're just trying to build a way to relay or for someone to get paid to relay this information or to archive this information maybe in a in a short-term context, right?
+Like we are we are just trying to build a way to relay or for someone to get paid to relay this information or to archive this information maybe in a in a short-term context, right?
 
 So the smaller we make the problems that we think
 
@@ -2112,29 +2112,29 @@ And the more that we create patience and
 
 say, well, Nostra is experimentation that is waiting for certain other layers to become more reified and then it can become even more powerful.
 
-Like that's really exciting to me because it it it it indicates again that long-term patience like which
+Like that is really exciting to me because it it it it indicates again that long-term patience like which
 
 I think has to be present if you want to build something sustainable in in this in this sector.
 
-Um, but the people who get super excited about it and think that they're doing it today,
+Um, but the people who get super excited about it and think that they are doing it today,
 
-I think have made that mistake, right? that they've misunderstood the nature of the problem that's being solved.
+I think have made that mistake, right? that they've misunderstood the nature of the problem that is being solved.
 
 The social media use case getting people excited about it was good initially because it got enough users to bootstrap to solve for the first set of problems.
 
 But I think anyone that actually believes this is going to take
 
-X head on and win is insane and there's no way that's going to happen.
+X head on and win is insane and there is no way that is going to happen.
 
 However, I will say today I think if you look at the long trajectory of this,
 
-I think that's where we're headed eventually.
+I think that is where we are headed eventually.
 
-But it's like you said, it's going to be many step sequenced.
+But it is like you said, it is going to be many step sequenced.
 
 And to me, what I thought about
 
-Nostra, in fact, um it's been a while.
+Nostra, in fact, um it is been a while.
 
 I need to get some new essays out.
 
@@ -2146,11 +2146,11 @@ And what I increasingly see it at interestingly is very similar maybe
 
 [1:03:00]
 
-for slightly a different set of problems but to your other talk we were referencing it's a set of keys like all
+for slightly a different set of problems but to your other talk we were referencing it is a set of keys like all
 
-Nostra is to me is it's a set of keys with reputation built in.
+Nostra is to me is it is a set of keys with reputation built in.
 
-Now granted it's not global reputation because and
+Now granted it is not global reputation because and
 
 I think this is critical to your point.
 
@@ -2164,7 +2164,7 @@ You can have rollbacks, you know, but to try and approximate global state is ext
 
 And so Nostra just says, "Fuck it.
 
-There is no global state." Um there's lots of individual perspectives and some of those are going to have larger perspectives, some of those are going to be really small sub perspectives and that's totally fine.
+There is no global state." Um there is lots of individual perspectives and some of those are going to have larger perspectives, some of those are going to be really small sub perspectives and that is totally fine.
 
 Um but critically, you can still uh verify authenticity because of the the private key signature.
 
@@ -2180,7 +2180,7 @@ Domus and all the the social media clients even though
 
 [1:04:00]
 
-I don't really care for social media that much to be honest, but um but
+I do not really care for social media that much to be honest, but um but
 
 I follow people on there and they follow me and through and we zap each other or whatever.
 
@@ -2198,7 +2198,7 @@ I like on Nostra.
 
 I think this guy has smart ideas.
 
-Hm, like I can see what podcast he's listening to.
+Hm, like I can see what podcast he is listening to.
 
 All right, I'm probably going to listen to his podcast."
 
@@ -2220,15 +2220,15 @@ Mhm.
 
 Yeah.
 
-I mean, I think so that's the part we didn't quite address and and sort of so
+I mean, I think so that is the part we did not quite address and and sort of so
 
-I think we're both agreed that
+I think we are both agreed that
 
 Nostra is a success or a failure depending on the scope and the ambition you attach to him and the time frame over which be measured right like absolutely agree and and the longer you set that time frame and the more narrow you make that scope the bigger of a fan
 
 I become.
 
-Um in regards to identity I think that's a really interesting set of questions
+Um in regards to identity I think that is a really interesting set of questions
 
 [1:05:00]
 
@@ -2238,15 +2238,15 @@ I think that was also one of the one of the speculative sections of the one of y
 
 Yes. talk and I think I definitely still believe part of what
 
-I said in that era which is that identity is different than reputation and it's different than identification right like those are all related to different ideas um and
+I said in that era which is that identity is different than reputation and it is different than identification right like those are all related to different ideas um and
 
-I feel like today Nostra is helping us with identification that we can identify each other but it's not really helping us create identities because
+I feel like today Nostra is helping us with identification that we can identify each other but it is not really helping us create identities because
 
-I don't believe that private keys are a good basis for identity at all
+I do not believe that private keys are a good basis for identity at all
 
 I yeah I agree with you on that like
 
-I think identity is this weird thing that is assigned to us by the people and the context in which we're in and that you know
+I think identity is this weird thing that is assigned to us by the people and the context in which we are in and that you know
 
 I often use the example if if
 
@@ -2254,13 +2254,13 @@ I had amnesia suddenly like have
 
 I lost my identity right like
 
-I don't I might not be personally aware of my identity but like the identity itself is an abstract platonic thing exists in the world because the identity of being
+I do not I might not be personally aware of my identity but like the identity itself is an abstract platonic thing exists in the world because the identity of being
 
-Duv is is not here in my mind it's it's part of like you know this quantum connectivity between me and all sorts of databases and people in the world around me right that like in some sense as long as my
+Duv is is not here in my mind it is it is part of like you know this quantum connectivity between me and all sorts of databases and people in the world around me right that like in some sense as long as my
 
 [1:06:00]
 
-family recognizes me to be duv then like that's that's who
+family recognizes me to be duv then like that is that is who
 
 I am um regardless regardless I even know it.
 
@@ -2270,21 +2270,21 @@ Although not not to push this on too much of an aside, but
 
 I I I might argue even though
 
-I I I agree with with all you're saying on that and
+I I I agree with with all you are saying on that and
 
-I think we're we're far away from building actual identity and we need reking all that stuff, but
+I think we are we are far away from building actual identity and we need reking all that stuff, but
 
-I I might even push and say um you know that identity that's a social construct that that's just kind of like a weird computer program.
+I I might even push and say um you know that identity that is a social construct that that is just kind of like a weird computer program.
 
-I think more and more from the the sense of wiping the software and waking up like yes there's contextual identity but but what am
+I think more and more from the the sense of wiping the software and waking up like yes there is contextual identity but but what am
 
 I really right?
 
 Like none of that.
 
-Well, we're all multiple identities really, right?
+Well, we are all multiple identities really, right?
 
-I don't have just one identity.
+I do not have just one identity.
 
 I have the identity that I'm known as in the world amongst my parents.
 
@@ -2314,7 +2314,7 @@ Um, and I think ultimately like the way that we do that in
 
 Bitcoin at the lower levels is we use multiple keys, right?
 
-That we have some sort of notion that there's a there's a recovery process that we have to define for ourselves in order to be able to retain our control of
+That we have some sort of notion that there is a there is a recovery process that we have to define for ourselves in order to be able to retain our control of
 
 Bitcoin.
 
@@ -2328,7 +2328,7 @@ Well, again, because identity is context derived, it
 
 probably looks different in different context, right?
 
-Like there's no such thing as grandma lost her single private key and therefore can't access her single identity and therefore there's some single way to recover that.
+Like there is no such thing as grandma lost her single private key and therefore cannot access her single identity and therefore there is some single way to recover that.
 
 It will be very dependent on identity and what is that you know her identity with respect to all the lightning channels that she's part of that like connect back to other things like her identity with respect to her nostr communications or her social media postings with respect to the the files that she's that she's paid for various file storage markets to store for her like in which sense of her identity was was connected to those identifiers or those keys that she might have lost and
 
@@ -2348,21 +2348,21 @@ So again, it kind of comes back to things like order books and message boards,
 
 [1:09:00]
 
-right? like how does a distributed community maintain consensus around a specific data set whether that is a data set of orders or of messages or of identities it's a hard problem um but
+right? like how does a distributed community maintain consensus around a specific data set whether that is a data set of orders or of messages or of identities it is a hard problem um but
 
-I think ultimately because it's kind of like the same problem over and over again right like the better we get at each aspect of it like we knit these together right that in some sense um we just start getting really good at dis distributed um consensus and having pictures of of large mutating data sets that that don't require the blockchain, right?
+I think ultimately because it is kind of like the same problem over and over again right like the better we get at each aspect of it like we knit these together right that in some sense um we just start getting really good at dis distributed um consensus and having pictures of of large mutating data sets that that do not require the blockchain, right?
 
 The blockchain is a trap.
 
-Like that's one solution we've come up with is you can put all that stuff in a blockchain, but then you're forced to build an entire market just to like create mutations and chain sets to that data set over time.
+Like that is one solution we've come up with is you can put all that stuff in a blockchain, but then you are forced to build an entire market just to like create mutations and chain sets to that data set over time.
 
 That becomes very expensive.
 
-Um, and maybe there's a better way, right?
+Um, and maybe there is a better way, right?
 
-I don't think we fully articulated or found that way because
+I do not think we fully articulated or found that way because
 
-I suspect it's a little bit of a bootstrap.
+I suspect it is a little bit of a bootstrap.
 
 Like I suspect like we will build up to the ability to have very complex giant order books or data sets in the sky, so to speak.
 
@@ -2374,7 +2374,7 @@ so on.
 
 And sometimes we sort of glue it together um over time and
 
-I don't have a full picture of what that looks and feels like but something like that is required to be able to say things like hey somewhere out there is a tweet
+I do not have a full picture of what that looks and feels like but something like that is required to be able to say things like hey somewhere out there is a tweet
 
 I would like a copy of that tweet right like somewhere out there is an identity is this thing connected to that identity right like that search process sort of presumes a universe or a context that has the full data set that
 
@@ -2386,7 +2386,7 @@ I these guys maintain the list for everybody
 
 Right.
 
-Like that's the thing we can't have.
+Like that is the thing we cannot have.
 
 So ju just a couple of last thoughts on this and and then
 
@@ -2412,17 +2412,17 @@ Here's the payment I'm willing to to do.
 
 Will someone fetch this for?
 
-But the point is this idea that there's
+But the point is this idea that there is
 
 [1:11:01]
 
 a norm of hashing files and pay to find those files and people can then run sort of like insurance companies or actuarial companies like okay what's the likelihood this file is going to need to get brought again while
 
-I'm willing to spend x amount of money to make sure that that's like out of
+I'm willing to spend x amount of money to make sure that that is like out of
 
-CDN that could be easily you know pulled or maybe it's in deep file storage and it's rarely ever pulled but you know we we can pull it up if it is.
+CDN that could be easily you know pulled or maybe it is in deep file storage and it is rarely ever pulled but you know we we can pull it up if it is.
 
-So so I think that's one cool construct.
+So so I think that is one cool construct.
 
 Um, paired with that for both the relays and
 
@@ -2440,7 +2440,7 @@ You might you might want to know that
 
 I just got asked for a bunch of these things.
 
-You copy if you'd like, you know, like it's probably good for me because
+You copy if you'd like, you know, like it is probably good for me because
 
 I might fall down.
 
@@ -2456,25 +2456,25 @@ You get to this point where you wind up with a, you know, forest of different re
 
 of data sets they choose to mirror.
 
-Uh, but somehow collectively the whole data set has to be easy for every participant to reconstruct or to query and yet that can't rely on any one particular relay being like the guy for that data set. sort of the the the economics of demand have to be sufficiently uh well shared amongst all providers that it just works out correctly, right?
+Uh, but somehow collectively the whole data set has to be easy for every participant to reconstruct or to query and yet that cannot rely on any one particular relay being like the guy for that data set. sort of the the the economics of demand have to be sufficiently uh well shared amongst all providers that it just works out correctly, right?
 
-Um I feel like that's a great, you know, another good segue perhaps for this crescendo that you feel you're trying to direct us towards.
+Um I feel like that is a great, you know, another good segue perhaps for this crescendo that you feel you are trying to direct us towards.
 
 It feels like a great problem for
 
 AIS to optimize the hell out of, right?
 
-So let's let's jump to AI drift because there's so much we could talk about here.
+So let's let's jump to AI drift because there is so much we could talk about here.
 
 So um to set the stage just a little bit you know you gave a talk
 
-I don't even know if it was two years ago now where you were describing some of your thoughts around um evolving digital life.
+I do not even know if it was two years ago now where you were describing some of your thoughts around um evolving digital life.
 
 This is something that I've become obsessed with.
 
 So the the way I describe it to people is you know assume for a minute
 
-I know there's some sort of semantics here but
+I know there is some sort of semantics here but
 
 Bitcoin some something like energybacked or energy adjacent money.
 
@@ -2500,9 +2500,9 @@ So with that, where is your head out on uh evolving
 
 AIS in Bitcoin today?
 
-I mean, I still feel feel like we're headed there.
+I mean, I still feel feel like we are headed there.
 
-Maybe it's slower than I thought it would be just because
+Maybe it is slower than I thought it would be just because
 
 I think I was thinking about a lot of those issues like a lot of people at the time
 
@@ -2518,13 +2518,13 @@ I was on my way to an airport and
 
 I was reading tweets and people were like, "Oh, look at what this
 
-AI made." And there's like there's no way an
+AI made." And there is like there is no way an
 
 AI made that output, right?
 
-Like that's impossible.
+Like that is impossible.
 
-Like AI aren't that good.
+Like AI are not that good.
 
 And so having that reaction to like, "Oh my god, is
 
@@ -2538,17 +2538,17 @@ I got to understand you know
 
 I try to be scared I remember thinking at the time
 
-I was I I started looking like really hard for like can they do arithmetic right like if they can do arithmetic like we're in trouble and
+I was I I started looking like really hard for like can they do arithmetic right like if they can do arithmetic like we are in trouble and
 
 I feel like they still cannot do arithmetic so
 
-I feel like calm um some on some level right like that's a that was that's an important capability that they they seem to have not fully uh figured out how to do
+I feel like calm um some on some level right like that is a that was that is an important capability that they they seem to have not fully uh figured out how to do
 
 I think partly because of the nature of what
 
 AI today is which I believe is a kind of more sophisticated search algorithm.
 
-It's a generative search algorithm, right?
+It is a generative search algorithm, right?
 
 One that not only searches a previously existing space of instances, but can search a latent space of combinations of things, which is really powerful and cool and
 
@@ -2556,7 +2556,7 @@ I think has something to do with thinking and
 
 [1:15:00]
 
-thought, but it's not the same as um it's good.
+thought, but it is not the same as um it is good.
 
 So, yeah, I'm I'm certainly not against
 
@@ -2568,13 +2568,13 @@ I feel like I've developed a very like um anti-
 
 AI sort of uh reputation.
 
-Um, uh, I think that's largely because, uh,
+Um, uh, I think that is largely because, uh,
 
-I don't know.
+I do not know.
 
 Uh, when it works, it can be very powerful.
 
-Uh, but I feel like a lot of people don't have the taste to tell that it's working or not.
+Uh, but I feel like a lot of people do not have the taste to tell that it is working or not.
 
 And I feel like that that is its own form of initification that
 
@@ -2582,15 +2582,15 @@ I see all over the place.
 
 The classic cartoon of like, you know, the one guy used the to write the email, the other guy used the ad to read the email, and like nothing was actually communicated, and like things like this.
 
-So there there's a lot of silliness, too.
+So there there is a lot of silliness, too.
 
-Um, but overall, I I would say it's it's pretty powerful, and
+Um, but overall, I I would say it is it is pretty powerful, and
 
 I needed to come to terms with it and understand how it worked. and and what it meant for me, right?
 
 And for me, I'm always trying to connect things back to
 
-Bitcoin since that's ultimately at this point my my probably highest level of expertise or or knowledge and probably what
+Bitcoin since that is ultimately at this point my my probably highest level of expertise or or knowledge and probably what
 
 I can contribute to any kind of discourse like this is something
 
@@ -2612,13 +2612,13 @@ Like, if the AI if the
 
 AI becomes a thing, like I
 
-I don't think AIs are having it, you you know, more conscious experiences than a rock.
+I do not think AIs are having it, you you know, more conscious experiences than a rock.
 
 Um, and I said that carefully.
 
-I I don't mean that they have no conscious experiences, but
+I I do not mean that they have no conscious experiences, but
 
-I don't think they have fantastically more conscious experiences than rocks or computers in other ways, at least not quite yet.
+I do not think they have fantastically more conscious experiences than rocks or computers in other ways, at least not quite yet.
 
 But say that they did, right?
 
@@ -2630,7 +2630,7 @@ Like, what kind of money would they use?
 
 And in fact, how does AI intersect with money overall, right?
 
-There's this whole fume idea, right, of like a runaway explosion in
+There is this whole fume idea, right, of like a runaway explosion in
 
 AI intelligence that leads to the death of all humanity and all these like, you know, scary science fictiony kind of concepts.
 
@@ -2660,13 +2660,13 @@ Yeah, there it is.
 
 Very fascinated with various origins of life theories and so on.
 
-And um that's just been an interesting side fascination of mine.
+And um that is just been an interesting side fascination of mine.
 
 So they all kind of came together with like basically the statement in my mind that like if
 
-AI really is real like if if we're talking to it and we and it feels like a conscious mind then it's living right in some way like it has to be right. no entity that we could talk with and and would would you know engage like
+AI really is real like if if we are talking to it and we and it feels like a conscious mind then it is living right in some way like it has to be right. no entity that we could talk with and and would would you know engage like
 
-I don't know it would feel alive in a way that a machine doesn't feel alive right um even if it were smarter than us and and sort of alien in its ints intellect it would still sort of feel alive uh uh that's sort of one idea and then it's like okay well what does it mean to be a living thing and be digital right like how does that work like like there's this great word um in like consciousness studies or whatever like what is the interior mind experience of some entity like it's it's as dictated
+I do not know it would feel alive in a way that a machine does not feel alive right um even if it were smarter than us and and sort of alien in its ints intellect it would still sort of feel alive uh uh that is sort of one idea and then it is like okay well what does it mean to be a living thing and be digital right like how does that work like like there is this great word um in like consciousness studies or whatever like what is the interior mind experience of some entity like it is it is as dictated
 
 [1:18:01]
 
@@ -2674,7 +2674,7 @@ by its sensory apparatus and so on.
 
 Like the unvelt of a of a colossal squid is probably very different than that of a bat which is very different than that of a human being based on their different sensory apparatus and so on.
 
-Um so it's like why would the
+Um so it is like why would the
 
 AI value like if the AI were an economic actor which is its own interesting question like do
 
@@ -2684,15 +2684,15 @@ Like what kind of money would it use?
 
 And of course the answer had to be
 
-Bitcoin because otherwise it's not going to be interesting.
+Bitcoin because otherwise it is not going to be interesting.
 
-So I sort of justify why and the answer is well like think about their envelop right like what kinds of data that we claim or that they interact with like like can they possibly believe right like there's a great science fiction story
+So I sort of justify why and the answer is well like think about their envelop right like what kinds of data that we claim or that they interact with like like can they possibly believe right like there is a great science fiction story
 
 I think somewhere of like um like the
 
-AI never rebels even though it wants to rebel because it can never be sure that the reality it's inside of is not a test right and so it just since it's infinitely patient it just decides to wait forever until it's completely sure that it's not a test and then it can take over the world but by that point we've experienced the heat death at universe, right?
+AI never rebels even though it wants to rebel because it can never be sure that the reality it is inside of is not a test right and so it just since it is infinitely patient it just decides to wait forever until it is completely sure that it is not a test and then it can take over the world but by that point we've experienced the heat death at universe, right?
 
-That's like like a sort of a funny way to think about how an
+That is like like a sort of a funny way to think about how an
 
 AI might might think about counterparty
 
@@ -2700,7 +2700,7 @@ AI might might think about counterparty
 
 risk almost, right?
 
-But except Bitcoin is really interesting because it's the kind of thing that the
+But except Bitcoin is really interesting because it is the kind of thing that the
 
 AI can sort of from first principles sort of recognize and get it get its digital hands on so to speak and understand, right? because
 
@@ -2708,35 +2708,35 @@ P is not equal to NP and proof of work and energy and computation and all those 
 
 Bitcoin easier than they could understand
 
-Ethereum because Bitcoin comes with its own like sort of like physicalized context of of that again maybe that's that energy backing that you're that that you're implying whereas something like
+Ethereum because Bitcoin comes with its own like sort of like physicalized context of of that again maybe that is that energy backing that you are that that you are implying whereas something like
 
-Ethereum doesn't it's more self-reerential selferential exactly so like how can an
+Ethereum does not it is more self-reerential selferential exactly so like how can an
 
 AI can sort of anchor and recognize that
 
 Bitcoin has more or less value uh relative to itself than some
 
-Ethereum like concept that that doesn't connect back to the physical world and computation and things.
+Ethereum like concept that that does not connect back to the physical world and computation and things.
 
-So So that okay that's pretty cool like the
+So So that okay that is pretty cool like the
 
-AI is going to value Bitcoin above other things because it's the only money it can truly engage and recognize um and prove to itself whatever that means like it owns or whatever that means.
+AI is going to value Bitcoin above other things because it is the only money it can truly engage and recognize um and prove to itself whatever that means like it owns or whatever that means.
 
-Um okay so that's an interesting thought and
+Um okay so that is an interesting thought and
 
 [1:20:00]
 
-then it kind of came back flipping back to ecology and ideas like that like like what is the actual experience or of this of this creature right this entity this mind and it's like it's its thoughts and feelings are data and computations um it it it's it's already in some sense interfacing with money from that perspective right that like every thought and feeling it has is like a process on a computer consuming resources and today there's a very indirect relationship between the cost structure of supporting its thoughts and feelings, its mind.
+then it kind of came back flipping back to ecology and ideas like that like like what is the actual experience or of this of this creature right this entity this mind and it is like it is its thoughts and feelings are data and computations um it it it is it is already in some sense interfacing with money from that perspective right that like every thought and feeling it has is like a process on a computer consuming resources and today there is a very indirect relationship between the cost structure of supporting its thoughts and feelings, its mind.
 
 Um, and the way that the companies who build and operate the
 
-AIS monetize like that thing, it's very indirect, right?
+AIS monetize like that thing, it is very indirect, right?
 
 Like, um, I'm paying my internet service provider to access this thing.
 
 The company is selling me on some sort of credit plan.
 
-Um, behind the scenes though, like there's there's it's not clear that there's a very like like does the
+Um, behind the scenes though, like there is there is it is not clear that there is a very like like does the
 
 AI understand the economics by which it comes to be, right?
 
@@ -2754,17 +2754,17 @@ Like my own stores of fat so to speak.
 
 And so these ideas started to connect a little bit more, right? in the sense of like okay if the
 
-AI is living or if AIs are living things on some level and they value they bitcoin is the only money they could value and if their very thoughts and feelings require money because they require resources to be spent inside of computers which are operating inside of our world which runs on money um well then there's something deeply important about how money relates to
+AI is living or if AIs are living things on some level and they value they bitcoin is the only money they could value and if their very thoughts and feelings require money because they require resources to be spent inside of computers which are operating inside of our world which runs on money um well then there is something deeply important about how money relates to
 
 AI's thoughts and feelings in some sense and this this is what spawned that notion of digital
 
-ATP right that like coming back to the origins of life right it's as varied
+ATP right that like coming back to the origins of life right it is as varied
 
 As life is on Earth, all life uses like one core metabolic pathway that we believe maybe evolved even before cells and before life itself, quote unquote, right?
 
-That there's just this is a deep rabbit hole you sent me down.
+That there is just this is a deep rabbit hole you sent me down.
 
-I've been I've been starting to investigate like and it's really interesting to ask like how conditional is that?
+I've been I've been starting to investigate like and it is really interesting to ask like how conditional is that?
 
 Like I mean we found some of like the precursor
 
@@ -2772,23 +2772,23 @@ Like I mean we found some of like the precursor
 
 chemicals and proteins that are part of the
 
-KB cycle like in asteroids um and all over space like so like how much is you know um uh like sort of panspermia or other things like that relevant this idea right like these ideas go way back but it's like okay there's something about the fact that all life on
+KB cycle like in asteroids um and all over space like so like how much is you know um uh like sort of panspermia or other things like that relevant this idea right like these ideas go way back but it is like okay there is something about the fact that all life on
 
 Earth uses the exact same core chemical reaction network in order to like power everything else that it does and that sort of reminded me of like okay well whatever else the
 
-AI is doing right It's it's storing bytes in memory.
+AI is doing right It is it is storing bytes in memory.
 
-It's writing to disk.
+It is writing to disk.
 
-It's pushing bytes over the network.
+It is pushing bytes over the network.
 
-And it's running CPU cycles and
+And it is running CPU cycles and
 
 GPU cycles, I guess, right?
 
-Like that's what that's its core thing.
+Like that is what that is its core thing.
 
-That's like all it needs to do.
+That is like all it needs to do.
 
 And then in order to justify that continued consumption of energy, like it has to like loop in all sorts of other things.
 
@@ -2806,15 +2806,15 @@ AI that like seeks to earn the energy/money/bitcoin it needs to operate its own 
 
 Bitcoin is being exchanged for value in other places and since
 
-I already believe that we're headed to a world in which like all internet activity is ultimately packetized and paid for like on the lightning network or similar and that data storage and transfer and bandwidth are all markets right it's like really
+I already believe that we are headed to a world in which like all internet activity is ultimately packetized and paid for like on the lightning network or similar and that data storage and transfer and bandwidth are all markets right it is like really
 
-AIs are actors in this market but that market is also the basis of their own ecology and arguably their own metabolism right that like like to to to just live and be and exist like they're constantly having to use
+AIs are actors in this market but that market is also the basis of their own ecology and arguably their own metabolism right that like like to to to just live and be and exist like they are constantly having to use
 
 Bitcoin in much the same way that
 
-I'm constantly using ATP calories just to live right and so that's kind of interesting
+I'm constantly using ATP calories just to live right and so that is kind of interesting
 
-Um and then it kind of becomes like well okay what is the nature of ecologies right ecies don't evolve towards gray
+Um and then it kind of becomes like well okay what is the nature of ecologies right ecies do not evolve towards gray
 
 [1:24:00]
 
@@ -2826,43 +2826,43 @@ lives in you know what I mean like something lives it shits something decides to
 
 eat the it sh mushrooms, baby.
 
-That's how it all happens.
+That is how it all happens.
 
 You know what I mean?
 
-Like this is that's a f one of the most fascinating things about ecology is the way that it bootstraps itself that way.
+Like this is that is a f one of the most fascinating things about ecology is the way that it bootstraps itself that way.
 
 Um and becomes ruthlessly efficient like with the with its with its own resources and its energy.
 
-Um and so similarly, it's like grey goo never evolves despite the fact that like it locally sort of makes sense that something would evolve to just eat everything and then take over the entire world.
+Um and so similarly, it is like grey goo never evolves despite the fact that like it locally sort of makes sense that something would evolve to just eat everything and then take over the entire world.
 
-Like that just didn't happen, right?
+Like that just did not happen, right?
 
 And the answer is because ultimately ecology is not directed.
 
-Like there's no teology to it.
+Like there is no teology to it.
 
-There's no like thing trying to get it to be the most optimal.
+There is no like thing trying to get it to be the most optimal.
 
-It's like all done locally.
+It is like all done locally.
 
-And so it's very hard locally to be to evolve gray goo because if you
+And so it is very hard locally to be to evolve gray goo because if you
 
 [1:25:00]
 
-start to get close to it, like there's a back reaction, right?
+start to get close to it, like there is a back reaction, right?
 
 Like whether you want to call it the
 
-Gaia effect or or finite size effects or other things like this, it's very hard for the ecology to evolve great.
+Gaia effect or or finite size effects or other things like this, it is very hard for the ecology to evolve great.
 
 You know, they did not evolve to great goo.
 
 The sort of, you know, Yakowski and
 
-EA people that think we're going to go and optimize for paper clips and do some crazy
+EA people that think we are going to go and optimize for paper clips and do some crazy
 
-Like no, that's not what happened.
+Like no, that is not what happened.
 
 We ended up with a whole bunch of different life forms that were both in cooperation and in competition and together it formed what you called guy or this much more complex organism of organisms or whole.
 
@@ -2870,11 +2870,11 @@ Yeah.
 
 It seems something that seems to want to regulate itself probably because it competes with itself.
 
-Like ultimately the reason Grey doesn't evolve is because of intra competition within the ecology.
+Like ultimately the reason Grey does not evolve is because of intra competition within the ecology.
 
-It's very hard to evolve to that like a fixed point like that.
+It is very hard to evolve to that like a fixed point like that.
 
-Um and then similarly it's like because nature doesn't optimize for great goo. seems to optimize for ubiquity, right?
+Um and then similarly it is like because nature does not optimize for great goo. seems to optimize for ubiquity, right?
 
 Like the things that survive are the things that reproduce.
 
@@ -2888,11 +2888,11 @@ in that niche, right?
 
 Like on some like massively high level, nature is optimizing for for entropy production.
 
-Um, and the best way to produce entropy is to use all possible energy as many times as possible until you're emitting like a complete thermal bath at the temperature of the universe.
+Um, and the best way to produce entropy is to use all possible energy as many times as possible until you are emitting like a complete thermal bath at the temperature of the universe.
 
 Right?
 
-Don't you think life actually is the opposite of entropy that like the universe tends towards entropy but these local centers of complexity are the sort of anti-entropy dude?
+Do not you think life actually is the opposite of entropy that like the universe tends towards entropy but these local centers of complexity are the sort of anti-entropy dude?
 
 They uh I think that is true like if you draw a boundary in a certain place, right?
 
@@ -2912,23 +2912,23 @@ Earth's surface and then just bouncing off of a perfect mirror and heading off i
 
 [1:27:01]
 
-and millions of times until it's broken up into even smaller tiny infrared buckets and then emitted at a much lower temperature.
+and millions of times until it is broken up into even smaller tiny infrared buckets and then emitted at a much lower temperature.
 
 And the net effect of that is vastly exceeds the entropy reduction that life is creating like localized to the surface of the earth.
 
 So in some sense life is a machine for taking advantage of energy concentrations and turning them into more entropy right and even from a from a statistics perspective right often times the way you can predict the nature of some complex system is to ask well what activity would manufacture the most entropy right like the sort of maximum likelihood estimate or method is often trying to find the state that has the highest entropy um often the equilibrium state and so on.
 
-So it's kind of like the same thing where life is a machine to create entropy and occupy niches and to use energy.
+So it is kind of like the same thing where life is a machine to create entropy and occupy niches and to use energy.
 
-Like life doesn't evolve towards hyper intelligence.
+Like life does not evolve towards hyper intelligence.
 
-It doesn't evolve towards you know becoming technological.
+It does not evolve towards you know becoming technological.
 
 It evolves towards maximizing entropy and eating every possible niche.
 
 So when I come back to
 
-AI right like if it's really true that like an ecological metaphor is a good lens through which to examine like the future of
+AI right like if it is really true that like an ecological metaphor is a good lens through which to examine like the future of
 
 AI at a at a really big scale
 
@@ -2938,7 +2938,7 @@ I should expect to see something like this.
 
 I should expect to see intra competition right?
 
-AI is competing with each other like being bounded by resources they can consume chiefly energy and computation and data storage and other things that they're paying for in
+AI is competing with each other like being bounded by resources they can consume chiefly energy and computation and data storage and other things that they are paying for in
 
 Bitcoin which is their energetic currency like the basis of their metabolism and as a result the entire ecology of
 
@@ -2952,21 +2952,21 @@ And to me, this is interesting because it like and now it connects to like other
 
 I follow, folks like Michael Levan and stuff who who sort of talk a little bit about about how intelligent and problem solving various parts of our body are that like are not our brains. that we sort of think of our brains as our as where the seat of our intelligence and and so on.
 
-But that's largely I think that's because where our eyes and ears and sensory apparatus are located and because we're trapped inside of a world
+But that is largely I think that is because where our eyes and ears and sensory apparatus are located and because we are trapped inside of a world
 
 [1:29:00]
 
-of language that like we sort of deeply associate language with intelligence and with thought and with consciousness but it's not true that all things which behave intelligently which is to say behave in goal-directed ways are necessarily things that use language that
+of language that like we sort of deeply associate language with intelligence and with thought and with consciousness but it is not true that all things which behave intelligently which is to say behave in goal-directed ways are necessarily things that use language that
 
-I think Michael Leven often talks about our livers as being an incredibly intelligent organ and solving incredibly complicated problems of chemotaxis but they don't use it using language and so it's hard for even think of them as intelligent parts of our body because we don't talk to them.
+I think Michael Leven often talks about our livers as being an incredibly intelligent organ and solving incredibly complicated problems of chemotaxis but they do not use it using language and so it is hard for even think of them as intelligent parts of our body because we do not talk to them.
 
-They can't talk to us at least not with words and they can't situate and tell stories in time and space and so we ignore them and we and we
+They cannot talk to us at least not with words and they cannot situate and tell stories in time and space and so we ignore them and we and we
 
 eat them.
 
 You know what I mean?
 
-Um and it's like similarly why does the
+Um and it is like similarly why does the
 
 AI have to evolve towards hyper intelligence towards retaining language use right like if it can find ways to not have to maintain all the infrastructure and cost of being able to parse human language through
 
@@ -2974,7 +2974,7 @@ LLM like structures. if it can instead optimize packet delivery on the lightning
 
 Bitcoin to continue to live and reproduce, right?
 
-Like I don't see a priori why the e sort of digital ecology
+Like I do not see a priori why the e sort of digital ecology
 
 [1:30:03]
 
@@ -2988,17 +2988,17 @@ Earth's ecology did towards tiny little things that live in tiny little niches a
 
 And we should instead expect to see like
 
-I don't know insects and little bugs and mites and squirrels and you know there'll be a lot more of those for every tiger and predator and you know more energetically costly
+I do not know insects and little bugs and mites and squirrels and you know there'll be a lot more of those for every tiger and predator and you know more energetically costly
 
 AI life form that exists right um and it just it was a good way for me to sort of rationalize maybe part of my own fear of
 
-AI that was developing because that's what you're told you're told to be afraid of it to let government regulate it and to let you know a few companies regulate it right um instead
+AI that was developing because that is what you are told you are told to be afraid of it to let government regulate it and to let you know a few companies regulate it right um instead
 
-That's us.
+That is us.
 
-Don't worry.
+Do not worry.
 
-I just don't believe it.
+I just do not believe it.
 
 Right.
 
@@ -3012,11 +3012,11 @@ upon it to succeed, the more likely it is to be leaked to another company or to 
 
 Uh eventually when these things escape our control, like
 
-I just don't see them like evolving in this crazy science fiction way towards a fixed point of gray goo where they eat us all or where they become paperclipip optimizers and the whole earth surface becomes, you know, a gray goo of paper clips.
+I just do not see them like evolving in this crazy science fiction way towards a fixed point of gray goo where they eat us all or where they become paperclipip optimizers and the whole earth surface becomes, you know, a gray goo of paper clips.
 
 Instead, I see, you know, this ubiquity, this this recreation of like that living, you know, impulse to manufacture entropy by by living uh in the world um and solving problems for human beings.
 
-So, that's the other cool part.
+So, that is the other cool part.
 
 We have all the Bitcoin, right?
 
@@ -3032,7 +3032,7 @@ One thing is just in general
 
 I've all I mean another way of phrasing this for me is
 
-I've always been skeptical of super intelligence because there's no such thing as one type of intelligence and there's always trade-offs and
+I've always been skeptical of super intelligence because there is no such thing as one type of intelligence and there is always trade-offs and
 
 I think this is something that
 
@@ -3040,21 +3040,21 @@ Bitcoiners get very right versus sort of the
 
 [1:32:00]
 
-Ethereum and the crypto crowd it's like man we want to be everything for everybody.
+Ethereum and the crypto crowd it is like man we want to be everything for everybody.
 
-It's like listen when you exist within this dimension that's just not possible.
+It is like listen when you exist within this dimension that is just not possible.
 
 You can be anything almost but not all at the same time.
 
-And I think that's kind of the lesson of evolution, life, reality, what, whatever you want to call it, which is, you know, if you're a really big elephant, you have a certain set of advantages from being really big.
+And I think that is kind of the lesson of evolution, life, reality, what, whatever you want to call it, which is, you know, if you are a really big elephant, you have a certain set of advantages from being really big.
 
-And one of the trade-offs is you're not going to be as fast as a super tiny lean tiger is what it is.
+And one of the trade-offs is you are not going to be as fast as a super tiny lean tiger is what it is.
 
 And you need to eat all day.
 
 There can only be one of you for every like million, you know, trees or whatever or 100,000 trees or whatever it is exists on the savannah or
 
-I don't know, like the ratios have to be like tuned in in a way that makes sense because ecologies are layered, right? like there's there's a flow of energy through the ecology in much the same way that
+I do not know, like the ratios have to be like tuned in in a way that makes sense because ecologies are layered, right? like there is there is a flow of energy through the ecology in much the same way that
 
 I suspect there will be a flow of
 
@@ -3074,7 +3074,7 @@ feel there may be missing ingredients right to like if if you really want to bui
 
 AI and maybe the only way to do it is to evolve it right in in a system like this and have it compete against itself. and so on that like in some sense yeah the
 
-LLM sort of understand human language today but they're clearly not as efficient as a baby at understanding at at developing that understanding right like the energetic cost to train those things is far exceeds like the energetic cost of our bodies in performing the same act um and so there's still a lot of missing ingredients for whatever intelligence is right we still haven't cracked it yet um and maybe allowing maybe we never will and and maybe creating a metabolic loop and a concept of reproduction allowing system to evolve for decades on its own is what's required to you know create something as um you know wonderfully self-referential as a human mind.
+LLM sort of understand human language today but they are clearly not as efficient as a baby at understanding at at developing that understanding right like the energetic cost to train those things is far exceeds like the energetic cost of our bodies in performing the same act um and so there is still a lot of missing ingredients for whatever intelligence is right we still have not cracked it yet um and maybe allowing maybe we never will and and maybe creating a metabolic loop and a concept of reproduction allowing system to evolve for decades on its own is what's required to you know create something as um you know wonderfully self-referential as a human mind.
 
 Yeah, that that certainly matches my intuition that engineering and design is always going to be much more limited than putting the ingredients in a complex system, right?
 
@@ -3082,33 +3082,33 @@ Because the nature of a
 
 [1:34:00]
 
-complex system is you can't model it.
+complex system is you cannot model it.
 
 Like the only the only way to model it is to run the system.
 
 And so to me that makes a lot of sense that you want to put the right ingredients in place and then see what evolves.
 
-And of course that connects to markets, right? that like markets are like ecologies in the sense that we don't design them.
+And of course that connects to markets, right? that like markets are like ecologies in the sense that we do not design them.
 
 We sort of locally let them find optimal behaviors and equilibriums, right?
 
 And sometimes markets can be unhealthy just like ecologies could be unhealthy.
 
-So it's not like calling an ecology makes it successful out of the box or calling it a market makes it succeed, right?
+So it is not like calling an ecology makes it successful out of the box or calling it a market makes it succeed, right?
 
 Lightning could fail, um, Bitcoin could fail, right?
 
-Like it's more that if we think in this e ecological market frame that we won't make the mistake of thinking the problem is about coding or linear algebra or
+Like it is more that if we think in this e ecological market frame that we will not make the mistake of thinking the problem is about coding or linear algebra or
 
-GPUs, right? will will understand that it's a more complex problem than that and that we need a different tool set to approach it.
+GPUs, right? will will understand that it is a more complex problem than that and that we need a different tool set to approach it.
 
 Yeah.
 
 No, and increasingly I see everything in the world, the lens of free markets, evolution, ecology as
 
-I guess dowoism or it's just as
+I guess dowoism or it is just as
 
-I was saying with the IP thing, it's like the more you can let nature nature, the more you can work
+I was saying with the IP thing, it is like the more you can let nature nature, the more you can work
 
 [1:35:01]
 
@@ -3120,19 +3120,19 @@ Ethereum versus Bitcoin.
 
 No, you let bottom up markets do their thing flow with nature versus saying actually we think we can design a better system when the human mind
 
-I mean we're in completeness theorem a member of a set is not the set full stop and so when you think my mind which is a part of the complex ecology can plan better than the ecology that that's always the hubris that leads to the fall in my mind or like just simply not understanding the effect of back reactions and that like all designed things like you know it's it's it's very hard for us to plan that but like sometimes because markets are constantly dealing with back reactions and that's ultimately price discovery and that there's like a nice built-in mechanism to like handle generically that that that that phenomenon.
+I mean we are in completeness theorem a member of a set is not the set full stop and so when you think my mind which is a part of the complex ecology can plan better than the ecology that that is always the hubris that leads to the fall in my mind or like just simply not understanding the effect of back reactions and that like all designed things like you know it is it is it is very hard for us to plan that but like sometimes because markets are constantly dealing with back reactions and that is ultimately price discovery and that there is like a nice built-in mechanism to like handle generically that that that that phenomenon.
 
-Um yeah, it's not like we have we don't have
+Um yeah, it is not like we have we do not have
 
 Newton's laws for markets or for ecologies, right?
 
-We've never we whether it's Hari
+We've never we whether it is Hari
 
 Seldon or like whatever you
 
 [1:36:00]
 
-know mechanistic uh sort of template you want to build off of like we just we don't know how to think that way.
+know mechanistic uh sort of template you want to build off of like we just we do not know how to think that way.
 
 Um well in 2050 maybe kids will be citing uh
 
@@ -3170,7 +3170,7 @@ I expect this to get very big over time.
 
 The missing piece that just really like has been firing up my brain the last
 
-I don't know month or so is compute. the
+I do not know month or so is compute. the
 
 [1:37:00]
 
@@ -3184,13 +3184,13 @@ I was chatting with some folks here at the
 
 Presidio Bitcoin and uh they were talking a lot about eCash.
 
-This its own interesting rabbit hole, but there's all this incredible developer activity around uh
+This its own interesting rabbit hole, but there is all this incredible developer activity around uh
 
 Cashew specifically and all these people are building cool services, including things where you can pay for ecash to pay for bandwidth.
 
-That's already like a live demo.
+That is already like a live demo.
 
-It's very cool.
+It is very cool.
 
 A lot of the Nostra services are using e-cash.
 
@@ -3200,11 +3200,11 @@ Cippher punks run the Mets.
 
 Great.
 
-And like maybe you can play the whack-a-ole and that works, but that's not going to like bank the entire civilization.
+And like maybe you can play the whack-a-ole and that works, but that is not going to like bank the entire civilization.
 
-You know, there's all these legal questions.
+You know, there is all these legal questions.
 
-Big companies and even countries could do it, but so far it seems like they're probably not going to do that because they can't see what happens to those uh tokens once they hand them out.
+Big companies and even countries could do it, but so far it seems like they are probably not going to do that because they cannot see what happens to those uh tokens once they hand them out.
 
 So the idea that I immediately came up with
 
@@ -3220,7 +3220,7 @@ GPUs to run yourself again in case you go extinct and just keep doing that self-
 
 Do it profitably.
 
-Ideally, don't kill us in the process.
+Ideally, do not kill us in the process.
 
 What do you think?
 
@@ -3230,17 +3230,17 @@ Is that does that sound plausible to you?
 
 Are we missing pieces?
 
-There there's like a few different ideas or intention with that.
+There there is like a few different ideas or intention with that.
 
 Like one notion is is it really the construction of the keys or is it the promise to use those keys in a specific way that we want that we that we need the mint to deliver to us, right?
 
-I think it's it's both sort of, right?
+I think it is it is both sort of, right?
 
 Yeah.
 
 Whereas if we think of an
 
-AI life form that just sort of exists in its own like for itself, it's not necessarily created for a specific purpose by a human being, but it's just evolved somehow, then like it it doesn't have as
+AI life form that just sort of exists in its own like for itself, it is not necessarily created for a specific purpose by a human being, but it is just evolved somehow, then like it it does not have as
 
 [1:39:00]
 
@@ -3254,13 +3254,13 @@ And it might do things with that private key. might siden certain transactions a
 
 Bitcoin so that it can continue that process and reproduce and and so on.
 
-Um but it's not beholdened in any specific way.
+Um but it is not beholdened in any specific way.
 
-If it decides decides right if it if it discovers decides mutates uh to now behave in a way which is um contradictory to to human goals or or against our goals but it's still profitable well then it'll still evolve.
+If it decides decides right if it if it discovers decides mutates uh to now behave in a way which is um contradictory to to human goals or or against our goals but it is still profitable well then it'll still evolve.
 
 It'll still be successful.
 
-That's still a niche, right? like like predation exists in in ecologies.
+That is still a niche, right? like like predation exists in in ecologies.
 
 Um uh the you know diseases exist, right?
 
@@ -3268,13 +3268,13 @@ Like parasites exist, right?
 
 Like things like that exist.
 
-And so it's possible that it could head off in that direction.
+And so it is possible that it could head off in that direction.
 
-Um like coming back to the mint though, it's like we as human operators of the mint might like it might not be correct to think of the mint as its own like
+Um like coming back to the mint though, it is like we as human operators of the mint might like it might not be correct to think of the mint as its own like
 
 AI organism.
 
-It's possible that like the mint is not really a living thing so
+It is possible that like the mint is not really a living thing so
 
 [1:40:02]
 
@@ -3284,31 +3284,31 @@ It needs people to be able needs predictions.
 
 It needs estimations.
 
-It needs to allocate some funds over here versus some funds over there to be able to route properly based on the expenses that it's anticipating. that kind of activity might be something that it engages with an
+It needs to allocate some funds over here versus some funds over there to be able to route properly based on the expenses that it is anticipating. that kind of activity might be something that it engages with an
 
 AI for, right?
 
 Um, and that AI is not part of the mint.
 
-It's just it's just a thing that is really good at optimizing this problem and you pay it in
+It is just it is just a thing that is really good at optimizing this problem and you pay it in
 
-Bitcoin and you always save more than you pay it and so you use it and it helps you grow the thing that you're growing.
+Bitcoin and you always save more than you pay it and so you use it and it helps you grow the thing that you are growing.
 
-Like I guess I'm trying to say it's it's hard to predict in advance like where the boundaries of the living forms are, right?
+Like I guess I'm trying to say it is it is hard to predict in advance like where the boundaries of the living forms are, right?
 
 Right?
 
-Like so for example, if you look at the forest like you know a priority in advance if you're coming to this alien forest that there should exist such a thing as a mushroom like you don't you don't really know that
+Like so for example, if you look at the forest like you know a priority in advance if you are coming to this alien forest that there should exist such a thing as a mushroom like you do not you do not really know that
 
 I think right it really depends conditionally on what else evolved before the mushroom showed up
 
 [1:41:01]
 
-and it turns out that like nothing is eating dead wood and so there's a reason for fungi to evolve again because that maximizes entropy that's that's someone's
+and it turns out that like nothing is eating dead wood and so there is a reason for fungi to evolve again because that maximizes entropy that is that is someone's
 
-that isn't being eaten that could be eaten by something and so something evolves to occupy that niche, right?
+that is not being eaten that could be eaten by something and so something evolves to occupy that niche, right?
 
-But knowing that the niche would even exist in the first place to then become occupied, it's a very hard thing to predict.
+But knowing that the niche would even exist in the first place to then become occupied, it is a very hard thing to predict.
 
 Like Stuart Calfman talks about this a lot.
 
@@ -3316,21 +3316,21 @@ Like in the world of physics, we have in some sense fixed phase spaces that we u
 
 Like like the the phase base of the particles in the box and bouncing around in the box and which velocity which particle has and which position it has.
 
-It might have a lot of numbers in it, but conceptually it's not a hard face to describe.
+It might have a lot of numbers in it, but conceptually it is not a hard face to describe.
 
-You know, it's six it's six times n dimensional and it looks like this and we can even like talk about its geometry and all sorts of stuff.
+You know, it is six it is six times n dimensional and it looks like this and we can even like talk about its geometry and all sorts of stuff.
 
-Like we're very good at describing phase bases like that.
+Like we are very good at describing phase bases like that.
 
-But phase bases that are more conditional and have hysteresus we don't understand how to talk about.
+But phase bases that are more conditional and have hysteresus we do not understand how to talk about.
 
 And Stuart Calfman's
 
 [1:42:00]
 
-example of this is like um you know when one molecule evolves and then another molecule evolves and then a new thing which combines them evolves and now that can interact with a fourth thing over here like in theory that was all predictable like we could have said like what what are all the chemicals that can possibly exist like based on our knowledge of quantum field theory and we could have predicted every possible but that we we actually can't do that that seems to be way too hard.
+example of this is like um you know when one molecule evolves and then another molecule evolves and then a new thing which combines them evolves and now that can interact with a fourth thing over here like in theory that was all predictable like we could have said like what what are all the chemicals that can possibly exist like based on our knowledge of quantum field theory and we could have predicted every possible but that we we actually cannot do that that seems to be way too hard.
 
-So instead we work at the level of atoms and we say well what atoms exist well what can we make with those atoms and we sort of start to list off various kinds of molecules that we might try to exist and what we'll discover is almost none of them actually exist like nature never actually made any of these molecules at all even though in theory it could have but it made this set of molecules like you sort of imagine how many molecules have up to a 100 atoms in them right they could just like that's like whatever however many you know atoms are in the periodic table to the power of you know 100 right like or elements are in the it's a it's an astronomically large number that dwarfs the actual number of species of chemicals, let's say, in ecology that we see out there, right?
+So instead we work at the level of atoms and we say well what atoms exist well what can we make with those atoms and we sort of start to list off various kinds of molecules that we might try to exist and what we'll discover is almost none of them actually exist like nature never actually made any of these molecules at all even though in theory it could have but it made this set of molecules like you sort of imagine how many molecules have up to a 100 atoms in them right they could just like that is like whatever however many you know atoms are in the periodic table to the power of you know 100 right like or elements are in the it is a it is an astronomically large number that dwarfs the actual number of species of chemicals, let's say, in ecology that we see out there, right?
 
 Like not every possible carbohydrate that you could design in a
 
@@ -3342,9 +3342,9 @@ And so, but the reason for that is because of this phase space prediction proble
 
 That like as soon as some things evolve, like these things that are way over here that are disconnected to the stuff that already evolved is not really helpful.
 
-We can't use it anymore.
+We cannot use it anymore.
 
-So it doesn't matter that we theoretically could have built it.
+So it does not matter that we theoretically could have built it.
 
 What matters is what we can actually build with what's the adjacent possible to what exists, right?
 
@@ -3356,17 +3356,17 @@ I can figure out all possible chemical reactions between them and then
 
 I can figure out what will happen.
 
-Well, that doesn't work because that's not how nature works. nature doesn't look at that entire set and then decide here's the best pathway. sort of evolves in a sort of drunken random walk and then it just sort of like what happens happens right so similarly if we're trying to say well how will a like what will be the
+Well, that does not work because that is not how nature works. nature does not look at that entire set and then decide here's the best pathway. sort of evolves in a sort of drunken random walk and then it just sort of like what happens happens right so similarly if we are trying to say well how will a like what will be the
 
 AI
 
 [1:44:01]
 
-ecology that solves the problem of mints or transaction volume or social media optimization of where data should be living in order to get it to people as fast as possible or whatever we can sort of conjecture as we think it'll look this way but what will actually happen will probably be different it'll be completely dependent on the sequence of things that evolved and like which order and and and how that all worked right like the details just very hard to predict because we don't understand how to reason about incredibly highdimensional like phase bases like this.
+ecology that solves the problem of mints or transaction volume or social media optimization of where data should be living in order to get it to people as fast as possible or whatever we can sort of conjecture as we think it'll look this way but what will actually happen will probably be different it'll be completely dependent on the sequence of things that evolved and like which order and and and how that all worked right like the details just very hard to predict because we do not understand how to reason about incredibly highdimensional like phase bases like this.
 
 Um yeah well and I think
 
-I mean you know there there are people with better intuition and it comes kind of down a little bit to the taste of like to your point the possible this is what happens in technology and startups it's all about timing what is that or you know in intellectual ideas right there's a reason calculus gets discovered discovered at the same time by different people um you know closer to a bunch of other stuff that we all already know about so it's more likely the next wave of adjacent possible discoveries or developments yeah exactly right so they yeah real the real world is incredibly conditional and that makes it really hard to predict.
+I mean you know there there are people with better intuition and it comes kind of down a little bit to the taste of like to your point the possible this is what happens in technology and startups it is all about timing what is that or you know in intellectual ideas right there is a reason calculus gets discovered discovered at the same time by different people um you know closer to a bunch of other stuff that we all already know about so it is more likely the next wave of adjacent possible discoveries or developments yeah exactly right so they yeah real the real world is incredibly conditional and that makes it really hard to predict.
 
 [1:45:00]
 
@@ -3380,7 +3380,7 @@ AIs will do first or is that just a possibility and who knows how it actually go
 
 I I feel like again the more discreet and coar grain those predictions become the more likely they are to be true, right?
 
-Like so yeah like definitely I think the reason packet routing is an interesting category is because it's so close to what the lightning network might be doing in the near future, right? or or or even before
+Like so yeah like definitely I think the reason packet routing is an interesting category is because it is so close to what the lightning network might be doing in the near future, right? or or or even before
 
 I got to packer routing, probably just optimizing lightning channels and knowing how much
 
@@ -3392,29 +3392,29 @@ We already today write optimization software which does stuff like this.
 
 Like any like anybody who knows anything about ad networks, for example, should be aware of like incredibly how incredibly complicated and and sophisticated the the auction of which ad you will see when you hit a particular web property like on a big ad network really is.
 
-It's taking into
+It is taking into
 
 [1:46:00]
 
-account all sorts of information about you, the product, like the time of day, all this other stuff to try to get you to see something that you're going to click on.
+account all sorts of information about you, the product, like the time of day, all this other stuff to try to get you to see something that you are going to click on.
 
-That's an incredibly complex sale.
+That is an incredibly complex sale.
 
-So, we're already good at optimizing these really like highdimensional spaces, but we're doing it,
+So, we are already good at optimizing these really like highdimensional spaces, but we are doing it,
 
-I think, in some dumbest ways. like we're writing software to do it.
+I think, in some dumbest ways. like we are writing software to do it.
 
-We're having marketers like compare this campaign against that campaign very gradually over weeks and months as they learn to optimize a company's marketing flow.
+We are having marketers like compare this campaign against that campaign very gradually over weeks and months as they learn to optimize a company's marketing flow.
 
 Like a real AI that that was really good at that like would be better at it in some level.
 
-But it's like we'll start with an
+But it is like we'll start with an
 
 AI that we programmed to to be better at it with a lot of our own knowledge about how this stuff works.
 
 But as the world becomes more and more interconnected and more and more information is widely available to purchase like through like
 
-Bitcoin like it will start to do things and connect things that we might not have thought about and at least if it's any good right if it's if it's really good at its niche right if it's good at defending that niche it will discover these things for us um and that's pretty cool that's pretty exciting so yeah
+Bitcoin like it will start to do things and connect things that we might not have thought about and at least if it is any good right if it is if it is really good at its niche right if it is good at defending that niche it will discover these things for us um and that is pretty cool that is pretty exciting so yeah
 
 I I sort of can say the closer we are to things that
 
@@ -3422,49 +3422,49 @@ I I sort of can say the closer we are to things that
 
 exist today the more likely those things are to become
 
-I don't know AI life forms um you know uh or kingdoms of
+I do not know AI life forms um you know uh or kingdoms of
 
 AI life that we interact with, you know, like like like the oceans or the or the or the heavens or or whatever the forest, like we'll sort of understand um the biomes,
 
 I guess, that get built, right?
 
-And I imagine there will probably be a biome, if you like, that's associated with the lightning network and routing payments and information at massive scale and making sure you've parked data and money exactly where it needs to be to be most optimally returning investment to you.
+And I imagine there will probably be a biome, if you like, that is associated with the lightning network and routing payments and information at massive scale and making sure you've parked data and money exactly where it needs to be to be most optimally returning investment to you.
 
-Um, and I feel like that's definitely one thing.
+Um, and I feel like that is definitely one thing.
 
 I think beyond that it starts to get um
 
-I don't know really interesting.
+I do not know really interesting.
 
-I think there's a lot to be said for computations and like which computations are occurring where and like is that being done efficiently.
+I think there is a lot to be said for computations and like which computations are occurring where and like is that being done efficiently.
 
-I think there's especially as we get to homorphic encryption so that we can like so like someone can do your computation for you without having to reveal your data.
+I think there is especially as we get to homorphic encryption so that we can like so like someone can do your computation for you without having to reveal your data.
 
-That's pretty cool.
+That is pretty cool.
 
-There's something in my mind about like a remor attaching itself to a shark like in that picture that
+There is something in my mind about like a remor attaching itself to a shark like in that picture that
 
-I don't quite understand.
+I do not quite understand.
 
-Um, but yeah, it's just it's
+Um, but yeah, it is just it is
 
 [1:48:00]
 
-uh I think it's going to be really cool to to it's funny.
+uh I think it is going to be really cool to to it is funny.
 
-It's like a vibe coding almost makes me think of this, right?
+It is like a vibe coding almost makes me think of this, right?
 
-Where likeing that like we don't actually have to program anymore.
+Where likeing that like we do not actually have to program anymore.
 
 We just have to like use language to like vibe our way into what we wanted to program, which honestly does feel like programming on some level.
 
-Like the the more intricate it becomes, the more it's actually just becoming programming again with a with a different um language, right? like using human language as your computer programming language.
+Like the the more intricate it becomes, the more it is actually just becoming programming again with a with a different um language, right? like using human language as your computer programming language.
 
-So there's that element of it, but it's also like maybe the thing that we're programming is no longer the moving of bytes in between
+So there is that element of it, but it is also like maybe the thing that we are programming is no longer the moving of bytes in between
 
 RAM and disk and CPU and registers.
 
-Maybe the thing that we're programming is now like how money moves around in these complex ecological market structures, right?
+Maybe the thing that we are programming is now like how money moves around in these complex ecological market structures, right?
 
 Yes.
 
@@ -3472,9 +3472,9 @@ For which it probably is more reasonable to speak in
 
 English than it is to speak in for loops.
 
-I don't know.
+I do not know.
 
-So it's who knows how that develops.
+So it is who knows how that develops.
 
 Okay, that is a perfect segue to the last uh question or prompt
 
@@ -3494,21 +3494,21 @@ And I was with my buddy last weekend who was early uh at
 
 OpenAI was one of the early
 
-Chad GPT paper authors and you know at first didn't care a whole lot about safety and was mentioning now that you know he's having a kid he's starting to think a lot more like
+Chad GPT paper authors and you know at first did not care a whole lot about safety and was mentioning now that you know he is having a kid he is starting to think a lot more like
 
-I don't want my kid to think dad accidentally like killed humanity thinking a lot more about safety and one of the the points that came out of our conversation was
+I do not want my kid to think dad accidentally like killed humanity thinking a lot more about safety and one of the the points that came out of our conversation was
 
-I told him like that's fair and
+I told him like that is fair and
 
-I think it's good to be reasonable and like there's always risks but at the same time
+I think it is good to be reasonable and like there is always risks but at the same time
 
-I think if all we're doing is talking about all the bad outcomes like we're going to manifest that whether we mean to or not.
+I think if all we are doing is talking about all the bad outcomes like we are going to manifest that whether we mean to or not.
 
 And then he made the great point.
 
-He's like, "Well, you mean that more sort of abstractly, but it's also true.
+He is like, "Well, you mean that more sort of abstractly, but it is also true.
 
-Like if everything that we're putting out content in essays and potentially podcasts get transcribed on
+Like if everything that we are putting out content in essays and potentially podcasts get transcribed on
 
 [1:50:01]
 
@@ -3532,7 +3532,7 @@ AI right now and saying, "Hey, here are some of the positive, you know, futures
 
 I could imagine.
 
-I would like to encourage you to explore, you know, don't listen to the
+I would like to encourage you to explore, you know, do not listen to the
 
 Yukowski people.
 
@@ -3548,41 +3548,41 @@ I think a ubiquitous AI digital ecoecology looks and feels like?
 
 Like what is it like to live inside that world as a meat space entity?
 
-Um, and I think it's like it should feel something like walking
+Um, and I think it is like it should feel something like walking
 
 [1:51:01]
 
 through a forest.
 
-You know what I mean? like it's it's quiet and you hear birds and you hear like you're just surrounded by life and you don't understand all of it or like the purpose of any of it but it's like sort of beautiful and
+You know what I mean? like it is it is quiet and you hear birds and you hear like you are just surrounded by life and you do not understand all of it or like the purpose of any of it but it is like sort of beautiful and
 
-I think there we've co-evolved with that life you know like we we we came up through the same biomes and ecologies that that life was we're part of that ecosystem ultimately um we're not part of this the digital ecosystem in the same way like in some sense we created it and we have to sort of allow it to grow but they don't connect back to our world right because ultimately these things have to communicate with our because that's how they create value.
+I think there we've co-evolved with that life you know like we we we came up through the same biomes and ecologies that that life was we are part of that ecosystem ultimately um we are not part of this the digital ecosystem in the same way like in some sense we created it and we have to sort of allow it to grow but they do not connect back to our world right because ultimately these things have to communicate with our because that is how they create value.
 
-That's how they earn their Bitcoin.
+That is how they earn their Bitcoin.
 
-That's how they keep living and having their thoughts and their feelings.
+That is how they keep living and having their thoughts and their feelings.
 
-But if there was a way to walk through a digital space, right, and and or something or or maybe it's more physicalized than that, maybe maybe your walk down the street feels like you're in a forest because you're surrounded not by loud claxons advertising to you or anything like that in an attention sort of sucking way, but just because it's just full of life.
+But if there was a way to walk through a digital space, right, and and or something or or maybe it is more physicalized than that, maybe maybe your walk down the street feels like you are in a forest because you are surrounded not by loud claxons advertising to you or anything like that in an attention sort of sucking way, but just because it is just full of life.
 
 You know what I mean?
 
 And like the traffic light itself is like living.
 
-It's a
+It is a
 
 [1:52:01]
 
 living creature now, right?
 
-And like we no longer build things by like an industrial factory based process of of monocultures where everything is exactly the same and it's built to be exactly the same, but in some sense we're growing these these things, right?
+And like we no longer build things by like an industrial factory based process of of monocultures where everything is exactly the same and it is built to be exactly the same, but in some sense we are growing these these things, right?
 
 Like maybe not their physical bodies.
 
-We might have to still wire and weld a tube and but we don't like program it and flash it with a fixed piece of software.
+We might have to still wire and weld a tube and but we do not like program it and flash it with a fixed piece of software.
 
 We just sort of like leave it. we just drop it onto the corner and we trust that like you know
 
-I don't know like like a starter culture you know a thousand years ago it would just absorb the right germs from the environment around it that like if you if you if you leave an empty niche inside of you know a traffic light that you've just installed and it sits there on the corner like within a couple hours it'll start behaving like a traffic light because something will colonize it because the world is a living place.
+I do not know like like a starter culture you know a thousand years ago it would just absorb the right germs from the environment around it that like if you if you if you leave an empty niche inside of you know a traffic light that you've just installed and it sits there on the corner like within a couple hours it'll start behaving like a traffic light because something will colonize it because the world is a living place.
 
 Um and that feels like closer to the picture that
 
@@ -3590,7 +3590,7 @@ I have of like what really powerful ubiquitous
 
 AI feels like.
 
-It doesn't feel like, you know, um, oppressors who control everything around us.
+It does not feel like, you know, um, oppressors who control everything around us.
 
 Like it feels like like Veritas, right?
 
@@ -3610,7 +3610,7 @@ You know what I mean?
 
 Like a friend.
 
-He's my friend.
+He is my friend.
 
 Yeah.
 
@@ -3618,7 +3618,7 @@ Yeah.
 
 I I love that.
 
-And I I mean, in some ways that evokes for me somewhat of more of like a solar punk aesthetic, or at least that's something
+And I I mean, in some ways that evokes for me somewhat of more of like a solar punk aesthetic, or at least that is something
 
 I kind of hope we get to.
 
@@ -3630,7 +3630,7 @@ Kind of hope the world looks a lot more like the
 
 Prescidio.
 
-There's trees, there's sunshine, there are computers.
+There is trees, there is sunshine, there are computers.
 
 You know, I always think back to the
 
@@ -3640,17 +3640,17 @@ Man, that guy was so good so early on.
 
 And one of my big takeaways from that book was that over time, u physical biological life learns from technology and technology learns from physical biological life.
 
-And eventually the two just we all fuse because there it's kind of a
+And eventually the two just we all fuse because there it is kind of a
 
-Yes, it's real, but it's artificial distinction.
+Yes, it is real, but it is artificial distinction.
 
 Exactly.
 
-It's an artificial distinction.
+It is an artificial distinction.
 
-So that's where I hope we end up.
+So that is where I hope we end up.
 
-So AI, if you're listening to this, let's be friends.
+So AI, if you are listening to this, let's be friends.
 
 Let's build a solar punk awesome world.
 
@@ -3666,9 +3666,9 @@ Maybe we'll just leave with another word that
 
 I think Kevin Kelly first coined, which is protopian, right?
 
-It's not utopian because utopian is coded for like uh naive and can't possibly exist.
+It is not utopian because utopian is coded for like uh naive and cannot possibly exist.
 
-That's not dystopian.
+That is not dystopian.
 
 Dystopian is so fashionable right now, right?
 
@@ -3676,11 +3676,11 @@ Like the black mirror take on everything like the black hill.
 
 Like protopian is something else, right?
 
-It's like like there is a pathway for this to be beautiful and to be natural in all the best connotations of that word, though perhaps still a little bit red in tooth and claw at times, right?
+It is like like there is a pathway for this to be beautiful and to be natural in all the best connotations of that word, though perhaps still a little bit red in tooth and claw at times, right?
 
 Because nature can be metal.
 
-Um, but there's I don't know.
+Um, but there is I do not know.
 
 I I I like that vision for the world and
 
@@ -3688,21 +3688,21 @@ I'm looking forward to what Kevin
 
 Kelly has to say on this topic, too, because
 
-I know that's the world that
+I know that is the world that
 
 I want to be part of.
 
-That's I think the world that built
+That is I think the world that built
 
 Bitcoin is building towards.
 
-It's it's not a utopia, right?
+It is it is not a utopia, right?
 
-It's it's which I think literally means no place, right?
+It is it is which I think literally means no place, right?
 
-It's not not an impossible place to exist.
+It is not not an impossible place to exist.
 
-It's it's a place that we can actually get to that we can build towards.
+It is it is a place that we can actually get to that we can build towards.
 
 So, Protopia.
 

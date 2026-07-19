@@ -17,25 +17,25 @@ Implementation:
 
 Supported source kinds:
 
-- connector reads;
-- data packages;
-- files;
-- links;
-- repository refs;
-- tables; and
+- connector reads.
+- data packages.
+- files.
+- links.
+- repository refs.
+- tables. And
 - transcripts.
 
 Each source record carries:
 
-- source ref;
-- locator ref;
-- title ref;
-- digest algorithm and digest ref;
-- rights state and rights refs;
-- provenance refs;
-- caveat refs;
-- redaction policy refs;
-- data classification; and
+- source ref.
+- locator ref.
+- title ref.
+- digest algorithm and digest ref.
+- rights state and rights refs.
+- provenance refs.
+- caveat refs.
+- redaction policy refs.
+- data classification. And
 - trust tier.
 
 Generated summaries are intentionally not source records. They are attached
@@ -46,11 +46,11 @@ distinguish cited source material from agent-written summaries.
 
 Supported span kinds:
 
-- page;
-- row;
-- table cell;
-- transcript;
-- code; and
+- page.
+- row.
+- table cell.
+- transcript.
+- code. And
 - file range.
 
 Each span points back to a source in the same bundle and carries a content
@@ -59,19 +59,19 @@ redaction policy refs, classification, and trust tier.
 
 Kind-specific validation prevents vague citations:
 
-- page spans require a positive page number;
-- row spans require an ordered row range;
-- table-cell spans require an ordered row range and column refs;
-- transcript spans require an ordered time range;
-- code spans require an ordered line range; and
+- page spans require a positive page number.
+- row spans require an ordered row range.
+- table-cell spans require an ordered row range and column refs.
+- transcript spans require an ordered time range.
+- code spans require an ordered line range. And
 - file-range spans require either line or byte ranges.
 
 ## Projection Audiences
 
 The first projections are:
 
-- `public`;
-- `team`; and
+- `public`.
+- `team`. And
 - `operator`.
 
 Public projections remove private source, span, digest, locator, excerpt,
@@ -86,10 +86,10 @@ redaction.
 
 Knowledge source bundles are read-only. They cannot:
 
-- mutate connectors;
-- mutate generated summaries;
-- upgrade public claims;
-- copy raw source archives; or
+- mutate connectors.
+- mutate generated summaries.
+- upgrade public claims.
+- copy raw source archives. Or
 - mutate rights.
 
 If a packet relaxes any of those boundaries, projection throws
@@ -99,13 +99,13 @@ If a packet relaxes any of those boundaries, projection throws
 
 The contract rejects:
 
-- private customer/provider/wallet/payment material;
+- private customer/provider/wallet/payment material.
 - raw connector, source, file, repo, transcript, text, email, runner, prompt,
-  archive, payment, payout, and webhook material;
-- private repository refs;
-- generated summary text masquerading as a ref;
-- source records that use generated-summary refs as source refs;
-- secret-shaped values; and
+  archive, payment, payout, and webhook material.
+- private repository refs.
+- generated summary text masquerading as a ref.
+- source records that use generated-summary refs as source refs.
+- secret-shaped values. And
 - raw timestamps.
 
 Projection leak checks inspect string values, not object keys, so authority flag
@@ -116,12 +116,12 @@ names such as `rawSourceArchiveCopyAllowed` do not create false positives.
 The bundle model is the source layer for later retrieval trace and
 graph-curated context work:
 
-- source bundles identify what material was eligible;
+- source bundles identify what material was eligible.
 - extracted spans identify exactly what page, row, time range, line range, or
-  table cell was used;
-- generated summaries remain separate artifacts;
+  table cell was used.
+- generated summaries remain separate artifacts.
 - fact candidates can point at spans before being promoted into workroom
-  objects; and
+  objects. And
 - proof surfaces can cite span refs without exposing raw private content.
 
 Writes that promote extracted facts into CRM, project, legal, support, finance,
@@ -131,9 +131,9 @@ or investor objects still require a later approval-gated path.
 
 Coverage includes:
 
-- valid projection of source records and extracted spans;
-- page, row, table-cell, transcript, code, and file-range validation;
+- valid projection of source records and extracted spans.
+- page, row, table-cell, transcript, code, and file-range validation.
 - provenance, digest, rights, active-rights, and read-only authority
-  requirements;
-- public redaction of private refs; and
+  requirements.
+- public redaction of private refs. And
 - generated-summary separation plus unsafe raw/source material rejection.

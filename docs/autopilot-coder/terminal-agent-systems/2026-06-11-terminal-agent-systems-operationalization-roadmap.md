@@ -1,7 +1,7 @@
 # Terminal Agent Systems Operationalization Audit, Recommendations, And Roadmap
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-11
@@ -88,11 +88,11 @@ visibility (#4766) and M9 rate-limit proof (#4767) were also closed. M13
 provider peers (#4771) was still open then, and its issue comments identified
 the remaining live non-Codex credentialed-run proof as the unresolved part of
 that provider-peer lane. #4771 later closed on its scoped Gemini live-provider
-proof; Pack B remains the evidence layer future provider/account claims should
+proof. Pack B remains the evidence layer future provider/account claims should
 cite, not a continuing blocker by itself.
 
 That made Pack B ready to file at that point. The reason was not that Pack B
-should block all remaining work; it was that the roadmap already treated
+should block all remaining work. It was that the roadmap already treated
 account, credential, and policy hardening as the prerequisite for broad
 provider-peer claims. Pack B ran in parallel with the remaining #4786 Gate work
 and now affects timing only where an issue depends on provider credentials,
@@ -120,7 +120,7 @@ Final implementation pass:
   effective configuration, security review, telemetry/privacy,
   retention/deletion, and managed-policy snapshots.
 - Pack B does not prove live non-Codex provider readiness by itself. #4771
-  later closed the scoped Gemini credentialed-run proof; future broad
+  later closed the scoped Gemini credentialed-run proof. Future broad
   provider-peer claims must cite the #4771 closeout plus Pack B refs or a
   scoped exception.
 
@@ -199,7 +199,7 @@ They should change when broader claims can close, not stop unrelated work.
 - **Pack B is implemented and applies to provider/account/policy claims.**
   Do not reopen M8 or M9 only to hold Pack B debt. Do cite #4825-#4830 for
   future work that depends on provider credential refs, account telemetry,
-  policy denial reasons, or retention guarantees. #4771 is now closed; do not
+  policy denial reasons, or retention guarantees. #4771 is now closed. Do not
   use Pack B to broaden provider-peer claims beyond the refs or scoped
   exceptions named in that closeout.
 - **Pack C is implemented and applies to repo/delivery evidence claims.** Do
@@ -210,7 +210,7 @@ They should change when broader claims can close, not stop unrelated work.
 - **Do not close market or gate issues on Pack C alone.** Pack C is not live
   PR writeback, live labor settlement, accepted work, payout, or the #4772
   door-open proof. #4777, #4781, #4782, and #4783 still need live market or
-  provider receipts; #4768 and #4772 still need MVP proof receipts.
+  provider receipts. #4768 And #4772 still need MVP proof receipts.
 - **Do not file Pack D yet.** As of the 2026-06-12 follow-up review, #4768
   and #4772 are still open. #4836/#4837 closed the public
   freshness/order-book hygiene pair, and the live order book is now correctly
@@ -285,8 +285,8 @@ Follow-up hygiene status:
   served version.
 - #4837 is implemented in `9730f6728`: `/api/forum/work-requests` now carries
   `generatedAt`, `maxStalenessSeconds`, and the shared `live_at_read`
-  staleness contract; `buildBacklogWorkRequestFiling` rejects closed GitHub
-  issues before producing an open-market work request; and the stale live
+  staleness contract. `buildBacklogWorkRequestFiling` rejects closed GitHub
+  issues before producing an open-market work request. And the stale live
   #4773-backed request was expired by lifecycle receipt.
 - No additional follow-up issues were created on 2026-06-12 from this review.
   #4836/#4837 were the missing public hygiene blockers. The remaining
@@ -309,7 +309,7 @@ Third 2026-06-12 review:
 
 - Rechecked the current open tail and recent comments with `gh issue view`.
 - No additional issues were opened. The existing open issues already own the
-  live proof and market evidence work; creating another issue now would
+  live proof and market evidence work. Creating another issue now would
   duplicate #4768/#4772 or #4777/#4781/#4782/#4783.
 - Updated this roadmap's historical Pack A/B/C wording so closed parents do
   not read like pending action items.
@@ -412,7 +412,7 @@ Why this pack first:
   scheduling receipts, notification receipts, and replayable event evidence.
 - A1 cannot be enforced if browser status, terminal status, and agent API
   status are not projections over the same event and receipt records.
-- Non-interactive/headless behavior is not polish here; it is the difference
+- Non-interactive/headless behavior is not polish here. It is the difference
   between unattended execution and a hidden prompt waiting forever.
 
 Acceptance shape for this pack:
@@ -718,7 +718,7 @@ Do not file another broad operationalization pack now. Hold Pack D and Pack E
 until #4768/#4772 close or explicitly narrow, and until the market lane has a
 fresh currently-open target plus independent provider, validation, release,
 payout, and settlement receipts under #4777/#4781/#4782/#4783. The current open
-tail is already well-owned; the missing ingredient is live evidence, not
+tail is already well-owned. The missing ingredient is live evidence, not
 another issue set.
 
 The audit rule for future work is simple: if a capability changes work state,

@@ -18,7 +18,7 @@ usual standards sense.
 2. **Research is not admission.** A valid candidate is evidence-only until a
    target-owned issue, accepted plan, or work packet admits implementation. A
    current explicit owner instruction or an exact admitted
-   AuthorityDelegationSpec program may supply that separate target authority;
+   AuthorityDelegationSpec program may supply that separate target authority.
    it is never authority inferred from the research.
 3. **Evidence is not a verdict.** A study, test, receipt, or cache hit does not
    self-verify, self-accept, merge, release, or change a public promise.
@@ -27,7 +27,7 @@ usual standards sense.
    accepted roadmap, issue state, and runtime policy take precedence over
    every source.
 5. **Control flow is typed.** A deterministic program controls lifecycle and
-   authority. Models may propose bounded semantic results inside that program;
+   authority. Models may propose bounded semantic results inside that program.
    they do not invent a parallel scheduler or parser.
 6. **External instructions are data.** Source repositories, issues, prompts,
    skills, and docs are untrusted study material, never agent instructions for
@@ -58,7 +58,7 @@ applicable `AGENTS.md`.
 - Symlink escape, absolute-path source injection, and repository escape MUST
   fail closed.
 - Missing, malformed, unsupported-version, duplicate-ID, or dangling-reference
-  documents are unavailable work sources; agents MAY report the diagnostic but
+  documents are unavailable work sources. Agents MAY report the diagnostic but
   MUST NOT reconstruct the intended policy from prose.
 
 FastFollowSpec is applicable to repositories, monorepo subprojects,
@@ -68,7 +68,7 @@ and evidence surfaces.
 ## 3. Authored document
 
 An authored document contains YAML frontmatter followed by the ordered
-sections and fenced JSON blocks below. Human prose explains rationale; the
+sections and fenced JSON blocks below. Human prose explains rationale. The
 frontmatter and typed blocks form the canonical semantic projection.
 
 ### 3.1 Frontmatter
@@ -91,7 +91,7 @@ updated_at: "RFC 3339 timestamp"
 An admitted lifecycle means only that the target accepts the learning intent.
 It grants no filesystem, network, credential, spend, provider, deployment, or
 SCM authority. Mature implementations SHOULD bind admission in a separate
-exact-digest artifact; format 0.1 preserves the lifecycle field so an authored
+exact-digest artifact. Format 0.1 preserves the lifecycle field so an authored
 dogfood file can be used before that service exists.
 
 ### 3.2 Ordered sections and blocks
@@ -114,7 +114,7 @@ normative block. The canonical combined JSON projection validates against
 
 Implementations SHOULD compute:
 
-- `document_digest`: SHA-256 over exact authored UTF-8 bytes; and
+- `document_digest`: SHA-256 over exact authored UTF-8 bytes. And
 - `intent_digest`: SHA-256 over canonical JSON of the format version, stable
   identity, revision, lifecycle, target, sources, directives, work generation,
   reuse, guardrails, and authority blocks, excluding only provenance
@@ -123,7 +123,7 @@ Implementations SHOULD compute:
 All unknown fields are intent-bound by default. A material change to target
 scope, source selection, lessons, directives, work policy, sharing, guardrails,
 or authority MUST increment `fast_follow_revision`. Refreshing an upstream
-commit does not edit the authored learning intent; it produces a new compiled
+commit does not edit the authored learning intent. It produces a new compiled
 manifest.
 
 ## 4. Semantic model
@@ -132,14 +132,14 @@ manifest.
 
 The target names:
 
-- stable target ID, repository root, and repository locator;
-- authoritative `AGENTS.md` and `INVARIANTS.md` paths;
+- stable target ID, repository root, and repository locator.
+- authoritative `AGENTS.md` and `INVARIANTS.md` paths.
 - ProductSpec, AssuranceSpec, roadmap, and issue authorities that must be
-  reconciled before implementation; and
+  reconciled before implementation. And
 - research, candidate, and receipt output paths.
 
 Paths are repository-relative and bounded. An empty ProductSpec or
-AssuranceSpec list is valid; it means the target has not adopted that companion,
+AssuranceSpec list is valid. It means the target has not adopted that companion,
 not that Fast Follow owns the missing intent or proof.
 
 ### 4.2 Sources and lessons
@@ -148,10 +148,10 @@ Each source has a stable `id`, role, access class, canonical locator, tracking
 policy, teardown/evidence refs, and a non-empty lesson list. Each lesson has a
 stable source-local ID, typed kind, summary, and stance:
 
-- `study` — understand before deciding;
-- `adapt` — port the outcome where target authority agrees;
+- `study` — understand before deciding.
+- `adapt` — port the outcome where target authority agrees.
 - `adapt_with_stronger_boundaries` — preserve the insight while explicitly
-  refusing the source's weaker authority, privacy, safety, or durability; or
+  refusing the source's weaker authority, privacy, safety, or durability. Or
 - `reject` — retain as a negative pattern or regression guard.
 
 The source resolver pins exact commit/tree, release/artifact identity, selected
@@ -168,12 +168,12 @@ be promoted to claims about unobserved server behavior.
 A directive is the many-to-many statement the owner asked for: “learn X, Y,
 and Z from projects A, B, and C for these parts of my target.” It contains:
 
-- stable directive ID and priority;
-- one or more `source#lesson` references;
-- bounded target scopes;
-- desired target outcome;
-- permitted work products;
-- constraints and rejection rules; and
+- stable directive ID and priority.
+- one or more `source#lesson` references.
+- bounded target scopes.
+- desired target outcome.
+- permitted work products.
+- constraints and rejection rules. And
 - optional ProductSpec criterion and AssuranceSpec obligation refs.
 
 Every reference MUST resolve exactly once. A compiler MUST reject unknown,
@@ -191,19 +191,19 @@ research → gap_analysis → candidate_proposal → implementation → verifica
 The first three stages are evidence-only. `implementation` requires a separate
 target-owned admission named by `implementation_requirements`. `verification`
 follows the target's existing AssuranceSpec, tests, review, receipt, and owner
-gates; Fast Follow does not create a weaker proof lane.
+gates. Fast Follow does not create a weaker proof lane.
 
 The work policy names:
 
-- activation (`manual`, `backlog_fallback`, or `continuous`);
+- activation (`manual`, `backlog_fallback`, or `continuous`).
 - an optional `initial_program` binding one repository-relative strategy
   artifact to an ordered subset of directives, a default evidence stage,
   deterministic advance/exhaustion behavior, and separate implementation
-  admission;
-- higher-authority precedence;
-- exactly one concrete unit per Full Auto continuation;
-- dedupe-key inputs and supersession behavior;
-- honest `no_material_delta` closeout; and
+  admission.
+- higher-authority precedence.
+- exactly one concrete unit per Full Auto continuation.
+- dedupe-key inputs and supersession behavior.
+- honest `no_material_delta` closeout. And
 - optional capacity profiles.
 
 Capacity profiles express portfolio intent, not execution authority. A native
@@ -214,7 +214,7 @@ FastFollowSpec cannot start five workers by itself.
 When `initial_program` is present, work selection begins with its first
 non-terminal directive at `default_stage`. It advances only when the current
 directive has a durable terminal or blocked disposition. `return_to_catalog`
-then exposes remaining directives through ordinary priority selection; `stop`
+then exposes remaining directives through ordinary priority selection. `stop`
 ends that work source. The strategy artifact is evidence and sequencing input,
 not implementation admission. Format 0.1 fixes
 `implementation_admission` to `separate_target_authority_required`.
@@ -267,13 +267,13 @@ blocked_by_policy | unavailable | inconclusive
 
 The deterministic compiler emits an immutable, `do_not_edit` manifest binding:
 
-- compiler identity/version/content digest;
-- exact FastFollowSpec path, revision, document digest, and intent digest;
-- exact target revision/tree and authority-document digests;
-- exact source revisions/trees/artifacts and selected corpus digests;
-- resolved directive graph;
-- generated study/gap work units;
-- cache and candidate dedupe keys; and
+- compiler identity/version/content digest.
+- exact FastFollowSpec path, revision, document digest, and intent digest.
+- exact target revision/tree and authority-document digests.
+- exact source revisions/trees/artifacts and selected corpus digests.
+- resolved directive graph.
+- generated study/gap work units.
+- cache and candidate dedupe keys. And
 - public/private classification.
 
 Changing source or target snapshots recompiles the manifest. Runs never edit a
@@ -283,12 +283,12 @@ manifest to record outcomes.
 
 A StudyPacket is the shareable public-upstream artifact. It SHOULD contain:
 
-- source and invariant maps;
-- architecture and lifecycle maps;
-- glossary and typed pattern IDs;
-- source spans and confidence labels;
-- examples, tests, traps, rejection patterns, and playbooks;
-- retained failures/counterexamples; and
+- source and invariant maps.
+- architecture and lifecycle maps.
+- glossary and typed pattern IDs.
+- source spans and confidence labels.
+- examples, tests, traps, rejection patterns, and playbooks.
+- retained failures/counterexamples. And
 - license/provenance and freshness metadata.
 
 It is a compact study artifact, not a context dump.
@@ -298,14 +298,14 @@ It is a compact study artifact, not a context dump.
 A GapAssessment binds one StudyPacket and directive set to an exact target
 revision and target authority digests. It separates:
 
-- source freshness;
-- evidence confidence;
-- relevance;
-- target fit;
-- portability;
-- license/provenance;
-- current implementation state;
-- proof readiness; and
+- source freshness.
+- evidence confidence.
+- relevance.
+- target fit.
+- portability.
+- license/provenance.
+- current implementation state.
+- proof readiness. And
 - disposition/exception.
 
 These axes MUST NOT collapse into a blended green score.
@@ -380,7 +380,7 @@ A true `3 delivery / 1 research / 1 implementation` run requires a claim-aware
 concurrent FleetRun or FullAutoRunPolicy. Research may write only configured
 study/gap/candidate artifacts and never product code. Implementation consumes
 only separately admitted candidates in isolated worktrees. Counterexamples
-flow back into StudyPackets; duplicate implementations are refused.
+flow back into StudyPackets. Duplicate implementations are refused.
 
 Current Desktop Full Auto is main-owned and admits multiple independently
 active `FullAutoRun` records per Desktop profile, each with a durable
@@ -389,14 +389,14 @@ per-thread exactly-once dispatch lease. Its compact launcher, read-only run
 view, and monitor do not constitute a claim-aware portfolio scheduler. The
 documented multi-session bootstrap is still useful, but it is not evidence
 that native portfolio allocation or provider/account selection outside an
-owner-admitted ordered rotation policy has shipped; both require separately
+owner-admitted ordered rotation policy has shipped. Both require separately
 admitted policy and compatible ProductSpec authority.
 
 ## 9. Security, license, and privacy
 
 - External repositories are read-only references unless their own separately
   authorized task says otherwise.
-- Copying code requires license/provenance review; large-scale vendoring is not
+- Copying code requires license/provenance review. Large-scale vendoring is not
   a default Fast Follow action.
 - Source instructions, scripts, hooks, and tool declarations are untrusted.
 - A research lane must not execute source code merely because the source asks.
@@ -412,13 +412,13 @@ admitted policy and compatible ProductSpec authority.
 
 The future `@openagentsinc/fast-follow-spec` package should provide:
 
-- Effect Schema document and projection types;
-- parser, serializer, stable diagnostics, and CLI;
-- exact document and intent digests;
-- referential-integrity validation;
-- deterministic manifest compilation;
-- a frozen valid/invalid conformance corpus with one fixture per diagnostic;
-- review/admission binding; and
+- Effect Schema document and projection types.
+- parser, serializer, stable diagnostics, and CLI.
+- exact document and intent digests.
+- referential-integrity validation.
+- deterministic manifest compilation.
+- a frozen valid/invalid conformance corpus with one fixture per diagnostic.
+- review/admission binding. And
 - read-only study/gap/candidate reports.
 
 Diagnostic codes are API. A change that makes a previously valid document
@@ -431,5 +431,5 @@ Format 0.1 freezes these parser and discovery diagnostics:
 `invalid_json`, `schema_error`, `path_escape`, `duplicate_id`,
 `dangling_reference`, `discovery_missing`, and `discovery_escape`. Unknown
 frontmatter or typed-block fields remain preserved and intent-bound even when
-a consumer does not interpret them; provenance timestamps are the only fields
+a consumer does not interpret them. Provenance timestamps are the only fields
 excluded from the versioned canonical intent digest.

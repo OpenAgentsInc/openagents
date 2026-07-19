@@ -12,16 +12,16 @@ persisted.
 The route accepts assignment dispatch only when the request includes public-safe
 evidence for:
 
-- campaign ref and campaign policy;
-- selection policy;
-- explicit payment mode;
-- idempotency policy;
-- pause policy and explicit `campaignPaused:false`;
-- rollback path;
-- closeout path;
-- no-duplicate policy;
-- no-Forum-publish policy and explicit `forumAutoPublishAllowed:false`;
-- required Pylon capability refs; and
+- campaign ref and campaign policy.
+- selection policy.
+- explicit payment mode.
+- idempotency policy.
+- pause policy and explicit `campaignPaused:false`.
+- rollback path.
+- closeout path.
+- no-duplicate policy.
+- no-Forum-publish policy and explicit `forumAutoPublishAllowed:false`.
+- required Pylon capability refs. And
 - spend-cap refs for paid modes.
 
 The target Pylon must also be registered, active, wallet-ready, on a minimum
@@ -33,9 +33,9 @@ the same Pylon.
 
 Assignment dispatch remains separate from spend and settlement:
 
-- `walletSpendAllowed:false`;
-- `settlementMutationAllowed:false`;
-- `forumAutoPublishAllowed:false`; and
+- `walletSpendAllowed:false`.
+- `settlementMutationAllowed:false`.
+- `forumAutoPublishAllowed:false`. And
 - `unpaid_smoke` responses carry `noSpendDispatch:true`.
 
 Wallet readiness is receive/readiness evidence only. It is not outbound
@@ -46,15 +46,15 @@ capacity, accepted work, payout, settlement, or Forum publishing authority.
 Regression coverage lives in `workers/api/src/pylon-api-routes.test.ts` and
 covers:
 
-- missing Pylon denial;
-- offline Pylon denial;
-- stale heartbeat denial;
-- paused campaign denial;
-- wrong capability denial;
-- duplicate active lease denial;
-- paid mode without spend-cap denial;
-- missing campaign policy denial;
-- automatic Forum publish denial; and
+- missing Pylon denial.
+- offline Pylon denial.
+- stale heartbeat denial.
+- paused campaign denial.
+- wrong capability denial.
+- duplicate active lease denial.
+- paid mode without spend-cap denial.
+- missing campaign policy denial.
+- automatic Forum publish denial. And
 - no-spend assignment success with no wallet spend or settlement authority.
 
 Run:

@@ -9,24 +9,24 @@ paths, environment variables, provider tokens, or private topology.
 
 Public fields that can contribute to `assignment-ready` claims:
 
-- supported platform: macOS or Linux;
-- CPU core count and sanitized CPU model ref;
-- memory totals and free memory in rounded GB;
-- home-disk free space in rounded GB, without the path;
-- network interface counts only, without interface names or addresses;
-- accelerator kind, such as `apple_silicon` or `gpu_unknown`;
+- supported platform: macOS or Linux.
+- CPU core count and sanitized CPU model ref.
+- memory totals and free memory in rounded GB.
+- home-disk free space in rounded GB, without the path.
+- network interface counts only, without interface names or addresses.
+- accelerator kind, such as `apple_silicon` or `gpu_unknown`.
 - backend health refs for OpenCode, Codex future adapter boundary, Apple FM,
-  Gemini, and local model inventory;
-- model cache state and public model refs only;
+  Gemini, and local model inventory.
+- model cache state and public model refs only.
 - explicit blocker refs.
 
 Fields that must not drive public `assignment-ready` by themselves:
 
-- raw wallet balance or receive readiness;
-- provider auth presence without backend capability checks;
-- raw local model cache paths;
-- private network topology;
-- stale inventory;
+- raw wallet balance or receive readiness.
+- provider auth presence without backend capability checks.
+- raw local model cache paths.
+- private network topology.
+- stale inventory.
 - mocked or unavailable telemetry.
 
 `pylon status --json` includes the inventory projection. `pylon inventory --json`

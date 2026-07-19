@@ -9,7 +9,7 @@ future changes are reviewable. It was built by importing the live resources
 and writing HCL until `plan` was a no-op — nothing was created or modified
 except the state bucket itself.
 
-We run it with **OpenTofu** (`brew install opentofu`); plain Terraform >= 1.6
+We run it with **OpenTofu** (`brew install opentofu`). Plain Terraform >= 1.6
 works identically.
 
 ## Layout
@@ -35,7 +35,7 @@ infra/
 ```
 
 Note: `backend.tf` and `providers.tf` live inside `prod/` (not at `infra/`)
-because Terraform backends are per-root-module; a future `staging/` root gets
+because Terraform backends are per-root-module. A future `staging/` root gets
 its own copies with a different state prefix.
 
 ## What is under management (imported 2026-07-06)
@@ -55,9 +55,9 @@ its own copies with a different state prefix.
 | Global External LB for `openagents.com` + `auth.openagents.com` — static IP, Certificate Manager cert + DNS authorizations, serverless NEG, backend, URL maps, HTTP(S) proxies, forwarding rules (CFG-10/#8525) | `module.openagents_lb` |
 
 19 resources on import day, +2 imported for #8530, +16 created for #8525
-(CFG-10 LB pre-stage; the LB IP receives no traffic until the DNS flip in
+(CFG-10 LB pre-stage, the LB IP receives no traffic until the DNS flip in
 `docs/cloud/2026-07-06-openagents-domain-cutover-runbook.md`). `tofu plan`
-was a **no-op** against live as of import day; there are no accepted diffs.
+was a **no-op** against live as of import day. There are no accepted diffs.
 
 ## Deliberate design decisions
 
@@ -69,13 +69,13 @@ was a **no-op** against live as of import day; there are no accepted diffs.
   `auth.openagents.com`, including `/docs`, routes to `openagents-monolith`.
   The pre-existing `components.openagents.com` gallery matcher and backend
   remain explicit and unchanged in the same URL map.
-- **No credentials in HCL.** SQL users are tracked for existence only;
+- **No credentials in HCL.** SQL users are tracked for existence only.
   passwords are set/rotated with `gcloud sql users set-password` and ignored
   by the provider config. Secret Manager secrets are tracked as **containers
   only** (`modules/secret-manager-secret`): versions/payloads are added
   out-of-band with `gcloud secrets versions add`, never through Terraform.
   The `oa-updates` `OA_SIGNING_KEY` moved from inline Cloud Run env to the
-  `oa-updates-codesign-key` secret on 2026-07-06 (#8530 / CFG-14); state was
+  `oa-updates-codesign-key` secret on 2026-07-06 (#8530 / CFG-14). State was
   refreshed to the secret-ref shape and all superseded GCS state versions
   containing the inline key were purged (they linger in the bucket's 7-day
   soft-delete window until ~2026-07-13, admin-restore only, then are gone).
@@ -84,13 +84,13 @@ was a **no-op** against live as of import day; there are no accepted diffs.
   destroy/replace of live data.
 - **Reconciliations made during import** (config adjusted to match live, not
   the other way around): `enable_dataplex_integration = true` on
-  `autopilot4-pg`; `location_preference.secondary_zone` left unset on
+  `autopilot4-pg`. `location_preference.secondary_zone` left unset on
   `khala-sync-pg` (the API reports a top-level secondary zone but the
-  location preference is unset); no `versioning` block emitted for
+  location preference is unset). No `versioning` block emitted for
   non-versioned buckets.
 - The `0.0.0.0/0` authorized network on `khala-sync-pg` is the imported live
   setting. `l402-aperture-db` retains its imported network metadata only as a
-  stopped VP-1 recovery copy; `activation_policy=NEVER` is load-bearing and an
+  stopped VP-1 recovery copy. `activation_policy=NEVER` is load-bearing and an
   unrelated apply must not restart it.
 
 ## Workflow

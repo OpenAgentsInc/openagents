@@ -7,7 +7,7 @@ Status: implemented contract slice for Probe issue #157.
 ## Contract
 
 OpenAgents product surface is the account authority for ChatGPT/Codex accounts. Probe consumes
-account refs and grants issued by OpenAgents product surface; Probe does not own long-lived
+account refs and grants issued by OpenAgents product surface. Probe does not own long-lived
 ChatGPT/OAuth account material by default.
 
 The provider key is `chatgpt_codex`. A usable provider account must be:

@@ -98,7 +98,7 @@ topology markers, and appends every read to `metadata-access.jsonl`.
 
 `oa-workroomd gateway access` checks model, artifacts, receipts, memory, email,
 and settlement gateway access against explicit capability allow-lists. Every
-access appends a redacted audit event to `gateway-access.jsonl`; revoked
+access appends a redacted audit event to `gateway-access.jsonl`. Revoked
 capabilities deny on the next access check without process restart.
 
 ## Managed Preview Ingress
@@ -119,7 +119,7 @@ visibility and emit `ingress_revoked` receipts.
 content digest. `oa-workroomd closeout submit` fails closed until every required
 artifact has a content object and matching upload receipt. Successful closeout
 writes `closeout-manifest.json` with artifact digests, upload receipt digests,
-status, and a manifest digest; it also emits a `closeout_submitted` receipt
+status, and a manifest digest. It also emits a `closeout_submitted` receipt
 citing the manifest digest for Forge verification.
 
 ## Lifecycle

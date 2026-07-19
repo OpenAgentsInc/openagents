@@ -23,10 +23,10 @@ order while preserving OpenAgents' stricter Effect, authority, privacy,
 receipt, portability, containment, and verification contracts.
 
 The essay is strategic evidence, not dispatch authority. This admitted
-learning intent authorizes research, gap analysis, and candidate production;
+learning intent authorizes research, gap analysis, and candidate production.
 product-code implementation still requires an ordinary admitted issue,
 accepted plan, or work packet. The owner's 2026-07-16 direction is persisted in
-`docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md`; it supplies that
+`docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md`. It supplies that
 separate authority for the ordered initial program. The broader teardown
 library remains the later research well, but the initial program is
 deliberately narrow: Day 1 thread

@@ -7,8 +7,8 @@ Read-only architecture and product audit of the open-source T3 Code repository
 `projects/repos/t3code` and read as reference material only.
 
 T3 Code matters to OpenAgents differently than the other teardown subjects.
-Codex and Claude Code are engines; OpenCode is an engine plus workbench;
-Executor is a capability substrate; Cursor is an IDE-turned-agent-platform.
+Codex and Claude Code are engines. OpenCode is an engine plus workbench.
+Executor is a capability substrate. Cursor is an IDE-turned-agent-platform.
 T3 Code is the first audited product occupying almost exactly the OpenAgents P0
 lane: **a local server that supervises multiple foreign coding-agent harnesses
 (Codex, Claude Code, Cursor, Grok, OpenCode) in parallel worktrees, projected
@@ -30,7 +30,7 @@ Evidence labels:
 
 No T3 Code source or user state was modified. No credentials, accounts, or
 hosted relay behavior were exercised. Source proves intended implementation at
-this commit; it does not prove every path is enabled in every release channel.
+this commit. It does not prove every path is enabled in every release channel.
 
 The Agent Client Protocol implementation was subsequently re-audited against
 current T3 Code, current Grok source, and the current official schema stream in
@@ -40,7 +40,7 @@ That deep dive supersedes this document for exact methods, transport semantics,
 Grok package versions, schema-v1.19.0 compatibility, registry scope, and the
 OpenAgents client-adapter plan.
 
-## TL;DR
+## TL.DR
 
 T3 Code is a **provider-neutral control plane over other vendors' coding
 agents, not an agent engine**. It has no model loop of its own. A Node/Bun
@@ -50,7 +50,7 @@ JSON-RPC/stdio, Claude Code in-process through the Claude Agent SDK, Cursor
 and Grok over ACP (Zed's Agent Client Protocol), OpenCode over its V2 HTTP
 SDK — and normalizes all of them into one **event-sourced CQRS orchestration
 core** persisted in SQLite. The React/Vite web renderer is also the Electron
-desktop renderer; Expo mobile is a separate React Native implementation. All
+desktop renderer. Expo mobile is a separate React Native implementation. All
 three surfaces share the hand-written Effect RPC contract and client runtime,
 but web and mobile do not share UI components or theme tokens. [source]
 
@@ -90,11 +90,11 @@ The five most important findings:
    architecture the OpenCode V2 teardown recommended, implemented across five
    foreign harnesses. [schema]
 3. **Remote access is modeled as environments and endpoints, not a cloud.**
-   One running T3 server is an `ExecutionEnvironment`; clients hold
+   One running T3 server is an `ExecutionEnvironment`. Clients hold
    `KnownEnvironment` records reachable through multiple `AccessEndpoint`s
    (direct ws/wss, Cloudflare-tunnel relay, Tailscale-discovered addresses,
    desktop-managed SSH forward). Access and launch are deliberately separate
-   concerns. Execution never leaves the user's machine; the hosted "T3
+   concerns. Execution never leaves the user's machine. The hosted "T3
    Connect" layer is identity (Clerk), tunnels (`cloudflared`), and APNs push
    only. [docs] [source]
 4. **The authority posture is inverted relative to OpenAgents.** Access to the
@@ -136,8 +136,8 @@ containment authority, and prose-free trust in wrapped harnesses.
 | Desktop | Electron 41.5.0, electron-builder, electron-updater | [source] |
 | Mobile | Expo SDK 56, iOS + Android, EAS builds | [source] |
 | Toolchain | Vite Plus (`vp`), oxlint/oxfmt, `@effect/tsgo` + TypeScript-native preview | [source] |
-| Public positioning | "a minimal web GUI for coding agents (currently Codex, Claude, Cursor, and OpenCode, more coming soon)" | [source] `README.md`; [public] |
-| Traction | ~9.6k GitHub stars within months of launch; free/BYOK; installs via npx, brew cask, winget, AUR | [public] |
+| Public positioning | "a minimal web GUI for coding agents (currently Codex, Claude, Cursor, and OpenCode, more coming soon)" | [source] `README.md`. [Public] |
+| Traction | ~9.6k GitHub stars within months of launch. Free/BYOK. Installs via npx, brew cask, winget, AUR | [public] |
 
 Authorship concentration is unusual for a repo this large: one maintainer
 (1,434 of 1,929 commits) plus the founder (81), release bots, Cursor
@@ -173,7 +173,7 @@ pnpm workspace lanes: `apps/*`, `infra/*`, `packages/*`, `oxlint-plugin-t3code`,
 | `packages/client-runtime` | Shared web/desktop/mobile connection runtime: `EnvironmentSupervisor`, `ConnectionBroker`, `RpcSessionFactory`, environment state | 129 / ~23.4k |
 | `packages/effect-codex-app-server` | Generated Effect client for OpenAI's `codex app-server` JSON-RPC protocol | 17 / ~42.3k (mostly generated) |
 | `packages/effect-acp` | Effect implementation of the Agent Client Protocol (agent + client + terminal), partially generated | 19 / ~15.0k |
-| `packages/shared` | Runtime utilities incl. `DrainableWorker`; explicit subpath exports, no barrels | 80 / ~12.1k |
+| `packages/shared` | Runtime utilities incl. `DrainableWorker`. Explicit subpath exports, no barrels | 80 / ~12.1k |
 | `packages/ssh`, `packages/tailscale` | Remote access-method support | ~4.0k combined |
 | `infra/relay` | Cloudflare Worker relay ("T3 Connect"): Clerk auth, DPoP, tunnels, PlanetScale Postgres via drizzle 1.0-rc, APNs Live Activity delivery, deployed with Alchemy | 60 / ~19.2k |
 | `oxlint-plugin-t3code` | Custom lint rules: `namespace-node-imports`, `no-global-process-runtime`, `no-inline-schema-compile`, `no-manual-effect-runtime-in-tests` | 11 / ~1.0k |
@@ -201,7 +201,7 @@ session/turn/approval adapter, and a text-generation capability. [source]
 | Provider | Transport | Mechanism |
 | --- | --- | --- |
 | Codex | subprocess | spawns `codex app-server`, JSON-RPC over stdio through the generated `effect-codex-app-server` client |
-| Claude Code | in-process | `@anthropic-ai/claude-agent-sdk ^0.3.170`; driver kind `claudeAgent`; knows both npm and native `claude update` maintenance paths |
+| Claude Code | in-process | `@anthropic-ai/claude-agent-sdk ^0.3.170`. Driver kind `claudeAgent`. Knows both npm and native `claude update` maintenance paths |
 | Cursor | subprocess | ACP via `packages/effect-acp` plus `CursorAcpExtension` |
 | Grok | subprocess | ACP via `effect-acp` plus `XAiAcpExtension`/`GrokAcpSupport` |
 | OpenCode | HTTP | `@opencode-ai/sdk/v2` client (`OpencodeClient`, `PermissionRequest`, `QuestionRequest`) |
@@ -213,8 +213,8 @@ All [source]. Three details matter architecturally:
   with isolated `CODEX_HOME` environments — account isolation by homedir, the
   same pattern as OpenAgents Pylon's isolated per-account Codex homes. [source]
 - **Provider capability is probed, not assumed.** The Codex client reads
-  account and skills data; the Claude driver probes Anthropic account and
-  slash-command metadata; drivers own auto-update resolution for their
+  account and skills data. The Claude driver probes Anthropic account and
+  slash-command metadata. Drivers own auto-update resolution for their
   harness. [source] [test]
 - **Even utility text generation is delegated to the harnesses**: commit
   messages, PR titles/descriptions, and branch names are produced by shelling
@@ -245,7 +245,7 @@ implement a full command/event/projection pipeline [schema] [source]:
   event carries `aggregateId`, `commandId`, `causationEventId`, and
   `correlationId`.
 - **Store + projections**: migration `001_OrchestrationEvents` creates the
-  event store; command receipts (`002`), checkpoint diff blobs (`003`),
+  event store. Command receipts (`002`), checkpoint diff blobs (`003`),
   provider session runtime (`004`), and a family of projection tables
   (`ProjectionThreads`, `ProjectionTurns`, `ProjectionThreadMessages`,
   `ProjectionThreadActivities`, `ProjectionCheckpoints`,
@@ -255,7 +255,7 @@ implement a full command/event/projection pipeline [schema] [source]:
   their own tests.
 - **Reactors**: side effects (dispatching provider calls, capturing
   checkpoints, deleting threads) run in queue-backed workers built on a shared
-  `DrainableWorker` primitive; a typed `RuntimeReceiptBus` publishes
+  `DrainableWorker` primitive. A typed `RuntimeReceiptBus` publishes
   completion signals ("checkpoint capture, diff finalization, or a turn
   becoming fully quiescent") so tests and orchestration code wait on receipts
   instead of polling internal state. [docs] [source]
@@ -283,7 +283,7 @@ position, delivery policy, or restart guarantee. [source] [schema]
 The intended pointer-driven state machine is still single-flight. When
 `ComposerPrimaryActions` receives `isRunning`, it replaces the send button
 with the red `Stop generation` control. Clicking it issues
-`thread.turn.interrupt`; the decider persists
+`thread.turn.interrupt`. The decider persists
 `thread.turn-interrupt-requested`, and the provider reactor calls
 `interruptTurn({ threadId })`. Mobile's collapsed composer likewise treats a
 running phase as a disabled primary action. Pending approvals and user-input
@@ -315,7 +315,7 @@ CodexAdapter -> app-server turn/start
 ```
 
 `ChatView.onSend` guards connection state, environment availability, a local
-dispatch flag, and `sendInFlightRef`; it snapshots the draft and contexts,
+dispatch flag, and `sendInFlightRef`. It snapshots the draft and contexts,
 adds an optimistic user row, clears the draft, and dispatches exactly one
 `thread.turn.start`. The command carries model/runtime/interaction settings
 and optional worktree bootstrap data. It does **not** carry a delivery mode,
@@ -338,7 +338,7 @@ For Codex specifically, this has surprising behavior. T3's generated
 app-server package **does include** `turn/steer`, but the T3 provider interface
 does not expose it. If a second T3 `thread.turn.start` reaches current Codex
 while a regular turn is active, Codex core's `user_input_or_turn_inner` first
-tries `steer_input`; the new input is appended to the active turn's pending
+tries `steer_input`. The new input is appended to the active turn's pending
 input instead of becoming a FIFO next turn. That path lacks the public
 `turn/steer` method's required `expectedTurnId` guard and can return a newly
 allocated `turn/start` submission ID even though the input was attached to the
@@ -346,7 +346,7 @@ already-active turn. T3 has no native event or projection that explains this
 semantic collapse to its UI. [source] [inferred]
 
 This is not portable provider behavior. T3's shared `ProviderAdapterShape`
-offers only `sendTurn` and `interruptTurn`; its shared orchestration union has
+offers only `sendTurn` and `interruptTurn`. Its shared orchestration union has
 only `thread.turn.start` and `thread.turn.interrupt`. Claude, Cursor, Grok, and
 OpenCode adapters are therefore free to reject, serialize, conflate, or race a
 second `sendTurn` differently. A keyboard path that happens to steer Codex is
@@ -356,7 +356,7 @@ Codex's explicit public operation remains the correct same-turn primitive:
 `turn/steer` requires `expectedTurnId`, only accepts an active regular turn,
 does not emit a second `turn/started`, and rejects review or manual-compaction
 turns. `turn/interrupt` is separate. App-server does not expose a durable
-"run this later as another turn" FIFO; that admission policy belongs above the
+"run this later as another turn" FIFO. That admission policy belongs above the
 provider protocol. See the separate
 [Codex app-server client support analysis](./2026-07-15-codex-app-server-client-support-analysis.md)
 for the broader T3/OpenCode protocol comparison. [public] [source]
@@ -366,7 +366,7 @@ for the broader T3/OpenCode protocol comparison. [public] [source]
 This needs an orchestration change, not a renderer pending array:
 
 1. Add distinct `thread.turn.steer` and `thread.turn.enqueue` commands. Steer
-   must include `expectedProviderTurnId`; enqueue must include a stable queue
+   must include `expectedProviderTurnId`. Enqueue must include a stable queue
    item/message ID and ordering metadata.
 2. Persist admitted queue items and their transitions (`queued`, `promoted`,
    `cancelled`, `failed`) in the event log and projections before acknowledging
@@ -375,21 +375,21 @@ This needs an orchestration change, not a renderer pending array:
    proves the active turn is quiescent. The provider reactor must never infer
    queue order from concurrent `sendTurn` effects.
 4. Extend the provider contract with explicit capability negotiation. Codex
-   steering maps to `turn/steer`; providers without native steering must reject
+   steering maps to `turn/steer`. Providers without native steering must reject
    it or apply a declared fallback, never silently reinterpret it.
 5. Render draft, steering submission, and queued follow-ups as different
    states. Queue items need reconnect recovery and independent cancel/reorder
-   controls; the local draft does not.
+   controls. The local draft does not.
 6. Use client message IDs/idempotency receipts so reconnect or retry cannot
    duplicate either a steer or a queued turn.
 
 The queues that already exist do not satisfy that contract:
 
-- `serverRuntimeStartup` buffers commands until server readiness;
+- `serverRuntimeStartup` buffers commands until server readiness.
 - `DrainableWorker` and `KeyedCoalescingWorker` serialize or coalesce internal
-  work such as provider effects and terminal persistence;
+  work such as provider effects and terminal persistence.
 - WebSocket subscription code bridges replay/catch-up to live pushes through
-  an in-memory queue; and
+  an in-memory queue. And
 - the client runtime buffers outbound RPC work through disconnects.
 
 Those are important infrastructure queues. None is a durable, visible,
@@ -406,8 +406,8 @@ events. [schema]
 The SQLite layer runs WAL with foreign keys and selects its client at runtime:
 `@effect/sql-sqlite-bun` under Bun, a home-grown `node:sqlite` wrapper under
 Node — the server ships as an npm package but is Bun-capable. Provider
-sessions carry an opaque `resumeCursor`; event replay is a client-callable
-RPC; NDJSON provider event logs exist for diagnostics. [source]
+sessions carry an opaque `resumeCursor`. Event replay is a client-callable
+RPC. NDJSON provider event logs exist for diagnostics. [source]
 
 Read against the teardown set: this is OpenCode V2's central lesson
 (durable facts, projections, one owner, receipts as signals) independently
@@ -419,13 +419,13 @@ the replay RPC plus projections. [inferred]
 ## 5. Protocol: hand-written Effect RPC over one WebSocket
 
 - **Transport**: "T3's primary transport is long-lived WebSocket RPC"
-  [source: `apps/server/src/server.ts`]. Requests are `{id, method, params}`;
+  [source: `apps/server/src/server.ts`]. Requests are `{id, method, params}`.
   pushes are typed envelopes with `channel` and a per-connection monotonic
   `sequence`, sent through one ordered `ServerPushBus`. Channels:
   `server.welcome`, `server.configUpdated`, `terminal.event`,
   `orchestration.domainEvent`. [docs] [source]
 - **Boundary validation**: payloads are schema-validated at the transport
-  boundary; decode failures produce structured `WsDecodeDiagnostic` with code,
+  boundary. Decode failures produce structured `WsDecodeDiagnostic` with code,
   reason, and path. [docs]
 - **Method surface**: `WS_METHODS` spans projects, providers
   (start/sendTurn/interrupt/respondToRequest/stop), filesystem browse, assets,
@@ -443,7 +443,7 @@ the replay RPC plus projections. [inferred]
   half-started runtime. [docs]
 
 Contrast with the references: Codex and OpenCode generate clients from the
-protocol source; T3 hand-writes its wire contract in one schema package and
+protocol source. T3 hand-writes its wire contract in one schema package and
 relies on shared code plus boundary decoding. That is workable while one team
 owns every client, but there are no compatibility fixtures or
 version-negotiation surfaces visible at this commit — the protocol version is
@@ -459,14 +459,14 @@ repository. Its model [docs]:
   terminals, git, filesystem, and settings. Desktop, mobile, and web all
   reason about the same primitive.
 - **`KnownEnvironment`** — a client-local saved entry (LAN URL, public wss,
-  SSH host, tunneled relay). Not server-authored; hosted-web entries are
+  SSH host, tunneled relay). Not server-authored. Hosted-web entries are
   browser-local.
 - **`AccessEndpoint`** — one concrete way to reach an environment. One
   environment may have many: `wss://t3.example.com`, `ws://10.0.0.25:3773`, a
   relay URL, a desktop-managed SSH tunnel resolving to a forwarded local URL.
 - **`AdvertisedEndpoint`** — server/desktop-authored endpoint hints with
   reachability class (loopback/LAN/private/public/tunnel) and hosted-HTTPS
-  compatibility flags; treated as hints, never proof of reachability.
+  compatibility flags. Treated as hints, never proof of reachability.
   Endpoint providers plug in here — **Tailscale is the first provider**,
   contributing Tailnet IP and MagicDNS candidates without becoming part of
   the core model.
@@ -477,7 +477,7 @@ repository. Its model [docs]:
   proxy protocol), or publishing a local server through a tunnel.
 - **Hosted pairing** is a bootstrap URL for the static web app
   (`https://app.t3.codes/pair?host=...#token=...`) with the token in the URL
-  hash so it never reaches the hosted origin; the hosted app never proxies
+  hash so it never reaches the hosted origin. The hosted app never proxies
   traffic.
 
 Sessions are environment-local by design: "a local clone and a remote clone
@@ -487,7 +487,7 @@ environment," with `RepositoryIdentity` as best-effort UI grouping only.
 
 The hosted layer ("T3 Connect", `infra/relay`) is a Cloudflare Worker deployed
 with Alchemy, PlanetScale Postgres, one Clerk application shared by web,
-desktop (`@clerk/electron` + passkeys), and mobile (`@clerk/expo`); the relay
+desktop (`@clerk/electron` + passkeys), and mobile (`@clerk/expo`). The relay
 accepts only Clerk JWTs minted from a dedicated `t3-relay` template with a
 shared audience. Tunnels use a pinned managed `cloudflared` binary that the
 CLI installs on demand. The headless path (`t3 connect login/link`,
@@ -504,11 +504,11 @@ Access to an environment is governed by an OAuth-shaped system that is
 markedly more rigorous than anything guarding execution [docs] [source]:
 
 - capability scopes: `orchestration:read`, `orchestration:operate`,
-  `terminal:operate`, `review:write`, `access:read/write`, `relay:read/write`;
+  `terminal:operate`, `review:write`, `access:read/write`, `relay:read/write`.
 - RFC 8693-shaped token exchange
   (`grant_type=urn:ietf:params:oauth:grant-type:token-exchange`) from an
-  environment-bootstrap subject token;
-- pairing links and browser session cookies; and
+  environment-bootstrap subject token.
+- pairing links and browser session cookies. And
 - **DPoP proofs** binding tokens to client keys (`apps/server/src/auth/dpop.ts`,
   relay `DpopProofs.ts`, migration `032_AuthPairingProofKeyThumbprint`).
 
@@ -530,16 +530,16 @@ export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
 
 `docs/architecture/runtime-modes.md` states it plainly: **Full access (the
 default)** starts sessions with `approvalPolicy: never` and
-`sandboxMode: danger-full-access`; **Supervised** opts into
+`sandboxMode: danger-full-access`. **Supervised** opts into
 `on-request`/`workspace-write` with in-app prompts. T3 implements no sandbox
 of its own — no Seatbelt, Landlock, container, or egress layer exists in the
-tree; containment is entirely whatever the wrapped harness enforces, and the
+tree. Containment is entirely whatever the wrapped harness enforces, and the
 default asks the harness to enforce nothing. [schema] [docs] [inferred]
 
 Approvals that do occur are properly modeled: request kinds
 (`command`/`file-read`/`file-change`) flow through the orchestration event
 model, pending approvals are persisted in a projection, and responses are
-typed RPCs — so the *plumbing* for a supervised posture is real; the
+typed RPCs — so the *plumbing* for a supervised posture is real. The
 *default* is not. [schema]
 
 There is no authority manifest, no execution receipt, no
@@ -550,8 +550,8 @@ completion signals, not user-facing evidence. [source] [inferred]
 ## 9. Git: worktrees, hidden-ref checkpoints, and forge flows
 
 - **Worktrees are the parallelism mechanic.** Threads can run in isolated
-  worktrees (`worktreePath` on thread contracts; server-owned `worktreesDir`;
-  typed `vcs.createWorktree`/`removeWorktree` RPCs; PR preparation supports
+  worktrees (`worktreePath` on thread contracts, server-owned `worktreesDir`,
+  typed `vcs.createWorktree`/`removeWorktree` RPCs. PR preparation supports
   `local` and `worktree` modes). Public commentary consistently identifies
   worktree-parallel agents as the flagship feature. [schema] [source] [public]
 - **Checkpoints are hidden Git refs.** `CheckpointStore` captures workspace
@@ -587,7 +587,7 @@ Structure highlights [source]:
   (`DesktopServerExposure`), and contributes Tailscale endpoints.
 - **WSL**: parallel Windows and WSL backends with a mode picker.
 - **SSH bridge**: the main process owns SSH probing, remote launch, askpass,
-  and port-forwarding; the renderer then connects to an ordinary forwarded
+  and port-forwarding. The renderer then connects to an ordinary forwarded
   WebSocket URL — no SSH-specific renderer RPC.
 - **Preview automation**: `playwright-core` drives the embedded preview
   browser for agent-run automation and recording.
@@ -608,7 +608,7 @@ SDK 56, iOS and (at HEAD) Android, EAS preview/production CI lanes. [source]
 [history]
 
 - **Connection**: the shared client-runtime connection machinery with a
-  schema-validated connection catalog in secure storage; direct ws/wss,
+  schema-validated connection catalog in secure storage. Direct ws/wss,
   relay-tunneled, and SSH-backed access methods.
 - **Native modules**: five local Expo modules with Swift and Kotlin
   implementations — composer editor, markdown text, native review diff,
@@ -646,34 +646,34 @@ protocol, rather than forking them. [inferred]
 
 ## 13. Verification and release engineering
 
-- `@effect/vitest` (patched) everywhere; colocated tests at high density —
+- `@effect/vitest` (patched) everywhere. Colocated tests at high density —
   every data-transforming migration has a test, release scripts have tests,
   a dev-launch regression got its own test after breaking. [source] [test]
 - CI on Blacksmith runners: `vp check`, typecheck, desktop build, and a
   grep-based preload sanity check over the built Electron preload. [test]
-- Releases: tag-triggered stable plus **nightly every three hours**; four
-  desktop artifacts in parallel; GitHub Releases with electron-updater
-  metadata; npm OIDC trusted publishing of `t3` (`latest`/`nightly`
-  dist-tags); hosted-web channel aliasing on Vercel; Discord release
+- Releases: tag-triggered stable plus **nightly every three hours**. Four
+  desktop artifacts in parallel. GitHub Releases with electron-updater
+  metadata. Npm OIDC trusted publishing of `t3` (`latest`/`nightly`
+  dist-tags). Hosted-web channel aliasing on Vercel. Discord release
   notifications. [test] [docs]
 - Supply chain: pnpm 11 `allowBuilds` and `minimumReleaseAgeExclude`
-  hardening; Clerk crypto-wallet subdependencies stripped via overrides; 13
+  hardening. Clerk crypto-wallet subdependencies stripped via overrides. 13
   audited patches instead of forks. [source]
 
 ## 14. The agent-operated factory
 
 The development process is itself a finding. [history] [source]
 
-- 1,929 commits in ~5 months; merged PR numbers past #3899.
+- 1,929 commits in ~5 months. Merged PR numbers past #3899.
 - 277 commits carry agent-tool prefixes (`[codex]` and similar), including
-  the HEAD Android-support commit; `Cursor Agent` and `cursor[bot]` appear as
-  committers; `t3-code[bot]` handles releases.
+  the HEAD Android-support commit. `Cursor Agent` and `cursor[bot]` appear as
+  committers. `t3-code[bot]` handles releases.
 - `.plans/` holds ~30 numbered implementation-plan markdown docs — a
   checked-in agent planning trail.
 - `.repos/` vendors framework source with explicit instructions that agents
-  prefer it over guesses or web search; `AGENTS.md` requires reading the
-  Effect LLM docs before writing Effect code; `CLAUDE.md` symlinks to
-  `AGENTS.md`; `.cursor/rules/` configures Cursor Cloud environments.
+  prefer it over guesses or web search. `AGENTS.md` requires reading the
+  Effect LLM docs before writing Effect code. `CLAUDE.md` symlinks to
+  `AGENTS.md`. `.cursor/rules/` configures Cursor Cloud environments.
 - Community input is vouch-gated and size-labeled by CI rather than open.
 
 T3 Code is substantially built *by* the class of agents it supervises, at a
@@ -688,9 +688,9 @@ OpenAgents runs internally with its Khala fleet. [inferred]
 - Renderer hardening: contextIsolation/sandbox/no-nodeIntegration baseline
   with one documented, force-checked webview exception. [source]
 - Per-client, scope-limited, DPoP-bound environment credentials with token
-  exchange and pairing; tokens in URL hashes for hosted pairing. [docs]
+  exchange and pairing. Tokens in URL hashes for hosted pairing. [docs]
   [source]
-- One Clerk audience/template for relay JWTs; relay holds no session state.
+- One Clerk audience/template for relay JWTs. Relay holds no session state.
   [docs]
 - Boundary schema validation on every push/request with structured decode
   diagnostics. [docs]
@@ -702,19 +702,19 @@ OpenAgents runs internally with its Khala fleet. [inferred]
 ### Residual risks and gaps
 
 - **Default `danger-full-access` + `approvalPolicy: never`.** The product
-  default gives every wrapped agent unsandboxed host authority; "Supervised"
+  default gives every wrapped agent unsandboxed host authority. "Supervised"
   is opt-in. [schema] [docs]
 - No containment of T3's own: no sandbox, egress policy, or execution
-  profile; effective authority is whatever each harness enforces, invisible
+  profile. Effective authority is whatever each harness enforces, invisible
   to the user at the T3 surface. [inferred]
-- No authority manifests, execution receipts, or delivery receipts; token
+- No authority manifests, execution receipts, or delivery receipts. Token
   usage snapshots are the only per-run accounting. [inferred]
 - Unsigned desktop artifacts can ship when signing material is absent.
   [docs]
 - Hand-written wire contract without version negotiation or compatibility
   fixtures. [limitation]
 - The relay/identity plane, while thin, is a closed hosted dependency for
-  remote/mobile convenience paths (tunnels, push); direct ws/wss and SSH
+  remote/mobile convenience paths (tunnels, push). Direct ws/wss and SSH
   remain account-free. [docs] [inferred]
 - Framework risk: a patched Effect 4 beta, TypeScript-native preview
   compiler, and Vite Plus toolchain are all pre-1.0 load-bearing
@@ -729,10 +729,10 @@ OpenAgents runs internally with its Khala fleet. [inferred]
 | Core state | Event-sourced commands/events/projections in SQLite | V2 durable events + projections | JSONL rollouts + SQLite index | Append log + indexed canonical graph |
 | Wire contract | Hand-written Effect RPC over WebSocket | Generated Promise/Effect clients from HttpApi | Generated TS/JSON Schema from Rust | Generated clients from Effect Schema |
 | Effect | v4 beta.78, patched, whole-app | v4 beta.83, whole-app | n/a (Rust) | v4 beta, Effect Native everywhere |
-| Containment | None of its own; default danger-full-access | Host tools, no OS sandbox | Seatbelt/bubblewrap/Windows + egress proxy | Fail-closed profiles + containment receipts |
-| Remote | Environment/endpoint model; thin Clerk/CF relay; Tailscale; SSH | managed local service; SSH/WSL connections | remote-control relay w/ seq/ACK/pairing | Portable sessions as receipted authority transfer |
+| Containment | None of its own. Default danger-full-access | Host tools, no OS sandbox | Seatbelt/bubblewrap/Windows + egress proxy | Fail-closed profiles + containment receipts |
+| Remote | Environment/endpoint model. Thin Clerk/CF relay. Tailscale. SSH | managed local service. SSH/WSL connections | remote-control relay w/ seq/ACK/pairing | Portable sessions as receipted authority transfer |
 | Mobile | Real shipping Expo client w/ Live Activities | none | closed iOS surfaces | OpenAgents mobile on Khala Sync |
-| Session portability | Environment-local threads; no host-to-host movement | Location-scoped | thread resume local to `CODEX_HOME` | Rev 30/31 host-portable sessions (unclaimed by all) |
+| Session portability | Environment-local threads. No host-to-host movement | Location-scoped | thread resume local to `CODEX_HOME` | Rev 30/31 host-portable sessions (unclaimed by all) |
 | Receipts | Internal async signals only | none user-facing | usage + audit events | Authority/execution/delivery receipts as product |
 | Economics | None (BYOK, free) | none | subscription-bound | Usage-truth pre-spend + settlement rails |
 
@@ -760,7 +760,7 @@ be better at, not merely equal to.
    inform Khala Sync device grants.
 3. **Neutral provider-runtime event vocabulary with versioning.** T3's
    `ProviderRuntimeEventV2` union across five harnesses is convergent
-   evidence for the OpenAgents harness-adapter seam; keep ours generated and
+   evidence for the OpenAgents harness-adapter seam. Keep ours generated and
    version-negotiated where theirs is hand-written.
 4. **Hidden-ref turn checkpoints.** Checkpoints as hidden Git refs captured
    by a reactor at turn boundaries — no user-visible commits, typed revert
@@ -787,7 +787,7 @@ unified vite/vitest/oxlint/oxfmt toolchain — and the way it is wired is more
 interesting than the tool choice itself. The facts [source]:
 
 - **One binary, one verb set.** Every package script is `vp run` / `vp test`
-  / `vp lint` / `vp fmt` / `vp pack`; install is `vp i`; the recursive runner
+  / `vp lint` / `vp fmt` / `vp pack`. Install is `vp i`. The recursive runner
   is `vpr`. The pnpm catalog aliases `vite` itself to
   `npm:@voidzero-dev/vite-plus-core@0.2.2`, and `packageExtensions` inject
   `vite-plus` into `@effect/vitest` while making upstream `vitest` optional —
@@ -800,9 +800,9 @@ interesting than the tool choice itself. The facts [source]:
   per-package lint/fmt/test config drift across 15+ packages.
 - **The same verb is the human command, the CI command, and the agent
   gate.** `.github/workflows/ci.yml` runs `voidzero-dev/setup-vp@v1` →
-  `vp check` → `vpr typecheck`; `AGENTS.md` line one tells every coding
+  `vp check` → `vpr typecheck`. `AGENTS.md` line one tells every coding
   agent "`vp check` and `vp run typecheck` must pass before considering
-  tasks completed"; a contributor types the identical commands. There is
+  tasks completed". A contributor types the identical commands. There is
   exactly one definition of "green."
 - **Architecture invariants are lint rules, not prose.** The custom
   `oxlint-plugin-t3code` is loaded as a `jsPlugins` entry in the root
@@ -815,7 +815,7 @@ interesting than the tool choice itself. The facts [source]:
   plugin.
 - **The commit/push gradient is deliberate.** The pre-commit hook is two
   words (`vp staged`) and the staged config runs the formatter only —
-  commits stay instant; correctness gating lives in `vp check` at CI and at
+  commits stay instant. Correctness gating lives in `vp check` at CI and at
   the agent task boundary.
 - **The boundaries are honest.** Type-aware linting is explicitly off with a
   comment ("revisit once Oxlint's tsgolint path can integrate with
@@ -854,12 +854,12 @@ How OpenAgents should mimic, in order:
    full `check` at push/CI/agent-completion — the current heavier pre-push
    guard keeps its role while commits stop paying the latency.
 4. **Evaluate `@effect/tsgo` in a bounded lane.** T3 typechecks ~531k lines
-   of deep Effect code with the native-preview compiler; as an Effect shop
+   of deep Effect code with the native-preview compiler. As an Effect shop
    with growing typecheck times, OpenAgents should pilot it on one package
    with a drift comparison against `tsc` before any wide cutover, and
    inherit T3's honesty about the type-aware-lint gap.
 5. **Pilot `vp` itself only where Vite already is.** The OpenAgents monorepo
-   is Bun-first; `vp` is pnpm/Node-shaped and 0.2.x. Wholesale adoption
+   is Bun-first. `vp` is pnpm/Node-shaped and 0.2.x. Wholesale adoption
    would trade a working toolchain for a pre-1.0 one. The right experiment
    is one Vite-built surface (web or desktop renderer build) behind the
    unified verb set, judged on speed and config deletion — while the
@@ -892,21 +892,21 @@ Vite Plus itself, OpenAgents selected the full integrated topology, including
 the exact Vite Plus core alias and test-framework wiring when required by the
 chosen versions. TC-5 tested an intentionally additive one-app topology that
 kept Bun and direct Vite/Vitest authority and prohibited T3's workspace
-replacement; its footprint/config result does not test the system above.
+replacement. Its footprint/config result does not test the system above.
 
 The pattern to copy is T3's actual sequence: Node-native runtime first,
 Effect TSGo second, one atomic pnpm/Vite Plus replacement third, then focused
-stabilization. Root policy composes with host-specific configs; `vp run` owns
-the graph; format-only staging stays cheap; Effect-aware typecheck remains a
-separate gate; bundled engine versions are explicit provenance. OpenAgents'
+stabilization. Root policy composes with host-specific configs. `vp run` owns
+the graph. Format-only staging stays cheap. Effect-aware typecheck remains a
+separate gate. Bundled engine versions are explicit provenance. OpenAgents'
 Node-only destination then deletes the optional Bun adapters T3 retains. The
 binding implementation and payment-removal contract is the
 [`Sol full-conversion plan`](../sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md).
 
 ### Adapt with stronger boundaries
 
-- **Multi-instance provider homes** — already the Pylon pattern; T3 confirms
-  it; keep account health/quota typed rather than implicit.
+- **Multi-instance provider homes** — already the Pylon pattern. T3 confirms
+  it. Keep account health/quota typed rather than implicit.
 - **The relay shape** — a thin identity/tunnel/push plane with no execution
   or session custody is compatible with OpenAgents' local-first tier, but
   OpenAgents' equivalent must keep the account an opt-in upgrade and carry
@@ -927,22 +927,22 @@ binding implementation and payment-removal contract is the
    negotiation, and effective-containment receipts regardless of harness.
 3. **No receipts.** Turn completion, checkpoint capture, and PR creation
    without authority manifests or execution/delivery receipts leaves users
-   trusting prose; this remains the differentiation seam.
+   trusting prose. This remains the differentiation seam.
 4. **Hand-written wire contracts without negotiation.** Generate clients and
    ship compatibility fixtures from day one.
 5. **Unsigned release fallbacks.** A missing certificate should fail the
    release lane, not ship an unsigned artifact.
 6. **A stack of patched pre-1.0 toolchains as load-bearing dependencies**
    without regression gates. OpenAgents' Effect upgrades keep contract,
-   startup, and resource-finalization gates; patching the framework is a
+   startup, and resource-finalization gates. Patching the framework is a
    last resort with an upstream PR attached.
 
 ### Follow-on issue sequence (status ledger)
 
 The toolchain lanes above are filed (#8772–#8777). Sequence status
-(2026-07-13, late): ENV-1 is landed (#8778); ENV-2, GIT-1, SIG-1, FEED-1,
+(2026-07-13, late): ENV-1 is landed (#8778). ENV-2, GIT-1, SIG-1, FEED-1,
 NPX-1, MAINT-1, and DMG-1 are opened (#8780–#8786) with implementation
-dispatched in collision-aware order; EVT-1 remains a draft; LIVE-1 is
+dispatched in collision-aware order. EVT-1 remains a draft. LIVE-1 is
 deprioritized to the end at owner direction.
 
 1. **remote(ENV-1): adopt the ExecutionEnvironment/AccessEndpoint vocabulary
@@ -958,10 +958,10 @@ deprioritized to the end at owner direction.
    reach it". Owning surfaces:
    `docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md`-class
    contracts. T3 reference:
-   `projects/repos/t3code/docs/architecture/remote.md`. Dependencies: none;
+   `projects/repos/t3code/docs/architecture/remote.md`. Dependencies: none.
    vocabulary-first, unblocks ENV-2.
 2. **auth(ENV-2): DPoP-bound, scope-limited capability tokens for local
-   runtime sockets and Khala Sync device grants.** **Opened as [#8780](https://github.com/OpenAgentsInc/openagents/issues/8780); implementation dispatched.**
+   runtime sockets and Khala Sync device grants.** **Opened as [#8780](https://github.com/OpenAgentsInc/openagents/issues/8780). Implementation dispatched.**
    Replace the
    password/env-token local-server pattern with per-client capability
    tokens carrying explicit scopes, RFC 8693-style token exchange, and DPoP
@@ -971,7 +971,7 @@ deprioritized to the end at owner direction.
    `projects/repos/t3code/docs/cloud/environment-auth.md` and
    `apps/server/src/auth/dpop.ts`. Dependencies: ENV-1 for the endpoint
    vocabulary the scopes attach to.
-3. **desktop(GIT-1): hidden-ref turn checkpoints.** **Opened as [#8781](https://github.com/OpenAgentsInc/openagents/issues/8781); implementation dispatched.**
+3. **desktop(GIT-1): hidden-ref turn checkpoints.** **Opened as [#8781](https://github.com/OpenAgentsInc/openagents/issues/8781). Implementation dispatched.**
    Capture workspace
    checkpoints as hidden Git refs at turn boundaries via a reactor, with
    typed revert through the event model and no user-visible commits — the
@@ -981,17 +981,17 @@ deprioritized to the end at owner direction.
    `projects/repos/t3code/apps/server/src/checkpointing/CheckpointStore.ts`.
    Dependencies: none.
 4. **runtime(SIG-1): typed completion receipts for async pipelines as test
-   oracles.** **Opened as [#8782](https://github.com/OpenAgentsInc/openagents/issues/8782); implementation dispatched.**
+   oracles.** **Opened as [#8782](https://github.com/OpenAgentsInc/openagents/issues/8782). Implementation dispatched.**
    Add a DrainableWorker/RuntimeReceiptBus-style seam so every
    async pipeline emits a typed milestone signal tests can await instead of
    polling — the deterministic-verification ergonomics OpenAgents' oracles
    need at the runtime seam. Owning surfaces: Runtime Gateway and the
    khala-tools dispatcher. T3 reference:
    `packages/shared/src/DrainableWorker.ts` and
-   `docs/architecture/overview.md` in the pinned clone. Dependencies: none;
+   `docs/architecture/overview.md` in the pinned clone. Dependencies: none.
    strengthens the oracles the later lanes rely on.
 5. **mcp(FEED-1): serve owned capabilities to wrapped harnesses over
-   MCP.** **Opened as [#8783](https://github.com/OpenAgentsInc/openagents/issues/8783); implementation dispatched.**
+   MCP.** **Opened as [#8783](https://github.com/OpenAgentsInc/openagents/issues/8783). Implementation dispatched.**
    Build an OpenAgents MCP server that hands receipts, policy
    queries, fleet context, and preview tools to the Codex/Claude sessions
    we supervise, through the harnesses' native MCP support rather than
@@ -1000,7 +1000,7 @@ deprioritized to the end at owner direction.
    Dependencies: ENV-2 for the credential shape.
 6. **onboarding(NPX-1): zero-install front door — one npx-shaped command
    boots the local runtime, migrates its store, prints a pairing URL with a
-   fragment token.** **Opened as [#8784](https://github.com/OpenAgentsInc/openagents/issues/8784); implementation dispatched.**
+   fragment token.** **Opened as [#8784](https://github.com/OpenAgentsInc/openagents/issues/8784). Implementation dispatched.**
    Give the local-first tier the entry point the night
    addendum records: fully usable before any account exists, pairing gate
    on by default, auth staying an upgrade rather than a gate. Owning
@@ -1008,7 +1008,7 @@ deprioritized to the end at owner direction.
    `npx t3@latest` flow (night addendum). Dependencies: ENV-2 recommended
    so the pairing token is a scoped capability from day one.
 7. **fleet(MAINT-1): one-click provider install/update with ledger pinning
-   and provenance receipts.** **Opened as [#8785](https://github.com/OpenAgentsInc/openagents/issues/8785); implementation dispatched.**
+   and provenance receipts.** **Opened as [#8785](https://github.com/OpenAgentsInc/openagents/issues/8785). Implementation dispatched.**
    Make harness install/update a typed
    per-harness maintenance action (detect installed version, resolve
    channel, execute update, re-probe capability) surfaced as one click in
@@ -1016,9 +1016,9 @@ deprioritized to the end at owner direction.
    pinning against the component ledger, and provenance verification plus a
    receipt for the binary just swapped under the fleet. T3 reference: the
    driver maintenance resolvers in `apps/server/src/provider/Drivers/`.
-   Dependencies: the component ledger; SIG-1-style receipts.
+   Dependencies: the component ledger. SIG-1-style receipts.
 8. **release(DMG-1): Gatekeeper release oracles — notarize+staple the DMG,
-   fail closed.** **Opened as [#8786](https://github.com/OpenAgentsInc/openagents/issues/8786); implementation dispatched.**
+   fail closed.** **Opened as [#8786](https://github.com/OpenAgentsInc/openagents/issues/8786). Implementation dispatched.**
    Mechanize the night-addendum rule: notarize the DMG
    (covering the nested app), staple the ticket to both artifacts, and gate
    publish on `codesign --verify --deep --strict` (app), `spctl -a -t open`
@@ -1029,7 +1029,7 @@ deprioritized to the end at owner direction.
    `docs/fable/2026-07-13-chatgpt-codex-launch-failure-analysis.md`. Owning
    surfaces: `apps/openagents-desktop/forge.config.ts`,
    `scripts/release-preflight.ts`, `scripts/publish-release.ts` (CUT-26
-   lane). Dependencies: none; the T3 DMG failure is live evidence of the
+   lane). Dependencies: none. The T3 DMG failure is live evidence of the
    cost.
 9. **protocol(EVT-1): version-negotiation audit of the provider-runtime
     event vocabulary.** Compare the OpenAgents harness-adapter event union
@@ -1041,7 +1041,7 @@ deprioritized to the end at owner direction.
     Dependencies: none.
 10. **mobile(LIVE-1): lock-screen agent presence (Live Activities) for fleet
    status.** **Deprioritized to the end of the sequence (owner direction
-  2026-07-13: not needed for a while); remains a draft.**
+  2026-07-13: not needed for a while). Remains a draft.**
    Ship running-agent presence to the lock screen as typed status
    projections only — never completion authority — following the second
    incumbent signal (after Cursor Remote Control) that ambient mobile
@@ -1062,9 +1062,9 @@ validation yet of the architecture OpenAgents chose for its own P0.
 
 What it declines to answer is the half OpenAgents considers the product:
 authority, containment, receipts, provenance, session portability, and
-economic participation. T3's defaults trust every harness with the host; its
-completion states are prose and diffs; its threads are forever bound to one
-environment; its only economics is that it is free.
+economic participation. T3's defaults trust every harness with the host. Its
+completion states are prose and diffs. Its threads are forever bound to one
+environment. Its only economics is that it is free.
 
 The correct OpenAgents response is neither to dismiss it (it is fast, polished,
 and distributed) nor to chase its surface (the features are converging table
@@ -1094,19 +1094,19 @@ from outside the repository. [public]
 The five concepts, per the document [public]:
 
 1. **Status Rail** — recency-sorted three-line cards with a colored status
-   edge; the middle line answers "what is it doing?" with live activity text;
+   edge. The middle line answers "what is it doing?" with live activity text.
    ~10 threads per screen.
 2. **Inbox** — email-shaped triage: project avatars, bold unread titles,
-   two-line latest-assistant-message snippets; the lowest density (~72 px
+   two-line latest-assistant-message snippets. The lowest density (~72 px
    rows).
 3. **Attention Tiers** — three automatic tiers: "Needs you" (pinned, with
    inline actions such as an Approve button carrying the exact command),
-   "Running," and "Recent"; actionable items cannot scroll away.
+   "Running," and "Recent". Actionable items cannot scroll away.
 4. **Adaptive Density** — one recency list whose row height varies by state:
-   live threads expand with spinners, tools, and elapsed timers; settled
+   live threads expand with spinners, tools, and elapsed timers. Settled
    threads collapse to one-liners ("the list breathes").
 5. **Ops Grid** — a two-line monospace ledger with fixed columns (status
-   glyph, branch, PR, diff stats, model); ~15 threads per screen, "highest
+   glyph, branch, PR, diff stats, model). ~15 Threads per screen, "highest
    information per pixel."
 
 Locked decisions shared by all five: recency sorting, always-visible status
@@ -1126,7 +1126,7 @@ Three observations for OpenAgents:
    competitor's design process reaching the same rules from its own live
    data strengthens those contracts as market truth rather than house taste.
    The delta remains authority: T3's inline Approve button dispatches a
-   command string; OpenAgents' equivalent must dispatch a typed intent whose
+   command string. OpenAgents' equivalent must dispatch a typed intent whose
    approval is policy-checked and receipted. [inferred]
 2. **The factory designs itself.** The rendered live data visibly contains a
    running thread named "Sidebar v2 UX Redesign" building these very mocks —
@@ -1135,7 +1135,7 @@ Three observations for OpenAgents:
    is real versus mocked. This extends the §14 finding: not just
    agent-authored commits, but agent-run product design grounded in the
    product's own state store. [public] [inferred]
-3. **Design-from-live-projections is worth adopting; the disclosure rule is
+3. **Design-from-live-projections is worth adopting. The disclosure rule is
    the transferable part.** Rendering design concepts from real projection
    rows — with synthetic states explicitly labeled — is a cheap honesty
    convention OpenAgents design lanes (Desktop workbench, fleet cockpit,
@@ -1143,7 +1143,7 @@ Three observations for OpenAgents:
    live, which is mocked, and from which store it came. [inferred]
 
 `[limitation]` The document carries no explicit author attribution and is
-hosted on an ephemeral-looking artifact domain; it is treated here as a
+hosted on an ephemeral-looking artifact domain. It is treated here as a
 design-evidence snapshot fetched 2026-07-13, not as a committed T3 Code
 roadmap.
 
@@ -1165,8 +1165,8 @@ Artifact inspection of that exact download [runtime]:
 
 - the DMG container is **completely unsigned**: `codesign` reports "code
   object is not signed at all" and `spctl -a -t open --context
-  context:primary-signature` rejects it with "no usable signature"; the
-  Chrome quarantine attribute is present;
+  context:primary-signature` rejects it with "no usable signature". The
+  Chrome quarantine attribute is present.
 - the app **inside** the image is fully correct: `Developer ID Application:
   T3 Tools, Inc. (ARK85ZXQ4Z)`, hardened runtime, `codesign --verify --deep
   --strict` passes ("valid on disk … satisfies its Designated
@@ -1180,7 +1180,7 @@ staples the image. On current macOS, Gatekeeper assesses the quarantined
 disk image itself at open time, and an unsigned, un-notarized DMG fails with
 the misleading "damaged" wording — so the correctly notarized app inside is
 unreachable through the normal double-click path. Users who know the
-`xattr -d com.apple.quarantine` folklore get in; everyone else trashes the
+`xattr -d com.apple.quarantine` folklore get in. Everyone else trashes the
 download, exactly as the dialog instructs.
 
 This upgrades the §13/§15 release-engineering finding from a `[docs]` risk
@@ -1198,10 +1198,10 @@ OpenAgents exposed to a cousin of the same failure:
 
 1. signing and notarization are env-conditional (`OA_DEVELOPER_ID_APPLICATION`,
    `ASC_API_*`), so a build without them still produces an artifact instead
-   of failing closed;
+   of failing closed.
 2. the DMG is signed but not itself notarized/stapled — on macOS 15+ a
    signed-but-unnotarized image still draws a Gatekeeper block, just with
-   different wording; and
+   different wording. And
 3. the publish lane (`publish-release.ts`, `release-preflight.ts`) enforces
    manifest signing and version monotonicity but has no Gatekeeper oracle on
    the artifact.
@@ -1223,9 +1223,9 @@ produced, in one command and a few seconds [runtime]:
 
 1. package fetch, then `Running all migrations...` (the SQLite event
    store/projections initialize in place — migration `32` at this version,
-   matching the source audit);
-2. `Listening on http://127.0.0.1:3773`;
-3. a provider session reaper and agent-activity standby starting; and
+   matching the source audit).
+2. `Listening on http://127.0.0.1:3773`.
+3. a provider session reaper and agent-activity standby starting. And
 4. `Authentication required. Open T3 Code using the pairing URL.` with
    `http://localhost:3773/pair#token=...` — a short token in the URL
    fragment, per the pairing design in §6.
@@ -1241,7 +1241,7 @@ judge the product by whichever door they happen to try first.
 prints a pairing URL with a fragment token, and is fully usable before any
 account exists. The `khala` CLI onboarding
 (`npm install -g @openagentsinc/khala` → `khala fleet connect`) is close but
-still install-first and fleet-scoped; the local-first tier recorded in the
+still install-first and fleet-scoped. The local-first tier recorded in the
 adaptation analysis (auth as an upgrade, not a gate) should get this
 zero-install front door as its entry point. [runtime] [inferred]
 
@@ -1263,7 +1263,7 @@ one click in Settings — with the two additions T3 does not show: version
 pinning against the component ledger, and provenance verification plus a
 receipt for the binary that was just swapped under the user’s agent fleet.
 An unverified auto-updater for the tools that hold `danger-full-access` is
-also a supply-chain lesson in the other direction; adopt the ergonomics,
+also a supply-chain lesson in the other direction. Adopt the ergonomics,
 keep the ledger. [inferred]
 
 ## Addendum (2026-07-14): frontend implementation deep dive
@@ -1303,7 +1303,7 @@ browser                                  Electron main process
 ```
 
 The shared boundary is substantial but precise: contracts, connection
-supervision, snapshots, deltas, commands, and domain query state are shared;
+supervision, snapshots, deltas, commands, and domain query state are shared.
 component trees, navigation, theming, local interaction state, and platform
 hosts are not. [source] [inferred]
 
@@ -1341,7 +1341,7 @@ collection of independent pages. [source]
 Electron does not install a second React tree. `apps/desktop` loads the web
 renderer and contributes privileged capabilities through an explicit preload
 bridge: settings, connection catalog, SSH, updater, preview, window, and secure
-storage operations. The main window is 1100×780 with an 840×620 minimum;
+storage operations. The main window is 1100×780 with an 840×620 minimum.
 `contextIsolation`, sandboxing, and disabled Node integration remain the
 default. Preview webviews are separately preference-gated. This is the right
 privilege shape: desktop-specific authority stays in main/preload instead of
@@ -1353,7 +1353,7 @@ entering ordinary renderer modules. [source]
 cloud auth, native appearance, gesture and keyboard providers, safe-area
 context, native navigation theme, blur targets, and portal hosts. `Stack.tsx`
 uses React Navigation's static native stacks and iOS-specific glass/solid
-header presets; flat thread routes preserve native shared-header transitions.
+header presets. Flat thread routes preserve native shared-header transitions.
 There is no reuse of the web DOM component library. [source]
 
 The mobile shell is adaptive rather than device-name-based. `lib/layout.ts`
@@ -1380,13 +1380,13 @@ At the pinned commit their effective ownership is:
 | --- | --- | --- | --- |
 | Durable product truth | Server SQLite event store and projections | projects, threads, turns, commands, plans, activities, provider state | renderer layout or draft presentation |
 | Connection and synchronized domain state | Effect services, `packages/client-runtime`, `@effect/atom-react` | environment sessions, connection generation, shell/thread snapshots and deltas, queries, typed commands | durable acceptance or final product authority |
-| Renderer persistence | IndexedDB on web; SQLite and secure storage on mobile | connection catalog, cached shells/threads, server config, VCS refs, schema-versioned recovery data | canonical server facts |
+| Renderer persistence | IndexedDB on web. SQLite and secure storage on mobile | connection catalog, cached shells/threads, server config, VCS refs, schema-versioned recovery data | canonical server facts |
 | Local workbench state | Zustand plus local storage | drafts, right-panel tabs, selection, terminal/diff/preview preferences, pane layout | server-owned thread or run lifecycle |
 | Interaction and address state | React state/refs and TanStack/React Navigation | open controls, focus, cursor, transient gestures, current route | domain truth |
 
 All [source], with the authority interpretation [inferred]. This separation is
-the strongest part of the frontend architecture. The server remains canonical;
-client persistence accelerates startup and reconnect; Zustand is generally
+the strongest part of the frontend architecture. The server remains canonical.
+client persistence accelerates startup and reconnect. Zustand is generally
 kept to renderer-local concerns.
 
 #### Shared Effect client runtime
@@ -1401,11 +1401,11 @@ typed `AtomCommand`s through the registry. [source]
 The deeper behavior lives in `packages/client-runtime/src/state/`:
 
 - **Queries are environment-scoped atom families.** A connection generation
-  change restarts them; stale-while-revalidate defaults to a 30-second stale
+  change restarts them. Stale-while-revalidate defaults to a 30-second stale
   window, atoms receive an idle TTL, and callers can opt into refresh and
   subscription behavior. [source]
 - **Commands declare scheduling semantics.** The runtime supports parallel,
-  serial, single-flight, latest-only, and keyed execution; defects become
+  serial, single-flight, latest-only, and keyed execution. Defects become
   `AsyncResult` failures instead of escaping into components. [source]
 - **The environment shell is cache-first.** A valid cached shell paints first,
   then a cold path obtains a gzip-friendly HTTP snapshot and a live WebSocket
@@ -1448,7 +1448,7 @@ React state, router state, IndexedDB, and local storage in the same feature.
 
 Mobile implements the same cache contract over Expo SQLite
 (`t3code-client.db`) with WAL and foreign keys, plus secure storage for
-sensitive connection data. Legacy cache records are migrated; schema-invalid
+sensitive connection data. Legacy cache records are migrated. Schema-invalid
 records are logged and deleted. That is a stronger mobile restart story than
 relying on React Native async key/value storage alone. [source]
 
@@ -1469,7 +1469,7 @@ The source also exposes seven weak seams to avoid as this architecture grows:
    and at-rest threat assumptions load-bearing. [source]
 4. Persisted Zustand stores and the module-level settings store do not broadly
    reconcile native `storage` changes. The singleton Electron window mitigates
-   this today; a future multi-window renderer would need main/server ownership
+   this today. A future multi-window renderer would need main/server ownership
    or versioned BroadcastChannel/IPC synchronization. [source] [inferred]
 5. Desktop topology changes are polled every three seconds because the preload
    bridge has no topology event. A host-pushed event with polling only as
@@ -1537,13 +1537,13 @@ rendering:
 The counterweight is concentration. `ChatView.tsx` is 5,370 lines,
 `Sidebar.tsx` 3,751, `MessagesTimeline.tsx` 2,057,
 `ComposerPromptEditor.tsx` 1,697, and mobile `ThreadFeed.tsx` 1,796. React
-Compiler and virtualization reduce runtime work; they do not reduce the human
+Compiler and virtualization reduce runtime work. They do not reduce the human
 state space or the probability that unrelated behaviors collide inside a
 feature module. [source] [inferred]
 
 Three bundle/network choices leave clear optimization work. The chat graph
-statically imports the xterm drawer even when no terminal is open; the header's
-“open in” menu pulls a large editor-icon source graph; and visible external
+statically imports the xterm drawer even when no terminal is open. The header's
+“open in” menu pulls a large editor-icon source graph. And visible external
 Markdown links request favicons from Google's favicon service, disclosing the
 linked hostname to a third party. Diff, preview, and file chunks are correctly
 lazy, but their Suspense fallbacks are `null`, so a cold chunk can present a
@@ -1556,7 +1556,7 @@ global CSS. `index.css` defines semantic CSS variables for light and dark
 themes, maps them into Tailwind's `@theme inline` vocabulary, defines the DM
 Sans/monospace typography, safe-area and Electron window-control variables,
 focus defaults, Markdown/code/table rules, and the application-height/overflow
-contract. Colors use OKLCH, Tailwind colors, and `color-mix`; radii and shadow
+contract. Colors use OKLCH, Tailwind colors, and `color-mix`. Radii and shadow
 levels are centralized. [source]
 
 `useTheme.ts` schema-validates `light | dark | system`, subscribes to OS theme
@@ -1590,8 +1590,8 @@ or exercised in this pass. [limitation]
 | Category | Score (0–4) | Evidence-based assessment |
 | --- | ---: | --- |
 | Accessibility | 2 | Base UI, semantic controls, labels/live regions, keyboard commands, focus-visible rules, sanitization, and native accessibility props provide a strong base, but core composer, drag, modal, terminal, resize, and motion paths retain material gaps. |
-| Performance | 3 | Virtualized anchored feeds, capped caches, workers, React Compiler, memoization, cache-first projections, and webview lifetime control are strong; xterm/icon graph loading, blank lazy fallbacks, third-party favicons, and component concentration leave measurable work. |
-| Responsive/adaptive | 3 | Container/media/pointer queries, safe areas, off-canvas geometry, sheets, and available-space mobile layout cover all major shapes; custom compact/resize controls bypass the reusable coarse-pointer policy. |
+| Performance | 3 | Virtualized anchored feeds, capped caches, workers, React Compiler, memoization, cache-first projections, and webview lifetime control are strong. Xterm/icon graph loading, blank lazy fallbacks, third-party favicons, and component concentration leave measurable work. |
+| Responsive/adaptive | 3 | Container/media/pointer queries, safe areas, off-canvas geometry, sheets, and available-space mobile layout cover all major shapes. Custom compact/resize controls bypass the reusable coarse-pointer policy. |
 | Theming/system consistency | 3 | Each renderer has coherent semantic tokens and light/dark/system synchronization, but web and mobile duplicate token vocabularies and terminal/special-effect colors bypass the shared web roles. |
 | Anti-patterns/maintainability | 2 | Credible workbench foundations are offset by global glass/grain/animated-gradient decoration, duplicated complex renderers, and very large feature/store modules. |
 | **Total** | **13/20 — acceptable** | Strong runtime mechanics and adaptivity with significant accessibility, cross-renderer consistency, and decomposition work remaining. |
@@ -1600,12 +1600,12 @@ Prioritized findings:
 
 1. **P1 — the composer is not persistently named and its placeholder is too
    faint.** Lexical `ContentEditable` receives `aria-placeholder` but no
-   `aria-label` or `aria-labelledby`; the visible placeholder uses
+   `aria-label` or `aria-labelledby`. The visible placeholder uses
    `text-muted-foreground/35` (approximately 1.6:1 from the declared theme
    tokens). Add a stable “Message” label and a contrast-checked placeholder
    role. [source]
 2. **P1 — manual project ordering is pointer-only.** `Sidebar.tsx` registers
-   only dnd-kit's `PointerSensor`; no keyboard sensor, sortable keyboard
+   only dnd-kit's `PointerSensor`. No keyboard sensor, sortable keyboard
    coordinates, or move-up/down actions provide an equivalent path. [source]
 3. **P1 — expanded-image modal lacks a complete focus lifecycle.**
    `components/chat/ExpandedImageDialog.tsx` creates a custom
@@ -1624,7 +1624,7 @@ Prioritized findings:
    output announcements. [source]
 6. **P2 — custom navigation and resize controls bypass shared semantics.** The
    primary sidebar roots are generic `div`s rather than a labelled navigation
-   landmark. Its resize rail is removed from tab order and pointer-only;
+   landmark. Its resize rail is removed from tab order and pointer-only.
    terminal resize handles and several 24–28 px action controls similarly skip
    keyboard and coarse-pointer behavior already encoded in `Button`. Use
    landmarks, separator/range semantics, keyboard increments, and 44 px coarse-
@@ -1646,7 +1646,7 @@ Prioritized findings:
     radius.** The main conversation, sidebar, feed, and draft store combine
     rendering, projection, persistence, keyboard, layout, and provider-specific
     branches. Extract lifecycle-owned feature services and smaller
-    render/presenter boundaries; retain the current pure helpers and colocated
+    render/presenter boundaries. Retain the current pure helpers and colocated
     tests, and add browser/axe coverage for focus, keyboard, contrast, and
     motion on these surfaces. [source] [inferred]
 11. **P3 — decoration competes with the otherwise quiet workbench.** Default
@@ -1691,7 +1691,7 @@ privilege separation. [source]
 1. **Do not copy the two-design-system topology.** OpenAgents' Effect Native
    mandate is one typed component and token set with swappable web, React
    Native, native, and canvas renderers. T3's shared client runtime is a model
-   for the service layer; its independent Tailwind DOM and Uniwind/native
+   for the service layer. Its independent Tailwind DOM and Uniwind/native
    component trees are evidence of the drift that mandate must prevent.
 2. **Do not let Zustand become a second domain runtime.** A small renderer-
    local store is defensible for drafts and geometry, but server facts,
@@ -1722,7 +1722,7 @@ The source-grounded
 [Effect Native + React web renderer gap analysis](../effect-native/2026-07-14-react-web-renderer-harmonization-gap-analysis.md)
 therefore recommends the same layering that Effect Native already ships on
 mobile: retain the Schema `View`, Effect state/services, typed intents, and
-tokens; lower them to React elements inside the DOM renderer; and admit
+tokens. Lower them to React elements inside the DOM renderer. And admit
 specialist libraries only through renderer-private implementations or closed
 typed hosts. Today's React route shell around an imperative direct-DOM island
 is migration glue, not that destination. [inferred]
@@ -1734,10 +1734,10 @@ copying T3's whole client architecture:
 
 | T3 layer | OpenAgents Desktop disposition | Reason |
 | --- | --- | --- |
-| React 19 / React DOM | adopted as the Effect Native renderer root and lifecycle host | the first surface retains the proven direct catalog lowering internally; React still cannot own the View grammar |
+| React 19 / React DOM | adopted as the Effect Native renderer root and lifecycle host | the first surface retains the proven direct catalog lowering internally. React still cannot own the View grammar |
 | Vite + React plugin | adopted for the renderer bundle | main/preload/workers remain on the existing host build and the signed asset names remain fixed |
 | Tailwind CSS 4 | adopted as a renderer compiler with `--en-*` semantic aliases | no Tailwind class enters the portable View schema and no second theme is created |
-| Base UI | deferred to reviewed renderer-private primitive adapters | do not add it until a catalog primitive genuinely delegates; never expose `ReactNode` or callbacks in core |
+| Base UI | deferred to reviewed renderer-private primitive adapters | do not add it until a catalog primitive genuinely delegates. Never expose `ReactNode` or callbacks in core |
 | Effect Atom React / Zustand | not adopted | `SubscriptionRef`, `ViewProgram`, typed intents, and existing persistence already have one owner |
 | TanStack Router | not adopted | Desktop navigation is typed application state, not a browser URL hierarchy |
 | Lexical / LegendList / Pierre / xterm | deferred until a catalog node or typed Host genuinely delegates to each library | dependencies must follow a real lifecycle-owned integration, not stack mimicry |
@@ -1745,7 +1745,7 @@ copying T3's whole client architecture:
 
 The Electron host still serves only `index.html`, `boot.js`, and `app.css`
 under the existing restrictive CSP. The pure `shell.ts` application and its
-workspace projections remain React-free; the renderer-host boundary test now
+workspace projections remain React-free. The renderer-host boundary test now
 allows React/Base UI only in named host files and scans `.tsx` so the exception
 cannot become an unreviewed second UI layer. Tailwind's semantic theme roles
 map to canonical Effect Native variables rather than duplicating T3's color,
@@ -1765,7 +1765,7 @@ contrast calculation, bundle profiling, memory traces, or representative
 device labs. CSS and component structure establish implementation intent, not
 the performance or accessibility of a shipped binary. Findings tied to
 explicit attributes, input sensors, xterm configuration, and CSS animation are
-direct source defects; perceived visual quality and the severity of module-size
+direct source defects. Perceived visual quality and the severity of module-size
 risk remain partly interpretive.
 [limitation]
 
@@ -1775,34 +1775,34 @@ All paths relative to the pinned clone at `projects/repos/t3code`.
 
 | Concern | Primary evidence |
 | --- | --- |
-| Product identity, installs | `README.md`; `AGENTS.md`; `apps/server/package.json` |
-| Architecture overview | `docs/architecture/overview.md`; `docs/architecture/providers.md` |
-| Provider drivers/adapters | `apps/server/src/provider/Drivers/`; `apps/server/src/provider/Layers/` |
-| Codex protocol client | `packages/effect-codex-app-server/scripts/generate.ts`; `packages/effect-codex-app-server/src/{client,protocol}.ts` + `_generated/`; `apps/server/src/provider/Layers/{CodexProvider,CodexSessionRuntime}.ts`; `apps/server/src/provider/CodexAdapter.ts` |
-| Agent Client Protocol implementation | `packages/effect-acp/src/{agent,client,protocol,terminal}.ts`; [current deep dive](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md) |
+| Product identity, installs | `README.md`. `AGENTS.md`. `apps/server/package.json` |
+| Architecture overview | `docs/architecture/overview.md`. `docs/architecture/providers.md` |
+| Provider drivers/adapters | `apps/server/src/provider/Drivers/`. `apps/server/src/provider/Layers/` |
+| Codex protocol client | `packages/effect-codex-app-server/scripts/generate.ts`. `packages/effect-codex-app-server/src/{client,protocol}.ts` + `_generated/`. `apps/server/src/provider/Layers/{CodexProvider,CodexSessionRuntime}.ts`. `apps/server/src/provider/CodexAdapter.ts` |
+| Agent Client Protocol implementation | `packages/effect-acp/src/{agent,client,protocol,terminal}.ts`. [Current deep dive](./2026-07-16-t3-code-agent-client-protocol-implementation-teardown.md) |
 | Orchestration contracts | `packages/contracts/src/orchestration.ts`, `providerRuntime.ts`, `provider.ts`, `rpc.ts`, `git.ts` |
 | Engine pipeline | `apps/server/src/orchestration/` (`decider.ts`, `projector.ts`, `commandInvariants.ts`) |
-| Persistence | `apps/server/src/persistence/Layers/Sqlite.ts`; `Migrations/001…032`; `Services/Projection*.ts` |
-| Runtime modes / approvals | `docs/architecture/runtime-modes.md`; `packages/contracts/src/orchestration.ts` |
-| Checkpoints | `apps/server/src/checkpointing/CheckpointStore.ts`; `CheckpointDiffQuery.ts` |
-| Remote model | `docs/architecture/remote.md`; `docs/architecture/connection-runtime.md`; `packages/client-runtime/` |
-| Shared client projections | `packages/client-runtime/src/state/{runtime,shell,threads,threadReducer,threadDetail}.ts`; `packages/client-runtime/src/platform/persistence.ts` |
-| Web boot / navigation | `apps/web/index.html`; `apps/web/src/main.tsx`; `apps/web/src/AppRoot.tsx`; `apps/web/src/router.ts`; `apps/web/src/routes/{__root,_chat.$environmentId.$threadId}.tsx`; `apps/web/src/components/AppSidebarLayout.tsx` |
-| Web domain and local state | `apps/web/src/state/`; `apps/web/src/rpc/atomRegistry.ts`; `apps/web/src/composerDraftStore.ts`; `apps/web/src/rightPanelStore.ts`; `apps/web/src/uiStateStore.ts` |
-| Web persistence | `apps/web/src/connection/storage.ts`; `apps/desktop/src/app/DesktopConnectionCatalogStore.ts`; `apps/desktop/src/electron/ElectronSafeStorage.ts` |
-| Web components / styling | `apps/web/src/components/ui/`; `apps/web/components.json`; `apps/web/src/index.css`; `apps/web/src/hooks/useTheme.ts`; `apps/web/src/rightPanelLayout.ts` |
-| Conversation rendering | `apps/web/src/components/{ChatView,ChatMarkdown,ComposerPromptEditor,DiffWorkerPoolProvider,ThreadTerminalDrawer}.tsx`; `apps/web/src/components/chat/{ChatComposer,ComposerPrimaryActions,MessagesTimeline}.tsx`; `apps/web/src/composerDraftStore.ts` |
-| Environment auth | `docs/cloud/environment-auth.md`; `apps/server/src/auth/dpop.ts` |
-| Relay / T3 Connect | `infra/relay/`; `docs/cloud/t3-connect-clerk.md`; `apps/server/src/cloud/ManagedEndpointRuntime.ts` |
-| Desktop security | `apps/desktop/src/window/DesktopWindow.ts`; `apps/desktop/src/preview/WebviewPreferences.ts` |
-| Desktop renderer bridge | `apps/desktop/src/preload.ts`; `apps/desktop/src/ipc/DesktopIpc.ts`; `apps/web/src/browser/ElectronBrowserHost.tsx` |
-| Mobile renderer / navigation | `apps/mobile/src/{App,Stack}.tsx`; `apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx`; `apps/mobile/src/features/threads/ThreadFeed.tsx` |
-| Mobile state / styling | `apps/mobile/src/state/`; `apps/mobile/src/connection/runtime.ts`; `apps/mobile/src/persistence/mobile-database.ts`; `apps/mobile/global.css` |
-| Mobile native hosts | `apps/mobile/app.config.ts`; `apps/mobile/modules/`; `apps/mobile/src/widgets/AgentActivity.tsx` |
-| MCP server | `apps/server/src/mcp/McpHttpServer.ts`; `apps/server/src/mcp/toolkits/preview/tools.ts` |
-| Effect patch | `patches/effect@4.0.0-beta.78.patch`; `pnpm-workspace.yaml` |
+| Persistence | `apps/server/src/persistence/Layers/Sqlite.ts`. `Migrations/001…032`. `Services/Projection*.ts` |
+| Runtime modes / approvals | `docs/architecture/runtime-modes.md`. `packages/contracts/src/orchestration.ts` |
+| Checkpoints | `apps/server/src/checkpointing/CheckpointStore.ts`. `CheckpointDiffQuery.ts` |
+| Remote model | `docs/architecture/remote.md`. `docs/architecture/connection-runtime.md`. `packages/client-runtime/` |
+| Shared client projections | `packages/client-runtime/src/state/{runtime,shell,threads,threadReducer,threadDetail}.ts`. `packages/client-runtime/src/platform/persistence.ts` |
+| Web boot / navigation | `apps/web/index.html`. `apps/web/src/main.tsx`. `apps/web/src/AppRoot.tsx`. `apps/web/src/router.ts`. `apps/web/src/routes/{__root,_chat.$environmentId.$threadId}.tsx`. `apps/web/src/components/AppSidebarLayout.tsx` |
+| Web domain and local state | `apps/web/src/state/`. `apps/web/src/rpc/atomRegistry.ts`. `apps/web/src/composerDraftStore.ts`. `apps/web/src/rightPanelStore.ts`. `apps/web/src/uiStateStore.ts` |
+| Web persistence | `apps/web/src/connection/storage.ts`. `apps/desktop/src/app/DesktopConnectionCatalogStore.ts`. `apps/desktop/src/electron/ElectronSafeStorage.ts` |
+| Web components / styling | `apps/web/src/components/ui/`. `apps/web/components.json`. `apps/web/src/index.css`. `apps/web/src/hooks/useTheme.ts`. `apps/web/src/rightPanelLayout.ts` |
+| Conversation rendering | `apps/web/src/components/{ChatView,ChatMarkdown,ComposerPromptEditor,DiffWorkerPoolProvider,ThreadTerminalDrawer}.tsx`. `apps/web/src/components/chat/{ChatComposer,ComposerPrimaryActions,MessagesTimeline}.tsx`. `apps/web/src/composerDraftStore.ts` |
+| Environment auth | `docs/cloud/environment-auth.md`. `apps/server/src/auth/dpop.ts` |
+| Relay / T3 Connect | `infra/relay/`. `docs/cloud/t3-connect-clerk.md`. `apps/server/src/cloud/ManagedEndpointRuntime.ts` |
+| Desktop security | `apps/desktop/src/window/DesktopWindow.ts`. `apps/desktop/src/preview/WebviewPreferences.ts` |
+| Desktop renderer bridge | `apps/desktop/src/preload.ts`. `apps/desktop/src/ipc/DesktopIpc.ts`. `apps/web/src/browser/ElectronBrowserHost.tsx` |
+| Mobile renderer / navigation | `apps/mobile/src/{App,Stack}.tsx`. `apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx`. `apps/mobile/src/features/threads/ThreadFeed.tsx` |
+| Mobile state / styling | `apps/mobile/src/state/`. `apps/mobile/src/connection/runtime.ts`. `apps/mobile/src/persistence/mobile-database.ts`. `apps/mobile/global.css` |
+| Mobile native hosts | `apps/mobile/app.config.ts`. `apps/mobile/modules/`. `apps/mobile/src/widgets/AgentActivity.tsx` |
+| MCP server | `apps/server/src/mcp/McpHttpServer.ts`. `apps/server/src/mcp/toolkits/preview/tools.ts` |
+| Effect patch | `patches/effect@4.0.0-beta.78.patch`. `pnpm-workspace.yaml` |
 | Lint enforcement | `oxlint-plugin-t3code/rules/` |
-| Release engineering | `.github/workflows/{ci,release,pr-vouch}.yml`; `docs/operations/release.md`; `scripts/` |
+| Release engineering | `.github/workflows/{ci,release,pr-vouch}.yml`. `docs/operations/release.md`. `scripts/` |
 
 Public sources: [T3 Code repository](https://github.com/pingdotgg/t3code),
 [Codex app-server protocol](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md),

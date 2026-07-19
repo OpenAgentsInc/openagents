@@ -28,13 +28,13 @@ workroom-metadata.json
 
 It includes:
 
-- workroom id;
-- program id;
-- repo;
-- template id;
-- budget;
-- deadline;
-- trust tier;
+- workroom id.
+- program id.
+- repo.
+- template id.
+- budget.
+- deadline.
+- trust tier.
 - capability names.
 
 It excludes raw secrets, tokens, wallet material, private keys, and private

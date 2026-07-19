@@ -72,7 +72,7 @@ which assignment lanes are waiting for real verified receipt rows.
 ## Web Surface
 
 The public Training Runs page renders a compact leaderboard panel linking to
-the all-lanes feed and each lane feed. It does not invent rows client-side; the
+the all-lanes feed and each lane feed. It does not invent rows client-side. The
 Worker JSON feed remains the ranking authority.
 
 ## Current Live Boundary

@@ -42,7 +42,7 @@ operator decision. That seam is this lane.
 
 ### Input: a budgeted backlog item
 
-`BacklogFaucetBudgetedItem` — `issueRef` (the public GitHub issue URL; the
+`BacklogFaucetBudgetedItem` — `issueRef` (the public GitHub issue URL, the
 objective stays a dereferenceable ref, never an issue-body copy), `title`,
 `boundedScope` (a single 8–280 character public-safe line), `budgetSats`,
 `verificationCommandRef`, `deadlineDate`, optional capability refs and relist
@@ -53,10 +53,10 @@ Validation, all typed (`BacklogFaucetGateError` with a `reasonRef`, or
 
 - budget bounds: positive integer sats, capped at
   `DefaultBacklogFaucetMaxBudgetSats` (50,000) unless the caller passes an
-  explicit lower/higher cap;
+  explicit lower/higher cap.
 - public-safe refs: the item, the projection, operator approvals, publish
   receipts, and transition refs all pass the shared work-request unsafe-material
-  scanner; issue bodies never enter the filing;
+  scanner. Issue bodies never enter the filing.
 - verification command required: acceptance downstream is
   validator-verdict-gated per the labor escrow invariants, so a filing without
   a verification command ref is rejected at draft time.
@@ -68,7 +68,7 @@ Validation, all typed (`BacklogFaucetGateError` with a `reasonRef`, or
   (`makeLbrAgenticCodingRequest` → `lbrAgenticCodingRequestToDraft`) that the
   live Forum work-request surface uses, validated end-to-end at draft time.
   The filing's `ForumWorkRequestInput` is exactly the body that
-  `POST /api/forum/work-requests` accepts; live publication rebuilds the
+  `POST /api/forum/work-requests` accepts. Live publication rebuilds the
   draft with the real Forum topic ref through that existing surface rather
   than inventing a parallel publish path.
 - The **faucet record** (`BacklogFaucetRecord`): states are
@@ -115,9 +115,9 @@ example, not a live filing) in `workers/api/src/backlog-faucet.test.ts`.
   refs, relist policy, and issue-comment mirrors are unchanged and reused by
   `draftBacklogFaucetRecord` via `buildBacklogWorkRequestFiling`.
 - The live publisher connector from #4777 is the intended producer of the
-  publish receipt that `markBacklogFaucetPublished` consumes; the dry-run path
+  publish receipt that `markBacklogFaucetPublished` consumes. The dry-run path
   never touches it.
-- Escrow stays on the labor credit ledger (`labor-escrow.ts`); this contract
+- Escrow stays on the labor credit ledger (`labor-escrow.ts`). This contract
   records escrow receipts as transition refs and never moves balances itself.
 
 No new operator HTTP route is added in this lane: like

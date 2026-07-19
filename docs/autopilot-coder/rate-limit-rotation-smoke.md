@@ -1,7 +1,7 @@
 # Autopilot Rate-Limit Rotation Smoke (M9)
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Run the CI-safe leg from the repository root:
@@ -88,7 +88,7 @@ logs.
 3. Run the mission until the leased account hits a real provider rate
    limit (or drive the account to its limit with parallel work), then
    report the failure through the failover route. A `201 retrying`
-   response carries the next lease; the limited account is placed on a
+   response carries the next lease. The limited account is placed on a
    timed cooldown:
 
    ```sh
@@ -125,5 +125,5 @@ silent stall.
 
 A passing live run with these receipts is still required before
 product copy claims smart multi-account routing beyond the CI-safe
-contract; link the receipts from the promise/registry evidence when
+contract. Link the receipts from the promise/registry evidence when
 that copy lands.

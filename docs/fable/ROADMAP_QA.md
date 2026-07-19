@@ -2,12 +2,12 @@
 
 > **Historical-status note (2026-07-13):** current sequencing is owned by
 > [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md). This document is the
-> completed issue map and design record for the former Khala Code QA engine;
+> completed issue map and design record for the former Khala Code QA engine.
 > `docs/qa/README.md` indexes its retained execution evidence. It is not current
 > OpenAgents Desktop release proof or AssuranceSpec authority.
 
 Date: 2026-07-02
-Status: **completed issue map; follow-on QA Swarm work continues under
+Status: **completed issue map. Follow-on QA Swarm work continues under
 #8071.** Successor to WS-6/WS-14 of
 [`ROADMAP.md`](./ROADMAP.md) and direct implementation of §15.5 of the
 [QA framework design](./2026-07-01-khala-code-desktop-qa-framework-design.md)
@@ -24,25 +24,25 @@ the scheduled loop, the explorers, and the live tiers.
 no pending approvals — live tiers may run against the currently-logged-in
 Codex/Claude accounts (isolated worker homes only, per invariants), and the
 previously postponed explore-policy optimization lane is reopened here.
-Spend-bearing runs remain no-spend own-capacity; money movement stays
+Spend-bearing runs remain no-spend own-capacity. Money movement stays
 owner-enveloped as always.
 
 **Episode 246 (2026-07-03):** this roadmap's product framing is now public.
 The episode (`docs/transcripts/246.md`) reads the QA Swarm one-paragraph
 product on camera, commits to building it **first for Khala Code, then for
 the Autopilot business suite**, and frames the whole cycle as the owner's
-win condition ("close the gap between what I've been saying and what we're
+win condition ("close the gap between what I've been saying and what we are
 shipping"). The dogfood engagement is the announced plan of record and its
-receipts are the first sales artifact; registry `2026-07-03.1` carries the
+receipts are the first sales artifact. Registry `2026-07-03.1` carries the
 sequencing on `qa_swarm.product_surface.v1` and adds
 `khala_code.ux_behavior_contracts.v1` for the §9d contract layer. No
 promise state changed.
 
 Delivery mechanics are [`EXECUTION.md`](./EXECUTION.md): one GitHub issue
-per task (issue map in §12; epic #8051), one PR per issue, clean worktrees, verify-green
+per task (issue map in §12, epic #8051), one PR per issue, clean worktrees, verify-green
 before review, merged-to-`main` is the only "done". Delegability grades as
-in ROADMAP.md (HIGH = fleet worker with bounded prompt; MED = tight issue +
-reviewer attention; LOW = supervisor).
+in ROADMAP.md (HIGH = fleet worker with bounded prompt, MED = tight issue +
+reviewer attention. LOW = supervisor).
 
 **Closeout (2026-07-03):** every child issue in the #8051 issue map
 (#8012-#8050, #8052-#8055, and #8057-#8059) is closed on `main`. The final
@@ -57,9 +57,9 @@ but #8051 itself is closed.
 ## 0. Ground Truth (what already runs, verified 2026-07-02)
 
 All fresh-run evidence lives in §15.2–15.3 of the QA design doc. Summary:
-harness suite 50/50; desktop suite 495/495 (~5s); 10×32 monkey night clean
-with coverage-ledger artifact; qa-runner desktop backend 6/6; Mode P against
-the real HTTP bridge live (headless boot, bearer enforced, SSE streaming);
+harness suite 50/50. Desktop suite 495/495 (~5s). 10×32 Monkey night clean
+with coverage-ledger artifact. Qa-runner desktop backend 6/6. Mode P against
+the real HTTP bridge live (headless boot, bearer enforced, SSE streaming).
 visual smokes red-then-fixed (`fleetRunList` mock gap, retired sidebar
 counts element) — proof both that the framework catches real regressions
 and that nothing was running it. The two commits that closed the audit:
@@ -86,7 +86,7 @@ QA-10 QA Swarm productization (epic #8071; consumes Q1/Q2/Q6 outputs)
 ```
 
 QA-1.1 (the nightly job) and Q2.1 (the perf bridge) are the two
-foundations; everything else fans out. QA-5.1 (armed live smoke) has no
+foundations. Everything else fans out. QA-5.1 (armed live smoke) has no
 code dependency and starts immediately under the owner arming.
 
 ## 2. QA-1 — The Loop: scheduled automation and merge gates
@@ -98,8 +98,8 @@ been caught the night it landed if this existed.
 | --- | --- | --- | --- |
 | Q1.1 | **Nightly QA matrix on the owned runner** (Tier-2 pattern, no GitHub-hosted CI): one scheduled job runs, in order — harness suite, desktop `verify`, all fixture visual smokes (`part2-ui`, `cockpit-visual`, `composer-visual`), monkey night (≥1000 total actions), model-based tier, property tier — then writes a dated public-safe run report (JSON + markdown) and the merged coverage ledger. Any failure files/updates a strict-form issue automatically with seed/log/artifact refs. | — | MED |
 | Q1.2 | **Visual smokes gate merges.** Bounded Tier-1 pre-push (or merge-queue) step for changes touching `clients/khala-code-desktop` or `packages/ui`: the three fixture visual smokes must pass. Warning-only for the first week, then hard-fail. Time-box the step (<5 min) and keep it skip-safe for non-desktop changes. | — | HIGH |
-| Q1.3 | **Coverage union + frontier + auto-issue** (T6.6 completion): nightly union of all per-run ledgers; frontier report (unvisited RPC methods, unexercised slash commands, never-rendered item variants, unclicked selectors) published in the run report; any coverage class at zero for 7 consecutive days ⇒ auto-issue. | Q1.1 | HIGH |
-| Q1.4 | **Flake policy + quarantine**: every intermittent failure is a bug (design principle 2 — there is no third category). Nightly job retries a failure once; if it flips, it is quarantined into a tracked list with an auto-issue carrying seeds/logs, never silently retried green. First target: the 1-in-3 desktop-suite single-test error observed 2026-07-02 (§15.2). | Q1.1 | MED |
+| Q1.3 | **Coverage union + frontier + auto-issue** (T6.6 completion): nightly union of all per-run ledgers. Frontier report (unvisited RPC methods, unexercised slash commands, never-rendered item variants, unclicked selectors) published in the run report. Any coverage class at zero for 7 consecutive days ⇒ auto-issue. | Q1.1 | HIGH |
+| Q1.4 | **Flake policy + quarantine**: every intermittent failure is a bug (design principle 2 — there is no third category). Nightly job retries a failure once. If it flips, it is quarantined into a tracked list with an auto-issue carrying seeds/logs, never silently retried green. First target: the 1-in-3 desktop-suite single-test error observed 2026-07-02 (§15.2). | Q1.1 | MED |
 | Q1.5 | **QA status surface**: the nightly report published as a public-safe JSON artifact + summary (owned-runner artifact store or committed `docs/qa/reports/`), with pass/fail, coverage counts, perf trends, and live-tier status — the owner reads one page to know whether the app is healthy. Implementation note: [`docs/qa/khala-code-qa-status-surface.md`](../qa/khala-code-qa-status-surface.md). | Q1.1, Q1.3 | MED |
 
 ## 3. QA-2 — Real-run latency: make lag measurable, then kill it
@@ -112,22 +112,22 @@ gap). This workstream is the lag lever.
 | --- | --- | --- | --- |
 | Q2.1 | **The bun-side sample bridge** (T6.14 completion): webview `qaMetrics()` samples flow to the Bun host continuously (preview bridge message or SSE back-channel) and out the `qaMetrics` RPC in real runs — preview AND packaged app. Fixture test + a live assertion that a real thread-switch produces a real sample through the RPC. Implementation note: [`docs/qa/khala-code-qa-metrics-bridge.md`](../qa/khala-code-qa-metrics-bridge.md). | — | MED |
 | Q2.2 | **The full latency budget family as data** (extends the v1 budgets): `budget.khala_code.startup_interactive.v1` (cold boot → interactive < 3000ms), `thread_switch.optimistic.v1` (< 100ms), `thread_switch.full.v1` (< 400ms), `turn_start.first_event.v1` (< 400ms), `composer.keystroke_echo.p95.v1` (< 16ms), `panel.open.v1` (< 150ms), `sse.event_to_ui.p95.v1` (< 250ms), `transcript.scroll_dropped_frames.v1` (< 5%), `app_server.spawn_ready.v1` (< 2000ms) — plus the existing cockpit-render/lifecycle-p95/supervisor-tick three. Encoded as data, consumed by scenario `perf` oracles, evaluated in the nightly. Implementation note: [`docs/qa/khala-code-latency-budgets.md`](../qa/khala-code-latency-budgets.md). | Q2.1 | HIGH |
-| Q2.3 | **Lag profiling sweep of the real app**: instrumented real-bridge sessions (Mode P + Mode D on the built webview, then packaged) collecting every budget's samples under realistic load (long transcript, 50-card cockpit, streaming turn); rank worst p95s; file one optimization issue per offender with the sample evidence attached. This is §10's "perf regression as optimization input" made real. Implementation note: [`docs/qa/khala-code-lag-profiling-sweep.md`](../qa/khala-code-lag-profiling-sweep.md). | Q2.1 | MED |
-| Q2.4 | **Memory/leak/zombie oracle**: RSS + JS heap ceiling after a monkey night (`memory.rss_after_monkey_night.v1` < 1.5GB, no monotonic growth across runs); zero orphan processes after driver `shutdown()` (invariant oracle), wired into the nightly. Implementation note: [`docs/qa/khala-code-memory-zombie-oracle.md`](../qa/khala-code-memory-zombie-oracle.md). | Q1.1 | HIGH |
-| Q2.5 | **Perf trend reporting + regression auto-issue**: per-budget nightly trends in the Q1.5 report; any budget regression => auto-issue with the offending samples. Implementation note: [`docs/qa/khala-code-perf-trend-regressions.md`](../qa/khala-code-perf-trend-regressions.md). | Q1.1, Q2.2 | HIGH |
+| Q2.3 | **Lag profiling sweep of the real app**: instrumented real-bridge sessions (Mode P + Mode D on the built webview, then packaged) collecting every budget's samples under realistic load (long transcript, 50-card cockpit, streaming turn). Rank worst p95s. File one optimization issue per offender with the sample evidence attached. This is §10's "perf regression as optimization input" made real. Implementation note: [`docs/qa/khala-code-lag-profiling-sweep.md`](../qa/khala-code-lag-profiling-sweep.md). | Q2.1 | MED |
+| Q2.4 | **Memory/leak/zombie oracle**: RSS + JS heap ceiling after a monkey night (`memory.rss_after_monkey_night.v1` < 1.5GB, no monotonic growth across runs). Zero orphan processes after driver `shutdown()` (invariant oracle), wired into the nightly. Implementation note: [`docs/qa/khala-code-memory-zombie-oracle.md`](../qa/khala-code-memory-zombie-oracle.md). | Q1.1 | HIGH |
+| Q2.5 | **Perf trend reporting + regression auto-issue**: per-budget nightly trends in the Q1.5 report. Any budget regression => auto-issue with the offending samples. Implementation note: [`docs/qa/khala-code-perf-trend-regressions.md`](../qa/khala-code-perf-trend-regressions.md). | Q1.1, Q2.2 | HIGH |
 | Q2.6 | **Burn down the ranked lag offenders** (umbrella): child issues from Q2.3's ranking, fixed to budget-green — includes the known full-re-render-per-event and module-level-state classes from the Effect audit if they surface in the ranking. Definition of done: every Q2.2 budget green in the nightly for 7 consecutive days on the real app. Implementation note: [`docs/qa/khala-code-lag-offender-burndown.md`](../qa/khala-code-lag-offender-burndown.md). | Q2.3 | MED |
 
 ## 4. QA-3 — Headed native Mode V: drive the real window
 
 Everything Mode D tested so far is the Vite preview. The owner uses the
-packaged Electrobun window; the AX backend exists and has never been
+packaged Electrobun window. The AX backend exists and has never been
 pointed at it.
 
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
-| Q3.1 | **First headed AX run**: qa-runner native macOS backend (`QA_NATIVE_DESKTOP=1`) drives the packaged app (`electrobun build` output): boot, hotbar navigation, composer type/submit against fixture backend, screenshot; committed runbook with the exact invocation. | — | MED |
-| Q3.2 | **Headed scenario subset weekly**: the seed-corpus smoke subset through the vision driver on the packaged app; AX-tree a11y oracle (every interactive element present in the AX tree; keyboard-only completion of one defined scenario). | Q3.1, Q4.1 | MED |
-| Q3.3 | **Screenshot baseline store + diff oracle**: blessed baselines per viewport (desktop/mobile, dark, reduced-motion), redaction-checked like any projection; diffs fail the visual oracle. Implementation note: [`docs/qa/khala-code-visual-baselines.md`](../qa/khala-code-visual-baselines.md). | Q3.1 | MED |
+| Q3.1 | **First headed AX run**: qa-runner native macOS backend (`QA_NATIVE_DESKTOP=1`) drives the packaged app (`electrobun build` output): boot, hotbar navigation, composer type/submit against fixture backend, screenshot. Committed runbook with the exact invocation. | — | MED |
+| Q3.2 | **Headed scenario subset weekly**: the seed-corpus smoke subset through the vision driver on the packaged app. AX-tree a11y oracle (every interactive element present in the AX tree, keyboard-only completion of one defined scenario). | Q3.1, Q4.1 | MED |
+| Q3.3 | **Screenshot baseline store + diff oracle**: blessed baselines per viewport (desktop/mobile, dark, reduced-motion), redaction-checked like any projection. Diffs fail the visual oracle. Implementation note: [`docs/qa/khala-code-visual-baselines.md`](../qa/khala-code-visual-baselines.md). | Q3.1 | MED |
 | Q3.4 | **The flagship demo** (productization, #6181 lane): seeded-bug hunt on the packaged app headed — agent finds the bug from screenshots/AX, distiller emits the committed regression test. Recorded as the qa-runner product demo. Implementation note: [`docs/qa/khala-code-flagship-demo.md`](../qa/khala-code-flagship-demo.md). | Q3.1, Q6.2 | MED |
 
 ## 5. QA-4 — The use-case corpus: every surface, every state
@@ -138,15 +138,15 @@ enumerated, loader-enforced corpus. A phase without an oracle is rejected.
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
 | Q4.1 | **Complete the mechanical corpus — one lifecycle scenario per RPC group**: threads (start/list/read/rename/archive/delete/fork/compact/resume), turns (start/interrupt/steer), approvals (request→every decision kind), settings/config, models/personality, ecosystem (MCP servers, skills, plugins, apps, hooks), fs/mentions/attachments, background terminals, slash commands, token summaries, fleet (status/delegate/promote), fleet-run (start/status/control/list — pause/resume/drain/stop each), sessionCatalog, forum panel (browse/post/tip surfaces against the host proxy fixture), inbox routing (every flag kind), gym pane, plans/billing panel, headless events, qaMetrics. Implemented in `packages/khala-qa-harness/src/seed-corpus.ts` with ledger group counts and documented in `docs/qa/khala-code-mechanical-corpus.md`. | — | HIGH |
-| Q4.2 | **ThreadItem variant coverage**: one render scenario per parity-contract variant, replayed from the pinned fixtures; rendered-variant counts flow to the coverage ledger. Implemented with shared pinned fixtures in `clients/khala-code-desktop/src/bun/codex-thread-item-fixtures.ts`, consumed by the QA seed corpus, and documented in `docs/qa/khala-code-thread-item-coverage.md`. | — | HIGH |
-| Q4.3 | **Slash-command sweep**: one scenario per registry command, including unavailable/disabled states; registry enumeration keeps the loop mechanical (coverage is a loop, not a wishlist). | — | HIGH |
-| Q4.4 | **Error-state corpus**: Codex binary missing; auth expired; Pylon offline; single-RPC failure with partial degradation (the Q7.1 contract); corrupt session-state recovery; MCP server down; network loss mid-turn; interrupt mid-tool-call; app-server crash + supervisor restart. Every case has expected typed degraded UI, no console errors, no data loss. Implemented in the fixture seed corpus with `KHALA_CODE_QA_ERROR_STATE_CASES`, ledger/frontier coverage via `errorStateCasesExercised`, and documented in `docs/qa/khala-code-error-state-corpus.md`. | — | HIGH |
-| Q4.5 | **Cross-mode consistency runs**: the corpus runs through Mode P and Mode D with the `consistency` oracle (RPC state ≡ DOM state for thread lists, fleet counts, gym state, runtime badges); any mode disagreement is a bug (N-version testing). Implemented with `scenario.khala_code.seed.cross_mode_consistency.v1`, fixture Mode D projection reads, first-disagreement bug payloads, and ledger/frontier coverage via `crossModeSurfacesExercised`; see `docs/qa/khala-code-cross-mode-consistency.md`. | Q4.1 | MED |
-| Q4.6 | **Console-error oracle everywhere**: every Mode D smoke and scenario asserts zero unexpected console errors / unhandled rejections; boot-time RPC failures in fixtures are deliberately mocked or expected — the current 500-noise class dies here. Implemented for the fixture visual smoke tier with the shared `installKhalaQaConsoleErrorOracle`, seed-backed Playwright RPC mocks, `/rpc/events` fixture handling, and docs in `docs/qa/khala-code-mode-d-console-oracle.md`. | — | HIGH |
+| Q4.2 | **ThreadItem variant coverage**: one render scenario per parity-contract variant, replayed from the pinned fixtures. Rendered-variant counts flow to the coverage ledger. Implemented with shared pinned fixtures in `clients/khala-code-desktop/src/bun/codex-thread-item-fixtures.ts`, consumed by the QA seed corpus, and documented in `docs/qa/khala-code-thread-item-coverage.md`. | — | HIGH |
+| Q4.3 | **Slash-command sweep**: one scenario per registry command, including unavailable/disabled states. Registry enumeration keeps the loop mechanical (coverage is a loop, not a wishlist). | — | HIGH |
+| Q4.4 | **Error-state corpus**: Codex binary missing. Auth expired. Pylon offline. Single-RPC failure with partial degradation (the Q7.1 contract). Corrupt session-state recovery. MCP server down. Network loss mid-turn. Interrupt mid-tool-call. App-server crash + supervisor restart. Every case has expected typed degraded UI, no console errors, no data loss. Implemented in the fixture seed corpus with `KHALA_CODE_QA_ERROR_STATE_CASES`, ledger/frontier coverage via `errorStateCasesExercised`, and documented in `docs/qa/khala-code-error-state-corpus.md`. | — | HIGH |
+| Q4.5 | **Cross-mode consistency runs**: the corpus runs through Mode P and Mode D with the `consistency` oracle (RPC state ≡ DOM state for thread lists, fleet counts, gym state, runtime badges). Any mode disagreement is a bug (N-version testing). Implemented with `scenario.khala_code.seed.cross_mode_consistency.v1`, fixture Mode D projection reads, first-disagreement bug payloads, and ledger/frontier coverage via `crossModeSurfacesExercised`. See `docs/qa/khala-code-cross-mode-consistency.md`. | Q4.1 | MED |
+| Q4.6 | **Console-error oracle everywhere**: every Mode D smoke and scenario asserts zero unexpected console errors / unhandled rejections. Boot-time RPC failures in fixtures are deliberately mocked or expected — the current 500-noise class dies here. Implemented for the fixture visual smoke tier with the shared `installKhalaQaConsoleErrorOracle`, seed-backed Playwright RPC mocks, `/rpc/events` fixture handling, and docs in `docs/qa/khala-code-mode-d-console-oracle.md`. | — | HIGH |
 
 ## 6. QA-5 — Live tiers (owner-armed 2026-07-02: GO)
 
-Skip-safe stays the default in CI; the armed runs below execute now under
+Skip-safe stays the default in CI. The armed runs below execute now under
 the owner direction, against the currently-logged-in accounts, isolated
 worker homes only, no-spend own-capacity closeouts, exact-row evidence.
 
@@ -154,8 +154,8 @@ worker homes only, no-spend own-capacity closeouts, exact-row evidence.
 | --- | --- | --- | --- |
 | Q5.1 | **Armed `smoke:fleet-run-live`**: target 2, two real issues, two distinct PRs, verify-green closeouts, exact `token_usage_events` rows, public `khala-tokens-served` delta reconciliation, zero duplicate claims. Evidence archived in the run report and the issue. | — (armed) | MED |
 | Q5.2 | **Armed `smoke:fleet-run-sustained`**: ≥5 workers for ≥30 minutes, ≥2 observed refills, zero duplicate claims, cooldown rotation observed. | Q5.1 | MED |
-| Q5.3 | **Codex live parity + Mode H live**: `smoke:codex-parity-live` armed against the logged-in Codex install; headless `--json` JSONL run with a real turn; JSONL schema oracle on every event; gaps recorded in the parity matrix. | — (armed) | MED |
-| Q5.4 | **Claude harness live smoke**: one live Claude chat turn through the desktop runtime (pill → `claude_runtime`), approval callback exercised, exact token row lands via the Claude turn reporter path; scenario asserts the runtime badge and closeout diagnostics. | — (armed) | MED |
+| Q5.3 | **Codex live parity + Mode H live**: `smoke:codex-parity-live` armed against the logged-in Codex install. Headless `--json` JSONL run with a real turn. JSONL schema oracle on every event. Gaps recorded in the parity matrix. | — (armed) | MED |
+| Q5.4 | **Claude harness live smoke**: one live Claude chat turn through the desktop runtime (pill → `claude_runtime`), approval callback exercised, exact token row lands via the Claude turn reporter path. Scenario asserts the runtime badge and closeout diagnostics. | — (armed) | MED |
 | Q5.5 | **Weekly armed cadence**: the owned runner runs Q5.1/Q5.3/Q5.4 weekly (Q5.2 monthly) with request-count caps, honest skip reporting when accounts are cold, and evidence rolled into Q1.5. | Q5.1–Q5.4, Q1.1 | MED |
 
 Q5.2 source note (2026-07-03): the default sustained smoke source remains
@@ -177,10 +177,10 @@ refill the same node repeatedly.
 
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
-| Q6.1 | **LLM explorer live brain**: wire qa-runner's live ReAct brain to the Mode P/D drivers (hosted Khala default, BYO model, `--fake-model` CI path); goals seeded from the coverage frontier ("exercise what the ledger says is untouched"). | Q1.3 | MED |
-| Q6.2 | **Explore → distill → regress**: passing explore sessions distill into committed deterministic scenarios via the existing distiller; a discovery that cannot be distilled is INCONCLUSIVE, not shipped. First distilled regression committed = done. Implementation note: [`docs/qa/khala-code-explore-distill-regress.md`](../qa/khala-code-explore-distill-regress.md). | Q6.1 | MED |
-| Q6.3 | **Monkey night at scale**: nightly ≥5000 actions across fixture backends including the 18-worker cockpit state; claim-invariant oracle on every cockpit night; any crash's seed + action log auto-committed as a replay fixture. | Q1.1 | HIGH |
-| Q6.4 | **Explore-policy GEPA reopened** (was T6.15, postponed; reopened by owner directive 2026-07-02): offline optimization of explorer goal prompts/frontier weighting on new-coverage-per-action and confirmed-bugs-per-1000-actions; Gym-admitted; candidates never auto-promote. | Q6.1, Q6.3 | MED |
+| Q6.1 | **LLM explorer live brain**: wire qa-runner's live ReAct brain to the Mode P/D drivers (hosted Khala default, BYO model, `--fake-model` CI path). Goals seeded from the coverage frontier ("exercise what the ledger says is untouched"). | Q1.3 | MED |
+| Q6.2 | **Explore → distill → regress**: passing explore sessions distill into committed deterministic scenarios via the existing distiller. A discovery that cannot be distilled is INCONCLUSIVE, not shipped. First distilled regression committed = done. Implementation note: [`docs/qa/khala-code-explore-distill-regress.md`](../qa/khala-code-explore-distill-regress.md). | Q6.1 | MED |
+| Q6.3 | **Monkey night at scale**: nightly ≥5000 actions across fixture backends including the 18-worker cockpit state. Claim-invariant oracle on every cockpit night. Any crash's seed + action log auto-committed as a replay fixture. | Q1.1 | HIGH |
+| Q6.4 | **Explore-policy GEPA reopened** (was T6.15, postponed, reopened by owner directive 2026-07-02): offline optimization of explorer goal prompts/frontier weighting on new-coverage-per-action and confirmed-bugs-per-1000-actions. Gym-admitted. Candidates never auto-promote. | Q6.1, Q6.3 | MED |
 
 ## 8. QA-7 — Product fixes the QA run already found
 
@@ -192,15 +192,15 @@ the framework (§15.3–15.4).
 | Q7.1 | **Cockpit partial degradation**: one failed RPC (`fleetRunList` today) must not blank the whole cockpit — render what arrived, degrade the failed section to a typed error chip with retry. Scenario + regression in the corpus (Q4.4 case). | — | MED |
 | Q7.2 | **Boot-RPC degraded states**: every boot-time RPC (`harnessSettingRead`, `sessionCatalog`, `events`, `claudeApprovalPending`, `fleetRunList`, `codexFleetStatus`) has a typed degraded UI state and no unhandled console error on failure. | Q7.1 | MED |
 | Q7.3 | **Hunt the intermittent suite error**: reproduce the 1-in-3 single-test error from 2026-07-02, fix it (TestClock where real timing is the cause), and add it to the Q1.4 quarantine ledger as the first solved case. | — | MED |
-| Q7.4 | **Real-bridge CI smoke** (closes the in-process vs productized gap): boot the real Bun host headless with `KHALA_CODE_CODEX_COMMAND` pointed at the fixture app-server binary; run the seed-corpus Mode P scenarios over actual HTTP + bearer + SSE (not the in-process `real-app-fetch` shortcut); wire into the nightly. | Q4.1 | MED |
+| Q7.4 | **Real-bridge CI smoke** (closes the in-process vs productized gap): boot the real Bun host headless with `KHALA_CODE_CODEX_COMMAND` pointed at the fixture app-server binary. Run the seed-corpus Mode P scenarios over actual HTTP + bearer + SSE (not the in-process `real-app-fetch` shortcut). Wire into the nightly. | Q4.1 | MED |
 
 ## 9. QA-8 — Gates hard-fail and guardrails (WS-14 completion)
 
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
 | Q8.1 | **Arch scan hard-fail** (T14.2 completion): the report-only scan over `clients/khala-code-desktop` + `packages/khala-tools` (`JSON.parse … as`, bare `catch{}`, direct env reads, `Date.now()` in logic, stray `Effect.runPromise`, `setTimeout` kills) promotes to hard-fail in `verify`. | — | HIGH |
-| Q8.2 | **Schema oracle in the gate**: fixture-tier runs decode every RPC response against the `rpc.ts` schemas with unknown-field flagging; a schema-drift failure blocks merge like any test. | Q4.1 | HIGH |
-| Q8.3 | **TLC in the loop**: bounded TLC model checks for the three specs + mutation specs run in the nightly; the counterexample→fixture pipeline documented and exercised once end-to-end. | Q1.1 | MED |
+| Q8.2 | **Schema oracle in the gate**: fixture-tier runs decode every RPC response against the `rpc.ts` schemas with unknown-field flagging. A schema-drift failure blocks merge like any test. | Q4.1 | HIGH |
+| Q8.3 | **TLC in the loop**: bounded TLC model checks for the three specs + mutation specs run in the nightly. The counterexample→fixture pipeline documented and exercised once end-to-end. | Q1.1 | MED |
 | Q8.4 | **Public-safety oracle in every mode**: `assertPublicSafeResult` / the part2 unsafe-text pattern runs on DOM text, traces, JSONL, and screenshot-adjacent metadata in every smoke and scenario, headed included. | — | HIGH |
 | Q8.5 | **Coverage floor gate**: after one week of Q1.3 baselines, enforce "a PR may not reduce the covered-RPC-method count" — soft-warn for a week, then hard. | Q1.3 | MED |
 | Q9.1 | [#8052](https://github.com/OpenAgentsInc/openagents/issues/8052) | Typed model-role registry (architect/coder/judge/advisor) |
@@ -217,25 +217,25 @@ Source: [`2026-07-02-oh-my-pi-planner-coder-judge-audit.md`](./2026-07-02-oh-my-
 (gaps G1–G6, adopted into this roadmap by owner direction 2026-07-02 —
 "the roadmap includes building and testing this workflow and making sure it
 exists"). The fleet-scale halves already landed (T9.4 plan-then-fan-out,
-T9.5 second-pass reviewer, harness pill, workerKind); this workstream builds
+T9.5 second-pass reviewer, harness pill, workerKind). This workstream builds
 the single-session chat-first expression — Fable/Claude as
 architect and judge, the user's subscription-routed Codex as coder, an
 optional turn-level advisor — and puts the whole trio under the same QA
 regime as everything else in this roadmap. omp is patterns-only reference:
 no vendored code or naming, no gray-proxy provider entries (Fable routes
-through legitimate Anthropic rails only; subscription no-resale stays
+through legitimate Anthropic rails only. Subscription no-resale stays
 non-waivable), and verify-command/deterministic-program authority is never
 weakened — advisors and judges are advisory data under it.
 
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
-| Q9.1 | **Typed model-role registry** (adapts omp §2.1): `openagents.khala_code.model_roles.v1` — `{ role: architect\|coder\|judge\|advisor, harness: codex\|claude\|khala, model?, effort?: minimal…xhigh }` as a persisted schema-first setting with a Settings surface; consumed by chat, fleet dispatch, and the reviewer; effort maps harness-natively (Codex app-server config, Claude SDK thinking). The harness pill grows from "which engine chats" to "which engine plays which role". | — | HIGH |
-| Q9.2 | **Plan-first chat flow** (adapts omp §2.4; promotes landed T9.4 into the default surface): a composer plan-mode toggle / `/architect` runs the architect role (Claude plan mode, read-only) against the `claude_plan_fanout_dag.v1` contract and renders an approvable plan card; approval dispatches small plans as in-thread coder turns and large plans as a FleetRun; the plan artifact persists with the session. | Q9.1 | MED |
-| Q9.3 | **Judge-on-diff in chat** (adapts omp §2.5; surfaces landed T9.5): after a coder turn or worker closeout produces a diff, the judge role renders a structured verdict card (`accept\|request_changes\|replan`, P0–P3 findings with file/line anchors and per-finding confidence); "request changes" feeds the annotate-diff steering loop (T15.1). Verify commands remain the only merge authority; the verdict is advisory data. | Q9.1 | MED |
-| Q9.4 | **Advisor runtime** (adapts omp §2.3; the largest new piece): `KhalaAdvisorRuntime` as an Effect service — a Claude session with its own context consuming turn deltas of the active Codex thread, read-only workspace inspection, severity-typed advisories (`nit\|concern\|blocker`); `nit` batches to a transcript card, `concern\|blocker` injects steering via `codexTurnSteer`. Control-theory invariants ported as code, not prompt: emission guard (dedupe + noise filter), `immuneTurns` interrupt budget, reset on compaction/thread-switch, advisor-never-a-peer, separate exact token rows for advisor usage. | Q9.1, WS-8 P2 | MED |
-| Q9.5 | **Per-role economics surface** (adapts omp §2.7): `role_ref` attribution on exact token rows (desktop telemetry + Pylon turn reports), API-metered roles priced from the model catalog, per-session honest rendering — "coder: subscription-covered · architect+judge: $X.YZ"; projections from exact rows only, `not_measured` when a rail's pricing is unknown. | Q9.1 | HIGH |
-| Q9.6 | **One-command preset + promise record**: `khala code --preset architect-coder-judge` and a Settings preset card — coder = the user's existing Codex login, architect/judge = the user's own Anthropic auth (API key or Claude login via the SDK; never a proxy), advisor optional-on; candidate promise `khala_code.architect_coder_judge.v1` filed through `docs/promises/` (copy-gated; no public copy until the flow is verifiable end-to-end). | Q9.1–Q9.5 | HIGH |
-| Q9.7 | **The workflow under the QA regime — prove it exists**: scenario-corpus additions for every new surface (role-registry RPC group, plan card approve/reject, judge verdict card incl. every verdict kind, advisor advisories incl. the interrupt budget and dedupe guard) on the fixture tier (fixture Codex app-server + fixture Claude); coverage-ledger counting for the new surfaces; cross-mode consistency; and a skip-safe env-armed `smoke:architect-coder-judge-live` that runs one real plan → coder turn → judge verdict end-to-end with per-role exact token rows and public-safe projections. Green in the nightly = the workflow demonstrably exists and keeps existing. | Q9.2–Q9.5, Q4.1 | MED |
+| Q9.1 | **Typed model-role registry** (adapts omp §2.1): `openagents.khala_code.model_roles.v1` — `{ role: architect\|coder\|judge\|advisor, harness: codex\|claude\|khala, model?, effort?: minimal…xhigh }` as a persisted schema-first setting with a Settings surface. Consumed by chat, fleet dispatch, and the reviewer. Effort maps harness-natively (Codex app-server config, Claude SDK thinking). The harness pill grows from "which engine chats" to "which engine plays which role". | — | HIGH |
+| Q9.2 | **Plan-first chat flow** (adapts omp §2.4, promotes landed T9.4 into the default surface): a composer plan-mode toggle / `/architect` runs the architect role (Claude plan mode, read-only) against the `claude_plan_fanout_dag.v1` contract and renders an approvable plan card. Approval dispatches small plans as in-thread coder turns and large plans as a FleetRun. The plan artifact persists with the session. | Q9.1 | MED |
+| Q9.3 | **Judge-on-diff in chat** (adapts omp §2.5, surfaces landed T9.5): after a coder turn or worker closeout produces a diff, the judge role renders a structured verdict card (`accept\|request_changes\|replan`, P0–P3 findings with file/line anchors and per-finding confidence). "Request changes" feeds the annotate-diff steering loop (T15.1). Verify commands remain the only merge authority. The verdict is advisory data. | Q9.1 | MED |
+| Q9.4 | **Advisor runtime** (adapts omp §2.3, the largest new piece): `KhalaAdvisorRuntime` as an Effect service — a Claude session with its own context consuming turn deltas of the active Codex thread, read-only workspace inspection, severity-typed advisories (`nit\|concern\|blocker`). `nit` batches to a transcript card, `concern\|blocker` injects steering via `codexTurnSteer`. Control-theory invariants ported as code, not prompt: emission guard (dedupe + noise filter), `immuneTurns` interrupt budget, reset on compaction/thread-switch, advisor-never-a-peer, separate exact token rows for advisor usage. | Q9.1, WS-8 P2 | MED |
+| Q9.5 | **Per-role economics surface** (adapts omp §2.7): `role_ref` attribution on exact token rows (desktop telemetry + Pylon turn reports), API-metered roles priced from the model catalog, per-session honest rendering — "coder: subscription-covered · architect+judge: $X.YZ". Projections from exact rows only, `not_measured` when a rail's pricing is unknown. | Q9.1 | HIGH |
+| Q9.6 | **One-command preset + promise record**: `khala code --preset architect-coder-judge` and a Settings preset card — coder = the user's existing Codex login, architect/judge = the user's own Anthropic auth (API key or Claude login via the SDK, never a proxy), advisor optional-on. Candidate promise `khala_code.architect_coder_judge.v1` filed through `docs/promises/` (copy-gated, no public copy until the flow is verifiable end-to-end). | Q9.1–Q9.5 | HIGH |
+| Q9.7 | **The workflow under the QA regime — prove it exists**: scenario-corpus additions for every new surface (role-registry RPC group, plan card approve/reject, judge verdict card incl. every verdict kind, advisor advisories incl. the interrupt budget and dedupe guard) on the fixture tier (fixture Codex app-server + fixture Claude). Coverage-ledger counting for the new surfaces. Cross-mode consistency. And a skip-safe env-armed `smoke:architect-coder-judge-live` that runs one real plan → coder turn → judge verdict end-to-end with per-role exact token rows and public-safe projections. Green in the nightly = the workflow demonstrably exists and keeps existing. | Q9.2–Q9.5, Q4.1 | MED |
 
 ## 9c. QA-10 — QA Swarm productization (pointer)
 
@@ -246,12 +246,12 @@ customer sales motion, and third-party onboarding — lives in
 [`2026-07-02-qa-swarm-product-plan.md`](./2026-07-02-qa-swarm-product-plan.md)
 (workstream QS1–QS10, issues #8061–#8070 under epic #8071). QS consumes this
 roadmap's outputs (Q1.1 nightly, Q1.5 status surface, Q2 budgets, Q6
-explorers); it never duplicates them.
+explorers). It never duplicates them.
 
 ## 9d. QA-11 — Behavior contracts: stated expectations as enforced oracles (landed 2026-07-03)
 
 The gap the owner hit on 2026-07-02/03 ("where is correct behavior defined
-and how is it tested against? I shouldn't have to be discovering these
+and how is it tested against? I should not have to be discovering these
 things"): the machine had drivers, oracles, and budgets, but no durable home
 for owner-stated product expectations, so requirements told to sessions were
 lost (the Cmd+1–9 hotkey ask) or implemented as a guess and pinned by
@@ -266,7 +266,7 @@ The fix is the behavior-contract layer, landed with this entry:
   (`enforced`) gated on ≥1 oracle + automated tier + zero blockers.
   Registry validation, oracle-coverage checking behind a swappable
   `BehaviorContractOracleSource` Effect service (file layer, in-memory
-  layer; qa-scenario layer is the natural extension), and a markdown
+  layer. Qa-scenario layer is the natural extension), and a markdown
   renderer for the human doc. The contract data is plain JSON, so
   non-Effect runners can enforce the same registry.
 - **Khala Code UX registry**:
@@ -278,7 +278,7 @@ The fix is the behavior-contract layer, landed with this entry:
   `clients/khala-code-desktop/tests/ux-contracts.test.ts` (which also runs
   registry validation, oracle coverage, and doc-sync in the same sweep).
 - **Sweep wiring**: the oracle/coverage/doc-sync tests run in the desktop
-  package test glob → package `verify` → repo `test:khala-code-desktop`;
+  package test glob → package `verify` → repo `test:khala-code-desktop`.
   the package's own suite runs as repo `test:behavior-contracts` /
   `typecheck:behavior-contracts` in the root chains.
 - **Standing rule** (also in `AGENTS.md`): any session receiving a UX/product
@@ -291,9 +291,9 @@ The fix is the behavior-contract layer, landed with this entry:
   deliverable for client companies — see
   [`2026-07-03-behavior-contracts-and-customer-invariants.md`](./2026-07-03-behavior-contracts-and-customer-invariants.md)
   for the invariant catalog we offer to enforce and the deviation-alert loop.
-  QS lanes (§9c) consume this; contract enforcement rides the Q1.1 nightly
+  QS lanes (§9c) consume this. Contract enforcement rides the Q1.1 nightly
   matrix (landed — `bun run qa:nightly` runs the desktop `verify` step plus
-  a dedicated `behavior-contracts` step; see
+  a dedicated `behavior-contracts` step. See
   [`../qa/khala-code-nightly-matrix.md`](../qa/khala-code-nightly-matrix.md)),
   and the customer-one weekly report
   ([`../qa/qa-swarm-khala-code-standing-engagement.md`](../qa/qa-swarm-khala-code-standing-engagement.md))
@@ -325,7 +325,7 @@ The fix is the behavior-contract layer, landed with this entry:
 
   The follow-up code pass (same day) worked the full list down to
   `enforced`: 6 read-only investigation agents characterized every
-  contract's current implementation state first; 18 were already correct
+  contract's current implementation state first. 18 Were already correct
   in code and needed oracle wiring only, 5 needed real fixes. Landed
   fixes: (1) per-thread streaming state (`streamingThreadIds`, keyed by
   turnId→threadId, independent of the active-thread switch) replaced the
@@ -334,12 +334,12 @@ The fix is the behavior-contract layer, landed with this entry:
   and the composer status can never disagree with the sidebar for the
   active thread — one fix satisfying both
   `chat.streaming_indicator_survives_navigation.v1` and
-  `transcript.streaming_state_cross_surface_consistency.v1`; (2) raw Codex
+  `transcript.streaming_state_cross_surface_consistency.v1`. (2) Raw Codex
   app-server RPC error text ("no rollout found...", "invalid session
   id...") is now mapped to one friendly message before it reaches the
-  sidebar (`chat.thread_open_never_raw_error.v1`); (3) consecutive tool
+  sidebar (`chat.thread_open_never_raw_error.v1`). (3) Consecutive tool
   calls collapse into one summary line with click-to-expand
-  (`transcript.consecutive_tool_calls_collapsed.v1`); (4) the last active
+  (`transcript.consecutive_tool_calls_collapsed.v1`). (4) The last active
   thread is captured at boot and restored after the initial render instead
   of always starting blank (`app.resumes_after_restart.v1` — honestly
   scoped: a literal in-flight generation cannot survive process death since
@@ -347,47 +347,47 @@ The fix is the behavior-contract layer, landed with this entry:
   thread and its history, not a mid-turn resume). All 23 contracts are now
   `state: "enforced"` with real oracles (DOM-mounted where the behavior is
   DOM-visible, source-pinning where the implementing `main.ts` internals
-  aren't exported for unit import, or referencing an existing regression
+  are not exported for unit import, or referencing an existing regression
   test) running in the desktop `verify` chain and the qa:nightly matrix.
   Registry version `2026-07-03.6`.
 
 ## 10. Milestones
 
-- **QM1 — The loop runs.** Nightly matrix green three consecutive nights;
-  visual smokes gate desktop merges; coverage frontier published. (Q1.*)
-- **QM2 — Lag is a number.** Real-run samples flowing; full budget family
-  evaluated nightly; the sweep's offender list filed. (Q2.1–Q2.3)
+- **QM1 — The loop runs.** Nightly matrix green three consecutive nights.
+  visual smokes gate desktop merges. Coverage frontier published. (Q1.*)
+- **QM2 — Lag is a number.** Real-run samples flowing. Full budget family
+  evaluated nightly. The sweep's offender list filed. (Q2.1–Q2.3)
 - **QM3 — The real window is driven.** Headed AX run green on the packaged
-  app; screenshot baselines blessed. (Q3.1, Q3.3)
-- **QM4 — Live tiers proven.** Q5.1 + Q5.3 + Q5.4 evidence archived; weekly
+  app. Screenshot baselines blessed. (Q3.1, Q3.3)
+- **QM4 — Live tiers proven.** Q5.1 + Q5.3 + Q5.4 evidence archived. Weekly
   cadence scheduled. (QA-5)
 - **QM5 — The loop learns.** First explore-session-distilled regression
-  committed; monkey at ≥5000 actions/night; claim invariant clean. (QA-6)
+  committed. Monkey at ≥5000 actions/night. Claim invariant clean. (QA-6)
 - **QM6 — Nothing merges unguarded.** Arch scan, schema oracle, console
-  oracle, public-safety oracle, and coverage floor all hard-fail;
+  oracle, public-safety oracle, and coverage floor all hard-fail.
   every Q2.2 budget green on the real app for 7 consecutive days. (QA-8, Q2.6)
 - **QM7 — The trio is a surface.** Plan→code→judge green in fixture
-  scenarios and in the armed live smoke; role economics rendered from exact
-  rows; advisor bounded and accounted. (QA-9)
+  scenarios and in the armed live smoke. Role economics rendered from exact
+  rows. Advisor bounded and accounted. (QA-9)
 
 ## 11. Invariants (unchanged, restated for this roadmap)
 
-- Fixture tiers never touch `~/.codex`, real accounts, or spend; live tiers
+- Fixture tiers never touch `~/.codex`, real accounts, or spend. Live tiers
   are skip-safe by default and env-armed deliberately (the owner arming
   covers the Q5 runs and the weekly cadence, not silent standing authority
   for anything spend-bearing).
-- Isolated worker homes for every live run; the owner's live `~/.codex` and
+- Isolated worker homes for every live run. The owner's live `~/.codex` and
   `~/.claude` are never written by connect/test flows.
-- Exact-only token accounting; counter movement alone is never evidence;
+- Exact-only token accounting. Counter movement alone is never evidence.
   every live-tier claim reconciles to `token_usage_events` rows.
-- Public-safety tripwires run in every mode; screenshots and reports are
+- Public-safety tripwires run in every mode. Screenshots and reports are
   redaction-checked projections.
-- Explore discoveries become deterministic scenarios or they didn't happen.
+- Explore discoveries become deterministic scenarios or they did not happen.
 - Optimizer candidates (Q6.4) are offline, Gym-admitted, never
-  auto-promoted; runtime policy is never weakened to make a model or a
+  auto-promoted. Runtime policy is never weakened to make a model or a
   budget pass.
 - No GitHub-hosted CI: Tier-1 bounded pre-push + Tier-2 owned-runner only.
-- Every landing: relevant suites + `check:deploy` green; clean worktrees;
+- Every landing: relevant suites + `check:deploy` green. Clean worktrees.
   issues close only via merged PRs.
 
 ## 12. Issue Map

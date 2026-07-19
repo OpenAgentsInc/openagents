@@ -39,12 +39,12 @@ The projection returns one of these statuses:
 
 The plan can ask a runner to apply these idempotent actions:
 
-- `record_reconciliation_event_once`;
-- `create_receipt_once`;
-- `create_entitlement_once`;
-- `expire_payment_challenge`;
-- `expire_checkout_intent`;
-- `schedule_status_check`;
+- `record_reconciliation_event_once`.
+- `create_receipt_once`.
+- `create_entitlement_once`.
+- `expire_payment_challenge`.
+- `expire_checkout_intent`.
+- `schedule_status_check`.
 - `request_operator_review`.
 
 The action names are intentionally explicit. They are safe to use from a
@@ -56,19 +56,19 @@ existing uniqueness constraints.
 
 Replay detection compares:
 
-- provider ref;
-- provider event ref;
-- event body digest ref;
-- challenge ref;
+- provider ref.
+- provider event ref.
+- event body digest ref.
+- challenge ref.
 - receipt ref.
 
 Conflict detection checks:
 
-- checkout intent to buyer payment challenge;
-- receipt to challenge/product;
-- entitlement to receipt/challenge/product;
-- incoming provider event to checkout/site/product/provider;
-- provider status check to checkout/provider;
+- checkout intent to buyer payment challenge.
+- receipt to challenge/product.
+- entitlement to receipt/challenge/product.
+- incoming provider event to checkout/site/product/provider.
+- provider status check to checkout/provider.
 - out-of-order provider status after checkout payment is already marked
   received.
 
@@ -79,9 +79,9 @@ review and do not grant receipt, entitlement, payout, or settlement authority.
 
 The input includes bounded retry metadata:
 
-- attempt;
-- max attempts;
-- backoff seconds;
+- attempt.
+- max attempts.
+- backoff seconds.
 - next attempt timestamp.
 
 The projection returns `retryAllowed` and `nextAttemptAt` only for pending,

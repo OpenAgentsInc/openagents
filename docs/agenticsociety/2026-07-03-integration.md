@@ -10,8 +10,8 @@ How the themes from the [2026-07-03 Agentic Society mastermind](./2026-07-03.md)
 not just with these specific people and orgs, but as a repeatable product that
 lets *any* non-technical business owner catch up to that room's "level 2 and 3"
 operators fast. Written against the current product strategy in `docs/fable/`
-(two-product frame: **Khala Code** + **Autopilot**; business fulfillment
-engine; Apollo outbound; come-for-the-tool-stay-for-the-network) and the
+(two-product frame: **Khala Code** + **Autopilot**, business fulfillment
+engine. Apollo outbound. Come-for-the-tool-stay-for-the-network) and the
 private blitz outreach program (outcome packages, prefilled workspaces, the
 75/25 persona work).
 
@@ -23,7 +23,7 @@ The mastermind is the strongest field evidence yet for theses we already hold:
 
 1. **The demand is real and already monetized.** Non-technical operators are
    paying ~$30–130/month in agent infrastructure and getting $10K–$400K
-   outcomes. Nobody in that room needed to be convinced agents work; they
+   outcomes. Nobody in that room needed to be convinced agents work. They
    needed *better infrastructure, trust, and templates*. That is a buying
    audience, not an education audience.
 2. **The "underserved middle" persona from the blitz docs walked in and sat
@@ -46,8 +46,8 @@ The mastermind is the strongest field evidence yet for theses we already hold:
 5. **The other half of the room is level 1–2 and anxious about it.** ~17 of
    ~40 hands were below background autonomy. Those people watched the level-3
    demos, voted for them, and said in the shout-outs "just being in the room
-   was incredibly inspiring." The catch-up product sells itself in that room;
-   we just haven't put it in front of them.
+   was incredibly inspiring." The catch-up product sells itself in that room.
+   we just have not put it in front of them.
 
 The strategic read: **the mastermind circuit is doing our market education
 for free.** Every city has rooms like this now. Our job is not to convince
@@ -62,20 +62,20 @@ hand at level 1" to "I have named AI employees running 24/7 with receipts."
 |---|---|---|
 | AI-as-employee (names, souls, roles, permission stacks) | Hand-built Hermes profiles, manual M365 identities ("Ali") | `agent_definition.v1` + prefilled workspaces: hireable, named, role-scoped agent employees with typed toolsets and draft-only default authority |
 | Company brain / AI slingshot | Obsidian markdown vaults, Claude projects, one-builder bottleneck | The grounded **context library** in a prefilled Autopilot workspace — seeded *for* the customer from public data before they ever sign in |
-| 24/7 background autonomy | $8 Hostinger VPS, laptop-off anxiety | Managed always-on agent hosting on our cloud + Pylon fleet — "your agent doesn't sleep when your MacBook does" as a first-class product promise |
+| 24/7 background autonomy | $8 Hostinger VPS, laptop-off anxiety | Managed always-on agent hosting on our cloud + Pylon fleet — "your agent does not sleep when your MacBook does" as a first-class product promise |
 | Cron + one human touchpoint architecture | Hand-wired 12:30 AM cron jobs | Fulfillment agents: per-promise scheduled loops with receipts, already the BF-engine execution shape |
-| Skills economy + registry distrust | Googled skills, hand-audits, "don't trust anybody" | A **provenance-receipted skill registry**: every skill ships with an audit receipt, injection scan, pinned source, and a regeneration path (see §4.3) |
+| Skills economy + registry distrust | Googled skills, hand-audits, "do not trust anybody" | A **provenance-receipted skill registry**: every skill ships with an audit receipt, injection scan, pinned source, and a regeneration path (see §4.3) |
 | Read-only-first trust ladder | Folk practice ("start it read-only, then write") | Behavior contracts + approval policy as product UX: autonomy levels a business owner *promotes* an agent through, with an audit trail |
 | Outcome-shaped proof ("My agent did X and got outcome") | Post-it notes and hand votes | Product promises + accepted-outcome receipts — the same grammar, machine-verified instead of self-reported |
 | Redaction-before-publish | A bespoke redaction skill in one company's pipeline | Khala chat-boundary redaction + the publish-gate pattern, productized for any customer pipeline |
-| Multi-model debate / EBI loops | Wilson's token-burning three-model debates; CT's EBI passes | Khala Code multi-harness orchestration (Codex \| Claude \| Khala pill) — planner/coder/judge loops as a supported pattern, not a hack |
-| "Do the most human thing" | Owners keep DMs, camera, relationships; agents get the rest | Autopilot's operator-minutes falsifier: our engine succeeds only if the human's time concentrates on human work |
+| Multi-model debate / EBI loops | Wilson's token-burning three-model debates. CT's EBI passes | Khala Code multi-harness orchestration (Codex \| Claude \| Khala pill) — planner/coder/judge loops as a supported pattern, not a hack |
+| "Do the most human thing" | Owners keep DMs, camera, relationships. Agents get the rest | Autopilot's operator-minutes falsifier: our engine succeeds only if the human's time concentrates on human work |
 | Recognition economy, playbook sharing | Trophies, shout-outs, event webpage | OpenAgents Forum + tipping + public build receipts — the online, settled-in-sats version of the mastermind's social loop |
 
 The striking thing about this table: **almost nothing needs inventing.** The
 room independently converged on the architecture we already committed to —
 named scoped agents, grounded memory, receipts, staged trust, outcome units.
-What they lack is packaging, hosting, provenance, and a path that doesn't
+What they lack is packaging, hosting, provenance, and a path that does not
 require six months of tinkering.
 
 ---
@@ -108,7 +108,7 @@ through.** Concretely:
      customer's ICP.
    - **Content Engine** — the Sagun pattern: source scrape → ranked topics →
      scripts sized to the owner's format → distribution handoff → weekly
-     digest. Human stays on camera; agent owns research and assembly.
+     digest. Human stays on camera. Agent owns research and assembly.
    - **Controller/CFO Agent** — the Jay/Rick/David pattern: connector-fed
      P&L, cash-flow, weekly report sends, daily reconciliation with a human
      one-click clear.
@@ -117,7 +117,7 @@ through.** Concretely:
    - **Knowledge Concierge** — the Nikki pattern: make a course/library/site
      searchable and agent-legible (pairs with the agent-readiness audit we
      already sell outbound).
-   - **QA Swarm** — already productized; the mastermind's "red-team agent"
+   - **QA Swarm** — already productized. The mastermind's "red-team agent"
      folk practice done as a service with fingerprinted evidence.
 2. **Each template ships as a prefilled workspace, not a signup.** The
    prospect's first experience is the acceptance moment: *their* business
@@ -156,7 +156,7 @@ Gaps between the vision above and current state, in priority order:
 ### 4.1 Always-on hosting for named agents (the $8 VPS killer)
 The single most repeated operational fact in the transcript: agents die when
 the laptop closes, so everyone graduates to a VPS. Nobody enjoys this. We
-have the cloud + Pylon substrate; what's missing is the **consumer-shaped
+have the cloud + Pylon substrate. What's missing is the **consumer-shaped
 product**: "your employee runs on OpenAgents cloud, 24/7, with uptime and an
 activity feed" — one toggle, credits-metered, no SSH. This is likely the
 highest-conversion single feature for the level-2→3 transition, and it is a
@@ -168,11 +168,11 @@ takes weeks and confidence. The Khala/Autopilot onboarding must compress it:
 a conversational intake ("what 25% of your work would you delete?") that
 outputs a configured employee (§3's six-tuple) rather than a chat thread.
 The blitz intake form already captures the seed inputs (business name, URL,
-what they want help with, phone); the missing piece is the automated
+what they want help with, phone). The missing piece is the automated
 prefill pipeline from intake → workspace → first receipt at campaign scale.
 
 ### 4.3 The provenance-receipted skill registry
-The room's "stay away from public skill registries… don't trust anybody" is
+The room's "stay away from public skill registries… do not trust anybody" is
 a verdict on the whole current skills ecosystem — and an open goal for us.
 A registry where every skill has: pinned content hash, source provenance,
 an automated injection/security audit receipt, a human-legible capability
@@ -180,7 +180,7 @@ manifest (what it reads, what it writes, what it can spend), and a one-click
 **regenerate-under-audit** path (the room's own practice, automated). Sell
 the "head of security" agent as a built-in: every skill and connector a
 customer adds gets reviewed by it, with a receipt. Nobody else in the
-room's stack can credibly offer this; it composes directly with our
+room's stack can credibly offer this. It composes directly with our
 receipts/verification identity and is a moat the harness vendors have no
 incentive to build.
 
@@ -189,15 +189,15 @@ The analysis notes the room defends the install path but not the input path
 — agents reading hostile email replies, scraped webpages, and 15 years of
 inbox. Our chat-boundary redaction, draft-only default authority, and typed
 approval gates are the beginnings of an input-path story. Productize it as
-part of the employee card: "this employee reads untrusted input; therefore
+part of the employee card: "this employee reads untrusted input. Therefore
 it cannot send, spend, or write without approval." Being the vendor that
 *names* prompt injection to this market, in employee-metaphor language
-("your employee can be socially engineered; here's their training"), builds
-trust the competition hasn't earned.
+("your employee can be socially engineered, here's their training"), builds
+trust the competition has not earned.
 
 ### 4.5 The company brain as a product object, not a byproduct
 Level 2's whole point is shared grounding with governance. Today our context
-library exists inside workspaces; the room's practice (Obsidian vaults,
+library exists inside workspaces. The room's practice (Obsidian vaults,
 per-role data scopes, department-head agents) suggests the product needs:
 explicit role-scoped views of one brain ("each agent a genius in its own
 lane"), ownership handoff (the CMO owns marketing skills), and an onboarding
@@ -220,7 +220,7 @@ Two distinct integration lanes:
 - **As our internal factory for §3.** Every employee template, prefilled
   workspace, and outcome package is itself built and QA'd by our own fleet.
   The mastermind's "6–7 hours to one-shot it after 3 hours of planning" is
-  the artisanal version; the factory version is a fleet lane per template
+  the artisanal version. The factory version is a fleet lane per template
   with QA Swarm as the verifier. This is the anti-agency-trap mechanism:
   operator-minutes per engagement fall because the fleet, not the founder,
   stamps out the packages.
@@ -251,7 +251,7 @@ These rooms exist in every metro now, they meet monthly, they are free, they
 publish transcripts and event pages, and they *vote on what they want*. A
 deliberate circuit motion:
 
-- **Attend and share, never pitch.** The format rewards outcome stories; our
+- **Attend and share, never pitch.** The format rewards outcome stories. Our
   build-in-public promise-keeper share already won attention there. Every
   event we attend should produce one post-it-shaped outcome story and one
   follow-up list.
@@ -274,7 +274,7 @@ already teaching itself:
    them first*. This is the agent-readiness audit generalized from websites
    to operations, and it front-loads the same trick as the Apollo motion:
    lead with their own report, not our pitch.
-2. **The prefilled workspace as the follow-up.** No demo calls to schedule;
+2. **The prefilled workspace as the follow-up.** No demo calls to schedule.
    the report links to a workspace that already contains their business and
    one runnable starter outcome. Engagement (sign-in, runs, revisits) is the
    lead score, exactly as the blitz docs specify.
@@ -290,11 +290,11 @@ proven archetype and a working template:
 |---|---|---|
 | Home services / trades with rebate or program-funded offers | HVAC + city energy program, $200–300K projects | Outreach Rep |
 | Local media / creator-operators | 3M monthly views, 66-week newsletter streak | Content Engine |
-| CPAs / bookkeepers / fractional CFOs | $10K in 2 weeks from AI-designed decks; CFO agents | Controller Agent |
+| CPAs / bookkeepers / fractional CFOs | $10K in 2 weeks from AI-designed decks. CFO agents | Controller Agent |
 | Health & wellness clinics | retention dashboards, call audits (redaction/local-model needs) | Knowledge Concierge + redaction |
 | SEO / marketing / web agencies | 30→9 heads, 10x output, 12 agents | Khala Code fleet + white-label |
 | Course/coaching businesses | searchable video library for an NBA coach | Knowledge Concierge |
-| Real estate / property ops | land-qualification texting; listing microsites | Outreach Rep + Ops Triage |
+| Real estate / property ops | land-qualification texting. Listing microsites | Outreach Rep + Ops Triage |
 
 Agencies remain the multiplier segment (one close = a client book), matching
 both the Apollo plan's segment C weighting and the room's own composition.
@@ -305,7 +305,7 @@ The post-it grammar is the ad unit. A public, receipted gallery of
 customers' verified with their permission — out-credibles every AI vendor
 landing page, because it is the format this market already uses to persuade
 itself. The Agentic Show, event pages, and LinkedIn-mined-mastermind posts
-show the demand for this content; our differentiation is that ours carries
+show the demand for this content. Our differentiation is that ours carries
 proof. This is also the bridge to the network thesis: outcome stories → forum
 identity → tips → routed work — come for the story, stay for the economy.
 
@@ -321,7 +321,7 @@ Scale comes from the factory (§4.6), not from headcount:
   productize the bottleneck (the Episode 246 heuristic: the system we build
   to cope *is* the next product).
 - **Sequencing**: templates ship one at a time behind real customers
-  (Leadgen Engine first — it's furthest along and self-demonstrating: the
+  (Leadgen Engine first — it is furthest along and self-demonstrating: the
   campaign that sells it is it), each new template gated on a verification
   rubric and at least one receipted external outcome, promise-registry
   style. No template enters the catalog on a self-reported number — that
@@ -333,7 +333,7 @@ Scale comes from the factory (§4.6), not from headcount:
 ## 6. What we deliberately do NOT copy
 
 - **AI-written mass outreach.** The room's best operator keeps volume at
-  10–20/day; the blitz rule (AI does the product work, humans write the
+  10–20/day. The blitz rule (AI does the product work, humans write the
   outreach that matters) stays.
 - **Fake-internal-email deliverability tricks and mass-application bots.**
   Short-half-life plays that poison the commons and our brand.
@@ -357,8 +357,8 @@ The specific extension path. Current Khala Code Cloud state (per
 Computers** — per-run Firecracker microVMs on our own GCE (#8503), fronted by
 the Worker control plane with credit-gated admission (#8474), scoped SCM
 broker (#8475), isolation policy (#8476), branch/PR writeback (#8477), and
-exact token metering (#8479); the mobile-only MVP (epic #8467) drives those
-sessions from a phone with a $10 GitHub-keyed credit grant; and background
+exact token metering (#8479). The mobile-only MVP (epic #8467) drives those
+sessions from a phone with a $10 GitHub-keyed credit grant. And background
 agents (epic #8187) already define the harness-agnostic
 `openagents.agent_definition.v1` record with typed `toolset`
 (allow/deny/ask), `triggers` (cron / webhook / inboxMatch), `budget`
@@ -368,15 +368,15 @@ worker_only` — with the cloud lane deliberately parked.
 
 The key observation: **the AI-employee product is mostly a recombination of
 these landed seams.** An "employee" is an `agent_definition.v1` given a
-standing identity, a brain slice, and a promotion ladder; the "company
-brain" is Khala Sync collections plus the event ledger's ingestion path;
+standing identity, a brain slice, and a promotion ladder. The "company
+brain" is Khala Sync collections plus the event ledger's ingestion path.
 the "office" is an Agent Computer. The roadmap below unparks the cloud lane
 for definitions and layers the two product objects on top. Proposed
 workstream prefix **AE** (AI Employees) / **CB** (Company Brain), extending
 the existing lane style (S1/S2, LG-x, BF-x, RX-x).
 
 ### Phase 0 — Finish the substrate (current lanes, no new scope)
-Prerequisites already in flight; this roadmap adds no work here, only a
+Prerequisites already in flight. This roadmap adds no work here, only a
 dependency edge:
 - **S1 cloud spine complete**: #8503 live Firecracker proof → #8474 →
   #8475 → #8476 → #8477 → #8479. Exit: a mobile-initiated cloud coding
@@ -386,18 +386,18 @@ dependency edge:
   `lane=own_pylon`.
 
 ### Phase 1 — AE-1: Standing employees on Agent Computers (unpark the cloud lane)
-Today a definition run on `own_pylon` needs the user's machine; the
+Today a definition run on `own_pylon` needs the user's machine. The
 mastermind's core complaint is exactly that ("when the laptop's off, the
 agent's off"). Unpark `lane=cloud_workroom`:
 - **AE-1.1** Dispatch `agent_definition.v1` runs onto Agent Computers: the
-  scheduler DO and trigger tables are lane-agnostic; add the cloud dispatch
+  scheduler DO and trigger tables are lane-agnostic. Add the cloud dispatch
   branch through the same admission gate (#8474) and metering rail (#8479)
   the mobile MVP uses. Per-run microVM + scratch-wipe receipts (the #8476
   isolation policy) is already the right shape for scheduled employees —
   the employee is durable *state*, not a durable *process*.
 - **AE-1.2** Warm-trigger latency budget: cron and inbox triggers tolerate
-  cold boots; webhook/approval round-trips need a warm-pool knob on the
-  provisioner. Measure first; only build the pool if receipts show it.
+  cold boots. Webhook/approval round-trips need a warm-pool knob on the
+  provisioner. Measure first. Only build the pool if receipts show it.
 - **AE-1.3** Employee credit budgets = payroll: `maxCreditsPerDay` enforced
   at admission, surfaced per-employee in the balance UI (#8480 lineage) and
   Aiur credits console (#8500). Compute time and tokens both draw credits
@@ -425,7 +425,7 @@ Wrap the definition in the product object the market already understands:
   #8211 Agents panel lineage) and, critically, **mobile as the manager's
   surface** — the escalation channel is already `push` (#8485/#8486), so
   draft-approval from the phone is the mobile app's second product loop
-  after coding sessions: *your employee drafted 3 emails; approve, edit, or
+  after coding sessions: *your employee drafted 3 emails. Approve, edit, or
   reject*. The event ledger inbox (`event_ledger.v1`, handled-states
   `open|handled|responded|ignored`) is the employee's inbox rendered as a
   manager queue.
@@ -439,7 +439,7 @@ Wrap the definition in the product object the market already understands:
   with per-collection provenance rows — every entry knows its source
   (ingested, stated by owner, derived-by-agent) and shows it. Khala Sync
   gives the cross-device property (desktop, web, mobile) for free.
-- **CB-1.2** Ingestion: the event ledger already lands GitHub and Slack;
+- **CB-1.2** Ingestion: the event ledger already lands GitHub and Slack.
   add read-only connectors in trust-cost order (site scrape + public data
   first — the blitz prefill path — then Drive/mailbox summaries, then
   systems of record like QuickBooks). Ingest is `observe`-authority work,
@@ -455,7 +455,7 @@ Wrap the definition in the product object the market already understands:
   it must run as a fleet lane (one prospect = one automated run) to hit
   campaign scale (§5.2).
 - **Exit criterion**: a prospect-shaped workspace created end-to-end by the
-  pipeline with zero hand-editing, intro receipt included; and one existing
+  pipeline with zero hand-editing, intro receipt included. And one existing
   customer's brain serving two employees with disjoint slices.
 
 ### Phase 4 — AE-3: The template catalog (bottled employees)
@@ -468,37 +468,37 @@ Wrap the definition in the product object the market already understands:
   Content Engine, Ops Triage, Knowledge Concierge. QA Swarm stays a service
   with its own lane.
 - **AE-3.2** Catalog gate, promise-registry style: no template is listed
-  until it has at least one receipted external outcome; each template page
+  until it has at least one receipted external outcome. Each template page
   carries its live outcome ledger (§5.4's proof grammar).
 - **AE-3.3** Hiring flow: "hire" = instantiate template → bind brain
   slices → confirm identity bindings → set payroll budget → employee starts
   in observe/draft. Time-to-first-receipt is the activation metric.
 - **Exit criterion**: three templates listed, each with an external
-  receipted outcome; one customer running two employees off one brain.
+  receipted outcome. One customer running two employees off one brain.
 
 ### Phase 5 — AE-4/CB-2: Trust layer (skills provenance + input-path security)
 - **AE-4.1** Provenance-receipted skill registry (§4.3): content hash,
   source, automated injection audit receipt, capability manifest, and
   regenerate-under-audit. Skills attach to definitions through the same
-  toolset compiler, so an unaudited skill physically can't ride into an
+  toolset compiler, so an unaudited skill physically cannot ride into an
   `act_within_policy` employee.
 - **AE-4.2** Head-of-Security as a built-in template: reviews every skill,
-  connector, and authority promotion; its findings are receipts in the
+  connector, and authority promotion. Its findings are receipts in the
   owner's inbox. (The mastermind's `/security` role, productized.)
 - **CB-2.1** Input-path defaults: any employee whose triggers include
   untrusted input (webhook, inboxMatch, scraped content) gets a hard
   ceiling of `act_with_approval` for outbound/spend tools unless the owner
   signs an explicit waiver receipt. This encodes §4.4 as policy rather than
-  advice, and it is the honest answer to the blind spot the room hasn't hit
+  advice, and it is the honest answer to the blind spot the room has not hit
   yet.
 - **Exit criterion**: registry live with our own templates' skills as the
-  first audited entries; the untrusted-input ceiling enforced in the
+  first audited entries. The untrusted-input ceiling enforced in the
   toolset compiler with a test in the behavior-contract sweep.
 
 ### Phase 6 — Scale wiring (campaign + network graduation)
-- Assessment funnel (§5.2) writes directly into the CB-1.4 prefill lane;
+- Assessment funnel (§5.2) writes directly into the CB-1.4 prefill lane.
   Aiur ops views (#8501 lineage) grow fleet-of-employees monitoring for
-  support; per-template cohort dashboards track the agency-trap tripwire
+  support. Per-template cohort dashboards track the agency-trap tripwire
   (operator-minutes per engagement, falling).
 - Network graduation: employee outcome ledgers feed public (consented)
   outcome stories → forum identity → tips → routed work — the
@@ -538,7 +538,7 @@ provenance-receipted skills, the grounded context library in a prefilled
 workspace, fulfillment-agent scheduling on managed always-on capacity, and
 accepted-outcome receipts. Khala Code is both the power tool we sell the
 room's builders and the factory that stamps out employee packages for
-everyone else; Autopilot is the business that hires them out. The campaign
+everyone else. Autopilot is the business that hires them out. The campaign
 is the blitz playbook aimed at the segments this room just handed us, using
 the market's own vocabulary (levels, employees, outcomes) and its own proof
 grammar ("my agent did X and got outcome") — with the one upgrade nobody in

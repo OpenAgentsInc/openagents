@@ -9,8 +9,8 @@ the finding with probe evidence.
 
 Program context: epic #8904 and the transcript program
 (`docs/transcripts/252.md` / `252-notes.md` — Observer "reveals hidden
-stuff"; `docs/transcripts/2026-06-25-qa-agent-khala-dogfood-and-qa-on-every-push.md`).
-Proof-design semantics live in `docs/assurance/`; this loop is the executing
+stuff". `docs/transcripts/2026-06-25-qa-agent-khala-dogfood-and-qa-on-every-push.md`).
+Proof-design semantics live in `docs/assurance/`. This loop is the executing
 monitoring layer for live product surfaces.
 
 ## Pieces
@@ -60,7 +60,7 @@ printed or written to artifacts.
   **Never silently passes** and never counts toward `pass`.
 
 Exit code is 1 when any check with `severityOnDrift` `high` or `critical`
-drifted in the run; 0 otherwise. `unrunnable` alone never fails the run — it
+drifted in the run. 0 Otherwise. `unrunnable` alone never fails the run — it
 is visible in the summary and artifact instead.
 
 ## Running it
@@ -83,7 +83,7 @@ Sustained drift means the same check drifted in **>= 2 consecutive runs**
 the exact `gh issue create` command it WOULD run (title
 `QA Observer drift: <check id>`, label `qa-observer`, body carrying the
 bounded probe evidence). It executes GitHub commands **only** behind the
-explicit `--file-issues` flag; with the flag set it first looks for an open
+explicit `--file-issues` flag. With the flag set it first looks for an open
 `qa-observer` issue with the same title and comments on it instead of
 creating a duplicate. A scheduled run without the flag can never spam issues.
 
@@ -133,17 +133,17 @@ Notes for the scheduled shape:
 
 - The job's filesystem is ephemeral, so scheduled runs cannot accumulate
   artifact history in-container. The bounded summary and per-check states go
-  to stdout (Cloud Logging); durable in-repo artifacts are produced by
+  to stdout (Cloud Logging). Durable in-repo artifacts are produced by
   operator/agent runs that commit them. Wiring artifact upload to GCS (and
   reading prior runs from there so consecutive-drift works across scheduled
   runs) is the natural next increment and should reuse the monolith's GCS
   seam.
 - Do NOT pass `--file-issues` to the scheduled job until the GCS-backed
-  prior-run state exists; without durable history every scheduled run sees
+  prior-run state exists. Without durable history every scheduled run sees
   streak 1 and the flag would be inert anyway, but the invariant is: filing
   stays operator-invoked or durable-state-backed, never blind.
 - The admin token secret name above is the CFG-9 secret map's
-  `openagents-monolith-admin-token-prod`; granting it to the job makes the
+  `openagents-monolith-admin-token-prod`. Granting it to the job makes the
   khala-sync liveness check runnable in the scheduled shape.
 
 ## First real run

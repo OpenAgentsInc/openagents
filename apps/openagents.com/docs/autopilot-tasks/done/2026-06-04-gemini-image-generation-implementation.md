@@ -11,36 +11,36 @@ Foreground progress:
 
 - added a typed Worker `ImageGenerationService` with Gemini/Imagen provider
   request builders, response parsers, tagged errors, R2 storage, and safe
-  response metadata;
-- added authenticated `POST /api/images/generate`;
+  response metadata.
+- added authenticated `POST /api/images/generate`.
 - added authenticated `GET /api/images/:objectKey` for stable generated-image
-  URLs backed by the existing `ARTIFACTS` R2 bucket;
-- typed `GEMINI_API_KEY` as an optional Worker secret binding;
+  URLs backed by the existing `ARTIFACTS` R2 bucket.
+- typed `GEMINI_API_KEY` as an optional Worker secret binding.
 - added `/images` logged-in browser route with prompt, provider/model, aspect
-  ratio, size, count, generation state, errors, and generated image grid;
+  ratio, size, count, generation state, errors, and generated image grid.
 - verified current Google model IDs and REST endpoint shapes from official
-  Google AI developer docs on 2026-06-04;
+  Google AI developer docs on 2026-06-04.
 - added focused Worker and browser tests for provider request/parse/storage,
   route auth, route parsing, update behavior, and scene rendering.
 - found the existing restricted `openagentsgemini` Generative Language API key
   through local ADC and installed it as the Cloudflare `GEMINI_API_KEY` secret
-  without printing the secret value;
+  without printing the secret value.
 - provider-smoked `gemini-3.5-flash-image` through the live
-  `v1beta/models/:generateContent` endpoint and received one image part;
+  `v1beta/models/:generateContent` endpoint and received one image part.
 - kept `/images` operator/workroom-only and tightened the API so
   `/api/images/generate` plus generated image reads require OpenAgents Core
   team access, not just any browser session.
 - deployed Worker version `862f2bff-ffe1-4e3f-9d83-c239cb2d5da7` on
-  2026-06-04 after `bun run check:deploy` passed;
+  2026-06-04 after `bun run check:deploy` passed.
 - production smoke verified `/images` serves the new web asset and unauthenticated
   `POST /api/images/generate` returns `401 {"error":"unauthorized"}`.
 - foreground follow-up on 2026-06-04 diagnosed the production generation 500 as
   a Cloudflare Worker illegal-invocation error from storing the raw global
-  `fetch` method in `systemImageGenerationRuntime`;
+  `fetch` method in `systemImageGenerationRuntime`.
 - fixed the Worker runtime boundary to store a fetch wrapper instead of the raw
   platform method, added a regression assertion, and added bounded secret-safe
-  image generation failure logging;
-- deployed Worker version `2ee0e0f6-c5ed-413c-8048-a3a1709b34e0`;
+  image generation failure logging.
+- deployed Worker version `2ee0e0f6-c5ed-413c-8048-a3a1709b34e0`.
 - signed-in production smoke from a real OpenAgents Core Team browser session
   returned one generated PNG from `POST /api/images/generate`, stored it under
   `generated-images/users/2026-06-04/...`, and loaded the R2-backed image URL
@@ -68,13 +68,13 @@ Do not continue this work until the operator runbook gate is satisfied enough
 for this specific run:
 
 - `docs/autopilot-tasks/2026-06-04-programmatic-autopilot-operator-runbook.md`
-  exists in the pushed commit;
+  exists in the pushed commit.
 - operator checklist reports provider, GitHub writeback, SHC, callback, and
-  project readiness;
+  project readiness.
 - callback lag for this run is zero or has been retried through
-  `POST /api/omni/operator/agent-runs/:runId/callbacks/retry`;
+  `POST /api/omni/operator/agent-runs/:runId/callbacks/retry`.
 - continuation uses `POST /api/omni/operator/agent-runs/:runId/continue` while
-  the SHC job is active, or a durable goal continuation if the run has stopped;
+  the SHC job is active, or a durable goal continuation if the run has stopped.
 - no raw Google, provider, callback, OAuth, R2, or GitHub credentials appear in
   the task packet or launch payload.
 
@@ -110,8 +110,8 @@ The original spec named Gemini 3 image models, but live Google model discovery
 for the `openagentsgemini` project on 2026-06-04 exposes the current Gemini
 image model as:
 
-- default Gemini model: `gemini-3.5-flash-image`;
-- default Imagen model: `imagen-4.0-generate-001`;
+- default Gemini model: `gemini-3.5-flash-image`.
+- default Imagen model: `imagen-4.0-generate-001`.
 - optional Imagen models: `imagen-4.0-fast-generate-001`,
   `imagen-4.0-ultra-generate-001`.
 
@@ -127,19 +127,19 @@ support project.
 
 Known platform work already completed by foreground operator sessions:
 
-- shared run attribution now uses the run owner rather than the viewer;
-- team sidebar sync keeps team-owned runs visible to teammates;
-- SHC callback ingestion accepts job-event envelopes and sparse control events;
-- credential-shaped callback payloads are sanitized before D1 persistence;
+- shared run attribution now uses the run owner rather than the viewer.
+- team sidebar sync keeps team-owned runs visible to teammates.
+- SHC callback ingestion accepts job-event envelopes and sparse control events.
+- credential-shaped callback payloads are sanitized before D1 persistence.
 - operator preflight/checklist, callback retry, and continuation endpoints are
   being added in the current foreground session.
 
 Known active implementation evidence from the SHC workspace:
 
 - ImageGen-related docs and app files were observed under the Autopilot run
-  workspace;
+  workspace.
 - the active branch observed on origin was
-  `openagents/autopilot-b-48f3-b596-34f947bfc4bb`;
+  `openagents/autopilot-b-48f3-b596-34f947bfc4bb`.
 - the current run must still be verified through Cloudflare run state before
   accepting or continuing the work.
 
@@ -150,13 +150,13 @@ unless the user explicitly switches away from Autopilot-owned delivery.
 
 The backend must expose a typed service that can:
 
-- generate an image from a text prompt;
-- optionally accept reference images for Gemini multimodal image generation;
-- return normalized image metadata;
-- store generated image bytes in Cloudflare storage;
-- return a stable application URL or object key, not raw base64 by default;
+- generate an image from a text prompt.
+- optionally accept reference images for Gemini multimodal image generation.
+- return normalized image metadata.
+- store generated image bytes in Cloudflare storage.
+- return a stable application URL or object key, not raw base64 by default.
 - record provider, model, latency, request ID when available, and safe
-  error/safety status;
+  error/safety status.
 - never expose the Google API key to the browser.
 
 ## API Surface
@@ -231,25 +231,25 @@ config, use the existing binding style and update this packet.
 
 Use Effect Schema at the Worker boundary. The domain model should cover:
 
-- provider: `google-gemini` or `google-imagen`;
-- model;
-- aspect ratio: `1:1`, `3:4`, `4:3`, `9:16`, `16:9`;
-- image size: `512`, `1K`, `2K`, `4K` where supported by the provider;
-- prompt;
-- count;
-- optional reference images with MIME type and base64 input;
+- provider: `google-gemini` or `google-imagen`.
+- model.
+- aspect ratio: `1:1`, `3:4`, `4:3`, `9:16`, `16:9`.
+- image size: `512`, `1K`, `2K`, `4K` where supported by the provider.
+- prompt.
+- count.
+- optional reference images with MIME type and base64 input.
 - generated image key, optional URL, MIME type, byte length, provider, model,
   prompt, and timestamp.
 
 Validate:
 
-- prompt required, min 3 chars, max configurable;
-- count min 1, max 4;
-- aspect ratio enum;
-- image size enum;
-- unsupported MIME types rejected;
-- reference image total size bounded;
-- authenticated user or workspace context required;
+- prompt required, min 3 chars, max configurable.
+- count min 1, max 4.
+- aspect ratio enum.
+- image size enum.
+- unsupported MIME types rejected.
+- reference image total size bounded.
+- authenticated user or workspace context required.
 - per-user/workspace rate limit or explicit follow-up task if no rate limiter
   exists yet.
 
@@ -266,43 +266,43 @@ generate(input) => Effect.Effect<GenerateImageOutput, ImageGenerationError>
 
 Use tagged errors such as:
 
-- `ProviderRejectedPrompt`;
-- `ProviderRateLimited`;
-- `ProviderAuthFailed`;
-- `ProviderUnavailable`;
-- `ProviderInvalidRequest`;
-- `StorageFailed`;
+- `ProviderRejectedPrompt`.
+- `ProviderRateLimited`.
+- `ProviderAuthFailed`.
+- `ProviderUnavailable`.
+- `ProviderInvalidRequest`.
+- `StorageFailed`.
 - `UnknownImageGenerationError`.
 
 Use `Effect.tryPromise` at `fetch` and storage boundaries. Route handlers should
-map tagged errors to HTTP responses; domain/service code should not construct
+map tagged errors to HTTP responses. Domain/service code should not construct
 raw `Response` objects.
 
 ## Provider Request Rules
 
 Gemini native generation:
 
-- endpoint shape: `POST /v1/models/{model}:generateContent`;
-- header: `x-goog-api-key`;
-- request body uses `contents[].parts[]`;
-- text prompt goes in a text part;
-- reference images go in `inlineData`;
+- endpoint shape: `POST /v1/models/{model}:generateContent`.
+- header: `x-goog-api-key`.
+- request body uses `contents[].parts[]`.
+- text prompt goes in a text part.
+- reference images go in `inlineData`.
 - generated images are parsed from response candidate parts with
   `inlineData.data`.
 
 Imagen generation:
 
 - endpoint shape from the original spec:
-  `POST /v1beta/models/{model}:predict`;
-- body uses `instances: [{ prompt }]`;
+  `POST /v1beta/models/{model}:predict`.
+- body uses `instances: [{ prompt }]`.
 - parameters include `sampleCount`, `aspectRatio`, and `imageSize` where
-  supported;
+  supported.
 - parse known base64 fields defensively.
 
 Provider selection:
 
-- explicit `provider` wins;
-- requests with reference images use Gemini;
+- explicit `provider` wins.
+- requests with reference images use Gemini.
 - default provider is Gemini.
 
 ## Storage Rules
@@ -312,12 +312,12 @@ the Worker config already enables and tests Node compatibility for this path.
 
 Object keys should include:
 
-- `generated-images`;
-- workspace or user scope;
-- date partition;
-- random ID generated through the repo's runtime primitive boundary;
-- image index;
-- model;
+- `generated-images`.
+- workspace or user scope.
+- date partition.
+- random ID generated through the repo's runtime primitive boundary.
+- image index.
+- model.
 - extension derived from MIME type.
 
 Store content type in object metadata. Store only safe custom metadata:
@@ -329,13 +329,13 @@ Add a logged-in image generation surface without creating a marketing page.
 
 Expected UI:
 
-- prompt input;
-- model/provider selector;
-- aspect ratio selector;
-- count control;
-- generate button with loading and disabled states;
-- error state with normalized message;
-- generated image grid;
+- prompt input.
+- model/provider selector.
+- aspect ratio selector.
+- count control.
+- generate button with loading and disabled states.
+- error state with normalized message.
+- generated image grid.
 - copy/open/download affordances if already available in the local UI system.
 
 Use existing OpenAgents product surface/Foldkit patterns and the local UI registry. Do not add ad

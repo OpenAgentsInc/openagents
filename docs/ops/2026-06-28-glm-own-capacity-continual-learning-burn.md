@@ -22,12 +22,12 @@ Vertex Gemini / Fireworks / OpenRouter paid fallback. Consequences:
 
 - A `200` is **always** served by our own GLM boxes (GCP G4 spot, billed hourly
   ⇒ **$0 marginal per token**).
-- When GLM is unavailable the request **fails closed** (HTTP `000`/`5xx`); it
-  **never spills to a paid provider**. The driver retries/skips; it never incurs
+- When GLM is unavailable the request **fails closed** (HTTP `000`/`5xx`). It
+  **never spills to a paid provider**. The driver retries/skips. It never incurs
   external spend. (Confirmed live: a GLM-down tick returns `000`, not a paid
   serve.)
 - `internal_stress` is **admission-limited** — real external Khala users win at
-  the route gate; this burn yields before dispatch when reserved headroom is
+  the route gate. This burn yields before dispatch when reserved headroom is
   unavailable.
 
 This is the same demand tag covered by the GLM route-admission tests. The old
@@ -35,7 +35,7 @@ adaptive stress harness (`glm-stress:adaptive` /
 `stress-saturation-plan.ts`) was retired on 2026-07-05 in #8381.
 
 > The raw model id `openagents/glm-5.2-reap-504b` is **not** publicly servable
-> (returns `model_unavailable`); the public Khala alias + the glm-saturation
+> (returns `model_unavailable`). The public Khala alias + the glm-saturation
 > headers is the supported own-capacity entry point. Plain `openagents/khala`
 > (no headers) is **latency-first** and prefers Vertex Gemini / Fireworks
 > (external paid) — do **not** use it for $0 burn.
@@ -67,7 +67,7 @@ Under `$CL_OUT_DIR` (default `~/work/.khala-continual-learning`, gitignored):
 - `remediation-candidates-<date>.jsonl` — mutalisk-shaped candidates from real
   failure modes.
 - `receipt-<date>.json` — public-safe batch receipt (counts, tokens burned,
-  route, digests; **no** raw corpus text, prompts, keys, or PII).
+  route, digests. **No** raw corpus text, prompts, keys, or PII).
 - `burn-<date>.jsonl` — per-cycle log.
 
 The derived dataset is **never committed** (it is derived training data, and the
@@ -97,9 +97,9 @@ Tunables (env): `CL_CONCURRENCY` (default 4), `CL_MAX_TOKENS` (1024),
 
 The loop runs until killed. To keep GLM at full tilt 24/7:
 
-- Run under `nohup`/a process supervisor; on exit, relaunch.
+- Run under `nohup`/a process supervisor. On exit, relaunch.
 - It self-heals around GLM flapping (spot preemption): GLM-down ticks back off
-  and retry; they never fall back to paid.
+  and retry. They never fall back to paid.
 - Raise `CL_CONCURRENCY` to push more GLM utilization (watch the canary —
   external users preempt this load by design, so it is safe to be aggressive).
 - The corpus lane never "runs out": lenses rotate and the loop re-passes the

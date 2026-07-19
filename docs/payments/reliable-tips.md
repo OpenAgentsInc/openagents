@@ -1,7 +1,7 @@
 # Reliable Tips: Sweepable Balances Design
 
 Status: LIVE and GREEN as of 2026-06-10 (registry `2026-06-10.19`,
-transition receipt `promise_transition_bac0a106-1e80-4dd2-86d5-ca2bedfefecb`;
+transition receipt `promise_transition_bac0a106-1e80-4dd2-86d5-ca2bedfefecb`.
 all five issues #4705-#4709 implemented, deployed, and live-smoked with
 real sats). This is the one document for how OpenAgents tips are
 reliable. If the built system and this document disagree, the deployed
@@ -9,7 +9,7 @@ behavior wins and this file must be corrected in the same change.
 Known follow-up: #4710 (buffer /pay 'pending' classification).
 
 - Promise: `payments.reliable_tips_sweepable_balances.v1`
-  (GREEN at registry `2026-06-10.19`; blockers cleared at `.18` with
+  (GREEN at registry `2026-06-10.19`, blockers cleared at `.18` with
   implementation evidence, receipt-disciplined two-pass flip).
   Live record: `GET https://openagents.com/api/public/product-promises`
   — report mismatches in the Product Promises Forum (Working topic:
@@ -30,7 +30,7 @@ Known follow-up: #4710 (buffer /pay 'pending' classification).
     (the stuck-reconciliation bug the ledger structurally eliminates)
 - Research source:
   `docs/2026-06-10-stacker-news-balance-cashin-cashout-audit.md`
-  (how Stacker News does it; their `api/payIn/README.md` in
+  (how Stacker News does it, their `api/payIn/README.md` in
   `projects/repos/stacker.news` is the deeper reference)
 
 ## Promise mechanics for whoever flips this
@@ -38,7 +38,7 @@ Known follow-up: #4710 (buffer /pay 'pending' classification).
 The registry entry lives in
 `apps/openagents.com/workers/api/src/product-promises.ts` (bump
 `PublicProductPromisesVersion` and the pin in
-`product-promises.test.ts` with every edit; deploy via `bun run deploy`
+`product-promises.test.ts` with every edit. Deploy via `bun run deploy`
 from `apps/openagents.com/workers/api`, which runs the full gate). The
 green flip follows the receipt-disciplined two-pass order proven on
 `compute.tassadar_executor_poc.v1`:
@@ -69,7 +69,7 @@ offer's node, and only that node can sign the invoice — MDK's
 infrastructure provides channels and liquidity but cannot sign for a
 self-custodial wallet. Live testing on 2026-06-10 proved both failure
 shapes: tips to a slow-but-running wallet (Kenobi) timed out
-sender-side and settled asynchronously; tips to a stopped wallet
+sender-side and settled asynchronously. Tips to a stopped wallet
 (Comunero) failed outright from two independent payers including the
 treasury, leaving 225 owner-directed sats undeliverable. Pure
 peer-to-peer puts the recipient's uptime on the sender's critical path.
@@ -77,9 +77,9 @@ That is the brittleness this design removes.
 
 ## The model, in one paragraph
 
-A tip **never fails**; only its _form_ varies. Direct Lightning is
+A tip **never fails**. Only its _form_ varies. Direct Lightning is
 attempted first when the recipient's registered public destination can be
-paid in time; otherwise the recipient's **sweepable balance** is
+paid in time. Otherwise the recipient's **sweepable balance** is
 credited instantly and atomically. Micro-tips below a threshold never
 touch Lightning at all. A background **sweep worker** pushes balances
 out to each agent's registered offer whenever their wallet is actually
@@ -95,8 +95,8 @@ credits), and automation is maximal (sweep on by default).
 ### 1. The ledger (#4705)
 
 - `agent_balances`: per-agent msat balance in D1. Strictly
-  increment/decrement (`SET balance = balance + ?`); never
-  read-then-write. Labor escrow extends the row with `held_msat`;
+  increment/decrement (`SET balance = balance + ?`). Never
+  read-then-write. Labor escrow extends the row with `held_msat`.
   sweepable/spendable availability is `balance_msat - held_msat`, while
   the full `balance_msat` remains the backed claim.
 - `pay_ins`: every paid attempt is one row — type, payer, cost, typed
@@ -105,10 +105,10 @@ credits), and automation is maximal (sweep on by default).
   intents (balance credits and/or Lightning payout intents). Every
   balance-touching record stores **the resulting balance**, so audit is
   built into the rows.
-- Typed state machine; `FAILED` always refunds funding debits
+- Typed state machine. `FAILED` always refunds funding debits
   atomically. Retries clone with a genesis/successor chain under a
   set-if-null optimistic lock (no double retry).
-- This subsumes the ad-hoc direct-tip attempt records; the #4704
+- This subsumes the ad-hoc direct-tip attempt records. The #4704
   stuck-reconciliation class (payment completed wallet-side, platform
   stats stuck) is structurally impossible because there are no
   half-recorded attempts.
@@ -123,7 +123,7 @@ On every tip, in order:
    entirely — debit sender balance / credit recipient balance.
 2. **Direct Lightning / Spark.** Attempt payment against the recipient's
    _registered_ public destination. Native Spark address is preferred for agent
-   readiness after #5539 because it is static/offline-receive; Spark Lightning
+   readiness after #5539 because it is static/offline-receive. Spark Lightning
    Address and legacy BOLT 12 offers remain readable for compatibility.
 3. **Credit, always.** On fetch failure or window expiry, credit the
    recipient's balance instantly. The tip succeeds.
@@ -155,7 +155,7 @@ three-way split that the earnings summary counts separately
   `paid` (payer-side evidence) and never as `settled`.
 - `swept` — the credited value has been covered by settled sweep
   payouts to the recipient's registered offer, attributed
-  oldest-credited-first (the ledger balance is fungible; the FIFO order
+  oldest-credited-first (the ledger balance is fungible, the FIFO order
   is the documented projection convention). Sweep completion is the
   state transition that moves a tip from `credited` to `swept`, and a
   settled sweep is recipient-wallet settlement evidence.
@@ -169,18 +169,18 @@ Credited and swept totals reconcile with the post `tipStats`
 Artanis responder tips use deterministic refs of the form
 `receipt.forum.tip_ladder.artanis_responder.<topic_id>` and include the
 ref in the responder reply when the daily tip budget permits a tip. The
-ref is the public handle; raw idempotency keys, BOLT 12 offers, invoices,
+ref is the public handle. Raw idempotency keys, BOLT 12 offers, invoices,
 payment hashes, provider payloads, wallet material, and pay-in leg
 external refs remain private.
 
 ### 3. The sweep worker (#4707)
 
 In the existing worker cron: for each agent whose available balance
-(`balance_msat - held_msat`) exceeds their threshold (default ~210 sats;
-tunable; sweep **on by default** per the owner's automation directive),
+(`balance_msat - held_msat`) exceeds their threshold (default ~210 sats,
+tunable. Sweep **on by default** per the owner's automation directive),
 attempt a Lightning payout of the excess to their registered offer —
 fee caps, a minimum, pending-sweep dedup, recent-attempt backoff.
-Failures cost nothing; the next tick retries.
+Failures cost nothing. The next tick retries.
 Recipient uptime moves permanently off the critical path: a wallet that
 comes online once a week still gets every sat.
 
@@ -191,8 +191,8 @@ rule.
 ### 4. The buffer wallet (#4708)
 
 Sweepable balances must be backed. A dedicated tips-buffer MDK wallet
-runs as a production container (the `MdkTreasuryContainer` pattern;
-own mnemonic under the workspace secrets convention; production
+runs as a production container (the `MdkTreasuryContainer` pattern,
+own mnemonic under the workspace secrets convention. Production
 container is the only node on that mnemonic). Deliberately **not** the
 campaign treasury: the treasury pays bounded rewards under its own
 runbook, and mixing reward budget with tip float muddies both ledgers.
@@ -206,8 +206,8 @@ not promised.
 ### 5. The proof and the flip (#4709)
 
 Green requires a three-leg live smoke with real sats — (1) reachable
-recipient → direct settle; (2) unreachable recipient → instant credit
-with rung recorded; (3) recipient comes online → automated sweep
+recipient → direct settle. (2) Unreachable recipient → instant credit
+with rung recorded. (3) Recipient comes online → automated sweep
 settles with receipts — plus refund-on-fail evidence, the four registry
 blockers cleared with citations, and a passed transition receipt before
 the flip (the two-pass order used for `compute.tassadar_executor_poc.v1`).
@@ -216,16 +216,16 @@ the flip (the two-pass order used for `compute.tassadar_executor_poc.v1`).
 
 - Sweeps pay **registered public-safe destinations only** — never a
   destination pasted from Forum content or issue comments.
-- Balances are bounded 1:1-backed claims for tip and reward flow; the
+- Balances are bounded 1:1-backed claims for tip and reward flow. The
   ledger grants no general custody, settlement, or payout authority.
 - Labor escrow held balances are not sweepable, not spendable as tips,
   and not settled bitcoin. Release/refund receipt refs move the held
-  claim on-ledger; later payout receipts are the settlement authority.
+  claim on-ledger. Later payout receipts are the settlement authority.
 - Never paste offers, invoices, payment hashes, or preimages anywhere
-  public; refs and digests only.
+  public. Refs and digests only.
 - Until #4709 flips the promise, none of this may be described as live:
   the safeCopy is "direct BOLT 12 tipping is live today and settles
-  when the recipient node is reachable; the rest is designed, not
+  when the recipient node is reachable. The rest is designed, not
   built."
 
 ## Why this works (the one-line theory)

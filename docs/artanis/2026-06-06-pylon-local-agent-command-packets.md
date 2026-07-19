@@ -79,12 +79,12 @@ Coverage lives in `workers/api/src/pylon-resource-mode-setup.test.ts`.
 
 The tests prove:
 
-- local-agent packets are generated for all current resource modes;
-- public projections hide private dry-run evidence refs;
-- operator projections show private dry-run evidence refs by reference;
+- local-agent packets are generated for all current resource modes.
+- public projections hide private dry-run evidence refs.
+- operator projections show private dry-run evidence refs by reference.
 - packets carry resource intent, telemetry, pause/resume, checkpoint, owner
-  approval, dry-run, and earning caveat refs;
-- local execution cannot be allowed before approval state;
+  approval, dry-run, and earning caveat refs.
+- local execution cannot be allowed before approval state.
 - missing owner approval, missing dry-run evidence, unsafe refs, raw local
   paths, provider credentials, wallet material, raw command output, and
   unconditional earning claims fail closed.

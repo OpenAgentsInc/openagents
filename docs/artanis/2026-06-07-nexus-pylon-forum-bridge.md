@@ -72,10 +72,10 @@ they are simulated and must not be described as real bitcoin movement.
 Coverage lives in
 `workers/api/src/artanis-nexus-pylon-forum-bridge.test.ts` and proves:
 
-- all required Nexus/Pylon event kinds map to canonical Artanis topics;
-- public projections do not contain raw ISO timestamps or private material;
-- exact duplicate events collapse to one deliverable intent;
-- paused and disabled policies block delivery;
-- ready intents persist idempotently for the existing delivery bridge; and
+- all required Nexus/Pylon event kinds map to canonical Artanis topics.
+- public projections do not contain raw ISO timestamps or private material.
+- exact duplicate events collapse to one deliverable intent.
+- paused and disabled policies block delivery.
+- ready intents persist idempotently for the existing delivery bridge. And
 - unsafe wallet, invoice, customer, and private material is rejected before
   posting.

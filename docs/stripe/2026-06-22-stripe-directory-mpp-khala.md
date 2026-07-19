@@ -37,7 +37,7 @@ same way.*
 `ai model hosting`. Surfaced: RunPod (@runpod), CUDO Compute (@cudo),
 io.net (@ionet), TokenRouter (@palebluedotai), LLM Gateway (@llmgateway),
 Nunchux AI (@nunchuxai) — plus thin/unknown listings. **Every inference provider
-is Link-only; none expose MPP or Stripe Projects endpoints.**
+is Link-only. None expose MPP or Stripe Projects endpoints.**
 
 **MPP-only enumeration** (`--mpp-supported`, 38 broad category terms, deduped):
 `api ai data web search mail browser agent compute tool email scrape database llm
@@ -91,7 +91,7 @@ one balance.
 
 ## Next steps
 
-- [ ] Enable the OpenAgents public Stripe profile (NEEDS-OWNER; currently none).
+- [ ] Enable the OpenAgents public Stripe profile (NEEDS-OWNER, currently none).
 - [ ] Stand up the Khala MPP listing (`mpp.dev` service + `llms.txt` + `/agents` +
       per-call pricing) against the live gateway.
 - [ ] Wire MPP/Stripe charge → Khala credits → existing metering/settlement.

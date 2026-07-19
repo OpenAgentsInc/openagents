@@ -8,7 +8,7 @@ For your stack, I would **not start by relying on the Google JS SDK inside Cloud
 
 If you already have a Google Cloud/Gemini project, the cleanest path is:
 
-Use your existing Google Cloud project/billing, create or restrict a Gemini API key for server-side use, store it as a Cloudflare secret, and call `generativelanguage.googleapis.com` from your Worker backend. Google notes that Gemini API keys are associated with Google Cloud projects, can be created/imported through AI Studio, and should be restricted; Cloudflare says secrets should be used for sensitive API keys and are exposed to Workers through `env`. ([Google AI for Developers][4])
+Use your existing Google Cloud project/billing, create or restrict a Gemini API key for server-side use, store it as a Cloudflare secret, and call `generativelanguage.googleapis.com` from your Worker backend. Google notes that Gemini API keys are associated with Google Cloud projects, can be created/imported through AI Studio, and should be restricted. Cloudflare says secrets should be used for sensitive API keys and are exposed to Workers through `env`. ([Google AI for Developers][4])
 
 ---
 

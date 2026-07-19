@@ -39,17 +39,17 @@ query parameter clamped to 1 through 200.
 
 Each referral source summary includes:
 
-- capture count;
-- pending, claimed, disputed, and expired capture counts;
-- verified user count;
-- linked software-order count;
-- agent-claim count;
-- paid-workflow count from the Site referral workflow event ledger;
+- capture count.
+- pending, claimed, disputed, and expired capture counts.
+- verified user count.
+- linked software-order count.
+- agent-claim count.
+- paid-workflow count from the Site referral workflow event ledger.
 - a reward gate that shows attribution captured, reward eligible, payout
-  pending, settled, and Bitcoin-withdrawal-copy allowed as separate fields;
+  pending, settled, and Bitcoin-withdrawal-copy allowed as separate fields.
 - held, disputed, capped, reversed, and operator-overridden policy-event
-  counts from the Site referral policy event ledger;
-- latest capture timestamp;
+  counts from the Site referral policy event ledger.
+- latest capture timestamp.
 - latest verified timestamp.
 
 The paid-workflow count is backed by the dedicated referral workflow event
@@ -73,11 +73,11 @@ until public settlement receipt refs are available.
 
 Owner responses do not include:
 
-- private referred-user identifiers beyond aggregate counts;
-- emails or contact fields;
-- provider grants or OAuth material;
-- wallet keys, preimages, invoices, or MDK credentials;
-- checkout query strings or raw payment evidence;
+- private referred-user identifiers beyond aggregate counts.
+- emails or contact fields.
+- provider grants or OAuth material.
+- wallet keys, preimages, invoices, or MDK credentials.
+- checkout query strings or raw payment evidence.
 - private order logs, prompt/run secrets, or operator notes.
 
 Operator responses include internal ids and public refs needed for support,

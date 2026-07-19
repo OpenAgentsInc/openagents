@@ -17,12 +17,12 @@ The implementation lives in
 
 The v1 state model is:
 
-- `buyer_payment_evidence`;
-- `accepted_work_reward_intent`;
-- `payout_eligible`;
-- `payout_dispatched`;
-- `payout_confirmed`;
-- `payout_verified`;
+- `buyer_payment_evidence`.
+- `accepted_work_reward_intent`.
+- `payout_eligible`.
+- `payout_dispatched`.
+- `payout_confirmed`.
+- `payout_verified`.
 - `settled`.
 
 The states intentionally remain separate. Buyer payment evidence is not
@@ -63,12 +63,12 @@ private customer data, and raw timestamps.
 
 The projection exposes separate flags:
 
-- `buyerPaymentEvidencePresent`;
-- `rewardIntentClaimAllowed`;
-- `payoutEligibilityClaimAllowed`;
-- `payoutDispatchClaimAllowed`;
-- `payoutConfirmationClaimAllowed`;
-- `payoutVerificationClaimAllowed`;
+- `buyerPaymentEvidencePresent`.
+- `rewardIntentClaimAllowed`.
+- `payoutEligibilityClaimAllowed`.
+- `payoutDispatchClaimAllowed`.
+- `payoutConfirmationClaimAllowed`.
+- `payoutVerificationClaimAllowed`.
 - `settlementClaimAllowed`.
 
 This prevents public proof, dashboards, or docs from collapsing the accounting
@@ -78,10 +78,10 @@ state into a stronger claim than the evidence supports.
 
 `workers/api/src/pylon-bitcoin-accounting-receipts.test.ts` covers:
 
-- public-safe settled receipt projection;
-- operator-only buyer payment evidence refs;
-- amount hiding without public-safe amount receipt refs;
-- reward, eligibility, dispatch, verification, and settlement separation;
-- required refs as accounting state advances;
+- public-safe settled receipt projection.
+- operator-only buyer payment evidence refs.
+- amount hiding without public-safe amount receipt refs.
+- reward, eligibility, dispatch, verification, and settlement separation.
+- required refs as accounting state advances.
 - rejection of invoice, preimage, payment hash, wallet, payout target, private
   key, mnemonic, provider token, customer, and raw timestamp material.

@@ -7,7 +7,7 @@ Pinned Codex reference: `08ba14b03d0b3ce3cfdf8c88c0469b9b1924953d`
 
 Khala Code's default coding harness is Codex app-server. Parity is guarded by
 checked fixture tests plus one opt-in live smoke. The fixture tests do not
-require a live Codex login; they read the checked-out Codex reference schema and
+require a live Codex login. They read the checked-out Codex reference schema and
 source under `projects/repos/codex`.
 
 ## Fixture Contract

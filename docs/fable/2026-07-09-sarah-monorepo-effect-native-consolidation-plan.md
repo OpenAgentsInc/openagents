@@ -3,7 +3,7 @@
 Date: 2026-07-09
 Status: owner-directed plan (2026-07-09 directive: "All Sarah shit must be
 ported to Effect Native, moved into this codebase — no more separate sarah
-repo"); execution tracked by the SM epic
+repo"). Execution tracked by the SM epic
 Supersedes: the 2026-07-07 separate-repo decision, sarah#14 (Cloud Run
 lift-and-shift of the Next app), sarah#15 (TanStack Start front-end port)
 Pattern precedent: the Cloud repo consolidation (#8591,
@@ -19,7 +19,7 @@ converges on the standing owner mandates:
 
 - **UI**: Effect Native component set on the DOM renderer (§EN, rev 6 full
   conversion). Zero new React. The 2026-07-08 rescope already folded sarah#15
-  into "render Sarah's UI via the Effect Native web renderer"; this plan makes
+  into "render Sarah's UI via the Effect Native web renderer". This plan makes
   it the only path and gives it a home.
 - **App foundation**: Bun + Effect (the monorepo law for new TypeScript).
   Next.js does not enter the monorepo — the port happens as the move, not
@@ -47,16 +47,16 @@ The surface is small — 36 `.ts` files, **2** `.tsx` files, one eve agent:
 
 | Area | Contents | Port disposition |
 |---|---|---|
-| `agent/` (eve brain) | `agent.ts` (`defineAgent`, `openai/gpt-5-mini`), `instructions.md` persona, tools (`intake_capture`, `crm_contact_upsert`, `crm_activity_append`, `deal_rules_evaluate`, `human_handoff`, `checkout_link_create`, `demo_sales_context`), `schedules/follow-up`, `channels/` (realtime-transcript, email) | Moves intact in SM-1 (eve self-hosted beside the app); replaced by the owned Effect agent runtime in SM-4 with an identical tool inventory |
+| `agent/` (eve brain) | `agent.ts` (`defineAgent`, `openai/gpt-5-mini`), `instructions.md` persona, tools (`intake_capture`, `crm_contact_upsert`, `crm_activity_append`, `deal_rules_evaluate`, `human_handoff`, `checkout_link_create`, `demo_sales_context`), `schedules/follow-up`, `channels/` (realtime-transcript, email) | Moves intact in SM-1 (eve self-hosted beside the app). Replaced by the owned Effect agent runtime in SM-4 with an identical tool inventory |
 | `src/lib/` (19 services) | prospect-session, session-index, deal-rules, sarah-instructions, promise-registry, realtime-token-guard, gateway-realtime-browser, realtime-tools, openagents-crm-client, openagents-sales-client, follow-up-scheduler, email-approval-queue, email-suppression-list, resend-email-sender, eve-origin, … | Mostly framework-agnostic TS + zod: wrap as Effect services near-verbatim in SM-1. The three email modules are **not** ported — they converge on the monorepo CRM send rail (§4.3) |
 | `src/app/` API routes | prospect/session, realtime/token, realtime/session-config, eve/tool-call, eve/turn, operator/{prospects,email-drafts,ops,follow-ups}, unsubscribe | Thin handlers → Bun/Effect HTTP routes in SM-1 (same paths, same contracts) |
 | `src/app/` UI | `layout.tsx` + `page.tsx` (the S-10 branded voice surface: mic states, transcript, disclosure, text fallback) | **Not ported as React.** Reauthored in Effect Native components in SM-2 |
-| `evals/` + scripts | `sarah-fixtures.json`, the S-12 eval suite, ~15 S-lane smoke scripts | Move into the monorepo test tree; the S-12 suite becomes the conformance oracle for every later phase (especially SM-4) |
-| `docs/` | deployment notes, evidence | Redaction-audited in SM-0; classified active / historical / drop |
+| `evals/` + scripts | `sarah-fixtures.json`, the S-12 eval suite, ~15 S-lane smoke scripts | Move into the monorepo test tree. The S-12 suite becomes the conformance oracle for every later phase (especially SM-4) |
+| `docs/` | deployment notes, evidence | Redaction-audited in SM-0. Classified active / historical / drop |
 
-Issue state in the sarah repo: S-1..S-5, S-9, S-10, S-12, S-13 CLOSED;
+Issue state in the sarah repo: S-1..S-5, S-9, S-10, S-12, S-13 CLOSED.
 S-6 (first real tools — residual gates), S-7 (CRM sync — residual gates),
-S-8 (email channel), S-11 (Vercel production wiring) OPEN; S-14/S-15 OPEN and
+S-8 (email channel), S-11 (Vercel production wiring) OPEN. S-14/S-15 OPEN and
 **superseded by this plan**. All open scope is absorbed into the SM lanes
 below and the sarah issues are closed with pointers.
 
@@ -79,7 +79,7 @@ Boundaries that hold no matter what:
   database directly — CRM,
   credits, checkout, receipts, and promise state go through the same public
   HTTP contracts the external repo used. In-repo proximity is not authority.
-- Deal-rule **code** is public; owner-signed priced parameters beyond the
+- Deal-rule **code** is public. Owner-signed priced parameters beyond the
   already-public pack prices load from runtime config/Secret Manager, not git.
 - The realtime voice loop stays browser↔provider direct (no server-side WS
   infra) — the token-minting route keeps its S-3 hardening (origin/rate
@@ -89,7 +89,7 @@ Boundaries that hold no matter what:
 
 ### SM-0 — freeze + redaction audit (gates everything)
 
-1. Feature-freeze `OpenAgentsInc/sarah` (emergency fixes only); record the
+1. Feature-freeze `OpenAgentsInc/sarah` (emergency fixes only). Record the
    exact source commit in the migration receipt.
 2. Redaction audit over every candidate file: env/tokens/gateway keys, priced
    deal parameters beyond public pack prices, prospect/customer PII in
@@ -98,13 +98,13 @@ Boundaries that hold no matter what:
    until its file class is cleared.
 3. Classify docs `active` / `historical-source` / `drop`.
 
-Exit: explicit move-set with no forbidden material; receipt doc started
+Exit: explicit move-set with no forbidden material. Receipt doc started
 (`docs/sarah/MIGRATION.md`).
 
 ### SM-1 — port-as-move: the Bun/Effect service (backend parity)
 
-1. `apps/sarah/` scaffolded on Bun/Effect; the 19 lib services wrapped as
-   Effect services; API routes ported handler-by-handler with identical
+1. `apps/sarah/` scaffolded on Bun/Effect. The 19 lib services wrapped as
+   Effect services. API routes ported handler-by-handler with identical
    request/response contracts (the S-3 token guard behavior byte-for-byte).
 2. The eve `agent/` dir moves intact and runs self-hosted beside the app
    (its own process/container), exactly as sarah#14 specced — `eve build &&
@@ -114,8 +114,8 @@ Exit: explicit move-set with no forbidden material; receipt doc started
    the normal sweep against a local instance.
 4. The existing Vercel deployment remains production, untouched.
 
-Exit: local `apps/sarah` passes every ported smoke + the S-12 suite;
-`bun test` green; no Next.js anywhere in the monorepo.
+Exit: local `apps/sarah` passes every ported smoke + the S-12 suite.
+`bun test` green. No Next.js anywhere in the monorepo.
 
 ### SM-2 — the voice surface in Effect Native
 
@@ -130,11 +130,11 @@ Exit: local `apps/sarah` passes every ported smoke + the S-12 suite;
 3. `gateway-realtime-browser` wraps as an Effect service emitting the typed
    intent vocabulary (the MH/Sync law: steering and UI state as serializable
    data end to end).
-4. Deterministic snapshot + intent tests per the EN testing discipline;
+4. Deterministic snapshot + intent tests per the EN testing discipline.
    visual baseline captured against the current production page.
 
-Exit: the Sarah surface renders entirely from the component set; zero React
-in `apps/sarah`; openagents.com/sarah and openagents.com are one component
+Exit: the Sarah surface renders entirely from the component set. Zero React
+in `apps/sarah`. Openagents.com/sarah and openagents.com are one component
 system by construction (the WEB-1 synergy, now literal).
 
 ### SM-3 — email + CRM convergence (delete the parallel stack)
@@ -145,12 +145,12 @@ system by construction (the WEB-1 synergy, now literal).
    suppression, receipts) — one suppression list, one approval queue, one
    email ledger for both Sarah and the OB-1..6 outbound engine.
 2. Sarah's mailbox inbound routes through the event-ledger email source →
-   `inbox_match` (the SR-3 shape); operator email-draft routes point at the
+   `inbox_match` (the SR-3 shape). Operator email-draft routes point at the
    shared queue (and inherit OB-4's batch-approval UX when it lands).
 3. S-7 CRM-sync and S-8 email-channel residual gates close here, on the
    monorepo rail.
 
-Exit: no duplicate email/suppression/approval code in `apps/sarah`; every
+Exit: no duplicate email/suppression/approval code in `apps/sarah`. Every
 Sarah send is a `crm_activity` + email-ledger row under the standing
 no-send-without-approval-receipt contracts.
 
@@ -164,36 +164,36 @@ no-send-without-approval-receipt contracts.
    here is the seed of that system, not a Sarah-only fork.
 2. Conformance bar: identical tool inventory and behavior — the S-12 eval
    suite (qualification, honesty, discount-pressure, injection) plus the
-   ported smokes are the oracle; they must pass unchanged before eve is
+   ported smokes are the oracle. They must pass unchanged before eve is
    removed.
 3. Model/provider access moves off the Vercel AI Gateway key onto our own
-   provider path (the key's removal path was already flagged in sarah#14;
+   provider path (the key's removal path was already flagged in sarah#14,
    model pin + cost caps are owner-gated).
 
-Exit: `eve` gone from dependencies; S-12 green on the owned runtime; the
+Exit: `eve` gone from dependencies. S-12 green on the owned runtime. The
 gateway-key removal recorded (or its explicit short-term retention
 re-receipted by the owner).
 
 ### SM-5 — production cutover
 
 1. openagents.com/sarah served by the monorepo-built Cloud Run service
-   (image from `openagents` source only); DNS/env/model-pin/cost-caps owner
+   (image from `openagents` source only). DNS/env/model-pin/cost-caps owner
    actions via NEEDS_OWNER (absorbs S-11).
-2. S-12 suite + smokes green against the live deployment; the S-13
+2. S-12 suite + smokes green against the live deployment. The S-13
    follow-up schedules verified on the new runtime.
-3. Vercel project decommissioned; interim deploy torn down.
+3. Vercel project decommissioned. Interim deploy torn down.
 
-Exit: production Sarah runs from public monorepo source on our cloud; no
+Exit: production Sarah runs from public monorepo source on our cloud. No
 Vercel in the serving path.
 
 ### SM-6 — retire the repo
 
 `OpenAgentsInc/sarah` README/AGENTS pointed at the monorepo, marked read-only
-historical (the #8591 pattern); workspace-root routing docs updated; the
+historical (the #8591 pattern). Workspace-root routing docs updated. The
 roadmap doc-map row flipped.
 
 Ordering: SM-0 → SM-1 → SM-2/SM-3 (parallel) → SM-4 → SM-5 → SM-6. P1's Track
-C outbound work (OB-1..6) is independent and never blocks on this; the SR
+C outbound work (OB-1..6) is independent and never blocks on this. The SR
 exit receipts in the roadmap are unchanged — this plan changes where Sarah
 lives and what renders her, not what she must prove.
 
@@ -212,32 +212,32 @@ lives and what renders her, not what she must prove.
    rev 5/6 rescope: the UI is authored in Effect Native, not ported to
    another React host.
 4. **eve (DECIDED 2026-07-07) — retained through SM-3, retired in SM-4.**
-   The 07-07 decision correctly bought speed; the rev 6 whole-app posture
+   The 07-07 decision correctly bought speed. The rev 6 whole-app posture
    (Effect as the foundation) plus the P4 employee-record trajectory make an
    owned Effect runtime the destination. The S-12 suite is the safety rail
    that makes the swap honest.
 5. **Email stack — converged, not ported** (§SM-3): the monorepo rail already
-   enforces the approval-gated contracts; running a second Resend path would
+   enforces the approval-gated contracts. Running a second Resend path would
    split the suppression list and the ledger. This is the single biggest
    dedup the consolidation buys.
 
 ## 5. Invariant and law notes
 
 - `apps/sarah` lands with its own `INVARIANTS.md` section (or file):
-  openagents.com API authority boundary; token-route hardening floor; AI disclosure always-on;
-  no-improvised-pricing (deal-rules enforcement, S-9) carried forward; email
+  openagents.com API authority boundary. Token-route hardening floor. AI disclosure always-on.
+  no-improvised-pricing (deal-rules enforcement, S-9) carried forward. Email
   only via the approval-gated rail.
 - Behavior contracts stated for Sarah UX (disclosure, one-question-at-a-time,
   honesty grounding) register in the owning surface's behavior-contract
   registry as SM-2 lands — statement verbatim + oracle, per the standing
   mandate.
 - Public-safe discipline: the persona is the public-scoped Artanis pattern
-  and may be public; priced parameters, prospect PII, and provider keys never
+  and may be public. Priced parameters, prospect PII, and provider keys never
   enter git (SM-0 is the gate).
 - This is an engineering migration with a definition of done, so it follows
-  the dated-plan-doc pattern (this doc), not a Product Spec — per
+  the dated-plan-doc pattern (this doc), not a ProductSpec — per
   `specs/CONVENTIONS.md`. Sarah's *product* intent (SR-1..3 receipts) already
-  has its authority docs; if her market contract changes later, that change
+  has its authority docs. If her market contract changes later, that change
   gets a spec.
 
 ## 6. Verification matrix
@@ -255,8 +255,8 @@ lives and what renders her, not what she must prove.
 
 ## 7. Definition of done
 
-No production Sarah behavior builds from `OpenAgentsInc/sarah`; the app is
-Bun/Effect with an Effect Native UI and no React/Next/eve dependencies;
-email flows through the single monorepo rail; the S-12 suite guards it all in
-the normal sweep; openagents.com/sarah serves from monorepo-built images on
-our cloud; the old repo is read-only historical.
+No production Sarah behavior builds from `OpenAgentsInc/sarah`. The app is
+Bun/Effect with an Effect Native UI and no React/Next/eve dependencies.
+email flows through the single monorepo rail. The S-12 suite guards it all in
+the normal sweep. Openagents.com/sarah serves from monorepo-built images on
+our cloud. The old repo is read-only historical.

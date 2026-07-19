@@ -11,7 +11,7 @@ boundary.
 Narration:
 
 > Artanis-as-a-Service lets a Khala user bring their own Codex accounts. The
-> credentials stay on their machine; Khala orchestrates and the local Pylon
+> credentials stay on their machine. Khala orchestrates and the local Pylon
 > executes.
 
 Terminal:
@@ -116,7 +116,7 @@ Callouts:
 - Closeout should be accepted.
 - Settlement is `not_applicable`.
 - Payout claims are not allowed for own-capacity no-spend work.
-- Counter movement alone is not proof; exact rows are the source of truth.
+- Counter movement alone is not proof. Exact rows are the source of truth.
 
 ## Scene 6 - Safety Close
 

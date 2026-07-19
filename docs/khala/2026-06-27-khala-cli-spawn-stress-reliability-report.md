@@ -182,14 +182,14 @@ Treat these as limited or operator-gated:
   refs and preserve structured blockers, but live execution/acceptance depends
   on fresh Pylon availability and a worker loop actually consuming the lease.
 - Multi-child Pylon fanout beyond currently advertised available capacity. The
-  Worker intentionally returns `capacity_shortfall`; the live heartbeat/capacity
+  Worker intentionally returns `capacity_shortfall`. The live heartbeat/capacity
   projection did not admit the advertised three slots in this stress run.
 - Pylon status reads. `pylon status --json` hung in this run and was manually
   interrupted. This is a Pylon dependency caveat for debugging, not a Khala CLI
   local-spawn failure.
 - Stale ambient env tokens. Env/flag token still intentionally wins over the
   stored login token. If the env token is stale, API calls fail fast with
-  `unauthorized`; unsetting the env token lets the stored login token work.
+  `unauthorized`. Unsetting the env token lets the stored login token work.
 
 ## Recommended Next Hardening
 

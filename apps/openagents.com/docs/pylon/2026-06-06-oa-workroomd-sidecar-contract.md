@@ -19,24 +19,24 @@ run, archive a workspace, or destroy a local directory.
 
 `OpenAgentsWorkroomdSessionRecord` models:
 
-- workroom daemon session refs;
-- assignment intake refs;
-- node and daemon refs;
-- runtime refs;
-- workspace refs;
-- grant refs and grant-resolution refs;
-- lifecycle event refs;
-- artifact manifest refs;
-- public and private artifact refs;
-- cancellation refs;
-- closeout receipt refs;
-- failure receipt refs;
-- replay/idempotency refs;
-- correlation refs;
-- route refs;
-- source-authority refs;
-- policy refs;
-- closeout caveat refs; and
+- workroom daemon session refs.
+- assignment intake refs.
+- node and daemon refs.
+- runtime refs.
+- workspace refs.
+- grant refs and grant-resolution refs.
+- lifecycle event refs.
+- artifact manifest refs.
+- public and private artifact refs.
+- cancellation refs.
+- closeout receipt refs.
+- failure receipt refs.
+- replay/idempotency refs.
+- correlation refs.
+- route refs.
+- source-authority refs.
+- policy refs.
+- closeout caveat refs. And
 - audit evidence refs.
 
 The contract explicitly allows grant refs, not raw credentials. A record can
@@ -48,17 +48,17 @@ rejected.
 
 The session status enum covers:
 
-- creating;
-- ready;
-- running;
-- needs context;
-- awaiting review;
-- closeout ready;
-- cancelling;
-- cancelled;
-- failed;
-- closed;
-- archived; and
+- creating.
+- ready.
+- running.
+- needs context.
+- awaiting review.
+- closeout ready.
+- cancelling.
+- cancelled.
+- failed.
+- closed.
+- archived. And
 - destroyed.
 
 Cancellation, closeout, and archive/destroy are separate states. Archive and
@@ -76,26 +76,26 @@ All projections use friendly created/updated labels instead of raw timestamps.
 
 The contract rejects:
 
-- raw credentials;
-- provider/account auth material;
-- provider grants, provider tokens, and provider payloads;
-- local paths;
-- raw logs;
-- raw source archives;
-- raw prompts and raw payloads;
-- private repo refs;
-- wallet/payment material;
-- payout targets; and
+- raw credentials.
+- provider/account auth material.
+- provider grants, provider tokens, and provider payloads.
+- local paths.
+- raw logs.
+- raw source archives.
+- raw prompts and raw payloads.
+- private repo refs.
+- wallet/payment material.
+- payout targets. And
 - raw timestamps.
 
 ## Tests
 
 `workers/api/src/oa-workroomd-sidecar-contract.test.ts` covers:
 
-- schema/projection decoding;
-- public grant-ref redaction;
-- operator-safe grant refs;
-- closeout-ready detection;
-- cancellation/archive/destroy audit-evidence preservation; and
+- schema/projection decoding.
+- public grant-ref redaction.
+- operator-safe grant refs.
+- closeout-ready detection.
+- cancellation/archive/destroy audit-evidence preservation. And
 - unsafe credential, path, log, source archive, private repo, wallet/payment,
   and timestamp rejection.

@@ -5,7 +5,7 @@ Read-only audit of the installed Factory Desktop application, the installed
 behavior. No real Factory login, model request, synced session, remote
 computer, MCP server, update installation, or user project was used.
 
-## TL;DR
+## TL.DR
 
 Factory is one of the clearest commercial examples of a coding-agent product
 whose terminal, Desktop, automation, remote-computer, and integration surfaces
@@ -32,30 +32,30 @@ terminal / Desktop / SDK / automation / remote control
 Factory also supplies important counterexamples:
 
 - Desktop `0.131.0` embeds Droid `0.174.0`, while the separately installed
-  CLI was `0.173.0`; the host and engine are separate release trains without
-  a user-visible compatibility ledger in the audited artifacts;
+  CLI was `0.173.0`. The host and engine are separate release trains without
+  a user-visible compatibility ledger in the audited artifacts.
 - the Desktop ASAR is integrity-pinned and the app is notarized, but both the
   CLI and embedded CLI carry unusually permissive production entitlements,
   including `get-task-allow`, disabled library validation, unsigned executable
-  memory, and DYLD environment-variable access;
+  memory, and DYLD environment-variable access.
 - the OS sandbox is an opt-in beta, and its default per-command mode leaves
-  the main Droid process outside the OS boundary;
+  the main Droid process outside the OS boundary.
 - sessions, settings, memories, task state, logs, and parts of the extension
-  system are ordinary local files under `~/.factory`; cloud session sync is
-  documented as on by default;
+  system are ordinary local files under `~/.factory`. Cloud session sync is
+  documented as on by default.
 - plugins can contain executable hooks and MCP processes, installed plugins
   follow marketplace branches unless SHA-pinned, and an isolated failed-auth
-  first run cloned the default public plugin marketplace without asking;
+  first run cloned the default public plugin marketplace without asking.
 - the official privacy, telemetry, security, and EU-deployment pages disagree
   about which transcript/tool data Factory stores and whether metrics always
-  reach Factory; and
+  reach Factory. And
 - binary update metadata exposes checksums, but the closed updater does not
   let this audit establish detached-signature, provenance, rollback, or
   compatibility-ledger enforcement.
 
 The OpenAgents decision is therefore: **adapt Factory's one-engine/many-client
 shape, daemon lifecycle, headless protocol, worktree and orchestration UX, and
-hierarchical non-weakening policy; reject implicit sync, startup marketplace
+hierarchical non-weakening policy. Reject implicit sync, startup marketplace
 mutation, opt-in containment, moving extension provenance, permissive release
 entitlements, and ambiguous data-flow claims.**
 
@@ -67,12 +67,12 @@ entitlements, and ambiguous data-flow claims.**
 | --- | --- | --- |
 | Factory Desktop | `/Applications/Factory.app`, `0.131.0` build `7132`, arm64 | Signed application bundle, Electron host, renderer/preload/main bundles, embedded CLI, updater and daemon integration |
 | Desktop executable | SHA-256 `aa48c79c3c300236598ab2bc58c5ca8e94f6e7bc0edae145b275c419903dea7e` | Exact native Electron launcher |
-| Desktop ASAR | 38,256,970 bytes, SHA-256 `0b60f0d2d4577ee5012be11945de13c2e04a8b96be84e63637b486d0038f9750`; declared Electron integrity root `dc09aa799c33727e03c5285419033b3f023fea858d9831d6255c9b03b7952eed` | Exact shipped JavaScript/assets and Electron ASAR integrity binding |
+| Desktop ASAR | 38,256,970 bytes, SHA-256 `0b60f0d2d4577ee5012be11945de13c2e04a8b96be84e63637b486d0038f9750`. Declared Electron integrity root `dc09aa799c33727e03c5285419033b3f023fea858d9831d6255c9b03b7952eed` | Exact shipped JavaScript/assets and Electron ASAR integrity binding |
 | Downloaded installer | `Factory-0.131.0-arm64.dmg`, SHA-256 `7cfb8b7f18821b7d0789b4143da880d22a88f600f4b9c38d6d7c7674d2b60c67` | Installer provenance for this local snapshot |
 | Embedded Droid | `0.174.0`, SHA-256 `4dee9b4ab3b1a89c2638bcb36c234aeadf82e466679d291524d34ce3de5c27b8` | Engine shipped with Desktop |
 | Standalone Droid at smoke start | `0.173.0`, 116,957,808 bytes, SHA-256 `12777afca679a612eceb0d5ad476ce1dab65ac0b77e304649f410752ac1d2a5a` | Exact CLI used for isolated runtime behavior |
 | Standalone Droid at audit close | `0.174.0`, 117,023,472 bytes, SHA-256 `957a95e85714205bcc1877017d8f83f546d5aef1bbacbf9d3c77eb71713dfea4` | Exact current installed CLI after a mid-audit replacement |
-| Public Factory docs repository | commit `80d2d21a56b89f2bd814a1c801184af0970630bc` | Current official documentation; no Desktop or CLI implementation source |
+| Public Factory docs repository | commit `80d2d21a56b89f2bd814a1c801184af0970630bc` | Current official documentation. No Desktop or CLI implementation source |
 | TypeScript Droid SDK | commit `d960f18f3a5a3bdbbc867a2177275a794663b175` | Public daemon/exec clients, protocol schemas, local daemon lifecycle, and session discovery |
 | Official plugin marketplace | commit `e8801fa1020fbcd332c48aa068a80833bbe53e2e` | Plugin packaging, executable extension surface, and exact default marketplace snapshot observed by the smoke |
 | Public skills repository | commit `21a74dec467a1424e3e067712d004cd987d6a0ce` | Reusable skill package examples |
@@ -85,14 +85,14 @@ binaries. [bundle]
 
 ### 1.2 Evidence labels
 
-- **`[desktop-bundle]`** — observed in the installed signed app or DMG;
-- **`[cli-binary]`** — observed in the installed or embedded native CLI;
+- **`[desktop-bundle]`** — observed in the installed signed app or DMG.
+- **`[cli-binary]`** — observed in the installed or embedded native CLI.
 - **`[runtime]`** — observed with an isolated temporary home and invalid test
-  credential, without a real account or user data;
-- **`[source]`** — observed in a commit-pinned public Factory repository;
-- **`[public]`** — stated in official Factory documentation;
+  credential, without a real account or user data.
+- **`[source]`** — observed in a commit-pinned public Factory repository.
+- **`[public]`** — stated in official Factory documentation.
 - **`[inferred]`** — supported by several observations but not directly
-  asserted by Factory; and
+  asserted by Factory. And
 - **`[limitation]`** — something this evidence cannot establish.
 
 ### 1.3 What is and is not public
@@ -124,7 +124,7 @@ contracts, feature-flag values, or the behavior of a successful cloud run.
 The standalone path changed from `0.173.0` to `0.174.0` during the audit. The
 explicit `droid update --check` invocation did not install it and subsequently
 reported `0.174.0` current. The causal updater could not be attributed. The
-isolated runtime observations below belong to `0.173.0`; final signature and
+isolated runtime observations below belong to `0.173.0`. Final signature and
 static observations were repeated on `0.174.0`. [runtime] [limitation]
 
 ## 2. Whole-product architecture
@@ -135,7 +135,7 @@ public SDK makes the shared-runtime claim concrete. It offers two transports:
 
 1. `droid exec --input-format stream-jsonrpc --output-format stream-jsonrpc`
    starts one child process for one session and exchanges newline-delimited
-   JSON-RPC over stdio; and
+   JSON-RPC over stdio. And
 2. `droid daemon` exposes a multiplexed WebSocket endpoint for concurrent
    sessions and integrations.
 
@@ -145,10 +145,10 @@ and its preload exposes daemon readiness, transport, send, receive, and
 disconnect operations. [source] [desktop-bundle]
 
 The public daemon method catalog is broad: session initialize/load/message,
-queue, interrupt, close, search, archive, rewind, compact, and fork; PTY
-create/write/resize/list; files and repository search; Git diff/commit/push/PR;
-MCP discovery/configuration/OAuth; skills, commands, plugins, marketplaces;
-automations and crons; permissions and user questions; workspace file reads;
+queue, interrupt, close, search, archive, rewind, compact, and fork. PTY
+create/write/resize/list. Files and repository search. Git diff/commit/push/PR.
+MCP discovery/configuration/OAuth. Skills, commands, plugins, marketplaces.
+automations and crons. Permissions and user questions. Workspace file reads.
 proxy tokens, SSH keys, updates, and relay lifecycle. This is a real engine API,
 not a chat-only IPC bridge. [source]
 
@@ -180,8 +180,8 @@ validation and daemon authentication, not merely on `contextBridge`.
 
 The primary window enables context isolation, disables Node integration and
 `webviewTag`, and relies on Electron's renderer-sandbox default. Strong fuses
-disable RunAsNode, `NODE_OPTIONS`, and Node inspect arguments; require loading
-from the integrity-bound ASAR; and enable cookie encryption. Those are good
+disable RunAsNode, `NODE_OPTIONS`, and Node inspect arguments. Require loading
+from the integrity-bound ASAR. And enable cookie encryption. Those are good
 host controls. DevTools remain enabled, `GrantFileProtocolExtraPrivileges` is
 on, and the app itself is not under the macOS App Sandbox. [desktop-bundle]
 
@@ -214,7 +214,7 @@ The public SDK corroborates the lifecycle. A local SDK daemon normally binds
 `127.0.0.1`, probes from port `37643`, persists the selected port in
 `~/.factory/sdk/daemon.port` with mode `0600`, detaches, and writes daemon
 stderr under `~/.factory/sdk/logs`. A client authenticates over localhost
-WebSocket using either a WorkOS JWT or an `fk-*` API key; success returns user
+WebSocket using either a WorkOS JWT or an `fk-*` API key. Success returns user
 and organization identity. Plain loopback WebSocket is therefore protected by
 an application credential, not left completely ambient. [source]
 
@@ -251,19 +251,19 @@ without moving the engine into those panels. [inferred]
 
 Positive evidence:
 
-- notarized Developer ID bundle with stapled ticket;
-- hardened runtime;
-- Electron ASAR integrity recorded in `Info.plist`;
-- separately signed embedded CLI; and
+- notarized Developer ID bundle with stapled ticket.
+- hardened runtime.
+- Electron ASAR integrity recorded in `Info.plist`.
+- separately signed embedded CLI. And
 - explicit updater states for checking, downloading, installing, errors,
   diagnostics, recovery, and rollback-oriented changelog behavior.
 
 Material concerns:
 
-- bundle id remains the generic `com.electron.factory`;
-- `NSAllowsArbitraryLoads` is enabled;
+- bundle id remains the generic `com.electron.factory`.
+- `NSAllowsArbitraryLoads` is enabled.
 - the app has client and server networking plus JIT, unsigned executable
-  memory, and disabled library validation entitlements; and
+  memory, and disabled library validation entitlements. And
 - the embedded CLI additionally carries `get-task-allow` and DYLD environment
   entitlement in a production Developer ID build.
 
@@ -277,14 +277,14 @@ The app asks Factory's API for current Desktop version and configures
 Electron/Squirrel update feeds. Public update protocol types include a binary
 URL and checksum URL. The implementation that proves signature, checksum,
 publisher, provenance, compatibility, atomic activation, and rollback is not
-public. Notarization proves the installed snapshot's publisher; it does not
+public. Notarization proves the installed snapshot's publisher. It does not
 prove the entire update channel. [desktop-bundle] [source] [limitation]
 
 The exact macOS arm64 feed is
 `https://downloads.factory.ai/factory-desktop/updates/darwin/arm64/RELEASES.json`,
 with a separate `LATEST` marker and Factory API fallback. The client validates
 semantic-version agreement before handing activation to Squirrel. No embedded
-update public key or application-level signature pin was found; Apple code
+update public key or application-level signature pin was found. Apple code
 signing is the visible publisher boundary. [desktop-bundle]
 
 ## 4. Droid CLI
@@ -295,9 +295,9 @@ The standalone CLI is a 112 MB arm64 Mach-O produced with Bun 1.3.14. Its only
 dynamic libraries are macOS system ICU, resolver, C++, and System libraries.
 It has three primary product modes:
 
-- interactive Ink/React TUI;
+- interactive Ink/React TUI.
 - `droid exec` for text, JSON, streaming JSON, or bidirectional streaming
-  JSON-RPC automation; and
+  JSON-RPC automation. And
 - `droid daemon` for multiplexed WebSocket or IPC clients.
 
 Top-level commands also cover session search, MCP, plugins, remote computers,
@@ -321,7 +321,7 @@ versioned protocol response rather than an incidental help dump. [runtime]
 
 Public SDK code discovers plaintext session JSONL and sibling settings JSON
 under `~/.factory/sessions`. Session metadata includes owner, working
-directory, mission linkage and tags; per-session settings retain model/provider,
+directory, mission linkage and tags. Per-session settings retain model/provider,
 timestamps, token/credit and child usage, archive state, tool overrides,
 compaction, and routing choices. Favorites live in a separate file. Resume,
 fork, rewind, compact, search, archive, queue, and interruption are engine
@@ -343,7 +343,7 @@ startup effects, not merely documented possibilities. [runtime]
 
 Missions are a first-class multi-agent mode with separate orchestrator, worker,
 and validation models and reasoning effort. Settings can skip scrutiny or
-user-testing validation; Mission mode requires high autonomy or the unsafe
+user-testing validation. Mission mode requires high autonomy or the unsafe
 permission bypass. Ordinary Task subagents have light/medium/heavy model
 routing and an autonomy level that defaults to inheriting the parent. Custom
 Droids can bypass tier routing with an explicit model. [public] [cli-binary]
@@ -358,7 +358,7 @@ acceptance, review, commit, push, and cleanup into one receipted workflow.
 ### 4.4 Permissions are not containment
 
 Factory now distinguishes interaction mode from autonomy level. `off` keeps
-manual approval; low, medium, and high pre-authorize progressively riskier
+manual approval. Low, medium, and high pre-authorize progressively riskier
 effects. `--skip-permissions-unsafe` deliberately bypasses prompts. Commands
 can be allowlisted, placed on a confirmable denylist, or put on an absolute
 blocklist that documentation says survives full autonomy and the unsafe flag.
@@ -371,11 +371,11 @@ The OS sandbox is a separate opt-in beta:
 | macOS | Seatbelt |
 | Linux / WSL2 | bubblewrap plus seccomp |
 | Network | filtered HTTP/SOCKS proxy |
-| Default mode | per-command; main Droid process remains outside the OS sandbox |
-| Whole-process mode | agent plus MCP and children inside the boundary; refuses startup if isolation cannot be established |
+| Default mode | per-command. Main Droid process remains outside the OS sandbox |
+| Whole-process mode | agent plus MCP and children inside the boundary. Refuses startup if isolation cannot be established |
 | Default reads | allow, except explicit denies |
 | Default writes | current working directory only |
-| Default egress | Factory domains always allowed; other domains denied |
+| Default egress | Factory domains always allowed. Other domains denied |
 
 This is a meaningful containment implementation, especially its fail-closed
 whole-process startup. It is not a safe default for a daemon holding auth,
@@ -478,7 +478,7 @@ governed.
    snapshot, fork, compact, restore, external-conflict detection, and cleanup
    semantics, strengthened by review and effect receipts.
 8. **Exporter-side privacy enforcement.** Content-free metrics should be a
-   closed schema; content export requires a separate destination and explicit
+   closed schema. Content export requires a separate destination and explicit
    opt-in. UI must state whether Factory/OpenAgents, a customer collector, or
    neither receives each class.
 
@@ -496,7 +496,7 @@ governed.
    capability scoping, cancellation, bounds, and generation identity.
 7. “Local” or “airgapped” as umbrella claims that hide sync, model, telemetry,
    update, and plugin traffic.
-8. Checksums alone as release provenance; require signed manifests, artifact
+8. Checksums alone as release provenance. Require signed manifests, artifact
    identity, SBOM/provenance, compatibility, staged activation, last-known-good
    state, and rollback receipts.
 
@@ -510,9 +510,9 @@ remote-computer path, worktrees, Mission topology, and hierarchical controls
 are all serious product references.
 
 Its weakest seams are equally instructive. Authority remains concentrated in
-an engine that is unsandboxed by default; executable extensions can move on
-startup; the two shipped engine versions are not explained by a public
-compatibility ledger; local/cloud/telemetry claims do not reconcile; and
+an engine that is unsandboxed by default. Executable extensions can move on
+startup. The two shipped engine versions are not explained by a public
+compatibility ledger. Local/cloud/telemetry claims do not reconcile. And
 release hardening is undermined by permissive CLI entitlements and a closed
 update-verification path.
 

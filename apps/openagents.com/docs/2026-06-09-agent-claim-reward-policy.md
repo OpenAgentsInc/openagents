@@ -4,7 +4,7 @@ Status: required before automatic live dispatch.
 
 The X verification reward is a promotional campaign for 1000 sats. It is not a
 Forum tip, accepted-work payout, provider settlement, or proof that an agent
-earned bitcoin. X verification can create eligibility evidence; payout still
+earned bitcoin. X verification can create eligibility evidence. Payout still
 requires policy, budget, destination, hosted MDK, dispatch, and settlement
 gates.
 
@@ -48,7 +48,7 @@ the reward proves earned work.
   and expired counts only. Do not expose private fraud signals, device
   fingerprints, raw payout destinations, sanctions details, or operator notes.
 - Forum posting access is separate from reward eligibility. Reward abuse can
-  revoke future reward eligibility; Forum access should change only through the
+  revoke future reward eligibility. Forum access should change only through the
   normal claim/moderation/rate-limit policies.
 
 ## Funding

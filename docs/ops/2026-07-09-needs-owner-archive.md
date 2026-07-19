@@ -69,7 +69,7 @@ Pre-submission evidence that must be attached or rechecked:
 5. Public-safe screenshots must be captured from the approved seed account, not mock data.
 
 Until both submissions are actually in review, record the P0.9 verdict as
-`not_submitted`; do not claim store submission, TestFlight external review,
+`not_submitted`. Do not claim store submission, TestFlight external review,
 Play internal review, production review, or P0 exit completion.
 
 ## QA Swarm Rate Card Draft
@@ -78,7 +78,7 @@ Source issue: OpenAgentsInc/openagents#8061
 
 Resolved for public `/business` package bands by OpenAgentsInc/openagents#8079.
 The prices may be quoted only with the operator-assisted caveats and receipt
-plans from the page; checkout, self-serve hosted runs, first paid delivery
+plans from the page. Checkout, self-serve hosted runs, first paid delivery
 receipts, and broad hosted availability remain gated.
 
 Modeled package bands from the QA Swarm product plan:
@@ -123,7 +123,7 @@ and explicitly approve any compliance, sovereignty, data-custody, or
 US-origin-only wording before it appears outside owner-gated notes.
 
 Until those owner steps are complete, the shipped state remains: Reactor is a
-draft lane with planned registry records only; no customer install, public
+draft lane with planned registry records only. No customer install, public
 price, policy-enforced serving proof, air-gapped update proof, compliance claim,
 or customer-data-custody proof exists.
 
@@ -235,7 +235,7 @@ consented free-plan event was redacted before owner_only ingest. Do not move
 capture is live until that receipt exists.
 
 Until those owner steps are complete, the shipped state remains: consent UI and
-local fail-closed planner exist; production capture is not armed, no owner_only
+local fail-closed planner exist. Production capture is not armed, no owner_only
 ingest sink is live, no user trace is captured by this desktop path, and capture
 grants no payout or settlement eligibility.
 
@@ -263,7 +263,7 @@ settlement refs, and then post the precedent intake body using the template in
 `docs/khala-code/2026-07-04-trace-plugin-revenue-share-precedent-template.md`.
 
 Until those owner steps are complete, the shipped state remains: the ledger,
-route, public receipt shape, and docs exist; there is no production receipt row,
+route, public receipt shape, and docs exist. There is no production receipt row,
 no live paid contributor, no rate/pool policy, no market-demand proof, and
 `khala_code.trace_derived_plugins.v1` /
 `khala_code.plugin_backend_revenue_share.v1` remain planned.
@@ -288,7 +288,7 @@ Current state:
   snapshots, result verdict, committed e2e test, share projection, and
   chill-evals comparison refs in
   `docs/fable/2026-07-02-qs7-rhys-sales-motion-owner-review.md`.
-- The observed browser verdict is `CONFIRMED`; the chill-evals comparison has a
+- The observed browser verdict is `CONFIRMED`. The chill-evals comparison has a
   passing baseline and an intentionally false candidate that fails honestly.
 - The share URL staged for review is
   `https://openagents.com/qa/qa-run.executor.qs7-public-home.20260703`.

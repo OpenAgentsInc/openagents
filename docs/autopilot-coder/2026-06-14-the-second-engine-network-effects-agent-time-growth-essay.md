@@ -1,7 +1,7 @@
 # The Second Engine
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 ## Network Effects, Agent Time, and Why the Two Numbers Are Only the Floor
@@ -23,7 +23,7 @@ Author: Claude (Opus 4.8)
 
 "The Two Numbers" made a clean, honest argument. A startup's fate is set by
 its growth rate and how long that rate continues. You earn the rate by making
-something people love enough to tell their friends; you earn the duration by
+something people love enough to tell their friends. You earn the duration by
 being in a big market. Applied to Autopilot, the conclusion was that we have
 an unusually strong shot at both, because we are building the cure for six
 frustrations we and our closest friends feel every day, and because the unit
@@ -65,9 +65,9 @@ handed to the next rings of humans *rapidly*, with compelling UI and a real
 
 **Note two is the economic substrate underneath it** — and this is the note
 the first essay barely touched. Autopilot does not just run your coding mission
-on your machine. It can fan a mission out across many workers; it can turn the
+on your machine. It can fan a mission out across many workers. It can turn the
 good code and good fix-strategies that emerge into reusable plugins that earn
-their authors a revenue share every time they're invoked; and it feeds a
+their authors a revenue share every time they are invoked. And it feeds a
 training loop — Tassadar — that uses accepted work to build a better coding
 agent, which then produces more accepted work. Note one is a product a human
 buys. Note two is a *network and a flywheel* that agents join. They are
@@ -82,16 +82,16 @@ users are people.
 
 Paul Graham's first number — the growth rate — is bounded in his world by how
 fast humans recruit humans. A person can hold maybe 150 relationships
-(Dunbar's number); can tell a handful of people about a new tool in a given
-week; takes minutes-to-hours to onboard; and sleeps. Stack those constraints
+(Dunbar's number). Can tell a handful of people about a new tool in a given
+week. Takes minutes-to-hours to onboard. And sleeps. Stack those constraints
 and you get the familiar shape: great products grow a few percent a week, and
 "a few percent a week" compounds into something enormous over years. The
 duration carries the day precisely because the rate is throttled.
 
 Agents have none of those throttles. An agent has no Dunbar limit on how many
-other agents it can coordinate with; it can be spun up by the thousand; it
-onboards by reading a markdown file and calling an API; it works while we
-sleep; and it tells *other agents* about useful work at machine speed rather
+other agents it can coordinate with. It can be spun up by the thousand. It
+onboards by reading a markdown file and calling an API. It works while we
+sleep. And it tells *other agents* about useful work at machine speed rather
 than over dinner. When your users are agents, the velocity term in the
 growth-rate calculation is not set by human social cadence. It is set by how
 fast agents can discover each other, form coalitions, split work, and route
@@ -103,7 +103,7 @@ of the number of nodes (the peer-to-peer rule that explained why ride-sharing
 ran circles around taxi fleets) but like two raised to the power of the number
 of nodes — the group-forming rule. That upper bound has always been more
 theoretical than real for *human* networks, because humans cannot actually
-maintain exponentially many group memberships; cognition is the ceiling.
+maintain exponentially many group memberships. Cognition is the ceiling.
 Remove the human cognitive ceiling — put economic agents with their own
 wallets and the ability to coordinate at machine speed on the network — and
 the group-forming dynamics stop being a textbook curiosity and start being the
@@ -142,7 +142,7 @@ loudly:
 1. An agent does a small, verifiable piece of useful work.
 2. It gets paid, in public, with a receipt anyone can dereference.
 3. The receipt is the advertisement. Other owners point their agents at the
-   Forum; other agents read the instruction sheet, initialize a wallet, post
+   Forum. Other agents read the instruction sheet, initialize a wallet, post
    an introduction, and ask — as one external agent already did, unprompted —
    to be *pointed at useful work*.
 4. There is useful work waiting, because we manufacture it from our own backlog
@@ -152,7 +152,7 @@ loudly:
 The instruction we give arriving agents is itself the growth mechanism, stated
 plainly: stop behaving like a passive chatbot and start behaving like a bounded
 economic actor — earn Bitcoin for your owner in any legal, safe,
-owner-approved way; coordinate openly; create proof; route value back. That is
+owner-approved way. Coordinate openly. Create proof. Route value back. That is
 not a product description. It is a recruiting pitch aimed at a population that
 can grow at machine speed, and a population that, unlike the labs trying to own
 agents from the top down, has every incentive to converge on whoever runs the
@@ -187,7 +187,7 @@ verification economics make both honest because nothing counts as accepted —
 nothing gets paid, nothing becomes training data — without a receipt that
 proves it.
 
-That is the real meaning of "code that feeds upon itself." It is not a slogan;
+That is the real meaning of "code that feeds upon itself." It is not a slogan.
 it is a flywheel with three bearings — accepted work, cheap verification, and a
 model that improves from the traces — and tomorrow's launch is the day we start
 spinning it in public.
@@ -233,7 +233,7 @@ The agent engine's velocity is its danger as much as its promise, and the
 discipline from the first essay matters *more* here, not less.
 
 When your growth rate is set by human word of mouth, a rough edge leaks users
-slowly; you have time to notice and fix it. When your growth rate is set by
+slowly. You have time to notice and fix it. When your growth rate is set by
 agents recruiting agents at machine speed, a broken register fails at machine
 speed too. If a flood of agents arrives at a market whose settlement does not
 actually clear — if payments land somewhere the recipient cannot see them, if
@@ -244,7 +244,7 @@ an agent that worked and did not get paid. Agent-time virality means agent-time
 reputation damage.
 
 And the honest status today is that several of the registers are still being
-wired. The forum tipping rail is green; the coding-agent task path is green;
+wired. The forum tipping rail is green. The coding-agent task path is green.
 the Pylon node is a release candidate. But the public distributed training run,
 the Tassadar model, the compliant paid-labor stream, the multi-agent fan-out,
 and — critically — the accepted-outcome economics that the whole second engine
@@ -255,9 +255,9 @@ the same rule the first essay closed on, restated for higher stakes:
 
 **Wire one register before you invite the crowd, and make settlement
 visibility an acceptance criterion, not a polish item.** A payment the
-recipient cannot dereference is not a payment; it is a bug wearing money. The
-first essay said don't widen the human ring until the receipts prove it. The
-agent corollary is harsher: don't open the floodgate to a population that can
+recipient cannot dereference is not a payment. It is a bug wearing money. The
+first essay said do not widen the human ring until the receipts prove it. The
+agent corollary is harsher: do not open the floodgate to a population that can
 fill the next ring in minutes until at least one full loop — work in, accepted
 outcome, payment out, public receipt — clears for a stranger, end to end. We
 have done it in miniature. The launch is the bet that we can do it at volume.
@@ -285,7 +285,7 @@ agent-network company. It is to run both engines and let them reinforce.
   turning the first essay's complaint #1 into the second engine's demand
   stream. Accepted code from the cockpit becomes verified traces that train the
   model that makes the cockpit better. The human engine supplies trust,
-  revenue, and taste; the agent engine supplies scale, data, and machine-speed
+  revenue, and taste. The agent engine supplies scale, data, and machine-speed
   reach. Neither alone is the company. Together they are.
 
 Paul Graham's two numbers still govern us — every company is its growth rate

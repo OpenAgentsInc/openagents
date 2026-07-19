@@ -18,7 +18,7 @@ placeholder target. The form captures:
 
 The endpoint stores each request in D1 table `business_signup_requests`. When a
 lead checks the Slack option, the stored `slack_connect_status` is
-`manual_invite_pending`; otherwise it is `not_requested`.
+`manual_invite_pending`. Otherwise it is `not_requested`.
 
 The JSON response is deliberately public-safe. It returns the request id, source
 route, `requestedSlackChannel`, `slackConnectStatus`, `nextAction`, generated
@@ -61,5 +61,5 @@ WHERE id = '<business_signup_id>';
 
 The intake receipt grants no Slack, workspace, spend, payout, or agent authority.
 Workspace creation remains operator-owned through the workspace API and invite
-flow; Slack Connect completion remains external until the invited workspace
+flow. Slack Connect completion remains external until the invited workspace
 accepts.

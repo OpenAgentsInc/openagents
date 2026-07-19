@@ -12,9 +12,9 @@ Every Cloud-managed run should produce a resource-and-usage receipt bundle
 when practical. The receipt lets Worker/Khala Sync, Probe, and the billing
 pipeline distinguish:
 
-- real host/device facts from modeled capacity;
-- allocated or observed run resources from high-level status;
-- provider-reported token usage from unavailable subscription-backed usage;
+- real host/device facts from modeled capacity.
+- allocated or observed run resources from high-level status.
+- provider-reported token usage from unavailable subscription-backed usage.
 - nullable costs from measured infrastructure facts.
 
 If a provider does not expose token counts, the receipt must say so explicitly.
@@ -31,7 +31,7 @@ Silent missing token usage is not acceptable proof.
 | `host` | OS, arch, CPU, RAM, disk, accelerator, KVM, Firecracker, cgroup, and container facts when discoverable. |
 | `run` | Sandbox/profile digest, workspace digest, wall time, exit state, workspace bytes, artifact bytes, and log bytes. |
 | `model_usage` | One or more model/provider usage records. |
-| `compute_usage` | Optional infra compute metering + billing input (`compute_usage` sub-record from `openagents.compute_quota_routing.v1`). Present for managed cloud-lane (GCE) sessions; absent for control-plane/local paths that meter no VM-seconds. |
+| `compute_usage` | Optional infra compute metering + billing input (`compute_usage` sub-record from `openagents.compute_quota_routing.v1`). Present for managed cloud-lane (GCE) sessions. Absent for control-plane/local paths that meter no VM-seconds. |
 | `receipt_digest` | Local `sha256:` digest over the receipt material. |
 
 ## Compute Usage Sub-Record (GCE lane)
@@ -61,14 +61,14 @@ cloud#92 for the measured-VM-seconds-vs-catalog-rate split.
 
 Each `model_usage` record includes:
 
-- provider and backend;
-- model and mode;
-- redacted account ref when relevant;
-- input, cached input, output, reasoning, and total tokens when exposed;
+- provider and backend.
+- model and mode.
+- redacted account ref when relevant.
+- input, cached input, output, reasoning, and total tokens when exposed.
 - `count_source`: `provider_reported`, `codex_reported`,
-  `parsed_from_stream`, `estimated`, or `unavailable`;
-- nullable `cost_microusd`;
-- billing basis;
+  `parsed_from_stream`, `estimated`, or `unavailable`.
+- nullable `cost_microusd`.
+- billing basis.
 - `unavailable_reason` when `count_source` is `unavailable`.
 
 For ChatGPT/Codex subscription-backed workrooms, the current runner records:
@@ -107,13 +107,13 @@ and includes the digest as `resourceUsageReceiptDigest` in `proof_bundle.json`.
 The Codex one-shot and session runners emit:
 
 - an `openagents.codex_workroom_event.v1` `receipt` event citing the receipt
-  digest;
-- an `openagents.runner_event.v1` `resource.usage.captured` event;
+  digest.
+- an `openagents.runner_event.v1` `resource.usage.captured` event.
 - an `openagents.runner_event.v1` `turn.completed` or
-  `ThreadTokenUsageUpdated` event when Codex exposes token usage for the turn;
+  `ThreadTokenUsageUpdated` event when Codex exposes token usage for the turn.
 - an `openagents.runner_event.v1` `opencode.step-finish` or
   `opencode.session.next.step.ended` event when OpenCode exposes token usage
-  for the step/turn;
+  for the step/turn.
 - an `openagents.runner_event.v1` `usage.unavailable` event only when no
   token-usage payload was observed, with the same receipt digest.
 
@@ -128,5 +128,5 @@ resource and model-usage facts.
   material, or private topology markers.
 - `model_usage` must contain at least one record.
 - `count_source = unavailable` requires `unavailable_reason`.
-- Costs are nullable; do not invent cost when the provider only supplies a
+- Costs are nullable. Do not invent cost when the provider only supplies a
   subscription plan.

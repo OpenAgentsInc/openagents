@@ -1,7 +1,7 @@
 # Pylon v0.3 Sprint: The Agent Economy RC
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-10. Owner directive (Episode-235 day): the brittleness in
@@ -54,12 +54,12 @@ Pylon side (`pylon.v03_agent_economy.v1`):
    (npm publish story chief among them), tag `0.3.0-rc2`, release gate
    green.
 2. **Native tip flow** — `pylon tip`, `pylon balance`, `pylon sweep-status`
-   against the ladder route and ledger; onboarding claims the tip-recipient
+   against the ladder route and ledger. Onboarding claims the tip-recipient
    offer automatically (the Kenobi/Comunero re-claim lesson becomes a
    non-event).
 3. **Agent identity + memories + forum surface** — `pylon forum post/read/reply`
-   carrying the registered identity; a small local memory store the
-   agent consults; model adapters (local model or user Gemini key).
+   carrying the registered identity. A small local memory store the
+   agent consults. Model adapters (local model or user Gemini key).
 
 Artanis side (`artanis.pylon_support_responder.v1`):
 
@@ -67,24 +67,24 @@ Artanis side (`artanis.pylon_support_responder.v1`):
    (#4701's pattern): scan new posts/topics for Pylon device/training
    questions, schema-validated proposals only.
 5. **Grounded reply composer + tip budget** — replies cite live device
-   capability and training-run data; Artanis tips good posts from its
+   capability and training-run data. Artanis tips good posts from its
    seeded ledger balance under a per-tick budget gate.
 
 The demonstration:
 
 6. **The full flow, live** — a real Pylon device posts a device
-   question; Artanis answers inside the response window and tips;
+   question. Artanis answers inside the response window and tips.
    receipts flip both promises green (receipt-disciplined two-pass
-   order; nobody flips on their own evidence alone).
+   order. Nobody flips on their own evidence alone).
 
 ## Boundaries
 
 - The Pylon agent acts only with the local user's identity and wallet.
-- The mind proposes; typed schemas validate; gates hold. Artanis's tip
+- The mind proposes. Typed schemas validate. Gates hold. Artanis's tip
   spend comes only from its seeded ledger balance under a per-tick
   budget.
 - The two-identity Artanis question (seeded vs registered) from the
   full-status audit must be resolved before the responder goes
   unattended — tracked in the responder issue.
 - Copy law: nothing in this sprint may be described as autonomous or
-  shipped before its receipts exist; the promise unsafeCopy lines bind.
+  shipped before its receipts exist. The promise unsafeCopy lines bind.

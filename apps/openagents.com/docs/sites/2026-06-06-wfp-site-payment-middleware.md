@@ -10,14 +10,14 @@ tests in `workers/api/src/site-payment-middleware.test.ts`.
 
 Generated WFP Site routes can describe a protected paid action using:
 
-- Site and Site version refs;
-- catalog ref;
-- action ID;
-- method and local route path;
-- entitlement scope;
-- price;
-- sandbox state;
-- settlement mode;
+- Site and Site version refs.
+- catalog ref.
+- action ID.
+- method and local route path.
+- entitlement scope.
+- price.
+- sandbox state.
+- settlement mode.
 - public-safe metadata refs.
 
 The middleware evaluates that protected route against a Site payment catalog
@@ -28,11 +28,11 @@ checkout projection, and parsed payment headers.
 
 The middleware returns one of four source-safe projections:
 
-- `allow`: a matching active entitlement exists;
+- `allow`: a matching active entitlement exists.
 - `payment_required`: no entitlement or payment credential is present, so the
-  route returns a 402-style projection with clean L402 headers;
+  route returns a 402-style projection with clean L402 headers.
 - `entitlement_required`: a payment credential/proof is present, but OpenAgents product surface has
-  not projected an active entitlement yet;
+  not projected an active entitlement yet.
 - `blocked`: the route metadata does not match the catalog or the route is
   unsafe.
 

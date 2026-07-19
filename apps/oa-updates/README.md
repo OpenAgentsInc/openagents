@@ -6,7 +6,7 @@ rotation, and recovery are documented in
 
 `oa-updates` is the owned Expo Updates-compatible OTA and signed-release
 service behind `updates.openagents.com`. OpenAgents Mobile consumes its manifest
-endpoint and publish script; OpenAgents Desktop and Pylon consume its separate
+endpoint and publish script. OpenAgents Desktop and Pylon consume its separate
 signed release feeds. It is an active release boundary, not archival code.
 
 ## Verification
@@ -26,5 +26,5 @@ Expo Updates client could receive an invalid manifest. The
 project currently has no diagnostic baseline: all surfaced errors are fixed.
 
 OpenAgents Mobile owns its client-side update polling and identity tests under
-`apps/openagents-mobile`; this service owns manifest resolution, signing,
+`apps/openagents-mobile`. This service owns manifest resolution, signing,
 assets, release seeding, and protocol responses.

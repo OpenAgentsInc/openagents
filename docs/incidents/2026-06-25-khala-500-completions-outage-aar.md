@@ -1,7 +1,7 @@
 # After-Action Report — Khala gateway-wide 500 on `/api/v1/chat/completions`
 
 - **Date:** 2026-06-25
-- **Severity:** SEV-1 (gateway-wide; the public Khala inference product was down)
+- **Severity:** SEV-1 (gateway-wide, the public Khala inference product was down)
 - **Duration of customer impact:** ~10+ minutes (manual detection latency)
 - **Status:** Resolved + prevention layer shipped (items 1–3 below)
 
@@ -33,7 +33,7 @@ mid-incident).
   `wrangler d1 migrations apply`**, so migration `0234` was never applied to
   remote D1. The worker is now running against a schema that lacks
   `openauth_user_id`.
-- **T+0** — Every credential lookup hits the missing column and throws; the chat
+- **T+0** — Every credential lookup hits the missing column and throws. The chat
   route's generic catch returns `500 internal_server_error`. `/api/v1/models`
   (no credential lookup on that path) stays `200`. The public tokens-served
   counter stops advancing.
@@ -70,7 +70,7 @@ net.
   keys for ~10+ minutes.
 - Agent registration and all bearer-auth credential lookups 500'd.
 - The public tokens-served counter (the North-Star liveness signal) froze.
-- No data loss; no incorrect billing (the path failed closed before metering).
+- No data loss. No incorrect billing (the path failed closed before metering).
 
 ## Detection gap
 
@@ -113,8 +113,8 @@ Then verified registration `201`, completions `200`, and a moving counter.
   migrations are applied *before* the worker is uploaded, and the deploy fails
   loud if any remain pending.
 - **`docs/DEPLOYMENT.md`** + **`apps/openagents.com/AGENTS.md`** updated: the ONLY
-  sanctioned Worker deploy is `deploy:safe`; **raw `bunx wrangler deploy` is
-  forbidden** because it skips migrations; migrations are always applied before
+  sanctioned Worker deploy is `deploy:safe`. **Raw `bunx wrangler deploy` is
+  forbidden** because it skips migrations. Migrations are always applied before
   the worker is uploaded.
 
 ### 2. 500 RED-ALERT synthetic canary (fast detection)

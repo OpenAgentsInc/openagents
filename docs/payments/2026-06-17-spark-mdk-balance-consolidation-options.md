@@ -38,9 +38,9 @@ is excluded from the public agent-balance projection.
 
 Public and operator surfaces preserve these caveats:
 
-- receive readiness is not send readiness;
-- Spark receive is not accepted-work settlement authority;
-- claimable Spark HTLCs are not credited balance until `backup-claim` succeeds;
+- receive readiness is not send readiness.
+- Spark receive is not accepted-work settlement authority.
+- claimable Spark HTLCs are not credited balance until `backup-claim` succeeds.
 - MDK is excluded from the agent primary balance.
 
 The summary carries `caveat.wallet.mdk_excluded_from_agent_primary_balance` and,
@@ -105,7 +105,7 @@ when needed, `caveat.wallet.spark_claimable_htlcs_require_backup_claim`.
    reports can pull owed vs settled-sent vs confirmed-received totals by
    recipient and flag over-send when settled sent exceeds keyed owed. Recipient
    confirmation is a separate operator action backed by public-safe receipt or
-   balance evidence; it does not expose raw destination, invoice, preimage,
+   balance evidence. It does not expose raw destination, invoice, preimage,
    payment hash, or wallet material.
 
 8. MDK scoped out of the agent-balance path.
@@ -116,7 +116,7 @@ when needed, `caveat.wallet.spark_claimable_htlcs_require_backup_claim`.
    local MDK BOLT 12 offer. Forum readiness, tip ladder, sweeps, Artanis spend,
    and x-claim dispatch now accept a registered Spark Lightning Address as the
    preferred public recipient destination. Legacy BOLT 12 remains readable only
-   for rows that do not have a Spark Lightning Address; it is not a fallback once
+   for rows that do not have a Spark Lightning Address. It is not a fallback once
    a Spark destination exists. MDK remains intentionally alive for customer
    checkouts and operator/treasury rails.
 

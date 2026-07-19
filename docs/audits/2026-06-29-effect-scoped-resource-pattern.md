@@ -1,7 +1,7 @@
 # Effect scoped resource and retry pattern
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Issue: #7013
@@ -17,12 +17,12 @@ Use `Scope` plus `Effect.addFinalizer`, `Effect.acquireRelease`, or
 `Effect.acquireUseRelease` for resources that must be cleaned up on success,
 failure, timeout, or fiber interruption:
 
-- subprocess runners: kill the process and drain bounded output in the finalizer;
+- subprocess runners: kill the process and drain bounded output in the finalizer.
 - WebSocket clients: remove listeners, close the socket, and reject pending
-  commands in the finalizer;
+  commands in the finalizer.
 - local leases and file locks: release the lease or remove the lock directory in
-  the finalizer;
-- temporary worktrees: remove assignment-scoped directories in the finalizer;
+  the finalizer.
+- temporary worktrees: remove assignment-scoped directories in the finalizer.
 - long-running assignment runners: close local process markers and submit
   public-safe stale/interrupted closeout refs in the finalizer.
 
@@ -38,12 +38,12 @@ scope from `Effect.ensuring` when acquisition is interrupted.
 Keep retry policy named and reusable. New code should import a domain schedule
 instead of embedding one-off sleep loops:
 
-- external HTTP/provider calls: short exponential retry, bounded attempts;
-- Durable Object calls: tighter retry for transient coordination errors;
-- wallet-adjacent calls: conservative retry only after balance/state proof;
+- external HTTP/provider calls: short exponential retry, bounded attempts.
+- Durable Object calls: tighter retry for transient coordination errors.
+- wallet-adjacent calls: conservative retry only after balance/state proof.
 - Git/GitHub operations: retry transient lock/network failures, never semantic
-  failures such as missing commits;
-- D1 transient failures: bounded retry around known transient errors only;
+  failures such as missing commits.
+- D1 transient failures: bounded retry around known transient errors only.
 - public projection sync: wider exponential retry because lag is acceptable.
 
 `packages/world-client/src/index.ts` now exposes `WorldClientRetrySchedules` for

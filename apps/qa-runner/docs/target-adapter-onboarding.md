@@ -1,7 +1,7 @@
 # Third-Party Target Adapter Onboarding
 
 Status: adapter contract for QA Swarm third-party onboarding (#8069). This is
-not product-promise copy; it is the integration contract a customer app must
+not product-promise copy. It is the integration contract a customer app must
 satisfy before a swarm run can honestly claim coverage.
 
 ## Contract
@@ -77,7 +77,7 @@ start.
 Before a third-party app is accepted for a QA Swarm run:
 
 - The adapter decodes with `decodeTargetAdapterContract`.
-- The base URL is the exact app surface to test; no private local paths appear
+- The base URL is the exact app surface to test. No private local paths appear
   in the adapter or artifacts.
 - Auth uses a test identity, not a human operator account.
 - Fresh identity is explicit: new browser context plus reset/seed strategy for

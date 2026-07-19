@@ -20,15 +20,15 @@ The implementation lives in
 The Worker contract includes:
 
 - route selection for `create_checkout`, `get_checkout`, and
-  `confirm_checkout` from MDK-style `handler`, `route`, or `target` fields;
-- amount checkout and product checkout input schemas;
-- customer field normalization to camelCase;
+  `confirm_checkout` from MDK-style `handler`, `route`, or `target` fields.
+- amount checkout and product checkout input schemas.
+- customer field normalization to camelCase.
 - metadata key count, key length, UTF/control-character, size, and
-  secret-material validation;
-- sandbox flags;
-- safe Site-local checkout path sanitation;
-- signed checkout URL creation and verification with Web Crypto HMAC;
-- redacted prepared-checkout projections;
+  secret-material validation.
+- sandbox flags.
+- safe Site-local checkout path sanitation.
+- signed checkout URL creation and verification with Web Crypto HMAC.
+- redacted prepared-checkout projections.
 - a hosted checkout plan schema bridging prepared checkout state to the hosted
   MDK client contract from #295 and optional L402 payloads from #292.
 
@@ -53,12 +53,12 @@ state does not leak into public URLs.
 
 Prepared checkout projections include only:
 
-- mode;
-- amount or product refs;
-- sanitized checkout path;
-- metadata keys;
-- customer field keys;
-- required customer field names;
+- mode.
+- amount or product refs.
+- sanitized checkout path.
+- metadata keys.
+- customer field keys.
+- required customer field names.
 - sandbox flag.
 
 Customer values and metadata values are redacted in every projection. MDK
@@ -69,8 +69,8 @@ part of the projection contract.
 
 The hosted checkout plan schema connects this contract to:
 
-- #295 hosted MDK client requests;
-- #292 L402 credential payloads;
+- #295 hosted MDK client requests.
+- #292 L402 credential payloads.
 - #291 buyer-side payment challenge and amount records through the hosted
   client request shape.
 

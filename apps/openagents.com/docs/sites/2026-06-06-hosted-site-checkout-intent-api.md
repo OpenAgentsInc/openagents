@@ -15,13 +15,13 @@ key returns deterministic safe refs.
 
 The request identifies a generated Site payment catalog item:
 
-- `siteVersionId`;
-- `itemKind`, either `product` or `paid_action`;
-- `productId` for products or `actionId` for paid actions;
-- optional `catalogRef`;
-- optional `expectedPrice` as a stale-price guard;
+- `siteVersionId`.
+- `itemKind`, either `product` or `paid_action`.
+- `productId` for products or `actionId` for paid actions.
+- optional `catalogRef`.
+- optional `expectedPrice` as a stale-price guard.
 - `customerDataRefs`, which are public-safe requirement refs, not customer
-  private values;
+  private values.
 - clean success and cancel return paths.
 
 The route validates active catalog membership, price match, settlement metadata,
@@ -43,11 +43,11 @@ payouts, or exposing merchant credentials.
 
 The public response includes:
 
-- checkout intent ref;
-- hosted checkout URL ref;
-- redacted hosted checkout projection;
-- redacted buyer payment challenge projection;
-- deterministic idempotency marker;
+- checkout intent ref.
+- hosted checkout URL ref.
+- redacted hosted checkout projection.
+- redacted buyer payment challenge projection.
+- deterministic idempotency marker.
 - redaction claims.
 
 It must not expose raw invoices, payment preimages, wallet state, MDK

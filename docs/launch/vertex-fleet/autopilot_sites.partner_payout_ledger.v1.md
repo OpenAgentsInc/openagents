@@ -21,11 +21,11 @@ any) a paid event is attributed to, and whether that attribution is allowed.
   returning one of `attributed` / `no_active_agreement` / `self_attribution`.
   Product rules encoded (conservative, **owner sign-off still pending**):
   1. **Explicit-agreement-only** — no partner is credited without an active,
-     customer-covering partner agreement; there is no last-touch inference and
+     customer-covering partner agreement. There is no last-touch inference and
      no inferred fallback (the distinction from the referral feed).
   2. **Referral exclusion** — the `referral` role is owned by the referral rail
      and refused here, so the same revenue is never double-paid across rails.
-  3. **Role precedence** — design_partner > affiliate; exactly one partner is
+  3. **Role precedence** — design_partner > affiliate. Exactly one partner is
      credited, earliest-effective agreement as a deterministic tie-break.
   4. **Active window** — `effectiveFrom <= event < effectiveUntil`.
   5. **Self-payout exclusion** — a partner cannot earn on their own purchase.
@@ -78,7 +78,7 @@ partner-rail analogue of `recordReferralPayoutForPaidEvent`:
 The previously-deferred "recording the attribution basis on the ledger row" step
 is now built. The feed already surfaced the winning `agreementRef`/`policyRef`,
 but the ledger row did not record them — so a credited partner payout could not
-be audited back to the explicit agreement that authorised it.
+be audited back to the explicit agreement that authorized it.
 
 - `partner-payout-ledger.ts` — `CreatePartnerPayoutEligibilityInput` now accepts
   optional public-safe `evidenceRefs` and `policyRefs`. They are validated with
@@ -89,11 +89,11 @@ be audited back to the explicit agreement that authorised it.
 - `partner-attribution-eligibility.ts` — the bridge now passes the winning
   `agreementRef` as `evidenceRefs` and the attribution `policyRef` as
   `policyRefs`, so every credited partner payout row names the explicit
-  agreement + policy that authorised it (the audit distinction from the
+  agreement + policy that authorized it (the audit distinction from the
   inferred-click referral rail is now persisted, not just computed).
 - Tests: `partner-payout-ledger.test.ts` (+2: dedupe/required-ref merge, unsafe
   evidence-ref rejection), `partner-attribution-eligibility.test.ts` (+1: basis
-  persisted; exact-match input updated), `partner-payout-feed.test.ts` (recorded
+  persisted. Exact-match input updated), `partner-payout-feed.test.ts` (recorded
   input carries the basis). 27 tests pass across the three files.
 
 ### Follow-up (this run): the agreement WRITER + write-boundary guard is now built
@@ -108,13 +108,13 @@ could land in storage and later be read back and credited. Now:
   that `decidePartnerAttribution` applies at read time: role attributability
   (the `referral` exclusion), self-agreement exclusion
   (`partnerUserId !== customerUserId`), and effective-window consistency
-  (parseable start; end open-ended or strictly after start). Returns
-  `seedable`/`rejected`; throws nothing (policy stays pure).
+  (parseable start, end open-ended or strictly after start). Returns
+  `seedable`/`rejected`. Throws nothing (policy stays pure).
 - `partner-payout-feed.ts` — `recordPartnerAgreement(db, input)`, the sanctioned
   writer: it rejects non-public-safe refs/ids, runs `assessPartnerAgreementSeed`,
   and only then `INSERT OR IGNORE`s into `partner_agreements` (idempotent on
   `agreementRef`, read-back verified). A policy-violating agreement is now
-  unstorable, not just unread. New `PartnerAgreementValidationError`; DB faults
+  unstorable, not just unread. New `PartnerAgreementValidationError`. DB faults
   wrap into the existing `PartnerPayoutLedgerStorageError`.
 - Tests: `partner-attribution-policy.test.ts` (+5: seedable, referral-rejected,
   self-rejected, inverted-window, bad-iso), `partner-payout-feed.test.ts` (+5:
@@ -134,23 +134,23 @@ call-site gap on the code side of the blocker.
 - `apps/openagents.com/workers/api/src/partner-agreement-routes.ts` — an
   admin-gated route module modeled on `partner-payout-ledger-routes.ts`:
   - `POST /api/operator/partners/agreements` decodes a seed and calls
-    `recordPartnerAgreement` (idempotent on `agreementRef`; a policy-violating
+    `recordPartnerAgreement` (idempotent on `agreementRef`, a policy-violating
     seed — referral role, self-agreement, inverted window — is a 422 carrying the
-    writer's reason; the writer remains the single source of truth for the
+    writer's reason. The writer remains the single source of truth for the
     attribution invariants). `role` accepts the full `PartnerPayoutRole` set so a
     `referral` seed yields the informative 422, not a generic schema error.
   - `GET /api/operator/partners/agreements?customerUserId=<id>` calls
     `readActivePartnerAgreementsForCustomer` for read-back verification.
   - Returns an operator projection that omits `customerUserId` (mirrors the
     `PartnerAgreement` DTO). This is NOT the public count-only projection surface.
-  - Like the ledger routes, it does NOT touch `index.ts` / `worker-routes.ts`;
+  - Like the ledger routes, it does NOT touch `index.ts` / `worker-routes.ts`.
     coordinator wiring notes are in the module header.
 - `apps/openagents.com/workers/api/src/partner-agreement-routes.test.ts` — 12
   tests (seed+project, idempotent replay, referral/self/inverted-window 422,
   malformed-body 400, create/list 401, list-by-customer, missing-query 400,
   route passthrough, 405 on unsupported method).
 
-The agreement WRITER is now reachable end-to-end; `recordPartnerPayoutForPaidEvent`
+The agreement WRITER is now reachable end-to-end. `recordPartnerPayoutForPaidEvent`
 (the paid-event feed) still awaits a production caller (see below).
 
 ### Follow-up (this run): the agreement routes are now SERVED by the worker
@@ -159,7 +159,7 @@ The previous run shipped `partner-agreement-routes.ts` with a
 `makePartnerAgreementRoutes` factory but, like the ledger routes at the time,
 left it unchained — so the operator endpoints existed in source but `index.ts`
 never mounted them and no real request could reach the sanctioned agreement
-WRITER. (The ledger routes have since been wired at `index.ts`; the agreement
+WRITER. (The ledger routes have since been wired at `index.ts`, the agreement
 routes were the last partner-rail module still dark.) Without a served writer,
 the only way to seed the EXPLICIT `partner_agreements` rows the attribution
 policy depends on remained a raw SQL insert, and the no-fallback rule meant no
@@ -175,7 +175,7 @@ partner could ever be attributed. This run closes that call-site gap:
      onto the `routeOmniRequest` `??` chain, immediately after the partner payout
      ledger route. The route returns `Effect | undefined`, so a non-matching path
      falls through to the rest of the chain unchanged.
-- No new behaviour, schema, or money movement is introduced — this is pure
+- No new behavior, schema, or money movement is introduced — this is pure
   call-site integration. `GET/POST /api/operator/partners/agreements` are now
   admin-gated and live. Migration `0214_partner_agreements.sql` must be applied
   before serving (already present in `migrations/`).
@@ -188,7 +188,7 @@ The last load-bearing code gap on this blocker was that `recordPartnerPayoutForP
 injected deps, but no real payment path invoked it, so an explicit active
 agreement could never actually mint a partner payout. The referral feed was
 already wired into the real Stripe checkout-paid path
-(`stripe-billing.ts:recordReferralPayoutForPaidEvent`); the partner feed was not.
+(`stripe-billing.ts:recordReferralPayoutForPaidEvent`). The partner feed was not.
 This run wires it alongside, mirroring the referral pattern exactly:
 
 - `apps/openagents.com/workers/api/src/stripe-billing.ts` —
@@ -203,7 +203,7 @@ This run wires it alongside, mirroring the referral pattern exactly:
     non-authoritative for billing (a feed failure never blocks fulfillment) and
     idempotent per checkout session. Because the qualifying amount is the USD
     purchase value, any eligibility is a USD-asset row whose role percentage
-    never mints a withdrawable-Bitcoin liability; whether ANY partner is credited
+    never mints a withdrawable-Bitcoin liability. Whether ANY partner is credited
     is still decided downstream by the no-fallback attribution policy (an EXPLICIT
     active agreement must cover the buyer), so the common no-agreement case
     records nothing.
@@ -228,7 +228,7 @@ row -> operators walk it through approve/dispatch/settle.
   `index.ts`) AND `recordPartnerPayoutForPaidEvent` (now invoked from the real
   Stripe checkout-paid path in `stripe-billing.ts`, see the follow-up above) have
   production callers. The remaining wiring nuance: only the Stripe credit
-  CHECKOUT path is fed; the auto-top-up credit path is not (matching the referral
+  CHECKOUT path is fed. The auto-top-up credit path is not (matching the referral
   feed, which is likewise checkout-only). Extending coverage to auto-top-up — and
   to any non-Stripe Bitcoin revenue event — is a follow-up, not a blocker for the
   first real partner payout.

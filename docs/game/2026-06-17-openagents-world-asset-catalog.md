@@ -1,7 +1,7 @@
 # OpenAgents World Asset Catalog And Provenance Record
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -80,10 +80,10 @@ These are owned design targets. They are not yet model files.
 
 | Asset id | Purpose | Required anchors | Label offset | Material policy | Eligibility |
 | --- | --- | --- | --- | --- | --- |
-| `oa_avatar_viewer_operator_v1` | Local human/operator body in first/third-person world mode. | `anchor.root`, `anchor.head`, `anchor.nameplate`, `anchor.hand.left`, `anchor.hand.right`, `anchor.back`, `anchor.feet`. | `anchor.nameplate` plus 0.35m Y. | Muted operator material; no combat silhouette on training pages. | `approved_owned` once authored. |
+| `oa_avatar_viewer_operator_v1` | Local human/operator body in first/third-person world mode. | `anchor.root`, `anchor.head`, `anchor.nameplate`, `anchor.hand.left`, `anchor.hand.right`, `anchor.back`, `anchor.feet`. | `anchor.nameplate` plus 0.35m Y. | Muted operator material. No combat silhouette on training pages. | `approved_owned` once authored. |
 | `oa_avatar_pylon_agent_v1` | Visible pylon agent/avatar tied to public pylon rows. | `anchor.root`, `anchor.head`, `anchor.nameplate`, `anchor.capability`, `anchor.status`. | `anchor.nameplate` plus 0.3m Y. | Role color comes from row-backed pylon/agent status. | `approved_owned` once authored. |
-| `oa_avatar_service_agent_v1` | Bridge/service actor for public-safe system events. | `anchor.root`, `anchor.nameplate`, `anchor.status`. | `anchor.nameplate` plus 0.25m Y. | Distinct service material; must not imply human presence. | `approved_owned` once authored. |
-| `oa_avatar_guest_v1` | Anonymous/public visitor body. | `anchor.root`, `anchor.head`, `anchor.nameplate`. | `anchor.nameplate` plus 0.3m Y. | Low-detail neutral material; local-only until joined region row exists. | `approved_owned` once authored. |
+| `oa_avatar_service_agent_v1` | Bridge/service actor for public-safe system events. | `anchor.root`, `anchor.nameplate`, `anchor.status`. | `anchor.nameplate` plus 0.25m Y. | Distinct service material. Must not imply human presence. | `approved_owned` once authored. |
+| `oa_avatar_guest_v1` | Anonymous/public visitor body. | `anchor.root`, `anchor.head`, `anchor.nameplate`. | `anchor.nameplate` plus 0.3m Y. | Low-detail neutral material. Local-only until joined region row exists. | `approved_owned` once authored. |
 
 ## Target Station And Prop Types
 
@@ -94,7 +94,7 @@ visual expansion.
 | --- | --- | --- | --- | --- | --- |
 | `oa_prop_pylon_station_v1` | Physical station for a row-backed pylon in a run region. | `anchor.root`, `anchor.nameplate`, `anchor.visitor_count`, `anchor.proof_slot`, `anchor.chat`. | 0.55m above station. | Needs `pylon_station` row and public `home_pylon_ref`. | `approved_owned` once authored. |
 | `oa_prop_proof_gate_v1` | Inspectable proof/verdict object. | `anchor.root`, `anchor.nameplate`, `anchor.proof_ref`, `anchor.event_burst`. | 0.45m above object. | Needs public proof/challenge/receipt ref. | `approved_owned` once authored. |
-| `oa_prop_settlement_terminal_v1` | Settlement/receipt inspection terminal. | `anchor.root`, `anchor.nameplate`, `anchor.receipt_ref`, `anchor.amount_badge`. | 0.5m above terminal. | Needs public settlement/receipt ref; no fake payout motion. | `approved_owned` once authored. |
+| `oa_prop_settlement_terminal_v1` | Settlement/receipt inspection terminal. | `anchor.root`, `anchor.nameplate`, `anchor.receipt_ref`, `anchor.amount_badge`. | 0.5m above terminal. | Needs public settlement/receipt ref. No fake payout motion. | `approved_owned` once authored. |
 | `oa_prop_registry_marker_v1` | Product-promise/registry marker. | `anchor.root`, `anchor.nameplate`, `anchor.status_badge`. | 0.45m above marker. | Needs product-promise registry ref. | `approved_owned` once authored. |
 | `oa_prop_run_core_v1` | Center object for a canonical run. | `anchor.root`, `anchor.nameplate`, `anchor.staleness`, `anchor.selection`. | 0.65m above core. | Needs canonical run ref. | `approved_owned` once authored. |
 
@@ -131,11 +131,11 @@ None of these assets are production-approved for OpenAgents by this document.
 
 | Reference set | Source evidence | License/provenance state | OpenAgents eligibility |
 | --- | --- | --- | --- |
-| Quick source code mechanics | `projects/repos/Quick_3D_MMORPG/LICENSE` says MIT, copyright 2021 simondevyoutube; `client/LICENSE` says MIT, copyright 2020 simondevyoutube. | Code can be studied and reimplemented with attribution preserved where copied. | `reference_only` for mechanics; do not vendor the app. |
-| Quaternius trees/nature/nature2/weapons | `client/resources/{trees,nature,nature2,weapons}/License.txt` says Quaternius and CC0 1.0 Universal. | Asset-specific provenance can be recorded. Credit is optional but preferred. | `candidate_prototype`; may become `approved_public_domain` only after copied license/provenance per asset. |
-| Mixamo character GLBs | `client/resources/characters/readme.txt` says free asset from `https://www.mixamo.com/`. | Broad source note only. Character/model terms, redistribution, and derivative-use compatibility need review. | `blocked_pending_review`; no production use. |
-| Game-icons UI/weapon icons | `client/resources/icons/readme.txt` says free asset from `https://game-icons.net/`. | Broad source note only. Each icon needs exact author/license/attribution review. | `blocked_pending_review`; no production use. |
-| Terrain textures | `client/resources/terrain/README.txt` says most textures came from `freepbr.com` or an OpenGameArt 36-ground-texture page and were resized. | Broad source note only. Each texture needs exact source URL, license, attribution, and derivative/redistribution review. | `blocked_pending_review`; no production use. |
+| Quick source code mechanics | `projects/repos/Quick_3D_MMORPG/LICENSE` says MIT, copyright 2021 simondevyoutube. `client/LICENSE` says MIT, copyright 2020 simondevyoutube. | Code can be studied and reimplemented with attribution preserved where copied. | `reference_only` for mechanics. Do not vendor the app. |
+| Quaternius trees/nature/nature2/weapons | `client/resources/{trees,nature,nature2,weapons}/License.txt` says Quaternius and CC0 1.0 Universal. | Asset-specific provenance can be recorded. Credit is optional but preferred. | `candidate_prototype`. May become `approved_public_domain` only after copied license/provenance per asset. |
+| Mixamo character GLBs | `client/resources/characters/readme.txt` says free asset from `https://www.mixamo.com/`. | Broad source note only. Character/model terms, redistribution, and derivative-use compatibility need review. | `blocked_pending_review`. No production use. |
+| Game-icons UI/weapon icons | `client/resources/icons/readme.txt` says free asset from `https://game-icons.net/`. | Broad source note only. Each icon needs exact author/license/attribution review. | `blocked_pending_review`. No production use. |
+| Terrain textures | `client/resources/terrain/README.txt` says most textures came from `freepbr.com` or an OpenGameArt 36-ground-texture page and were resized. | Broad source note only. Each texture needs exact source URL, license, attribution, and derivative/redistribution review. | `blocked_pending_review`. No production use. |
 
 ## Public Surface Rules
 

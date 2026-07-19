@@ -46,10 +46,10 @@ It remains a closeout proof, not a payout or terminal settlement claim.
 
 The public Artanis report composes its autonomous-loop summary from recent
 persisted Artanis loop-tick rows when D1 has them. Tick closeout writes refresh
-both `record_json` and `public_projection_json`; the report reader also overlays
+both `record_json` and `public_projection_json`. The report reader also overlays
 closed-row `closeout_json` onto decoded tick records so older closed rows do not
 remain stuck on example-loop refs. The public Pylon capacity funnel composes
-from live Pylon registrations, assignment rows, and provider lifecycle rows; if
+from live Pylon registrations, assignment rows, and provider lifecycle rows. If
 the lifecycle row lags an `accepted_work` assignment, the count-only public
 funnel still reports that capacity as accepted.
 

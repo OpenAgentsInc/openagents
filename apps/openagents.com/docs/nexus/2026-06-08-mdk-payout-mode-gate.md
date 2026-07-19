@@ -19,7 +19,7 @@ Hosted MDK direct programmatic payout is blocked by
 `blocker.mdk.hosted_programmatic_payouts_disabled` unless both conditions are
 true:
 
-- hosted programmatic payouts are enabled for the app;
+- hosted programmatic payouts are enabled for the app.
 - a funded hosted payout key is verified.
 
 The current Pylon settlement evidence is therefore scoped to
@@ -29,9 +29,9 @@ The current Pylon settlement evidence is therefore scoped to
 
 The local bridge can be claimable only when the gate records:
 
-- send-readiness preflight passed;
-- original funded wallet home is in use;
-- live bridge authority is recorded;
+- send-readiness preflight passed.
+- original funded wallet home is in use.
+- live bridge authority is recorded.
 - payment-material redaction is checked.
 
 Hosted sandbox verification is not live payout authority. It projects as

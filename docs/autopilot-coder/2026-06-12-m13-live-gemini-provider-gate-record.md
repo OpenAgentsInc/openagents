@@ -1,7 +1,7 @@
 # M13 Live Gemini Provider Gate Record
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-12
@@ -22,7 +22,7 @@ The remaining M13 live leg is satisfied for Google Gemini API-key BYOK:
 
 This record does not claim Anthropic subscription-account support. The
 2026-06-11 ToS review remains binding: Anthropic and Gemini subscription
-account connects are not offered; provider peers use API-key BYOK only.
+account connects are not offered. Provider peers use API-key BYOK only.
 
 ## Production Changes
 
@@ -123,11 +123,11 @@ Lease closeout:
 - `bun run check:architecture`
   - passed.
 - `bun run --cwd apps/openagents.com/workers/api typecheck --pretty false`
-  - exited successfully; the only remaining output is the upstream
+  - exited successfully. The only remaining output is the upstream
     `nostr-effect` advisory message.
 - `bun run --cwd apps/openagents.com/workers/api deploy`
   - deploy checks passed, D1 migrations 0171 and 0172 applied, web build
-    succeeded; final Wrangler deploy failed only because Docker was not
+    succeeded. Final Wrangler deploy failed only because Docker was not
     running for unchanged configured Containers.
 - `bun run check:deploy`
   - passed after the final provider guard changes.

@@ -12,7 +12,7 @@
 > **Not a product promise or public-claim copy.** Every invariant in those audits
 > holds here: evidence-only Blueprint, no keyword routing, no self-promotion, no
 > exactness inflation, identity guard, INERT/OWNER-GATED settlement, no promise
-> widening. One model: `openagents/khala` (no variants). **FUTURE** = speculative;
+> widening. One model: `openagents/khala` (no variants). **FUTURE** = speculative.
 > **OWNER-GATED** = needs owner arming.
 
 ## 0. Scope and the one-line shape
@@ -39,7 +39,7 @@ distill → skill" (Khala brain) and "computer-use → distill to e2e test" (exe
 are the same pipeline.** One capture format, one distiller, two output adapters.
 
 Prereq (separate, already specced): the refusal-posture prompt fix ships first as a
-pure prompt change (**openagents#6178**); nothing here depends on it, but it is the
+pure prompt change (**openagents#6178**). Nothing here depends on it, but it is the
 behavior that *produces* the "guide me through it" sessions this pipeline captures.
 
 ---
@@ -47,13 +47,13 @@ behavior that *produces* the "guide me through it" sessions this pipeline captur
 ## B. Wiring: a Khala turn as a Blueprint program (evidence-only)
 
 **Today:** `khala-chat-program.ts` assembles one system message and calls the model
-directly; `blueprint/services/chat-program-runtime.ts` (`executeBlueprintChatProgramTurn`)
+directly. `blueprint/services/chat-program-runtime.ts` (`executeBlueprintChatProgramTurn`)
 exists but is **never called from the Khala request path** (brain audit §3).
 
 **Goal of this milestone:** route ONE Khala program (start with the
 refusal-posture/offer program) through `chat-program-runtime.ts` and emit a
 `BlueprintProgramRunRecord` as evidence — the first real Khala-on-Blueprint call.
-No behavior regression for plain chat; no writes; no new promise.
+No behavior regression for plain chat. No writes. No new promise.
 
 ### B.1 The request → program contract
 
@@ -76,7 +76,7 @@ khalaTurnToProgram(req) -> BlueprintProgramRunRecord   // authorityBoundary: 'ev
   Never branch on user text (no-keyword-routing invariant).
 - **First registered program:** `refusal_posture` / `offer` (the second Khala
   signature). The program's module is a `model_prompt` module version whose policy
-  is the refusal posture; running it yields the assistant turn **plus** an
+  is the refusal posture. Running it yields the assistant turn **plus** an
   evidence-only run record.
 - **Output:** the existing `openagents` response block gains a `programRunRef`
   pointing at the `BlueprintProgramRunRecord` (dereferenceable, public-safe). No
@@ -84,7 +84,7 @@ khalaTurnToProgram(req) -> BlueprintProgramRunRecord   // authorityBoundary: 'ev
 
 ### B.2 Invariants (enforced, not optional)
 
-- `authorityBoundary: 'evidence_only'`; `noDeploy/noEmail/noSpend/noSourceMutation/
+- `authorityBoundary: 'evidence_only'`. `noDeploy/noEmail/noSpend/noSourceMutation/
   directMutationDisabled` all set. The program never acts.
 - Any external effect is a **proposal** via an approval-gated `Action Submission`
   (`direct_execution=0`, `proposal_only=1`, ≥1 evidence ref, `approvalPolicyRef`).
@@ -94,8 +94,8 @@ khalaTurnToProgram(req) -> BlueprintProgramRunRecord   // authorityBoundary: 'ev
 ### B.3 Acceptance
 
 - One Khala turn produces a `BlueprintProgramRunRecord` (evidence-only) referenced
-  from the response; selection went through `signature-lookup.ts`; tests prove the
-  no-keyword path and the evidence-only/no-write boundary; no plain-chat regression.
+  from the response. Selection went through `signature-lookup.ts`. Tests prove the
+  no-keyword path and the evidence-only/no-write boundary. No plain-chat regression.
 
 ---
 
@@ -103,7 +103,7 @@ khalaTurnToProgram(req) -> BlueprintProgramRunRecord   // authorityBoundary: 'ev
 
 **Goal:** turn a live Khala/computer-use session (especially a "guide me through it"
 session) into a `KhalaSessionTrace` that is deterministic, replayable, public-safe,
-and digestible — the distiller's input. Ride the existing capture substrate; do not
+and digestible — the distiller's input. Ride the existing capture substrate. Do not
 build a parallel one.
 
 ### C.1 Substrate to reuse
@@ -112,7 +112,7 @@ build a parallel one.
   in #6175) — named beats for browser/terminal/fs actions, with raw text/output/
   file-contents already withheld.
 - **qa-runner** (`apps/qa-runner`, #6176) — already produces a per-run artifact set
-  (result.json + video + trace) from a brain-driven session; this is the recorder.
+  (result.json + video + trace) from a brain-driven session. This is the recorder.
 - **Executor-trace loop** (`artanis-scheduled-runner.ts`) — deterministic traces with
   replay verdicts and closeout receipts (one Lightning closeout settled 2026-06-10).
 
@@ -141,7 +141,7 @@ KhalaSessionTrace {
 - **No raw secrets/prompts/PII** in a beat — only refs/hashes/neutral classifiers,
   same discipline as the computer-use timeline and the benchmark report public-safety
   tripwire. Add an `assertSessionTracePublicSafe` tripwire test.
-- **Deterministic:** the trace replays to the same digest; waits are conditions,
+- **Deterministic:** the trace replays to the same digest. Waits are conditions,
   never sleeps (carry the executor "no sleeps" rule).
 
 ### C.4 Acceptance
@@ -177,13 +177,13 @@ distill(trace: KhalaSessionTrace) -> DistillResult {
 
 A `DistillResult` is admissible as a **candidate** only if:
 1. **Replayable** — re-executing the trace reproduces the recorded outcome
-   (digest match for deterministic steps; for stochastic, a `seeded` verdict).
+   (digest match for deterministic steps, for stochastic, a `seeded` verdict).
 2. **Typed** — `signatureCandidate` has a concrete typed I/O contract (no `any`).
-3. **Honestly graded** — `verificationClass` reflects what was actually proven;
+3. **Honestly graded** — `verificationClass` reflects what was actually proven.
    a learned/statistical step is **never** labeled with exact (Tier-E) vocabulary.
 4. **Public-safe** — no secrets in the candidate or its examples.
 5. **Quality bar** (executor): asserts outcomes a user cares about, not
-   implementation detail; no tautologies; deterministic waits.
+   implementation detail. No tautologies. Deterministic waits.
 
 ### D.3 Governance (unchanged from the kernel)
 
@@ -214,7 +214,7 @@ marketplace described in
 [`2026-06-24-khala-marketplace-tassadar-blueprint-fusion.md`](2026-06-24-khala-marketplace-tassadar-blueprint-fusion.md).
 On future use its trace decomposes and the split routes to the author (who may be the
 user who guided the session) over NIP-AC/Lightning — **behind the INERT settlement
-machine. OWNER-GATED.** No public marketplace today; boundary holds.
+machine. OWNER-GATED.** No public marketplace today. Boundary holds.
 
 ### E.2 E2E emitter → autonomous QA (what Rhys/executor needs)
 
@@ -222,7 +222,7 @@ machine. OWNER-GATED.** No public marketplace today; boundary holds.
 interface** (study `projects/repos/executor/e2e/src/{target,scenario}.ts`), committed
 to the repo — the *exact* artifact the autonomous-QA feature request asks for:
 "the agent develops with computer-use tools, then turns the session into committed
-e2e tests; verify by reading the test + watching the video."
+e2e tests. Verify by reading the test + watching the video."
 
 This is the connective tissue between the two threads:
 
@@ -236,7 +236,7 @@ This is the connective tissue between the two threads:
 
 **So the distiller is the single highest-leverage build:** it completes the Khala
 "refusal → skill → earn" loop *and* it is the "session → committed e2e test" the
-executor flow (epic #6174, #6175/#6176/#6177) is missing. Build it once; wire two
+executor flow (epic #6174, #6175/#6176/#6177) is missing. Build it once. Wire two
 emitters. The qa-runner's headline demo (#6177) becomes the first **input** to the
 e2e emitter (record a real session → distill → committed scenario), and the
 marketplace becomes the first input to the skill emitter.
@@ -246,39 +246,39 @@ marketplace becomes the first input to the skill emitter.
 - The same `KhalaSessionTrace` + `distill()` produces, from one guided session:
   (a) a skill candidate (Blueprint optimizer_candidate, gated), and
   (b) an executor-style e2e `Target` scenario file — proving one pipeline, two
-  artifacts. (Listing/settlement remain OWNER-GATED; the e2e scenario is committable
+  artifacts. (Listing/settlement remain OWNER-GATED, the e2e scenario is committable
   evidence today.)
 
 ---
 
-## F. Phasing (evidence-only first; money OWNER-GATED)
+## F. Phasing (evidence-only first, money OWNER-GATED)
 
 1. **B — wiring:** route one Khala turn (refusal-posture program) through
-   `chat-program-runtime.ts`; emit an evidence-only `BlueprintProgramRunRecord`;
+   `chat-program-runtime.ts`. Emit an evidence-only `BlueprintProgramRunRecord`.
    discovery via `signature-lookup.ts`. *(No money, no new promise.)*
-2. **C — capture:** define `KhalaSessionTrace` + `assertSessionTracePublicSafe`;
+2. **C — capture:** define `KhalaSessionTrace` + `assertSessionTracePublicSafe`.
    record a guided/computer-use session into it via the #6175/#6176 substrate.
 3. **D — distiller:** `distill(trace)` → typed signature + `optimizer_candidate`
-   with the acceptance bar; Release-Gate rejection without operator approval.
+   with the acceptance bar. Release-Gate rejection without operator approval.
 4. **E.2 — e2e emitter:** emit an executor-style `Target` scenario from a trace
-   (the executor/QA deliverable; committable today, evidence-only).
+   (the executor/QA deliverable, committable today, evidence-only).
 5. **E.1 — skill emitter:** emit a NIP-SKL skill candidate on a ladder tier. *(FUTURE.)*
 6. **Settlement:** one trace-decomposed split over Lightning behind the 8-state
    machine. **OWNER-GATED.**
 
 ## G. Invariants (carry, do not weaken to ship)
 
-Evidence-only Blueprint; Action Submissions are the only (approval-gated) write path;
-no keyword routing (typed selector only); nothing self-promotes (Release Gate); no
-exactness inflation (ladder labeling is law); identity guard holds; public-safe
-artifacts only; settlement INERT/OWNER-GATED; no promise widening; one model
+Evidence-only Blueprint. Action Submissions are the only (approval-gated) write path.
+no keyword routing (typed selector only). Nothing self-promotes (Release Gate). No
+exactness inflation (ladder labeling is law). Identity guard holds. Public-safe
+artifacts only. Settlement INERT/OWNER-GATED. No promise widening. One model
 `openagents/khala`.
 
 ## H. Open decisions for the owner (before D/E build)
 
 1. **Distiller authorship:** is the distiller itself a Khala program (Khala distills
    its own session) or a deterministic reducer over the trace? (Audit implies the
-   former is FUTURE; a deterministic v1 reducer is safer/cheaper to start.)
+   former is FUTURE. A deterministic v1 reducer is safer/cheaper to start.)
 2. **First emitter to build:** E.2 (e2e scenario — concrete, committable, serves
    Rhys now) vs E.1 (skill — needs the marketplace floor). Recommend **E.2 first**.
 3. **Trace source v1:** capture from the `apps/qa-runner` computer-use session
@@ -291,12 +291,12 @@ artifacts only; settlement INERT/OWNER-GATED; no promise widening; one model
 - Audits: [`2026-06-24-khala-brain-and-blueprint-hookup-audit.md`](2026-06-24-khala-brain-and-blueprint-hookup-audit.md),
   [`2026-06-24-khala-marketplace-tassadar-blueprint-fusion.md`](2026-06-24-khala-marketplace-tassadar-blueprint-fusion.md),
   [`2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`](2026-06-23-khala-blueprint-program-and-plugin-extensibility.md).
-- Executor/QA: [`../feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md`](../feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md);
-  epic #6174 + #6175 (computer-use tools) + #6176 (`apps/qa-runner`) + #6177 (demo);
+- Executor/QA: [`../feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md`](../feature-requests/2026-06-24-autonomous-qa-e2e-from-computer-use.md).
+  epic #6174 + #6175 (computer-use tools) + #6176 (`apps/qa-runner`) + #6177 (demo).
   `projects/repos/executor/e2e/src/{target,scenario,timeline}.ts`.
 - Live code: `apps/openagents.com/workers/api/src/blueprint/` (schemas, `services/chat-program-runtime.ts`,
-  `services/{tassadar-module-step,replay-module}.ts`, `repositories/tassadar-module-registry.ts`);
-  selector `packages/probe/packages/runtime/src/blueprint/signature-lookup.ts`;
-  capture `packages/probe/packages/runtime/src/computer-use/timeline.ts`, `apps/qa-runner/`;
-  rails `docs/nips/SKL.md`, `docs/nips/AC.md`; settlement `omni-accepted-outcome-*.ts`.
+  `services/{tassadar-module-step,replay-module}.ts`, `repositories/tassadar-module-registry.ts`).
+  selector `packages/probe/packages/runtime/src/blueprint/signature-lookup.ts`.
+  capture `packages/probe/packages/runtime/src/computer-use/timeline.ts`, `apps/qa-runner/`.
+  rails `docs/nips/SKL.md`, `docs/nips/AC.md`. Settlement `omni-accepted-outcome-*.ts`.
 </content>

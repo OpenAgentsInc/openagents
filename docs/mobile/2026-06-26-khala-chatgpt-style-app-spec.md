@@ -2,7 +2,7 @@
 
 Status: active build spec. Supersedes the minimal voice-only scope in
 `2026-06-26-khala-voice-app-spec.md` (that doc stays as the voice-runtime
-reference; this doc is the full-app target).
+reference. This doc is the full-app target).
 
 ## Goal
 
@@ -19,14 +19,14 @@ visualization** (the animated push-to-talk orb) as the voice-input affordance.
 
 ## Reference (ChatGPT iOS app patterns, from the owner's screenshots)
 
-1. **Left drawer (hamburger):** app title + search; a short menu; a **Recents**
-   section listing historical chats; bottom row with **New Chat** + settings.
+1. **Left drawer (hamburger):** app title + search. A short menu. A **Recents**
+   section listing historical chats. Bottom row with **New Chat** + settings.
    Opens as a slide-over that dims the main view.
 2. **Empty chat:** top bar = hamburger · model pill · new-chat icon. Centered
    suggestion rows (icon + label). Composer pinned to the keyboard.
 3. **Model pill / picker:** ChatGPT shows "5.5 Medium" → a dropdown of
    intelligence levels. **Khala is a SINGLE model** (`openagents/khala`) — see
-   the single-model constraint below; we do NOT replicate fake variants.
+   the single-model constraint below. We do NOT replicate fake variants.
 4. **Chat view:** full-width assistant messages with rich **markdown** (bold,
    bullet lists, headings, **code blocks**), a response action row (copy, etc.),
    and the composer with mic + voice button.
@@ -53,15 +53,15 @@ visualization** (the animated push-to-talk orb) as the voice-input affordance.
 
 - Base: `https://openagents.com/api/v1`, OpenAI-compatible.
 - Endpoint: `POST /chat/completions`, model `openagents/khala`,
-  `Authorization: Bearer <key>` (key from Keychain; mint free via
-  `POST /api/keys/free`; Settings manages it).
+  `Authorization: Bearer <key>` (key from Keychain, mint free via
+  `POST /api/keys/free`. Settings manages it).
 - **Multi-turn:** send the full `messages` array (system optional + the
   conversation's user/assistant turns), not just the latest.
 - **Streaming:** use `stream: true` (SSE, `data:` lines, `[DONE]` terminator) and
   append tokens live for the ChatGPT-style typing effect. Fall back to
   non-streaming if a turn errors.
-- Errors: 402 → "free quota reached / add credit" message; network/timeout →
-  inline retry; never crash.
+- Errors: 402 → "free quota reached / add credit" message. Network/timeout →
+  inline retry. Never crash.
 
 ## Architecture
 
@@ -76,7 +76,7 @@ visualization** (the animated push-to-talk orb) as the voice-input affordance.
   lets the feature lanes add files in parallel without `pbxproj` merge
   conflicts. (Foundation lane does this first.)
 - **Persistence:** `Conversation` + `Message` stored locally. Prefer **SwiftData**
-  (`@Model`) if it's clean on iOS 17+; otherwise `Codable` JSON in Application
+  (`@Model`) if it is clean on iOS 17+. Otherwise `Codable` JSON in Application
   Support. Drawer Recents and the chat view read from this store.
 
 ### Data model
@@ -87,16 +87,16 @@ Message      { id: UUID, role: .system|.user|.assistant, content: String, create
 ```
 
 - Title: derived from the first user message (truncated), renamable.
-- New / rename / delete conversation; sorted by `updatedAt` desc in Recents.
+- New / rename / delete conversation. Sorted by `updatedAt` desc in Recents.
 
 ## Screens & components (maps to issues below)
 
-1. **Foundation / shell** — sync-group migration; `Conversation`/`Message` +
-   local store; app shell with the slide-over drawer container; **app launches
+1. **Foundation / shell** — sync-group migration. `Conversation`/`Message` +
+   local store. App shell with the slide-over drawer container. **App launches
    to a visible chat surface (NOT black)** — this is the regression gate.
 2. **Drawer + history** — ChatGPT-style left drawer: "Khala" title, search
    (filters Recents), Recents = conversation list, bottom New Chat + settings
-   gear; tap a chat to open it; swipe to delete; rename.
+   gear. Tap a chat to open it. Swipe to delete. Rename.
 3. **Chat view + markdown** — message list (full-width assistant turns, compact
    user turns), **markdown rendering** incl. fenced **code blocks** (monospace,
    horizontal scroll, copy button), response action row (copy message,
@@ -109,14 +109,14 @@ Message      { id: UUID, role: .system|.user|.assistant, content: String, create
    `stream: true` (SSE), single model `openagents/khala`, 402/error handling,
    cancellation.
 6. **Top bar + empty state + settings** — hamburger · "Khala" pill · new-chat
-   icon; empty-state greeting + (optional) suggestion rows; Settings (existing
-   key mgmt) reachable from the drawer; retain the voice viz everywhere it makes
+   icon. Empty-state greeting + (optional) suggestion rows. Settings (existing
+   key mgmt) reachable from the drawer. Retain the voice viz everywhere it makes
    sense.
 
 ## Voice (retain + integrate)
 
 - Keep `VoiceController` / `PushToTalkButton` / `AnimatedBackground`. The voice
-  button in the composer enters the push-to-talk orb; on release it transcribes
+  button in the composer enters the push-to-talk orb. On release it transcribes
   and sends as a normal user turn into the active conversation (so voice and
   text share one transcript). The orb visualization quality stays.
 
@@ -128,7 +128,7 @@ Message      { id: UUID, role: .system|.user|.assistant, content: String, create
   iPhone 17 simulator** (screenshot shows the real UI, not black), using the
   env demo hooks where useful.
 - The black-screen the owner saw is a **stale local build/DerivedData** symptom
-  (origin/main renders correctly); after landing, resync the owner's working
+  (origin/main renders correctly). After landing, resync the owner's working
   tree for `clients/khala-ios/Khala` and clear `~/Library/Developer/Xcode/DerivedData/Khala-*`.
 
 ## Out of scope (v1)

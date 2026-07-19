@@ -12,7 +12,7 @@ Team: `team_openagents_core`
 
 Project: `project_adjutant`
 
-Visibility: team during generation; customer/public only after operator review.
+Visibility: team during generation. Customer/public only after operator review.
 
 ## Assignment
 
@@ -35,20 +35,20 @@ operating system for autonomous operations.
 
 Customer-provided direction includes:
 
-- visual metaphor: precision kitchen plus operating-system interface;
+- visual metaphor: precision kitchen plus operating-system interface.
 - tone: calm mastery, layered depth, composable elegance, transparent and
-  verifiable;
-- primary headline direction: `The operating system for autonomous operations.`;
+  verifiable.
+- primary headline direction: `The operating system for autonomous operations.`.
 - emphasis on 38 subsystems, 2,860+ tests, public auditability, skill
   intelligence, worker/runtime fabric, data platform, security, observability,
-  and OpenChefGroep services;
+  and OpenChefGroep services.
 - target pages: home, OS/architecture, skills, runtime, platforms, cases,
-  services, about/contact, privacy, terms, and polished not-found;
-- warm neutral tech palette with teal or amber accents;
-- Source Serif 4 display, Inter/system body, mono stats/code;
+  services, about/contact, privacy, terms, and polished not-found.
+- warm neutral tech palette with teal or amber accents.
+- Source Serif 4 display, Inter/system body, mono stats/code.
 - motion and 3D should communicate structure, support reduced motion, and
-  degrade gracefully on mobile and low-power devices;
-- accessibility target: WCAG 2.2 AA;
+  degrade gracefully on mobile and low-power devices.
+- accessibility target: WCAG 2.2 AA.
 - performance target: high Lighthouse score, lazy-loaded 3D, no visual bloat.
 
 The order references a private GitHub repository,
@@ -160,5 +160,5 @@ run records the required GitHub authority receipts.
 ## Suggested Public/Customer Summary
 
 OpenAgents prepared the first Chefgroep Site review artifact from your submitted
-design brief. This is early beta software; please reply to the review email
+design brief. This is early beta software. Please reply to the review email
 with anything broken, confusing, or wrong so the next revision can improve it.

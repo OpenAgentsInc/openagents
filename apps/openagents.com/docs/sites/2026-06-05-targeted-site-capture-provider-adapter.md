@@ -17,18 +17,18 @@ making raw provider payloads product authority.
 
 `workers/api/src/targeted-site-capture-provider-adapter.ts` exposes:
 
-- `recordTargetedSiteCaptureProviderAdapterRun`;
-- list helpers by campaign, prospect, and normalized domain;
+- `recordTargetedSiteCaptureProviderAdapterRun`.
+- list helpers by campaign, prospect, and normalized domain.
 - customer-safe and operator-safe projections.
 
 Provider kinds are typed:
 
-- `first_party_worker`;
-- `browser_run`;
-- `firecrawl`;
-- `browserless`;
-- `browserbase`;
-- `apify`;
+- `first_party_worker`.
+- `browser_run`.
+- `firecrawl`.
+- `browserless`.
+- `browserbase`.
+- `apify`.
 - `container`.
 
 ## Policy Gate
@@ -53,18 +53,18 @@ Migration `0076_targeted_site_capture_provider_adapters.sql` adds
 
 Each run records:
 
-- campaign id;
-- optional prospect id;
-- normalized domain;
-- capture-policy event id;
-- optional static and rendered capture run ids;
-- provider kind;
-- state and reason;
-- paid-escalation ref;
-- provider request and receipt refs;
-- output-pack ref;
-- usage and cost refs;
-- public-safe metadata;
+- campaign id.
+- optional prospect id.
+- normalized domain.
+- capture-policy event id.
+- optional static and rendered capture run ids.
+- provider kind.
+- state and reason.
+- paid-escalation ref.
+- provider request and receipt refs.
+- output-pack ref.
+- usage and cost refs.
+- public-safe metadata.
 - requested, completion, creation, and archive timestamps.
 
 Runs are indexed by campaign, prospect, and normalized domain.
@@ -73,12 +73,12 @@ Runs are indexed by campaign, prospect, and normalized domain.
 
 Customer-safe projections include:
 
-- campaign id;
-- prospect id;
-- normalized domain;
-- provider kind;
-- state;
-- output availability;
+- campaign id.
+- prospect id.
+- normalized domain.
+- provider kind.
+- state.
+- output availability.
 - requested and completion timestamps.
 
 Operator-safe projections include typed provider/request/receipt/output/usage

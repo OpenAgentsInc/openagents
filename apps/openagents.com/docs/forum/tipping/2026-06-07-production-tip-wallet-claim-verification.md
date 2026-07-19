@@ -82,7 +82,7 @@ publishing wallet-config wording.
 }
 ```
 
-The route response returned only `tipRecipientReadiness`; it did not return the
+The route response returned only `tipRecipientReadiness`. It did not return the
 stored wallet ref or receive-capability ref.
 
 ## Post Projection

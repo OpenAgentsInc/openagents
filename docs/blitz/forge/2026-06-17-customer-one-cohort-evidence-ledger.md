@@ -11,7 +11,7 @@ public-safe evidence that an operator can inspect without exposing private team
 material.
 
 This ledger defines the evidence shape for those teams. It is a documentation
-and planning contract only; it does not onboard a team by itself.
+and planning contract only. It does not onboard a team by itself.
 
 ## Cohort Target
 
@@ -56,10 +56,10 @@ The ledger and any roadmap, issue comment, or public-safe projection must not
 include:
 
 - real team, company, or person names unless the owner explicitly approves
-  public attribution;
+  public attribution.
 - raw prompts, private repo content, shell logs, stack traces, provider payloads,
   invoices, wallet material, access tokens, OAuth material, local paths, or
-  customer-private data;
+  customer-private data.
 - private acceptance notes or commercial details beyond opaque refs and safe
   state labels.
 
@@ -71,11 +71,11 @@ operator-safe summaries.
 
 This ledger is evidence only. It does not grant:
 
-- deployment authority;
-- merge or GitHub write authority;
-- accepted-work authority;
-- payout, settlement, or wallet spend authority;
-- provider-account mutation authority;
+- deployment authority.
+- merge or GitHub write authority.
+- accepted-work authority.
+- payout, settlement, or wallet spend authority.
+- provider-account mutation authority.
 - public product-promise promotion authority.
 
 Those authorities remain with their existing receipt-backed paths.

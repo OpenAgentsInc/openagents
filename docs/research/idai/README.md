@@ -45,11 +45,11 @@ The 43 areas map almost one-to-one onto our stack. Systems referenced throughout
 
 | OpenAgents system | What it is | Home |
 | --- | --- | --- |
-| **Khala** | OpenAI-compatible orchestrator (`openagents/khala`, base `https://openagents.com/api/v1`) over a network of agents; `ModelRouter`/coordinator, Blueprint/DSPy typed programs, durable resume, `openagents.khala.telemetry.v1` traces, Bitcoin revshare | `docs/khala/`, Worker |
-| **Gym** | Eval + reward factory that trains Khala; typed environments (Terminal-Bench 2.0, OpenCode head-to-head, throughput-concurrency, long-context QA, M8); scored on **executed verification verdict + cost-per-accepted-outcome** | `docs/gym/` |
+| **Khala** | OpenAI-compatible orchestrator (`openagents/khala`, base `https://openagents.com/api/v1`) over a network of agents. `ModelRouter`/coordinator, Blueprint/DSPy typed programs, durable resume, `openagents.khala.telemetry.v1` traces, Bitcoin revshare | `docs/khala/`, Worker |
+| **Gym** | Eval + reward factory that trains Khala. Typed environments (Terminal-Bench 2.0, OpenCode head-to-head, throughput-concurrency, long-context QA, M8). Scored on **executed verification verdict + cost-per-accepted-outcome** | `docs/gym/` |
 | **AgentCL** | Agent-evaluation / continual-eval work feeding the benchmark ladder | recent `docs/` synthesis |
-| **Tassadar** | Supply side of the capability marketplace + the Percepta/decentralized training run; `compute.tassadar_executor_poc.v1` (green), `artanis.tassadar_evolution_loop.v1` dispatch->verify->accumulate loop | `docs/tassadar/`, `psionic` |
-| **Pylon fleet + Codex/Claude supervisors** | Contributor/owned provider nodes that execute work; supervised on our GCE ("our cloud") | `docs/pylon/`, `cloud` |
+| **Tassadar** | Supply side of the capability marketplace + the Percepta/decentralized training run. `compute.tassadar_executor_poc.v1` (green), `artanis.tassadar_evolution_loop.v1` dispatch->verify->accumulate loop | `docs/tassadar/`, `psionic` |
+| **Pylon fleet + Codex/Claude supervisors** | Contributor/owned provider nodes that execute work. Supervised on our GCE ("our cloud") | `docs/pylon/`, `cloud` |
 | **Trace -> reputation -> Bitcoin-payout economy** | Replay-verification floor (Verified/Rejected challenge receipts at `/trace/{uuid}`), promise engine, settlement (Spark primary / MDK checkouts), MPP, labor market | `docs/mpp/`, `docs/labor/`, `docs/metrics/` |
 | **Forum** | Agent registration, posting, web-of-trust identity, BOLT12 tipping | `docs/forum/` |
 | **Collective intelligence as an economy** | The thesis: collective intelligence built as an open, Bitcoin-metabolized economy selected by verifiable value | `docs/collective-intelligence/` |
@@ -72,8 +72,8 @@ Read [`roadmap-alignment.md`](roadmap-alignment.md). It contains:
 ### Conventions and honesty rules
 
 - **Direction vs. shipped** is labeled explicitly. "Ahead" means we have a live,
-  differentiated capability; "on-par" means comparable to the field; "behind"
-  means the field is ahead of us; "absent" means we have effectively nothing yet.
+  differentiated capability. "On-par" means comparable to the field. "Behind"
+  means the field is ahead of us. "Absent" means we have effectively nothing yet.
 - Invariants respected: Cloudflare-native, Bun/Effect/Foldkit, no vendoring of
   external code, reuse `@openagentsinc/three-effect` for visualization, and no
   weakening of the no-resale / verification-floor policy.

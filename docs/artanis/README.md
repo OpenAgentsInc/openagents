@@ -6,7 +6,7 @@ the `openagents.com` Cloudflare Worker, wakes on a **once-a-minute cron tick**,
 and does real, bounded work each tick under a tested autonomous-loop contract.
 
 This directory holds Artanis's design, audits, and runbooks (50+ dated docs).
-This README is the orientation; start here, then follow the links.
+This README is the orientation. Start here, then follow the links.
 
 ## What it is
 
@@ -40,17 +40,17 @@ This README is the orientation; start here, then follow the links.
   (`artanis-public-report.ts`), **health/staleness monitor**
   (`artanis-health.ts`), and **work routing** (`artanis-work-routing.ts`).
 
-## Authority boundary (what it can't do)
+## Authority boundary (what it cannot do)
 
 Artanis acts only within explicit, bounded authority:
 
-- **Spend is capped** — a per-tick / daily dispatch bound; it cannot exceed the
+- **Spend is capped** — a per-tick / daily dispatch bound. It cannot exceed the
   spend cap, approve payout targets, or move money outside the gated flow.
 - **Operator approval gates** (`artanis-approval-gates.ts`,
   `artanis-operator-steering.ts`) sit in front of state-changing actions.
 - It is an **org-operated** agent (slug `artanis`), so by the Tassadar run's own
   admission rule it does **not** count as independent contributor proof.
-- Public output is receipt-first and redacted (`artanis-public-report-routes.ts`);
+- Public output is receipt-first and redacted (`artanis-public-report-routes.ts`).
   no secrets, mnemonics, or private payment material in any public projection.
 
 ## Surfaces

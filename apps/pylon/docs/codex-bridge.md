@@ -27,7 +27,7 @@ plumbing, not Codex SDK execution. This lane is `codex_agent_task`,
 
 Reviewed 2026-06-11 against OpenAI's published Codex terms posture and
 the OpenAgents no-resale law. The lane honors exactly four owner-held
-credential sources in this order; probes expose only public source refs, never
+credential sources in this order. Probes expose only public source refs, never
 credential values:
 
 1. **`CODEX_API_KEY`** — the owner's own Codex API key
@@ -40,13 +40,13 @@ credential values:
    registered agent bearer linked to the owner's OpenAuth account
    (`credential.source.codex_agent.opencode_auth_content`). The Worker
    stores and refreshes the long-lived OAuth refresh token in owner-scoped
-   custody; the returned auth content never includes a `refresh` field.
+   custody. The returned auth content never includes a `refresh` field.
 4. **The owner's own Codex CLI login** — a non-empty `auth.json` under
    `$CODEX_HOME` (default `~/.codex/`), created by the owner running
    `codex login` themselves on this device
    (`credential.source.codex_agent.codex_cli_login`). The Codex
    CLI/SDK is built by OpenAI to run on the user's own machine under
-   the user's own ChatGPT/Codex sign-in; using your own login for your
+   the user's own ChatGPT/Codex sign-in. Using your own login for your
    own jobs on your own device is the intended use. The file is never
    read by the probe — presence and non-emptiness only.
 
@@ -61,7 +61,7 @@ Gate, not this subscription-account prohibition.
 **Scope boundary flagged for future review:** this lane is owner-jobs,
 no-spend first (your machine, your credentials, your job). Serving
 _other people's_ jobs (Lane C, P6 #4782) on subscription-login auth
-raises resale questions this review does not clear; a paid Lane C leg
+raises resale questions this review does not clear. A paid Lane C leg
 on `codex_cli_login` auth requires its own ToS review before it runs.
 API-key sources are the safe default for provider-mode work.
 
@@ -92,7 +92,7 @@ probe reports.
 - Capability declaration: `pylon provider go-online` declares
   `capability.pylon.local_codex` when and only when the probe reports
   `ready`, and strips a stale declaration when it does not. The
-  capability ref is the only public signal that a local Codex exists;
+  capability ref is the only public signal that a local Codex exists.
   no machine details, paths, or account identifiers leave the device.
 - Linked per-account Codex capacity is custody-backed: if a registry
   account carries `openAgentsProviderAccountRef`, Pylon can advertise the
@@ -119,18 +119,18 @@ Optional `codex` section in the Pylon config file
 - `enabled: false` disables the lane regardless of SDK/credential
   presence.
 - `model`, `maxTurns`, `timeoutSeconds`, `sandboxMode` are runtime
-  preferences consumed by the executor gate (CX2); they cap, never
+  preferences consumed by the executor gate (CX2). They cap, never
   expand, what an assignment may do. Config is preference, not
   authority.
 - `sandboxMode` accepts only `read-only` or `workspace-write`.
   `danger-full-access` is never configurable through the assignment-safe
   `codex` section and the assignment executor never uses it.
-- Never put credential values in the config file; the bridge reads
+- Never put credential values in the config file. The bridge reads
   credentials from the environment and the owner's own CLI login state
   only.
 - `dev.accounts[].openAgentsProviderAccountRef` is an internal linkage ref
   written by `pylon auth codex` / `pylon accounts connect codex
---openagents-link`. Keep it in the local config; never place raw provider
+--openagents-link`. Keep it in the local config. Never place raw provider
   auth values, bearer tokens, or `OPENCODE_AUTH_CONTENT` in the config file.
 
 Optional local-only dev composer override:
@@ -153,13 +153,13 @@ sets the SDK thread to `sandboxMode: "danger-full-access"` with
 
 `pylon dev doctor --json` projects the same local execution mode alongside
 repo, instruction, Codex, Claude/Fable, and backend readiness refs. It emits
-digest refs and bounded states only; raw credential values, auth file paths,
+digest refs and bounded states only. Raw credential values, auth file paths,
 instruction text, changed filenames, and local absolute paths are omitted.
 
 `pylon dev check --json`, `pylon dev apply --json`, and
 `pylon dev reload --json` provide the local supervised post-Codex loop.
 `check` returns a typed dirty-state summary, changed file refs, command refs,
-exit codes, and stdout/stderr digest refs; it requires `--allow-dirty` when
+exit codes, and stdout/stderr digest refs. It requires `--allow-dirty` when
 untracked files make attribution ambiguous. `apply` records the current patch
 summary without committing or pushing. `reload` is an explicit action and is a
 safe no-op until Pylon has a controlled restart/reattach process.
@@ -167,7 +167,7 @@ safe no-op until Pylon has a controlled restart/reattach process.
 ## Boundaries
 
 - **Your identity, your credentials, your machine.** The lane acts only
-  with the local owner's credentials; no platform keys on devices,
+  with the local owner's credentials. No platform keys on devices,
   ever.
 - **Custody re-prime law.** Linked Codex registry accounts re-prime through
   OpenAgents custody before assignment execution and account-usage refresh.
@@ -188,11 +188,11 @@ safe no-op until Pylon has a controlled restart/reattach process.
   payloads, and local paths never leave the device. Closeouts carry
   hashed refs only, through the existing `assertPublicProjectionSafe`
   boundary.
-- **Authority unchanged.** Worker closeout is not accepted work; the
+- **Authority unchanged.** Worker closeout is not accepted work. The
   lane grants no settlement, payout, deploy, spend, or Forum
   publication authority.
 - **Copy law.** This lane is "Codex" / "your local Codex" in any
-  user-facing copy; nothing may imply an OpenAI partnership, and
+  user-facing copy. Nothing may imply an OpenAI partnership, and
   nothing about this lane may be described as shipped or autonomous
   before its receipts exist.
 
@@ -204,18 +204,18 @@ before the runtime-gate fallback, returning `null` for any assignment
 that does not carry the `codex_sdk` work class. When it does run:
 
 - the fixture workspace is materialized under
-  `~/.pylon/cache/codex-agent-tasks/<hashed-ref>`;
+  `~/.pylon/cache/codex-agent-tasks/<hashed-ref>`.
 - the production runner (`runWithCodexSdk`) opens one Codex SDK
   thread pinned to that directory with `approvalPolicy: "never"`,
   `skipGitRepoCheck`, network disabled, and the effective sandbox
-  mode (`read-only` requested anywhere wins; default
-  `workspace-write`; full access does not exist on this code path);
-- the wall-clock budget is enforced through the turn `AbortSignal`;
+  mode (`read-only` requested anywhere wins, default
+  `workspace-write`. Full access does not exist on this code path).
+- the wall-clock budget is enforced through the turn `AbortSignal`.
 - every `file_change` the thread reports is validated post hoc
   against the workspace — an escape aborts the thread and produces
-  `blocker.assignment.codex_agent_workspace_escape_blocked`;
-- the fixture's verification command runs independently in the gate;
-  only a passing exit code yields an accepted closeout;
+  `blocker.assignment.codex_agent_workspace_escape_blocked`.
+- the fixture's verification command runs independently in the gate.
+  only a passing exit code yields an accepted closeout.
 - typed refusal arms: `codex_agent_unavailable` (+ probe blockers),
   `codex_agent_execution_refused`, `codex_agent_budget_exceeded`,
   `codex_agent_workspace_escape_blocked`, `codex_agent_test_failed`.
@@ -251,7 +251,7 @@ Two adapters, one deterministic rule set
    that adapter, and placement refuses — never substitutes — when the
    Pylon cannot honor it.
 2. **Owner preference is capability declaration.** Adapter-agnostic
-   orders go to the placed Pylon's declared lanes; disabling a lane in
+   orders go to the placed Pylon's declared lanes. Disabling a lane in
    `~/.pylon/config.json` strips its capability at go-online, which is
    how an owner expresses preference. A single-capability Pylon gets
    its one adapter.
@@ -282,8 +282,8 @@ closeout → delivered → review.
 ## Current status
 
 CX1 (#4788) ships the probe, capability declaration, credential-policy
-review, and config surface; CX2 (#4789) ships the bounded executor
-gate in the worker loop; CX3 (#4790) ships the `codex_agent_task` work
+review, and config surface. CX2 (#4789) ships the bounded executor
+gate in the worker loop. CX3 (#4790) ships the `codex_agent_task` work
 class, operator dispatch, and the CI-safe + live smoke harness.
 
 **The live-device leg (CX4 #4791) has run.** On 2026-06-11 a
@@ -297,7 +297,7 @@ the independent verification command passed on-device, and the
 closeout reached the deployed API as `accepted`
 (`assignment.closeout.f264043a9f173b20514521da`) with the redaction
 scan clean and the no-spend boundary intact. A green transition for
-`autopilot.codex_probe_pylon_successor.v1` was proposed receipt-first;
+`autopilot.codex_probe_pylon_successor.v1` was proposed receipt-first.
 the maintainer flips the registry.
 
 **The API-parity leg (CX5 #4792) has also run live.** On 2026-06-11 an

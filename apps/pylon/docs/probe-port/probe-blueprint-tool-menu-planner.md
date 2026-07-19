@@ -14,7 +14,7 @@ The menu is intentionally ref-first. Each tool carries `toolRef`, `toolName`,
 Program Signature and Program Type refs, Context Pack refs, Source Authority
 refs, approval policy ref, evidence requirement refs, receipt requirement refs,
 schema refs, and a policy of `allow`, `approval_required`, or `deny`. Context
-Pack and Source Authority refs only narrow the menu; they do not widen base
+Pack and Source Authority refs only narrow the menu. They do not widen base
 runner authority or expose every Probe tool by default.
 
 Unsupported tool scopes are omitted with structured warnings. Denied tool scopes

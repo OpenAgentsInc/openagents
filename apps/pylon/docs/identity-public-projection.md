@@ -8,13 +8,13 @@ Pylon resolves local state from `PYLON_HOME` or `~/.pylon`.
 
 The managed paths are:
 
-- `config.json` for public-safe bootstrap config;
-- `identity.json` for public local identity metadata;
+- `config.json` for public-safe bootstrap config.
+- `identity.json` for public local identity metadata.
 - `identity.mnemonic` for the private NIP-06 mnemonic when an explicit
-  `PYLON_HOME` is selected;
+  `PYLON_HOME` is selected.
 - `runtime-state.json` for lifecycle, resource mode, capability refs, and
-  blocker refs;
-- `ledger.jsonl` reserved for later wallet/settlement events;
+  blocker refs.
+- `ledger.jsonl` reserved for later wallet/settlement events.
 - `cache/` and `cache/releases/` for release/update artifacts.
 
 `identity.json` does not contain signing key material. It mirrors only public
@@ -34,8 +34,8 @@ The deprecated Rust Pylon that previously lived inside this repo used a real
 NIP-06 identity. It stored a BIP39 mnemonic at `identity.mnemonic`, defaulting
 to `~/.openagents/pylon/identity.mnemonic`, with these compatibility inputs:
 
-- `OPENAGENTS_IDENTITY_MNEMONIC_PATH` for direct mnemonic-file override;
-- historical Pylon config `identity_path`;
+- `OPENAGENTS_IDENTITY_MNEMONIC_PATH` for direct mnemonic-file override.
+- historical Pylon config `identity_path`.
 - `OPENAGENTS_PYLON_HOME/identity.mnemonic`.
 
 The current implementation checks those historical locations before creating
@@ -56,7 +56,7 @@ The v0.3 local runtime recognizes:
 - `degraded`
 - `assignment-ready`
 
-Current `0.3.0-rc1` bootstrap starts as `offline`; later registration,
+Current `0.3.0-rc1` bootstrap starts as `offline`. Later registration,
 heartbeat, wallet, assignment, and telemetry issues are responsible for moving
 that lifecycle forward with fresh evidence.
 

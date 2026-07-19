@@ -10,9 +10,9 @@ change, runtime promotion, payout path, or automatic GEPA admission.
 
 Record the part-two follow-up to transcript 245:
 
-1. show Khala Code can steer the Codex Fleet;
-2. show the old `0/1 available` `codex_spawn` dead-end no longer appears;
-3. show the deterministic `khala.fleet.delegate` module path;
+1. show Khala Code can steer the Codex Fleet.
+2. show the old `0/1 available` `codex_spawn` dead-end no longer appears.
+3. show the deterministic `khala.fleet.delegate` module path.
 4. start the Mutalisk/Gym optimization path from the UI and show the
    admission-ready Action Submission proposal ref in Gym.
 
@@ -228,8 +228,8 @@ in-memory demo store, emits `openagents.gym.run_progress.v1` snapshots for
 `blocked`, converts the summary into the
 `probe-gepa-standing-optimization-loop` input, and calls
 `projectKhalaFleetDelegationCandidateAdmission`. It does not import Mutalisk
-Python, DSPy, or GEPA runtime code; it does not auto-promote or approve the
-candidate; and `decisionGrade` remains `false` until real held-out/live evidence
+Python, DSPy, or GEPA runtime code. It does not auto-promote or approve the
+candidate. And `decisionGrade` remains `false` until real held-out/live evidence
 satisfies the Gym gates.
 
 ## Load The Fleet/Gym Optimization UI
@@ -334,7 +334,7 @@ than an admission-ready proposal.
 - `blocker.public.khala_fleet_delegate.connect_account_required` means no ready
   isolated Codex account is linked. Use `khala fleet connect`.
 - `blocker.public.pylon_dispatch.duplicate_active_assignment` is usually
-  transient; a fresh heartbeat and one retry should recover through the
+  transient. A fresh heartbeat and one retry should recover through the
   deterministic dispatch fallback.
 - `blocker.public.pylon_dispatch.stale_heartbeat` should recover through a fresh
   `advertise_capacity` step. If it does not, restart the local Pylon from the

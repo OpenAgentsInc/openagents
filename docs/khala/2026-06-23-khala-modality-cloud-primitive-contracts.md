@@ -29,24 +29,24 @@ metric vocabulary pretending to fit every modality.
 Every Cloud primitive should keep these shared fields because they are the
 economic and authority spine:
 
-- `schemaVersion`;
-- `primitive`;
-- request id and dereferenceable public-safe receipt ref;
-- account/referrer/public product refs where safe;
-- route, provider, served model or engine, version, region, and fallback reason;
-- request class and transport class;
+- `schemaVersion`.
+- `primitive`.
+- request id and dereferenceable public-safe receipt ref.
+- account/referrer/public product refs where safe.
+- route, provider, served model or engine, version, region, and fallback reason.
+- request class and transport class.
 - public-safe status: `accepted`, `queued`, `running`, `completed`, `failed`,
-  `rejected`, or `not_measured`;
-- cost basis, price, margin bucket, settlement state, and blocker refs;
+  `rejected`, or `not_measured`.
+- cost basis, price, margin bucket, settlement state, and blocker refs.
 - product-promise ids and evidence refs for any public claim.
 
 Each primitive must also keep the existing privacy discipline:
 
 - no raw prompts, documents, transcripts, audio, images, videos, private repo
   material, invoices, preimages, wallet material, or provider credentials in
-  public receipts;
-- no `0` as a stand-in for unknown values;
-- `not_measured` is explicit and carries a blocker ref when the field matters;
+  public receipts.
+- no `0` as a stand-in for unknown values.
+- `not_measured` is explicit and carries a blocker ref when the field matters.
 - public projections expose neutral classifiers, dimensions, durations, counts,
   hashes, and dereferenceable refs only.
 
@@ -64,31 +64,31 @@ Each primitive must also keep the existing privacy discipline:
 
 Request shape:
 
-- batch or async job submission;
-- multiple documents or chunks per job;
-- optional corpus/ref namespace;
-- optional index/store target;
+- batch or async job submission.
+- multiple documents or chunks per job.
+- optional corpus/ref namespace.
+- optional index/store target.
 - explicit retention and deletion policy refs.
 
 Distinct receipt and metric fields:
 
-- input document count and chunk count;
-- total input bytes and tokenized input count when measured;
-- embedding model, dimension, dtype, and normalization mode;
-- chunking policy ref and overlap/window parameters;
-- accepted chunk count, rejected chunk count, and rejection reasons;
-- queue wait, processing time, index write time, and total closeout time;
-- storage/index target ref, index-write status, and replayable manifest hash;
+- input document count and chunk count.
+- total input bytes and tokenized input count when measured.
+- embedding model, dimension, dtype, and normalization mode.
+- chunking policy ref and overlap/window parameters.
+- accepted chunk count, rejected chunk count, and rejection reasons.
+- queue wait, processing time, index write time, and total closeout time.
+- storage/index target ref, index-write status, and replayable manifest hash.
 - privacy/redaction policy ref and deletion/export ref when the data belongs to
-  a customer workspace;
+  a customer workspace.
 - cost per document, cost per chunk, cost per vector, and total job cost.
 
 Scaling lane:
 
-- queue-first, not edge-blocking;
-- high-throughput batch workers;
+- queue-first, not edge-blocking.
+- high-throughput batch workers.
 - scale by document volume, embedding model throughput, index write pressure,
-  and storage throughput;
+  and storage throughput.
 - scale-to-zero is acceptable for dev or predictable offline jobs when the job
   receipt is honest about queue wait and cold start.
 
@@ -104,31 +104,31 @@ Live voice covers ASR, TTS, and bidirectional voice sessions.
 
 Request shape:
 
-- bidirectional streaming or hibernatable WebSocket session;
-- audio frames in, transcript / model events / synthesized audio frames out;
-- explicit session start, turn, interruption, endpoint, and closeout events;
+- bidirectional streaming or hibernatable WebSocket session.
+- audio frames in, transcript / model events / synthesized audio frames out.
+- explicit session start, turn, interruption, endpoint, and closeout events.
 - approval/action receipts separate from raw transcript capture.
 
 Distinct receipt and metric fields:
 
-- transport: WebSocket, WebRTC bridge, or provider stream;
-- codec, sample rate, channel count, and audio duration;
-- first-audio-in to first-partial-transcript latency;
-- endpointing/VAD latency;
-- user turn duration and assistant turn duration;
-- interruption/barge-in count and recovery status;
-- ASR model, TTS voice/model, and session model/route;
-- transcript token count only as a secondary field;
-- synthesized audio duration, bytes, and first-audio-out latency;
-- approval/action refs when a voice command triggers work;
+- transport: WebSocket, WebRTC bridge, or provider stream.
+- codec, sample rate, channel count, and audio duration.
+- first-audio-in to first-partial-transcript latency.
+- endpointing/VAD latency.
+- user turn duration and assistant turn duration.
+- interruption/barge-in count and recovery status.
+- ASR model, TTS voice/model, and session model/route.
+- transcript token count only as a secondary field.
+- synthesized audio duration, bytes, and first-audio-out latency.
+- approval/action refs when a voice command triggers work.
 - privacy boundary: transcript retention, redaction, and user consent refs.
 
 Scaling lane:
 
-- session-oriented low-latency workers;
-- durable connection management rather than plain request/response;
+- session-oriented low-latency workers.
+- durable connection management rather than plain request/response.
 - autoscale on active sessions, audio seconds per second, buffer pressure,
-  endpointing latency, and provider stream health;
+  endpointing latency, and provider stream health.
 - isolate voice from chat decode saturation so text batch pressure cannot starve
   live audio.
 
@@ -146,37 +146,37 @@ or reference assets, but their product is not a chat answer.
 Request shape:
 
 - image: interactive job or short async job with one or more generated/edited
-  image artifacts;
+  image artifacts.
 - video: async job with progress, frames/segments, and terminal artifact
-  closeout;
-- optional reference asset refs, masks, storyboard refs, or seed controls;
+  closeout.
+- optional reference asset refs, masks, storyboard refs, or seed controls.
 - explicit safety/copyright/watermark policy refs where applicable.
 
 Distinct receipt and metric fields:
 
-- modality: `image`, `image_edit`, `video`, or `video_edit`;
-- artifact count and artifact refs;
-- requested and produced dimensions;
-- output format, codec/container for video, frame count, fps, and duration;
+- modality: `image`, `image_edit`, `video`, or `video_edit`.
+- artifact count and artifact refs.
+- requested and produced dimensions.
+- output format, codec/container for video, frame count, fps, and duration.
 - seed, sampler/scheduler, step count, guidance/strength when the provider
-  exposes them and they are safe to disclose;
-- model/engine/version, accelerator class, and warm/cold state;
+  exposes them and they are safe to disclose.
+- model/engine/version, accelerator class, and warm/cold state.
 - queue wait, render time, safety-check time, upload/storage time, and total
-  closeout time;
+  closeout time.
 - safety classifier result, blocked/rejected reason, and human-review ref when
-  applicable;
+  applicable.
 - cost per artifact, cost per megapixel, cost per generated second, and total
-  job cost;
+  job cost.
 - retry count, partial-artifact status, and expiration/lifecycle policy.
 
 Scaling lane:
 
 - compute-bound accelerator workers scaled independently from LLM decode-heavy
-  lanes;
+  lanes.
 - image lanes scale on concurrent renders, accelerator utilization, and queue
-  depth;
+  depth.
 - video lanes scale on queued render seconds, checkpoint/progress throughput,
-  artifact storage pressure, and long-job reliability;
+  artifact storage pressure, and long-job reliability.
 - do not let image/video queues compete with chat TTFT capacity unless a shared
   provider route has explicit priority/cap controls.
 
@@ -210,10 +210,10 @@ to its own product-promise id and evidence refs rather than hiding behind a broa
 #6094 is resolved by this study because it defines, for embeddings/bulk
 documents, live voice, and image/video:
 
-- request shape;
-- distinct receipt and metric fields;
-- scaling lane;
-- the explicit rule that chat TTFT/TPS semantics do not automatically apply;
+- request shape.
+- distinct receipt and metric fields.
+- scaling lane.
+- the explicit rule that chat TTFT/TPS semantics do not automatically apply.
 - the paid-receipt gate required before any per-modality product promise turns
   green.
 

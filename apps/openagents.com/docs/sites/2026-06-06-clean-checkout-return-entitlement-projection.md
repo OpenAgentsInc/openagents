@@ -9,23 +9,23 @@ coverage in `workers/api/src/site-checkout-return.test.ts`.
 
 Generated Sites can project checkout return state from:
 
-- a clean success, cancel, or status route;
-- a server-side checkout intent ref;
-- a buyer payment challenge;
-- an optional hosted MDK checkout projection;
-- an optional receipt;
-- an optional entitlement;
+- a clean success, cancel, or status route.
+- a server-side checkout intent ref.
+- a buyer payment challenge.
+- an optional hosted MDK checkout projection.
+- an optional receipt.
+- an optional entitlement.
 - generated checkout UI primitives.
 
 The projection supports these states:
 
-- `success`;
-- `cancel`;
-- `pending`;
-- `unpaid`;
-- `paid`;
-- `entitled`;
-- `expired`;
+- `success`.
+- `cancel`.
+- `pending`.
+- `unpaid`.
+- `paid`.
+- `entitled`.
+- `expired`.
 - `blocked`.
 
 ## Clean URL Boundary
@@ -52,11 +52,11 @@ entitlement record.
 State interpretation:
 
 - `success`: the clean success route was reached, but reconciliation still
-  needs to decide whether a receipt or entitlement exists;
+  needs to decide whether a receipt or entitlement exists.
 - `paid`: a receipt or hosted checkout payment-received state exists, but no
-  final entitlement projection is active yet;
-- `entitled`: an active entitlement record exists;
-- `expired`: the buyer payment challenge is stale or explicitly expired;
+  final entitlement projection is active yet.
+- `entitled`: an active entitlement record exists.
+- `expired`: the buyer payment challenge is stale or explicitly expired.
 - `blocked`: route refs, checkout refs, challenge refs, or payment product refs
   do not match.
 

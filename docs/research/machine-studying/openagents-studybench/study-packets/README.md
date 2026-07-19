@@ -65,7 +65,7 @@ into CI/cadence.
 The artifact studies commit history, so its identity is intrinsically
 per-commit: the committed index pins the exact commit it was generated against,
 and `--check` will report drift after **any** later commit (this is the freshness
-signal, not a defect). Refresh with `--write` as part of the studying cadence;
+signal, not a defect). Refresh with `--write` as part of the studying cadence.
 SA-4 owns when that runs.
 
 ## Standing freshness (SA-4)
@@ -80,7 +80,7 @@ two kinds of drift:
 - **content drift** — the corpus **content** hash changed, i.e. an admitted source
   file actually changed. This is the meaningful re-study trigger.
 - **commit drift** — HEAD/history moved but the studied content is byte-identical
-  (corpus content hash unchanged). Cheap and expected; the studied knowledge is
+  (corpus content hash unchanged). Cheap and expected. The studied knowledge is
   still correct.
 
 The verdict (`openagents.repo_study_artifact_freshness.v0`,
@@ -106,13 +106,13 @@ The verdict (`openagents.repo_study_artifact_freshness.v0`,
 `status: "fresh"` means **no content drift AND the correctness gate is green** —
 the studied substrate still matches the tree, regardless of how many commits have
 landed. **SA-2 / SA-3 can consume studied knowledge whenever the verdict is
-`fresh`.** `stale` means content drifted (re-study); `gate_failed` means the
+`fresh`.** `stale` means content drifted (re-study). `gate_failed` means the
 regenerated artifact failed the verification gate (investigate, do not refresh).
 
 CLI (from `packages/probe/packages/runtime`):
 
-    bun scripts/generate-openagents-study-packet.ts --freshness        # print the verdict JSON; exit 0 fresh / 2 stale / 1 gate_failed
-    bun scripts/generate-openagents-study-packet.ts --refresh-if-stale  # rewrite the committed index ONLY on content drift; exit 0 / 1 gate_failed
+    bun scripts/generate-openagents-study-packet.ts --freshness        # print the verdict JSON. Exit 0 fresh / 2 stale / 1 gate_failed
+    bun scripts/generate-openagents-study-packet.ts --refresh-if-stale  # rewrite the committed index ONLY on content drift. Exit 0 / 1 gate_failed
 
 ### Re-study cadence
 
@@ -166,7 +166,7 @@ verification (SA-3) already accept.
 
 ## Discipline
 
-Internal dogfood only. `sourceBoundary: "public_refs_only"`; no customer /
+Internal dogfood only. `sourceBoundary: "public_refs_only"`. No customer /
 marketplace / payout claim (that is the gated SA-5 path). The eval lift is the
-dogfood signal that the studied substrate distinguishes from a baseline; it is
+dogfood signal that the studied substrate distinguishes from a baseline. It is
 not a customer-facing promise.

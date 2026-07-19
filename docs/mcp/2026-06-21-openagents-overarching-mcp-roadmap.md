@@ -54,9 +54,9 @@ steer the system through declared capability.
 
 Server surfaces:
 
-- local Pylon MCP server;
-- Autopilot Desktop MCP supervision and operator UI;
-- OpenAgents Worker MCP facade;
+- local Pylon MCP server.
+- Autopilot Desktop MCP supervision and operator UI.
+- OpenAgents Worker MCP facade.
 - optional in-process MCP server bridge for embedded SDK/runtime sessions.
 
 ### OpenAgents As MCP Client
@@ -66,12 +66,12 @@ approved external tools/resources/prompts to coding agents and operator flows.
 
 Client surfaces:
 
-- local external MCP tools for coding sessions;
-- project-scoped MCP config for trusted repositories;
-- user-scoped MCP config for personal tools;
-- managed/enterprise MCP config for organization-controlled tools;
-- dynamic MCP config for SDK/session-specific tools;
-- plugin-provided MCP tools;
+- local external MCP tools for coding sessions.
+- project-scoped MCP config for trusted repositories.
+- user-scoped MCP config for personal tools.
+- managed/enterprise MCP config for organization-controlled tools.
+- dynamic MCP config for SDK/session-specific tools.
+- plugin-provided MCP tools.
 - IDE/desktop-local MCP connections where explicitly trusted.
 
 Both directions must use the same policy language and telemetry model.
@@ -83,22 +83,22 @@ workspace as `@openagentsinc/mcp-contract`.
 
 It should own:
 
-- MCP JSON-RPC envelope helpers;
-- tool descriptors;
-- resource descriptors;
-- prompt descriptors;
-- notification descriptors;
-- authority classes;
-- capability refs;
-- policy refs;
-- receipt refs;
-- result envelope schema;
-- error envelope schema;
-- progress event schema;
-- elicitation schema;
-- client/server status schema;
-- transport config schema;
-- connection lifecycle status schema;
+- MCP JSON-RPC envelope helpers.
+- tool descriptors.
+- resource descriptors.
+- prompt descriptors.
+- notification descriptors.
+- authority classes.
+- capability refs.
+- policy refs.
+- receipt refs.
+- result envelope schema.
+- error envelope schema.
+- progress event schema.
+- elicitation schema.
+- client/server status schema.
+- transport config schema.
+- connection lifecycle status schema.
 - test fixtures.
 
 Every MCP surface should import from this package instead of inventing local
@@ -133,23 +133,23 @@ Initial classes:
 
 Required descriptor fields:
 
-- stable name;
-- title;
-- description;
-- input schema;
-- output schema or resource schema;
-- read-only flag;
-- destructive flag;
-- open-world flag;
-- authority class;
-- capability refs;
-- policy refs;
-- auth scopes;
-- approval behavior;
-- receipt behavior;
-- timeout;
-- idempotency key rules;
-- output classification;
+- stable name.
+- title.
+- description.
+- input schema.
+- output schema or resource schema.
+- read-only flag.
+- destructive flag.
+- open-world flag.
+- authority class.
+- capability refs.
+- policy refs.
+- auth scopes.
+- approval behavior.
+- receipt behavior.
+- timeout.
+- idempotency key rules.
+- output classification.
 - safe logging policy.
 
 ## Server Roadmap
@@ -162,9 +162,9 @@ Expose the local Pylon node as a safe, capability-filtered MCP server.
 
 Transports:
 
-- stdio first, for local coding agents;
-- loopback Streamable HTTP second, for Desktop and local automation;
-- loopback SSE or event resources for long-running subscriptions;
+- stdio first, for local coding agents.
+- loopback Streamable HTTP second, for Desktop and local automation.
+- loopback SSE or event resources for long-running subscriptions.
 - remote access only through an explicit bridge/pairing model.
 
 Required tool groups:
@@ -230,7 +230,7 @@ Required prompts:
 
 Hard requirements:
 
-- MCP server wraps Pylon control/bridge commands; it does not bypass them.
+- MCP server wraps Pylon control/bridge commands. It does not bypass them.
 - Connected clients receive only tools allowed by their grant.
 - Bridge revocation immediately removes authority.
 - Tool calls produce receipt refs for meaningful mutations.
@@ -350,8 +350,8 @@ normal HTTP API, OpenAPI, capability manifest, auth, policy, and rate limits.
 
 Transports:
 
-- Streamable HTTP for authenticated clients;
-- public read-only route for discoverable public data;
+- Streamable HTTP for authenticated clients.
+- public read-only route for discoverable public data.
 - no remote admin route until owner policy and audit trails are proven.
 
 Read-only public tools:
@@ -411,11 +411,11 @@ server behavior without spawning a separate process.
 
 Capabilities:
 
-- paired in-memory transport;
-- multiple named in-process servers per session;
-- request ID correlation;
-- setup/teardown hooks;
-- message forwarding over existing session control channels;
+- paired in-memory transport.
+- multiple named in-process servers per session.
+- request ID correlation.
+- setup/teardown hooks.
+- message forwarding over existing session control channels.
 - test fixture support.
 
 Hard requirements:
@@ -431,39 +431,39 @@ Hard requirements:
 
 Autopilot/Pylon should support MCP server config from:
 
-- local private project config;
-- shared project config;
-- user config;
-- managed/enterprise config;
-- session/dynamic config;
-- plugin-provided config;
-- IDE-provided config;
+- local private project config.
+- shared project config.
+- user config.
+- managed/enterprise config.
+- session/dynamic config.
+- plugin-provided config.
+- IDE-provided config.
 - Desktop-discovered local config.
 
 Required config fields:
 
-- server name;
-- transport type;
-- command/args/env for stdio;
-- URL for remote transports;
-- static headers;
-- dynamic headers helper ref;
-- OAuth config;
-- trust scope;
-- enabled/disabled state;
-- approval state;
-- policy refs;
-- source refs;
+- server name.
+- transport type.
+- command/args/env for stdio.
+- URL for remote transports.
+- static headers.
+- dynamic headers helper ref.
+- OAuth config.
+- trust scope.
+- enabled/disabled state.
+- approval state.
+- policy refs.
+- source refs.
 - plugin refs where applicable.
 
 Required transport types:
 
-- stdio;
-- Streamable HTTP;
-- SSE;
-- WebSocket;
-- IDE-local transports;
-- in-process linked transport;
+- stdio.
+- Streamable HTTP.
+- SSE.
+- WebSocket.
+- IDE-local transports.
+- in-process linked transport.
 - bridge/proxy transport for remote sessions.
 
 ### Client Surface B: Config Policy and Approval
@@ -472,58 +472,58 @@ External MCP servers should be treated as untrusted capability ingestion.
 
 Required policy behavior:
 
-- shared project config starts pending;
+- shared project config starts pending.
 - operator can approve one server, reject one server, approve all, or reject
-  all;
+  all.
 - non-interactive sessions require explicit trust mode before project config
-  auto-approval;
-- managed policy can allow or deny by server name;
-- managed policy can allow or deny by command signature;
-- managed policy can allow or deny by URL pattern;
-- managed config can take exclusive control when needed;
-- plugin-provided MCP servers are deduped against manual servers;
+  auto-approval.
+- managed policy can allow or deny by server name.
+- managed policy can allow or deny by command signature.
+- managed policy can allow or deny by URL pattern.
+- managed config can take exclusive control when needed.
+- plugin-provided MCP servers are deduped against manual servers.
 - disabled servers are shown but not connected.
 
 ### Client Surface C: Connection Lifecycle
 
 Required states:
 
-- connected;
-- failed;
-- needs auth;
-- pending approval;
-- disabled;
-- reconnecting;
-- stale config;
+- connected.
+- failed.
+- needs auth.
+- pending approval.
+- disabled.
+- reconnecting.
+- stale config.
 - revoked.
 
 Required behavior:
 
 - separate concurrency limits for local process launches and remote network
-  connects;
-- connection timeouts;
-- tool/resource/prompt fetch cache;
-- cache invalidation on config hash changes;
-- reconnect on selected transient transport failures;
-- cleanup on server removal;
-- stale client cleanup when plugin/session config changes;
-- safe stderr capture for stdio servers;
+  connects.
+- connection timeouts.
+- tool/resource/prompt fetch cache.
+- cache invalidation on config hash changes.
+- reconnect on selected transient transport failures.
+- cleanup on server removal.
+- stale client cleanup when plugin/session config changes.
+- safe stderr capture for stdio servers.
 - redacted transport logging.
 
 ### Client Surface D: OAuth and Remote Auth
 
 Required behavior:
 
-- OAuth metadata discovery;
-- dynamic client registration where supported;
-- configured client ID support;
-- token storage outside tracked files;
-- token refresh;
-- token revocation;
-- needs-auth state;
-- explicit reauth tool/action;
-- auth failure caching to prevent repeated network storms;
-- step-up auth support for servers that ask for additional scopes;
+- OAuth metadata discovery.
+- dynamic client registration where supported.
+- configured client ID support.
+- token storage outside tracked files.
+- token refresh.
+- token revocation.
+- needs-auth state.
+- explicit reauth tool/action.
+- auth failure caching to prevent repeated network storms.
+- step-up auth support for servers that ask for additional scopes.
 - support for trusted organization identity delegation when configured.
 
 ### Client Surface E: Tool Projection
@@ -532,17 +532,17 @@ External MCP tools should be converted into native OpenAgents tool descriptors.
 
 Required projection behavior:
 
-- name tools as `mcp__{server}__{tool}` by default;
-- preserve original server/tool name separately;
-- preserve input schema;
-- preserve description with length caps;
-- preserve read-only, destructive, and open-world hints;
-- expose search/read classification for UI compaction;
-- route calls through native approval policy;
-- expose structured content and `_meta` where safe;
-- support progress events;
-- support abort/cancel;
-- support session-expiry retry where applicable;
+- name tools as `mcp__{server}__{tool}` by default.
+- preserve original server/tool name separately.
+- preserve input schema.
+- preserve description with length caps.
+- preserve read-only, destructive, and open-world hints.
+- expose search/read classification for UI compaction.
+- route calls through native approval policy.
+- expose structured content and `_meta` where safe.
+- support progress events.
+- support abort/cancel.
+- support session-expiry retry where applicable.
 - hide tools from servers without grants or approvals.
 
 ### Client Surface F: Resource Projection
@@ -552,13 +552,13 @@ read tools.
 
 Required behavior:
 
-- list resources per server;
-- attach server provenance;
-- read resource by URI;
-- classify text, image, audio, and binary resource content;
-- persist binary content where appropriate;
-- resize/downsample large images before model inclusion;
-- never expose private binary bytes directly in public projections;
+- list resources per server.
+- attach server provenance.
+- read resource by URI.
+- classify text, image, audio, and binary resource content.
+- persist binary content where appropriate.
+- resize/downsample large images before model inclusion.
+- never expose private binary bytes directly in public projections.
 - refresh resources on list-changed notifications.
 
 ### Client Surface G: Prompt and Skill Projection
@@ -567,13 +567,13 @@ External MCP prompts should become command-like entries.
 
 Required behavior:
 
-- list prompts per server;
-- show server provenance;
-- map prompt arguments to invocation input;
-- fetch prompt content lazily;
-- transform returned text/image/audio/resource content safely;
+- list prompts per server.
+- show server provenance.
+- map prompt arguments to invocation input.
+- fetch prompt content lazily.
+- transform returned text/image/audio/resource content safely.
 - optionally discover skill-like resources only behind explicit feature and
-  trust gates;
+  trust gates.
 - never execute remote skill code inline.
 
 ### Client Surface H: Elicitation
@@ -582,12 +582,12 @@ MCP servers may ask the user or operator for more information.
 
 Required behavior:
 
-- form elicitation UI;
-- URL elicitation UI;
-- two-phase "open URL then retry" flow;
-- hooks that can accept, decline, cancel, or modify elicitation results;
-- completion notification handling;
-- cancellation on abort;
+- form elicitation UI.
+- URL elicitation UI.
+- two-phase "open URL then retry" flow.
+- hooks that can accept, decline, cancel, or modify elicitation results.
+- completion notification handling.
+- cancellation on abort.
 - no silent auto-accept for sensitive elicitations.
 
 ### Client Surface I: Output Handling
@@ -596,14 +596,14 @@ MCP output can be huge or binary.
 
 Required behavior:
 
-- content-size estimation;
-- result truncation with explicit warning;
-- file persistence for large text outputs;
-- binary blob persistence with safe file refs;
-- image resizing/downsampling;
-- per-tool result size policy;
-- output previews;
-- public-safe redaction;
+- content-size estimation.
+- result truncation with explicit warning.
+- file persistence for large text outputs.
+- binary blob persistence with safe file refs.
+- image resizing/downsampling.
+- per-tool result size policy.
+- output previews.
+- public-safe redaction.
 - transcript resume reconstruction where needed.
 
 ### Client Surface J: Management UI
@@ -612,22 +612,22 @@ Autopilot Desktop and terminal surfaces should expose MCP management.
 
 Required UI:
 
-- list configured servers;
-- show status;
-- show transport;
-- show source/scope;
-- show tool/resource/prompt counts;
-- show approval state;
-- show auth state;
-- enable/disable server;
-- reconnect server;
-- approve/reject project server;
-- revoke auth;
-- view tools;
-- view resources;
-- view prompts;
-- inspect recent calls;
-- copy client config snippets;
+- list configured servers.
+- show status.
+- show transport.
+- show source/scope.
+- show tool/resource/prompt counts.
+- show approval state.
+- show auth state.
+- enable/disable server.
+- reconnect server.
+- approve/reject project server.
+- revoke auth.
+- view tools.
+- view resources.
+- view prompts.
+- inspect recent calls.
+- copy client config snippets.
 - show policy blockers.
 
 ## Fully Steerable Pylon and Autopilot
@@ -667,14 +667,14 @@ Minimum steering workflows:
 
 Deliverables:
 
-- shared MCP contract package: `packages/mcp-contract`;
-- authority taxonomy;
-- transport config schema;
-- lifecycle status schema;
-- tool/resource/prompt descriptor schema;
-- receipt/error/progress/elicitation schemas;
-- naming rules;
-- public-safe output rules;
+- shared MCP contract package: `packages/mcp-contract`.
+- authority taxonomy.
+- transport config schema.
+- lifecycle status schema.
+- tool/resource/prompt descriptor schema.
+- receipt/error/progress/elicitation schemas.
+- naming rules.
+- public-safe output rules.
 - package import markers for Pylon, Autopilot Desktop, Worker/API, and web.
 
 Exit criteria:
@@ -729,30 +729,30 @@ Phase 1 handoff:
 
 Deliverables:
 
-- stdio MCP server entrypoint for Pylon;
-- loopback HTTP MCP server behind explicit local flag;
-- read-only health/status/session/account/wallet tools;
-- resource list/read for node status and sessions;
+- stdio MCP server entrypoint for Pylon.
+- loopback HTTP MCP server behind explicit local flag.
+- read-only health/status/session/account/wallet tools.
+- resource list/read for node status and sessions.
 - MCP client compatibility smoke.
 
 Exit criteria:
 
-- external MCP client can initialize;
-- `tools/list` returns granted read-only tools;
-- `tools/call pylon.health` hits the real local node;
-- `resources/list` returns live local resources;
+- external MCP client can initialize.
+- `tools/list` returns granted read-only tools.
+- `tools/call pylon.health` hits the real local node.
+- `resources/list` returns live local resources.
 - no mutating tools are present.
 
 ### Phase 2: Pylon Steering Tools
 
 Deliverables:
 
-- session spawn/reply/interrupt/cancel tools;
-- approval list/resolve tools;
-- intent submit/list tools;
-- coordinator pause/resume tools;
-- assignment poll/accept tools;
-- artifact read resources;
+- session spawn/reply/interrupt/cancel tools.
+- approval list/resolve tools.
+- intent submit/list tools.
+- coordinator pause/resume tools.
+- assignment poll/accept tools.
+- artifact read resources.
 - progress and event subscriptions.
 
 Exit criteria:
@@ -766,12 +766,12 @@ Exit criteria:
 
 Deliverables:
 
-- Desktop MCP server status UI;
-- connected client list;
-- grants and revocation;
-- recent call log;
-- copyable client config;
-- Verse read-only resources;
+- Desktop MCP server status UI.
+- connected client list.
+- grants and revocation.
+- recent call log.
+- copyable client config.
+- Verse read-only resources.
 - Verse semantic interaction tools.
 
 Exit criteria:
@@ -784,14 +784,14 @@ Exit criteria:
 
 Deliverables:
 
-- external MCP config scopes;
-- approval gates for shared project config;
-- transport support for stdio, HTTP, SSE, WebSocket, and in-process;
-- OAuth and needs-auth state;
-- external tool projection;
-- external resource projection;
-- external prompt projection;
-- elicitation UI;
+- external MCP config scopes.
+- approval gates for shared project config.
+- transport support for stdio, HTTP, SSE, WebSocket, and in-process.
+- OAuth and needs-auth state.
+- external tool projection.
+- external resource projection.
+- external prompt projection.
+- elicitation UI.
 - output truncation/persistence.
 
 Exit criteria:
@@ -805,9 +805,9 @@ Exit criteria:
 
 Deliverables:
 
-- generated read-only Worker MCP tools from OpenAPI and capability manifest;
-- public-safe product resources;
-- read-only public transport;
+- generated read-only Worker MCP tools from OpenAPI and capability manifest.
+- public-safe product resources.
+- read-only public transport.
 - schema parity tests.
 
 Exit criteria:
@@ -820,10 +820,10 @@ Exit criteria:
 
 Deliverables:
 
-- authenticated forum tools;
-- authenticated pylon tools;
-- authenticated receipt tools;
-- authenticated product promise/proof/training tools;
+- authenticated forum tools.
+- authenticated pylon tools.
+- authenticated receipt tools.
+- authenticated product promise/proof/training tools.
 - browser/session and agent bearer auth modes.
 
 Exit criteria:
@@ -836,12 +836,12 @@ Exit criteria:
 
 Deliverables:
 
-- payment spend tools;
-- deployment tools;
-- workspace write tools;
-- admin tools;
-- hard approval flows;
-- amount caps and environment caps;
+- payment spend tools.
+- deployment tools.
+- workspace write tools.
+- admin tools.
+- hard approval flows.
+- amount caps and environment caps.
 - receipt and audit trails.
 
 Exit criteria:
@@ -855,11 +855,11 @@ Exit criteria:
 
 Deliverables:
 
-- compatibility smoke for Codex;
-- compatibility smoke for Claude Code;
-- compatibility smoke for common MCP inspector/client tools;
-- Desktop-packaged app smoke;
-- Worker staging smoke;
+- compatibility smoke for Codex.
+- compatibility smoke for Claude Code.
+- compatibility smoke for common MCP inspector/client tools.
+- Desktop-packaged app smoke.
+- Worker staging smoke.
 - docs for client setup.
 
 Exit criteria:
@@ -873,63 +873,63 @@ Exit criteria:
 
 Unit tests:
 
-- schema descriptor generation;
-- tool naming;
-- resource URI parsing;
-- prompt descriptor generation;
-- authority class assignment;
-- read-only enforcement;
-- policy filter behavior;
-- approval state transitions;
-- OAuth state classification;
-- output truncation and persistence;
+- schema descriptor generation.
+- tool naming.
+- resource URI parsing.
+- prompt descriptor generation.
+- authority class assignment.
+- read-only enforcement.
+- policy filter behavior.
+- approval state transitions.
+- OAuth state classification.
+- output truncation and persistence.
 - unsafe output omission.
 
 Integration tests:
 
-- Pylon stdio MCP initialize/list/call;
-- Pylon loopback MCP initialize/list/call;
-- Pylon bridge grant filtering;
-- session spawn/reply/cancel;
-- approval resolution with receipt;
-- wallet status read;
-- wallet spend blocked without approval;
-- external stdio MCP ingestion;
-- external HTTP MCP ingestion;
-- external prompt projection;
-- external resource projection;
-- needs-auth remote server state;
+- Pylon stdio MCP initialize/list/call.
+- Pylon loopback MCP initialize/list/call.
+- Pylon bridge grant filtering.
+- session spawn/reply/cancel.
+- approval resolution with receipt.
+- wallet status read.
+- wallet spend blocked without approval.
+- external stdio MCP ingestion.
+- external HTTP MCP ingestion.
+- external prompt projection.
+- external resource projection.
+- needs-auth remote server state.
 - project MCP approval/rejection.
 
 Browser/Desktop smokes:
 
-- Desktop starts with MCP server disabled by default where appropriate;
-- Desktop can start local MCP server;
-- Desktop shows connected clients;
-- Desktop revokes a client;
-- Verse state is readable through MCP;
-- Verse scene does not remount during MCP reads;
+- Desktop starts with MCP server disabled by default where appropriate.
+- Desktop can start local MCP server.
+- Desktop shows connected clients.
+- Desktop revokes a client.
+- Verse state is readable through MCP.
+- Verse scene does not remount during MCP reads.
 - coding overlay continues to receive input while MCP is active.
 
 Worker smokes:
 
-- public MCP facade returns public stats;
-- OpenAPI schema parity;
-- capability manifest parity;
-- authenticated forum read/write;
-- authenticated pylon tip;
+- public MCP facade returns public stats.
+- OpenAPI schema parity.
+- capability manifest parity.
+- authenticated forum read/write.
+- authenticated pylon tip.
 - payment receipt replay rejection.
 
 Security tests:
 
-- no raw mnemonic/token output;
-- no raw private prompt output;
-- no absolute private path in public projections;
-- no external MCP tool bypasses approval;
-- denied server never connects;
-- rejected project server never connects;
-- disabled server never connects;
-- ungranted server tool cannot be called by guessed name;
+- no raw mnemonic/token output.
+- no raw private prompt output.
+- no absolute private path in public projections.
+- no external MCP tool bypasses approval.
+- denied server never connects.
+- rejected project server never connects.
+- disabled server never connects.
+- ungranted server tool cannot be called by guessed name.
 - high-risk tool absent from low-trust clients.
 
 ## Documentation Plan

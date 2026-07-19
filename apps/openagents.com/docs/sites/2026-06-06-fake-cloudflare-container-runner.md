@@ -17,19 +17,19 @@ path before a live Container runner exists.
 
 `workers/api/src/fake-cloudflare-container-runner.ts` provides:
 
-- a gateway adapter for `cloudflare_container`;
-- deterministic fake dispatch receipts;
+- a gateway adapter for `cloudflare_container`.
+- deterministic fake dispatch receipts.
 - deterministic lifecycle events for:
-  - queued;
-  - started;
-  - artifact;
-  - completed;
-  - failed;
-  - cancelled;
-- public-safe artifact manifest refs;
-- operator-safe debug refs;
-- cancellation receipts;
-- callback receipt ingestion;
+  - queued.
+  - started.
+  - artifact.
+  - completed.
+  - failed.
+  - cancelled.
+- public-safe artifact manifest refs.
+- operator-safe debug refs.
+- cancellation receipts.
+- callback receipt ingestion.
 - health checks that return `healthy` for sanitized fake requests.
 
 ## Redaction Rules
@@ -48,11 +48,11 @@ does not accidentally prove a bad projection shape.
 
 This issue does not:
 
-- add a real Cloudflare Container class;
-- add a Wrangler `containers` binding;
-- execute a generated Site;
-- run dependency installs or tests;
-- resolve provider-account auth material;
+- add a real Cloudflare Container class.
+- add a Wrangler `containers` binding.
+- execute a generated Site.
+- run dependency installs or tests.
+- resolve provider-account auth material.
 - attach billing to fake runner usage.
 
 Those remain for provider-boundary, cost/health projection, and later live

@@ -1,7 +1,7 @@
 # OpenCode tool-layer study for Khala built-in tools
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Issue: [#6953](https://github.com/OpenAgentsInc/openagents/issues/6953)
@@ -13,7 +13,7 @@ Source studied: `anomalyco/opencode` public `dev` branch at commit
 
 Purpose: extract concrete tool-layer patterns that should inform OpenAgents'
 own built-in tool definitions for Khala desktop and the Khala CLI when no
-external coding agent is installed. This is research only; it does not implement
+external coding agent is installed. This is research only. It does not implement
 OpenAgents tools.
 
 ## Executive takeaways
@@ -24,15 +24,15 @@ The most harvestable pattern is a small typed core:
 
 - each tool is a value made by `Tool.make(...)` with a model-facing
   description, Effect Schema input, Effect Schema output, optional structured
-  output projection, and an Effect-based `execute` handler;
+  output projection, and an Effect-based `execute` handler.
 - each tool registers into a `Tools.Service`, while `ToolRegistry.Service`
-  materializes the active tool definitions and settles tool calls;
+  materializes the active tool definitions and settles tool calls.
 - permission checks are not embedded in the model schema. Tools call
   `PermissionV2.Service.assert(...)` at the side-effect boundary using action,
-  resources, source message/call refs, and optional save scopes;
+  resources, source message/call refs, and optional save scopes.
 - large outputs are bounded by `ToolOutputStore.Service.bound(...)`, with a
   preview returned to the model and the full content saved under managed local
-  tool-output storage;
+  tool-output storage.
 - mutating file tools are deliberately conservative: exact text edit, full-file
   write, and patch application are separate tools, and all share the `edit`
   permission class.
@@ -69,7 +69,7 @@ HTTP client.
 
 The design point for Khala is the static/dynamic split. OpenCode's built-ins
 are first-class and service-backed. Dynamic or application tools are handled
-elsewhere through `ApplicationTools` and `ToolRegistry`; they do not replace the
+elsewhere through `ApplicationTools` and `ToolRegistry`. They do not replace the
 core catalog. Khala should follow that: ship a small reliable built-in catalog,
 then layer MCP/project/plugin tools on top with clear names and policy.
 
@@ -79,18 +79,18 @@ The core definition constructor is
 [`packages/core/src/tool/tool.ts`](https://github.com/anomalyco/opencode/blob/01a5c69244c8c683bee303e535e3e3d40c605b8f/packages/core/src/tool/tool.ts).
 `Tool.make(...)` accepts:
 
-- `description`: model-facing instructions;
-- `input`: an Effect `Schema.Codec`;
-- `output`: an Effect `Schema.Codec`;
-- optional `structured` output schema;
-- optional `toStructuredOutput(...)`;
-- `execute(...)`, returning an `Effect`;
+- `description`: model-facing instructions.
+- `input`: an Effect `Schema.Codec`.
+- `output`: an Effect `Schema.Codec`.
+- optional `structured` output schema.
+- optional `toStructuredOutput(...)`.
+- `execute(...)`, returning an `Effect`.
 - optional `toModelOutput(...)`.
 
 The runtime converts Effect Schema to JSON Schema with
 `Schema.toJsonSchemaDocument(...)` and exposes the result as an
-`@opencode-ai/llm` `ToolDefinition`. Tool input is decoded before execution;
-tool output is encoded after execution; both failure cases become
+`@opencode-ai/llm` `ToolDefinition`. Tool input is decoded before execution.
+tool output is encoded after execution. Both failure cases become
 `ToolFailure` messages rather than raw thrown errors.
 
 The companion LLM package has the same general shape in
@@ -146,7 +146,7 @@ then sends output through `ToolOutputStore.bound(...)`.
 Two details are especially relevant to Khala:
 
 - stale tool calls are detected by comparing an advertised registration identity
-  with the current registration identity;
+  with the current registration identity.
 - output bounding is centralized after execution, so every tool benefits from
   the same line/byte policy and managed-output reference behavior.
 
@@ -169,7 +169,7 @@ while tools remain local typed services.
 History lowering in
 [`packages/core/src/session/runner/to-llm-message.ts`](https://github.com/anomalyco/opencode/blob/01a5c69244c8c683bee303e535e3e3d40c605b8f/packages/core/src/session/runner/to-llm-message.ts)
 keeps assistant tool calls and local tool results in the LLM conversation. If a
-provider executed the tool itself, provider metadata can be reused; otherwise
+provider executed the tool itself, provider metadata can be reused. Otherwise
 local tool output is converted into a `ToolResultPart`. Khala should preserve
 this distinction because local tools, provider-hosted tools, and future MCP
 tools need different authority and audit treatment.
@@ -181,9 +181,9 @@ The authority boundary is
 Permission rules are wildcard-matched by action and resource. Evaluation falls
 back to `ask` when no rule matches. The service supports:
 
-- `ask(input)`: evaluate and, if needed, create a pending permission request;
-- `assert(input)`: allow, deny, or block until the pending request is answered;
-- `reply(input)`: accept, reject, or accept always;
+- `ask(input)`: evaluate and, if needed, create a pending permission request.
+- `assert(input)`: allow, deny, or block until the pending request is answered.
+- `reply(input)`: accept, reject, or accept always.
 - `get`, `forSession`, and `list` for pending requests.
 
 Saved "always" replies are stored through `PermissionSaved` as allow rules for
@@ -222,7 +222,7 @@ read-only, workspace-write, and owner-full-access.
 
 `read` resolves paths through `LocationMutation`, checks external-directory
 approval, inspects the target, and either lists a directory page or reads a
-file page. Text paging is delegated to `ReadToolFileSystem`; supported images
+file page. Text paging is delegated to `ReadToolFileSystem`. Supported images
 are normalized through `Image.Service` and returned as a file content part.
 Unsupported binary files become a tool failure.
 
@@ -271,7 +271,7 @@ and full write remain simpler and easier for models to recover from.
 `grep` and `glob` delegate to `Ripgrep.Service`. They keep path arguments
 relative to the active Location, expose a `limit`, and return concise
 line-oriented model output. `grep` formats results as file headers plus
-`Line N: text`; `glob` returns matched paths or "No files found."
+`Line N: text`. `glob` returns matched paths or "No files found."
 
 The pattern to copy is first-class search, not shelling out to `grep` or `find`.
 Search tools should be bounded, structured internally, and concise externally.
@@ -282,14 +282,14 @@ so the model does not spend shell authority on routine code navigation.
 
 `bash` is intentionally small in the V2 core. It defines:
 
-- default timeout: 120,000 ms;
-- maximum timeout: 600,000 ms;
-- maximum in-memory capture: 1 MiB;
-- optional working directory resolved from the active Location;
+- default timeout: 120,000 ms.
+- maximum timeout: 600,000 ms.
+- maximum in-memory capture: 1 MiB.
+- optional working directory resolved from the active Location.
 - configured shell override from config, otherwise `/bin/sh` on POSIX and
-  COMSPEC/cmd on Windows;
-- detached process group on non-Windows;
-- combined stdout/stderr capture;
+  COMSPEC/cmd on Windows.
+- detached process group on non-Windows.
+- combined stdout/stderr capture.
 - timeout handling that returns a model-visible timeout message.
 
 The tool returns structured fields `exit`, `truncated`, and optional `timeout`,
@@ -306,8 +306,8 @@ sandbox it does not enforce.
 
 OpenCode separates three result layers:
 
-- `structured`: encoded data that can be retained and rendered by clients;
-- `content`: model-facing text or file parts;
+- `structured`: encoded data that can be retained and rendered by clients.
+- `content`: model-facing text or file parts.
 - `result`: the provider-facing tool result value produced by
   `ToolOutput.toResultValue(...)`.
 
@@ -329,7 +329,7 @@ the model receives concise factual text.
 
 ## Architecture notable points for OpenAgents
 
-OpenCode's useful architecture is not just "it has tools"; it has Effect
+OpenCode's useful architecture is not just "it has tools". It has Effect
 services around tool authority:
 
 - `Tool.make` is pure definition plus effectful handler.
@@ -348,7 +348,7 @@ without giving the model direct access to service internals.
 
 The main caveat is that OpenCode's V2 tool layer still has visible parity debt:
 the `bash` TODOs cover parser-based approvals, environment augmentation,
-durable progress, background jobs, and binary handling; `edit` and `write` TODOs
+durable progress, background jobs, and binary handling. `edit` and `write` TODOs
 cover formatter, watcher, undo, and LSP integrations. Khala can use the shape
 now, but should not copy every current limitation as a product decision.
 
@@ -382,7 +382,7 @@ now, but should not copy every current limitation as a product decision.
 - Avoid making `bash` the primary file/search/edit interface. Shell should be
   available for tests and real commands, not for every basic operation.
 - Avoid pretending host-user shell execution is sandboxed. If Khala runs with
-  host authority, say so and gate it; if it promises workspace-write or
+  host authority, say so and gate it. If it promises workspace-write or
   read-only, enforce that in services.
 - Avoid fuzzy edit correction as the first public contract. Start exact and
   make recovery strategies internal, explainable, and auditable.
@@ -399,7 +399,7 @@ now, but should not copy every current limitation as a product decision.
 
 1. Define an `@openagentsinc/khala-tools` package with Effect Schema contracts
    and `Tool.make`-style constructors.
-2. Implement `read`, `glob`, `grep`, `edit`, `write`, and `bash` first; keep
+2. Implement `read`, `glob`, `grep`, `edit`, `write`, and `bash` first. Keep
    `apply_patch`, `question`, and `todowrite` next.
 3. Add a `ToolRegistry` service that materializes active definitions and rejects
    unknown/stale calls with typed results.

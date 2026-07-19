@@ -15,12 +15,12 @@ Code:
 The console reads the persisted Artanis rows from the #403 D1 family and
 projects:
 
-- runtime state;
-- loop state, last tick, next tick, blockers, and selected context refs;
-- health and Forum-publication lag;
-- approval gates;
-- work-routing proposals;
-- Forum publication queue state;
+- runtime state.
+- loop state, last tick, next tick, blockers, and selected context refs.
+- health and Forum-publication lag.
+- approval gates.
+- work-routing proposals.
+- Forum publication queue state.
 - private operator steering refs by reference only.
 
 ## Operator API
@@ -33,7 +33,7 @@ operator decision for a pending approval gate and return a refreshed console
 snapshot.
 
 Both routes require either the admin API bearer token or an authenticated
-OpenAgents admin browser session. Anonymous users receive `401`; signed-in
+OpenAgents admin browser session. Anonymous users receive `401`. Signed-in
 non-admins receive `403`.
 
 ## UI
@@ -41,11 +41,11 @@ non-admins receive `403`.
 The `/autopilot` workroom side panel now renders an `Artanis operator` dock
 only for admin sessions. It exposes:
 
-- current runtime, loop, health, approval, and Forum lag status;
-- Artanis goal create, reprioritize, pause, resume, and cancel controls;
-- private evidence and raw workroom refs by reference;
-- pending approval gates with approve/reject controls;
-- work-routing proposal refs and spend/cost caveat refs;
+- current runtime, loop, health, approval, and Forum lag status.
+- Artanis goal create, reprioritize, pause, resume, and cancel controls.
+- private evidence and raw workroom refs by reference.
+- pending approval gates with approve/reject controls.
+- work-routing proposal refs and spend/cost caveat refs.
 - Forum publication queue counts.
 
 The goal controls reuse the existing browser Autopilot goal routes with
@@ -59,11 +59,11 @@ payouts.
 The public `/artanis`, Forum, and AGENTS-facing surfaces remain downstream of
 public-safe projections only. They must not render:
 
-- private evidence refs;
-- raw workroom refs;
-- operator endpoints;
-- operator receipt refs;
-- raw timestamps;
+- private evidence refs.
+- raw workroom refs.
+- operator endpoints.
+- operator receipt refs.
+- raw timestamps.
 - wallet, provider, runner, customer, payment, secret, or private-repository
   material.
 

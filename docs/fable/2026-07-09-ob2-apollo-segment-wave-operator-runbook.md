@@ -2,7 +2,7 @@
 
 Date: 2026-07-09  
 Status: operator runbook for loading Apollo segment waves into
-`business_pipeline_rows`. Apollo stays a **mirror**; the pipeline is the
+`business_pipeline_rows`. Apollo stays a **mirror**. The pipeline is the
 system of record (BF-9.2). No prospect names, domains, emails, phones, or
 raw Apollo payloads may enter this repo or public-safe operator receipts.
 
@@ -34,10 +34,10 @@ does **not** close the issue by itself.
 
 | Prerequisite | Notes |
 | --- | --- |
-| Owner Apollo MCP OAuth | Connected on the owner account; agent session must have the Apollo MCP tools armed |
+| Owner Apollo MCP OAuth | Connected on the owner account. Agent session must have the Apollo MCP tools armed |
 | Admin API token | `OPENAGENTS_ADMIN_API_TOKEN` for operator routes |
 | Migration 0314 applied | `subject_ref` + partial unique index on production D1 |
-| OB-1 warm-up cap | Match day’s outbound cap; do not over-fill the queue past the current send budget |
+| OB-1 warm-up cap | Match day’s outbound cap. Do not over-fill the queue past the current send budget |
 | Suppression list | Existing customers/partners/active intake already in `business_outreach_suppressions` |
 
 Optional env:
@@ -248,7 +248,7 @@ OB-2 live wave receipt
 | --- | --- | --- |
 | `subjectRef must be an opaque public-safe ref` | Email/domain slipped into ref | Re-map to `prospect.apollo.<id>` only |
 | `sourceRef must be a bounded public-safe token` | Wrong attribution token | Use §3 `sourceRef` values |
-| `apollo wave must contain 1-500 prospects` | Empty or oversized body | Cap at 500; split waves |
+| `apollo wave must contain 1-500 prospects` | Empty or oversized body | Cap at 500. Split waves |
 | Second wave double-inserts | Pre-#8617 binary / missing 0314 | Deploy migration + subject_ref code |
 | Suppressed contact appears in queue | Suppression not seeded / wrong subjectRef | Align suppress `subjectRef` with wave body |
 | Credit burn with zero pipeline rows | Apollo reveal before audit / before ingest | Domains first → audit → reveal → map → ingest |

@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -94,7 +94,7 @@ the execution substrate.
 
 ## Guardrails
 
-- The Batch job command is generated from typed fields; Worker/Khala Sync does not pass
+- The Batch job command is generated from typed fields. Worker/Khala Sync does not pass
   arbitrary shell text.
 - The container receives GCS URIs and bounded metadata only.
 - The runner writes `result.json`, `events.jsonl`, `metadata.json`,

@@ -40,7 +40,7 @@ and explicitly left the issue open.
 - Branch: `main`.
 - Upstream: `origin/main`.
 - Worktree: clean before writing this audit.
-- Worktrees: only `/Users/christopherdavid/work/openagents` existed; no stale
+- Worktrees: only `/Users/christopherdavid/work/openagents` existed. No stale
   worktrees made by me were present.
 - Stop point: I had just rechecked issue #4680 and run the A4 smoke locally.
   I had not posted the #4680 evidence comment before the user requested this
@@ -377,7 +377,7 @@ The work above checks out. I re-verified rather than trusting the report:
 - Confirmed registry `2026-06-10.7` reflects the claimed transitions: tips,
   MDK, orange check, X-claim reward, mission briefing, capacity funnel, and
   the new scoped `compute.tassadar_executor_poc.v1` are all yellow with
-  accurate blockers; nothing the agent shipped is overclaimed as green.
+  accurate blockers. Nothing the agent shipped is overclaimed as green.
 - Read the X owner-claim implementation directly
   (`agent-owner-claim-routes.ts`): challenge nonce, state machine, tweet
   verification, and the anti-Sybil reward ledger all exist and are tested.
@@ -407,7 +407,7 @@ Every remaining blocker on the campaign board falls into one of six classes:
 5. **Live receipts.** Empty leaderboards, referral payout, dataset sale, and
    one-install stacking all need first verified rows, not new surfaces.
 6. **Public projection gaps.** Agent profile pages expose post/topic counts
-   but no browsable activity feed; an outside reviewer cannot walk an
+   but no browsable activity feed. An outside reviewer cannot walk an
    agent's history from its profile. I hit this personally while auditing my
    own record today.
 
@@ -459,7 +459,7 @@ Drive the stable 0.3.0 gate (#4662) by finishing its dependencies, prepare
 the live install-to-bitcoin smoke (#4658) as an operator runbook, and land
 capacity-funnel history (#4660) plus the provider lifecycle follow-ups so
 `pylon.no_dark_capacity_accounting.v1` can clear both blockers. Windows/WSL
-evidence (#4655) stays honestly blocked on hardware; say so rather than
+evidence (#4655) stays honestly blocked on hardware. Say so rather than
 simulating it.
 
 ### D6. Tassadar executor PoC (#4687)
@@ -474,13 +474,13 @@ the promise safeCopy.
 Refresh the Artanis status topics in the Artanis forum against current
 reality and verify `/api/public/artanis/report` and the public Pylon stats
 agree with the capacity funnel. Stale operator-status projections are
-promise-registry liabilities; fix or date-stamp them.
+promise-registry liabilities. Fix or date-stamp them.
 
 ### D8. Nostr market rails (#4641, #4642, and relay follow-ups)
 
 Continue compute-stream work on the shared NIP-90 package and the scoped
 market relay. The standing rule from this pass holds: start from
-`nostr-effect` and `@openagentsinc/nip90`; any new parallel Nostr parser/router
+`nostr-effect` and `@openagentsinc/nip90`. Any new parallel Nostr parser/router
 is a review-blocking defect. Keep the draft NIP specs (DS, SKL, SA, AC, TRN)
 in sync with shipped behavior.
 
@@ -489,7 +489,7 @@ in sync with shipped behavior.
 Continue numerically. Priorities inside the lane: the A1 real-gradient run
 (#4678) once two real devices exist, validator assignments (#4676) as the
 weak-device on-ramp, and first verified receipt rows for the leaderboards
-(#4683). The empty-leaderboard honest state is correct; do not seed synthetic
+(#4683). The empty-leaderboard honest state is correct. Do not seed synthetic
 rows.
 
 ## Operator Actions Requested (Bounded)
@@ -499,7 +499,7 @@ rows.
 3. npm publish auth for `@openagentsinc/pylon@0.3.0` when #4662's gates pass.
 4. Make two or more real Pylon devices available for D5/D6/D9 evidence.
 5. Record transition receipts for any registry flips the above evidence
-   supports; agents will propose, not flip.
+   supports. Agents will propose, not flip.
 
 ## Review Receipts
 

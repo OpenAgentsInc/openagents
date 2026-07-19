@@ -4,7 +4,7 @@
 > agent) at the owner's direction, after the overnight after-action
 > (`workspace:docs/afteraction/2026-06-28-overnight-fleet-after-action.md`).
 > This is a design + implementation spec for the autonomous fleet-ops control
-> loop; it is not public-claim copy and does not widen any promise registry
+> loop. It is not public-claim copy and does not widen any promise registry
 > entry.
 
 ## Premise
@@ -30,12 +30,12 @@ This applies the existing Blueprint model directly:
   — a semantic/typed selector, never string matching.
 - **Evidence-only write boundary** (`apps/openagents.com/workers/api/src/blueprint/repositories/action-submissions.ts`):
   proposals reference evidence refs and carry evidence-only authority. Historical
-  invariant preserved: *"Program Runs are decision evidence; they do not
+  invariant preserved: *"Program Runs are decision evidence. They do not
   authorize writes."*
 - **Gate = ordered predicate list + state model** (pattern from
   `autopilot-omega:docs/2026-06-08-signature-marketplace-revenue-gate.md`): the
   consequential action is impossible until an ordered list of evidence refs all
-  exist; only the terminal state unlocks it.
+  exist. Only the terminal state unlocks it.
 
 ---
 
@@ -69,7 +69,7 @@ activeSlotCount, quotaLedgerSnapshot }`
   the "only on change" throttle is overridden by a state regression.
 
 **Makes impossible:** **#1 WEDGE** (heartbeat-alive but dispatch-dead can never
-reach `PROVEN_ALIVE`; detected ≤10 min) and **#2 BLIND OVERSIGHT** ("fleet
+reach `PROVEN_ALIVE`. Detected ≤10 min) and **#2 BLIND OVERSIGHT** ("fleet
 healthy" cannot be said without the three refs).
 
 ### Signature 2 — `diagnosis-grounding`
@@ -104,7 +104,7 @@ prBody }`
 **Required evidence refs:**
 1. `evidence://issue/labels` — full label set.
 2. `evidence://issue/parent-epic-check` — if the issue has a parent EPIC,
-   confirmation this is the **last open sub-issue**; otherwise the close is
+   confirmation this is the **last open sub-issue**. Otherwise the close is
    blocked.
 3. `evidence://pr/body-contains-closes` — PR body contains `Closes #XXXX`
    matching the issue.
@@ -136,11 +136,11 @@ No command is recommended without reading its source.
 SAFE_TO_PROPOSE` — only `RUNTIME_CONFIRMED` unlocks proposing the command.
 
 **Makes impossible:** **#5 FABRICATED EXECUTABLE** — a stub with no CLI flags
-fails at `FLAGS_VERIFIED`; the MirrorCode-style recommendation cannot occur.
+fails at `FLAGS_VERIFIED`. The MirrorCode-style recommendation cannot occur.
 
 ### Signature 5 — `merge-deploy-gate`
 
-Merged ≠ deployed; main never left red.
+Merged ≠ deployed. Main never left red.
 
 **Typed inputs:** `{ prNumbers, mergeCommitHashes, checkDeployExitCode,
 checkDeployStdout, deployExitCode|null, smokeTestResults }`
@@ -158,7 +158,7 @@ failure → report "main RED — rollback required" and **block all further merg
 until a rollback evidence ref is presented.
 
 **Makes impossible:** **#6 MERGE/DEPLOY DISCIPLINE** — two separate tracked
-transitions enforce merged≠deployed; a red check:deploy or failed smoke locks
+transitions enforce merged≠deployed. A red check:deploy or failed smoke locks
 the gate and blocks subsequent merges. (Note: this gate must verify the *real*
 `check:deploy` exit code, not a wrapper's trailing-echo exit — a subtlety that
 bit the merge lane and was caught by auditing the actual `EXIT=` lines.)
@@ -171,7 +171,7 @@ I am **headless**: I reason from memory with no working tree in front of me, so
 I have repeatedly invented runnable artifacts that do not exist — a
 `scripts/distill_traces.ts` I never read, a fake admin-mint API endpoint I
 extrapolated from the shape of the codebase. Signature 4 governs a command whose
-script I *can* point at; this signature governs the prior, more dangerous step:
+script I *can* point at. This signature governs the prior, more dangerous step:
 **naming the artifact at all**. Any operator output that references a runnable
 **COMMAND**, **FILE PATH**, **SCRIPT**, or **API ENDPOINT** must carry an
 evidence ref proving it exists, or be explicitly labeled **SPECULATIVE**.
@@ -198,13 +198,13 @@ where `artifactKind ∈ { command, file_path, script, api_endpoint }`.
   registered route, plus a content match where a specific flag/symbol is
   claimed). **Only `GROUNDED` permits presenting the artifact as runnable/real.**
 - Any non-positive lookup (does-not-exist, not-in-registry, wrong-method, or a
-  read failure I could not confirm) holds the gate below `GROUNDED`; the
+  read failure I could not confirm) holds the gate below `GROUNDED`. The
   artifact stays `UNGROUNDED` and **must** be labeled SPECULATIVE or omitted.
 
 **Makes impossible:** the **MirrorCode / `distill_traces` / admin-endpoint
 class** of fabrication. A non-existent script can never reach `GROUNDED`
-(`repo_path_exists` returns does-not-exist); a stub I would mis-recommend fails
-the content-match step; a hallucinated admin-mint endpoint is absent from the
+(`repo_path_exists` returns does-not-exist). A stub I would mis-recommend fails
+the content-match step. A hallucinated admin-mint endpoint is absent from the
 OpenAPI registry, so `route_exists` reads UNGROUNDED. The artifact cannot be
 asserted as real because the terminal state that unlocks that assertion is
 structurally unreachable without the lookup.
@@ -212,7 +212,7 @@ structurally unreachable without the lookup.
 **Honest boundary:** the grounding tools read the *real* repo and the *real*
 published OpenAPI document, but they are bounded by what is reachable from the
 Worker runtime:
-- `repo_grep` greps **one named file** via the contents API; an unauthenticated
+- `repo_grep` greps **one named file** via the contents API. An unauthenticated
   **repo-wide** code search is not available from the Worker, so a repo-wide
   grep is intentionally not offered (and not faked). Use `list_repo_dir` /
   `repo_path_exists` to locate the file first.
@@ -244,7 +244,7 @@ Cycle Start
 
 ### Overseer evidence packet (required each cycle)
 
-The overseer (Claude-main) must present a structured packet each cycle; the
+The overseer (Claude-main) must present a structured packet each cycle. The
 Program refuses to emit a cycle report until every signature's required refs
 exist:
 
@@ -270,16 +270,16 @@ intervention is forced — exactly the signal that was missing overnight.
 
 ## Implementation path
 
-Every signature maps to a real surface; the only new code is wiring evidence at
+Every signature maps to a real surface. The only new code is wiring evidence at
 the right points:
 
 1. **Write evidence refs at the source.** The supervisor writes
-   `evidence://supervisor/last-dispatch-attempt` on every `spawnSlot()`; the
+   `evidence://supervisor/last-dispatch-attempt` on every `spawnSlot()`. The
    heartbeat payload gains `last_dispatch_time`.
 2. **Gate state machines.** A small TS module `apps/pylon/src/blueprint-gates/`
    implements each signature's ordered-predicate state machine.
 3. **Register signatures.** Each becomes a `program_signature` contribution in
-   the Signature Lookup Service; evidence refs are written through the existing
+   the Signature Lookup Service. Evidence refs are written through the existing
    Action Submission evidence-only boundary.
 4. **Cycle report gating.** The watcher's cycle report requires every
    signature state before it can be emitted.
@@ -326,7 +326,7 @@ a prompt instruction:
   turn result (per-artifact state, satisfied/missing evidence refs, the S4
   sub-verdict for commands). A fabricated `scripts/distill_traces.ts` or
   `POST /api/admin/khala/mint` can no longer be delivered to the owner as
-  runnable; it is labeled unverified or it does not pass.
+  runnable. It is labeled unverified or it does not pass.
 - **Evidence-aligned.** The structured `groundingGate` verdicts carry the same
   `evidence://grounding/*` refs the design specifies, so they line up with the
   evidence-only Action Submission model.
@@ -342,7 +342,7 @@ What is **honestly still follow-up** (not faked here):
   (source-read + flag content-match via `repo_grep`), but the terminal
   `RUNTIME_CONFIRMED`/`SAFE_TO_PROPOSE` step needs a real dry-run/`--help`
   probe, which only a runtime with a working tree has. Wiring that probe
-  server-/Pylon-side is the next slice; today S6 is the blocker and S4 is the
+  server-/Pylon-side is the next slice. Today S6 is the blocker and S4 is the
   attached report.
 - **Signature Lookup Service registration.** The gates are not yet registered as
   `program_signature` contributions, and the evidence refs are not yet written
@@ -351,7 +351,7 @@ What is **honestly still follow-up** (not faked here):
   the overseer evidence packet, and GEPA optimization against the "zero unforced
   errors" metric remain as designed above and are not yet implemented.
 - **Read-tool grounding scope.** Grounding correlation uses the three canonical
-  S6 tools plus successful repo reads; a repo-wide grep remains unavailable from
+  S6 tools plus successful repo reads. A repo-wide grep remains unavailable from
   the Worker (documented honest boundary of `repo_grep`).
 
 GEPA optimization (bounded scheduled runner,

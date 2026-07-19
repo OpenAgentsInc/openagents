@@ -21,53 +21,53 @@ systems, create external escalations, or mutate accepted outcomes.
 
 `OmniSupportProjectOpsTemplate` records:
 
-- template ref;
-- version ref;
-- approval policy refs;
-- closeout requirement refs;
-- evidence requirement refs;
-- proof policy refs;
-- required artifact refs; and
+- template ref.
+- version ref.
+- approval policy refs.
+- closeout requirement refs.
+- evidence requirement refs.
+- proof policy refs.
+- required artifact refs. And
 - caveat refs.
 
 The default fixtures are:
 
-- `OMNI_SUPPORT_OPS_TEMPLATE_FIXTURE`; and
+- `OMNI_SUPPORT_OPS_TEMPLATE_FIXTURE`. And
 - `OMNI_PROJECT_OPS_TEMPLATE_FIXTURE`.
 
 ## Workroom Model
 
 `OmniSupportProjectOpsWorkroomRecord` records:
 
-- customer refs;
-- ticket refs;
-- source refs;
-- issue timeline refs;
-- proposed response refs;
-- escalation refs;
-- project task refs;
-- decision refs;
-- risk refs;
-- status report refs;
-- receipt refs;
-- closeout refs;
-- evidence refs;
-- blocker refs;
-- caveat refs; and
+- customer refs.
+- ticket refs.
+- source refs.
+- issue timeline refs.
+- proposed response refs.
+- escalation refs.
+- project task refs.
+- decision refs.
+- risk refs.
+- status report refs.
+- receipt refs.
+- closeout refs.
+- evidence refs.
+- blocker refs.
+- caveat refs. And
 - operator diagnostic refs.
 
 The state model keeps these steps separate:
 
-- intake;
-- issue timeline reconstructed;
-- proposed response ready;
-- escalation recorded;
-- project task updated;
-- decision recorded;
-- risk recorded;
-- status report ready;
-- receipt recorded;
-- closed; and
+- intake.
+- issue timeline reconstructed.
+- proposed response ready.
+- escalation recorded.
+- project task updated.
+- decision recorded.
+- risk recorded.
+- status report ready.
+- receipt recorded.
+- closed. And
 - blocked.
 
 That separation matters because a reconstructed issue timeline is not a
@@ -82,10 +82,10 @@ The default authority block is
 
 It explicitly denies:
 
-- support response send;
-- project-management mutation;
-- customer-record mutation;
-- external escalation; and
+- support response send.
+- project-management mutation.
+- customer-record mutation.
+- external escalation. And
 - accepted-outcome mutation.
 
 `omniSupportProjectOpsAuthorityIsContractOnly` returns true only for records
@@ -103,17 +103,17 @@ diagnostic refs.
 
 The contract rejects refs containing:
 
-- customer private data;
-- raw support transcripts;
-- raw ticket payloads;
-- private ticket refs;
-- proposed response raw bodies;
-- provider accounts, grants, payloads, or tokens;
-- private repo refs;
-- raw source payloads;
-- raw runner logs;
-- secrets, bearer tokens, OAuth material, cookies, and API keys;
-- wallet/payment material; and
+- customer private data.
+- raw support transcripts.
+- raw ticket payloads.
+- private ticket refs.
+- proposed response raw bodies.
+- provider accounts, grants, payloads, or tokens.
+- private repo refs.
+- raw source payloads.
+- raw runner logs.
+- secrets, bearer tokens, OAuth material, cookies, and API keys.
+- wallet/payment material. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -122,14 +122,14 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/omni-support-project-ops-workrooms.test.ts` covers:
 
-- schema/projection decoding;
-- friendly time projection;
-- contract-only authority;
+- schema/projection decoding.
+- friendly time projection.
+- contract-only authority.
 - no support-send, project-management mutation, customer-record mutation,
-  external escalation, or accepted-outcome mutation authority;
+  external escalation, or accepted-outcome mutation authority.
 - public redaction of customer/ticket/timeline/response/task/decision/risk/
-  status/receipt/workroom refs;
+  status/receipt/workroom refs.
 - timeline, response, escalation, task, decision, risk, status, receipt, and
-  closeout separation; and
+  closeout separation. And
 - unsafe customer, ticket, transcript, provider, secret, wallet/payment,
   private repo, raw log, and timestamp rejection.

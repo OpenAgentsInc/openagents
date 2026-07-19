@@ -29,13 +29,13 @@ implementation plan. This document does not propose support for that protocol.
 
 Evidence labels:
 
-- **[source]** — observed directly in the commit-pinned source;
-- **[schema]** — encoded in a generated schema or method manifest;
-- **[test]** — encoded in a checked-in test or live-probe harness;
-- **[history]** — supported by the repository's Git history;
-- **[public]** — supported by an official ACP source;
-- **[inferred]** — an architectural conclusion drawn from several observations;
-- **[decision]** — the recommended OpenAgents disposition; and
+- **[source]** — observed directly in the commit-pinned source.
+- **[schema]** — encoded in a generated schema or method manifest.
+- **[test]** — encoded in a checked-in test or live-probe harness.
+- **[history]** — supported by the repository's Git history.
+- **[public]** — supported by an official ACP source.
+- **[inferred]** — an architectural conclusion drawn from several observations.
+- **[decision]** — the recommended OpenAgents disposition. And
 - **[limitation]** — a boundary on what source inspection proves.
 
 No T3 Code source, user state, credentials, or live provider account was
@@ -46,12 +46,12 @@ modified. The checked-in real-CLI probes were inspected but not armed.
 T3 Code has a serious ACP implementation, not a thin JSON-RPC helper. Its
 private `effect-acp` package provides:
 
-- generated Effect schemas from a pinned official ACP release;
-- typed client and agent APIs over one bidirectional NDJSON/stdio connection;
-- generic extension requests and notifications in both directions;
-- structured transport, parse, process-exit, and request errors;
-- subprocess lifecycle integration;
-- bounded diagnostic logging that avoids copying failed payloads; and
+- generated Effect schemas from a pinned official ACP release.
+- typed client and agent APIs over one bidirectional NDJSON/stdio connection.
+- generic extension requests and notifications in both directions.
+- structured transport, parse, process-exit, and request errors.
+- subprocess lifecycle integration.
+- bounded diagnostic logging that avoids copying failed payloads. And
 - fixture coverage for routing, cancellation, extensions, late responses,
   process exit, error correlation, and redaction.
 
@@ -109,7 +109,7 @@ Its child issues turn the phases below into dependency-ordered deliverables:
 
 | Issue                                                            | Deliverable                                                                            |
 | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [#8888](https://github.com/OpenAgentsInc/openagents/issues/8888) | pin `schema-v1.19.0`; generate codecs, manifests, provenance, and drift checks         |
+| [#8888](https://github.com/OpenAgentsInc/openagents/issues/8888) | pin `schema-v1.19.0`, generate codecs, manifests, provenance, and drift checks         |
 | [#8889](https://github.com/OpenAgentsInc/openagents/issues/8889) | bounded bidirectional stdio JSON-RPC transport and exact process lifecycle             |
 | [#8890](https://github.com/OpenAgentsInc/openagents/issues/8890) | stable wire-v1 conformance, Grok/Cursor fixtures, faults, and compatibility artifacts  |
 | [#8891](https://github.com/OpenAgentsInc/openagents/issues/8891) | native/canonical event projection and reverse-request authority bridge                 |
@@ -135,38 +135,38 @@ production compatibility facade no longer uses the raw JSON-RPC fixture client.
 The #8897 claim validator is now implemented as a checked
 [machine-readable matrix](../../packages/agent-client-protocol-conformance/compatibility/release-matrix.json)
 with a [human proof ledger](../qa/2026-07-16-acp10-release-proof/README.md).
-Its code-owned required rows now pass for both exact Darwin arm64 peers; all
+Its code-owned required rows now pass for both exact Darwin arm64 peers. All
 other platforms remain explicitly not tested and cannot inherit that claim. The
 checked matrix is compiled fail-closed into the narrow fixture, full-release,
 and feature evidence records consumed by trusted peer admission. Desktop passes
 those records to both the probe/admission decision and the matching runtime, so
 an exact version, executable digest, platform, freshness window, and Cursor
-installation-closure digest can project `supported`; stale, incomplete,
+installation-closure digest can project `supported`. Stale, incomplete,
 revision-substituted, or binary-substituted evidence remains `experimental`.
 Grok and Cursor are registered main-owned provider lanes, and an isolated
 production Desktop build completed a real Grok Full Auto turn. A checked,
 opt-in production runner reproduces redacted candidate receipts without claim
 authority. Current-revision Grok and Cursor runs now re-prove the exact pinned
-identities and core live journeys; the checked matrix remains the separate
-claim authority, and #8897 is complete for Darwin arm64;
+identities and core live journeys. The checked matrix remains the separate
+claim authority, and #8897 is complete for Darwin arm64.
 packaged interruption/restart journeys for both pinned peers are now checked,
 and Grok now has live broker-only MCP custody evidence with a complete bounded
 post-shutdown scan of its exact session/configuration persistence surfaces.
 Cursor client-side login cancellation is also live-proven using the ordinary
 HOME and stopping before `authenticate`, without mutating login/keychain state.
-Neither exact peer advertises stable `auth.logout`; the gate now records that
+Neither exact peer advertises stable `auth.logout`. The gate now records that
 method as unavailable while retaining expiry/failure requirements separately.
 Cursor's current exact-binary qualification reproducibly observes model listing
 and create-plan but not ask-question or todo notifications, so the combined
 extension row remains unpromoted. Separate pinned Cursor processes now prove
 one approval and one refusal using only a disposable project-local
-`.cursor/cli.json`; global Cursor configuration is unchanged.
+`.cursor/cli.json`. Global Cursor configuration is unchanged.
 Grok's exact-binary qualification now live-proves enabled filesystem and
 terminal reverse calls through bounded disposable handlers. A per-session
 metadata override disables inherited YOLO/auto mode only for disposable proof
 sessions, yielding five live approval selections and one live refusal without
 changing global Grok configuration. Pinned Grok 0.2.101 emitted only
-`_x.ai/ask_user_question`; the same allowlisted production handler also accepts
+`_x.ai/ask_user_question`. The same allowlisted production handler also accepts
 the historical `x.ai/ask_user_question` spelling, so compatibility is covered
 without claiming that the exact binary emitted both.
 The production bridge now also retains both metadata rails used by pinned Grok
@@ -175,7 +175,7 @@ The production bridge now also retains both metadata rails used by pinned Grok
 The live qualification observed metadata on 63 updates and two completions,
 including 62 usage-bearing observations, while exporting counts only. Combined
 with the existing real-repository tool proof, this closes Grok's
-capability-aware tool/usage row; Grok does not advertise mode/config controls.
+capability-aware tool/usage row. Grok does not advertise mode/config controls.
 Grok's typed interactive-auth preference also lets the owner explicitly choose
 advertised `grok.com` ahead of a cached token. The live owner-cancel path ran
 once against the pinned binary and stopped before `authenticate`, preserving
@@ -184,7 +184,7 @@ The conformance package's exact
 23-method coverage report, compatibility matrix, bounded
 fault inventory, independently versioned peer provenance, MCP reference
 custody cases, and opt-in probes are checked artifacts. The Grok and Cursor
-fixtures are deliberately labeled source-derived synthetic evidence; they do
+fixtures are deliberately labeled source-derived synthetic evidence. They do
 not substitute for #8897's independent pinned live-binary release proof.
 
 Grok and Cursor are independent required release peers. Passing the shared
@@ -231,7 +231,7 @@ published 2026-07-06. Both describe ACP wire protocol version 1, but the method
 and schema artifacts are not equivalent. [source] [schema] [public]
 
 That distinction matters. ACP wire compatibility is negotiated with
-`protocolVersion`; schema artifact versions describe the generated API and may
+`protocolVersion`. Schema artifact versions describe the generated API and may
 change without a wire-version bump. Optional behavior is capability-gated.
 OpenAgents must therefore pin both the artifact and the wire version, retain a
 generated method manifest, and compare every upgrade rather than treating
@@ -239,10 +239,10 @@ generated method manifest, and compare every upgrade rather than treating
 
 The current stable `schema-v1.19.0` agent surface includes:
 
-- `initialize` and `authenticate`;
+- `initialize` and `authenticate`.
 - `session/new`, `session/load`, `session/list`, `session/delete`,
-  `session/resume`, `session/close`, `session/prompt`, and `session/cancel`;
-- `session/set_mode` and `session/set_config_option`; and
+  `session/resume`, `session/close`, `session/prompt`, and `session/cancel`.
+- `session/set_mode` and `session/set_config_option`. And
 - `logout`.
 
 Its stable reverse-client surface includes permission, session update,
@@ -288,9 +288,9 @@ real-binary compatibility fixture before a shipped claim. [inferred]
 It does not mean one schema artifact automatically supports every behavior of
 every ACP agent. The official protocol's own versioning rule is:
 
-- negotiate compatibility with `protocolVersion`;
-- inspect capabilities before every optional method;
-- use the schema/SDK artifact version for generated API compatibility; and
+- negotiate compatibility with `protocolVersion`.
+- inspect capabilities before every optional method.
+- use the schema/SDK artifact version for generated API compatibility. And
 - handle extensions by explicit namespace and version.
 
 Accordingly, `schema-v1.19.0` is the correct broad stable baseline for the
@@ -304,17 +304,17 @@ the same protocol and wire version. [public] [decision]
 For Grok specifically, the first profile must:
 
 1. spawn `grok agent stdio` with stdout reserved for NDJSON and stderr kept
-   separate;
-2. initialize with wire version 1 and truthful client capabilities;
+   separate.
+2. initialize with wire version 1 and truthful client capabilities.
 3. select an actually advertised auth method, including `cached_token` or
    `xai.api_key` for the documented headless path, while `grok.com` and
-   enterprise `oidc` remain behind explicit typed owner continuation;
-4. create a session with an absolute `cwd` and `mcpServers`;
-5. retain and project `session/update` while `session/prompt` is pending;
+   enterprise `oidc` remain behind explicit typed owner continuation.
+4. create a session with an absolute `cwd` and `mcpServers`.
+5. retain and project `session/update` while `session/prompt` is pending.
 6. answer reverse permission/filesystem/terminal calls only when the matching
-   handlers and authority grants exist;
+   handlers and authority grants exist.
 7. preserve unknown `x.ai/*` extensions as bounded native evidence and invoke
-   only extensions needed by the Grok profile; and
+   only extensions needed by the Grok profile. And
 8. implement session cancellation before treating process kill as the normal
    interrupt path.
 
@@ -324,13 +324,13 @@ For Grok specifically, the first profile must:
 
 `packages/effect-acp/scripts/generate.ts` is the protocol authority:
 
-1. download the pinned official schema and method metadata;
-2. decode both inputs with Effect Schema;
+1. download the pinned official schema and method metadata.
+2. decode both inputs with Effect Schema.
 3. normalize nullable JSON Schema forms that the generator cannot consume
-   directly;
-4. sort definitions for deterministic output;
-5. generate Effect codecs with `@effect/openapi-generator`;
-6. emit `schema.gen.ts` and `meta.gen.ts`; and
+   directly.
+4. sort definitions for deterministic output.
+5. generate Effect codecs with `@effect/openapi-generator`.
+6. emit `schema.gen.ts` and `meta.gen.ts`. And
 7. format the generated directory.
 
 The package exports the generated schema, method manifest, RPC declarations,
@@ -349,7 +349,7 @@ while the official schema stream advanced. [source] [inferred]
 `rpc.ts` turns generated request, response, and error codecs into two Effect
 RPC groups:
 
-- `AgentRpcs` for client-to-agent requests; and
+- `AgentRpcs` for client-to-agent requests. And
 - `ClientRpcs` for agent-to-client reverse requests.
 
 Notifications are handled outside those RPC groups because ACP uses JSON-RPC
@@ -376,11 +376,11 @@ for permission, file access, terminal work, or elicitation.
 protocol and an Effect RPC server protocol over one NDJSON parser and one stdio
 writer. It owns separate queues for:
 
-- requests routed to the local typed server;
-- responses routed to the local typed client;
-- notifications;
-- disconnects;
-- outgoing encoded messages; and
+- requests routed to the local typed server.
+- responses routed to the local typed client.
+- notifications.
+- disconnects.
+- outgoing encoded messages. And
 - generic extension requests awaiting responses.
 
 Incoming JSON objects are classified as requests, responses, protocol control
@@ -396,14 +396,14 @@ ACP errors, and routes every decoded object. [source]
 
 The patch is effective but should not be copied blindly:
 
-- all hot queues are unbounded;
+- all hot queues are unbounded.
 - `supportsAck` is reported to Effect RPC even though ACP/stdio provides no
-  durable acknowledgement contract;
-- generic extension responses cannot stream;
-- extension requests have interrupt cleanup but no transport-owned deadline;
-- individual notification callback failures are swallowed;
-- unknown notifications are ignored when no fallback is registered;
-- server sends turn transport failure into an Effect defect with `orDie`; and
+  durable acknowledgement contract.
+- generic extension responses cannot stream.
+- extension requests have interrupt cleanup but no transport-owned deadline.
+- individual notification callback failures are swallowed.
+- unknown notifications are ignored when no fallback is registered.
+- server sends turn transport failure into an Effect defect with `orDie`. And
 - protocol-level `$/cancel_request` is not implemented in the pinned method
   table or router.
 
@@ -415,16 +415,16 @@ interoperability contract. [source] [inferred]
 `AcpClient` is the side T3's Cursor and Grok integrations consume. It exposes:
 
 - typed initialization, authentication, logout, session create/load/list/fork/
-  resume/close, prompt, model selection, configuration, and session cancel;
+  resume/close, prompt, model selection, configuration, and session cancel.
 - reverse-request handler registration for permission, elicitation, files, and
-  terminals;
-- session-update and elicitation-complete notification handlers;
-- typed and fallback extension request/notification handlers; and
+  terminals.
+- session-update and elicitation-complete notification handlers.
+- typed and fallback extension request/notification handlers. And
 - raw request, notification, and notification-stream access.
 
 Notifications that arrive before a handler is registered are buffered. The
 first registration flushes the buffer, after which notifications are
-dispatched live. Multiple notification handlers run; one handler's failure is
+dispatched live. Multiple notification handlers run. One handler's failure is
 caught so later handlers still receive the notification. Core reverse-request
 handlers are single mutable slots, while extension handlers are keyed maps.
 Later registration replaces an earlier handler, and there is no deregistration
@@ -438,11 +438,11 @@ Termination errors retain the child PID and exact exit status. [source] [test]
 
 `AcpAgent` is the mirror image. It can:
 
-- register typed handlers for the supported client-to-agent methods;
-- receive `session/cancel` notifications;
-- call the client's permission, elicitation, filesystem, and terminal methods;
-- send session updates and elicitation completion;
-- send or handle typed and unknown extensions; and
+- register typed handlers for the supported client-to-agent methods.
+- receive `session/cancel` notifications.
+- call the client's permission, elicitation, filesystem, and terminal methods.
+- send session updates and elicitation completion.
+- send or handle typed and unknown extensions. And
 - expose a terminal handle whose operations route back to the ACP client.
 
 T3's product does not use this half to expose T3 itself as an ACP agent. It is
@@ -458,9 +458,9 @@ code, upstream data, operation, and structured cause where available.
 
 The June hardening series is especially relevant:
 
-- transport errors became structured;
-- request failures gained correlation;
-- child termination retained PID and exit status; and
+- transport errors became structured.
+- request failures gained correlation.
+- child termination retained PID and exit status. And
 - schema/native diagnostics stopped copying raw invalid values into ordinary
   logs.
 
@@ -482,7 +482,7 @@ receipts. [decision]
 | Method                      | Typed in `effect-acp` | Used by T3 Cursor/Grok runtime | Finding                                                                  |
 | --------------------------- | --------------------: | -----------------------------: | ------------------------------------------------------------------------ |
 | `initialize`                |                   yes |                            yes | Always sends wire version 1, client capabilities, and client info.       |
-| `authenticate`              |                   yes |                            yes | Cursor uses `cursor_login`; Grok chooses API key or cached token.        |
+| `authenticate`              |                   yes |                            yes | Cursor uses `cursor_login`. Grok chooses API key or cached token.        |
 | `logout`                    |                   yes |                             no | Library surface only.                                                    |
 | `session/new`               |                   yes |                            yes | Creates one root session per child runtime.                              |
 | `session/load`              |                   yes |                            yes | Used for provider resume IDs.                                            |
@@ -492,7 +492,7 @@ receipts. [decision]
 | `session/close`             |                   yes |                             no | Child scope teardown owns product close.                                 |
 | `session/prompt`            |                   yes |                            yes | Serialized per runtime.                                                  |
 | `session/cancel`            |          notification |                            yes | Sends real session cancel, then interrupts the local prompt fiber.       |
-| `session/set_config_option` |                   yes |                            yes | Cursor mode/model/options; local value validation and no-op suppression. |
+| `session/set_config_option` |                   yes |                            yes | Cursor mode/model/options. Local value validation and no-op suppression. |
 | `session/set_model`         |         yes, unstable |                           Grok | Used when the requested Grok model differs.                              |
 | `session/set_mode`          |        generated only |                             no | Replaced with config option `mode`.                                      |
 
@@ -535,8 +535,8 @@ mostly knows which peer it launched and calls the expected method.
 A general OpenAgents adapter cannot rely on that closed-world assumption.
 Every optional method must have one of three outcomes:
 
-1. capability proven and call allowed;
-2. capability absent and a typed unsupported result returned; or
+1. capability proven and call allowed.
+2. capability absent and a typed unsupported result returned. Or
 3. peer violated the negotiation and the connection records a protocol fault.
 
 ## 4. `AcpSessionRuntime`: the reusable product layer
@@ -551,9 +551,9 @@ logging.
 
 `start` is concurrency-safe:
 
-- `NotStarted` creates one startup fiber;
-- concurrent callers await the same deferred;
-- success is retained as `Started`; and
+- `NotStarted` creates one startup fiber.
+- concurrent callers await the same deferred.
+- success is retained as `Started`. And
 - failure returns to `NotStarted` so startup can be retried.
 
 Startup performs `initialize`, `authenticate`, then either `session/new` or
@@ -571,11 +571,11 @@ separately so it can support both single-session CLIs and multi-session agents.
 Grok can stream replay `session/update` notifications during `session/load`
 while leaving the load request pending. T3 works around this with a gate:
 
-1. mark load active before sending the request;
-2. observe replay activity without projecting it into the live turn;
-3. race the actual load response against a two-second replay-idle gap;
+1. mark load active before sending the request.
+2. observe replay activity without projecting it into the live turn.
+3. race the actual load response against a two-second replay-idle gap.
 4. synthesize a load response from model/mode state found in initialize
-   metadata if replay becomes idle first; and
+   metadata if replay becomes idle first. And
 5. fail after a 90-second overall timeout.
 
 Notifications for child sessions are also rejected rather than flattened into
@@ -596,8 +596,8 @@ closes the final assistant segment on completion.
 
 Cancellation:
 
-- interrupts the local prompt fiber;
-- sends a real `session/cancel` notification in the runtime scope; and
+- interrupts the local prompt fiber.
+- sends a real `session/cancel` notification in the runtime scope. And
 - deliberately does not wait for a response because cancellation is a
   notification.
 
@@ -613,9 +613,9 @@ restarts the entire process because it does not implement session cancel.
 
 T3's runtime parses these update families:
 
-- `agent_message_chunk` with text content;
-- `tool_call` and `tool_call_update`;
-- `plan`; and
+- `agent_message_chunk` with text content.
+- `tool_call` and `tool_call_update`.
+- `plan`. And
 - `current_mode_update`.
 
 It normalizes snake-case ACP statuses to T3's statuses, merges partial tool
@@ -625,10 +625,10 @@ calls, and emits stream barriers for deterministic draining.
 
 The provider event adapter maps:
 
-- ACP execute/read/edit/delete/move permission kinds to T3 approval classes;
-- ACP tool kinds to command, file-change, web-search, or dynamic-tool items;
-- plan entries to canonical turn-plan events;
-- assistant segments to item lifecycle; and
+- ACP execute/read/edit/delete/move permission kinds to T3 approval classes.
+- ACP tool kinds to command, file-change, web-search, or dynamic-tool items.
+- plan entries to canonical turn-plan events.
+- assistant segments to item lifecycle. And
 - text chunks to content deltas.
 
 Every projected plan/tool/content/permission event retains raw provenance with
@@ -644,28 +644,28 @@ item data, but that is not lossless protocol support. [source]
 
 The runtime snapshots typed configuration options and validates writes:
 
-- booleans must receive booleans;
-- select values must appear in the advertised option list;
-- an already-current value becomes a local no-op; and
+- booleans must receive booleans.
+- select values must appear in the advertised option list.
+- an already-current value becomes a local no-op. And
 - successful writes replace the local configuration snapshot.
 
 Cursor:
 
-- launches `agent acp`;
-- authenticates with `cursor_login`;
-- uses a model configuration option plus separate provider options;
-- maps product plan/approval modes to advertised ACP mode IDs; and
+- launches `agent acp`.
+- authenticates with `cursor_login`.
+- uses a model configuration option plus separate provider options.
+- maps product plan/approval modes to advertised ACP mode IDs. And
 - discovers models through `cursor/list_available_models`.
 
 Grok:
 
-- launches `grok agent stdio`;
-- sets an OAuth referrer;
+- launches `grok agent stdio`.
+- sets an OAuth referrer.
 - selects `xai.api_key` only when an admitted API key is intentionally present,
-  otherwise prefers `cached_token`; if neither is available, interactive
+  otherwise prefers `cached_token`. If neither is available, interactive
   `grok.com` or enterprise `oidc` requires typed owner continuation and fails
-  closed on cancellation;
-- reads current model state from session setup; and
+  closed on cancellation.
+- reads current model state from session setup. And
 - uses unstable `session/set_model` only when the model changes.
 
 The contrast is a warning against hard-coding model and mode methods. Current
@@ -678,14 +678,14 @@ Provider-specific selectors belong behind an adapter flag. [decision]
 
 Cursor registers:
 
-- `cursor/ask_question`;
-- `cursor/create_plan`;
-- `cursor/update_todos`; and
+- `cursor/ask_question`.
+- `cursor/create_plan`.
+- `cursor/update_todos`. And
 - `cursor/list_available_models`.
 
 Grok registers:
 
-- `x.ai/ask_user_question` and `_x.ai/ask_user_question`; and
+- `x.ai/ask_user_question` and `_x.ai/ask_user_question`. And
 - a private prompt-completion notification fallback used when the standard
   prompt request does not settle correctly.
 
@@ -702,50 +702,50 @@ matrix, not an unversioned best effort.
 
 The package and runtime tests cover more than happy-path prompting:
 
-- typed client and agent round trips;
-- reverse permission requests;
-- buffered notifications and handler-failure isolation;
-- typed and generic extensions;
-- distinct request ID spaces;
-- invalid payload diagnostics without payload copying;
-- zero-valued JSON-RPC IDs;
-- interrupted requests and late responses;
-- process exit propagation and single termination;
-- pending-request failure on child exit;
-- initialize capability merging;
-- prompt sequencing and cancellation;
-- child-session filtering;
-- assistant segmentation around tool calls;
-- config validation and no-op writes;
-- restore replay suppression and replay-idle readiness;
-- bounded native diagnostic logging;
-- Cursor and Grok extension parsing; and
+- typed client and agent round trips.
+- reverse permission requests.
+- buffered notifications and handler-failure isolation.
+- typed and generic extensions.
+- distinct request ID spaces.
+- invalid payload diagnostics without payload copying.
+- zero-valued JSON-RPC IDs.
+- interrupted requests and late responses.
+- process exit propagation and single termination.
+- pending-request failure on child exit.
+- initialize capability merging.
+- prompt sequencing and cancellation.
+- child-session filtering.
+- assistant segmentation around tool calls.
+- config validation and no-op writes.
+- restore replay suppression and replay-idle readiness.
+- bounded native diagnostic logging.
+- Cursor and Grok extension parsing. And
 - environment-gated probes against real Cursor and Grok CLIs.
 
 The remaining verification gaps are exactly the areas OpenAgents must add:
 
-- bounded queue overload and backpressure;
-- multiple sessions sharing one connection;
-- capability violations;
-- protocol-level request cancellation;
-- partial writes and writer failure;
-- malformed/oversized line policy;
-- handler registration teardown;
-- authentication-optional agents;
-- stable-schema conformance at the latest pinned release;
-- reconnect/restart repair; and
+- bounded queue overload and backpressure.
+- multiple sessions sharing one connection.
+- capability violations.
+- protocol-level request cancellation.
+- partial writes and writer failure.
+- malformed/oversized line policy.
+- handler registration teardown.
+- authentication-optional agents.
+- stable-schema conformance at the latest pinned release.
+- reconnect/restart repair. And
 - full projection coverage for every retained update variant.
 
 ## 6. OpenAgents' existing ACP code
 
 OpenAgents is not starting from zero. `packages/grok-harness` contains:
 
-- a subprocess JSON-RPC client for `grok agent stdio`;
-- initialize/auth selection;
-- session creation and prompting;
-- a minimal session-update projector;
-- a mock stdio server and in-process client;
-- a local desktop-to-Grok session mapping; and
+- a subprocess JSON-RPC client for `grok agent stdio`.
+- initialize/auth selection.
+- session creation and prompting.
+- a minimal session-update projector.
+- a mock stdio server and in-process client.
+- a local desktop-to-Grok session mapping. And
 - an environment-gated live smoke.
 
 That code proves Grok can be exercised through ACP and provides useful fixtures.
@@ -753,20 +753,20 @@ It is not a reusable ACP compatibility layer.
 
 Material limitations:
 
-1. it implements only outbound requests and `session/update` notifications;
-2. it cannot answer bidirectional permission/filesystem/terminal requests;
+1. it implements only outbound requests and `session/update` notifications.
+2. it cannot answer bidirectional permission/filesystem/terminal requests.
 3. despite that, initialize advertises filesystem read/write and terminal as
-   true;
+   true.
 4. it ignores parse failures, unknown messages, stderr, structured error code/
-   data, stdin write failure, and process signals;
-5. only one update handler exists and later registration replaces it;
+   data, stdin write failure, and process signals.
+5. only one update handler exists and later registration replaces it.
 6. restore, list, resume, close, delete, configuration, logout, and protocol
-   cancellation are absent;
+   cancellation are absent.
 7. interrupt kills the entire process, starts a new one, and loses the active
-   ACP session;
-8. the projector retains only text chunks and shallow tool status;
+   ACP session.
+8. the projector retains only text chunks and shallow tool status.
 9. plan, thought, rich content, mode/config/session info, usage, permission,
-   and provenance are lost; and
+   and provenance are lost. And
 10. the mock covers initialize → authenticate → new → prompt, so it cannot
     catch the missing bidirectional surface.
 
@@ -781,16 +781,16 @@ general ACP support. [source] [decision]
 
 Create one generated ACP protocol package with:
 
-- pinned stable and explicitly selected unstable schema artifacts;
+- pinned stable and explicitly selected unstable schema artifacts.
 - checked-in artifact digests, wire version, method manifest, and capability
-  manifest;
-- codecs for every supported request, response, notification, and error;
-- one bidirectional connection service;
-- typed outbound agent-method calls plus reverse client-method handlers;
-- bounded pending-request and outgoing/incoming queues;
-- deadlines, interruption, late-response handling, and `$/cancel_request`;
-- structured spawn/transport/protocol/request/peer-exit errors;
-- private raw-event capture separated from safe diagnostics; and
+  manifest.
+- codecs for every supported request, response, notification, and error.
+- one bidirectional connection service.
+- typed outbound agent-method calls plus reverse client-method handlers.
+- bounded pending-request and outgoing/incoming queues.
+- deadlines, interruption, late-response handling, and `$/cancel_request`.
+- structured spawn/transport/protocol/request/peer-exit errors.
+- private raw-event capture separated from safe diagnostics. And
 - connection/session generations with scoped teardown.
 
 Prefer the official TypeScript SDK as the wire implementation if a pinned
@@ -817,12 +817,12 @@ The required consumer is the outbound client adapter:
 | `session/load` / `resume`    | repairable attachment to an existing canonical thread, with replay/live barrier                           |
 | `session/list`               | bounded projection of sessions the authenticated adapter is allowed to see                                |
 | `session/delete` / `close`   | explicit archive/delete/close intent with existing authority and evidence rules                           |
-| `session/prompt`             | canonical turn admission; steering/queue behavior must remain explicit                                    |
+| `session/prompt`             | canonical turn admission. Steering/queue behavior must remain explicit                                    |
 | `session/cancel`             | cancel the owned active turn/session generation, idempotently                                             |
 | `session/update`             | projection from or into canonical Item/Turn/Interaction events, with native provenance retained privately |
-| `session/request_permission` | Runtime Interaction plus authority compiler; never direct renderer or peer authority                      |
+| `session/request_permission` | Runtime Interaction plus authority compiler. Never direct renderer or peer authority                      |
 | filesystem/terminal calls    | brokered workspace capabilities, rooted and scoped to the negotiated session grant                        |
-| MCP server config            | capability reference or short-lived broker material; never durable raw credential storage                 |
+| MCP server config            | capability reference or short-lived broker material. Never durable raw credential storage                 |
 | `_meta` and extensions       | bounded native metadata with namespace, version, redaction, and retention policy                          |
 
 ACP must not collapse OpenAgents' queue-versus-steer contract. If the standard
@@ -835,13 +835,13 @@ from concurrent prompt timing. [decision]
 Negotiated capability is not authorization. It means only that the peer can
 speak a method. Every privileged reverse request still requires:
 
-- authenticated peer and current connection/session generation;
-- workspace root and canonical path validation;
-- method-specific grant intersection;
-- an exact Runtime Interaction when user judgment is required;
-- bounded arguments and output;
-- cancellation/deadline propagation;
-- one terminal outcome; and
+- authenticated peer and current connection/session generation.
+- workspace root and canonical path validation.
+- method-specific grant intersection.
+- an exact Runtime Interaction when user judgment is required.
+- bounded arguments and output.
+- cancellation/deadline propagation.
+- one terminal outcome. And
 - private evidence plus an appropriate public-safe receipt.
 
 An ACP client offering terminal capability does not grant an ACP agent ambient
@@ -853,18 +853,18 @@ grant, but the effective grant and containment outcome remain explicit.
 
 Retain the full decoded native ACP envelope before portable projection:
 
-- peer and connection/session generation;
-- direction, method, request/notification ID, and time;
-- schema artifact and wire version;
-- capability snapshot;
-- native payload classification;
-- projection result or explicit unsupported reason; and
+- peer and connection/session generation.
+- direction, method, request/notification ID, and time.
+- schema artifact and wire version.
+- capability snapshot.
+- native payload classification.
+- projection result or explicit unsupported reason. And
 - redaction/retention class.
 
 Do not write raw wire bodies to ordinary logs. Do not smuggle raw prompts,
 files, terminal output, headers, or credentials into generic error `data` or a
 public receipt. A stable variant unknown to the pinned codecs must produce a
-typed protocol-drift/degraded outcome and cannot mutate canonical state; retain
+typed protocol-drift/degraded outcome and cannot mutate canonical state. Retain
 only its bounded private raw envelope for diagnosis and upgrade work. Unknown
 extension metadata follows the same private retention bounds and cannot acquire
 behavior without an explicit namespaced codec and peer profile.
@@ -908,12 +908,12 @@ exit, and performs bounded generation-safe recovery. Grok real-binary
 admission is implemented by #8893. Cursor's separate `agent acp` composer,
 `cursor_login` negotiation, modes/configuration surface, and four directional
 extension gates are implemented by #8894. The #8897 matrix now owns final
-release claims and admits only the exact pinned Darwin arm64 identities; other
+release claims and admits only the exact pinned Darwin arm64 identities. Other
 binaries and platforms remain withheld.
 #8895 adds the main-owned provider control host, shared main/preload/renderer
 contract, Desktop Settings state/actions, validated alternate executable path,
 canonical free-form question path, and refs-only support artifact. The host
-still derives “supported” exclusively from admission evidence; this UI work
+still derives “supported” exclusively from admission evidence. This UI work
 does not promote a peer or generalize proof to another registry agent.
 
 1. Exercise every stable method and notification.
@@ -927,20 +927,20 @@ does not promote a peer or generalize proof to another registry agent.
 7. Test redaction against prompts, file contents, terminal output, headers, and
    error data.
 8. Keep live Cursor/Grok/official-example probes opt-in and outside hermetic
-   ordinary CI. Ad hoc probe results are diagnostic, not release authority; the
+   ordinary CI. Ad hoc probe results are diagnostic, not release authority. The
    pinned Grok/Cursor matrix required by the release gate is authoritative for
    provider claims.
 
 ### Phase ACP-3 — ACP client adapter and Grok/Cursor proof
 
-**Implemented structurally by #8893 and #8894; release evidence is gated by
+**Implemented structurally by #8893 and #8894. Release evidence is gated by
 #8897's checked matrix.** The Cursor implementation deliberately resolves only a PATH candidate
 whose real basename is `cursor-agent`, pins the launcher plus every regular file
 in its installation closure and the normalized date version, rechecks that
 closure before spawn, supplies only `HOME` plus a fixed `/usr/bin:/bin` launcher PATH,
 and never treats another vendor's `agent` shim as Cursor. It negotiates only an
 advertised `cursor_login` through a typed external-browser interaction. Stable
-session modes and config options come from the peer; model discovery is a
+session modes and config options come from the peer. Model discovery is a
 versioned, bounded `cursor/list_available_models` response with explicit
 provenance. The parameterized model-picker `_meta` flag, reverse authority, and
 all Cursor extensions require fresh evidence bound to the admitted version and
@@ -983,7 +983,7 @@ evidence.
 3. Treat registry entries as discovery metadata, not executable authority or
    proof of artifact integrity.
 4. Lower `binary`, `npx`, and `uvx` distributions through an explicit installer
-   broker; never interpolate registry strings into a shell.
+   broker. Never interpolate registry strings into a shell.
 5. Verify platform, archive/package identity, executable path, and launch
    arguments before first run.
 6. Require an initialize/authentication conformance probe before admitting an
@@ -1006,20 +1006,20 @@ evidence.
 ACP support is not complete until:
 
 - the exact schema artifact, wire version, stable/unstable status, and method
-  coverage are generated and inspectable;
-- both JSON-RPC directions operate concurrently;
-- every advertised capability has a real handler and authority path;
-- no unadvertised optional call is made;
-- queues, messages, outputs, and pending requests are bounded;
-- request and session cancellation are distinct and tested;
-- connection and session generations prevent stale completion;
-- restart and replay/live reconciliation have deterministic outcomes;
+  coverage are generated and inspectable.
+- both JSON-RPC directions operate concurrently.
+- every advertised capability has a real handler and authority path.
+- no unadvertised optional call is made.
+- queues, messages, outputs, and pending requests are bounded.
+- request and session cancellation are distinct and tested.
+- connection and session generations prevent stale completion.
+- restart and replay/live reconciliation have deterministic outcomes.
 - full native events are retained privately and portable projection loss is
-  explicit;
-- ordinary diagnostics contain no raw private payloads;
-- filesystem, terminal, MCP, and permission paths are brokered and receipted;
-- provider extensions remain edge adapters;
-- pinned live Grok and Cursor compatibility matrices pass independently; and
+  explicit.
+- ordinary diagnostics contain no raw private payloads.
+- filesystem, terminal, MCP, and permission paths are brokered and receipted.
+- provider extensions remain edge adapters.
+- pinned live Grok and Cursor compatibility matrices pass independently. And
 - README/product language distinguishes implemented, experimental, and planned
   support.
 
@@ -1027,32 +1027,32 @@ ACP support is not complete until:
 
 ### Copy
 
-- generated, pinned schema authority;
-- typed outbound and reverse-request facades over one connection;
-- one provider-independent session runtime;
-- idempotent shared startup;
-- prompt serialization and event-drain barriers;
-- structured errors with exact process termination;
-- replay/live gating and child-session filtering;
-- capability defaults of false;
-- provider-specific launch/auth/model/extension layers;
-- native provenance on projected events; and
+- generated, pinned schema authority.
+- typed outbound and reverse-request facades over one connection.
+- one provider-independent session runtime.
+- idempotent shared startup.
+- prompt serialization and event-drain barriers.
+- structured errors with exact process termination.
+- replay/live gating and child-session filtering.
+- capability defaults of false.
+- provider-specific launch/auth/model/extension layers.
+- native provenance on projected events. And
 - payload-free ordinary diagnostics.
 
 ### Refuse
 
-- copying the stale `v0.11.3` unstable artifact;
-- treating wire version 1 as a frozen method table;
-- unbounded protocol queues;
-- unsupported acknowledgement claims;
-- swallowing callback failures without a health signal;
-- mutable handler registration without scoped teardown;
-- unconditional authentication;
-- calling optional methods without central capability guards;
-- one process per session as a universal law;
-- translating standard mode control into a provider convention;
-- losing unprojected ACP update variants;
-- provider extensions as canonical product state; and
+- copying the stale `v0.11.3` unstable artifact.
+- treating wire version 1 as a frozen method table.
+- unbounded protocol queues.
+- unsupported acknowledgement claims.
+- swallowing callback failures without a health signal.
+- mutable handler registration without scoped teardown.
+- unconditional authentication.
+- calling optional methods without central capability guards.
+- one process per session as a universal law.
+- translating standard mode control into a provider convention.
+- losing unprojected ACP update variants.
+- provider extensions as canonical product state. And
 - advertising filesystem or terminal capability before the handler and
   authority path exist.
 
@@ -1060,7 +1060,7 @@ ACP support is not complete until:
 
 T3 Code provides the best TypeScript/Effect reference in the audited set for
 **hosting ACP agents**. Its strength is not merely its generated protocol
-package; it is the separation between wire protocol, session lifecycle,
+package. It is the separation between wire protocol, session lifecycle,
 provider quirks, and canonical runtime events. Cursor and Grok share the hard
 parts while retaining thin peer-specific adapters.
 
@@ -1073,10 +1073,10 @@ and receipt boundary.
 
 The correct OpenAgents target is therefore:
 
-> one current, generated, bidirectional Agent Client Protocol foundation; an
+> one current, generated, bidirectional Agent Client Protocol foundation. An
 > outbound client adapter that proves `grok agent stdio` and Cursor `agent acp`
 > independently, then admits other registry agents through capability-gated
-> peer profiles; and no second domain model, authority path, or event writer.
+> peer profiles. And no second domain model, authority path, or event writer.
 
 ## Primary source map
 

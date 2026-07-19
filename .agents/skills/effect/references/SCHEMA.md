@@ -99,11 +99,11 @@ const label = Event.match(event, {
 
 Guidance:
 
-- Use `Data.TaggedEnum` for internal control-flow algebras; it provides constructors, `$is`, and exhaustive `$match`. Do not add a Schema solely to obtain these utilities.
+- Use `Data.TaggedEnum` for internal control-flow algebras. It provides constructors, `$is`, and exhaustive `$match`. Do not add a Schema solely to obtain these utilities.
 - Use `Schema.TaggedStruct` for the ordinary Effect-owned `_tag` variant.
 - Use `Schema.TaggedUnion` when the union needs decoding, encoding, persistence, wire validation, JSON Schema derivation, or schema composition.
 - Prefer a principled split over forcing one representation everywhere: Data internally, Schema at boundaries.
-- Use `Schema.tag(...)` when an external contract has a custom discriminator field such as `type` or `kind`; combine those structs with `Schema.toTaggedUnion("type")` when union helpers are needed.
+- Use `Schema.tag(...)` when an external contract has a custom discriminator field such as `type` or `kind`. Combine those structs with `Schema.toTaggedUnion("type")` when union helpers are needed.
 - If the encoded contract omits the discriminant, use `Schema.tagDefaultOmit(...)` deliberately.
 - Avoid `Schema.Class` and `Schema.TaggedClass` for new data models.
 

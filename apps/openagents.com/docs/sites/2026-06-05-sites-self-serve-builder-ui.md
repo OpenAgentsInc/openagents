@@ -15,11 +15,11 @@ The panel shows:
 
 - builder session status, next action, prompt summary, friendly updated time,
   preview link when a preview URL exists, and current live Site URL when one is
-  active;
-- phase timeline from the public builder-session projection;
-- replayed customer-visible event stream records with a refresh action;
-- customer-visible generated file tree and a read-only file preview;
-- recent customer-visible builder messages;
+  active.
+- phase timeline from the public builder-session projection.
+- replayed customer-visible event stream records with a refresh action.
+- customer-visible generated file tree and a read-only file preview.
+- recent customer-visible builder messages.
 - the existing revision feedback composer remains directly below the builder
   workflow so follow-up comments still enter the normal revision queue.
 

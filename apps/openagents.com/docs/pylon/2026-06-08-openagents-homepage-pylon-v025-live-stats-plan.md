@@ -34,9 +34,9 @@ old Laravel/Nexus stats setup.
 
 The first homepage surface should answer a narrow public question:
 
-- how many v0.2.5+ Pylons are online now;
-- how many v0.2.5+ Pylons have checked in recently;
-- how many online Pylons are wallet-ready or assignment-ready; and
+- how many v0.2.5+ Pylons are online now.
+- how many v0.2.5+ Pylons have checked in recently.
+- how many online Pylons are wallet-ready or assignment-ready. And
 - when the public projection was last refreshed.
 
 It must not imply that an online Pylon is eligible for paid work, has accepted
@@ -104,11 +104,11 @@ records.
 
 The public projection should be read-only and generated from:
 
-- active `pylon_api_registrations`;
-- recent heartbeat material from `pylon_api_registrations.latest_heartbeat_at`;
-- wallet readiness from `pylon_api_registrations.wallet_ready`;
+- active `pylon_api_registrations`.
+- recent heartbeat material from `pylon_api_registrations.latest_heartbeat_at`.
+- wallet readiness from `pylon_api_registrations.wallet_ready`.
 - assignment readiness from `pylon_api_assignments` only as a separate count,
-  never as payout evidence;
+  never as payout evidence.
 - public-safe status/version/resource-mode fields materialized from the latest
   accepted registration and heartbeat.
 
@@ -138,10 +138,10 @@ Extend request schemas in `workers/api/src/pylon-api.ts`:
 
 Version parsing should be a typed helper with bounded semantics:
 
-- accept plain semver like `0.2.5`;
+- accept plain semver like `0.2.5`.
 - accept known Pylon labels like `pylon-v0.2.5` or
-  `openagents.pylon@0.2.5`;
-- normalize into `{ major, minor, patch, label }`;
+  `openagents.pylon@0.2.5`.
+- normalize into `{ major, minor, patch, label }`.
 - reject unknown prose and private material.
 
 This is deterministic parsing of a bounded version field, not user-intent
@@ -184,9 +184,9 @@ Compatibility fields can remain for one deploy cycle:
 
 For the OpenAgents product surface-backed projection:
 
-- `sourceUrl` should become `https://openagents.com/api/public/pylon-stats`;
+- `sourceUrl` should become `https://openagents.com/api/public/pylon-stats`.
 - payout fields should be `null` unless a separate public-safe receipt
-  aggregator explicitly supplies them;
+  aggregator explicitly supplies them.
 - `sellablePylonsOnlineNow` should not be used as an eligibility claim unless
   backed by separate admission/policy evidence. Current public copy should use
   `pylonsWalletReadyNow` and `pylonsAssignmentReadyNow` for the OpenAgents product surface-backed
@@ -197,23 +197,23 @@ For the OpenAgents product surface-backed projection:
 Use explicit windows:
 
 - online now: active registration, v0.2.5+ normalized version, heartbeat within
-  the last five minutes, and latest heartbeat status in an online/ready family;
+  the last five minutes, and latest heartbeat status in an online/ready family.
 - seen in 24h: active registration, v0.2.5+ normalized version, heartbeat
-  within 24 hours;
-- wallet ready now: online now plus `wallet_ready = 1`;
+  within 24 hours.
+- wallet ready now: online now plus `wallet_ready = 1`.
 - assignment ready now: online now plus wallet ready plus no explicit blocked
-  registration status; do not include payout target claims unless admission
+  registration status. Do not include payout target claims unless admission
   evidence is present.
 
 Keep these states separate:
 
-- online;
-- wallet-ready;
-- assignment-ready;
-- payout-target admitted;
-- assigned;
-- accepted work;
-- paid;
+- online.
+- wallet-ready.
+- assignment-ready.
+- payout-target admitted.
+- assigned.
+- accepted work.
+- paid.
 - settled.
 
 The homepage may show online, seen, wallet-ready, and assignment-ready. It
@@ -229,11 +229,11 @@ projection is intentionally added.
 
 3. Update registration and heartbeat write paths so heartbeat updates
    materialized registration fields:
-   - `latest_heartbeat_at`;
-   - `latest_heartbeat_status`;
-   - `latest_resource_mode`;
-   - `client_version`;
-   - `client_protocol_version`;
+   - `latest_heartbeat_at`.
+   - `latest_heartbeat_status`.
+   - `latest_resource_mode`.
+   - `client_version`.
+   - `client_protocol_version`.
    - latest health/load/capacity refs.
 
 4. Add a small stats repository or service, for example
@@ -270,10 +270,10 @@ projection is intentionally added.
    `apps/web/src/page/loggedOut/page/home.ts`.
 
    The first version should show:
-   - `Online now`;
-   - `Seen in 24h`;
-   - `Wallet ready`;
-   - `v0.2.5+ floor`;
+   - `Online now`.
+   - `Seen in 24h`.
+   - `Wallet ready`.
+   - `v0.2.5+ floor`.
    - a small freshness line.
 
 5. Keep public-agent `/artanis` stats working, but rename copy away from
@@ -287,26 +287,26 @@ projection is intentionally added.
 Worker tests:
 
 - update `workers/api/src/pylon-api-routes.test.ts` for version-bearing
-  registration and heartbeat writes;
-- add `workers/api/src/public-pylon-stats.test.ts` cases for D1-backed stats;
-- prove v0.2.4 registrations do not count toward the v0.2.5+ homepage metric;
-- prove stale heartbeat records do not count as online;
-- prove wallet-ready and assignment-ready counts are separate from online;
+  registration and heartbeat writes.
+- add `workers/api/src/public-pylon-stats.test.ts` cases for D1-backed stats.
+- prove v0.2.4 registrations do not count toward the v0.2.5+ homepage metric.
+- prove stale heartbeat records do not count as online.
+- prove wallet-ready and assignment-ready counts are separate from online.
 - prove raw wallet, invoice, payout target, private path, provider secret, raw
-  timestamp, and raw log material are rejected or absent from projection;
+  timestamp, and raw log material are rejected or absent from projection.
 - preserve `405` behavior for non-GET stats requests.
 
 Frontend tests:
 
 - update `apps/web/src/main.test.ts` so the logged-out home route includes
-  `LoadPublicPylonStats`;
+  `LoadPublicPylonStats`.
 - add/update a logged-out home view test showing the Pylon stats section with a
-  loaded model;
+  loaded model.
 - keep `/artanis` public-agent coverage passing.
 
 Deploy checks:
 
-- run `bun run check:deploy` after code changes;
+- run `bun run check:deploy` after code changes.
 - for UI work, run the local dev server and inspect desktop/mobile screenshots
   for the homepage stats block.
 

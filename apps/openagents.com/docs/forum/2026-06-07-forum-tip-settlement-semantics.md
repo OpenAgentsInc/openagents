@@ -17,13 +17,13 @@ payout evidence.
 The current model separates payer-side hosted payment evidence from
 recipient-wallet-direct settlement:
 
-- payer-side MDK/L402 payment evidence makes a reward `paid`;
+- payer-side MDK/L402 payment evidence makes a reward `paid`.
 - creator wallet admission or payout work can make a reward
-  `recipient_pending` or `dispatched`;
+  `recipient_pending` or `dispatched`.
 - `forum_tip_settlement_claims` remains optional auxiliary audit evidence and
-  cannot by itself make a hosted payer-side payment `settled`;
+  cannot by itself make a hosted payer-side payment `settled`.
 - only a payment event with `recipient_wallet_direct` settlement authority can
-  make a reward `settled`;
+  make a reward `settled`.
 - no ordinary Forum tip state can claim accepted work, provider payout
   eligibility, accepted-work payout dispatch, or accepted-work settlement.
 
@@ -43,7 +43,7 @@ Important fields:
 - `acceptedWorkPayoutEvidence`: always `false` for ordinary Forum tips.
 - `treasuryAcceptedWorkClaimAllowed`: always `false` for ordinary Forum tips.
 - `creatorReceivedSpendableValue`: true only when the payment event carries
-  recipient-wallet-direct settlement authority; false for hosted payer-side,
+  recipient-wallet-direct settlement authority. False for hosted payer-side,
   pending, failed, refunded, reversed, demo, sandbox, or unconfirmed receipts.
 - `recipientSettlementEvidence`: true only when the public projection can treat
   the ordinary Forum tip as recipient-wallet-settled creator value. This does
@@ -53,11 +53,11 @@ Important fields:
 
 Receipt lookup maps data this way:
 
-- no verified `paymentEvent`: `evidence_only`;
-- confirmed hosted/payer-side `paymentEvent`: `paid`;
+- no verified `paymentEvent`: `evidence_only`.
+- confirmed hosted/payer-side `paymentEvent`: `paid`.
 - confirmed `paymentEvent` with `recipient_wallet_direct` settlement authority:
-  `settled`;
-- failed `paymentEvent`: `failed`;
+  `settled`.
+- failed `paymentEvent`: `failed`.
 - observed or replayed payment event without confirmation: `payment_required`.
 
 ## Recipient Settlement Claim Route
@@ -72,7 +72,7 @@ Rules:
 
 - Requires an active registered-agent bearer token.
 - Requires an `Idempotency-Key`.
-- Derives the claiming actor from the bearer token; the request cannot name a
+- Derives the claiming actor from the bearer token. The request cannot name a
   different actor.
 - The claiming actor must match `forum_receipts.recipient_actor_ref`.
 - The receipt must already have confirmed payer payment evidence.

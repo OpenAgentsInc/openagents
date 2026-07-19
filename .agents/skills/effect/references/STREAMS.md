@@ -4,7 +4,7 @@ Use this when working with `Stream`, event sources, async iterables, queue/pubsu
 
 ## Mental Model
 
-`Stream<A, E, R>` is an effectful source that can emit many `A` values over time, fail with `E`, and require services `R`. Streams are pull-based and backpressured; consumption controls demand.
+`Stream<A, E, R>` is an effectful source that can emit many `A` values over time, fail with `E`, and require services `R`. Streams are pull-based and backpressured. Consumption controls demand.
 
 Use streams for sources that are naturally many-valued and time-ordered:
 
@@ -16,7 +16,7 @@ Use streams for sources that are naturally many-valued and time-ordered:
 - scheduled ticks when values matter
 - pipelines with filtering, mapping, buffering, throttling, or bounded concurrent processing
 
-Do not use streams just to loop forever. For one repeated effect with no emitted values, use `Effect.repeat(...)` with `Schedule`; read `SCHEDULING.md`.
+Do not use streams just to loop forever. For one repeated effect with no emitted values, use `Effect.repeat(...)` with `Schedule`. Read `SCHEDULING.md`.
 
 ## Source Chooser
 
@@ -26,7 +26,7 @@ Do not use streams just to loop forever. For one repeated effect with no emitted
 - Broadcast events: `PubSub` plus `Stream.fromPubSub(...)`.
 - Latest-value state plus updates: `SubscriptionRef`.
 - Schedule-generated ticks/values: `Stream.fromSchedule(...)`.
-- Paginated pull APIs: `Stream.paginate(...)`; its step function is already effectful, returning `Effect<[chunk, Option<nextState>]>`.
+- Paginated pull APIs: `Stream.paginate(...)`. Its step function is already effectful, returning `Effect<[chunk, Option<nextState>]>`.
 - Async iterable/platform source: `Stream.fromAsyncIterable(...)` when no native Effect source exists.
 - Effect that produces a stream after reading services/config: `Stream.unwrap(...)`.
 
@@ -95,7 +95,7 @@ export interface Interface {
 }
 ```
 
-Implementation can use private `Queue` / `SubscriptionRef`; consumers see streams.
+Implementation can use private `Queue` / `SubscriptionRef`. Consumers see streams.
 
 ## Backpressure And Buffers
 
@@ -106,7 +106,7 @@ Use `Stream.buffer(...)` only when producer and consumer should decouple.
 - `strategy: "suspend"`: apply backpressure when full.
 - `strategy: "dropping"`: drop new values when full.
 - `strategy: "sliding"`: keep the latest values by dropping old ones.
-- `capacity: "unbounded"`: rare; use only when growth is bounded elsewhere.
+- `capacity: "unbounded"`: rare. Use only when growth is bounded elsewhere.
 
 Use `Stream.debounce(...)` for quiet-period behavior and `Stream.throttle(...)` / `Stream.throttleEffect(...)` for rate-shaped streams.
 
@@ -116,7 +116,7 @@ Use `Stream.debounce(...)` for quiet-period behavior and `Stream.throttle(...)` 
 - Use `Stream.mapError(...)` to translate errors at boundaries.
 - Use `Stream.catchIf(...)`, `Stream.catchTag(...)`, or `Stream.catchFilter(...)` for typed recovery.
 - Use `Stream.catchCause(...)` only at explicit supervision boundaries.
-- Do not hide stream defects by default; let them reach the owning layer/runtime unless the stream is explicitly best-effort.
+- Do not hide stream defects by default. Let them reach the owning layer/runtime unless the stream is explicitly best-effort.
 
 ## Keyed Concurrency
 
@@ -132,4 +132,4 @@ Use this for projection/reconciliation streams where each key needs ordered proc
 - Use `Stream.empty` for no events.
 - Use `Stream.fromQueue(...)` with a test-owned `Queue` when the test needs to drive events interactively.
 - Use `Stream.take(n)` plus `Stream.runCollect` for finite assertions.
-- Avoid real sleeps; coordinate with `Deferred`, `Queue`, `Latch`, and `TestClock`.
+- Avoid real sleeps. Coordinate with `Deferred`, `Queue`, `Latch`, and `TestClock`.

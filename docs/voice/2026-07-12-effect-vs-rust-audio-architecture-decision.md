@@ -1,8 +1,8 @@
 # Effect vs Rust for persistent audio — architecture decision
 
 **Implementation status (AUDIO-1, #8734):** accepted. The canonical Effect
-contract is `packages/audio-contract`; the media-only Rust mirror is
-`crates/oa-desktop-audio`; both consume
+contract is `packages/audio-contract`. The media-only Rust mirror is
+`crates/oa-desktop-audio`. Both consume
 `fixtures/audio-contract/media-v1.json`. Later audio leaves may extend those
 surfaces but may not widen Rust into application or policy authority.
 
@@ -19,7 +19,7 @@ authority, so the accepted hybrid decision remains intact.
 
 - **Date:** 2026-07-12
 - **Status:** accepted planning decision for [AUDIO-0 #8733](https://github.com/OpenAgentsInc/openagents/issues/8733)
-- **Owner direction:** Rust is permitted for this track when it is the better systems boundary; do not force the whole feature into Effect
+- **Owner direction:** Rust is permitted for this track when it is the better systems boundary. Do not force the whole feature into Effect
 - **Related plan:** [`2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md`](./2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md)
 
 ## Decision
@@ -41,7 +41,7 @@ Use a **hybrid architecture**, divided by authority and realtime constraints:
 The planned Rust home is `crates/oa-desktop-audio`, packaged and signed as an
 OpenAgents Desktop helper. Electron main supervises it through a closed,
 versioned, line-delimited local control protocol. The helper sends media
-directly to `apps/openagents-audio`; raw audio does not pass through the
+directly to `apps/openagents-audio`. Raw audio does not pass through the
 renderer, preload, Runtime Gateway event stream, or ordinary main-process IPC.
 
 This is not a return to Tauri, WGPUI, or a Rust application shell. It is the
@@ -54,12 +54,12 @@ executables: a narrow process-opaque helper behind an Effect contract.
 
 The current Desktop is already built around:
 
-- Effect Schema-decoded Runtime Gateway requests, responses, and subscriptions;
-- a tokenless renderer and fixed preload methods;
+- Effect Schema-decoded Runtime Gateway requests, responses, and subscriptions.
+- a tokenless renderer and fixed preload methods.
 - one registered command vocabulary for pointer, keyboard, palette, menu, and
-  future model-proposed actions;
-- Effect-scoped lifecycle, interruption, replacement, and disposal;
-- Khala Sync projections and durable command outcomes; and
+  future model-proposed actions.
+- Effect-scoped lifecycle, interruption, replacement, and disposal.
+- Khala Sync projections and durable command outcomes. And
 - Effect Native UI and executable behavior contracts.
 
 Reimplementing any of those in Rust would create a second application model.
@@ -84,7 +84,7 @@ Effect is also the more pragmatic first cloud gateway:
 
 The cloud service may run under the runtime required by the supported Google
 gRPC client while remaining authored as Effect/TypeScript. AUDIO-2 must prove
-the exact packaged runtime; it may not assume Bun compatibility from typecheck
+the exact packaged runtime. It may not assume Bun compatibility from typecheck
 alone.
 
 ### Rust is the right place for the Desktop realtime media loop
@@ -98,11 +98,11 @@ prebuild, and callback-safety burden.
 
 Rust already has proven libraries and historical OpenAgents code for this job:
 
-- `cpal` for cross-platform microphone/device capture;
-- `rodio` or a lower-level output backend for playback;
-- mature PCM/sample conversion and codec crates;
-- Tokio plus WebSocket/TLS libraries for long-lived transport;
-- bounded channels and owned task cancellation without blocking Electron; and
+- `cpal` for cross-platform microphone/device capture.
+- `rodio` or a lower-level output backend for playback.
+- mature PCM/sample conversion and codec crates.
+- Tokio plus WebSocket/TLS libraries for long-lived transport.
+- bounded channels and owned task cancellation without blocking Electron. And
 - the historical OpenAgents Rust voice playground as a concrete capture/WAV/
   lifecycle/test reference.
 
@@ -124,9 +124,9 @@ and codecs remain contained behind the same control protocol.
 mocking, fewer build systems.
 
 **Rejected for the Desktop media loop because:** the clean Node utility-process
-path has no built-in native microphone; renderer capture violates the intended
-trust boundary; native Node addons couple audio safety and packaging to
-Electron's ABI; realtime audio bytes and device callbacks would add pressure to
+path has no built-in native microphone. Renderer capture violates the intended
+trust boundary. Native Node addons couple audio safety and packaging to
+Electron's ABI. Realtime audio bytes and device callbacks would add pressure to
 the application process.
 
 Effect remains correct for every non-media-loop responsibility.
@@ -148,8 +148,8 @@ Google-client spike fails a named criterion.
 ### Renderer `getUserMedia` plus direct WebSocket
 
 **Rejected:** simplest demo, wrong product boundary. It gives privileged live
-web code microphone capture, raw media, and channel state; makes reload/crash/
-permission behavior harder to fence; and bypasses host supervision.
+web code microphone capture, raw media, and channel state. Makes reload/crash/
+permission behavior harder to fence. And bypasses host supervision.
 
 ### Electron main plus native Node audio addon
 
@@ -190,16 +190,16 @@ apps/openagents-audio (Effect/TypeScript on Cloud Run)
 Effect may send only bounded commands such as:
 
 - `configure` with public endpoint, short-lived opaque channel credential,
-  voice session/generation, format, device preference, and limits;
-- `start`, `mute`, `unmute`, `stop`, `set_output`, `cancel_utterance`;
+  voice session/generation, format, device preference, and limits.
+- `start`, `mute`, `unmute`, `stop`, `set_output`, `cancel_utterance`.
 - `rotate_credential` and `shutdown`.
 
 Rust may return only bounded public-safe state such as:
 
-- ready/unavailable and device summaries;
-- capture/egress/playback/mute state;
-- connection generation, ACK watermark, loss/backpressure counters;
-- utterance playback start/drain/cancel;
+- ready/unavailable and device summaries.
+- capture/egress/playback/mute state.
+- connection generation, ACK watermark, loss/backpressure counters.
+- utterance playback start/drain/cancel.
 - typed error/blocker and final shutdown receipt.
 
 No raw audio, transcript, provider credential, object path, arbitrary log line,
@@ -211,11 +211,11 @@ Gateway projection, not back through the helper.
 
 `packages/audio-contract` remains canonical. AUDIO-1 will provide:
 
-- Effect Schema codecs and fixtures;
-- a language-neutral binary-envelope specification;
-- generated or hand-maintained Rust serde mirrors restricted to media frames;
+- Effect Schema codecs and fixtures.
+- a language-neutral binary-envelope specification.
+- generated or hand-maintained Rust serde mirrors restricted to media frames.
 - shared golden vectors for valid and invalid versions, sizes, sequence,
-  generation, digests, and close/error frames; and
+  generation, digests, and close/error frames. And
 - cross-language conformance tests run in both package and Cargo suites.
 
 The Rust helper must not learn command policy, Sync shapes, conversation bodies,
@@ -226,17 +226,17 @@ authority.
 
 The helper adds real release work:
 
-- build universal/per-architecture binaries for supported Desktop targets;
-- place the executable outside ASAR under a fixed manifest path;
-- include its digest/version in the Desktop component manifest;
+- build universal/per-architecture binaries for supported Desktop targets.
+- place the executable outside ASAR under a fixed manifest path.
+- include its digest/version in the Desktop component manifest.
 - sign it inside the macOS application and cover it with hardened-runtime
-  entitlements appropriate to microphone/audio access;
+  entitlements appropriate to microphone/audio access.
 - verify executable presence, mode, signature, architecture, and digest before
-  launch;
+  launch.
 - launch with a scrubbed environment, fixed args, no ambient PATH resolution,
-  no shell, and a private inherited control channel;
+  no shell, and a private inherited control channel.
 - use one owned process scope with bounded startup/shutdown and kill-on-parent-
-  exit behavior; and
+  exit behavior. And
 - include helper version/state in public-safe diagnostics without local paths,
   tokens, audio, or transcript text.
 
@@ -252,9 +252,9 @@ The split is accepted only if the real implementation proves:
 | --- | --- |
 | helper cold start to ready | p95 <= 500 ms on the named dogfood Mac |
 | capture callback to gateway send | p95 <= 50 ms excluding network |
-| sustained helper memory | bounded during a 60-minute session; no growth with transcript length |
+| sustained helper memory | bounded during a 60-minute session. No growth with transcript length |
 | playback cancellation after local interrupt | p95 <= 100 ms before network acknowledgement |
-| helper crash | Desktop shows degraded/stopped; no automatic hidden recapture |
+| helper crash | Desktop shows degraded/stopped. No automatic hidden recapture |
 | main/renderer responsiveness | no material regression during full-duplex audio |
 | process teardown | capture, socket, playback, and child exit settle once within 2 s |
 
@@ -268,10 +268,10 @@ The Rust-helper decision should be reversed for the MVP if AUDIO-4 proves all
 of the following with a pure Effect utility process and no renderer capture or
 native-addon risk:
 
-1. native mic and playback work in packaged macOS/Windows/Linux artifacts;
-2. no raw media or socket authority enters renderer/preload/Runtime Gateway;
+1. native mic and playback work in packaged macOS/Windows/Linux artifacts.
+2. no raw media or socket authority enters renderer/preload/Runtime Gateway.
 3. latency, cancellation, memory, crash isolation, and device-change budgets
-   pass; and
+   pass. And
 4. packaging/signing is materially simpler than the Rust helper.
 
 The Effect-gateway decision should be reversed to a Rust gateway if AUDIO-2
@@ -292,8 +292,8 @@ Rust.
 - **AUDIO-5/#8738 and AUDIO-6/#8739:** remain entirely Effect Native/TypeScript.
 - AUDIO-6 permits the Rust helper to validate and forward bounded server
   transcript/activity/proposal frames. Rust still cannot classify utterances,
-  choose commands, apply policy, or claim outcomes; those remain Effect-owned.
-- **AUDIO-7 #8740:** Google streaming synthesis stays in the Effect gateway;
+  choose commands, apply policy, or claim outcomes. Those remain Effect-owned.
+- **AUDIO-7 #8740:** Google streaming synthesis stays in the Effect gateway.
   Rust owns output buffering/playback/cancel only.
 
 **Measured AUDIO-7 result (#8740):** the Effect gateway's official Google
@@ -310,7 +310,7 @@ supports the hybrid decision rather than widening either side's authority.
 kinds of work:
 
 - reasoning about identity, state, policy, commands, outcomes, UI, storage, and
-  service lifecycles; and
+  service lifecycles. And
 - moving realtime audio between native devices and the network with strict
   timing and bounded memory.
 

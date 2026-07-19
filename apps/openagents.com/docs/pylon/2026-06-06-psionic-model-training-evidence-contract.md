@@ -20,23 +20,23 @@ settle accepted outcomes.
 
 `OpenAgentsPsionicEvidenceRecord` records:
 
-- evidence kind;
-- status;
-- model refs;
-- provider refs;
-- dataset refs;
-- source refs;
-- fixture refs;
-- metric refs;
-- failure refs;
-- review refs;
-- candidate module refs;
-- optimizer refs;
-- scorecard refs;
-- promotion proposal refs;
-- rollback refs;
-- training run refs;
-- retained failure refs; and
+- evidence kind.
+- status.
+- model refs.
+- provider refs.
+- dataset refs.
+- source refs.
+- fixture refs.
+- metric refs.
+- failure refs.
+- review refs.
+- candidate module refs.
+- optimizer refs.
+- scorecard refs.
+- promotion proposal refs.
+- rollback refs.
+- training run refs.
+- retained failure refs. And
 - evidence receipt refs.
 
 ## Authority Boundary
@@ -46,10 +46,10 @@ The default authority block is
 
 It explicitly denies:
 
-- direct module promotion;
-- routing mutation;
-- payout mutation;
-- public claim upgrade; and
+- direct module promotion.
+- routing mutation.
+- payout mutation.
+- public claim upgrade. And
 - accepted-outcome settlement.
 
 `openAgentsPsionicEvidenceCanMutateRuntime` returns false for records using
@@ -73,15 +73,15 @@ internal refs but still reject raw payload material.
 
 The contract rejects:
 
-- raw datasets;
-- private customer data;
-- provider payloads;
+- raw datasets.
+- private customer data.
+- provider payloads.
 - secrets, bearer tokens, callback tokens, cookies, OAuth material, and API
-  keys;
-- wallet/payment material;
-- payout targets;
-- raw source archives;
-- raw prompts, raw logs, raw payloads, and raw emails; and
+  keys.
+- wallet/payment material.
+- payout targets.
+- raw source archives.
+- raw prompts, raw logs, raw payloads, and raw emails. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -90,10 +90,10 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/psionic-evidence-contract.test.ts` covers:
 
-- schema/projection decoding;
-- evidence-only authority checks;
-- no promotion/routing/settlement authority;
-- review requirement detection;
-- public redaction of operator-only refs; and
+- schema/projection decoding.
+- evidence-only authority checks.
+- no promotion/routing/settlement authority.
+- review requirement detection.
+- public redaction of operator-only refs. And
 - unsafe dataset, private customer, provider payload, secret, wallet/payment,
   and timestamp rejection.

@@ -27,7 +27,7 @@ The launch predicate is:
 13. Probe closeout import refs exist.
 14. Psionic import dry-run refs exist.
 15. Artanis public-safe summary refs exist.
-16. Accepted imports are `unpaid_smoke`; rejected closeouts may be
+16. Accepted imports are `unpaid_smoke`. Rejected closeouts may be
     `rejected_no_pay`.
 17. No import carries payment receipts, settlement receipts, payable claims, or
     settled-bitcoin claims.

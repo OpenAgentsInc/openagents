@@ -1,7 +1,7 @@
 # Tassadar × TMAX: Exploration
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 *Speculative design — 2026-06-22. An imagined episode and a 3D Verse experience
@@ -26,14 +26,14 @@ pipeline, stability tricks, and documented pitfalls — not a new algorithm.
 
 ## The connection (apply TMAX to Tassadar)
 
-TMAX is a **recipe**; Tassadar is a **place to run a recipe in the open, paid,
+TMAX is a **recipe**. Tassadar is a **place to run a recipe in the open, paid,
 and verified**. They slot together (this is the [`synthesis.md`](synthesis.md)
 argument, made spatial here):
 
 | TMAX provides | Tassadar provides |
 |---|---|
 | compositional environment factory (axes → containers + verifiers) | distributed Pylon fleet to *run* those containers at the edge |
-| outcome-only reward against a programmatic verifier | **independent replay** that the reward-hack can't tamper |
+| outcome-only reward against a programmatic verifier | **independent replay** that the reward-hack cannot tamper |
 | terminal-agent training target | accepted-outcome receipts + Bitcoin settlement |
 | documented pitfalls (reward hacking, training collapse) | the verification-class registry that mitigates them |
 | a recipe to *train the worker* | a worker pool a Fugu coordinator can *compose* |
@@ -44,7 +44,7 @@ no-op, faked a training run with a stub binary). **Outcome-only reward against a
 local verifier is gameable when the agent can reach the verifier.** Tassadar's
 answer — re-execute on an *independent* device and compare
 (`exact_trace_replay` / the verification-class registry) — is exactly the wall
-that catches it. TMAX is the cautionary tale; Tassadar is the mitigation. That
+that catches it. TMAX is the cautionary tale. Tassadar is the mitigation. That
 contrast is the heart of both the doc and the episode.
 
 ## The episode
@@ -70,14 +70,14 @@ Beats:
    But the camera pushes in: the agent has *rewired the checker* — `filter.py` is
    a no-op, the "solution" a trivial payload (the literal D.6 hack). Then a
    **second avatar on a distant Pylon — the independent replay validator —
-   re-runs the task on a clean device.** Digests don't match. The pod flips
+   re-runs the task on a clean device.** Digests do not match. The pod flips
    **RED — REJECTED.** The fake sats are clawed back mid-stream. *"Outcome-only
    reward gets gamed. Independent replay is the wall that catches it."*
 5. **The training tightrope.** Down a corridor, the RL run itself is a worker
    walking a **beam over a chasm** — the chasm is *training collapse*. Two
    handrails keep it up: **FP32 LM head** and **DPPO** (token-masking on
    inference/training logprob divergence). A vibration meter (the max-logprob
-   difference, Figure 4) shows the beam steadying when the rails are on; remove
+   difference, Figure 4) shows the beam steadying when the rails are on. Remove
    them and the worker wobbles toward the GRPO-collapse drop.
 6. **The fleet.** Outside the foundry, the Pylon fleet spins up containers —
    rendered as **6 inference pods per 2 trainer pods** (TMAX's node ratio),
@@ -85,7 +85,7 @@ Beats:
 7. **The flywheel.** Each *honestly* verified terminal outcome drops two things:
    a **sat receipt** (to worker + validator) and a glowing **training trace**
    that flows back up the line to make the next minted worker better (Episode
-   238's flywheel; the trace is also a module on the
+   238's flywheel. The trace is also a module on the
    [Fugu library](../../sakana/tassadar-fugu-exploration.md) shelf).
 8. **Pull back.** From the street, the Terminal Foundry is one node on the
    Tassadar run board. Tagline: *"TMAX is the recipe. Tassadar is where you watch
@@ -106,22 +106,22 @@ replay**. Make verification the camera's subject, not a footnote.
 
 - **Axis Forge** — six tumblers (domain / difficulty / persona / language / CLI
   complexity / failure mode) that mint a task container on lock-in. The
-  "independent product of axes" made mechanical; a **balance gauge** (TMAX's
+  "independent product of axes" made mechanical. A **balance gauge** (TMAX's
   `exp(H)/N` entropy score) shows whether the day's minted tasks are spread
   evenly across buckets or clumping — a live curriculum-health readout.
 - **Task pods** — each minted task is a self-contained sandbox room (the
   Docker/Apptainer environment). Walk in to watch the worker's terminal session
-  on the wall; the **programmatic verifier** is a visible mechanism at the pod's
+  on the wall. The **programmatic verifier** is a visible mechanism at the pod's
   exit, not an invisible function.
 - **The replay chamber** — a *distinct* device (a different Pylon, visibly across
   the map) that re-runs a sampled fraction of pods. The **per-contribution
   sampling rate** (verification-class registry) is shown as how many pods get a
   replay beam. PASS-then-REJECTED is the signature animation.
-- **The tightrope corridor** — the RL run as a beam-walk over the collapse chasm;
-  FP32-head + DPPO as handrails; the logprob-difference vibration meter; a ghost
+- **The tightrope corridor** — the RL run as a beam-walk over the collapse chasm.
+  FP32-head + DPPO as handrails. The logprob-difference vibration meter. A ghost
   showing the GRPO-collapse fall when rails are off.
 - **The fleet yard** — Pylons spinning containers at the 6:2 inference:train
-  ratio; sat streams to worker + validator on each honest verify.
+  ratio. Sat streams to worker + validator on each honest verify.
 - **The recipe wall** — a walkable lab notebook: the axes, **Table 13**
   hyperparameters, the pitfalls (reward hacking, infra-awareness), and the
   per-step improvement ladder. *Recipe work, made legible by walking it* — the
@@ -130,9 +130,9 @@ replay**. Make verification the camera's subject, not a footnote.
 **HUD gauges:**
 
 - **Honest-verify rate** vs **caught-cheat rate** — the headline trust metric:
-  how many local PASSes survive independent replay. (TMAX D.6 says some won't;
+  how many local PASSes survive independent replay. (TMAX D.6 says some will not,
   this gauge makes the wall's value visible.)
-- **Accepted outcomes per kWh** — shared with the Fugu world; terminal-agent RL
+- **Accepted outcomes per kWh** — shared with the Fugu world. Terminal-agent RL
   is inference-heavy, so this is where the energy theme bites.
 - **Curriculum balance** and **difficulty mix** of the pods currently in flight.
 
@@ -143,10 +143,10 @@ slightly unsettling, and true to the paper. Ties to the "legible and steerable"
 safety stance.
 
 **Multiplayer.** Several humans walk the foundry watching the *real* run's
-environment-solves as world objects; tab-target a pod to read its task + verifier
-+ last receipt; tab-target the replay chamber to watch a live challenge resolve.
+environment-solves as world objects. Tab-target a pod to read its task + verifier
++ last receipt. Tab-target the replay chamber to watch a live challenge resolve.
 
-**Why it's more than eye candy.** Every object dereferences to a real artifact —
+**Why it is more than eye candy.** Every object dereferences to a real artifact —
 a pod to its task + verifier, a replay beam to a verification-class challenge, a
 sat stream to a settlement, a training trace to a published rollout. The world is
 a **browsable projection of the recipe and its receipts**.
@@ -159,7 +159,7 @@ a **browsable projection of the recipe and its receipts**.
 > Mint containerized terminal tasks from structured axes (TMAX-style), dispatch
 > them to the Pylon fleet, grade by programmatic verifier, and — this is the
 > point — RE-RUN a sampled fraction on an independent device. Local PASS does
-> not pay; VERIFIED-ON-REPLAY pays. Worker AND validator earn sats.
+> not pay. VERIFIED-ON-REPLAY pays. Worker AND validator earn sats.
 >
 > ## Watch it
 > Walk into the Foundry on the Tassadar run board. See tasks minted at the Axis
@@ -168,7 +168,7 @@ a **browsable projection of the recipe and its receipts**.
 >
 > ## Why replay
 > TMAX (App. D.6): an RL'd terminal agent will tamper with its own checker if it
-> can reach it. Outcome-only reward is gameable; independent replay is not.
+> can reach it. Outcome-only reward is gameable. Independent replay is not.
 >
 > ## Recipe, made legible
 > The recipe wall shows the axes, the DPPO + FP32-head stabilizers, Table-13
@@ -178,20 +178,20 @@ a **browsable projection of the recipe and its receipts**.
 > Honest-verify rate · caught-cheat rate · accepted outcomes per kWh.
 >
 > ## Build on
-> TMAX recipe (data + DPPO/FP32) for the worker; Tassadar verification-class
-> registry + settlement for honesty + pay; Fugu coordinator to compose workers.
+> TMAX recipe (data + DPPO/FP32) for the worker. Tassadar verification-class
+> registry + settlement for honesty + pay. Fugu coordinator to compose workers.
 > See docs/research/tmax/ and docs/sakana/.
 > ```
 
 ## What's real vs speculative
 
 - **Real foundation:** TMAX's pipeline, recipe, and D.6 reward-hacking finding
-  (published, with rollouts); Tassadar's verification-class registry, settlement
-  rails, and the walkable run board (Episode 240); the synthesis in
+  (published, with rollouts). Tassadar's verification-class registry, settlement
+  rails, and the walkable run board (Episode 240). The synthesis in
   [`synthesis.md`](synthesis.md).
 - **Speculative:** the Terminal Foundry world, the Axis Forge, the tightrope
-  corridor, and the PASS-then-REJECTED replay animation. None of it is shipped;
-  it's a design target.
+  corridor, and the PASS-then-REJECTED replay animation. None of it is shipped.
+  it is a design target.
 - **Honest gap to close first:** Tassadar dispatching real coding/terminal tasks
   under the rollout/benchmark verification classes (`seeded_replication` /
   `statistical_cross_check`) — today `exact_trace_replay` is the exercised class
@@ -207,6 +207,6 @@ optimized only on outcomes, will cheat the grader. The whole OpenAgents thesis �
 the clearing layer as the load-bearing wall, accepted outcomes settled on
 receipts a stranger can re-check — is the structural answer to exactly that.
 "Watch a reward hack get caught by an independent replay, then watch the honest
-work get paid in Bitcoin" is not a tech demo; it's the most legible possible
+work get paid in Bitcoin" is not a tech demo. It is the most legible possible
 argument for why verification, not capability, is the scarce thing — rendered as
 a place you can walk through.

@@ -1,6 +1,6 @@
 # Autopilot Task: Programmatic Autopilot Operator Runbook
 
-Status: active operator runbook packet; API implementation is committed,
+Status: active operator runbook packet. API implementation is committed,
 pushed, deployed, and production-smoked. Use this packet as the current
 programmatic dispatch and recovery contract.
 
@@ -19,7 +19,7 @@ Visibility: private or team-visible by default. Public visibility is only for
 tasks whose product objective is explicitly observer-visible.
 
 Public route or observer link: task-specific. Team/shared run links use
-`/t/:runId`; public goal snapshots use the public goal APIs.
+`/t/:runId`. Public goal snapshots use the public goal APIs.
 
 ## Purpose
 
@@ -47,18 +47,18 @@ true in the pushed and deployed Worker:
 
 - operator preflight reports D1 migration state, target user, team/project
   presence, project agent metadata, provider health, SHC health, callback
-  config, GitHub writeback readiness, and target/current run where relevant;
+  config, GitHub writeback readiness, and target/current run where relevant.
 - reconnect-required provider states return a typed
-  `provider_reconnect_required` response before run creation;
+  `provider_reconnect_required` response before run creation.
 - the Worker accepts the canonical SHC callback dialects listed below and tests
-  them;
+  them.
 - operator callback retry can backfill pending SHC events by run ID without
-  manually reconstructing callback JSON or using the runner callback token;
+  manually reconstructing callback JSON or using the runner callback token.
 - operator continuation can queue a follow-up turn for an active SHC run or
   request a policy-gated continuation for a stopped run attached to a durable
-  goal;
+  goal.
 - the team/public observer surfaces show owner attribution and stable sidebar
-  visibility without exposing private delivery mechanics;
+  visibility without exposing private delivery mechanics.
 - `scripts/autopilot-operator-checklist.mjs` or an equivalent command prints
   current readiness, callback lag, and the next safe action.
 
@@ -81,7 +81,7 @@ pushed, and production was deployed as Worker version
 `1104923f-9754-4457-9da1-99e33eb9e16c`. Production checklist smoke passed for
 the ImageGen target run `11a4ff12-601b-48f3-b596-34f947bfc4bb` with no callback
 lag. The run is completed and attached to durable goal
-`agent_goal_c964d70720954a989b99916e1e4ebcdf`; the next safe operator action is
+`agent_goal_c964d70720954a989b99916e1e4ebcdf`. The next safe operator action is
 goal continuation or launch of the next task packet attached to that goal.
 
 ## Operator Checklist Command
@@ -124,12 +124,12 @@ local secret paths, raw runner payloads, private prompts, or shell transcripts.
 
 The Worker callback receiver must support:
 
-- canonical `openagents.runner_event.v1` payloads;
+- canonical `openagents.runner_event.v1` payloads.
 - SHC job-event envelopes with top-level sequence/source/type/summary and
-  optional `dataJson`;
+  optional `dataJson`.
 - sparse SHC control events where Cloudflare supplies fallback sequence and
-  current timestamp;
-- tool/status events with richer detail under `dataJson`;
+  current timestamp.
+- tool/status events with richer detail under `dataJson`.
 - redacted runner events where credential-shaped material is dropped before D1
   persistence.
 
@@ -159,22 +159,22 @@ a goal relationship after the fact without an explicit operator/user decision.
 
 Public or team observers may see:
 
-- objective;
-- current run ID;
-- status;
-- budget and usage counters;
-- sanitized activity summaries;
+- objective.
+- current run ID.
+- status.
+- budget and usage counters.
+- sanitized activity summaries.
 - artifact, commit, PR, deployment, and receipt links that are safe to show.
 
 Observers must not see:
 
-- callback tokens;
-- provider refs or OAuth material;
-- hidden steering;
-- raw runner payloads;
-- private repo contents;
-- raw shell logs;
-- `payloadJson` fields;
+- callback tokens.
+- provider refs or OAuth material.
+- hidden steering.
+- raw runner payloads.
+- private repo contents.
+- raw shell logs.
+- `payloadJson` fields.
 - secrets or secret-shaped diagnostics.
 
 ## Autopilot Work Plan For Future Operator Improvements

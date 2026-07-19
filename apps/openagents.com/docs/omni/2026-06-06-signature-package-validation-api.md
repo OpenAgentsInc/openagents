@@ -11,7 +11,7 @@ package manifests before review.
 
 The implementation lives in:
 
-- `workers/api/src/signature-package-validation.ts`; and
+- `workers/api/src/signature-package-validation.ts`. And
 - `workers/api/src/signature-package-validation-routes.ts`.
 
 The endpoint is:
@@ -28,17 +28,17 @@ marketplace listing, deploy anything, or mutate payment state.
 
 `SignaturePackageManifest` records:
 
-- package ref;
-- version ref;
-- display name;
-- risk class ref;
-- schema refs;
-- fixture refs;
-- evidence requirement refs;
-- receipt requirement refs;
-- selector metadata refs;
-- json-render binding refs;
-- source refs; and
+- package ref.
+- version ref.
+- display name.
+- risk class ref.
+- schema refs.
+- fixture refs.
+- evidence requirement refs.
+- receipt requirement refs.
+- selector metadata refs.
+- json-render binding refs.
+- source refs. And
 - caveat refs.
 
 The default fixture is `SIGNATURE_PACKAGE_VALIDATION_MANIFEST_FIXTURE`.
@@ -47,8 +47,8 @@ The default fixture is `SIGNATURE_PACKAGE_VALIDATION_MANIFEST_FIXTURE`.
 
 `SignaturePackageValidationRequest` records:
 
-- manifest;
-- validation request ref; and
+- manifest.
+- validation request ref. And
 - validation clock ref for friendly time projection.
 
 The API accepts the manifest in a `manifest` property. If
@@ -60,14 +60,14 @@ and version refs.
 
 `SignaturePackageValidationResult` records:
 
-- validation request ref;
-- deterministic validation result ref;
-- status: `valid`, `invalid`, or `blocked`;
-- blocker refs;
-- caveat refs;
-- redacted manifest projection;
-- schema/fixture/risk/evidence/receipt/selector/json-render presence flags;
-- operator diagnostic refs for operator/private audiences; and
+- validation request ref.
+- deterministic validation result ref.
+- status: `valid`, `invalid`, or `blocked`.
+- blocker refs.
+- caveat refs.
+- redacted manifest projection.
+- schema/fixture/risk/evidence/receipt/selector/json-render presence flags.
+- operator diagnostic refs for operator/private audiences. And
 - hard false authority flags for install, runtime promotion, public
   marketplace listing, deployment, and payment mutation.
 
@@ -83,14 +83,14 @@ Public and agent projections hide source refs and operator diagnostic refs.
 
 The contract rejects refs containing:
 
-- private package source;
-- raw prompts;
-- raw package payloads;
-- provider payloads, grants, accounts, or tokens;
-- private repo refs;
-- raw schemas, fixtures, source archives, runner logs, or documents;
-- secrets, bearer tokens, OAuth material, cookies, and API keys;
-- wallet/payment material; and
+- private package source.
+- raw prompts.
+- raw package payloads.
+- provider payloads, grants, accounts, or tokens.
+- private repo refs.
+- raw schemas, fixtures, source archives, runner logs, or documents.
+- secrets, bearer tokens, OAuth material, cookies, and API keys.
+- wallet/payment material. And
 - raw timestamps.
 
 Projection times use friendly labels instead of raw timestamps.
@@ -99,15 +99,15 @@ Projection times use friendly labels instead of raw timestamps.
 
 `workers/api/src/signature-package-validation.test.ts` covers:
 
-- schema/projection decoding;
-- valid manifest results;
-- invalid manifest blockers;
-- deterministic result refs;
-- hard false install/promotion/marketplace/deploy/payment authority flags;
-- public/agent source redaction;
-- unsafe package/source/provider/private repo/material rejection;
-- no-store route responses;
-- route method denial; and
+- schema/projection decoding.
+- valid manifest results.
+- invalid manifest blockers.
+- deterministic result refs.
+- hard false install/promotion/marketplace/deploy/payment authority flags.
+- public/agent source redaction.
+- unsafe package/source/provider/private repo/material rejection.
+- no-store route responses.
+- route method denial. And
 - invalid route payload handling.
 
 The OpenAgents manifest and OpenAPI route tests assert that

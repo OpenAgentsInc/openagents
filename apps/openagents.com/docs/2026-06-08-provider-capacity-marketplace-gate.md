@@ -7,7 +7,7 @@
 > sell the accepted output (`provider.compliant_usage_labor.v1`, registry
 > 2026-06-10.3). See
 > `2026-06-10-five-bitcoin-revenue-streams-promise-audit.md`. This document
-> is retained as history only; the matching worker gate module was removed.
+> is retained as history only. The matching worker gate module was removed.
 >
 > **Reconciled (2026-06-13).** The blanket "no API provider capacity resale"
 > line above is scoped to *subscription* resale, which remains the non-waivable
@@ -16,7 +16,7 @@
 > remote-execution commercial plan) is a normal, allowed business and is now an
 > authorized, ref-gated path: see
 > `workers/api/src/inference-resale-authorization.ts` and the gate clause in
-> `apps/openagents.com/INVARIANTS.md`. This authorizes the mechanism only;
+> `apps/openagents.com/INVARIANTS.md`. This authorizes the mechanism only.
 > public marketplace/monetization copy stays gated until the full
 > grant→settlement-receipt chain exists. See
 > `docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md`.
@@ -63,7 +63,7 @@ Provider dashboards must use the explicit connector-state ladder:
 - `settled`: the assignment receipt also has settlement receipt refs.
 
 Capacity must not appear as sellable before the `assignable` state. Health
-alone is not enough; quota evidence and assignment-mode policy are also
+alone is not enough. Quota evidence and assignment-mode policy are also
 required.
 
 ## Required Evidence
@@ -71,17 +71,17 @@ required.
 For ChatGPT/Codex to reach an end-to-end capacity assignment receipt, the gate
 requires public-safe refs for:
 
-- typed account schema;
-- secret-ref policy;
-- provider grant;
-- route policy;
-- metering receipt;
-- connector health;
-- quota evidence;
-- assignment mode;
-- assignment dispatch;
-- pricing policy;
-- ToS/product boundary;
+- typed account schema.
+- secret-ref policy.
+- provider grant.
+- route policy.
+- metering receipt.
+- connector health.
+- quota evidence.
+- assignment mode.
+- assignment dispatch.
+- pricing policy.
+- ToS/product boundary.
 - assignment receipt.
 
 This allows the product to say an assignment receipt exists, but it still does

@@ -12,15 +12,15 @@ package submissions before runtime authority.
 This extends the earlier Program Signature contribution draft shape with the
 package refs Epic M needs:
 
-- context packages;
-- outcome templates;
-- UI bindings;
-- backend projection adapters;
-- tool packages;
-- Program Type refs;
-- Program Signature refs;
-- Module Version refs;
-- fixture refs; and
+- context packages.
+- outcome templates.
+- UI bindings.
+- backend projection adapters.
+- tool packages.
+- Program Type refs.
+- Program Signature refs.
+- Module Version refs.
+- fixture refs. And
 - release-gate refs.
 
 The implementation lives in
@@ -31,15 +31,15 @@ The implementation lives in
 
 The current capability-family enum is:
 
-- `agent_tool`;
-- `backend_projection_adapter`;
-- `context_package`;
-- `outcome_template`;
-- `program_signature`;
-- `retrieval_package`;
-- `route_policy`;
-- `tool_package`;
-- `ui_binding`; and
+- `agent_tool`.
+- `backend_projection_adapter`.
+- `context_package`.
+- `outcome_template`.
+- `program_signature`.
+- `retrieval_package`.
+- `route_policy`.
+- `tool_package`.
+- `ui_binding`. And
 - `workroom_template`.
 
 The record still carries an intended Blueprint Program family so package
@@ -51,14 +51,14 @@ billing, and other Program Signature families.
 Developer package contributions are evidence-only. The default authority block
 denies:
 
-- execute;
-- runtime dispatch;
-- deploy;
-- spend;
-- send email;
-- mutate repository;
-- post publicly;
-- create Site; and
+- execute.
+- runtime dispatch.
+- deploy.
+- spend.
+- send email.
+- mutate repository.
+- post publicly.
+- create Site. And
 - change public claims.
 
 `blueprintDeveloperPackageContributionHasRuntimeAuthority` detects accidental
@@ -76,12 +76,12 @@ authority flag to remain true and self-promotion to remain false.
 `blueprintDeveloperPackageContributionCanEnterReleaseGate` returns true only
 when:
 
-- no runtime authority is present;
-- status is `approved_for_release_gate`;
-- review status is `approved`;
-- no rejection or promotion ref exists;
-- required fixture refs exist;
-- release-gate refs exist; and
+- no runtime authority is present.
+- status is `approved_for_release_gate`.
+- review status is `approved`.
+- no rejection or promotion ref exists.
+- required fixture refs exist.
+- release-gate refs exist. And
 - at least one target ref exists across Program Type, Program Signature, Module
   Version, backend projection adapter, context package, outcome template, tool
   package, or UI binding refs.
@@ -104,10 +104,10 @@ preimages, payout targets, private keys, mnemonics, and raw timestamps.
 `workers/api/src/blueprint/services/developer-package-contribution.test.ts`
 covers:
 
-- schema/projection decoding;
-- release-gate readiness;
+- schema/projection decoding.
+- release-gate readiness.
 - denial of deploy, spend, email, repository mutation, public posting, Site
-  creation, and runtime dispatch;
-- blocker refs for incomplete or authoritative contributions;
-- package-only targets through context/outcome/UI refs; and
+  creation, and runtime dispatch.
+- blocker refs for incomplete or authoritative contributions.
+- package-only targets through context/outcome/UI refs. And
 - redaction of unsafe package refs.

@@ -19,7 +19,7 @@ Failed — and update live. Press `Ctrl+G` to group by directory instead.
 ## Working with agents
 
 - Selecting a row opens a **peek panel** with latest activity.
-- Type to reply: idle agents receive immediately; busy agents queue.
+- Type to reply: idle agents receive immediately. Busy agents queue.
 - Permission prompts and questions can be answered inline with number keys.
 - `Enter` attaches to the session in a full details view.
 - `Ctrl+\` returns to the dashboard.

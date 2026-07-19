@@ -63,11 +63,11 @@ real paid volume, not merely because an account was created.
 
 OpenAgents should adapt the simplest defensible form:
 
-- one direct referrer;
-- one optional upstream referrer;
-- rewards funded from platform revenue or platform share;
-- rewards triggered by paid usage, accepted outcomes, or retained paid volume;
-- no payout for unfunded signups alone; and
+- one direct referrer.
+- one optional upstream referrer.
+- rewards funded from platform revenue or platform share.
+- rewards triggered by paid usage, accepted outcomes, or retained paid volume.
+- no payout for unfunded signups alone. And
 - clear cap, reserve, and compliance controls.
 
 This keeps the upside of a two-layer referral network without turning the
@@ -77,13 +77,13 @@ system into recruiting-first network marketing.
 
 The payers are agent users:
 
-- individual users paying for agent usage through the self-serve web platform;
+- individual users paying for agent usage through the self-serve web platform.
 - agents paying for paid actions, tools, endpoints, source packages, or Sites
-  actions with scoped spend caps;
+  actions with scoped spend caps.
 - companies buying agent usage in bulk through credits, invoices, or account
-  contracts;
+  contracts.
 - Sites customers paying for generated Sites, paid Site actions, or hosted
-  checkout products; and
+  checkout products. And
 - future workroom buyers paying for accepted outcomes.
 
 The current OpenAgents product surface starting point is the D1-backed billing credit ledger. Users
@@ -95,18 +95,18 @@ paid-action flows.
 
 The contributor graph should include:
 
-- Pylon compute providers and validators;
-- model authors;
-- data providers and curators;
-- algorithm authors;
-- app developers;
-- signature tool and agent module authors;
-- grader, verifier, and fixture authors;
-- source-package and context-pack contributors;
-- UI binding and runtime adapter authors;
-- referrers and distributors;
-- educators and course or onboarding creators;
-- sales or outreach contributors when a lead, meeting, or customer is accepted;
+- Pylon compute providers and validators.
+- model authors.
+- data providers and curators.
+- algorithm authors.
+- app developers.
+- signature tool and agent module authors.
+- grader, verifier, and fixture authors.
+- source-package and context-pack contributors.
+- UI binding and runtime adapter authors.
+- referrers and distributors.
+- educators and course or onboarding creators.
+- sales or outreach contributors when a lead, meeting, or customer is accepted.
   and
 - OpenAgents as platform operator, treasury reserve, and business owner.
 
@@ -124,10 +124,10 @@ artifacts or validation results, and get paid when the work is accepted.
 
 This lane covers providers that supply:
 
-- CPU, GPU, Apple Silicon, or other local execution capacity;
-- inference, embedding, training, fine-tuning, evaluation, or validation work;
-- packaged runtimes such as Psionic homework/training workers;
-- artifact generation, verification, and acceptance evidence; and
+- CPU, GPU, Apple Silicon, or other local execution capacity.
+- inference, embedding, training, fine-tuning, evaluation, or validation work.
+- packaged runtimes such as Psionic homework/training workers.
+- artifact generation, verification, and acceptance evidence. And
 - future specialized provider roles where the machine contributes scarce
   execution, locality, reliability, or operator-controlled capacity.
 
@@ -141,7 +141,7 @@ split inputs, not hidden in referral math.
 The current OpenAgents proof path is LDK-first:
 
 - Pylon registers a payout target such as `bolt12_offer`, `bolt11_invoice`,
-  `bip353_name`, or `lnurl_pay`; BOLT12 is the preferred durable target.
+  `bip353_name`, or `lnurl_pay`. BOLT12 is the preferred durable target.
 - Nexus assigns paid work only to providers with the required eligibility and
   LDK-compatible target.
 - Treasury dispatches accepted-work payouts through the LDK provider boundary.
@@ -194,7 +194,7 @@ credit contributors.
 | Pylon accepted work funded by Bitcoin/Lightning or treasury starter budget | sats                            | sats                        | Eligible after accepted closeout, LDK payout dispatch, and settlement receipt.                      |
 | Credit-funded compute usage routed to Pylon                                | credits                         | credits or internal payable | Bitcoin payout only after explicit conversion policy, reserve, and settlement approval.             |
 | Bitcoin-funded sats balance                                                | sats                            | sats                        | Eligible for Bitcoin/Lightning withdrawal after settlement, reserves, and compliance checks.        |
-| Product credits spent from account balance                                 | credits                         | credits                     | Spendable inside OpenAgents; not automatically withdrawable as Bitcoin.                             |
+| Product credits spent from account balance                                 | credits                         | credits                     | Spendable inside OpenAgents. Not automatically withdrawable as Bitcoin.                             |
 | Credit card or Stripe top-up                                               | credits                         | credits                     | Card-funded value remains credit-based, chargeback-aware, and not Bitcoin-withdrawable in v0.       |
 | Coupon, launch grant, free beta, or operator promo                         | credits                         | normally no revshare        | Promo value should not create withdrawable contributor rewards unless explicitly budgeted.          |
 | Company invoice or contract                                                | credits or invoiced entitlement | credits by default          | Bitcoin conversion requires a separate approved policy and reserves.                                |
@@ -281,16 +281,16 @@ may have an associated cost that is paid to one or more contributors. In the
 newer OpenAgents product surface/Omni model, this becomes a versioned split definition attached to
 reviewed capability objects:
 
-- agent or Site product;
-- signature tool version;
-- module version;
-- data/source package;
-- model or inference provider;
-- compute provider;
-- API-key or service provider;
-- grader/verifier;
-- app or UI binding;
-- referrer and upstream referrer; and
+- agent or Site product.
+- signature tool version.
+- module version.
+- data/source package.
+- model or inference provider.
+- compute provider.
+- API-key or service provider.
+- grader/verifier.
+- app or UI binding.
+- referrer and upstream referrer. And
 - OpenAgents platform share.
 
 The split engine should calculate from net distributable value:
@@ -352,12 +352,12 @@ signature marketplace exists.
 
 Add a minimal referral-attribution layer:
 
-- invite/referral code on signup and onboarding;
-- referral code capture on software-order submission;
-- referral code capture on billing checkout start;
-- referral code capture on Sites checkout or paid-action intent;
-- durable `direct_referrer_user_id` and optional `upstream_referrer_user_id`;
-- first verified attribution wins unless an operator resolves a dispute; and
+- invite/referral code on signup and onboarding.
+- referral code capture on software-order submission.
+- referral code capture on billing checkout start.
+- referral code capture on Sites checkout or paid-action intent.
+- durable `direct_referrer_user_id` and optional `upstream_referrer_user_id`.
+- first verified attribution wins unless an operator resolves a dispute. And
 - no payout for signup alone.
 
 Near-term fields or tables:
@@ -474,7 +474,7 @@ Pylon provider eligible
 Provider split definitions should support both:
 
 - base compute payment for measured capacity, runtime, token, embedding,
-  inference, training, validation, or artifact work; and
+  inference, training, validation, or artifact work. And
 - premium or accepted-outcome upside for scarce capacity, expensive workloads,
   validator responsibility, runtime packaging, customer-trusted isolation, or
   operator-controlled high-value execution.
@@ -571,38 +571,38 @@ as payment truth.
 
 End users should see the easiest possible payment path:
 
-- prepaid credits for normal web usage;
-- Stripe Checkout for credit-card top-ups where enabled;
-- Bitcoin/Lightning top-up or direct L402 payment where enabled;
-- clear spend caps for agents;
-- explicit price preview before an agent pays;
-- clean return URLs after checkout; and
+- prepaid credits for normal web usage.
+- Stripe Checkout for credit-card top-ups where enabled.
+- Bitcoin/Lightning top-up or direct L402 payment where enabled.
+- clear spend caps for agents.
+- explicit price preview before an agent pays.
+- clean return URLs after checkout. And
 - recoverable `402` or top-up paths for economic limits.
 
 ### Contributor UX
 
 Contributors should see:
 
-- pending, credited, withdrawable, requested, and settled amounts;
-- asset type, credits or sats;
-- what event generated each credit;
-- which module, referral, provider job, or accepted outcome caused it;
+- pending, credited, withdrawable, requested, and settled amounts.
+- asset type, credits or sats.
+- what event generated each credit.
+- which module, referral, provider job, or accepted outcome caused it.
 - for Pylon operators, the job, artifact, accepted outcome, payout class, and
-  settlement receipt state;
-- current reserve/withdrawal limitations;
-- public-safe aggregate stats; and
+  settlement receipt state.
+- current reserve/withdrawal limitations.
+- public-safe aggregate stats. And
 - withdrawal controls when eligible.
 
 ### Referrer UX
 
 Referrers should see:
 
-- their invite link or code;
-- direct referrals;
-- optional upstream referral count;
-- paid usage volume, not just signups;
-- credits or sats earned by source;
-- caps and expiration windows; and
+- their invite link or code.
+- direct referrals.
+- optional upstream referral count.
+- paid usage volume, not just signups.
+- credits or sats earned by source.
+- caps and expiration windows. And
 - anti-abuse/compliance holds.
 
 ## Limitations And Guardrails
@@ -641,27 +641,27 @@ programs, or multi-jurisdiction contributor payouts.
 
 The transparency goal should match the old Flow of Funds principle:
 
-- payment and revshare code remains open source where it can safely be public;
-- split definitions are versioned and inspectable;
-- aggregate payment data appears on a public accounting dashboard;
-- private user, company, wallet, and workroom details are redacted;
-- public proof pages use claim states; and
+- payment and revshare code remains open source where it can safely be public.
+- split definitions are versioned and inspectable.
+- aggregate payment data appears on a public accounting dashboard.
+- private user, company, wallet, and workroom details are redacted.
+- public proof pages use claim states. And
 - every strong payout claim links to a receipt or settlement state.
 
 Useful public aggregates:
 
-- total paid usage;
-- total credits spent;
-- total sats paid;
-- total contributor credits issued;
-- total contributor sats credited;
-- total sats settled;
-- total pending/reserved;
-- top capability categories by accepted revenue;
-- referral volume by tier in aggregate;
-- Pylon provider accepted-work funnel;
+- total paid usage.
+- total credits spent.
+- total sats paid.
+- total contributor credits issued.
+- total contributor sats credited.
+- total sats settled.
+- total pending/reserved.
+- top capability categories by accepted revenue.
+- referral volume by tier in aggregate.
+- Pylon provider accepted-work funnel.
 - Pylon payouts by class, such as accepted work, availability stipend, beta
-  bonus, weak-device lane, or strong lane; and
+  bonus, weak-device lane, or strong lane. And
 - OpenAgents platform share.
 
 ## Implementation Order
@@ -738,7 +738,7 @@ or promo grants into instant Bitcoin liabilities.
 The long-term system is bigger: every accepted agent module, Site action,
 signature, data package, model, Pylon provider, educator, and referrer can earn
 when it contributes to paid accepted value. Pylon compute-provider payments are
-not an afterthought; they are the current concrete proof that machines can go
+not an afterthought. They are the current concrete proof that machines can go
 online, do accepted work, and receive sats through LDK-backed settlement. The
 invariant is the same across all of it:
 

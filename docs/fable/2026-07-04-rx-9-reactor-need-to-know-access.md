@@ -1,14 +1,14 @@
 # RX-9 Reactor Need-To-Know Access Receipt
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
 
 Date: 2026-07-04
 Issue: [#8277](https://github.com/OpenAgentsInc/openagents/issues/8277)
-Status: source fixture landed; no external customer deployment or public
+Status: source fixture landed. No external customer deployment or public
 availability claim.
 
 RX-9 adds a typed, deny-by-default need-to-know access layer for Reactor
@@ -43,7 +43,7 @@ Reactor plan:
 Every access receipt records who, what, workspace, matter, query intent,
 rule-set ref, rule-set version, selected/denied document refs, selected/denied
 citation refs, and oracle verdict refs. Receipts explicitly set
-`rawDocumentContentLogged: false` and `generatedSummaryContentLogged: false`;
+`rawDocumentContentLogged: false` and `generatedSummaryContentLogged: false`.
 fixtures contain no raw memo text.
 
 ## Verification

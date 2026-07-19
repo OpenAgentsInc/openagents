@@ -8,12 +8,12 @@ and resolves Open Questions #1 (canonical schema) and #2 (block-vs-receipt split
 
 The book's core lesson is **measure the request lifecycle before optimizing it**.
 P0-1 lists the fields the receipt/manifest must preserve: prompt/completion/total
-tokens; cached input tokens where the provider exposes them; TTFT; inter-token
-latency or perceived TPS; total wall-clock; the provider / gateway-overhead /
-verifier / settlement time split where available; queue and batch wait; request
-class (interactive stream | async job | verifier run | batch); route, provider,
-served model, region, cache-affinity key hash, and fallback reason; verification
-class + executed verdict + scalar reward; and cost basis, price, margin bucket,
+tokens. Cached input tokens where the provider exposes them. TTFT. Inter-token
+latency or perceived TPS. Total wall-clock. The provider / gateway-overhead /
+verifier / settlement time split where available. Queue and batch wait. Request
+class (interactive stream | async job | verifier run | batch). Route, provider,
+served model, region, cache-affinity key hash, and fallback reason. Verification
+class + executed verdict + scalar reward. And cost basis, price, margin bucket,
 settlement state, and blocker refs.
 
 ## What shipped
@@ -26,7 +26,7 @@ dereferenceable inference receipt.
 
 ### Open Question #1 — the canonical schema
 
-`KhalaTelemetryRecord` is the canonical full lifecycle record; `KhalaTelemetryBlock`
+`KhalaTelemetryRecord` is the canonical full lifecycle record. `KhalaTelemetryBlock`
 is the small immediate summary projected from it. Both are public-safe by
 construction: no prompt, completion, chain-of-thought, raw account/session key,
 amount, destination, or payment material — only token counts, durations, neutral
@@ -44,7 +44,7 @@ the raw key), and a coarse margin **bucket** (never the raw margin).
   input tokens, cost basis / price / economics state / margin bucket / settlement
   state / blocker refs. Reached via `/api/public/inference/receipts/<ref>`.
 
-The immediate block stays small; the receipt carries the depth.
+The immediate block stays small. The receipt carries the depth.
 
 ## Honest measured-vs-`not_measured` discipline
 
@@ -54,16 +54,16 @@ sentinel. A field is never fabricated and never a misleading `0`. `not_measured`
 discipline as the M8 metric table
 (`2026-06-23-khala-head-to-head-m8-status.md`).
 
-Measured NOW: tokens (provider `usage`, receipt-first); total wall-clock (gateway
-edge); TTFT + inter-token latency + perceived TPS on the **true-streaming** path
-(first content delta and EOF are observable there); request class; route /
-provider / served model; verification class + executed verdict + scalar reward
+Measured NOW: tokens (provider `usage`, receipt-first). Total wall-clock (gateway
+edge). TTFT + inter-token latency + perceived TPS on the **true-streaming** path
+(first content delta and EOF are observable there). Request class. Route /
+provider / served model. Verification class + executed verdict + scalar reward
 (reusing the existing `khala-code` verifier verdict — no parallel grader).
 
 Honestly `not_measured` today: cached input tokens unless the provider reports
-them; the provider/gateway/verifier/settlement time split where the route has no
-per-stage timer yet; queue / batch wait on the chat path; region, cache-affinity
-hash, and fallback reason when the route has not reported them; cost basis,
+them. The provider/gateway/verifier/settlement time split where the route has no
+per-stage timer yet. Queue / batch wait on the chat path. Region, cache-affinity
+hash, and fallback reason when the route has not reported them. Cost basis,
 price, and margin bucket when the economics inputs are not present on the
 receipt. The builder now adds public-safe blocker refs automatically for these
 absences (`provider_time_not_measured`, `gateway_overhead_not_measured`,

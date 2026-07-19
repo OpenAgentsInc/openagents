@@ -13,7 +13,7 @@ long-term credential broker.
 For multi-account ChatGPT/Codex support, the brokered auth cache should come
 from an account-scoped `CODEX_HOME`, not from the VM user's default
 `~/.codex`. Codex stores file-backed credentials at
-`$CODEX_HOME/auth.json`; using one account home per provider account prevents
+`$CODEX_HOME/auth.json`. Using one account home per provider account prevents
 the normal login flow from overwriting another account.
 
 ## Commands
@@ -57,7 +57,7 @@ status, reasons, and digests.
    that Codex auth cache to `oa-workroomd` over the approved secret path.
 4. `oa-workroomd` writes that auth cache to a session-scoped `CODEX_HOME` with
    owner-only permissions.
-5. The runner calls `oa-workroomd codex auth status`; the command runs
+5. The runner calls `oa-workroomd codex auth status`. The command runs
    `codex login status` with only that session `CODEX_HOME`.
 6. Success/failure is recorded as a redacted receipt.
 7. `oa-workroomd codex run` repeats the status check before `codex exec`.
@@ -82,7 +82,7 @@ state.
 
 `crates/oa-workroomd/tests/codex_auth.rs` covers:
 
-- materialize/status/scrub lifecycle;
-- `0600` auth-file permissions on Unix;
-- expired grant refusal before materialization;
+- materialize/status/scrub lifecycle.
+- `0600` auth-file permissions on Unix.
+- expired grant refusal before materialization.
 - receipt-log redaction for fake auth cache content.

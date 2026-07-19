@@ -2,7 +2,7 @@
 
 **STATUS (2026-07-08): SUPERSEDED by `docs/fable/MASTER_ROADMAP.md`
 §EN (rev 6) — the Effect Native full-conversion mandate.** Kept as
-the historical record of the earlier decision; do not implement
+the historical record of the earlier decision. Do not implement
 from this document.
 
 
@@ -40,7 +40,7 @@ reference app today — verified as parity with the equally-unwired Swift
 - Added `expo-db-sqlite-persistence` as the local Expo SQLite persistence
   adapter name and implementation over `expo-sqlite` for sync checkpoints and
   projection cache.
-- Added secure key storage through `expo-secure-store`; no API key storage path
+- Added secure key storage through `expo-secure-store`. No API key storage path
   touches SQLite or bundled config.
 - Added delegation prompt validation that rejects local paths, Codex auth
   paths, bearer/API tokens, provider-secret env names, email addresses, and
@@ -116,9 +116,9 @@ claims.
   which is what `package.json`'s `build:ios:local` script actually points at
   today. (The long-lived dev checkout at
   `/Users/christopherdavid/work/openagents` still has a pre-rename
-  `ios/Khala.xcworkspace` on disk from before the app-metadata rename commit;
+  `ios/Khala.xcworkspace` on disk from before the app-metadata rename commit.
   that stale local artifact — not the repo — needs `rm -rf ios && bun run
-  prebuild:ios` to pick up the current name. No repo change was needed; a
+  prebuild:ios` to pick up the current name. No repo change was needed. A
   same-diff edit/revert confirmed the checked-in script is already correct.)
 - **Two real TestFlight uploads, independently confirmed via the App Store
   Connect API** (not just the commit-message claim): querying
@@ -138,7 +138,7 @@ claims.
   touched as recently as 2026-07-04 (`#8354` cross-device dogfood preflight),
   and `xcodebuild -list -project Khala.xcodeproj` cleanly enumerates the
   `Khala`/`KhalaTests` targets and `Khala` scheme.
-- `app.json`'s `updates.url` is `https://updates.openagents.com/khala-mobile/manifest`;
+- `app.json`'s `updates.url` is `https://updates.openagents.com/khala-mobile/manifest`.
   `apps/oa-updates/scripts/publish-ota.sh` is genuinely repointed to
   `clients/khala-mobile` (`OA_MOBILE_APP_DIR`/`OA_UPDATES_OWNER=khala-mobile`),
   not the retired `AutopilotRemoteControl` path. A live `curl` against
@@ -148,14 +148,14 @@ claims.
   already correctly serves this app's owner path.
 - Keychain-held credentials are real: `KhalaAuthProvider` /
   `src/auth/khala-auth-store.ts` reads/writes only through
-  `expo-secure-store`; there is no fallback to bundled config or SQLite for
+  `expo-secure-store`. There is no fallback to bundled config or SQLite for
   the sign-in token in a distributed build.
 
 **Not actually met yet (more precise than earlier drafts of this doc):**
 
 - **Native modules are stubs, and — more importantly — are wired to nothing
   live.** `modules/khala-push-to-talk-stt`'s `startRecognitionAsync` always
-  throws `SpeechRuntimeUnavailableException`; `khala-apple-foundation-models`'s
+  throws `SpeechRuntimeUnavailableException`. `khala-apple-foundation-models`'s
   `getAvailabilityAsync` always returns `status: "blocked"`. Both are real,
   compiling Expo-modules-API ports (confirmed via the successful Xcode build
   above), so the porting mechanism is proven — but their only caller,
@@ -167,7 +167,7 @@ claims.
   sensible validator (rejects local paths, Codex auth paths, bearer tokens,
   provider-secret env names, emails, high-entropy strings) — but it is not a
   direct port of an equivalent Swift function (no matching validator was found
-  in `clients/khala-ios`; it looks like a fresh TS implementation of the
+  in `clients/khala-ios`. It looks like a fresh TS implementation of the
   general "Khala request safety guard" concept from the repo's delegation
   runbook). Its only caller is `src/legacy-screens/chat.tsx`, which — like the
   legacy settings screen above — is not referenced by any routed screen under
@@ -182,7 +182,7 @@ claims.
   session needs interactive re-authentication (`Reauthentication failed:
   cannot prompt during non-interactive execution`). This is a different,
   narrower blocker than "no dev build to prove pickup" — the manifest
-  serving path is already live and correct; what's missing is (a) an
+  serving path is already live and correct. What's missing is (a) an
   interactive `gcloud auth login` from the owner, then (b) actually publishing
   a real export and confirming a running dev build/simulator instance picks
   it up.
@@ -230,7 +230,7 @@ fresh `bun install` and no reused `node_modules`/`ios`/`android`).
     `expo prebuild --platform ios` (no prior `ios/`) then
     `bun run build:ios:local` → `** BUILD SUCCEEDED **`, confirming the prior
     pass's result reproduces independently of the specific checkout.
-  - `bun run --cwd clients/khala-mobile test`: 133/133 pass; `typecheck`
+  - `bun run --cwd clients/khala-mobile test`: 133/133 pass. `typecheck`
     clean — both in the fresh worktree.
 - **The "wired to nothing live" gap from the first 2026-07-05 pass is now
   stale** — a later same-day commit (`afb316491b`) wired the push-to-talk mic
@@ -238,8 +238,8 @@ fresh `bun install` and no reused `node_modules`/`ios`/`android`).
   dictation, still fails closed with a surfaced error until real native
   capture lands) and the Apple FM readiness probe into a new "On-device"
   settings card, then deleted the unreachable `src/legacy-screens/` entirely.
-  Verified directly: `src/legacy-screens/` no longer exists;
-  `chat-composer.tsx` imports and calls `usePushToTalk`;
+  Verified directly: `src/legacy-screens/` no longer exists.
+  `chat-composer.tsx` imports and calls `usePushToTalk`.
   `app/(drawer)/settings.tsx` imports and renders `useOnDeviceReadiness`.
 - **Re-confirmed the two TestFlight builds independently, a second time**,
   with a fresh JWT against the App Store Connect API
@@ -277,7 +277,7 @@ fresh `bun install` and no reused `node_modules`/`ios`/`android`).
   the active account — the cached token itself needs an interactive
   `gcloud auth login` refresh. No service-account key available locally with
   Cloud Run deploy scope for this project. Tracked in `NEEDS_OWNER.md`
-  ("gcloud re-auth needed for Khala mobile OTA publish — 2026-07-05"); the
+  ("gcloud re-auth needed for Khala mobile OTA publish — 2026-07-05"). The
   manifest-serving path itself is independently reconfirmed live and correct.
 - **Real-device STT/Apple FM parity still unproven.** The native module
   bodies intentionally fail closed (`SpeechRuntimeUnavailableException` /
@@ -292,14 +292,14 @@ Issue #8350 stays open for exactly two owner-gated items:
 - One signed OpenAgents Updates OTA round-trip against a dev build (blocked
   on interactive `gcloud` re-auth — see `NEEDS_OWNER.md`).
 - Real-device parity proof for the native STT capture and Apple FM bridge
-  (both are wired into the live UI and fail closed honestly today; they need
+  (both are wired into the live UI and fail closed honestly today, they need
   a physical/working simulator device session, not more source changes).
 
 Every other acceptance-criteria line item (Expo Router shell + NativeWind +
-TS-3 chat/fleet read surfaces + expo-sqlite persistence; expo-modules ports of
-both Swift native pieces with the SwiftUI app still buildable; local
+TS-3 chat/fleet read surfaces + expo-sqlite persistence. Expo-modules ports of
+both Swift native pieces with the SwiftUI app still buildable. Local
 `expo prebuild` + Xcode **and** Gradle builds green with real iOS + Android
-artifacts; `xcrun altool` TestFlight uploads confirmed `VALID`; own-OTA
-`updates.url`/manifest-serving wiring off Expo's CDN; keychain-only key
-storage with no bundled secrets; delegation-prompt validation ported with
+artifacts. `xcrun altool` TestFlight uploads confirmed `VALID`. Own-OTA
+`updates.url`/manifest-serving wiring off Expo's CDN. Keychain-only key
+storage with no bundled secrets. Delegation-prompt validation ported with
 Swift-matching (unwired) parity) is independently verified done.

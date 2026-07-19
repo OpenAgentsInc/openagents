@@ -39,7 +39,7 @@ production runtime inputs through this route.
 The current normalized contribution kinds are:
 
 - `signature_contribution` for Program Type, Program Signature, and Module
-  Version proposals; and
+  Version proposals. And
 - `developer_package_contribution` for backend projection adapters, context
   packages, outcome templates, tool packages, UI bindings, and related package
   refs.

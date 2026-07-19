@@ -1,10 +1,10 @@
 # Accepted Outcomes Per Kilowatt-Hour (AO/kWh)
 
-Date: 2026-06-15. Status: **definition frozen; yellow modeled seed instrumentation live in source.**
+Date: 2026-06-15. Status: **definition frozen. Yellow modeled seed instrumentation live in source.**
 Promise: `metrics.accepted_outcomes_per_kwh.v1` (state `yellow` in source registry
 `2026-06-15.5`). This is the
 canonical definition of the metric Episode 232 introduced and Episode 237 names
-as "the metric we're going to be defining and measuring primarily."
+as "the metric we are going to be defining and measuring primarily."
 
 ## 1. Definition
 
@@ -51,13 +51,13 @@ a measured kWh and must never be presented as one.
 ## 4. Why this unit (and not the alternatives)
 
 - **vs tokens/sec or FLOPs/W:** those measure capability/throughput, not
-  commerce. Capability has been getting cheaper for two years; the binding
+  commerce. Capability has been getting cheaper for two years. The binding
   constraint was never "can a system do the work" but "can a stranger pay for it
   without trusting the producer." AO/kWh prices the thing that actually clears.
-- **vs $/outcome:** dollars float on subsidy and provider pricing; kWh is the
+- **vs $/outcome:** dollars float on subsidy and provider pricing. KWh is the
   physical floor. AO/kWh is the subsidy-resistant version of the efficiency
   question.
-- **producer-indifferent:** an accepted outcome doesn't care whether a human, a
+- **producer-indifferent:** an accepted outcome does not care whether a human, a
   machine, or a swarm produced it — only that "done" was defined, met, and
   proven. So the metric stays stable as the producer mix shifts from mostly
   human to mostly machine.
@@ -87,7 +87,7 @@ evidence.
 Apple FM local-session kWh estimates (#5074) follow the same denominator rule:
 they may be retained as modeled or unavailable session-energy evidence, but they
 are not AO/kWh unless joined to a verified accepted-outcome receipt. A local
-Apple FM tool/chat smoke is raw session activity; by itself it must not be
+Apple FM tool/chat smoke is raw session activity. By itself it must not be
 counted as an accepted outcome.
 
 ## 5b. Demand provenance (internal vs external) — `proof.demand_provenance.v1`

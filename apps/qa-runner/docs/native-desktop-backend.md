@@ -35,7 +35,7 @@ and because the engine is injected, a trycua/cua adapter can replace
 `macosNativeDesktopRuntime` later **without touching the backend**.
 
 `cliclick` is the only optional, non-OS binary, and only for the `point:x,y`
-click fallback; the AX-press and screenshot paths use OS tools only.
+click fallback. The AX-press and screenshot paths use OS tools only.
 
 ## Requirement: macOS Accessibility permission (owner-grantable)
 
@@ -53,7 +53,7 @@ backend refuses instead of faking.
 
 ## Owner-gated / armed by env (default OFF)
 
-Driving a real desktop is privileged; it does not turn itself on. The backend is
+Driving a real desktop is privileged. It does not turn itself on. The backend is
 **INERT** unless explicitly armed:
 
 - env: `QA_NATIVE_DESKTOP=1` (or `true`), or
@@ -86,7 +86,7 @@ A failed assertion is a **real red**: `status = "fail"`, the failure reason is
 recorded, and teardown still runs.
 
 `nativeDesktopExample(app)` is the shipped deterministic example (focus → read
-AX → screenshot → assert the AX tree has an `AXWindow`);
+AX → screenshot → assert the AX tree has an `AXWindow`).
 `nativeDesktopExampleWrong(app)` asserts a node that can never exist to prove a
 red is a real red.
 
@@ -127,7 +127,7 @@ boot/hotbar/submitted screenshots.
 
 The emitted `result.json` is the same public-safe `QaRunResult`
 (`backend = "native-desktop"`) the browser/terminal runners emit. The AX-tree
-snapshot and timeline are separate JSON artifacts; the screenshot PNG(s) and
+snapshot and timeline are separate JSON artifacts. The screenshot PNG(s) and
 both JSON artifacts are listed under `artifacts.screenshots` so the shared
 `QaRunArtifacts` contract is unchanged. The public-safety tripwire
 (`assertPublicSafeResult`) is applied to every artifact on write.

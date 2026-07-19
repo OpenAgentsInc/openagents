@@ -12,47 +12,47 @@ secret material and preserving read-only authority.
 
 The telemetry surfaces are:
 
-- `sync`;
-- `channel`;
-- `liquidity`;
-- `lsp`;
-- `backup`;
+- `sync`.
+- `channel`.
+- `liquidity`.
+- `lsp`.
+- `backup`.
 - `warning`.
 
 Each surface records:
 
-- state;
-- freshness;
-- severity;
-- evidence refs;
-- warning refs;
-- caveat refs;
-- blocker refs;
-- operator action refs; and
+- state.
+- freshness.
+- severity.
+- evidence refs.
+- warning refs.
+- caveat refs.
+- blocker refs.
+- operator action refs. And
 - source refs.
 
 ## States, Freshness, And Severity
 
 Telemetry state is:
 
-- `ok`;
-- `degraded`;
-- `attention_required`;
-- `blocked`;
+- `ok`.
+- `degraded`.
+- `attention_required`.
+- `blocked`.
 - `unknown`.
 
 Freshness is:
 
-- `fresh`;
-- `stale`;
-- `expired`;
+- `fresh`.
+- `stale`.
+- `expired`.
 - `unknown`.
 
 Severity is:
 
-- `info`;
-- `warning`;
-- `critical`;
+- `info`.
+- `warning`.
+- `critical`.
 - `blocked`.
 
 Stale, expired, degraded, or attention-required telemetry requires warning,
@@ -63,12 +63,12 @@ Critical or blocked telemetry requires operator action refs.
 
 `PYLON_WALLET_TELEMETRY_READ_ONLY_AUTHORITY` explicitly denies:
 
-- wallet mutation;
-- channel mutation;
-- LSP mutation;
-- backup mutation;
-- live wallet spend;
-- payout dispatch;
+- wallet mutation.
+- channel mutation.
+- LSP mutation.
+- backup mutation.
+- live wallet spend.
+- payout dispatch.
 - settlement mutation.
 
 The telemetry contract cannot rebalance channels, change an LSP, restore or
@@ -93,11 +93,11 @@ payloads.
 
 `workers/api/src/pylon-wallet-telemetry.test.ts` covers:
 
-- fixture decoding;
-- required telemetry surfaces;
-- read-only authority;
-- freshness, severity, and blocked-state evidence requirements;
+- fixture decoding.
+- required telemetry surfaces.
+- read-only authority.
+- freshness, severity, and blocked-state evidence requirements.
 - public redaction of private provider, wallet, channel, liquidity, LSP,
-  operator, and source refs; and
+  operator, and source refs. And
 - rejection of recovery phrases, raw entropy, private keys, preimages, raw
   channel monitor state, credentials, provider secrets, and raw telemetry.

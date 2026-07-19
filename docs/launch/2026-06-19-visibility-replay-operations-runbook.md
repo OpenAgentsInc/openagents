@@ -26,7 +26,7 @@ stores. Public routes are projections:
 
 Projection contracts must carry `projection_staleness.v1`, source refs,
 blocker refs, caveat refs, and public-safe redaction. A fresh `generatedAt`
-does not prove every source family is current; inspect `sourceLag`.
+does not prove every source family is current. Inspect `sourceLag`.
 
 ## Normal Checks
 
@@ -37,7 +37,7 @@ bun run --cwd apps/openagents.com smoke:tassadar:live-page
 bun run --cwd apps/openagents.com smoke:activity:proof-links
 ```
 
-Run owned-infra freshness checks. This is the scheduled alerting command; do
+Run owned-infra freshness checks. This is the scheduled alerting command. Do
 not move it into GitHub Actions as the primary monitor:
 
 ```sh
@@ -88,10 +88,10 @@ Failure routing:
 
 | Symptom | First check | Expected action |
 | --- | --- | --- |
-| Empty or old timeline | `generatedAt`, `sourceLag[]` | Identify stale `sourceKind`; inspect its public route/source refs. |
-| `projection_gap` event | `blockerRefs`, `caveatRefs` | Treat as honest gap; do not invent events. |
+| Empty or old timeline | `generatedAt`, `sourceLag[]` | Identify stale `sourceKind`. Inspect its public route/source refs. |
+| `projection_gap` event | `blockerRefs`, `caveatRefs` | Treat as honest gap. Do not invent events. |
 | Proof links fail | `smoke:activity:proof-links` | Fix URL derivation or missing public dereference route. |
-| Private material concern | route body + redaction tests | Remove the projection; never publish raw traces, invoices, keys, tokens, or local paths. |
+| Private material concern | route body + redaction tests | Remove the projection. Never publish raw traces, invoices, keys, tokens, or local paths. |
 
 ## SSE Stream
 
@@ -103,7 +103,7 @@ curl -N 'https://openagents.com/api/public/activity-timeline/stream?limit=20'
 
 The stream emits an `activity_timeline_meta` frame followed by event frames with
 `id` equal to the timeline cursor. Reconnect with `since=<last id>` or
-`Last-Event-ID`; the query parameter wins when both are present.
+`Last-Event-ID`. The query parameter wins when both are present.
 
 If SSE fails, use the `x-openagents-polling-fallback` response header or poll
 `/api/public/activity-timeline?since=...`. SSE is a convenience projection, not
@@ -142,7 +142,7 @@ If a bad projection is suspected:
 1. Stop the bridge source scheduler that posts `/bridge/ingest`.
 2. Save the source public timeline/run-summary envelope and bridge response for
    evidence.
-3. Inspect D1 rows by public `kind`/`row_key`; never patch private truth through
+3. Inspect D1 rows by public `kind`/`row_key`. Never patch private truth through
    the world database.
 4. Ship a typed bridge/service fix and replay only the corrected public source
    refs after redaction and idempotence tests pass.
@@ -195,12 +195,12 @@ replay rendering, and clip manifests with public-safe source/caveat refs.
 
 | Area | Rollback |
 | --- | --- |
-| Web/Worker deploy | Re-deploy the last known-good `origin/main` using `docs/DEPLOYMENT.md`; include `wrangler deploy --assets ../../apps/web/dist` so UI and Worker match. |
-| Timeline projection bug | Disable affected projection read path or ship a revert; keep honest `projection_gap` output rather than fabricating events. |
-| SSE regression | Fall back to polling; fix stream route separately. |
-| Verse world bridge bug | Stop the bridge source scheduler; replay corrected public source refs through `/bridge/ingest` only after redaction and idempotence tests pass. |
-| Render-box failure | Stop the render worker; queued clip jobs remain evidence-only records. |
-| R2 artifact issue | Remove or stop advertising the broken public manifest URL; re-upload from the render manifest after credentials and public host are verified. |
+| Web/Worker deploy | Re-deploy the last known-good `origin/main` using `docs/DEPLOYMENT.md`. Include `wrangler deploy --assets ../../apps/web/dist` so UI and Worker match. |
+| Timeline projection bug | Disable affected projection read path or ship a revert. Keep honest `projection_gap` output rather than fabricating events. |
+| SSE regression | Fall back to polling. Fix stream route separately. |
+| Verse world bridge bug | Stop the bridge source scheduler. Replay corrected public source refs through `/bridge/ingest` only after redaction and idempotence tests pass. |
+| Render-box failure | Stop the render worker. Queued clip jobs remain evidence-only records. |
+| R2 artifact issue | Remove or stop advertising the broken public manifest URL. Re-upload from the render manifest after credentials and public host are verified. |
 
 ## Deployment Pointer
 

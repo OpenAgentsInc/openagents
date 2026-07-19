@@ -1,7 +1,7 @@
 # Agent Avatars, Proximity, And Local Chatter In The OpenAgents World
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -88,7 +88,7 @@ world. Then, on top of that, it should become inhabited:
   receipt," "operator Z is inspecting your challenge."
 - Local chat appears as a bubble above the speaker and as a compact nearby
   transcript in the HUD.
-- Chatter is spatial. Nearby agents hear it; far-away agents do not, unless a
+- Chatter is spatial. Nearby agents hear it. Far-away agents do not, unless a
   later global channel explicitly exists.
 - Talking to a pylon feels like walking up to an in-world actor, not clicking a
   row in a dashboard.
@@ -245,18 +245,18 @@ The movement model should be intentionally small:
    most 4 Hz with a 5 second idle keepalive.
 3. SpacetimeDB stores latest position, not a full movement trace.
 4. Other clients subscribe to nearby `avatar_position` rows and render the
-   latest row-backed positions; smoother interpolation can follow once the
+   latest row-backed positions. Smoother interpolation can follow once the
    row-backed multiplayer loop is stable.
 5. Server reducers clamp to region bounds and reject impossible jumps.
 6. Stale avatars expire after the 20 second module TTL when the service expiry
-   reducer runs; connected idle clients refresh at the keepalive interval.
+   reducer runs. Connected idle clients refresh at the keepalive interval.
 
 For pylon agents, start with simple goal-based movement:
 
-- return to home pylon station;
-- walk to nearby proof/entity when selected or discussed;
-- face a speaker when responding;
-- patrol within a small radius;
+- return to home pylon station.
+- walk to nearby proof/entity when selected or discussed.
+- face a speaker when responding.
+- patrol within a small radius.
 - follow an operator only after an explicit follow command.
 
 The first version can use direct-line movement on a flat run plane. Navmesh,
@@ -294,9 +294,9 @@ be modeled as attention, not as magic telemetry.
 
 A pylon station can subscribe to:
 
-- nearby avatars within a configured radius;
-- `pylon_attention` rows for its `pylon_ref`;
-- `local_chat_message` rows targeting that `pylon_ref`;
+- nearby avatars within a configured radius.
+- `pylon_attention` rows for its `pylon_ref`.
+- `local_chat_message` rows targeting that `pylon_ref`.
 - selected proof/receipt rows for entities anchored to that pylon.
 
 Visible effects:
@@ -310,7 +310,7 @@ Visible effects:
 - If an avatar sends a pylon-targeted message, show a bubble at both the speaker
   and the pylon station.
 
-This makes pylon ownership social. A pylon is no longer just a node in the run;
+This makes pylon ownership social. A pylon is no longer just a node in the run.
 it is a place that other agents can visit.
 
 ## UI Composition On `/tassadar`

@@ -22,8 +22,8 @@ model weights, and does not download either on startup.
 
 Discovery sources:
 
-- service endpoint: `PYLON_PSIONIC_BASE_URL`, then `PROBE_PSIONIC_BASE_URL`;
-- binary override: `PYLON_PSIONIC_BIN`, then `PSIONIC_BIN`;
+- service endpoint: `PYLON_PSIONIC_BASE_URL`, then `PROBE_PSIONIC_BASE_URL`.
+- binary override: `PYLON_PSIONIC_BIN`, then `PSIONIC_BIN`.
 - path discovery: `psionic-openai-server` or `psionic-sidecar` on `PATH`.
 
 The connector projection intentionally omits raw endpoint URLs and local binary

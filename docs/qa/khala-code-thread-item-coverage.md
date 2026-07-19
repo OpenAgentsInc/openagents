@@ -21,8 +21,8 @@ Coverage flows through the existing ledger fields:
 The tests pin both sides:
 
 - the desktop projector test asserts the shared fixture list matches the
-  parity-contract variant list and reference commit;
+  parity-contract variant list and reference commit.
 - the harness seed-corpus test asserts the manifest exposes the fixture source
-  and one scenario per variant;
+  and one scenario per variant.
 - the coverage-ledger test asserts every variant is counted after a full seed
   corpus run.

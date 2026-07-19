@@ -48,9 +48,9 @@ Heuristic lane:
 
 The live closeout required three hardening fixes:
 
-- the Worker NIP-42 publisher now allows a longer auth-challenge window;
+- the Worker NIP-42 publisher now allows a longer auth-challenge window.
 - the Psionic HTTP dispatcher retries public-safe relay publish blockers with
-  minute-scale backoff;
+  minute-scale backoff.
 - the Pylon NIP-90 provider quotes the accepted bid amount while still
   enforcing its price floor, preserving learned-vs-heuristic cost separation.
 

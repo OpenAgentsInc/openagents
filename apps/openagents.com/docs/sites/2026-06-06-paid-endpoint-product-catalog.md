@@ -37,22 +37,22 @@ Each product record includes:
 
 The catalog currently supports products for:
 
-- agent API endpoints;
-- Forum paid actions;
-- Site checkout and Site paid actions;
+- agent API endpoints.
+- Forum paid actions.
+- Site checkout and Site paid actions.
 - runner recovery products.
 
 ## Validation Rules
 
 The decoder rejects:
 
-- unstable product IDs, resource refs, action refs, and entitlement refs;
-- duplicate product IDs;
-- non-positive or non-integer prices;
-- price-denomination mismatches;
-- endpoint bindings without a method and path;
-- action bindings without an action ref;
-- paths with query strings or fragments;
+- unstable product IDs, resource refs, action refs, and entitlement refs.
+- duplicate product IDs.
+- non-positive or non-integer prices.
+- price-denomination mismatches.
+- endpoint bindings without a method and path.
+- action bindings without an action ref.
+- paths with query strings or fragments.
 - secret-shaped keys or values, raw invoices, raw payment material, wallet
   material, preimages, MDK credentials, provider grants/tokens, customer emails,
   raw prompts, raw runner logs, source archives, and other private-material
@@ -70,10 +70,10 @@ operator projections.
 
 Public, agent, and customer projections:
 
-- exclude `operator_only` products;
-- remove `internalEconomicsRefs`;
-- remove `providerBindingRefs`;
-- remove `operatorNoteRefs`;
+- exclude `operator_only` products.
+- remove `internalEconomicsRefs`.
+- remove `providerBindingRefs`.
+- remove `operatorNoteRefs`.
 - keep only safe product IDs, route/action bindings, prices, entitlement refs,
   spend-cap hints, status, and docs refs.
 
@@ -85,12 +85,12 @@ payment material, customer data, raw prompts, or wallet material.
 
 This slice does not:
 
-- persist catalog records in D1;
-- create checkout intents;
-- create payment challenges;
-- mint or verify L402 credentials;
-- debit credits;
-- grant entitlements;
+- persist catalog records in D1.
+- create checkout intents.
+- create payment challenges.
+- mint or verify L402 credentials.
+- debit credits.
+- grant entitlements.
 - settle provider payouts.
 
 Those are covered by #291 and #292 plus the later Epic H issues.

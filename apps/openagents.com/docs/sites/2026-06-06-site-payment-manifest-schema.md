@@ -18,17 +18,17 @@ tests in `workers/api/src/site-payment-manifest.test.ts`.
 
 The `.openagents/site.json` `payments` block supports:
 
-- hosted provider `openagents_hosted_mdk`;
-- checkout products;
-- paid actions;
+- hosted provider `openagents_hosted_mdk`.
+- checkout products.
+- paid actions.
 - prices using `usd_cent`, `credit`, or the exact bitcoin denomination
-  `bitcoin_millisatoshi`;
-- settlement mode: `checkout_only`, `deferred`, or `accepted_work_linked`;
-- entitlement scope: `site`, `product`, `path`, `action`, or `account`;
-- customer data requirement descriptors;
-- clean Site-local checkout paths;
-- agent-readable flags;
-- sandbox flags;
+  `bitcoin_millisatoshi`.
+- settlement mode: `checkout_only`, `deferred`, or `accepted_work_linked`.
+- entitlement scope: `site`, `product`, `path`, `action`, or `account`.
+- customer data requirement descriptors.
+- clean Site-local checkout paths.
+- agent-readable flags.
+- sandbox flags.
 - public projection state.
 
 ## Redaction Rules

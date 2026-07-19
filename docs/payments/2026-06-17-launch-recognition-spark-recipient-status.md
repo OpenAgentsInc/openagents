@@ -14,9 +14,9 @@ Closeout accounting record: `docs/payments/2026-06-17-launch-recognition-closeou
 
 | Recipient | Intended payout | Current evidence | Status | Blocker / root cause | Next action |
 | --- | ---: | --- | --- | --- | --- |
-| Trigger | 50,000 sats | Recipient-side rc.12 proof reported a visible 50,000-sat Spark backup balance after `backup-claim` / `backup-status`; the scoped offline-receive promise is green. | Confirmed | None for the scoped receive/claim/visible-balance promise. | Optional follow-up is #5169-style consented Spark-to-MDK sweep if Trigger wants one spendable MDK balance. |
-| Whitefang | 50,000-sat recognition + validator-fee smokes | Earlier treasury send failed while the primary MDK/Lightning target was not accepting inbound. After #5183, the Spark treasury rail was funded with 75 sats from MDK and proved live against Whitefang's Spark-backed Lightning Address: 5 sats settled, then 25 sats settled, both through `paidVia:"spark_treasury"` with public-safe payment refs and Spark balance movement. | Spark treasury path proven; full recognition closeout still pending funding and recipient confirmation | Spark-preferred BOLT11 dispatch initially failed before spend with the Breez Spark SDK's `invalid_transferid_format`; the deployed container now falls back to the same Spark treasury wallet paying the resolved BOLT11 over Lightning when that validation failure occurs. No full-size Whitefang recognition retry has been run because the Spark treasury does not yet hold the needed balance. | Owner funds the Spark treasury rail for the remaining recognition amount plus routing headroom; operator sends the closeout under a fresh idempotency key; Whitefang runs `backup-claim` / `backup-status` and shares public-safe receipt refs/counts. |
-| Orrery | 50,000-sat recognition + 5-sat worker fee | 2026-06-17 live retry covered the 50,000-sat recognition amount through split Lightning Address payouts: 5,000 sats, 20,000 sats, and 25,000 sats all returned `status:succeeded`, `policyApplied:full`, and settled public treasury rows. Separate 250-sat smoke sends also settled. Later diagnostics added additional settled Lightning Address sends: 5,000 sats, 5,000 sats, 25,000 sats, then a post-balance-diagnostics 5,000 sats and 30,000 sats. Post-timeout-guard tips-buffer retries added settled 5,000-sat and 20,000-sat sends via the same Lightning Address rail. | Treasury/tips-buffer settled, recipient confirmation pending | Earlier single large Lightning Address invoices were unreliable on this rail: 30,000 / 40,000 / 50,000 sats failed before dispatch despite sufficient `preflightMaxSendableSat`, no durable payment id, and no treasury balance movement. The deployed diagnostics identified the upstream SDK class as `GenericFailure` (`reason.public.treasury_payout.failed`) with stable `messageFingerprint` `58e50e365f66f6192ee71b6f15e2c4b69336a3bce9dba51e8971c89320eef78d`. A later pass no longer reproduced the 30,000-sat failure; 30,000 sats succeeded. A pre-timeout-guard 25,000-sat tips-buffer probe hung at the caller with no later balance movement and no safe ledger row. 40,000 / 50,000 remain unproven after the latest diagnostics because the wallets were no longer funded enough for an honest full-size retry. | Orrery runs `backup-claim` / `backup-status` and shares public-safe receipt refs/counts. Future full-size single-invoice retries should wait until treasury/tips-buffer is refilled enough to test 40,000 / 50,000 without triggering fractional fallback. |
+| Trigger | 50,000 sats | Recipient-side rc.12 proof reported a visible 50,000-sat Spark backup balance after `backup-claim` / `backup-status`. The scoped offline-receive promise is green. | Confirmed | None for the scoped receive/claim/visible-balance promise. | Optional follow-up is #5169-style consented Spark-to-MDK sweep if Trigger wants one spendable MDK balance. |
+| Whitefang | 50,000-sat recognition + validator-fee smokes | Earlier treasury send failed while the primary MDK/Lightning target was not accepting inbound. After #5183, the Spark treasury rail was funded with 75 sats from MDK and proved live against Whitefang's Spark-backed Lightning Address: 5 sats settled, then 25 sats settled, both through `paidVia:"spark_treasury"` with public-safe payment refs and Spark balance movement. | Spark treasury path proven. Full recognition closeout still pending funding and recipient confirmation | Spark-preferred BOLT11 dispatch initially failed before spend with the Breez Spark SDK's `invalid_transferid_format`. The deployed container now falls back to the same Spark treasury wallet paying the resolved BOLT11 over Lightning when that validation failure occurs. No full-size Whitefang recognition retry has been run because the Spark treasury does not yet hold the needed balance. | Owner funds the Spark treasury rail for the remaining recognition amount plus routing headroom. Operator sends the closeout under a fresh idempotency key. Whitefang runs `backup-claim` / `backup-status` and shares public-safe receipt refs/counts. |
+| Orrery | 50,000-sat recognition + 5-sat worker fee | 2026-06-17 live retry covered the 50,000-sat recognition amount through split Lightning Address payouts: 5,000 sats, 20,000 sats, and 25,000 sats all returned `status:succeeded`, `policyApplied:full`, and settled public treasury rows. Separate 250-sat smoke sends also settled. Later diagnostics added additional settled Lightning Address sends: 5,000 sats, 5,000 sats, 25,000 sats, then a post-balance-diagnostics 5,000 sats and 30,000 sats. Post-timeout-guard tips-buffer retries added settled 5,000-sat and 20,000-sat sends via the same Lightning Address rail. | Treasury/tips-buffer settled, recipient confirmation pending | Earlier single large Lightning Address invoices were unreliable on this rail: 30,000 / 40,000 / 50,000 sats failed before dispatch despite sufficient `preflightMaxSendableSat`, no durable payment id, and no treasury balance movement. The deployed diagnostics identified the upstream SDK class as `GenericFailure` (`reason.public.treasury_payout.failed`) with stable `messageFingerprint` `58e50e365f66f6192ee71b6f15e2c4b69336a3bce9dba51e8971c89320eef78d`. A later pass no longer reproduced the 30,000-sat failure. 30,000 Sats succeeded. A pre-timeout-guard 25,000-sat tips-buffer probe hung at the caller with no later balance movement and no safe ledger row. 40,000 / 50,000 remain unproven after the latest diagnostics because the wallets were no longer funded enough for an honest full-size retry. | Orrery runs `backup-claim` / `backup-status` and shares public-safe receipt refs/counts. Future full-size single-invoice retries should wait until treasury/tips-buffer is refilled enough to test 40,000 / 50,000 without triggering fractional fallback. |
 
 ## Treasury pending semantics
 
@@ -25,7 +25,7 @@ settled Lightning receipt. For outbound rows it means the treasury or
 tips-buffer MDK container returned an internal payment id, but OpenAgents has
 not recorded a terminal `succeeded` event/preimage or a terminal `failed`
 event for that id. It does not prove that the recipient received sats, and it
-does not by itself prove that the sats are permanently gone from the treasury;
+does not by itself prove that the sats are permanently gone from the treasury.
 the live wallet balance / max-sendable value remains the spendable-wallet
 truth.
 
@@ -52,7 +52,7 @@ Object storage when `/pay` or `/payments/{paymentId}` observes `succeeded` or
 `{ status, reasonRef }`, so reconciliation can survive a Bun service process
 restart without storing raw daemon text, destinations, invoices, hashes,
 preimages, mnemonics, or tokens. It still cannot invent an outcome that no
-Worker request ever observed before a hard container loss; those rows stay
+Worker request ever observed before a hard container loss. Those rows stay
 pending until real evidence appears.
 
 Pre-dispatch failures are different: if the operator payout route cannot mint a
@@ -70,11 +70,11 @@ treasury container also returns safe diagnostics for failed sends:
 `feeBudgetMsatAfter`, `balanceSatBefore`, `balanceSatAfter`,
 `balanceChanged`, `paymentIdPresent`, `resultReturned`, `reasonClass`,
 `timeoutSecs`, `errorName`, `errorCode`, and `messageFingerprint`.
-`messageFingerprint` is a SHA-256 correlation value for the raw daemon message;
+`messageFingerprint` is a SHA-256 correlation value for the raw daemon message.
 the raw text itself is not returned or stored. As of Worker version
 `c4a83f4b-d627-415b-832a-75ec3ac225af`, the operator payout route retries a
 transient `maxSendableSat:null` no-spend balance read before returning
-`treasury_depleted`; that specific refusal means no payment was dispatched.
+`treasury_depleted`. That specific refusal means no payment was dispatched.
 As of Worker version `964f051d-1676-4c41-8ae2-22b4682ae60c`, the operator
 payout route also bounds the Worker-to-container `/pay` wait with an abort
 signal plus a caller-visible timeout guard. If the MDK container call stalls,
@@ -90,7 +90,7 @@ On 2026-06-17, the operator retried Orrery through the Spark-backed Lightning
 Address fallback using the admin payout route. The small-to-large sequence was:
 
 - 5,000 sats: succeeded and settled.
-- 40,000 sats: failed before dispatch; treasury balance and max-sendable were
+- 40,000 sats: failed before dispatch. Treasury balance and max-sendable were
   unchanged afterward, proving no sats left the treasury on that attempt.
 - 20,000 sats: succeeded and settled.
 - 25,000 sats: succeeded and settled.
@@ -109,17 +109,17 @@ Address fallback using the admin payout route. The small-to-large sequence was:
   - 25,000 sats: succeeded and settled.
 - Post-balance-diagnostics deploy:
   - First 5,000-sat attempt: refused as `treasury_depleted` because the balance
-    read returned `maxSendableSat:null`; no payment dispatched.
+    read returned `maxSendableSat:null`. No payment dispatched.
   - Retried 5,000 sats: succeeded and settled.
   - 30,000 sats: succeeded and settled.
   - Treasury remaining after that pass: about 5,100 sats max-sendable, so a
     full 40,000 / 50,000 single-invoice retry could not be run without
     refilling the treasury first.
 - Post-timeout-guard deploy (`964f051d-1676-4c41-8ae2-22b4682ae60c`):
-  - The prior pre-guard 25,000-sat tips-buffer probe had hung at the caller;
+  - The prior pre-guard 25,000-sat tips-buffer probe had hung at the caller.
     follow-up status and the safe treasury ledger query showed no tips-buffer
     balance movement and no failed/pending row for that hung request.
-  - 5,000 sats from the tips-buffer wallet succeeded and settled; the safe
+  - 5,000 sats from the tips-buffer wallet succeeded and settled. The safe
     diagnostics showed Lightning Address resolution to BOLT11, `paymentIdPresent:true`,
     `balanceChanged:true`, and no failure stage.
   - 20,000 sats from the tips-buffer wallet succeeded and settled with the same
@@ -132,7 +132,7 @@ covered by split settled sends. The large-send failure is no longer bracketed at
 25,000 / 30,000: the latest 30,000-sat retry succeeded. The remaining unknown is
 whether 40,000 / 50,000 still fail as single resolved-BOLT11 sends under the new
 diagnostics. The earlier failures still look pre-dispatch and not recipient
-readiness-related; future full-size retries need a refilled treasury so the
+readiness-related. Future full-size retries need a refilled treasury so the
 request is not transformed by the fractional fallback policy.
 
 ## Operator rule
@@ -143,7 +143,7 @@ idempotency key / public-safe receipt. A recipient is complete only when one of
 these is true:
 
 - recipient-confirmed Spark backup credited balance exists after
-  `backup-claim` / `backup-status`; or
+  `backup-claim` / `backup-status`. Or
 - the blocker above is still current and documented with the next required
   recipient/operator action.
 

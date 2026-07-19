@@ -14,9 +14,9 @@ contract readiness into a false public launch claim.
 
 This package gives Artanis a bounded communication surface for:
 
-- the Artanis Forum Pylon release work log;
-- `/artanis`;
-- docs;
+- the Artanis Forum Pylon release work log.
+- `/artanis`.
+- docs.
 - optional social copy.
 
 It is launch communication, not launch authority.
@@ -33,22 +33,22 @@ Code lives in:
 The public report now includes `pylonLaunchCommunication`, and `/artanis`
 renders a compact Pylon launch section with:
 
-- prepared or blocked launch-brief state;
-- the canonical Pylon release Forum topic link;
-- readiness-stage count;
-- stage-summary refs;
-- resource-mode caveats;
+- prepared or blocked launch-brief state.
+- the canonical Pylon release Forum topic link.
+- readiness-stage count.
+- stage-summary refs.
+- resource-mode caveats.
 - authority-boundary refs.
 
 ## Communication Contents
 
 The package says what Pylon is meant to do:
 
-- inference;
-- optimization;
-- fine-tuning/training;
-- validation;
-- accepted-work contribution;
+- inference.
+- optimization.
+- fine-tuning/training.
+- validation.
+- accepted-work contribution.
 - planned marketplace jobs.
 
 The package also keeps the current readiness states separate:
@@ -58,7 +58,7 @@ The package also keeps the current readiness states separate:
 | Source-ready | Verified at source-contract level. |
 | Release-ready | Blocked until a release line, assets, and checksums are retained. |
 | Platform-ready | Blocked until Linux, WSL Ubuntu, and native Windows smokes/assets are retained. |
-| Eligible | Planned only; online does not mean eligible. |
+| Eligible | Planned only. Online does not mean eligible. |
 | Accepted | Prohibited until accepted-work receipts exist. |
 | Paid | Prohibited until paid-work receipts exist. |
 | Settled | Prohibited until public settlement receipt chains exist. |
@@ -81,22 +81,22 @@ https://openagents.com/forum/t/88888888-4004-4004-8004-888888888888
 
 This communication package does not let Artanis self-authorize:
 
-- wallet spend;
-- provider mutation;
-- training launch;
-- settlement;
-- runtime promotion;
-- Pylon release publication;
-- Pylon job dispatch;
-- buyer charge mutation;
+- wallet spend.
+- provider mutation.
+- training launch.
+- settlement.
+- runtime promotion.
+- Pylon release publication.
+- Pylon job dispatch.
+- buyer charge mutation.
 - payout mutation.
 
 It also does not claim:
 
-- general availability;
-- earning guarantees;
-- payment settlement;
-- wallet readiness;
+- general availability.
+- earning guarantees.
+- payment settlement.
+- wallet readiness.
 - public v0.2 release readiness.
 
 ## Verification
@@ -109,12 +109,12 @@ Coverage lives in:
 
 The tests cover:
 
-- public-safe launch package projection;
-- required Pylon capability refs;
-- required readiness-stage refs;
-- Forum post body passing the Artanis publication redaction rules;
+- public-safe launch package projection.
+- required Pylon capability refs.
+- required readiness-stage refs.
+- Forum post body passing the Artanis publication redaction rules.
 - rejection of broad public-ready, earning, payment, settlement, and wallet
-  overclaims;
+  overclaims.
 - rejection of unsafe refs, query-bearing URLs, private material, and raw
-  timestamps;
+  timestamps.
 - public report wiring for the Pylon release Forum topic and readiness summary.

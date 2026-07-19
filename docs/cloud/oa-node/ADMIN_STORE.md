@@ -18,11 +18,11 @@ runtime control state. `health-events.jsonl` is append-only health history.
 
 `admin-store.json` persists:
 
-- desired mode;
-- observed status;
-- inventory summary placeholder;
-- update channel/current version/pending update placeholder;
-- quarantine state;
+- desired mode.
+- observed status.
+- inventory summary placeholder.
+- update channel/current version/pending update placeholder.
+- quarantine state.
 - receipt cursors, including the health event count.
 
 The current MVP exposes desired-mode mutation and health-event append/list
@@ -41,7 +41,7 @@ Every command loads from disk. Re-running `oa-node status --json` after a
 separate `desired-mode set` process projects the persisted desired mode into
 `openagents.cloud_node.v1`.
 
-Health events append one JSON object per line to `health-events.jsonl`; they are
+Health events append one JSON object per line to `health-events.jsonl`. They are
 not rewritten during normal append. Status projects event ids into
 `evidence.health_events`.
 

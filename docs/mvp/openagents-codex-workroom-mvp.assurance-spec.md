@@ -2,7 +2,7 @@
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.desktop.codex.workroom.mvp"
 assurance_revision: 2
-title: "OpenAgents Desktop Codex Workroom MVP Assurance Spec"
+title: "OpenAgents Desktop Codex Workroom MVP AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "admitted"
 author: "OpenAgents"
@@ -79,11 +79,11 @@ The proof design treats runtime compatibility, ordinary Codex-session custody, d
 
 ## Assurance Scope
 
-Every executable ProductSpec criterion is required and has exactly one obligation in this MVP run. No criterion is deferred or marked not applicable; release and public-promise authority remain outside the execution grant even after all observations are confirmed.
+Every executable ProductSpec criterion is required and has exactly one obligation in this MVP run. No criterion is deferred or marked not applicable. Release and public-promise authority remain outside the execution grant even after all observations are confirmed.
 
 ## Environments
 
-Execution uses the admitted first-party macOS ARM64 Node/Vite Plus environment with network and credential access forbidden. Native JUnit remains private; normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.
+Execution uses the admitted first-party macOS ARM64 Node/Vite Plus environment with network and credential access forbidden. Native JUnit remains private. Normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.
 
 ```assurancespec-environments
 {
@@ -4367,7 +4367,7 @@ Links remain evidence locations rather than verdicts. Native output stays privat
 
 ## Authority Boundaries
 
-The owner admits this exact proof design and has accepted the installed ProductSpec-native journey and its read-only review boundary. The runner may execute and report only; it cannot alter owner acceptance, publish RC9, change registries or promises, waive failures, or infer authority from prose or green tests.
+The owner admits this exact proof design and has accepted the installed ProductSpec-native journey and its read-only review boundary. The runner may execute and report only. It cannot alter owner acceptance, publish RC9, change registries or promises, waive failures, or infer authority from prose or green tests.
 
 ```assurancespec-authority
 {

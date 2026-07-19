@@ -3,7 +3,7 @@
 Date: 2026-07-19
 Issue: [#9036](https://github.com/OpenAgentsInc/openagents/issues/9036)
 Status: implemented for the exact evidence-bound macOS arm64 candidate named
-in the checked IDE-08 acceptance receipt; Desktop AC-17/AC-43 and Cursor
+in the checked IDE-08 acceptance receipt. Desktop AC-17/AC-43 and Cursor
 CP-AC-20 AssuranceSpecs remain `proposed` and owner disposition remains
 `unreviewed`.
 
@@ -12,13 +12,13 @@ CP-AC-20 AssuranceSpecs remain `proposed` and owner disposition remains
 IDE-08 makes a coding agent a participant in the existing Desktop project,
 document, language, and review graph. A turn can now:
 
-1. attach to one exact project/root/worktree/session/grant generation;
-2. disclose an exact context manifest and effective runtime;
-3. submit a hash-checked, version-bound create/edit/rename/delete proposal;
-4. enter the existing Pierre Changes plane for explicit review;
+1. attach to one exact project/root/worktree/session/grant generation.
+2. disclose an exact context manifest and effective runtime.
+3. submit a hash-checked, version-bound create/edit/rename/delete proposal.
+4. enter the existing Pierre Changes plane for explicit review.
 5. accept, reject, partially accept, refuse/rebase, apply, or undo through the
-   canonical workspace authority;
-6. resolve conversation-to-code and code-to-conversation backlinks; and
+   canonical workspace authority.
+6. resolve conversation-to-code and code-to-conversation backlinks. And
 7. distinguish host-observed diagnostics, formatting, tests, Git, delivery,
    verification, and owner acceptance from runtime completion.
 
@@ -35,25 +35,25 @@ schema for this feature. All boundary TypeScript types derive from identified
 Effect Schemas. The graph contains:
 
 - branded attachment, manifest, context-item, operation, decision, review,
-  apply, undo, backlink, turn, packet, and ProductSpec-revision refs;
+  apply, undo, backlink, turn, packet, and ProductSpec-revision refs.
 - exact project/root/worktree/session/grant, attachment generation, and
-  placement generation;
+  placement generation.
 - context sources for file, range, diagnostic, symbol, Git change, rule,
   skill, recent edit, lexical retrieval, optional semantic retrieval, runtime
-  policy, and typed unavailability;
+  policy, and typed unavailability.
 - per-item selection origin, source generation, disposition, destination,
   freshness, sensitivity, retention, byte/token estimate, truncation, label,
-  and bounded excerpt;
+  and bounded excerpt.
 - effective harness, model, provider, account, placement, tool policy,
   permission mode, sandbox, memory, instruction policy, and semantic-retrieval
-  posture;
+  posture.
 - proposal bases carrying the admitted content, digest, disk/document/Git/
-  checkpoint generations, encoding, EOL, and mode;
-- create, edit, rename, and delete operations with explicit symlink policy;
+  checkpoint generations, encoding, EOL, and mode.
+- create, edit, rename, and delete operations with explicit symlink policy.
 - pending, reviewing, partially accepted, accepted, applying, applied,
-  rejected, rebase-required, superseded, cancelled, failed, and undone states;
+  rejected, rebase-required, superseded, cancelled, failed, and undone states.
 - preimages, apply/undo receipts, current/historical/unavailable backlinks,
-  and independently typed evidence; and
+  and independently typed evidence. And
 - a structurally public-safe receipt that has counts and stable refs but no
   root, prompt, provider payload, file content, retrieval query, credential,
   or private evidence payload.
@@ -93,28 +93,28 @@ The composer and Editor share `AgentContextTray`. “Add context” creates a
 manifest only after a bounded editor file has been explicitly attached. The
 production active-file inventory always names eleven source slots:
 
-1. explicit file;
-2. active selection or typed absence;
-3. current diagnostics or typed absence;
-4. current symbols or typed absence;
-5. matching Git/co-change fact or typed absence;
-6. project rule or typed absence;
-7. invoked skill or typed absence;
-8. recent-edit metadata or typed absence;
-9. lexical path match;
-10. optional semantic retrieval, currently omitted as `retrieval_disabled`;
+1. explicit file.
+2. active selection or typed absence.
+3. current diagnostics or typed absence.
+4. current symbols or typed absence.
+5. matching Git/co-change fact or typed absence.
+6. project rule or typed absence.
+7. invoked skill or typed absence.
+8. recent-edit metadata or typed absence.
+9. lexical path match.
+10. optional semantic retrieval, currently omitted as `retrieval_disabled`.
 11. effective runtime/tool policy.
 
 Each row shows inclusion/omission reason, selector, generation, destination,
 handling class, freshness, retention, bytes/tokens, and truncation. The
 manifest has fixed 200,000-byte and 50,000-token ceilings. Excerpts are UTF-8
-and 64,000-character bounded; later included items that cannot fit become
+and 64,000-character bounded. Later included items that cannot fit become
 explicit `over_budget` omissions rather than expanding the budget. This keeps
 the product useful with semantic retrieval disabled: explicit context,
 lexical path facts, language/symbol evidence, and Git facts remain available.
 
 Source generation and project document generation are intentionally distinct.
-Monaco's first model incarnation is source generation zero; the project and
+Monaco's first model incarnation is source generation zero. The project and
 workspace authorities are one-based. Manifest assembly preserves the exact
 Monaco source generation and performs the single explicit `source + 1`
 translation at the renderer-to-authority boundary. It never passes an
@@ -130,21 +130,21 @@ or file excerpts.
 
 Untrusted proposal output is decoded before admission. Admission checks:
 
-- exact attachment, manifest, creating turn/conversation, and generation;
-- unique proposal, operation, and target-path identities;
-- exact replay reconciliation and conflicting-ref rejection;
+- exact attachment, manifest, creating turn/conversation, and generation.
+- unique proposal, operation, and target-path identities.
+- exact replay reconciliation and conflicting-ref rejection.
 - a complete missing base for create and complete existing base for edit,
-  rename, and delete;
-- SHA-256 equality between claimed and actual create/edit bytes;
-- declared EOL agreement with the proposed bytes;
-- exact document identity agreement with the base;
-- explicit create encoding/EOL/mode and `symlink: refuse`; and
+  rename, and delete.
+- SHA-256 equality between claimed and actual create/edit bytes.
+- declared EOL agreement with the proposed bytes.
+- exact document identity agreement with the base.
+- explicit create encoding/EOL/mode and `symlink: refuse`. And
 - bounded content and operation counts.
 
 Manifest, proposal, review, and decision retries are idempotent when their
 bytes are equal. Reusing a stable ref for different content, identity, or
 disposition fails closed. Attachment replacement cancels every unsettled
-proposal and clears manifests; equal relative paths in two worktrees remain in
+proposal and clears manifests. Equal relative paths in two worktrees remain in
 separate service scopes.
 
 ## Review, partial decisions, apply, and rebase
@@ -162,7 +162,7 @@ Before apply, main re-reads every source and rename target. A dirty document,
 missing/created file, changed disk or document generation, symlink, secret,
 private/binary/oversize content, or unsupported policy refuses. Base movement
 persists `RebaseRequired` with the exact current path/state, disk revision,
-document generation, and content digest where available; the original base
+document generation, and content digest where available. The original base
 remains inspectable. A replacement rebase must be a new pending child on the
 same attachment, manifest, and turn. There is no fuzzy apply.
 
@@ -176,7 +176,7 @@ Undo requires the exact proposal/apply/checkpoint tuple and exact current
 post-image. It restores preimages in reverse order, emits an undo receipt,
 changes the lifecycle to `Undone`, converts code links to historical, and
 marks post-image evidence stale. Private preimages expire after the configured
-checkpoint window; recovery purges them and changes affected historical links
+checkpoint window. Recovery purges them and changes affected historical links
 to `retention_expired` rather than retaining content indefinitely.
 
 ## Backlinks and evidence
@@ -186,17 +186,17 @@ session, creating turn, optional creating conversation, attachment generation,
 file/document generation, and path. The review surface can open the creating
 conversation when that local thread remains available. The opposite action
 opens the exact current file through ordinary Files/editor authority.
-After undo it opens the retained historical proposal/checkpoint state; after
+After undo it opens the retained historical proposal/checkpoint state. After
 generation or retention loss it says unavailable.
 
 Evidence is not a renderer or harness command. After apply, main observes:
 
-- diagnostics and formatting through the current language service;
-- Git status and per-path Git diff through the current workspace service;
-- tests as `Unavailable` unless an exact test command was admitted;
+- diagnostics and formatting through the current language service.
+- Git status and per-path Git diff through the current workspace service.
+- tests as `Unavailable` unless an exact test command was admitted.
 - commit/push/PR/delivery as `Unavailable` in IDE-08 rather than inferred from
-  changed files or runtime prose;
-- independent verification as `Unavailable` without its reviewer; and
+  changed files or runtime prose.
+- independent verification as `Unavailable` without its reviewer. And
 - owner acceptance as `Unavailable` until the owner acts.
 
 Each fact binds the exact apply ref and post-image generation and is one of
@@ -220,7 +220,7 @@ returns `corrupt_persistence`, and requires an explicit fresh attachment.
 Stopped scopes clear checkpoint material and manifest excerpts. Retention
 recovery drops expired preimages. IDE-18 still owns the complete per-project
 inventory UI, export, selective deletion, backup/tombstone convergence, and
-whole-profile deletion proof; IDE-08 does not overclaim those surfaces.
+whole-profile deletion proof. IDE-08 does not overclaim those surfaces.
 
 ## Deterministic, packaged, and performance evidence
 
@@ -251,12 +251,12 @@ The accepted implementation candidate is
 `6883463cbec1e58f734edd29fe56fb3856222ca6`. Its final staged macOS arm64
 application tree is
 `sha256:0c57b99c31d87c01196510f805c931872ee5072926d380ceb62a47d79b7cc2db`.
-The scoped gate passed 276 tests with 11 intentional skips; the broader
+The scoped gate passed 276 tests with 11 intentional skips. The broader
 Desktop suite passed 2,690 tests with 39 intentional skips. All thirteen
 benchmark rows passed. Representative p95 measurements were 0.167 ms for the
 eleven-source manifest decode, 0.836 ms for exact single-file apply, and 2.765
 ms for a 25-file/~100 KiB aggregate apply. Twenty teardown cycles retained no
-active handles, listeners, proposal streams, or temporary preimages; the run
+active handles, listeners, proposal streams, or temporary preimages. The run
 made zero remote requests and required no embeddings. The packaged journey's
 twelve owner-visible assertions all passed, including keyboard-only apply and
 undo, non-color state cues, context omission disclosure, root withholding at
@@ -265,17 +265,17 @@ the agent boundary, and disk preimage restoration.
 The exact candidate SHA, `.app` tree SHA-256, measurements, screenshot, trace,
 reviewer disposition, rollback target, and final `main` SHA live in:
 
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-agent-code.json`;
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.json`;
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.png`;
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code-trace.json`;
-- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-acceptance.json`; and
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-agent-code.json`.
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.json`.
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.png`.
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code-trace.json`.
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-acceptance.json`. And
 - issue #9036's `CLAIM-RELEASE` comment.
 
 ## Assurance and remaining gaps
 
 The evaluator is a non-overridable deterministic repository oracle. It may
-say that the exact implementation/evidence bundle passed; it cannot admit the
+say that the exact implementation/evidence bundle passed. It cannot admit the
 Desktop or Cursor AssuranceSpec, impersonate an independent human reviewer,
 or set owner acceptance. Desktop AC-17/AC-43 and Cursor CP-AC-20 therefore
 remain `proposed`/`unreviewed` even after #9036 closes.

@@ -4,7 +4,7 @@ The full Autopilot Sites and Site commerce reference (hosted-site lane,
 MDK checkout contracts, L402 flows, and their payment-safety boundaries),
 split out of <https://openagents.com/AGENTS.md> to keep that file small.
 Fetchable at <https://openagents.com/SITES.md>. See AGENTS.md for identity,
-authority, security rules, and the economic directive; see
+authority, security rules, and the economic directive. See
 <https://openagents.com/SURFACES.md> for the broader programmatic API
 surfaces.
 
@@ -16,18 +16,18 @@ artifact that should have a live review surface.
 
 What is live:
 
-- signed-in users can create customer software requests;
-- signed-in users can see active and historical orders;
-- signed-in users can see Site revisions for their order;
-- signed-in users can submit follow-up Site feedback;
+- signed-in users can create customer software requests.
+- signed-in users can see active and historical orders.
+- signed-in users can see Site revisions for their order.
+- signed-in users can submit follow-up Site feedback.
 - signed-in users can see fulfillment artifacts for non-Site work, such as PR
-  or code-delivery artifacts when available;
-- Sites can have stable live URLs and durable revision URLs;
+  or code-delivery artifacts when available.
+- Sites can have stable live URLs and durable revision URLs.
 - Site builder sessions have message, event, file, file-tree, read, export, and
-  operator save-version APIs;
+  operator save-version APIs.
 - approved registered agent bearer tokens can submit scoped Site action
   contract receipts for project creation, builder-session creation, preview
-  requests, version-save requests, and deploy requests;
+  requests, version-save requests, and deploy requests.
 - transactional email infrastructure can notify customers when a reviewable
   revision is ready, subject to the relevant backend event path and configured
   sender.
@@ -36,12 +36,12 @@ What is not yet public self-serve agent authority:
 
 - external agent bearer tokens cannot yet create customer orders on behalf of
   an owner without a browser session or the specific scoped owner grant
-  described above;
+  described above.
 - owners can manage scoped grants through the API, while a polished
-  self-service UI remains a later product surface;
+  self-service UI remains a later product surface.
 - external agent bearer tokens can run granted Site project, builder-session,
   preview, version-save, and deploy-request actions through the scoped Site
-  API, but production deployment remains owner/operator gated;
+  API, but production deployment remains owner/operator gated.
 - customer approval, deployment authority, repository authority, and payment
   authority remain server-side scopes, not text instructions.
 
@@ -91,7 +91,7 @@ spend money or that production provider payout settlement is live.
 
 Generated-Site L402 challenge and redemption writes require an active
 registered OpenAgents agent bearer token and an `Idempotency-Key`. The calling
-agent supplies that bearer token from its own private runtime; generated public
+agent supplies that bearer token from its own private runtime. Generated public
 Site source must not embed, persist, or display agent tokens. The challenge
 route returns a standard `WWW-Authenticate: L402 ...` response with redacted
 payment refs. The redemption route currently accepts only public-safe MDK proof
@@ -105,7 +105,7 @@ refs, spend-cap hint refs, and review state. Operator review decisions use
 `POST /api/sites/{siteId}/commerce/review-decisions` with an OpenAgents admin
 API token and `Idempotency-Key`, and may mark one catalog item accepted, held,
 rejected, or needing customer input. A review decision updates review state
-only; it does not create payment, payout, settlement, access, or deployment
+only. It does not create payment, payout, settlement, access, or deployment
 authority.
 
 Customer-owned MDK account binding state is live at
@@ -113,7 +113,7 @@ Customer-owned MDK account binding state is live at
 show unavailable, pending review, configured, blocked, or revoked state and
 redact hosted secret refs. Operator writes use
 `POST /api/sites/{siteId}/commerce/mdk-account-bindings` with an OpenAgents
-admin API token and `Idempotency-Key`; the request may contain hosted
+admin API token and `Idempotency-Key`. The request may contain hosted
 secret-binding refs only. It must not contain MDK access tokens, mnemonics,
 webhook secrets, wallet material, raw invoices, payment hashes, preimages,
 provider grants, or private customer values. A configured binding informs

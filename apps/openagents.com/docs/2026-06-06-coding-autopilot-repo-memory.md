@@ -16,33 +16,33 @@ The implementation lives in `workers/api/src/coding-autopilot-repo-memory.ts`.
 
 The v1 model supports:
 
-- `accepted_fix`;
-- `rejected_fix`;
-- `build_command`;
-- `test_command`;
-- `flaky_test`;
-- `denied_path`;
-- `repo_convention`;
-- `pr_style`;
-- `dependency_note`;
+- `accepted_fix`.
+- `rejected_fix`.
+- `build_command`.
+- `test_command`.
+- `flaky_test`.
+- `denied_path`.
+- `repo_convention`.
+- `pr_style`.
+- `dependency_note`.
 - `reviewer_preference`.
 
 ## Record Shape
 
 `CodingAutopilotRepoMemoryRecord` stores:
 
-- memory kind;
-- memory ref;
-- repo ref and repo visibility;
-- mission and workroom refs;
-- source-authority refs;
-- evidence refs;
-- selector refs;
-- semantic index refs;
-- source state;
-- confidence;
-- status;
-- expiration/review refs as backend timestamps;
+- memory kind.
+- memory ref.
+- repo ref and repo visibility.
+- mission and workroom refs.
+- source-authority refs.
+- evidence refs.
+- selector refs.
+- semantic index refs.
+- source state.
+- confidence.
+- status.
+- expiration/review refs as backend timestamps.
 - summary and caveat refs.
 
 ## Retrieval Rule
@@ -52,8 +52,8 @@ Ad hoc keyword routing is explicitly not allowed. Every record carries
 
 Retrieval must be one of:
 
-- `typed_selector`, requiring selector refs;
-- `semantic_embedding`, requiring semantic index refs;
+- `typed_selector`, requiring selector refs.
+- `semantic_embedding`, requiring semantic index refs.
 - `manual_review`.
 
 Future routing or retrieval consumers must use these typed selectors or
@@ -78,9 +78,9 @@ customer emails, payment material, wallet material, and secrets.
 
 `workers/api/src/coding-autopilot-repo-memory.test.ts` covers:
 
-- public/private repo projection splits;
-- every required memory kind;
-- expiration and review-needed status derivation;
-- typed selector and semantic index requirements;
-- `keywordRoutingAllowed: false`;
+- public/private repo projection splits.
+- every required memory kind.
+- expiration and review-needed status derivation.
+- typed selector and semantic index requirements.
+- `keywordRoutingAllowed: false`.
 - unsafe provider, runner, private repo, customer, and raw timestamp rejection.

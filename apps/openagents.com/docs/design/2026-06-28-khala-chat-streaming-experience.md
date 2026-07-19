@@ -23,7 +23,7 @@ against their intent. The scene, transcript, and composer are separate layers.
 ## Visual Rules
 
 - The transcript is an unframed reading layer over the Khala scene.
-- Assistant replies read as prose first; avoid putting every assistant token in
+- Assistant replies read as prose first. Avoid putting every assistant token in
   a boxed card.
 - User turns can use compact right-aligned chips, but they should not dominate
   the scene.

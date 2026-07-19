@@ -1,14 +1,14 @@
-# Forge is not JUST a git forge — it's also a software factory
+# Forge is not JUST a git forge — it is also a software factory
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 Forge implementation routing must respect the separate-private-repo boundary.
 
 
 Date: 2026-06-28
-Status: Synthesis / product-framing doc. Public-safe; no secrets, no tokens,
+Status: Synthesis / product-framing doc. Public-safe. No secrets, no tokens,
 no deploy. Theme: fold the historical OpenAgents **software-factory** vision
 into the current owned **git-forge coordination-layer** direction so they ship
 as one product, not two.
@@ -37,7 +37,7 @@ Two separate Forge histories have converged on the same name, and they are not
 rivals — they are two layers of one product:
 
 - the **coordination layer** (a git forge) — *how* arbitrarily many agents push,
-  verify, queue, promote, and mirror code without GitHub as the bottleneck; and
+  verify, queue, promote, and mirror code without GitHub as the bottleneck. And
 - the **software-factory layer** (a work system) — *what* the work is, who it is
   for, how it is triaged into a production line, how it is measured, and how it
   is delivered to and trusted by customers.
@@ -57,11 +57,11 @@ ends with a biggest-synergies-first list.
 The owner decided to fan out to arbitrary-N coding agents now and to stop
 fighting GitHub's coordination ceiling (PR/merge serialization, secondary
 rate-limits, abuse-flag blast radius, the 10–30s `push→webhook→pull` floor).
-GitHub becomes a **downstream read-only mirror**; OpenAgents owns the real
+GitHub becomes a **downstream read-only mirror**. OpenAgents owns the real
 coordination layer at `forge.openagents.com`
 (`docs/forge/2026-06-28-forge-openagents-com-owned-coordination-layer-audit.md`
 §0). Cursor's announced "Origin" forge is read as convergent evidence, not a
-template (`docs/forge/origin.md`); the named differentiators are GitHub-as-mirror
+template (`docs/forge/origin.md`). The named differentiators are GitHub-as-mirror
 (no migration ask) and a native economic loop.
 
 This layer is concrete and partly built. The FORGE-1..6 first wave is merged on
@@ -98,8 +98,8 @@ coordinator (`apps/pylon/src/coordinator/`). The boundary is frozen in
 (`@openagentsinc/forge-protocol`: `ForgeControlPlaneScope`,
 `ForgeVerificationReceipt`, `ForgePromotionDecisionReceipt`), and the stand-up
 sequence SU-0..SU-8 is in `docs/forge/2026-06-28-forge-standup-spec.md`. SU-1/1B
-shipped the separate `apps/forge/` shell (#6759, #6769); SU-2 shipped
-`/api/forge/*` control-plane routes (#6770, `0254_forge_control_plane_receipts.sql`);
+shipped the separate `apps/forge/` shell (#6759, #6769). SU-2 shipped
+`/api/forge/*` control-plane routes (#6770, `0254_forge_control_plane_receipts.sql`).
 SU-3 git-intake wiring is filed as #6771.
 
 ### 1.2 The software-factory history (older, the product thesis)
@@ -128,23 +128,23 @@ plane, with a rich set of blitz-era features:
 - a canonical eight-stage **production line**: Signal → Triage → Code Gen →
   Validate → Release → Document → Monitor → Deploy, with run-states bucketed
   into stages and every number tagged `live` / `seeded`
-  (`docs/blitz/forge/2026-06-16-forge-factory-metric-definitions.md`);
+  (`docs/blitz/forge/2026-06-16-forge-factory-metric-definitions.md`).
 - **factory metrics**: throughput, stage throughput, cycle time, pass rate,
-  token efficiency, MTTR, backlog/queue-burn, week-over-week intake (same doc);
+  token efficiency, MTTR, backlog/queue-burn, week-over-week intake (same doc).
 - an **automations surface** — one automation per stage that creates a *real*
   work order via `POST /api/autopilot/work`
-  (`docs/blitz/forge/2026-06-16-forge-automations-surface.md`);
+  (`docs/blitz/forge/2026-06-16-forge-automations-surface.md`).
 - **per-vertical stage templates** (E-commerce, Legal, Marketing-Agency,
   General Knowledge-Work) that keep the same canonical stage *keys* while
   renaming the display per domain
   (`docs/blitz/forge/2026-06-16-per-vertical-forge-stage-templates.md`), with
   typed seeds in
-  `apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts`;
+  `apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.ts`.
 - **prefilled vertical workspaces** seeded as public-safe drafts plus a
   seed→invite→engagement loop
   (`docs/blitz/forge/2026-06-16-ecommerce-prefilled-workspace.md`,
   `…-legal-prefilled-workspace.md`, `…-marketing-agency-prefilled-workspace.md`,
-  `docs/blitz/forge/2026-06-16-workspace-seeding-invite-engagement.md`);
+  `docs/blitz/forge/2026-06-16-workspace-seeding-invite-engagement.md`).
 - **customer-one dogfood + cohort** instrumentation: a dogfood status strip, a
   spend-routing row (owned-Pylon vs fallback vs metered vs blocked), a Slack
   Connect business-intake form, and a refs-only, privacy-reviewed cohort
@@ -166,7 +166,7 @@ projections.
 The stand-up spec is explicit that the old `/forge` page is "historical source
 material … not the expansion target," and that the canonical UI is now the
 separate `apps/forge/` shell on `forge.openagents.com`
-(`docs/forge/2026-06-28-forge-standup-spec.md`, "Product/UI boundary";
+(`docs/forge/2026-06-28-forge-standup-spec.md`, "Product/UI boundary",
 `apps/forge/README.md`). So today there are literally **two Forge dashboards**:
 the factory dashboard (old, on the Autopilot Work control plane) and the
 coordination shell (new, on the coordination store). Treated as a contradiction,
@@ -184,15 +184,15 @@ lacked. The rest of this doc folds them together.
 | Question it answers | *How* does code move safely at arbitrary N? | *What* is the work, for whom, and is it trustworthy? |
 | Primary objects | work record, change record, NIP-34 status, dispatch lease, merge-queue ledger, verification receipt, promotion decision (`@openagentsinc/forge-protocol`, `forge-coordination-store.ts`) | Work Order, Run, Workspace, Knowledge Pack, Evidence Bundle, Verification Report, Delivery Receipt, Handoff (`products/forge.md` §5) |
 | Vocabulary | refs, packfiles, fast-forward, promotion, mirror | Signal/Triage/Code Gen/Validate/Release/Document/Monitor/Deploy, verticals, cohorts |
-| Authority | D1 source of truth; canonical git object/ref store; Blueprint-gated promotion | lifecycle truth above runtime; verification-before-delivery; customer/operator surfaces |
+| Authority | D1 source of truth. Canonical git object/ref store. Blueprint-gated promotion | lifecycle truth above runtime. Verification-before-delivery. Customer/operator surfaces |
 | Built today | FORGE-1..6, M0 queue/dispatch/coordinator, SU-1/1B shell, SU-2 routes | `/forge` factory dashboard, metrics, automations, vertical templates, prefilled workspaces, cohort ledger |
-| Still envisioned | SU-3..SU-8 (intake→merge authority→mirror→dogfood→multi-tenant), M3-M5 | re-homing onto the coordination store; durable Work Order/Run lifecycle on the new authority |
+| Still envisioned | SU-3..SU-8 (intake→merge authority→mirror→dogfood→multi-tenant), M3-M5 | re-homing onto the coordination store. Durable Work Order/Run lifecycle on the new authority |
 | Closest external analogue | Cursor **Origin** (owned forge) | **Linear** (product-context + agent-orchestration above code) |
 
 The decisive observation: **the factory's "stage" is a projection over the
 coordination layer's state, and the factory's "Work Order" is the human-facing
 name for the coordination layer's "work record."** They are the same objects at
-two altitudes. The factory layer adds *meaning, audience, and measurement*; the
+two altitudes. The factory layer adds *meaning, audience, and measurement*. The
 coordination layer adds *durable authority and arbitrary-N throughput*.
 
 ---
@@ -204,14 +204,14 @@ over coordination + verification + promotion state. The mapping:
 
 | Factory stage (`products/forge.md`, blitz stage templates) | Coordination-layer truth it projects | Stand-up step |
 |---|---|---|
-| **Signal** (intent enters) | `POST /api/forge/work-records` create; intake source refs | SU-2 |
-| **Triage** (scoped, prioritized, assigned) | work record scoped + `dispatch_lease` acquired; priority tier | SU-2, M1 (FORGE-2) |
+| **Signal** (intent enters) | `POST /api/forge/work-records` create. Intake source refs | SU-2 |
+| **Triage** (scoped, prioritized, assigned) | work record scoped + `dispatch_lease` acquired. Priority tier | SU-2, M1 (FORGE-2) |
 | **Code Gen** (artifact drafted) | dispatch protocol work-item → Pylon run → `git-receive-pack` intake → packfile archive → change record | SU-3 (FORGE-5/dispatch) |
 | **Validate** (checked vs criteria) | `forge-verification-runner` → `ForgeVerificationReceipt` | SU-5 |
 | **Release** (candidate accepted) | virtual-merge-queue `nextActualPromotion` + Blueprint gates → `ForgePromotionDecisionReceipt` | SU-4 |
 | **Deploy** (applied to target) | GitHub mirror worker fast-forwards promoted commit | SU-6 |
 | **Document** (made reusable) | evidence/handoff refs attached to the change record | (factory-owned) |
-| **Monitor** (outcomes/defects observed) | post-promotion signals; NIP-22/CI events as new work records | M4 (FORGE-14) |
+| **Monitor** (outcomes/defects observed) | post-promotion signals. NIP-22/CI events as new work records | M4 (FORGE-14) |
 
 Two structural facts make this a clean compose rather than a re-label:
 
@@ -252,11 +252,11 @@ flagged as fold-in (synergistic), keep-separate, or defer.
   rolled_back`) state machines are richer, more customer-legible versions of the
   coordination layer's work-record + status + promotion-decision rows. Fold the
   lifecycle *vocabulary and state tables* onto the coordination store as the
-  product-facing layer; do not build a second authority. This is the single
+  product-facing layer. Do not build a second authority. This is the single
   biggest unification.
 
 - **The eight-stage production line as the canonical read-model** (§3). It is the
-  human and customer mental model; the coordination layer is the proof. Keep the
+  human and customer mental model. The coordination layer is the proof. Keep the
   `live`/`seeded` honesty rule, now backed by real rows.
 
 - **Factory metrics on real coordination data.** Throughput, cycle time, pass
@@ -269,7 +269,7 @@ flagged as fold-in (synergistic), keep-separate, or defer.
 - **Verification as a ladder, not a boolean.** `products/forge.md` §8 already
   separates Evidence Bundle (what was collected) from Verification Report (the
   judgment). The coordination layer's `ForgeVerificationReceipt` is the machine
-  rung; Tassadar exact-replay is a stronger rung; model/second-agent/human review
+  rung. Tassadar exact-replay is a stronger rung. Model/second-agent/human review
   and owner acceptance are higher rungs
   (`docs/forge/2026-06-28-forge-cross-system-leverage.md` §Tassadar, synergy #3).
   Promotion should *name which rung* cleared it. This directly answers origin.md's
@@ -291,7 +291,7 @@ flagged as fold-in (synergistic), keep-separate, or defer.
   (FORGE-4) and per-tenant namespaces (SU-8 / FORGE-18, "Artanis-as-a-Service").
   A seeded vertical workspace becomes a Forge tenant whose work records flow
   through the same intake→verify→queue→promote pipeline. Verticals are the
-  product story; tenant namespaces are the mechanism.
+  product story. Tenant namespaces are the mechanism.
 
 - **Customer-#1 dogfood + cohort evidence as the proof harness.** The dogfood
   strip, spend-routing row, and refs-only cohort ledger
@@ -305,12 +305,12 @@ flagged as fold-in (synergistic), keep-separate, or defer.
   `/business` → `business_signup_requests` intake
   (`…-business-slack-connect-intake.md`) is a real Signal-stage source that
   produces work-record candidates with an explicit operator-handoff boundary.
-  Keep it; route its output into the coordination intake.
+  Keep it. Route its output into the coordination intake.
 
 ### 4.2 Keep separate — authority that must not collapse into the forge
 
 - **Money and settlement stay receipt-first.** `buyerDebitRequired` is placement
-  metadata, not proof a payment moved (`…-customer-one-spend-routing.md`); the
+  metadata, not proof a payment moved (`…-customer-one-spend-routing.md`). The
   factory may *display* spend routing but the durable payment/payout/settlement
   authority stays on the existing rails
   (`docs/forge/2026-06-28-forge-cross-system-leverage.md` §Payments, synergy #5).
@@ -318,14 +318,14 @@ flagged as fold-in (synergistic), keep-separate, or defer.
   fold, gated on the same receipts.
 
 - **Regulated-vertical authority.** The Legal template is explicitly
-  workflow-assistance, not legal counsel; jurisdiction-sensitive decisions route
+  workflow-assistance, not legal counsel. Jurisdiction-sensitive decisions route
   to a human (`…-per-vertical-forge-stage-templates.md`, "Legal Template" safety
   boundary). Folding the vertical in must not fold its authority in.
 
 - **Runtime vs lifecycle ownership.** `products/forge.md` §9 keeps Probe as the
   runtime/worker layer and Forge as lifecycle authority. The coordination layer
   preserves this: Pylon executes (`forge-dispatch-protocol.ts`,
-  `forge-verification-runner.ts`); D1 is authority. Do not let the factory layer
+  `forge-verification-runner.ts`). D1 is authority. Do not let the factory layer
   re-absorb runtime truth, and do not let the forge claim Psionic model-serving
   authority (synergy #6).
 
@@ -340,7 +340,7 @@ flagged as fold-in (synergistic), keep-separate, or defer.
   authority split in Cloudflare/Effect terms.
 
 - **"Nexus is not Forge authority"** (`products/forge.md` §10) is still true but
-  no longer load-bearing; Nexus is deprecated platform-wide.
+  no longer load-bearing. Nexus is deprecated platform-wide.
 
 ---
 
@@ -357,7 +357,7 @@ The factory fold is not a new track — it rides the existing SU-1..SU-8 stand-u
 - **SU-2 (control-plane routes, done).** `/api/forge/work-records`,
   `/changes`, `…/status`, `/leases`, `/queue`, `/verification-receipts`,
   `/promotion-decisions` exist. *Fold:* the automations surface and Signal-stage
-  intake (Slack Connect) write through `POST /api/forge/work-records`; carry
+  intake (Slack Connect) write through `POST /api/forge/work-records`. Carry
   `templateRef` + `stageKey` on the row.
 - **SU-3 (git intake → archive → canonical refs → coordination, #6771).** This is
   the **Code Gen** stage's authority: a real `git push` lands a packfile in R2,
@@ -366,7 +366,7 @@ The factory fold is not a new track — it rides the existing SU-1..SU-8 stand-u
   `nextActualPromotion` writing a `ForgePromotionDecisionReceipt`. Fold the
   Delivery-Receipt lifecycle vocabulary here.
 - **SU-5 (verification on intake).** This is **Validate** + the verification
-  ladder; Tassadar replay is the high-confidence rung.
+  ladder. Tassadar replay is the high-confidence rung.
 - **SU-6 (GitHub mirror worker).** This is **Deploy**: promoted commit appears on
   GitHub via mirror, not PR.
 - **SU-7 (dogfood one fleet lane).** This is the customer-#1 dogfood + cohort
@@ -402,7 +402,7 @@ the agent-era bottleneck ("generation got cheap, coordination got expensive"):
   agent-written code is judged against product intent"). This is OpenAgents'
   **software-factory layer**.
 
-Linear deliberately does *not* own the forge (GitHub stays its backend); Origin
+Linear deliberately does *not* own the forge (GitHub stays its backend). Origin
 deliberately does *not* own product context. **Forge's synthesis is to own
 both** — the coordination substrate *and* the work/triage/review/measure/deliver
 factory on top — plus a native economic loop neither has
@@ -431,8 +431,8 @@ safe at N.
 
 **Built and on `main` (coordination layer):** FORGE-1..6 (coordination store,
 git-receive-pack parser, packfile archive, tenant git auth, dispatch protocol,
-verification runner); M0 (virtual merge queue + gates, priority dispatch, fan-out
-coordinator); SU-0 boundary contract; SU-1/1B `apps/forge/` shell; SU-2
+verification runner). M0 (virtual merge queue + gates, priority dispatch, fan-out
+coordinator). SU-0 boundary contract. SU-1/1B `apps/forge/` shell. SU-2
 `/api/forge/*` routes + receipts migration.
 
 **Built but on the OLD authority (factory layer):** the `/forge` factory
@@ -444,18 +444,18 @@ stand-up spec calls source material, not the expansion target.
 
 **Envisioned (the fold):** SU-3..SU-8 (git intake → owned merge authority →
 verification on intake → GitHub mirror → dogfood → multi-tenant) and M3-M5
-(owned merge authority, relay sub-second fan-out, economic loop); and the
+(owned merge authority, relay sub-second fan-out, economic loop). And the
 unification that re-homes the factory read-model (stages, metrics, verticals,
 cohorts, automations) onto the coordination store's work-record/change/status/
 verification/promotion rows so there is one authority and one render.
 
 **Not yet anywhere:** a single Work Order whose full
 `products/forge.md` lifecycle (queue→lease→run→verify→deliver→archive) is backed
-end-to-end by the coordination store; durable Run recovery/handoff on the new
-authority; the economic bounty→settlement loop wired to receipts.
+end-to-end by the coordination store. Durable Run recovery/handoff on the new
+authority. The economic bounty→settlement loop wired to receipts.
 
 No production-data, secrets, tokens, or personal names are involved in any of the
-above; everything cited is public-safe code, migrations, and docs.
+above. Everything cited is public-safe code, migrations, and docs.
 
 ---
 
@@ -467,7 +467,7 @@ above; everything cited is public-safe code, migrations, and docs.
    verification-receipt / promotion-decision rows. Carry `templateRef` +
    canonical `stageKey` on the work record. This collapses the "two dashboards"
    problem, makes the `live`/`seeded` honesty automatic, and is the
-   cross-system-leverage doc's synergy #4. *Highest leverage; unblocks the rest.*
+   cross-system-leverage doc's synergy #4. *Highest leverage. Unblocks the rest.*
 
 2. **Adopt the Work Order / Delivery-Receipt lifecycle vocabulary as the
    product-facing layer over coordination rows.** Use `products/forge.md`'s
@@ -486,7 +486,7 @@ above; everything cited is public-safe code, migrations, and docs.
    cannot act without evidence.
 
 5. **Turn prefilled vertical workspaces into the multi-tenant on-ramp (SU-8).**
-   Vertical templates are the customer story; tenant-scoped git auth (FORGE-4) +
+   Vertical templates are the customer story. Tenant-scoped git auth (FORGE-4) +
    per-tenant namespaces (FORGE-18) are the mechanism. "Artanis-as-a-Service" is
    verticals on the owned coordination layer.
 
@@ -500,8 +500,8 @@ above; everything cited is public-safe code, migrations, and docs.
    collapse into the forge. The economic bounty→settlement loop is a *future*
    fold (M5/FORGE-17), gated on the same receipts.
 
-**The compose, in one line:** Origin gives us *where agent code lives*; Linear
-gives us *where agent code is judged against intent*; the historical
+**The compose, in one line:** Origin gives us *where agent code lives*. Linear
+gives us *where agent code is judged against intent*. The historical
 software-factory vision gives us *the lifecycle, the verticals, the metrics, and
 the customer*. Forge is all three on one owned, evidence-gated coordination layer
 — a git forge **and** a software factory.

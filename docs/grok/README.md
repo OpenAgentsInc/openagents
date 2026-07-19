@@ -45,7 +45,7 @@ CLI operator reference (separate folder): `docs/grok-cli/`.
    company brain, AI employees, credits, Khala Sync, Reactor, QA Swarm.
 4. **Prefer mechanisms over slogans.** If a claim only works as rhetoric,
    say so.
-5. **Sandbox, not policy.** Future Grok sessions append here freely;
+5. **Sandbox, not policy.** Future Grok sessions append here freely.
    promote ideas to issues/roadmaps only with deliberate ownership.
 
 ## Origin pass sources (high altitude)

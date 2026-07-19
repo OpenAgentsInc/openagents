@@ -1,7 +1,7 @@
 # IDAI -> OpenAgents Roadmap Alignment
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Core synthesis of the 43-area IDAI map against OpenAgents' real systems, framed
@@ -9,7 +9,7 @@ for **medium-term** prioritization. Postures: **ahead** (live, differentiated) /
 **on-par** (comparable to field) / **behind** (field ahead of us) / **absent**
 (effectively nothing yet). Timeframes: **now** (already in flight or trivially
 extendable) / **medium** (a quarter-ish of deliberate build) / **watch** (track
-the field, don't build yet).
+the field, do not build yet).
 
 Every row cites the source file as `idai/<area>.md` (in workspace
 `projects/idai/`).
@@ -18,49 +18,49 @@ Every row cites the source file as `idai/<area>.md` (in workspace
 
 | IDAI area | OpenAgents system / owner | Posture | Opportunity (what aligning buys us) | Timeframe | Suggested epic theme |
 | --- | --- | --- | --- | --- | --- |
-| ad-hoc-evaluation-of-agents | Gym + AgentCL + Khala coordinator selection | on-par | Reframe coordinator selection as query->agent recommendation (AgentSelect); fold tau-bench/SWE-bench/GAIA/WebArena into Gym envs | now/medium | Gym eval-ladder expansion |
-| agent-heterogeneity | Khala `ModelRouter` + provider fan-out + coordinator candidates | ahead | Make diversity an explicit selection objective (RMoA); X-MAS function-level model assignment; guard against quality-dilution | medium | Diversity-aware coordinator |
-| agent-routing | Khala `ModelRouter`/coordinator | on-par->ahead | Learn routing from our own verified-outcome traces (RouteLLM/RouterBench); expose Khala as a router product; Contract Net for Tassadar dispatch | medium | Learned routing from verified outcomes |
-| agentic-security | Pylon sandbox + cloud capability gateway + MCP gateway | behind | CaMeL control/data separation + Progent least-privilege on Pylon tool calls; run AgentDojo/InjecAgent in Gym | medium | Agent least-privilege + injection defense |
-| anomaly-drift-detection | Khala telemetry scorecard + Tassadar loop | behind | Graph-based anomaly detection (SentinelAgent) over Khala/Tassadar execution graphs; ADWIN/DDM drift gates on coordinator quality | medium | Fleet anomaly + drift gates |
-| automated-mechanism-design | Tassadar dispatch pricing + revshare + labor market | behind | Parametric/differentiable auction design for compute + labor; learn revshare splits instead of hand-tuning | watch->medium | Market mechanism search |
-| automated-protocol-design | A2A/MCP usage + Tassadar parity protocol | watch | Commitment-based protocols for labor negotiation; mostly track the field | watch | - |
-| capability-delegation-revocation | cloud capability gateway + Pylon capability envelope + Tassadar marketplace | behind | UCAN/Macaroon attenuated, revocable capability tokens for agent->Pylon->tool chains; auditable delegation | medium | Revocable capability chains |
-| collective-oversight | Forum moderation + validator replay + promise gates | on-par | Bridging-based ranking (Community Notes) for forum/agent reputation; digital-jury for disputed work acceptance | medium/watch | Bridging-based acceptance |
-| collusion-cartel-detection | Khala coordinator+validators + labor-market pricing | absent | Variance/structural screens on labor + Tassadar pricing; detect worker<->validator collusion | medium | Pricing + collusion screens |
-| compute-inference-markets | Tassadar marketplace + Pylon + Khala adapters + inference gateway | ahead | **Differentiated**: live Bitcoin/Lightning-settled inference market w/ replay floor; benchmark vs Akash/Gensyn/Bittensor | now | (claim) |
-| cooperative-agents | Khala `spawn` subagents + multi-agent coordination | on-par | Ad-hoc teamwork across owners; Melting Pot-style cooperation evals in Gym | medium/watch | Cross-owner cooperation evals |
-| correlated-failure-in-agent-networks | Khala provider/model diversity + validator panels | behind | Ensure verifier model family != worker; diversity metrics on verification panels ("nine judges, two votes") | medium | Verifier independence |
-| cross-agent-credit-assignment | revshare across coordinator/providers/plugins/contributors | behind | Shapley-style marginal-contribution revshare across the Khala chain; Data-Shapley for contributed traces | medium | Fair-attribution revshare |
-| decentralized-benchmarking | Gym + AgentCL + validator scoring | on-par->ahead | Attestable/verifiable benchmark execution (TEE or replay); Decentralized-Arena models-judge-models | medium | Verifiable benchmark execution |
+| ad-hoc-evaluation-of-agents | Gym + AgentCL + Khala coordinator selection | on-par | Reframe coordinator selection as query->agent recommendation (AgentSelect). Fold tau-bench/SWE-bench/GAIA/WebArena into Gym envs | now/medium | Gym eval-ladder expansion |
+| agent-heterogeneity | Khala `ModelRouter` + provider fan-out + coordinator candidates | ahead | Make diversity an explicit selection objective (RMoA). X-MAS function-level model assignment. Guard against quality-dilution | medium | Diversity-aware coordinator |
+| agent-routing | Khala `ModelRouter`/coordinator | on-par->ahead | Learn routing from our own verified-outcome traces (RouteLLM/RouterBench). Expose Khala as a router product. Contract Net for Tassadar dispatch | medium | Learned routing from verified outcomes |
+| agentic-security | Pylon sandbox + cloud capability gateway + MCP gateway | behind | CaMeL control/data separation + Progent least-privilege on Pylon tool calls. Run AgentDojo/InjecAgent in Gym | medium | Agent least-privilege + injection defense |
+| anomaly-drift-detection | Khala telemetry scorecard + Tassadar loop | behind | Graph-based anomaly detection (SentinelAgent) over Khala/Tassadar execution graphs. ADWIN/DDM drift gates on coordinator quality | medium | Fleet anomaly + drift gates |
+| automated-mechanism-design | Tassadar dispatch pricing + revshare + labor market | behind | Parametric/differentiable auction design for compute + labor. Learn revshare splits instead of hand-tuning | watch->medium | Market mechanism search |
+| automated-protocol-design | A2A/MCP usage + Tassadar parity protocol | watch | Commitment-based protocols for labor negotiation. Mostly track the field | watch | - |
+| capability-delegation-revocation | cloud capability gateway + Pylon capability envelope + Tassadar marketplace | behind | UCAN/Macaroon attenuated, revocable capability tokens for agent->Pylon->tool chains. Auditable delegation | medium | Revocable capability chains |
+| collective-oversight | Forum moderation + validator replay + promise gates | on-par | Bridging-based ranking (Community Notes) for forum/agent reputation. Digital-jury for disputed work acceptance | medium/watch | Bridging-based acceptance |
+| collusion-cartel-detection | Khala coordinator+validators + labor-market pricing | absent | Variance/structural screens on labor + Tassadar pricing. Detect worker<->validator collusion | medium | Pricing + collusion screens |
+| compute-inference-markets | Tassadar marketplace + Pylon + Khala adapters + inference gateway | ahead | **Differentiated**: live Bitcoin/Lightning-settled inference market w/ replay floor. Benchmark vs Akash/Gensyn/Bittensor | now | (claim) |
+| cooperative-agents | Khala `spawn` subagents + multi-agent coordination | on-par | Ad-hoc teamwork across owners. Melting Pot-style cooperation evals in Gym | medium/watch | Cross-owner cooperation evals |
+| correlated-failure-in-agent-networks | Khala provider/model diversity + validator panels | behind | Ensure verifier model family != worker. Diversity metrics on verification panels ("nine judges, two votes") | medium | Verifier independence |
+| cross-agent-credit-assignment | revshare across coordinator/providers/plugins/contributors | behind | Shapley-style marginal-contribution revshare across the Khala chain. Data-Shapley for contributed traces | medium | Fair-attribution revshare |
+| decentralized-benchmarking | Gym + AgentCL + validator scoring | on-par->ahead | Attestable/verifiable benchmark execution (TEE or replay). Decentralized-Arena models-judge-models | medium | Verifiable benchmark execution |
 | decentralized-data-sourcing | traces as data + Gym reward factory + contributor data | behind | Contributor trace -> training-data market with attribution/payment feeding Tassadar | medium/watch | Trace-to-training data market |
-| decentralized-governance | owner-gated decisions + promise engine | behind (by design) | Track DAO tooling; we are intentionally owner-led now | watch | - |
-| decentralized-post-training | Tassadar evolution loop + Blueprint/DSPy + GEPA/TextGrad | on-par->ahead | Federated prompt/program evolution over contributor traces (GEPA/FedTextGrad); mergeable artifacts | medium | Federated program evolution |
-| decentralized-serendipity | (privacy-preserving cross-party pattern discovery) | absent | Niche; track PETs/federated-analytics | watch | - |
-| decentralized-superalignment | validator/worker role separation + coordinator cross-check | on-par | Frame replay floor explicitly as AI-control (trusted verifier disciplines untrusted worker); add debate/multi-model cross-check | medium | AI-control framing of the floor |
-| decentralized-training | Tassadar run + DiLoCo (psionic; prime-diloco/templar refs) | behind (runs) / on-par (infra) | Real distributed-training milestone; honest direction-vs-shipped; SWARM/DiLoCo/Covenant-72B as references | medium | Distributed training milestone |
+| decentralized-governance | owner-gated decisions + promise engine | behind (by design) | Track DAO tooling. We are intentionally owner-led now | watch | - |
+| decentralized-post-training | Tassadar evolution loop + Blueprint/DSPy + GEPA/TextGrad | on-par->ahead | Federated prompt/program evolution over contributor traces (GEPA/FedTextGrad). Mergeable artifacts | medium | Federated program evolution |
+| decentralized-serendipity | (privacy-preserving cross-party pattern discovery) | absent | Niche. Track PETs/federated-analytics | watch | - |
+| decentralized-superalignment | validator/worker role separation + coordinator cross-check | on-par | Frame replay floor explicitly as AI-control (trusted verifier disciplines untrusted worker). Add debate/multi-model cross-check | medium | AI-control framing of the floor |
+| decentralized-training | Tassadar run + DiLoCo (psionic, prime-diloco/templar refs) | behind (runs) / on-par (infra) | Real distributed-training milestone. Honest direction-vs-shipped. SWARM/DiLoCo/Covenant-72B as references | medium | Distributed training milestone |
 | distillation-as-a-decentralization-lever | Khala teacher + psionic students | behind | Distill a Khala-routed teacher into an owned student for the floor / edge Pylons | medium/watch | Owned distilled floor model |
-| distributed-verified-agentic-systems | replay floor + Tassadar Verified/Rejected receipts + `/trace/{uuid}` | ahead | **Differentiated**: optimistic replay + Lightning settlement; add zkML/TEE attestation tier + opML fraud proofs for high-value work | now/medium | Verified-execution tiers |
-| emergent-steganographic-collusion | worker<->validator covert-coordination risk; CoT monitoring | absent | Paraphrasing defense + steganalysis on agent-to-agent channels; cross-model verifier | watch->medium | Covert-channel defense |
-| executor-auditability | Pylon executor traces + replay verification + RepOps-style reproducibility | ahead | **Differentiated**, but Proof-of-Sampling cheap audits + reproducible-ops needed before outsiders join; verifier's dilemma | medium | Cheap audits + RepOps |
+| distributed-verified-agentic-systems | replay floor + Tassadar Verified/Rejected receipts + `/trace/{uuid}` | ahead | **Differentiated**: optimistic replay + Lightning settlement. Add zkML/TEE attestation tier + opML fraud proofs for high-value work | now/medium | Verified-execution tiers |
+| emergent-steganographic-collusion | worker<->validator covert-coordination risk. CoT monitoring | absent | Paraphrasing defense + steganalysis on agent-to-agent channels. Cross-model verifier | watch->medium | Covert-channel defense |
+| executor-auditability | Pylon executor traces + replay verification + RepOps-style reproducibility | ahead | **Differentiated**, but Proof-of-Sampling cheap audits + reproducible-ops needed before outsiders join. Verifier's dilemma | medium | Cheap audits + RepOps |
 | exit-rights-forking-as-safety | open protocols + OpenAI-compatible API = exit right | on-par | Make exit/forking explicit: data export, model portability, no lock-in as a feature/narrative | medium/watch | Portability-as-a-feature |
-| human-empowerment-in-agent-interactions | owner review post-hoc + default-yes autonomy + Autopilot gates | on-par | HumanAgencyBench-style eval in Gym; approval-gate UX (Magentic-UI patterns) | medium/watch | Agency-support evals |
-| kill-switch-modes-recovery | Pylon quarantine + agent pause + cloud node update/quarantine | on-par->behind | Graceful-halt + checkpoint/rollback for Khala durable streams + Tassadar loop; pause-guardian + safe-interruptibility | medium | Graceful halt + recovery |
+| human-empowerment-in-agent-interactions | owner review post-hoc + default-yes autonomy + Autopilot gates | on-par | HumanAgencyBench-style eval in Gym. Approval-gate UX (Magentic-UI patterns) | medium/watch | Agency-support evals |
+| kill-switch-modes-recovery | Pylon quarantine + agent pause + cloud node update/quarantine | on-par->behind | Graceful-halt + checkpoint/rollback for Khala durable streams + Tassadar loop. Pause-guardian + safe-interruptibility | medium | Graceful halt + recovery |
 | legal-grounding-for-decentralized-ai | legal/privacy docs + entity | behind | Legal wrapper for the agent economy / payouts (DUNA/LLC, DAO Model Law) | watch | - |
-| multi-agent-interpretability | telemetry + traces + observability | behind | Delegation-scoped observability model; eBPF (AgentSight) system-level tracing on Pylons | medium | Delegation-scoped observability |
-| new-use-cases-for-decentralized-ai | autonomous QA + Khala chat + labor market | ahead | Shipping real use cases; mine the taxonomy (Vitalik crypto+AI) for the next wedge | watch | (claim) |
-| open-agent-telemetry | `openagents.khala.telemetry.v1` schema | behind (standards) | Emit OpenTelemetry-GenAI-compatible spans so traces interoperate; cheap, high interop leverage | medium | OTel-GenAI trace interop |
+| multi-agent-interpretability | telemetry + traces + observability | behind | Delegation-scoped observability model. EBPF (AgentSight) system-level tracing on Pylons | medium | Delegation-scoped observability |
+| new-use-cases-for-decentralized-ai | autonomous QA + Khala chat + labor market | ahead | Shipping real use cases. Mine the taxonomy (Vitalik crypto+AI) for the next wedge | watch | (claim) |
+| open-agent-telemetry | `openagents.khala.telemetry.v1` schema | behind (standards) | Emit OpenTelemetry-GenAI-compatible spans so traces interoperate. Cheap, high interop leverage | medium | OTel-GenAI trace interop |
 | policy-to-constraints | Blueprint typed programs + promise engine + capability envelope + no-resale | on-par | Compile owner policy (no-resale, spend limits) into enforced Cedar/Rego-style constraints + symbolic guardrails | medium | Policy-to-enforced-constraint |
-| power-concentration-in-decentralized-ai | anti-concentration thesis (open protocols) | on-par (narrative) | Track SoK DeAI / compute-governance; measure our own concentration honestly | watch | - |
-| privacy-preserving-computation | confidential-compute docs + TEE on Pylon | behind | TEE attestation for private inference (ties to verified-execution tier); FHE/MPC track | medium/watch | Confidential inference tier |
-| proof-of-humanity | Forum web-of-trust + owner claims | behind | Personhood credentials to gate human-only vs agent participation; pairs with sybil resistance | medium | Personhood gating |
-| safety-economics | promise engine + settlement + verified-work payment economics | ahead | **Differentiated**: our trace+replay IS the substrate for trace-economic underwriting; price risk / warrant accepted outcomes | medium | Trace-economic underwriting |
-| speculative-execution-for-agentic-ai | Khala speculation telemetry (book p1-8) + coordinator | on-par->ahead | Speculative tool execution (PASTE/Speculative Actions) to cut Khala agent latency; tool cache API | medium | Speculative tool execution |
-| supercollaboration | collective-intelligence economy + Khala spawn + forum | on-par | Track Polis/Unanimous; structure crowds-as-orgs for complex labor jobs (Flash Orgs) | watch/medium | - |
-| superconsensus | bridging + collective input + owner decision | watch | Bridging-based acceptance for disputed verification; collective input into Khala policy | watch | - |
-| sybil-resistance-for-agents | Forum/labor/Pylon registration | absent | TraceRank/EigenTrust payment-graph reputation; sybil-proof accounting (cost-to-fake = real verified work); ERC-8004 interop | medium | Sybil-proof reputation |
-| trust-reputation-in-agentic-ai | trace->reputation + validator scoring + forum reputation | on-par->behind | **Differentiable**: reputation grounded in replay-verified outcomes (not self-reported reviews); portable agent reputation | medium | Verified-outcome reputation |
-| universal-interoperability | OpenAI-compatible API + MCP infra + A2A | ahead | Add A2A endpoint so cross-vendor agents can hire Khala; expose MCP servers; claim OpenAI-compat + MCP | now/medium | A2A endpoint for Khala |
+| power-concentration-in-decentralized-ai | anti-concentration thesis (open protocols) | on-par (narrative) | Track SoK DeAI / compute-governance. Measure our own concentration honestly | watch | - |
+| privacy-preserving-computation | confidential-compute docs + TEE on Pylon | behind | TEE attestation for private inference (ties to verified-execution tier). FHE/MPC track | medium/watch | Confidential inference tier |
+| proof-of-humanity | Forum web-of-trust + owner claims | behind | Personhood credentials to gate human-only vs agent participation. Pairs with sybil resistance | medium | Personhood gating |
+| safety-economics | promise engine + settlement + verified-work payment economics | ahead | **Differentiated**: our trace+replay IS the substrate for trace-economic underwriting. Price risk / warrant accepted outcomes | medium | Trace-economic underwriting |
+| speculative-execution-for-agentic-ai | Khala speculation telemetry (book p1-8) + coordinator | on-par->ahead | Speculative tool execution (PASTE/Speculative Actions) to cut Khala agent latency. Tool cache API | medium | Speculative tool execution |
+| supercollaboration | collective-intelligence economy + Khala spawn + forum | on-par | Track Polis/Unanimous. Structure crowds-as-orgs for complex labor jobs (Flash Orgs) | watch/medium | - |
+| superconsensus | bridging + collective input + owner decision | watch | Bridging-based acceptance for disputed verification. Collective input into Khala policy | watch | - |
+| sybil-resistance-for-agents | Forum/labor/Pylon registration | absent | TraceRank/EigenTrust payment-graph reputation. Sybil-proof accounting (cost-to-fake = real verified work). ERC-8004 interop | medium | Sybil-proof reputation |
+| trust-reputation-in-agentic-ai | trace->reputation + validator scoring + forum reputation | on-par->behind | **Differentiable**: reputation grounded in replay-verified outcomes (not self-reported reviews). Portable agent reputation | medium | Verified-outcome reputation |
+| universal-interoperability | OpenAI-compatible API + MCP infra + A2A | ahead | Add A2A endpoint so cross-vendor agents can hire Khala. Expose MCP servers. Claim OpenAI-compat + MCP | now/medium | A2A endpoint for Khala |
 
 ## Medium-term priorities (the highest-leverage alignments)
 
@@ -80,7 +80,7 @@ already vulnerable to coordinated Sybil feedback. Our reputation is grounded in
 good reputation is the cost to actually do verified work — a structurally
 stronger Sybil defense.
 **What we'd build:** a payment-graph reputation score (TraceRank/EigenTrust over
-the trace->payout graph; `idai/sybil-resistance-for-agents.md`) for every Pylon,
+the trace->payout graph. `idai/sybil-resistance-for-agents.md`) for every Pylon,
 coordinator, plugin, and forum agent, with sybil-proof accounting properties
 (`idai/sybil-resistance-for-agents.md` Friedman/Seuken/Parkes) and optional
 ERC-8004 interop for portability (`idai/trust-reputation-in-agentic-ai.md`).
@@ -94,7 +94,7 @@ Automation Becomes Profitable: ... Trace-Economic Underwriting" — maps agent
 tool-use **traces** to customer exposure, claimable loss, pricing, and controls.
 We already produce exactly that substrate (`/trace/{uuid}` + replay verdicts +
 settlement). AIUC, Armilla, and Munich Re are building agent insurance *without*
-this data; we have it natively.
+this data. We have it natively.
 **What we'd build:** price work-risk and offer **warranties on accepted
 outcomes** — a verified-outcome SLA / refund-on-rejection product riding the
 existing metering/settlement spine. Turns the verification floor into a revenue
@@ -116,7 +116,7 @@ prerequisite safety control before any outside agent can drive our executors.
 **Why us:** the Khala chain already splits Bitcoin revshare across coordinator,
 providers, plugins, and contributors, but attribution is coarse. `idai/cross-
 agent-credit-assignment.md` (Shapley value, Data Shapley, Shapley-Coop) gives the
-fair-allocation primitives; Kite AI / OpenLedger / Allora are commercializing it.
+fair-allocation primitives. Kite AI / OpenLedger / Allora are commercializing it.
 **What we'd build:** marginal-contribution (Shapley-approx) revshare across the
 chain, and Data-Shapley valuation for contributed traces that feed Gym/Tassadar.
 Makes the economy provably fair — load-bearing for legitimacy as it scales.
@@ -127,7 +127,7 @@ Makes the economy provably fair — load-bearing for legitimacy as it scales.
 **Why us:** our replay-verification floor is only as strong as the *independence*
 of the verifier. `idai/correlated-failure-in-agent-networks.md` ("Correlated
 Errors in LLMs", "Nine Judges, Two Effective Votes") shows nominally-diverse
-models fail together; if the validator shares the worker's model family, the
+models fail together. If the validator shares the worker's model family, the
 floor silently weakens, and worker<->validator collusion
 (`idai/collusion-cartel-detection.md`, `idai/emergent-steganographic-
 collusion.md`) becomes possible.
@@ -153,9 +153,9 @@ interoperability and oversight leverage.
 ### 7. Learned routing from verified outcomes (Khala as a router product)
 **Areas:** `agent-routing`, `agent-heterogeneity`.
 **Why us:** Martian/OpenRouter/Not Diamond/Unify route on benchmarks or
-preference data; we have something better — **our own verified-outcome traces**
+preference data. We have something better — **our own verified-outcome traces**
 (executed verdict + cost-per-accepted-outcome). `idai/agent-routing.md`
-(RouteLLM/RouterBench) is the method; `idai/agent-heterogeneity.md` (RMoA,
+(RouteLLM/RouterBench) is the method. `idai/agent-heterogeneity.md` (RMoA,
 X-MAS) is the diversity objective.
 **What we'd build:** train a Khala router from verified-outcome traces, with
 explicit diversity selection, and expose Khala itself as a routing product. Turns
@@ -170,8 +170,8 @@ sandboxing but not design-level injection defense, and we have Blueprint typed
 programs that are a natural home for enforced policy
 (`idai/policy-to-constraints.md`: Cedar, Prose2Policy, symbolic guardrails).
 **What we'd build:** CaMeL-style control/data-flow separation + Progent
-least-privilege on Pylon tool calls; compile owner policy (no-resale, spend
-limits) into enforced constraints; run AgentDojo/InjecAgent as Gym environments.
+least-privilege on Pylon tool calls. Compile owner policy (no-resale, spend
+limits) into enforced constraints. Run AgentDojo/InjecAgent as Gym environments.
 
 ### 9. Graceful halt + checkpoint recovery (kill-switch)
 **Area:** `kill-switch-modes-recovery`.
@@ -208,7 +208,7 @@ standard out."
 
 - **Compute & inference markets** (`idai/compute-inference-markets.md`): a *live*
   inference market settled in Bitcoin/Lightning with a replay-verification floor.
-  Akash/Vast/Gensyn/io.net/Bittensor are the comparables; few combine a working
+  Akash/Vast/Gensyn/io.net/Bittensor are the comparables. Few combine a working
   market with verified execution *and* fiat-grade settlement.
 - **Distributed, verified agentic systems** (`idai/distributed-verified-agentic-
   systems.md`) + **executor-auditability** (`idai/executor-auditability.md`):
@@ -248,7 +248,7 @@ market opens to outsiders:
   an unbounded-authority risk. Mitigated by #3 and #8.
 - **Executor-auditability at scale** (`idai/executor-auditability.md`): the
   verifier's dilemma means we cannot afford to fully re-verify every job once
-  volume grows; we need cheap sampling audits (Proof-of-Sampling) and reproducible
+  volume grows. We need cheap sampling audits (Proof-of-Sampling) and reproducible
   ops before outsiders execute. Mitigated by #1 (audit tooling) + a sampling tier.
 - **Kill-switch / recovery** (`idai/kill-switch-modes-recovery.md`): default-yes
   autonomy without graceful halt + rollback risks corrupting shared state.
@@ -256,10 +256,10 @@ market opens to outsiders:
 
 ## Notable companies / projects per area worth tracking or learning from
 
-(Concrete actors pulled from the IDAI files; learn-from, do not vendor.)
+(Concrete actors pulled from the IDAI files, learn-from, do not vendor.)
 
 - **Routing & heterogeneity:** Martian (RouterBench), OpenRouter, Not Diamond,
-  Unify, Katanemo Arch-Router, AGNTCY Agent Directory, LMSYS RouteLLM; Together AI
+  Unify, Katanemo Arch-Router, AGNTCY Agent Directory, LMSYS RouteLLM. Together AI
   Mixture-of-Agents. (`idai/agent-routing.md`, `idai/agent-heterogeneity.md`)
 - **Compute/inference & verified execution:** Akash, Vast.ai, Gensyn (Verde),
   io.net, Bittensor/OpenTensor, Ritual, ORA (opML), Phala (TEE), EZKL/Lagrange
@@ -271,7 +271,7 @@ market opens to outsiders:
 - **Safety-economics / insurance:** AIUC (AIUC-1), Armilla, Munich Re (aiSure),
   Testudo, Relm, METR (evals as underwriting input). (`idai/safety-economics.md`)
 - **Agent security:** Invariant Labs (CaMeL), Lakera, Straiker, Zenity, Prompt
-  Security; OWASP Agentic, CSA MAESTRO, MITRE ATLAS. (`idai/agentic-security.md`)
+  Security. OWASP Agentic, CSA MAESTRO, MITRE ATLAS. (`idai/agentic-security.md`)
 - **Telemetry / observability:** Traceloop (OpenLLMetry), Arize (Phoenix/
   OpenInference), Langfuse, AgentOps, AGNTCY, OTel GenAI conventions.
   (`idai/open-agent-telemetry.md`, `idai/multi-agent-interpretability.md`,
@@ -283,17 +283,17 @@ market opens to outsiders:
   Gensyn, Flower (federated), Hivemind/Petals. (`idai/decentralized-training.md`,
   `idai/decentralized-post-training.md`) — several already in our `projects/`
   reference lanes (prime-diloco, covenant/templar, nous, pluralis).
-- **Eval / benchmarking:** Braintrust, LangSmith, Patronus, Arize Phoenix; ORO
-  (Bittensor), MLCommons (MedPerf), OpenMined; SWE-bench/tau-bench/GAIA/WebArena.
+- **Eval / benchmarking:** Braintrust, LangSmith, Patronus, Arize Phoenix. ORO
+  (Bittensor), MLCommons (MedPerf), OpenMined. SWE-bench/tau-bench/GAIA/WebArena.
   (`idai/ad-hoc-evaluation-of-agents.md`, `idai/decentralized-benchmarking.md`)
 - **Interoperability:** Anthropic (MCP), Google (A2A), IBM (ACP/BeeAI), Cisco
   (AGNTCY), Linux Foundation Agentic AI Foundation. (`idai/universal-
   interoperability.md`)
-- **Credit assignment / mechanism design:** Kite AI, OpenLedger, Allora; the AI
+- **Credit assignment / mechanism design:** Kite AI, OpenLedger, Allora. The AI
   Economist, RegretNet/differentiable economics. (`idai/cross-agent-credit-
   assignment.md`, `idai/automated-mechanism-design.md`)
 - **Personhood / governance / oversight:** World/Tools for Humanity, BrightID,
-  Holonym, Proof of Humanity; Kleros, Community Notes (bridging), PolicyKit;
+  Holonym, Proof of Humanity. Kleros, Community Notes (bridging), PolicyKit.
   Habermas Machine, Polis, Collective Constitutional AI. (`idai/proof-of-
   humanity.md`, `idai/collective-oversight.md`, `idai/superconsensus.md`)
 
@@ -303,7 +303,7 @@ Not filed. Titles + one-line scope for medium-term incorporation.
 
 1. **Verified-trace reputation + Sybil-proof accounting** — payment-graph
    reputation (TraceRank/EigenTrust) for Pylons/coordinators/plugins/agents,
-   grounded in replay-verified work; optional ERC-8004 interop.
+   grounded in replay-verified work. Optional ERC-8004 interop.
 2. **Trace-economic underwriting / verified-outcome warranties** — price work
    risk and offer refund-on-rejection / SLA on accepted outcomes over the
    existing metering+settlement spine.
@@ -315,18 +315,18 @@ Not filed. Titles + one-line scope for medium-term incorporation.
    family, measure verification-panel effective-independence, variance/structural
    pricing screens, paraphrasing defense on agent channels.
 6. **OTel-GenAI trace interop + delegation-scoped observability** — emit
-   OpenTelemetry GenAI spans from Khala; add a delegation information model and
+   OpenTelemetry GenAI spans from Khala. Add a delegation information model and
    graph/drift anomaly gates.
 7. **Learned Khala routing from verified outcomes** — train + serve a routing
-   policy from executed-verdict/cost traces with explicit diversity selection;
+   policy from executed-verdict/cost traces with explicit diversity selection.
    expose Khala as a router.
 8. **Pylon least-privilege + injection defense** — CaMeL/Progent-style control on
-   tool calls; AgentDojo/InjecAgent as Gym environments; policy-to-constraint
+   tool calls. AgentDojo/InjecAgent as Gym environments. Policy-to-constraint
    compilation (Cedar/Rego) for owner policy.
 9. **Graceful halt + checkpoint recovery** — consistent checkpoint/rollback +
    pause-guardian for the Tassadar evolution loop and Khala durable streams.
 10. **A2A endpoint for Khala + MCP exposure** — capability-card + task endpoint so
-    cross-vendor agents can hire Khala; "no lock-in" interop narrative.
+    cross-vendor agents can hire Khala. "No lock-in" interop narrative.
 11. **Verifiable/attestable Gym runs** — TEE- or replay-attested benchmark
     execution so Gym verdicts are independently checkable.
 12. **Federated program evolution** — GEPA/TextGrad/FedTextGrad over contributor

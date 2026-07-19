@@ -2,8 +2,8 @@
 
 > **Historical bootstrap note (#8591).** Kept for archaeology and ops memory.
 > Active Cloud implementation is in the public monorepo (`crates/*`,
-> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync;
-> **Treasury product** → Worker credits + MDK/Nexus payout bridge only;
+> `docs/cloud/`). Deprecated authority names: **Vortex** → Worker/Khala Sync.
+> **Treasury product** → Worker credits + MDK/Nexus payout bridge only.
 > **Nexus-as-registry** → Worker/Khala Sync (CLI may still say `nexus`).
 > Do not treat this note as current product-authority ownership.
 
@@ -56,14 +56,14 @@ scripts/gcp-node-workroom-smoke.sh \
 
 The remote script:
 
-1. creates `/var/lib/openagents/workrooms/smoke-<env>`;
-2. writes a bounded summary artifact;
-3. runs `oa-workroomd metadata init`;
-4. requires the `summary` artifact;
-5. runs lifecycle `create` and `start`;
-6. uploads the summary artifact;
-7. submits closeout;
-8. emits lifecycle `closeout`, `archive`, and `destroy` receipts;
+1. creates `/var/lib/openagents/workrooms/smoke-<env>`.
+2. writes a bounded summary artifact.
+3. runs `oa-workroomd metadata init`.
+4. requires the `summary` artifact.
+5. runs lifecycle `create` and `start`.
+6. uploads the summary artifact.
+7. submits closeout.
+8. emits lifecycle `closeout`, `archive`, and `destroy` receipts.
 9. prints recent `openagents-oa-node` logs.
 
 ## Boundary

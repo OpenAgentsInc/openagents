@@ -65,11 +65,11 @@ changing deployment authority.
 
 Saving a builder candidate:
 
-- creates a `site_versions` row with `build_status = 'saved'`;
+- creates a `site_versions` row with `build_status = 'saved'`.
 - writes source, build log, worker, and manifest artifacts through the existing
-  R2 artifact store;
-- records `site_version.saved` in the Site event ledger;
-- records a `save_requested` builder-session event visible to the customer;
+  R2 artifact store.
+- records `site_version.saved` in the Site event ledger.
+- records a `save_requested` builder-session event visible to the customer.
 - does not create or activate a `site_deployments` row.
 
 Deployment remains a separate reviewed action. A saved builder candidate can be

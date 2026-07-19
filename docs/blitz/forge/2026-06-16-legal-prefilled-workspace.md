@@ -40,7 +40,7 @@ The template seeds only public-safe facts:
 - Starter accepted outcome: forms/intake copilot for an NDA-style draft packet,
   review checklist, source-linked assumptions, suggested time entry, and explicit
   human-review gate.
-- Legal safety boundary: workflow assistance only; no legal advice, no
+- Legal safety boundary: workflow assistance only. No legal advice, no
   rights-impacting decisions, and no implied attorney review.
 - Matter Signal input: intake form, document upload, client question, deadline,
   or workflow request, carrying requester state, confidentiality class, and
@@ -92,8 +92,8 @@ The implementation is covered by
 `apps/openagents.com/workers/api/src/prefilled-workspace-vertical-templates.test.ts`.
 The tests verify that the template:
 
-- produces a valid draft `CreatePrefilledWorkspaceInput`;
-- preserves the canonical Forge stage keys;
+- produces a valid draft `CreatePrefilledWorkspaceInput`.
+- preserves the canonical Forge stage keys.
 - carries the requested NDA/intake, review checklist, source-link, suggested
-  time-entry, human-review, and no-legal-advice gates; and
+  time-entry, human-review, and no-legal-advice gates. And
 - backs every seeded-memory fact with a public source reference.

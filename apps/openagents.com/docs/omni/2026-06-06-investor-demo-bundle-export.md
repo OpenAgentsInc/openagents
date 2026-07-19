@@ -21,10 +21,10 @@ Implementation:
 
 The bundle is assembled from already-redacted projection surfaces:
 
-- public proof bundle summaries;
-- route scorecard summaries;
-- investor outcome economics metrics;
-- Pylon capacity funnel accounting; and
+- public proof bundle summaries.
+- route scorecard summaries.
+- investor outcome economics metrics.
+- Pylon capacity funnel accounting. And
 - accepted outcomes per power productivity metrics.
 
 The export adds a bundle title, source refs, caveat refs, target audience, and
@@ -34,18 +34,18 @@ generated time. Raw source data remains outside the bundle.
 
 Each export receives a readiness label:
 
-- `ready`: enough public-safe evidence exists for the current bundle;
+- `ready`: enough public-safe evidence exists for the current bundle.
 - `needs_evidence`: the bundle can be shown internally but has missing
-  evidence; or
+  evidence. Or
 - `blocked`: a proof bundle or economics projection contains an explicit
   blocker.
 
 The bundle also emits section states for:
 
-- proof bundles;
-- route scorecards;
-- outcome economics;
-- capacity funnel; and
+- proof bundles.
+- route scorecards.
+- outcome economics.
+- capacity funnel. And
 - power productivity.
 
 Sections can be `complete`, `partial`, `missing`, or `blocked`.
@@ -57,14 +57,14 @@ projection is modeled, stale, unpaid, unsettled, or not ready.
 
 Current missing-evidence kinds are:
 
-- accepted revenue;
-- capacity funnel rows;
-- fresh capacity rows;
-- measured power evidence;
-- power-linked settlement receipt;
-- ready public proof bundle;
-- provider settlement receipt;
-- successful route scorecard; and
+- accepted revenue.
+- capacity funnel rows.
+- fresh capacity rows.
+- measured power evidence.
+- power-linked settlement receipt.
+- ready public proof bundle.
+- provider settlement receipt.
+- successful route scorecard. And
 - visible capacity settlement receipt.
 
 Each item includes a public-safe reason ref and a required-for ref so the next
@@ -74,20 +74,20 @@ operator, agent, or workroom can understand what must be fixed before sharing.
 
 The export keeps settlement labels separate:
 
-- economics revenue state;
-- provider settlement state;
-- refund state;
-- power settlement state; and
+- economics revenue state.
+- provider settlement state.
+- refund state.
+- power settlement state. And
 - visible capacity settlement receipt counts.
 
 The presence of a settlement label or ref never grants settlement mutation
 authority. The bundle authority requires:
 
-- no download-route mutation;
-- no investor-share mutation;
-- no live wallet spend;
-- no public claim upgrade;
-- no raw data copy; and
+- no download-route mutation.
+- no investor-share mutation.
+- no live wallet spend.
+- no public claim upgrade.
+- no raw data copy. And
 - no settlement mutation.
 
 ## Redaction
@@ -95,11 +95,11 @@ authority. The bundle authority requires:
 The export rejects or redacts:
 
 - private customer, provider, wallet, payment, payout, invoice, trading, and
-  secret-shaped material;
+  secret-shaped material.
 - raw export, raw market, raw energy, raw meter, raw telemetry, raw runner, raw
-  prompt, raw source archive, and raw webhook refs;
-- private repository refs;
-- raw timestamps; and
+  prompt, raw source archive, and raw webhook refs.
+- private repository refs.
+- raw timestamps. And
 - audience-inappropriate private refs.
 
 Public and investor projections are safe to review because private refs are
@@ -110,8 +110,8 @@ anything that survived accidentally.
 
 The bundle should be reviewed before investor or public sharing when:
 
-- readiness is not `ready`;
-- the bundle still carries a no-settlement-implication proof caveat; or
+- readiness is not `ready`.
+- the bundle still carries a no-settlement-implication proof caveat. Or
 - a human operator has not inspected the source changes, receipts, and caveats.
 
 This keeps the demo useful while preserving the distinction between a strong
@@ -121,9 +121,9 @@ proof bundle and a final legal/financial disclosure.
 
 Coverage includes:
 
-- ready bundle assembly;
-- missing evidence instead of overclaiming;
-- public/investor redaction;
-- blocker, claim-state, and settlement gap visibility; and
+- ready bundle assembly.
+- missing evidence instead of overclaiming.
+- public/investor redaction.
+- blocker, claim-state, and settlement gap visibility. And
 - unsafe source, route, proof, payment, wallet, raw data, secret, timestamp, and
   title rejection.

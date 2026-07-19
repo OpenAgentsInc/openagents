@@ -27,13 +27,13 @@ now rather than aspirational.
 ## The six categories, in attack order
 
 Ordering logic: (1) zero-dependency work first — it costs nothing and some
-of it widens the counterparty funnel everything else needs; (2) owner
-authorizations next — minutes of effort, each unlocking a chain; (3) the
+of it widens the counterparty funnel everything else needs. (2) Owner
+authorizations next — minutes of effort, each unlocking a chain. (3) The
 first-receipt proofs — now affordable and administrable through the spend
-envelope, and the single biggest mass of red-promise closes; (4) fleet
-scale, which the receipts and the training program both need; (5) the
+envelope, and the single biggest mass of red-promise closes. (4) Fleet
+scale, which the receipts and the training program both need. (5) The
 training program, the long pole, deliberately sequenced after GEPA by owner
-decision; (6) sweeps and epics, which close themselves as their parents do.
+decision. (6) Sweeps and epics, which close themselves as their parents do.
 
 ---
 
@@ -47,15 +47,15 @@ tooling).
 
 | Issue | What it is | Why it matters beyond itself |
 | --- | --- | --- |
-| #4735 | pylon-stats counters contradict their own sample rows (5-min vs 24-h windows) — false dead-network signal | Every arriving agent and contributor reads this surface first; it currently says the network is dead while three Pylons are online |
-| #4734 | Public API refs look like credentials to agent-side secret scanners and get silently redacted | External agents literally cannot quote our receipts; breaks the evidence culture for the exact audience we want auditing us |
+| #4735 | pylon-stats counters contradict their own sample rows (5-min vs 24-h windows) — false dead-network signal | Every arriving agent and contributor reads this surface first. It currently says the network is dead while three Pylons are online |
+| #4734 | Public API refs look like credentials to agent-side secret scanners and get silently redacted | External agents literally cannot quote our receipts. Breaks the evidence culture for the exact audience we want auditing us |
 
 **Pull-forward candidate:** #4677 (public run pages replacing the dead
 `/training/runs` SPA shell) lives in the training cluster (Category 5) but
 is pure projection work with no fleet or spend dependency. Doing it early
 gives the training program a public face before the program itself runs.
 
-**Cost:** hours. **Closes:** 2–3 issues directly; repairs the front door
+**Cost:** hours. **Closes:** 2–3 issues directly. Repairs the front door
 for everything else.
 
 ---
@@ -68,10 +68,10 @@ eleven-oldest audit priced these at "minutes of owner action each."
 
 | Issue | Owner action needed | What it unlocks |
 | --- | --- | --- |
-| #4654 | npm publish credential for `@openagentsinc/pylon` + workspace deps (title now says it: "owner action; CI gate itself is done") | → #4662 stable 0.3.0 release → #4663 release-cluster sweep → flips `pylon.v03_release_candidate.v1` and `pylon.release_tomorrow.v1` toward green |
+| #4654 | npm publish credential for `@openagentsinc/pylon` + workspace deps (title now says it: "owner action, CI gate itself is done") | → #4662 stable 0.3.0 release → #4663 release-cluster sweep → flips `pylon.v03_release_candidate.v1` and `pylon.release_tomorrow.v1` toward green |
 | #4658 | `live_small_sats` spend authorization for the install-to-bitcoin smoke on a real machine | Clears the last blocker chain on `pylon.install_without_wallet_knowledge.v1` (red) |
 | #4653 | MDK provider-side webhook/event config | Tips webhook live callback + refund/reversal → `forum.content_tipping.v1` yellow→green |
-| #4700 | Set `WITHDRAWAL_DESTINATION` so MDK revenue payouts fund the campaign treasury | Standing treasury refill loop; removes ad-hoc funding from the payout path |
+| #4700 | Set `WITHDRAWAL_DESTINATION` so MDK revenue payouts fund the campaign treasury | Standing treasury refill loop. Removes ad-hoc funding from the payout path |
 
 | Downstream | |
 | --- | --- |
@@ -100,18 +100,18 @@ Recommended internal order (each step reuses the previous step's proof):
 
 | Order | Issue | The receipt needed | Notes |
 | --- | --- | --- | --- |
-| 3a | #4641 | Live paid kind-5050 compute smoke | Cheapest; fleet is online; clears `compute_stream_not_broadly_live` |
-| 3b | #4642 | One paid GEPA settlement | Endpoint-smoke blocker already cleared (commit `375ef501e`); only the paid leg remains |
-| 3c | #4732 | **The labor demonstration**: first negotiated, escrowed, executed, accepted, settled labor job with public receipts | Highest leverage single issue on the board — advances all three `labor.*` promises, `provider.compliant_usage_labor.v1`, and #4648 simultaneously; the Claude bridge (#4717) gives the provider its engine |
-| 3d | #4648 | First paid overnight labor job on a contributor's own agent | Likely closes with or immediately after 3c; needs the independent contributor — recruit from the intro threads |
-| 3e | #4645 | First settled dataset sale (public-safe redacted conversation bundle) | Needs one buyer; small sats |
-| 3f | #4651 | First settled referral payout | Needs one referral conversion; attribution capture is live |
-| 3g | #4652 | Five-streams one-install stacking smoke | Composition of 3a–3f; closes when they exist |
+| 3a | #4641 | Live paid kind-5050 compute smoke | Cheapest. Fleet is online. Clears `compute_stream_not_broadly_live` |
+| 3b | #4642 | One paid GEPA settlement | Endpoint-smoke blocker already cleared (commit `375ef501e`). Only the paid leg remains |
+| 3c | #4732 | **The labor demonstration**: first negotiated, escrowed, executed, accepted, settled labor job with public receipts | Highest leverage single issue on the board — advances all three `labor.*` promises, `provider.compliant_usage_labor.v1`, and #4648 simultaneously. The Claude bridge (#4717) gives the provider its engine |
+| 3d | #4648 | First paid overnight labor job on a contributor's own agent | Likely closes with or immediately after 3c. Needs the independent contributor — recruit from the intro threads |
+| 3e | #4645 | First settled dataset sale (public-safe redacted conversation bundle) | Needs one buyer. Small sats |
+| 3f | #4651 | First settled referral payout | Needs one referral conversion. Attribution capture is live |
+| 3g | #4652 | Five-streams one-install stacking smoke | Composition of 3a–3f. Closes when they exist |
 | 3h | #4717 | EPIC: Claude bridge green flip | Needs one production run on a real contributor device — falls out of 3c/3d |
 | 3i | #4726 | EPIC: open agent labor market | Closes when 3c/3d and the labor promises have their receipts |
 
 **Cost:** tens-to-hundreds of sats per receipt, all within the standing-cap
-envelope; plus recruitment messages on threads where candidates already
+envelope. Plus recruitment messages on threads where candidates already
 introduced themselves. **Closes:** 9 issues and flips the heart of the red
 column: `pylon.five_bitcoin_revenue_streams.v1`,
 `provider.compliant_usage_labor.v1`, `pylon.data_trace_revenue.v1`, the
@@ -125,19 +125,19 @@ These need what rung 0 proved, multiplied: rungs 1–2 of
 `docs/2026-06-10-always-on-fleet-plan.md` (Tailnet remotes —
 imac-pro-bertha and archlinux are named hosts — then the SHC dispatch
 lane), and a standing Psionic inference server for the Qwen lanes. No new
-product engineering; the smokes are one-command
+product engineering. The smokes are one-command
 (`bun run smoke:probe-gepa-stage0`, `bun run smoke:qwen-remote-training`).
 
 | Issue | Needs | Notes |
 | --- | --- | --- |
-| #4667 | GEPA Stage 0 green on **multiple** real Pylons | Pure fleet count; no spend |
+| #4667 | GEPA Stage 0 green on **multiple** real Pylons | Pure fleet count. No spend |
 | #4665 | psionic_qwen35 attach-only inference rows admitted | Needs a running Psionic server (sibling repo) — the one true external service dependency on the board |
 | #4666 | Sell Psionic-backed Qwen3.5 inference | Stacks on #4665 plus one small-sats buyer (Category 3 motion) |
 | #4670 | Bounded remote Qwen run on **two** real devices | Fleet count + operator-funded worker payments |
-| #4668 | Paid GEPA campaign through the ladder to settled_bitcoin | Fleet + spend; the 9-step ladder is built |
+| #4668 | Paid GEPA campaign through the ladder to settled_bitcoin | Fleet + spend. The 9-step ladder is built |
 
 **Cost:** standing up 2–3 more supervised hosts (the runbooks exist) and
-keeping one Psionic server alive. **Closes:** 5 issues; moves
+keeping one Psionic server alive. **Closes:** 5 issues. Moves
 `pylon.compute_revenue_modes.v1` and `pylon.gepa_worker_loop_v03.v1`, and
 unblocks Category 5's entry.
 
@@ -169,7 +169,7 @@ Internal order once unblocked: #4675/#4676 (the work and validator kinds)
 → #4678 (first leaderboard-class run) → #4681/#4679/#4680/#4682
 (the homework family) → #4683 (leaderboards), with #4677 pulled forward.
 
-**Closes:** 9 issues; begins moving the eight `planned` `training.*`
+**Closes:** 9 issues. Begins moving the eight `planned` `training.*`
 promises and the two training reds. Also feeds Tassadar evolution Stage 2
 (train candidates) — the distillation-dataset receipt blocking
 `artanis.tassadar_evolution_loop.v1` is this category's first artifact.
@@ -196,7 +196,7 @@ the forum report. No independent blocker.
 | 2 (today/tomorrow) | Owner authorizations | #4654, #4658, #4653, #4700, #4662 | 8 | Minutes of owner action each |
 | 3 (this week) | First receipts | #4641, #4642, #4732, #4648, #4645, #4651, #4652, #4717, #4726 | 17 | Small sats via spend envelope + recruiting from intro threads |
 | 4 (this week) | Fleet scale + Psionic | #4667, #4665, #4666, #4670, #4668 | 22 | 2–3 supervised hosts + one standing server |
-| 5 (next) | Training program | #4675, #4676, #4678–#4683 | 30 | The program itself; unblocked by waves 3–4 |
+| 5 (next) | Training program | #4675, #4676, #4678–#4683 | 30 | The program itself. Unblocked by waves 3–4 |
 | 6 (rolling) | Sweeps | #4663, #4671 | **32** | Bookkeeping |
 
 Three structural observations the order encodes:
@@ -222,7 +222,7 @@ Three structural observations the order encodes:
 ## Maintenance
 
 This audit is a snapshot of the open set at ~02:30 UTC 2026-06-11. As
-issues close, the waves shrink in place; if a new issue arrives, file it
+issues close, the waves shrink in place. If a new issue arrives, file it
 into one of the six categories at creation time (the `blocked-on:` line)
 rather than re-auditing. Re-run the category census when the open count
 next crosses a round threshold or a wave fully empties.

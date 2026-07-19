@@ -19,7 +19,7 @@ from the desktop app remains **Khala Code Desktop** in
 
 The older `clients/openagents-desktop` Electrobun stub was removed in Wave 0
 cleanup on 2026-07-05 (#8367). Treat any remaining references to it in older
-evidence as historical source material only; the current working path is Khala
+evidence as historical source material only. The current working path is Khala
 Code Desktop Codex-wrapper UI → local Pylon fleet delegation → hosted Khala
 assignment envelope → local Codex runner → no-spend closeout.
 
@@ -37,7 +37,7 @@ optimizer lanes are postponed. The current WS-17 preflight evidence is:
 - `pylon presence heartbeat --base-url https://openagents.com --json` reported
   registered, linked, and not stale for `pylon.33afd48282a649047e3a`.
 - `bun run --cwd apps/pylon smoke:fleet-run-live` stayed skip-safe while
-  unarmed; no dispatch or spend occurred.
+  unarmed. No dispatch or spend occurred.
 - Read-only `khala fleet status --live` showed a healthy watchdog with zero
   active live slots.
 - The dry-run planner over `#7956,#7955,#7953,#7931` resolved three target slots
@@ -76,13 +76,13 @@ export PYLON_HOME="${PYLON_HOME:-$HOME/.openagents/pylon}"
 
 For hosted Khala chat, the desktop process also needs an owner-linked
 `OPENAGENTS_AGENT_TOKEN` in the environment. Source it from the local ignored
-secret file; never print the token, paste it into logs, or commit it. Do **not**
+secret file. Never print the token, paste it into logs, or commit it. Do **not**
 use `OPENROUTER_API_KEY` as a local bypass for Khala.
 
 Important: **do not globally export `PYLON_OPENAGENTS_BASE_URL` just to inspect
 local capacity from Khala Code Desktop.** The current desktop wrapper passes
 `--base-url https://openagents.com` on network commands that need it. Local
-provider/status probes should stay local; forcing the hosted base URL into
+provider/status probes should stay local. Forcing the hosted base URL into
 every Pylon command can make capacity look like stale hosted pressure (`0/4`)
 even when local Codex capacity is free.
 
@@ -102,7 +102,7 @@ Expected:
   worker is running.
 - At least one named Codex account, usually `codex-2` or `status`, has
   `readiness.state == "ready"`.
-- `codex` may be `credentials_revoked`; that is not fatal if another named
+- `codex` may be `credentials_revoked`. That is not fatal if another named
   account is ready.
 - `(default)` may be ready, but Khala Code Desktop now prefers named ready
   accounts before `(default)` for automatic `codex_spawn`.
@@ -133,14 +133,14 @@ Expected:
 - A heartbeat command that exits 0 but prints no JSON payload is not a fresh
   hosted-heartbeat proof for FleetRun dispatch. The supervisor and Pylon service
   retry heartbeat refreshes until the response includes a public heartbeat or
-  Pylon ref and is not explicitly `stale`; only then may they retry the
+  Pylon ref and is not explicitly `stale`. Only then may they retry the
   assignment request.
 - If a real `khala request` returns an assignment ref but reports a failed
   auto-run or rejected closeout, the Pylon service performs one public
   `khala closeout <assignmentRef> --json` reconciliation before reporting the
   assignment terminal state to the supervisor. It may upgrade the assignment to
   completed only when that closeout payload has `ok: true`,
-  `closeoutChecklist.ok: true`, and `proof.proofChecklist.ok: true`; otherwise
+  `closeoutChecklist.ok: true`, and `proof.proofChecklist.ok: true`. Otherwise
   the original failed state remains authoritative.
 - Long-running local Codex assignments must refresh their live work claim and
   dispatch-context heartbeat on every supervisor tick before stale-claim
@@ -152,7 +152,7 @@ Expected:
   runner seam in
   `clients/khala-code-desktop/tests/khala-fleet-tools.test.ts`. It covers
   `0/1` capacity recovery, stale-heartbeat refresh, duplicate-assignment retry,
-  credentials-missing/revoked typed blockers, and high-load typed gating; none
+  credentials-missing/revoked typed blockers, and high-load typed gating. None
   of those cases may regress to a bare `codex_spawn_failed` capacity dead-end.
 
 Start the app:
@@ -170,7 +170,7 @@ Check pylon fleet status and delegate a demo read-only task to one of the connec
 ```
 
 The only fleet tools in this MVP are `pylon_ensure`, `codex_fleet_status`, and
-`codex_spawn`. Do not ask for or invent `codex_terminate`; it does not exist.
+`codex_spawn`. Do not ask for or invent `codex_terminate`. It does not exist.
 For normal executed assignments, `codex_spawn` delegates to the canonical
 `pylon khala spawn --execute --json` batch handshake. The older per-slot
 `pylon khala request` path is retained only for explicit `no_run` debugging, so
@@ -234,7 +234,7 @@ bun --eval '
 Expected: `acceptedCount` is `5`, `requestedCount` is `5`, every slot is
 `accepted`, and the selected account refs correspond to accounts that advertised
 free slots. If it refuses before launch with `Only X/5 advertised ... free`,
-capacity was not actually advertised; rerun the heartbeat/status commands and
+capacity was not actually advertised. Rerun the heartbeat/status commands and
 check `ownCapacityDispatch.codexAccounts`.
 
 When debugging below the desktop wrapper, run the same handoff directly through
@@ -269,7 +269,7 @@ per-account spawn-planner, and weighted account-pool fixes:
   `account.pylon.codex.651c03fed68925d7acb2c02f`.
 - the direct Pylon `khala spawn` plan carried the advertised
   `codexAccounts` buckets and pinned every request to the selected public
-  `targetAccountRefHash`; zero-slot or non-matching local accounts are no
+  `targetAccountRefHash`. Zero-slot or non-matching local accounts are no
   longer eligible for direct spawn assignment targeting.
 - the direct five-slot Pylon smoke above completed `5/5` with
   `aggregate.acceptedCount = 5`, `totalTokenRows = 5`, `ownerOnlyTraceCount = 58`,
@@ -299,7 +299,7 @@ requests and started using the batch Pylon handshake:
   `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY=5` reported `10/10` available,
   split across the same two ready account buckets.
 - a one-slot Desktop headless `spawnCodexInstances` smoke completed `1/1` via
-  `pylon.33afd48282a649047e3a`; the slot used `codex-2`, closeout was
+  `pylon.33afd48282a649047e3a`. The slot used `codex-2`, closeout was
   `accepted`, proof reported `101370` verified tokens, and the public counter
   delta was `214189`.
 - the first five-slot rerun exposed a Desktop bridge bug: the Pylon batch run
@@ -356,7 +356,7 @@ publishing an immediate runtime-progress heartbeat:
   `assignment.public.khala_coding.chatcmpl_39892527094a4d029e45a805d0230266`,
   `assignment.public.khala_coding.chatcmpl_3d51c732bda34a41874d0452704be1ce`,
   `assignment.public.khala_coding.chatcmpl_ea0ebaff39e44be18ccda2d122c3bf3e`.
-- no Worker deploy is required for this specific fix; it is local Pylon runner
+- no Worker deploy is required for this specific fix. It is local Pylon runner
   behavior plus tests and runbook evidence.
 
 Verified again on 2026-06-30 after Pylon started posting a generic
@@ -404,7 +404,7 @@ direct Pylon CLI call:
 
 - pre-run capacity was `10/10`, split `5/5` across
   `account.pylon.codex.4db4cc18ebc55f39fb4da894` and
-  `account.pylon.codex.651c03fed68925d7acb2c02f`; active marker count was `0`.
+  `account.pylon.codex.651c03fed68925d7acb2c02f`. Active marker count was `0`.
 - the five-slot smoke ran from `2026-06-30T12:31:33.968Z` to
   `2026-06-30T12:33:41.856Z` and completed `acceptedCount = 5`,
   `requestedCount = 5`.
@@ -418,10 +418,10 @@ direct Pylon CLI call:
   `assignment.public.khala_coding.chatcmpl_7934939c5d41421aa1a6ba4ad0442254`,
   `assignment.public.khala_coding.chatcmpl_0c85d84c0cbc45a7a1639fa51d053d78`,
   `assignment.public.khala_coding.chatcmpl_c3fa6b5f8a38431ba3c854e93cdbb30d`.
-- proof rows reported `422804` verified tokens total; public counter evidence
+- proof rows reported `422804` verified tokens total. Public counter evidence
   returned `state = increment_observed`, `delta = 543763`,
   `expectedMinimumDelta = 422804`.
-- post-run active marker count returned to `0`; capacity returned to `10/10`,
+- post-run active marker count returned to `0`. Capacity returned to `10/10`,
   with both ready account buckets back at `5/5`.
 - process-list noise alone is not capacity evidence. This machine also had
   historical `~/.codex-supervisor/durable-runner-pool.sh` workers spawning
@@ -438,9 +438,9 @@ pass:
 - local Pylon online: `pylon.33afd48282a649047e3a`
 - active assignment markers: `0`
 - ready Codex refs: `(default)`, `codex-2`, `status`
-- `codex` remained `credentials_revoked`; the historical backup/supervisor refs
+- `codex` remained `credentials_revoked`. The historical backup/supervisor refs
   remained `credentials_missing`
-- dispatch capacity reported `10/10` from the per-account projection; this is
+- dispatch capacity reported `10/10` from the per-account projection. This is
   the value Desktop should show and plan against.
 
 Checked again on 2026-06-30 before the FB-2 ledger implementation pass:
@@ -448,7 +448,7 @@ Checked again on 2026-06-30 before the FB-2 ledger implementation pass:
 - local Pylon online: `pylon.33afd48282a649047e3a`
 - dispatch capacity reported `10/10`, split `5/5` across two ready Codex account
   buckets
-- ready Codex refs included `codex-2`, `status`, and the unnamed default ref;
+- ready Codex refs included `codex-2`, `status`, and the unnamed default ref.
   `codex` remained `credentials_revoked`
 - load refs reported `busy=0` and `queued=0` for the aggregate and both ready
   account buckets
@@ -473,7 +473,7 @@ FB-2 is now the Worker credit-ledger step:
 
 - `apps/openagents.com/workers/api/src/labor-escrow.ts` adds the terminal
   `forfeited` escrow state and `forfeit` receipt transition.
-- Only `validator_non_acceptance` may trigger `forfeit`; requester, provider,
+- Only `validator_non_acceptance` may trigger `forfeit`. Requester, provider,
   and worker authorities fail closed.
 - A counterparty forfeit debits the held claim and credits the modeled
   counterparty exactly once. A burn forfeit debits the held claim without
@@ -516,7 +516,7 @@ evidence in both places operators need it:
   completed tool card can summarize the same path without scraping stderr.
 - The local no-spend runner posts generic `running` progress to the hosted
   assignment progress endpoint while the runtime is active. This path is
-  fail-soft and operator-visible only; if the progress endpoint is slow or down,
+  fail-soft and operator-visible only. If the progress endpoint is slow or down,
   local execution and closeout must continue.
 - Final progress messages are bounded to the hosted API contract. If the
   progress or artifact submit is rejected, the failure closeout keeps the
@@ -531,7 +531,7 @@ evidence in both places operators need it:
   diagnostics stay in local closeout refs and owner-only trace/proof paths so a
   noisy command error cannot trip the hosted Pylon payload scanner.
 - `pylon khala closeout` trace checks accept capped public-safe owner-trace ref
-  projections. Exact token rows remain uncapped assignment proof; trace counts
+  projections. Exact token rows remain uncapped assignment proof. Trace counts
   can exceed the first 100 refs as long as final-trace readiness, owner-only
   visibility, and the capped refs are present.
 - Khala Code Desktop parses both the final array and the stderr JSONL fallback.
@@ -542,7 +542,7 @@ evidence in both places operators need it:
   include the closeout/blocker refs instead of showing a green `OK` card.
 
 This is intentionally not a new execution path. The local worker still runs
-through Pylon `runNoSpendAssignment`; the change is that Desktop no longer
+through Pylon `runNoSpendAssignment`. The change is that Desktop no longer
 collapses a live worker into a blank "running" card or raw JSON failure blob.
 
 After the smoke, confirm Pylon is back to idle:
@@ -626,14 +626,14 @@ budget, not OpenAgents settlement.
 
 - **`khala request` 409 "stale or missing heartbeat" even when local capacity is
   `4/4`.** `provider go-online` (no base URL) refreshes the *local* capacity view
-  only; the server still sees the Pylon as stale. Always run
+  only. The server still sees the Pylon as stale. Always run
   `presence heartbeat --base-url https://openagents.com` immediately before the
   request. Error/evidence refs:
   `evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat`.
 - **`presence heartbeat --json` can print nothing to stdout yet still exit 0.**
   For sustained FleetRun dispatch this is not freshness evidence. Retry the
   heartbeat until the JSON response includes `pylonRef` or `heartbeatRef` and is
-  not explicitly stale before retrying `khala request`; otherwise the next
+  not explicitly stale before retrying `khala request`. Otherwise the next
   assignment can still 409 with
   `evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat`.
 - **macOS has no `timeout`/`gtimeout`.** Wrapping a Pylon command in `timeout`
@@ -641,15 +641,15 @@ budget, not OpenAgents settlement.
   output (looks like the Pylon command "hung" or "returned nothing"). Run the
   Pylon command directly, or install coreutils and use `gtimeout`.
 - **Dispatch slot shape (`...khala_dispatch_plan.v0.1`).** The target pylon ref is
-  `slots[0].requestInput.targetPylonRef`, not a top-level field; the account hash
-  is `slots[0].account.accountRefHash`; the workspace/verifier are under
+  `slots[0].requestInput.targetPylonRef`, not a top-level field. The account hash
+  is `slots[0].account.accountRefHash`. The workspace/verifier are under
   `slots[0].requestInput.workspace`. A bare `--candidates issue:NNNN` auto-derives
   a generic objective ("Implement OpenAgents issue #NNNN. ... Run verifier: ..."),
   so pass the real, bounded prompt on `khala request --prompt`.
-- **`codex accounts list --json` returns `ok: null`** (not `true`) in this build;
+- **`codex accounts list --json` returns `ok: null`** (not `true`) in this build.
   read readiness from `.accounts[].readiness` (string: `ready` /
   `credentials_revoked` / `credentials_missing` / `usage_limited`). Prefer a
-  named `ready` account (e.g. `codex-2`); `codex` (default) was
+  named `ready` account (e.g. `codex-2`). `codex` (default) was
   `credentials_revoked` here.
 - **Live child JSONL can be the only honest readiness signal.** If a Codex child
   admits an assignment and then closes with `codex_agent_execution_refused`,
@@ -662,10 +662,10 @@ budget, not OpenAgents settlement.
 - **The `codex exec` child confirms the owner-local executor invariant:**
   `codex exec --experimental-json --sandbox danger-full-access --skip-git-repo-check
   --config sandbox_workspace_write.network_access=true --config approval_policy=never`
-  in the materialized cache workspace. That full access is owner-local only; never
+  in the materialized cache workspace. That full access is owner-local only. Never
   a public wire field.
 - **A concurrent fleet burst is normal on the owner machine.** `poll_complete`
-  showed `leaseCount: 25` while a separate controller was bursting; the new
+  showed `leaseCount: 25` while a separate controller was bursting. The new
   assignment was still admitted because Codex capacity was free. Capacity, not the
   raw process count, is the gate — check `availableCodexAssignments`, not `ps`.
 
@@ -699,7 +699,7 @@ GD-1 consumes that example shape through
 `openagents.khala.delegation_gepa_feedback.v0`. The scalar dimensions are
 `single_prompt_success`, `merged_clean`, `admitted_first_try`,
 `wall_clock_seconds`, `token_cost_tokens`, `idle_gap_seconds`, and
-`conflict_churn`; textual feedback is opaque blocker refs only. The regression
+`conflict_churn`. Textual feedback is opaque blocker refs only. The regression
 gate `bun test src/khala-delegation-gepa-feedback.test.ts` covers a clean merged
 delegation and a bad `0/1` capacity dead-end with duplicate assignment,
 stale-heartbeat, verify-failed, vacuous-PR, and conflict feedback refs.
@@ -712,14 +712,14 @@ signature-lookup refs for the Khala delegation program signature, program type,
 module version, release gates, evidence requirements, and tool scopes. The
 resulting proposal is always `approvalRequired: true`, `proposalOnly: true`,
 `programRunAuthorityBoundary: "evidence_only"`, `directExecution: false`, and
-`directProgramRunExecutionAllowed: false`; live promotion, runtime promotion,
+`directProgramRunExecutionAllowed: false`. Live promotion, runtime promotion,
 direct mutation, and incomplete signature lookup block admission instead of
 building a proposal.
 
 GD-4 wires an admitted candidate into live delegation through the bounded
 parameter schema `openagents.khala.fleet_delegation.parameters.v0`. Set
 `OPENAGENTS_KHALA_FLEET_DELEGATION_ADMITTED_PARAMETERS_JSON` only to an admitted,
-public-safe parameter set; Khala Code Desktop, `khala fleet run`, and the shared
+public-safe parameter set. Khala Code Desktop, `khala fleet run`, and the shared
 `khala.fleet.delegate` program then use it for per-account capacity
 advertisement, account ranking, duplicate retry/backoff, objective rendering, and
 default verifier criteria. Unset the env var to revert immediately to the safe
@@ -754,7 +754,7 @@ that checkout.
 real `codex exec` agent turns. It intentionally excludes `/Applications/Codex.app`
 GUI helpers, `durable-runner-pool.sh` supervisors, search commands, and Pylon
 provider/status processes. The rendered process line labels `ps etime` as
-`elapsed=...`; it is not a wall-clock start timestamp. If active marker count and
+`elapsed=...`. It is not a wall-clock start timestamp. If active marker count and
 active `codex exec` process count differ, treat the reconciliation line as a
 stale-marker or post-runtime-submit clue rather than raw capacity truth.
 
@@ -781,11 +781,11 @@ The tool result is failed whenever accepted count is less than requested count.
 
 The sustained Codex proof intentionally keeps real `codex exec` sessions alive
 long enough to prove live-session inspection and refills. Caller-owned Codex
-coding delegation therefore uses a 2400-second assignment budget; a 1200-second
+coding delegation therefore uses a 2400-second assignment budget. A 1200-second
 budget is too tight for the 30-minute sustained proof once dependency prep,
 model overhead, and closeout submission are included. Treat
 `blocker.assignment.codex_agent_budget_exceeded` as a real red closeout, not a
-pass; relaunch only after confirming the server payload and local Pylon executor
+pass. Relaunch only after confirming the server payload and local Pylon executor
 both accept the 2400-second Codex budget.
 
 ### `codex_spawn` Returns Duplicate Active Assignment
@@ -1008,7 +1008,7 @@ usage and public accounting, route work through Pylon assignments below.
 | Plan fanout slots | `khalaDispatchPlan(input)` | `pylon khala dispatch --json` |
 | Show durable queue state | `khalaFleetSnapshot()` | SQLite store at `OPENAGENTS_DESKTOP_KHALA_FLEET_DB` |
 | Check token failures | `tokenAccountingStatus()` | `~/.pylon-fable/codex-turn-report-failures.jsonl` |
-| Replay token failures | `replayTokenFailures()` | Desktop RPC today; verify with proof CLI after replay |
+| Replay token failures | `replayTokenFailures()` | Desktop RPC today. Verify with proof CLI after replay |
 | Verify one assignment | `verifyAssignmentTokenUsage(ref)` | `pylon khala proof <assignmentRef> --json` |
 
 The headless bridge is intentionally listed because a manager agent can run it
@@ -1168,7 +1168,7 @@ Open the Desktop Coding page. It must show:
 - recent dispatch/refusal events
 
 If the top says no live sessions but the left list contains active processes,
-the UI filter is wrong. The backing state is still usable; inspect with:
+the UI filter is wrong. The backing state is still usable. Inspect with:
 
 ```sh
 ps -axo pid,ppid,etime,command | rg 'codex exec|khala request|assignment run-no-spend' || true
@@ -1398,7 +1398,7 @@ fleet and merging the resulting PRs.
   (per linked account) before the `presence heartbeat` / `provider go-online`.
   With two ready accounts and N=5 the Pylon advertised
   `availableCodexAssignments=10`.
-- The non-account `OPENAGENTS_PYLON_CODEX_CONCURRENCY` did NOT hold; advertised
+- The non-account `OPENAGENTS_PYLON_CODEX_CONCURRENCY` did NOT hold. Advertised
   `max` reverted to the default. The per-account var is the reliable one. Using
   the wrong var is why an early 10-wide fanout only admitted ~3.
 
@@ -1407,7 +1407,7 @@ fleet and merging the resulting PRs.
 - `blocker.public.pylon_dispatch.duplicate_active_assignment`: firing many
   `khala request` back-to-back can trip this. It is transient — a fresh
   `presence heartbeat --base-url https://openagents.com` immediately before the
-  request clears it; space retries one cycle apart.
+  request clears it. Space retries one cycle apart.
 - `...no_available_codex_capacity` ("heartbeat codex available=0"): the Pylon is
   honestly saturated, OR a COMPETING controller is heartbeating the same Pylon and
   republishing the real busy count over your advertised capacity. Per the "one
@@ -1436,5 +1436,5 @@ fleet and merging the resulting PRs.
   work item into each free slot (load-gated, e.g. skip when 1-min load > ~14), and
   auto-merge any CLEAN non-draft fleet PR. This fills capacity and lands PRs with
   no manual steps.
-- The `khala request` objective/`--prompt` summary is capped at 1000 characters;
+- The `khala request` objective/`--prompt` summary is capped at 1000 characters.
   keep delegated objectives concise.

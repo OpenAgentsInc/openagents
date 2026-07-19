@@ -18,19 +18,19 @@ The implementation lives in
 
 The v1 profile records:
 
-- work kind and safe Coding/Sites/Omni work-class refs;
-- flexibility class;
-- interruption tolerance;
-- checkpoint cadence and checkpoint policy refs;
-- resume requirement and resume policy refs;
-- deadline window;
-- verification-after-resume policy;
-- replay cost;
-- power-event eligibility;
-- modeled suitability refs;
-- measured response refs;
-- accepted outcome refs;
-- revenue refs; and
+- work kind and safe Coding/Sites/Omni work-class refs.
+- flexibility class.
+- interruption tolerance.
+- checkpoint cadence and checkpoint policy refs.
+- resume requirement and resume policy refs.
+- deadline window.
+- verification-after-resume policy.
+- replay cost.
+- power-event eligibility.
+- modeled suitability refs.
+- measured response refs.
+- accepted outcome refs.
+- revenue refs. And
 - settlement refs.
 
 These fields are intentionally separate. A work class that is modeled as
@@ -40,34 +40,34 @@ or settled payout.
 
 Flexibility class can be:
 
-- `fixed`;
-- `deferrable`;
-- `interruptible`;
-- `preemptible`; or
+- `fixed`.
+- `deferrable`.
+- `interruptible`.
+- `preemptible`. Or
 - `opportunistic`.
 
 The contract rejects incoherent profile claims:
 
 - fixed work cannot claim interruption, checkpoint, or power-event
-  eligibility;
-- interruptible and preemptible work must declare interruption tolerance; and
+  eligibility.
+- interruptible and preemptible work must declare interruption tolerance. And
 - deferrable work cannot use an immediate deadline.
 
 ## Claim Boundaries
 
 The projection exposes separate flags:
 
-- `modeledSuitabilityClaimAllowed`;
-- `measuredSuitabilityClaimAllowed`;
-- `acceptedOutcomeClaimAllowed`;
-- `revenueClaimAllowed`; and
+- `modeledSuitabilityClaimAllowed`.
+- `measuredSuitabilityClaimAllowed`.
+- `acceptedOutcomeClaimAllowed`.
+- `revenueClaimAllowed`. And
 - `settlementClaimAllowed`.
 
 Power-event eligibility can be:
 
-- `not_eligible`;
-- `operator_review`;
-- `eligible_modeled`; or
+- `not_eligible`.
+- `operator_review`.
+- `eligible_modeled`. Or
 - `eligible_measured`.
 
 `eligible_modeled` requires modeled suitability refs. `eligible_measured`
@@ -81,11 +81,11 @@ outcome refs and revenue refs.
 Issue #364 adds explicit read-only profile authority. A flexible-load profile
 cannot:
 
-- assign capacity;
-- dispatch a power event;
-- launch a runner;
-- mutate settlement;
-- mutate a work class;
+- assign capacity.
+- dispatch a power event.
+- launch a runner.
+- mutate settlement.
+- mutate a work class.
 - upgrade a public claim.
 
 The profile is a routing and review input before dispatch automation, not a
@@ -95,11 +95,11 @@ dispatch command.
 
 The contract rejects over-broad claims:
 
-- checkpoint-required work must have a non-`none` checkpoint cadence;
-- non-`none` checkpoint cadence must have checkpoint policy refs;
-- resumable work must have resume policy refs;
-- verification-after-resume must have verification policy refs;
-- modeled eligibility must have modeled suitability refs; and
+- checkpoint-required work must have a non-`none` checkpoint cadence.
+- non-`none` checkpoint cadence must have checkpoint policy refs.
+- resumable work must have resume policy refs.
+- verification-after-resume must have verification policy refs.
+- modeled eligibility must have modeled suitability refs. And
 - measured eligibility must have measured response refs.
 
 ## Redaction Rules
@@ -122,10 +122,10 @@ first event telemetry contract in
 response, checkpoint/resume refs, lost-work cost, accepted-work impact, and
 settlement evidence without dispatch authority. Later work should add:
 
-- actual grid/operator/customer power-event records;
-- checkpoint/resume event refs;
-- lost-work cost and replay-cost measurements;
-- accepted-work impact refs;
+- actual grid/operator/customer power-event records.
+- checkpoint/resume event refs.
+- lost-work cost and replay-cost measurements.
+- accepted-work impact refs.
 - proof bundles that join profile, event, outcome, economics, and settlement
   evidence without exposing private telemetry.
 
@@ -133,12 +133,12 @@ settlement evidence without dispatch authority. Later work should add:
 
 `workers/api/src/pylon-flexible-load-profiles.test.ts` covers:
 
-- public-safe profile projection and friendly timestamps;
-- flexibility class labels and policy coherence;
-- modeled, measured, accepted, revenue, and settlement separation;
-- audience redaction;
-- false dispatch, runner, settlement, work-class, and public-claim authority;
-- required evidence for checkpoint/resume/verification/model/measured states;
+- public-safe profile projection and friendly timestamps.
+- flexibility class labels and policy coherence.
+- modeled, measured, accepted, revenue, and settlement separation.
+- audience redaction.
+- false dispatch, runner, settlement, work-class, and public-claim authority.
+- required evidence for checkpoint/resume/verification/model/measured states.
   and
 - rejection of raw telemetry, hardware, runner, wallet, payment, payout, and
   timestamp material.

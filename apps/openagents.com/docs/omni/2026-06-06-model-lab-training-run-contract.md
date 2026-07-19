@@ -20,16 +20,16 @@ Implementation:
 
 The record carries:
 
-- run identity, kind, and state;
+- run identity, kind, and state.
 - triggering workroom, retained failure, Model Lab loop, candidate, optimizer,
-  and source refs;
-- data package refs;
-- model artifact refs;
-- eval rerun and benchmark refs;
-- provider and runner refs;
-- hyperparameter summaries with evidence refs;
-- metric summaries with evidence refs;
-- budget/cost caveats and credit refs; and
+  and source refs.
+- data package refs.
+- model artifact refs.
+- eval rerun and benchmark refs.
+- provider and runner refs.
+- hyperparameter summaries with evidence refs.
+- metric summaries with evidence refs.
+- budget/cost caveats and credit refs. And
 - operator review receipt refs.
 
 Projection timestamps use friendly labels and do not expose raw ISO strings.
@@ -38,15 +38,15 @@ Projection timestamps use friendly labels and do not expose raw ISO strings.
 
 Training runs cannot:
 
-- launch model training;
-- mutate provider state;
-- install adapters;
-- copy raw datasets;
-- spend money;
-- promote runtime behavior;
-- mutate routing;
-- mutate payouts;
-- mutate settlement; or
+- launch model training.
+- mutate provider state.
+- install adapters.
+- copy raw datasets.
+- spend money.
+- promote runtime behavior.
+- mutate routing.
+- mutate payouts.
+- mutate settlement. Or
 - upgrade public claims.
 
 Payment, training, provider, routing, deployment, and settlement actions require
@@ -63,16 +63,16 @@ artifact refs, metrics, and eval or benchmark evidence. Reviewed runs require
 operator review receipt refs.
 
 Hyperparameters and metrics must each have evidence refs. Budget records cannot
-grant payment spend; observed costs require credit or cost evidence refs.
+grant payment spend. Observed costs require credit or cost evidence refs.
 
 ## Projection Audiences
 
 Supported audiences are:
 
-- `public`;
-- `agent`;
-- `customer`;
-- `team`; and
+- `public`.
+- `agent`.
+- `customer`.
+- `team`. And
 - `operator`.
 
 Public/customer/agent projections redact private artifact, benchmark, budget,
@@ -87,11 +87,11 @@ timestamps.
 
 Coverage includes:
 
-- reviewed training-run projection;
-- status progression and readiness labels;
+- reviewed training-run projection.
+- status progression and readiness labels.
 - metric, hyperparameter, budget, artifact, eval, benchmark, and review receipt
-  validation;
-- public redaction; and
+  validation.
+- public redaction. And
 - hard false training-launch, provider-mutation, adapter-install,
   raw-dataset-copy, payment-spend, runtime-promotion, routing, payout,
   settlement, and public-claim mutation authority.

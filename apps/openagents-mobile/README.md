@@ -1,7 +1,7 @@
 # OpenAgents mobile
 
 Greenfield **OpenAgents** iOS/Android app (#8597, epic #8566). One Expo React
-Native codebase whose application/component/intent model is **Effect Native**;
+Native codebase whose application/component/intent model is **Effect Native**.
 React Native and Expo are host and renderer machinery only.
 
 - Display name: `OpenAgents`
@@ -27,18 +27,18 @@ only supported mobile product and imports no legacy client source.
 - `src/sync/mobile-sync-host.ts` — host-owned Expo SQLite composition over the
   shared Khala Sync store core. It owns the native handle and installation
   identity plus a separate immutable device-local identity/local-authority
-  store. The app is usable without OpenAuth; server-verified account linking
+  store. The app is usable without OpenAuth. Server-verified account linking
   is an optional, reversible upgrade and unlink/denial retains local rows. It
   composes production HTTP/WebSocket Sync only after session
   verification, subscribes the server-derived owner's personal scope, closes
   session-before-store on OTA reload/unmount, and never projects credentials,
   owner refs, or native handles into the Effect Native view program. The shared
   store migrates the supported unversioned cache in place and refuses a newer
-  schema before mutation with typed update-or-reset guidance; sparse event
+  schema before mutation with typed update-or-reset guidance. Sparse event
   batches replay from the durable cursor instead of skipping history.
 - `src/conversation/mobile-conversation.ts` — public-safe adapter over the
   host-owned canonical conversation service. Startup selects confirmed Sync or
-  the existing public-local path before Home mounts; exact stable refs must be
+  the existing public-local path before Home mounts. Exact stable refs must be
   confirmed before create/append appears complete. Once linked, the same host
   reads the bounded canonical agent timeline and submits shared exact-ref
   start, same-run follow-up, or interrupt commands. Home receives confirmed
@@ -46,7 +46,7 @@ only supported mobile product and imports no legacy client source.
   reconciliation timeout is shown.
 - `src/auth/native-session-vault.ts` — one versioned Expo SecureStore record
   for the native OpenAgents access/refresh tokens and server-derived owner ref.
-  Recovery exposes only signed-out or credential-present-unverified state;
+  Recovery exposes only signed-out or credential-present-unverified state.
   malformed/retired records are purged and no credential enters view state.
 - `src/auth/native-session-recovery.ts` — host-only validation against the
   existing native session endpoint. It passes the refresh token only on that
@@ -80,7 +80,7 @@ pnpm run dev          # expo start — press i for iOS simulator or a for Androi
 ```
 
 The app tree is Effect Native. On iOS 26+, `@effect-native/render-rn` lowers
-glass toolbar/composer nodes internally through `@expo/ui`; Android, older iOS,
+glass toolbar/composer nodes internally through `@expo/ui`. Android, older iOS,
 tests, and missing-module hosts use the renderer-owned React Native material
 fallback. Verify native glass, keyboard, and safe-area behavior through a
 development or TestFlight build rather than Expo Go.
@@ -110,7 +110,7 @@ pnpm run prebuild:android   # expo prebuild --platform android
 ./android/gradlew -p android :app:assembleDebug
 ```
 
-Per repo policy: builds are local (`expo prebuild` + Xcode/Gradle);
+Per repo policy: builds are local (`expo prebuild` + Xcode/Gradle).
 `eas build`/`eas submit`/`eas update` are never used.
 
 ### OTA updates (owned server, never EAS)
@@ -142,7 +142,7 @@ The application-local `modules/openagents-liquid-glass` island is deleted.
 typed `Toolbar`, `IconButton`, transcript, drawer, and `Composer` nodes. The
 React Native screen owns only safe-area, keyboard avoidance, and one
 `EffectNativeHost` mount. `@expo/ui` remains a native installation vehicle but
-is loaded only inside `@effect-native/render-rn`; app source cannot import it.
+is loaded only inside `@effect-native/render-rn`. App source cannot import it.
 The component-sharing oracle fails on a restored app-local module, direct
 native-UI import, RN `Pressable`/`TextInput` application controls, or a second
 composer.
@@ -153,19 +153,19 @@ The Home screen is persona-neutral: after native-session recovery it mounts one
 conversation authority. Live personal Sync reconstructs confirmed canonical
 threads/messages in the existing Effect Native transcript, drawer, and
 renderer-lowered glass composer. Signed-out/not-live startup retains the public Khala
-orchestration path. These catalogs never merge; explicit auth transitions
+orchestration path. These catalogs never merge. Explicit auth transitions
 dispose and remount Home. Sync mutations use stable mobile refs, render drafts
 as pending, and replace them only after exact-ref confirmation. Selected coding
 sessions restore their canonical private draft and turn the composer's plus
 control into a native multi-file/image picker. Each selection is bounded,
 SHA-256 addressed, copied into the durable app document sandbox, and represented
 in the draft only by ready metadata plus an `attachment.native-local.sha256.*`
-ref; raw picker URIs never enter view state or Sync. A private
+ref. Raw picker URIs never enter view state or Sync. A private
 Expo SQLite cache now supplies restart-stable local Khala Sync storage and an
 honest `Local Sync ready` state. Native session credentials now have a
 device-only SecureStore vault, but a recovered record remains visibly
 unverified until the server accepts it. Startup now validates that record and
-persists access/refresh rotation; denial or owner mismatch purges it. A verified
+persists access/refresh rotation. Denial or owner mismatch purges it. A verified
 session now starts authenticated personal-scope Sync in the Expo host. Session
 readiness remains distinct from the live-only confirmed conversation service.
 The surface enters through a typed GitHub sign-in intent and exits only after the server proves
@@ -181,7 +181,7 @@ thread and first message can be continued by mobile and reconstructed by both
 stores after restart. Home consumes that confirmed service without receiving an
 owner ref, credential, store/session object, transport, or raw row.
 Provider-neutral assistant/runtime events enter Home only as bounded canonical
-timeline items; raw provider payloads never enter native state. A deployed-
+timeline items. Raw provider payloads never enter native state. A deployed-
 account/physical-device receipt remains the explicit #8676 close gate.
 
 The shared lifecycle fence discards delayed responses from a superseded mobile

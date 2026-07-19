@@ -21,7 +21,7 @@ previously existed as drifted copies:
    recursive walk (which had itself further drifted from Pylon's copy on the
    surrounding data-model types).
 
-The stronger recursive predicate is now the single authority here; the
+The stronger recursive predicate is now the single authority here. The
 consumers re-export it. The weak regex variant is deleted. The drift guard
 (`scripts/check-contract-drift.mjs`, wired into `check:architecture`) fails the
 build if a duplicate `IsPrivateDataSafe` authority is reintroduced.

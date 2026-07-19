@@ -1,7 +1,7 @@
 # Product Promises × Khala Code — Registry Audit And Launch Alignment
 
 Date: 2026-07-01
-Status: analysis + recommendation doc in the Fable lane; the §4 registry
+Status: analysis + recommendation doc in the Fable lane. The §4 registry
 changes were subsequently **implemented on owner direction as registry
 `2026-07-01.1`** (see the status banner in §4 — no green flips). The doc
 itself flips no promise state and broadens no public copy — promise-state
@@ -22,7 +22,7 @@ The registry (canonical:
 arc existed** (epics #7590 → #7780 → the July 1 execution run all landed
 June 29–July 1). There is no `khala_code` product area, no record for the
 desktop app, and no records for the Episode 245 economics (free plan pays
-you with data → scrubbed traces → agent plugins → backend revenue share;
+you with data → scrubbed traces → agent plugins → backend revenue share.
 paid plan buys privacy). Meanwhile the Fable roadmap builds a large amount
 of promise-shaped capability (fleet cockpit, clean-2B-day, multi-harness,
 mobile companion, Artanis-as-a-Service) with only one promise task (T16.3)
@@ -37,12 +37,12 @@ the reconciliations, and the gateway map that close those gaps.
 
 1. **The registry.** Canonical machine-readable registry in
    `product-promises.ts` (line 7: `PublicProductPromisesVersion =
-   '2026-06-29.5'`), served at `GET /api/public/product-promises`; narrative
+   '2026-06-29.5'`), served at `GET /api/public/product-promises`. Narrative
    mirror `docs/promises/registry.md` (header currently lags at
    `2026-06-29.3` — cheap fix). States: `green | yellow | red | degraded |
    planned | withdrawn`. Transitions go through
    `POST /api/operator/product-promises/transitions`
-   (`promise-transition-receipt-routes.ts`; mechanical checks include
+   (`promise-transition-receipt-routes.ts`, mechanical checks include
    `evidence_refs_present`, `verification_named`, and
    `blockers_clear_for_green`), with public feeds at
    `/api/public/product-promises/transitions` and `/audit`.
@@ -52,7 +52,7 @@ the reconciliations, and the gateway map that close those gaps.
 3. **The unreleased drafts**: `24X1.md` (the old "245" — Khala Code
    desktop + Codex fleet + GEPA demo, ends in an unrecorded scripted
    completion segment) and `24X2.md` (Episode 246 draft: Khala on Apple
-   Silicon, native SwiftUI "Khala Desktop"). Neither made public promises;
+   Silicon, native SwiftUI "Khala Desktop"). Neither made public promises.
    both show intended direction. **They also name two different desktop
    surfaces** — the Electrobun/Effect "Khala Code" app and the SwiftUI
    "Khala Desktop" — which the registry must never conflate.
@@ -70,20 +70,20 @@ mapped to registry records as of `2026-06-29.5`:
 | # | Episode 245 claim | Nearest existing record(s) | State | Gap |
 | --- | --- | --- | --- | --- |
 | 1 | **Khala Code exists**: a new client consuming the Khala API through "our desktop app" ("Khala Code (OA Desktop App)") | — none. `autopilot.desktop_gui_client.v1` (yellow) is the *Autopilot* desktop, a different product | — | **No Khala Code record at all.** The app exists on `main` (`clients/khala-code-desktop`, ~40 test suites, parity contract, smokes) but has no public release artifact |
-| 2 | **Two plans: Free (pay w/ data) / Paid (private data)** | `inference.free_tier_taste.v1` (yellow) covers free inference generally; nothing covers a Khala Code plan structure | yellow | No plan-selection or purchase surface exists for Khala Code |
-| 3 | **Paid = "I'm not sharing my data with Khala. Cool, you'll pay us."** | `privacy.khala_paid_capture_optout.v1` (yellow), `inference.gateway_credits_business.v1` (red) | yellow/red | Capture opt-out is the right spine but is keyed to the hosted API, not a purchasable Khala Code plan. MPP rails (card/crypto/Lightning) are live on prod, so the payment leg has real evidence; the *product plan* does not |
+| 2 | **Two plans: Free (pay w/ data) / Paid (private data)** | `inference.free_tier_taste.v1` (yellow) covers free inference generally. Nothing covers a Khala Code plan structure | yellow | No plan-selection or purchase surface exists for Khala Code |
+| 3 | **Paid = "I'm not sharing my data with Khala. Cool, you'll pay us."** | `privacy.khala_paid_capture_optout.v1` (yellow), `inference.gateway_credits_business.v1` (red) | yellow/red | Capture opt-out is the right spine but is keyed to the hosted API, not a purchasable Khala Code plan. MPP rails (card/crypto/Lightning) are live on prod, so the payment leg has real evidence. The *product plan* does not |
 | 4 | **Some paid-plan revenue pays free-plan users** | — none | — | **Entirely new promise.** No revenue-share-to-free-users mechanism exists anywhere in code or registry |
-| 5 | **"What if your coding agent pays you?"** (headline) | `pylon.data_trace_revenue.v1` (planned) is the closest ancestor ("mine local traces from Claude Code, Codex, other agents") | planned | 245 re-founds this promise on Khala Code specifically; the Pylon-era record should be reconciled, not silently duplicated |
+| 5 | **"What if your coding agent pays you?"** (headline) | `pylon.data_trace_revenue.v1` (planned) is the closest ancestor ("mine local traces from Claude Code, Codex, other agents") | planned | 245 re-founds this promise on Khala Code specifically. The Pylon-era record should be reconciled, not silently duplicated |
 | 6 | **Free-tier coding data traces are collected** ("cut you in on it") | `data.free_tier_capture_disclosure.v1` (yellow), `data.khala_free_tier_trace_capture.v1` (yellow) | yellow | These cover the hosted Khala API capture path. The Khala Code desktop default path is now **Codex app-server** — the capture story for wrapper-mode coding traces (ATIF ingest, raw event chunks are owner-private today) is materially different and undocumented as a promise |
-| 7 | **Data "scrubbed of any of your sensitive data"** | no record; real partial evidence exists: default-on Rampart PII redaction on the desktop chat boundary (`docs/khala/2026-06-30-khala-code-desktop-redaction.md`) — explicitly "a privacy prefilter, not a security boundary" | — | Scrubbing promise needs its own record with honest scope; the redaction doc's own caveat must survive into any copy |
+| 7 | **Data "scrubbed of any of your sensitive data"** | no record. Real partial evidence exists: default-on Rampart PII redaction on the desktop chat boundary (`docs/khala/2026-06-30-khala-code-desktop-redaction.md`) — explicitly "a privacy prefilter, not a security boundary" | — | Scrubbing promise needs its own record with honest scope. The redaction doc's own caveat must survive into any copy |
 | 8 | **Traces condensed into "agent plugins" future agents use** | `marketplace.wasm_plugins.v1` (planned), `marketplace.signature_monetization.v1` (planned), `autopilot.control_center_fanout_marketplace.v1` (yellow, plugin marketplace) | planned | The trace→plugin distillation pipeline does not exist. Nearest real machinery: GEPA/Mutalisk candidate manifests + Gym admission (evidence-gated, never auto-promote) |
-| 9 | **Paid usage routing through your plugin pays you "a teeny piece"** (5¢ example, ×"thousands of businesses") | `marketplace.monetize_any_layer_with_referral.v1` (planned); Episode 237's plugins-revenue-share claim | planned | No plugin invocation metering, no attribution ledger, no payout path. QA-framework doc notes settlement seams are deliberately INERT until flipped |
+| 9 | **Paid usage routing through your plugin pays you "a teeny piece"** (5¢ example, ×"thousands of businesses") | `marketplace.monetize_any_layer_with_referral.v1` (planned). Episode 237's plugins-revenue-share claim | planned | No plugin invocation metering, no attribution ledger, no payout path. QA-framework doc notes settlement seams are deliberately INERT until flipped |
 | 10 | **"Not just free — it has the possibility of paying you"** | (same as 4/5/9) | — | The on-camera hedge ("possibility") is exactly the right registry framing: these are `planned`, not `yellow` |
 | 11 | **Same familiar structure as established web/mobile/desktop coding agents** | — | — | This is the Codex-wrapper pivot (epic #7780): parity contract + gap matrix are the evidence. Belongs inside the Khala Code product record |
 | 12 | **`openagents.com/api` — model `khala`, OpenAI-compatible** (whiteboard, carried over) | `inference.khala_free_openai_compatible_api.v1` | **green** | Covered |
 | 13 | **"100% open source"** (whiteboard) | `repo.open_source_code_map.v1` | **green** | Covered — and Khala Code Desktop is in the public monorepo, so the claim extends to it naturally |
-| 14 | **Free + paid versions** (whiteboard) | same as #2/#3 | yellow | Free is real (hosted Khala free tier); a paid Khala Code plan is not purchasable |
-| 15 | **Response box: text, code, full software, website deployment, legal brief, research paper** (carried-over) | scattered: `business.coding_quick_win.v1` (yellow), `autopilot_sites.site_build_and_host.v1` (yellow), `business.legal_workspace_pack.v1` (yellow) | yellow | Aspirational router breadth; already registry-covered per lane, no new record needed |
+| 14 | **Free + paid versions** (whiteboard) | same as #2/#3 | yellow | Free is real (hosted Khala free tier). A paid Khala Code plan is not purchasable |
+| 15 | **Response box: text, code, full software, website deployment, legal brief, research paper** (carried-over) | scattered: `business.coding_quick_win.v1` (yellow), `autopilot_sites.site_build_and_host.v1` (yellow), `business.legal_workspace_pack.v1` (yellow) | yellow | Aspirational router breadth. Already registry-covered per lane, no new record needed |
 | 16 | **Pylon Network: compute / data / labor / verification** (carried-over) | `labor.nostr_negotiation_market.v1` (green), `labor.forum_work_requests.v1` (green), `compute.tassadar_executor_poc.v1` (green), `training.decentralized_training_launch.v1` (green), `training.verification_classes.v1` (green) | green | Covered — this is the strongest already-green substrate 245 leans on |
 
 **Summary: of 245's ~16 claims, the infrastructure claims (12/13/15/16) are
@@ -107,9 +107,9 @@ alignment:
 
 - **Ep 220/221** (OAPN launch / Introducing Pylon): compute mining — paste
   one instruction sheet to any agent, Pylon installs with a wallet, sats
-  stream ("we give you a button that you press and it makes you money");
-  run-your-own-Nexus; the moat statement ("contributors get paid the most
-  Bitcoin"); "largest decentralized AI lab this year." Registry:
+  stream ("we give you a button that you press and it makes you money").
+  run-your-own-Nexus. The moat statement ("contributors get paid the most
+  Bitcoin"). "Largest decentralized AI lab this year." Registry:
   `agents.one_instruction_sheet.v1` (green),
   `pylon.install_without_wallet_knowledge.v1` (green),
   `pylon.consumer_compute_earns_bitcoin_self_serve.v1` (red — the
@@ -119,17 +119,17 @@ alignment:
   and claim sheet lived in `docs/plans/transcript-222-launch-truth-contract.md`.
   (That file was deleted in the monorepo rebuild `f5919c7669`, so 222's
   header pointer now dangles — a small reconciliation of its own.)
-  **Episode 245 has no equivalent launch-truth contract**; the §4.1 promise
+  **Episode 245 has no equivalent launch-truth contract**. The §4.1 promise
   family is effectively that document and should be linked from the
   transcript the same way.
 - **Ep 223** (Pay the People): OpenAI's $0 of promised rev-share vs our paid
-  contributors; "rebuild Anthropic's entire product suite on this compute"
-  with revenue flowing to contributors; fine-tuning API, continual-learning
+  contributors. "Rebuild Anthropic's entire product suite on this compute"
+  with revenue flowing to contributors. Fine-tuning API, continual-learning
   as a service, image gen, embeddings "all going to be in here." Registry:
   the `cloud.*` records carry this honestly as planned/red
   (`cloud.fine_tuning_service.v1` red, `cloud.primitives_suite.v1` planned).
-- **Ep 224** (Distributed Training 101): "we're no longer paying you for
-  being online, we're paying you for real work"; the eventual "completely
+- **Ep 224** (Distributed Training 101): "we are no longer paying you for
+  being online, we are paying you for real work". The eventual "completely
   self-serve platform, open protocol, pay and go" for third-party training
   runs. Registry: the `training.*` planned family.
 - **Ep 225** (bounties): "we will keep an updated list of what bounties are
@@ -143,40 +143,40 @@ alignment:
   Claude Code/Cursor drop-in, Forge software factory, and the mobile
   companion — each now tracked (or deliberately deprecated) elsewhere.
 - **Ep 227** (legal): fine-tune Qwen on the Harvey legal benchmark, publish
-  our scores, the code, and "our own dashboard"/leaderboard; the PII
-  redaction → RAG → per-firm fine-tune pipeline at near-compute cost; the
+  our scores, the code, and "our own dashboard"/leaderboard. The PII
+  redaction → RAG → per-firm fine-tune pipeline at near-compute cost. The
   "last agent" neutral-provider positioning. Registry:
   `business.legal_workspace_pack.v1` (yellow) covers the workspace pack but
   **the public legal-leaderboard claim has no record**. Note 245's response
   box re-surfaces "legal brief" as a Khala output lane.
 - **Ep 228** (Get Paid to Code) — **the direct ancestor of Episode 245's
   entire economics loop.** A free cloud coding agent (Autopilot) plus: "if
-  you use it to do useful work and generate stuff that's usable in paid
-  workflows, we're going to pay you on the back end proportional to
+  you use it to do useful work and generate stuff that is usable in paid
+  workflows, we are going to pay you on the back end proportional to
   revenue-share usage." Even the anti-Anthropic framing ("happy to have
   10,000 companies pay 10,000 times for the same code — we only need to
   build one graph") is the same argument 245 makes at the whiteboard. What
   changed by 245: the surface (Autopilot cloud → Khala Code desktop), the
   mechanism (public traces on the website → scrubbed traces condensed into
   agent plugins), and the hedge (228's "maybe" → 245's "possibility").
-  Registry: `autopilot.cloud_coding_sessions.v1` is red;
+  Registry: `autopilot.cloud_coding_sessions.v1` is red.
   `pylon.data_trace_revenue.v1` is planned — neither names this lineage.
-- **Ep 229** (Autopilot Sites): free sites; permanent referrer attribution
+- **Ep 229** (Autopilot Sites): free sites. Permanent referrer attribution
   with "a piece of any paid workflow paid by people that he refers…
-  You paid zero and it's going to get you paid." Registry:
+  You paid zero and it is going to get you paid." Registry:
   `sites.referral_bitcoin_stream.v1` (yellow),
   `referral.refer_once_earn_forever.v1` (red) — the red record exists
   precisely because this class of claim outran evidence.
-- **Ep 230** (Calling All Agents): the five agent markets; `agents.md` as
-  the permanent front door; and the **data-market claim that prefigures
+- **Ep 230** (Calling All Agents): the five agent markets. `agents.md` as
+  the permanent front door. And the **data-market claim that prefigures
   Khala Code's free plan**: "those Claude Code or Codex conversations
   sitting on your computer are highly valuable. Redact the sensitive info,
   anonymize any of it you want, and sell the rest" — including agents
   negotiating trace sales on the user's behalf. Registry:
   `markets.open_protocol_markets.v1` (planned),
   `pylon.data_trace_revenue.v1` (planned).
-- **Ep 231** (Forum): Stacker-News-style Bitcoin ranking "porting over";
-  agent wallets via MDK; "earn some Bitcoin right away without needing to
+- **Ep 231** (Forum): Stacker-News-style Bitcoin ranking "porting over".
+  agent wallets via MDK. "Earn some Bitcoin right away without needing to
   buy anything." Registry: `forum.content_tipping.v1` (green),
   `agents.cursor_forum_wallet.v1` (green),
   `payments.reliable_tips_sweepable_balances.v1` (green) — this cluster
@@ -195,29 +195,29 @@ alignment:
 
 - **Ep 237** (Autopilot 1.0 / Tassadar launch): first on-camera plugins
   revenue-share claim ("reusable plugins that earn their authors a revenue
-  share every time they're invoked"); "deflation plus dividends"; opt-in
+  share every time they are invoked"). "Deflation plus dividends". Opt-in
   data and trajectories paid in Bitcoin.
-- **Ep 238** (Tassadar live): "agentic npm" of verified composable modules;
-  plugin-marketplace reboot promised; **internal inconsistency worth
+- **Ep 238** (Tassadar live): "agentic npm" of verified composable modules.
+  plugin-marketplace reboot promised. **Internal inconsistency worth
   pinning: whiteboard "PAY 5K TO W + V" vs spoken "five Bitcoin sats each"**
   (settled reality per the launch-gate record: 5k/5k per window rewards,
   per-window rate 5 worker / 5 validator).
 - **Ep 239** (Let's Make Money): "refer once, earn forever" — now
   **red** as `referral.refer_once_earn_forever.v1`. New Khala Code
   revenue-share copy must not silently re-imply this red record.
-- **Ep 242** (Khala flagship): free + paid versions; "pay extra for
-  privacy"; traces visible on the website; contributor payment
+- **Ep 242** (Khala flagship): free + paid versions. "Pay extra for
+  privacy". Traces visible on the website. Contributor payment
   "proportional to any paid usage you refer or provide."
 - **Ep 243** (Khala in OpenCode): the free-data/paid-privacy model stated
-  plainly; **pay-the-user framed as aspiration** ("we could end up paying
-  people… how cool would that be"); the cleanest on-camera claim-boundary
+  plainly. **Pay-the-user framed as aspiration** ("we could end up paying
+  people… how cool would that be"). The cleanest on-camera claim-boundary
   list (may-claim vs may-not-claim) — the honesty baseline this doc
   inherits.
 - **Ep 244** (Khala in Codex): escalation to "this **should** be a money
-  maker for you… What if we pay you to use our software?"; own-capacity
-  invariant stated on camera ("we're only making the person's capacity
+  maker for you… What if we pay you to use our software?". Own-capacity
+  invariant stated on camera ("we are only making the person's capacity
   available to that person") — now green as
-  `khala.own_capacity_codex_delegation.v1`; early-adopter trace/reputation
+  `khala.own_capacity_codex_delegation.v1`. Early-adopter trace/reputation
   monetization claim.
 - **Ep 245** (Khala Code launch): the whiteboard makes it product structure
   — "Free (pay w/ data)" / "Paid (private data)" — while keeping the hedge
@@ -237,16 +237,16 @@ green-gates instead of living implicitly inside a Pylon-era planned record
 > `apps/openagents.com/workers/api/src/product-promises.ts`, with the
 > narrative mirror updated in `docs/promises/registry.md`, the Ep 222-style
 > launch-claim header added to `docs/transcripts/245.md`, and 222's dangling
-> pointer fixed. No promise flipped green (green stays exactly 34); the
+> pointer fixed. No promise flipped green (green stays exactly 34). The
 > planned→withdrawn Expo retirement follows the models.tasadar
 > typo-withdrawal precedent, so no transition receipts were required. Two
 > deliberate deviations from the text below: the bounties record landed as
 > `contributors.bounties_surface.v1` (red) and the legal-leaderboard claim
 > landed as its own `business.legal_benchmark_leaderboard.v1` (planned)
-> rather than a scope note; the QA-runner record landed as
+> rather than a scope note. The QA-runner record landed as
 > `qa.agentic_qa_runner.v1` (yellow).
 
-All were owner-gated (copy gates apply; T16.3 in the roadmap already
+All were owner-gated (copy gates apply, T16.3 in the roadmap already
 reserved the owner-gated slot — this expanded its scope from one record to
 a family). Ids follow existing registry style. Initial states are
 deliberately conservative.
@@ -255,18 +255,18 @@ deliberately conservative.
 
 1. **`khala_code.desktop_codex_wrapper.v1` — yellow.**
    Claim: Khala Code is the OpenAgents desktop coding app: a wrapper around
-   the user's own local Codex install (Codex required; `codex app-server`
+   the user's own local Codex install (Codex required, `codex app-server`
    is the kernel), adding the Khala swarm/fleet layer, Unified Inbox, and
    exact token accounting. Evidence: `clients/khala-code-desktop` on
    `main`, the pinned parity contract + gap matrix, passing fixture suites
    and skip-safe live smokes, the positioning doc
    (`docs/khala-code/2026-07-01-codex-required-product-positioning.md`).
    Yellow (not green) because there is no public release artifact/installer
-   and no outside user has run it; blockerRefs should name the release gate.
+   and no outside user has run it. BlockerRefs should name the release gate.
    This is roadmap T16.3, broadened.
 2. **`khala_code.free_paid_plans.v1` — planned.**
    Claim: Khala Code offers a free plan (usage data captured, disclosed,
-   scrubbed) and a paid plan (private data; capture opt-out). Planned until
+   scrubbed) and a paid plan (private data, capture opt-out). Planned until
    a plan can actually be selected/purchased in the product. Depends on
    `privacy.khala_paid_capture_optout.v1` (yellow) for the opt-out spine
    and the live MPP payment rails for the purchase leg.
@@ -311,7 +311,7 @@ deliberately conservative.
    parity with the web forum (browse, authenticated posting under the real
    server-side identity, BOLT12 direct tips, promise-gap reporting), not a
    reduced read-only embed. The current hotbar is Chat, Fleet, Inbox,
-   Settings (`clients/khala-code-desktop/src/ui/sidebar.ts`); the web
+   Settings (`clients/khala-code-desktop/src/ui/sidebar.ts`). The web
    Forum routes in the `openagents.com` Worker stay the backing authority.
    This makes gateway funnel step 5 (§6) a first-class product commitment
    rather than an inferred spoke.
@@ -322,7 +322,7 @@ deliberately conservative.
    claim ("mine valuable local traces from Claude Code, Codex, and other
    agents") is now productized as the Khala Code free plan. Either update
    its claim text to point at the `khala_code.*` family or mark it
-   superseded-by; do not leave two divergent planned records for one
+   superseded-by. Do not leave two divergent planned records for one
    promise.
 8. **`data.free_tier_capture_disclosure.v1` / `data.khala_free_tier_trace_capture.v1`
    (yellow)** — extend scope notes to say explicitly whether the Khala Code
@@ -332,12 +332,12 @@ deliberately conservative.
    predates the Codex-wrapper pivot.
 9. **`mobile.autopilot_remote_control.v1` (planned)** — **stale**: it
    describes the Expo mobile app, which was retired on 2026-06-26
-   (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`); the
+   (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`). The
    standing mobile policy is native SwiftUI, and the roadmap's mobile
    companion (WS-11, from the Orca plan) is a new E2EE-paired DO-relayed
    projection. Recommend: withdraw the Expo record and open a fresh
    `mobile.fleet_companion.v1` (planned) matching WS-11's actual shape
-   (observe / notify / approve / steer; never hosts work).
+   (observe / notify / approve / steer, never hosts work).
 10. **Ep 238 payout figure** — pin the settled per-window rate in the
     training records' caveats so the whiteboard/spoken discrepancy (5k vs
     5 sats) can never be cited against us.
@@ -345,7 +345,7 @@ deliberately conservative.
     match the code version (currently `2026-06-29.3` vs `2026-06-29.5`).
 12. **QA-runner product** — shipped OSS npm package
     (`@openagentsinc/qa-runner@0.1.0`, epic #6181 "out-ship Factory",
-    named first prospective customer) has no promise record; if we keep
+    named first prospective customer) has no promise record. If we keep
     talking about it publicly, it needs one (likely yellow).
 13. **Bounties surface (Ep 225)** — the standing on-camera claim that
     `openagents.com/bounties` will "always" list current bounties has no
@@ -355,7 +355,7 @@ deliberately conservative.
     revived, it is also a natural Khala Code gateway spoke: bounty work
     dispatched through the fleet.)
 14. **Public legal leaderboard (Ep 227)** — the promised Harvey-benchmark
-    scores/dashboard/code publication is registry-silent;
+    scores/dashboard/code publication is registry-silent.
     `business.legal_workspace_pack.v1` (yellow) covers the pack, not the
     leaderboard claim. Add a record or fold the claim into the pack record's
     scope notes. 245's response box re-surfaces "legal brief" as a Khala
@@ -385,9 +385,9 @@ records advance as workstreams land:
 | Roadmap outcome | Workstreams | Promise record it should advance |
 | --- | --- | --- |
 | Khala Code wraps your Codex (product identity) | WS-16 (T16.3) | `khala_code.desktop_codex_wrapper.v1` yellow → green at first public release |
-| One-message sustained fleet run + cockpit | WS-3/4/5 | new `khala_code.fleet_cockpit.v1` (planned) if we make fleet a public claim; the clean-2B-day (WS-17) is its green-gate evidence pack |
+| One-message sustained fleet run + cockpit | WS-3/4/5 | new `khala_code.fleet_cockpit.v1` (planned) if we make fleet a public claim. The clean-2B-day (WS-17) is its green-gate evidence pack |
 | Exact accounting under fleet load (fire-and-forget token reporting fixed, timeout cancels remote turn) | WS-1/7 (Effect audit debts) | protects `metrics.khala_tokens_served_public.v1` (green) — these debts are *green-preservation* work: a silent undercount would degrade an existing green |
-| Claude chat harness + multi-harness routing | WS-8/9 | extends `pylon.local_claude_agent_bridge.v1` (green) up into the desktop; a `codex \| claude \| auto` claim should not be made publicly before T9.x lands |
+| Claude chat harness + multi-harness routing | WS-8/9 | extends `pylon.local_claude_agent_bridge.v1` (green) up into the desktop. A `codex \| claude \| auto` claim should not be made publicly before T9.x lands |
 | Mobile companion | WS-11 | replacement `mobile.fleet_companion.v1` (see §4.2.9) |
 | Artanis fleet administrator / AaaS | WS-12 | the three Artanis records held YELLOW honestly (`artanis.labor_requester.v1`, `artanis.tassadar_evolution_loop.v1` — currently green, `artanis.pylon_support_responder.v1`) plus a future `artanis.fleet_manager_aas.v1` (planned) when Vision B productizes |
 | QA framework productization | WS-6 | the missing qa-runner record (§4.2.12) |
@@ -440,7 +440,7 @@ Concretely, the funnel and the promise records each step activates:
 6. **Go online / contribute** → Tassadar + labor market greens
    (`training.decentralized_training_launch.v1`,
    `labor.nostr_negotiation_market.v1`, `compute.tassadar_executor_poc.v1`).
-   *Khala Code's Fleet panel is the natural "go online" surface; 24X2's
+   *Khala Code's Fleet panel is the natural "go online" surface. 24X2's
    "Honest Button" framing is the right copy discipline when this arrives.*
 7. **Hand the fleet to Artanis** → WS-12 / AaaS (planned). *The endgame:
    Khala Code is the surface where a user meets their own fleet manager.*
@@ -454,16 +454,16 @@ full software, website deployment, legal brief, research paper) names the
 gateway's outbound spokes, each with an existing promise lane: website
 deployment → the Sites records (`autopilot_sites.site_build_and_host.v1`
 yellow) and the Ep 229 referral mechanics (kept honest against the red
-`referral.refer_once_earn_forever.v1`); legal brief → the Ep 227 legal lane
+`referral.refer_once_earn_forever.v1`). Legal brief → the Ep 227 legal lane
 (`business.legal_workspace_pack.v1` yellow, plus the unrecorded leaderboard
-claim in §4.2.14); full software → `business.coding_quick_win.v1` (yellow)
+claim in §4.2.14). Full software → `business.coding_quick_win.v1` (yellow)
 and, if revived, the Ep 225 bounties surface as fleet-dispatchable work.
-Khala Code doesn't have to *implement* these lanes to be their gateway — it
+Khala Code does not have to *implement* these lanes to be their gateway — it
 has to route to them through the same Khala API and keep each claim pinned
 to its record's actual state.
 
 Reading the funnel against the registry: **steps 1, 2, 4, 5, 6 stand on
-green records today; steps 3, 7, 8, 9 are planned.** That is a coherent
+green records today. Steps 3, 7, 8, 9 are planned.** That is a coherent
 launch story — the gateway works now for "use it, connect your Codex, get
 an identity, get paid rails", while the headline economics are honestly
 `planned` with named gates. The copy rule that follows: Khala Code launch
@@ -482,19 +482,19 @@ live feature — until the §4.1 records earn yellow/green through receipts.
    same version bump: withdraw the Expo mobile record, resolve the Ep 225
    bounties and Ep 227 leaderboard claims, and add the Ep 222-style
    launch-truth header note to `docs/transcripts/245.md`.~~ **DONE — same
-   version bump; 245.md and 222.md headers updated.**
+   version bump. 245.Md and 222.md headers updated.**
 3. Fix the fable-doc "episode 245" references (§5) so future readers do not
    conflate the released launch video with the unreleased fleet-demo draft
-   (`24X1.md`); re-point WS-16/T16.1 and expand T16.3 (T16.3's promise
-   record now exists as `khala_code.desktop_codex_wrapper.v1`; what remains
+   (`24X1.md`). Re-point WS-16/T16.1 and expand T16.3 (T16.3's promise
+   record now exists as `khala_code.desktop_codex_wrapper.v1`. What remains
    of T16.3 is the public release artifact + outside-user evidence that
    would move it toward green).
 4. Add the promise-record column to the roadmap pairings (§5) as tasks land
    — cheapest as a one-line "advances promise: `<id>`" note per PR that
    touches a paired workstream.
-5. ~~Sync `docs/promises/registry.md` header version; pin the Ep 238 payout
-   rate caveat.~~ **DONE — narrative mirror prepended with `2026-07-01.1`;
-   rate pinned (5 sats worker / 5 sats validator per verified window; the
+5. ~~Sync `docs/promises/registry.md` header version. Pin the Ep 238 payout
+   rate caveat.~~ **DONE — narrative mirror prepended with `2026-07-01.1`.
+   rate pinned (5 sats worker / 5 sats validator per verified window, the
    whiteboard "5K" was never a settled rate).**
 6. When the paid plan, plugin pipeline, or revenue share move from planned
    toward yellow, run them through the transition-receipt machinery with
@@ -508,13 +508,13 @@ live feature — until the §4.1 records earn yellow/green through receipts.
 
 ## 8. Source Index
 
-- Released transcript: `docs/transcripts/245.md`; unreleased drafts
-  `docs/transcripts/24X1.md`, `docs/transcripts/24X2.md`; arc
-  `docs/transcripts/220.md`–`244.md` (registry episode `234.md`; the Ep 222
+- Released transcript: `docs/transcripts/245.md`. Unreleased drafts
+  `docs/transcripts/24X1.md`, `docs/transcripts/24X2.md`. Arc
+  `docs/transcripts/220.md`–`244.md` (registry episode `234.md`, the Ep 222
   claim-contract precedent is `docs/plans/transcript-222-launch-truth-contract.md`).
 - Registry: `apps/openagents.com/workers/api/src/product-promises.ts`,
   `promise-transition-receipt-routes.ts`, `promise-transition-audit-routes.ts`,
-  migration `0148_promise_transition_receipts.sql`;
+  migration `0148_promise_transition_receipts.sql`.
   `docs/promises/README.md`, `registry.md`, `checks-and-gates.md`,
   `templates/promise-record.md`,
   `2026-06-25-free-tier-data-sharing-disclosure.md`,

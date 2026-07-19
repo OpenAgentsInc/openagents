@@ -1,7 +1,7 @@
 # Bootstrap From the Last Durable Seal and the Join-Blocking Window (Pluralis Roadmap P1.2/P1.3)
 
 Date: 2026-06-12
-Issues of record: openagents#4850 (P1.2) and openagents#4851 (P1.3); master
+Issues of record: openagents#4850 (P1.2) and openagents#4851 (P1.3). Master
 tracking issue openagents#4855
 Rails: #4673 (training run/window authority), dispatcher pattern #4639
 Roadmap source: `docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md`
@@ -13,7 +13,7 @@ Roadmap source: `docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.m
 from the run's **last durable seal**: the most recently sealed (or already
 reconciled) window whose seal record carries a durably stored checkpoint
 digest. A joiner never receives in-flight state, and never chases the live
-run; it syncs forward from the seal via the shadow-window ramp (psionic
+run. It syncs forward from the seal via the shadow-window ramp (psionic
 companion, roadmap P1.1, psionic#1125). The grant pins the seal's checkpoint
 digest, and the joiner's acceptance must echo that digest exactly before any
 work is assigned. How often a durable seal is published is now a stated
@@ -34,9 +34,9 @@ produced, if it published a digest.
 ## Pluralis sources (agora)
 
 - `docs/agora-system/startup-sequence.md` (state download): "The S3
-  snapshot lags the live parameter state; it is published periodically, not
+  snapshot lags the live parameter state. It is published periodically, not
   on every step." Joiners download a deliberately stale snapshot and sync
-  forward through the ramp; they never read live state.
+  forward through the ramp. They never read live state.
 - `docs/agora-system/fault-tolerance.md` (Join Blocking Window): "a peer
   joining mid-`AllReduce` … would read parameters that are neither the
   pre-round nor the post-round model. To prevent that, new joins are blocked
@@ -54,12 +54,12 @@ produced, if it published a digest.
   joiner verifies against, so a digestless seal proves nothing to a joiner.
 - `TrainingRunRecord` gains `sealPublicationCadenceWindows` (integer,
   1–10,000, default 1 = every window publishes a durable seal) and
-  `sealInFlightAt` (nullable ISO timestamp; the run-level barrier marker).
+  `sealInFlightAt` (nullable ISO timestamp, the run-level barrier marker).
   Both are persisted in D1
   (migration `0175_training_run_bootstrap_seal_barrier.sql`) and surfaced in
   the public run projection as `sealPublicationCadenceWindows` and the
   boolean `sealInFlight`.
-- `TrainingRunPlanRequest` accepts `sealPublicationCadenceWindows`; runs
+- `TrainingRunPlanRequest` accepts `sealPublicationCadenceWindows`. Runs
   that seal less often than every window must declare it so the
   joiner-staleness bound stays a stated per-run contract value.
 - The store gains `beginRunSealBarrier(trainingRunRef, nowIso)` /
@@ -74,9 +74,9 @@ Pure functions over authority records, timestamps always passed in:
   tiebreak).
 - `decideTrainingWindowBootstrapGrant` — one typed outcome per request:
   - `queued` with `join_lifecycle.public.join_deferred_seal_in_flight` when
-    the run's seal barrier is up;
+    the run's seal barrier is up.
   - `refused` with `training.bootstrap.public.no_durable_seal` when no
-    durable seal exists (typed refusal, never a fabricated grant);
+    durable seal exists (typed refusal, never a fabricated grant).
   - `granted` otherwise, with the grant pinning the seal's
     `checkpointDigestRef`, the sealed window ref, the seal's receipt refs,
     the joiner's echoed receipt refs, and a display-only seal age.
@@ -87,7 +87,7 @@ Pure functions over authority records, timestamps always passed in:
   acceptance, never precedes it.
 - `applyPylonJoinLifecycleTransitionUnderSealBarrier` — join-lifecycle
   transitions obey the same barrier: seal in flight means the transition is
-  queued with the same deferral reason code; the caller replays the
+  queued with the same deferral reason code. The caller replays the
   identical transition input once the barrier clears.
 
 ### Barrier representation (design decision)
@@ -119,33 +119,33 @@ through the join-lifecycle reason-code taxonomy.
   `workers/api/src/openagents-openapi.ts`.
 - The reason code `join_lifecycle.public.join_deferred_seal_in_flight` joins
   the closed taxonomy in `workers/api/src/pylon-join-lifecycle.ts` as a
-  queue-visibility code; it is deliberately **not** a ladder edge — no
+  queue-visibility code. It is deliberately **not** a ladder edge — no
   transition in the closed set carries it.
 
 ## Tests
 
 `workers/api/src/training-window-bootstrap.test.ts` (unit) and
 `workers/api/src/training-run-window-routes.test.ts` (route-level) cover:
-grant pinned to the latest durable seal; digestless seals skipped; typed
-refusal when no durable seal exists; queued outcome with the deferral reason
+grant pinned to the latest durable seal. Digestless seals skipped. Typed
+refusal when no durable seal exists. Queued outcome with the deferral reason
 code while the barrier is up (including the seal route raising/clearing the
-barrier, observed via an instrumented store); the replayed request
-proceeding against the new last durable seal after the barrier clears;
-digest-echo acceptance plus all three typed rejection codes; join-lifecycle
-transitions queued under the barrier and applied on replay; and cadence
+barrier, observed via an instrumented store). The replayed request
+proceeding against the new last durable seal after the barrier clears.
+digest-echo acceptance plus all three typed rejection codes. Join-lifecycle
+transitions queued under the barrier and applied on replay. And cadence
 config validation (invalid cadence rejected, declared cadence and default
 projected publicly).
 
 ## Explicitly not claimed (hardware/rehearsal-gated)
 
 - **R1 rehearsal join-from-seal cycle with receipts** (#4850 acceptance,
-  third bullet): requires live operator devices; no rehearsal receipt is
+  third bullet): requires live operator devices. No rehearsal receipt is
   claimed here.
 - **R1 rehearsal receipt demonstrating a join correctly deferred across a
-  seal boundary** (#4851 acceptance, third bullet): same gating; the
+  seal boundary** (#4851 acceptance, third bullet): same gating. The
   deferral is contract-tested, not live-demonstrated.
 - **Live joiner digest verification on a real device**: the digest-echo
-  contract is enforced and unit-tested; the live joining-device exercise is
+  contract is enforced and unit-tested. The live joining-device exercise is
   gated on R1 hardware.
 - **Shadow-window ramp catch-up** (roadmap P1.1): psionic-side companion
   (psionic#1125), out of scope for this monorepo change.

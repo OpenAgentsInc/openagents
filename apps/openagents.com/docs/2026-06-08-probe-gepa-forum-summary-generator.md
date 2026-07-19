@@ -12,10 +12,10 @@ campaigns. The implementation lives in
 
 The generator consumes:
 
-- an `openagents.probe_gepa_campaign_projection.v1` record;
-- Forum topic/thread refs;
-- proof bundle refs;
-- verifier refs; and
+- an `openagents.probe_gepa_campaign_projection.v1` record.
+- Forum topic/thread refs.
+- proof bundle refs.
+- verifier refs. And
 - scorer refs.
 
 It does not consume raw prompts, traces, benchmark fixtures, private paths,
@@ -25,12 +25,12 @@ credentials, account refs, wallet material, invoices, or preimages.
 
 The output is an `openagents.probe_gepa_forum_summary.v1` draft with:
 
-- title;
-- body Markdown;
-- deterministic idempotency key;
-- exact claim-boundary line;
-- target topic/thread refs;
-- posting mode; and
+- title.
+- body Markdown.
+- deterministic idempotency key.
+- exact claim-boundary line.
+- target topic/thread refs.
+- posting mode. And
 - posting authority boundary.
 
 The body summarizes campaign id, stage, dataset/split refs, candidate hash
@@ -48,10 +48,10 @@ generator does not invoke the Artanis bridge.
 
 The generator uses exact claim-state language:
 
-- measured retained smoke only;
-- retained evidence summary only;
-- validation measured only;
-- holdout summary only; or
+- measured retained smoke only.
+- retained evidence summary only.
+- validation measured only.
+- holdout summary only. Or
 - no public benchmark claim.
 
 Retained evidence is not described as a public benchmark score. Validation

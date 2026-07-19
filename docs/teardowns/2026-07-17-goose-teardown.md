@@ -5,7 +5,7 @@ source tree at an exact, freshly fast-forwarded commit. The audit did not build
 Goose, install an extension, launch the CLI or desktop app, connect a provider,
 read local Goose state, or execute an agent turn.
 
-## TL;DR
+## TL.DR
 
 Goose is a mature local agent platform whose defining architectural move is
 **one Rust agent engine presented through several hosts**: a native CLI, an
@@ -37,26 +37,26 @@ CLI / Electron / text TUI / editor / SDK
 The strongest reusable seams are:
 
 - a single engine contract across multiple clients rather than a separate
-  desktop agent implementation;
+  desktop agent implementation.
 - ACP as both a host protocol and provider adapter, with MCP passed through as
-  the shared capability language;
+  the shared capability language.
 - explicit conversation audiences that survive ACP projection, persistence,
-  export, search, orchestration, and compaction;
+  export, search, orchestration, and compaction.
 - durable searchable SQLite sessions with usage, lineage, archive, schedule,
-  recipe, provider, model, and mode metadata;
+  recipe, provider, model, and mode metadata.
 - recipes, hooks, schedules, and subagents built into the engine instead of
-  simulated entirely in prompts;
-- declarative provider definitions beside compiled implementations;
+  simulated entirely in prompts.
+- declarative provider definitions beside compiled implementations.
 - a loopback desktop sidecar protected by a generated secret and an Electron
   renderer with context isolation, Node integration disabled, and web security
-  enabled; and
+  enabled. And
 - a serious cross-platform release system for CLI, desktop, SDK, containers,
   package managers, signing, and updates. [source]
 
 The source also exposes boundaries OpenAgents should not inherit:
 
 - Goose documents **Completely Autonomous** as the default mode. Its built-in
-  developer tools normally execute with the host user's authority; container
+  developer tools normally execute with the host user's authority. Container
   execution is explicit, not a universal safety boundary. [source]
 - approvals, model-based read-only classification, adversary scanning, prompt
   injection detection, and command classification improve decisions but are
@@ -72,7 +72,7 @@ The source also exposes boundaries OpenAgents should not inherit:
 
 The central OpenAgents decision is: **adapt Goose's one-engine/many-client
 shape, bidirectional ACP/MCP bridge, audience-safe projections, durable
-session/search model, provider catalog, and workflow primitives; reject
+session/search model, provider catalog, and workflow primitives. Reject
 autonomous host execution as the default, model judgment as policy or
 containment, timer-plus-JSON scheduling as recovery, and session persistence
 as a substitute for portable receipted work.**
@@ -92,7 +92,7 @@ fast-forwarded from `e359b35ae` to the then-current `origin/main` tip below.
 | Commit subject    | `fix(config): require absolute goose path roots (#10454)`                                     | Latest path-authority hardening                  |
 | Product version   | `1.43.0`                                                                                      | Cargo workspace and desktop generation           |
 | License           | Apache License 2.0                                                                            | Source reuse boundary                            |
-| Source scale      | 2,409 tracked files; about 215,071 Rust and 104,079 TypeScript/TSX lines                      | Approximate implementation scale                 |
+| Source scale      | 2,409 tracked files. About 215,071 Rust and 104,079 TypeScript/TSX lines                      | Approximate implementation scale                 |
 | Workspace         | 12 Rust crates, Electron desktop, text TUI, TypeScript and Python SDKs, docs, evals, services | Repository topology                              |
 | Recent history    | 45 commits since `2026-07-15T00:00:00Z`                                                       | Material activity in the requested recent window |
 
@@ -104,11 +104,11 @@ release workflow. [history]
 
 ### 1.2 Evidence labels
 
-- **`[source]`** — tracked source, docs, manifests, or workflows at the commit;
-- **`[schema]`** — a typed Rust, ACP, MCP, SDK, recipe, or storage contract;
-- **`[test]`** — a tracked executable test or CI check;
-- **`[history]`** — Git history at or before the audited commit;
-- **`[inferred]`** — reasoned from several observations; and
+- **`[source]`** — tracked source, docs, manifests, or workflows at the commit.
+- **`[schema]`** — a typed Rust, ACP, MCP, SDK, recipe, or storage contract.
+- **`[test]`** — a tracked executable test or CI check.
+- **`[history]`** — Git history at or before the audited commit.
+- **`[inferred]`** — reasoned from several observations. And
 - **`[limitation]`** — a source-only audit boundary.
 
 There are intentionally no `[runtime]` observations in this document.
@@ -136,13 +136,13 @@ agents. [source] [inferred]
 
 The agent loop crosses more state than `provider -> shell`:
 
-1. a host submits a message and session configuration;
-2. the engine projects visible history and tools to a provider;
-3. typed reply parts stream back;
+1. a host submits a message and session configuration.
+2. the engine projects visible history and tools to a provider.
+3. typed reply parts stream back.
 4. calls cross inspectors, hooks, confirmation, execution, response-size, and
-   extension boundaries;
-5. recoverable failures become tool results;
-6. eligible history may be summarized or compacted; and
+   extension boundaries.
+5. recoverable failures become tool results.
+6. eligible history may be summarized or compacted. And
 7. messages, usage, metadata, and state are persisted. [source]
 
 | Crate                           | Primary role                                                                                  |
@@ -168,7 +168,7 @@ also enter Goose history. [source]
 
 `goose serve` exposes draft HTTP/WebSocket transports. It requires
 `GOOSE_SERVER__SECRET_KEY` unless explicitly started with
-`--dangerously-unauthenticated`; CORS and WebSocket Origin defaults are
+`--dangerously-unauthenticated`. CORS and WebSocket Origin defaults are
 loopback-oriented. Electron generates a secret, launches on `127.0.0.1`,
 probes authenticated ACP, retains a backend lease per window, and redacts the
 token in diagnostics. [source] [test]
@@ -200,7 +200,7 @@ identical. [source] [inferred]
 ### 3.3 MCP extensions and apps
 
 Goose supports built-in, child-process, streamable HTTP, and client-supplied
-MCP servers; OAuth, elicitation, sampling, MCP Apps, validation, and
+MCP servers. OAuth, elicitation, sampling, MCP Apps, validation, and
 container-routed stdio extensions are present. Built-ins include shell, files,
 documents, PDFs, spreadsheets, memory, planning, and other capabilities.
 [source]
@@ -229,12 +229,12 @@ this and receipt every loss, redaction, and derived summary. [inferred]
 `SessionManager` uses SQLite in WAL mode with pooled access, schema versioning,
 transactional migrations, indexes, and legacy import. Metadata includes:
 
-- user and generated names;
-- user, subagent, schedule, hidden, terminal, and gateway types;
-- working directory, extension data, recipe and supplied values;
-- provider, model, and Goose mode;
-- usage totals and accumulated cost;
-- archive, project, parent-session, and schedule identifiers; and
+- user and generated names.
+- user, subagent, schedule, hidden, terminal, and gateway types.
+- working directory, extension data, recipe and supplied values.
+- provider, model, and Goose mode.
+- usage totals and accumulated cost.
+- archive, project, parent-session, and schedule identifiers. And
 - message visibility and tool metadata. [schema] [source]
 
 It supports create, update, list, cursor paging, filtering, archive, delete,
@@ -250,7 +250,7 @@ ergonomics without weakening Thread/Turn/Item and receipt authority. [inferred]
 
 Goose can compact near context limits and summarize older tool-call/result
 pairs while protecting recent calls. Originals retain visibility metadata
-while a derived summary becomes provider-visible context; provider-managed
+while a derived summary becomes provider-visible context. Provider-managed
 context can opt out. Tests exercise audience projection during compaction.
 [source] [test]
 
@@ -272,9 +272,9 @@ Goose process's host identity. Docker modes and provider sandboxes exist, but
 the engine does not universally enforce containment around every tool.
 [source]
 
-OpenAgents should reject this default. Approval is owner interaction; policy
-is authorization; a sandbox is enforcement; a container or VM is workload
-containment; egress constrains disclosure; receipts establish what happened.
+OpenAgents should reject this default. Approval is owner interaction. Policy
+is authorization. A sandbox is enforcement. A container or VM is workload
+containment. Egress constrains disclosure. Receipts establish what happened.
 None substitutes for another.
 
 ### 5.2 Smart Approval is classification
@@ -287,7 +287,7 @@ tool. [source] [history]
 The patch demonstrates that tool name is too coarse an authority key.
 Arguments, resolved paths, working directory, environment, destination,
 session, caller, and generation can change the effect. Semantic assistance may
-explain a decision; deterministic typed policy must authorize the exact
+explain a decision. Deterministic typed policy must authorize the exact
 resolved invocation. [inferred]
 
 ### 5.3 Defense in depth
@@ -320,7 +320,7 @@ the backend. MCP Apps render in sandboxed iframes with a host bridge and CSP.
 
 This is a sound renderer baseline. Main still exposes privileged IPC, starts a
 shell-capable backend, and handles deep links and external URLs. Every IPC path
-needs caller, origin, payload, and authority validation; renderer hardening
+needs caller, origin, payload, and authority validation. Renderer hardening
 does not contain the agent backend. [inferred]
 
 ## 6. Recipes, hooks, subagents, and schedules
@@ -335,7 +335,7 @@ capabilities, policy, placement, and acceptance. YAML is source material, not
 execution authority.
 
 Hooks receive structured JSON for session, prompt, tool, shell, file, and stop
-events. `PreToolUse` and `Stop` can block; others are observational. Inputs and
+events. `PreToolUse` and `Stop` can block. Others are observational. Inputs and
 working directory are available where applicable. [source]
 
 The deny contract is useful, but arbitrary hook processes are another policy
@@ -472,8 +472,8 @@ invariants.
 Goose is one of the best public references for an interoperable local agent
 engine because it refuses to make one UI the architecture. CLI, Electron,
 editors, a TUI, SDKs, schedulers, and foreign ACP agents meet at a shared Rust
-core. MCP supplies a broad tool plane; SQLite supplies credible local history;
-workflows are tangible; and releases treat the product as real cross-platform
+core. MCP supplies a broad tool plane. SQLite supplies credible local history.
+workflows are tangible. And releases treat the product as real cross-platform
 software.
 
 Its weaknesses follow from the same local-first pragmatism. Broad host tools,

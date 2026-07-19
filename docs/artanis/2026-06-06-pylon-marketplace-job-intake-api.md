@@ -25,23 +25,23 @@ for OpenAgents-seeded, external-human, or external-agent work.
 
 The request records:
 
-- requester ref;
-- source;
-- job kind;
-- privacy class;
-- Pylon resource-mode preference;
+- requester ref.
+- source.
+- job kind.
+- privacy class.
+- Pylon resource-mode preference.
 - benchmark, model, data, budget, spend caveat, source, policy gate, resource,
   result, eligibility, and evidence expectation refs.
 
 The supported job kinds now include:
 
-- artifact review;
-- benchmark evaluation;
-- embedding/data preparation;
-- GEPA/DSPy optimization;
-- inference;
-- LoRA fine-tuning;
-- training;
+- artifact review.
+- benchmark evaluation.
+- embedding/data preparation.
+- GEPA/DSPy optimization.
+- inference.
+- LoRA fine-tuning.
+- training.
 - validation.
 
 OpenAgents-seeded jobs enter `intake_ready`. External jobs enter
@@ -52,9 +52,9 @@ OpenAgents-seeded jobs enter `intake_ready`. External jobs enter
 `POST /api/operator/artanis/pylon-marketplace/jobs/:intakeRef/triage` moves an
 intake into one of these states:
 
-- `accepted_for_review`;
-- `needs_input`;
-- `rejected`;
+- `accepted_for_review`.
+- `needs_input`.
+- `rejected`.
 - `assignment_proposed`.
 
 `needs_input` and `rejected` require blocker refs. `assignment_proposed`
@@ -69,8 +69,8 @@ a live Pylon dispatch receipt.
 
 Migration `0121_pylon_marketplace_jobs.sql` adds:
 
-- `pylon_marketplace_job_intakes`;
-- `pylon_marketplace_assignments`;
+- `pylon_marketplace_job_intakes`.
+- `pylon_marketplace_assignments`.
 - `pylon_marketplace_triage_actions`.
 
 The triage action table stores idempotent action receipts so retries cannot
@@ -80,10 +80,10 @@ create duplicate assignment proposals.
 
 The API response always returns:
 
-- `liveDispatchAllowed: false`;
-- `buyerChargeMutationAllowed: false`;
-- `paidAssignmentDispatchAllowed: false`;
-- `payoutMutationAllowed: false`;
+- `liveDispatchAllowed: false`.
+- `buyerChargeMutationAllowed: false`.
+- `paidAssignmentDispatchAllowed: false`.
+- `payoutMutationAllowed: false`.
 - `settlementMutationAllowed: false`.
 
 Dispatch still requires the later Artanis production launch gate plus a
@@ -93,7 +93,7 @@ target-specific Nexus/Pylon executor approval.
 
 Coverage lives in:
 
-- `workers/api/src/pylon-marketplace-jobs.test.ts`;
+- `workers/api/src/pylon-marketplace-jobs.test.ts`.
 - `workers/api/src/operator-pylon-marketplace-routes.test.ts`.
 
 The tests cover artifact-review job support, admin gating, idempotent intake

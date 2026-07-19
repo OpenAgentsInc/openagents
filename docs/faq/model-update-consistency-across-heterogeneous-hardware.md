@@ -5,7 +5,7 @@ Twitter/X about the Tassadar training run launched in Episode 237.*
 
 ## The short answer
 
-We don't *assume* consistency across hardware — we **verify** it, one contribution
+We do not *assume* consistency across hardware — we **verify** it, one contribution
 at a time, and we only fold a model update into the network's weights after it has
 **cleared verification**. Three things make that work:
 
@@ -14,7 +14,7 @@ at a time, and we only fold a model update into the network's weights after it h
    the same output digest on any machine that runs it honestly.
 2. **Verification by exact replay on a *different* device.** Every contribution is
    re-executed on a separate validator node and the result digests are compared. A
-   contribution that isn't reproducible across hardware doesn't match, and a
+   contribution that is not reproducible across hardware does not match, and a
    non-matching contribution is never merged.
 3. **A heterogeneity-tolerant merge.** Updates are robustly aggregated and
    staleness-aware, so a slow old GPU, a fast new one, and a CPU node can all
@@ -22,7 +22,7 @@ at a time, and we only fold a model update into the network's weights after it h
 
 The rest of this essay explains each, and is honest about what is built versus what
 is still experimental — because the whole point of OpenAgents is that a claim you
-can't verify isn't worth making.
+cannot verify is not worth making.
 
 ## Why heterogeneity is the hard part (and why we leaned into it)
 
@@ -38,7 +38,7 @@ Different GPUs, CPUs, drivers, and math libraries produce *slightly* different
 floating-point results for the same operation. Different machines run at different
 speeds, so their updates arrive stale. And in an open network, you cannot assume
 every node is even honest. Any one of those — numerical drift, staleness, or a bad
-actor — can silently poison a shared model. So consistency cannot be a hope; it has
+actor — can silently poison a shared model. So consistency cannot be a hope. It has
 to be a property the protocol *enforces*.
 
 ## Pillar 1 — A deterministic executor, so the same work is reproducible anywhere
@@ -53,16 +53,16 @@ Training and verification operate on **digest-pinned workloads**. The executor
 deterministic, two honest machines running the same pinned workload produce the
 **same digest**. That is what makes cross-hardware consistency *checkable*: instead
 of comparing fuzzy floating-point tensors and arguing about tolerance, we compare
-fixed-size digests that either match or don't.
+fixed-size digests that either match or do not.
 
 Determinism is the foundation everything else stands on. It is also why we are
 building on the LLM-as-computer architecture in the first place: deterministic,
 reproducible computation is the thing that lets a stranger trust a result they
-didn't produce.
+did not produce.
 
 ## Pillar 2 — Verification by exact replay on a *distinct* device
 
-Determinism makes consistency *checkable*; replay is how we actually *check* it.
+Determinism makes consistency *checkable*. Replay is how we actually *check* it.
 
 Every contribution to the run is verified with a challenge class called
 **`exact_trace_replay`**. The mechanism, from the executor-trace design
@@ -73,16 +73,16 @@ Every contribution to the run is verified with a challenge class called
 - A **validator node — required to be a *different* device than the worker** —
   re-executes the same pinned workload and produces its own `replayDigestRef`.
 - The two digests are **compared**. A match means the work reproduced exactly on
-  independent hardware; the contribution is marked **Verified** and becomes eligible
+  independent hardware. The contribution is marked **Verified** and becomes eligible
   for settlement. A mismatch means it did not reproduce — and it is rejected.
 
 The design states the principle directly: **"Replay is the trust anchor — never
-trust the submitter's digest; the verdict is the separate-device replay match. A
+trust the submitter's digest. The verdict is the separate-device replay match. A
 faked worker trace fails."** This is the heart of the answer. We do not keep the
 model consistent by trusting that every node's hardware agrees. We keep it
 consistent by **requiring that a second, independent machine reproduce the work
 exactly** before it counts. Numerical drift, a buggy kernel, or an outright forged
-result all surface the same way: the replay digest doesn't match, and the
+result all surface the same way: the replay digest does not match, and the
 contribution never enters the model.
 
 Note the deliberate constraint that the validator be a *distinct* device from the
@@ -96,17 +96,17 @@ For replay to mean anything, every node has to start from the *same* model. We d
 that with **content-addressed, digest-verified checkpoints**: the run publishes a
 durable checkpoint, and a joining node **downloads it and verifies its digests**
 before it does any work. There is one canonical state, identified by its hash, not a
-per-node copy that can quietly drift. If your checkpoint's digest doesn't match the
+per-node copy that can quietly drift. If your checkpoint's digest does not match the
 run's, you are not on the run — you fix that first.
 
-New nodes also don't get to perturb the live model on day one. Adapting Pluralis's
+New nodes also do not get to perturb the live model on day one. Adapting Pluralis's
 join protocol (see `docs/training/2026-06-12-pluralis-to-pylon-adaptation-roadmap.md`),
 a joining device runs a **shadow-window ramp**: first it downloads and digest-verifies
 the checkpoint and produces work that is **verified and receipted but explicitly
 *not merged* (`weight = 0`)** — a "shadow window" that warms up scheduler trust and,
 for gradient work, the optimizer — *before* any of its updates are allowed to move
 the shared weights. Only after that does its work merge at the full rate. A
-heterogeneous node proves it's consistent before it's trusted to change anything.
+heterogeneous node proves it is consistent before it is trusted to change anything.
 
 ## Pillar 4 — A merge that *tolerates* heterogeneity instead of assuming uniformity
 
@@ -125,7 +125,7 @@ roadmap handles each axis explicitly rather than pretending the fleet is uniform
   out-of-date update to current weights. Borrowing from AsyncPP (ICML 2025),
   **delay-corrected optimizers** (weight stashing, Nesterov correction) treat
   gradient delay as a *known, corrected* quantity instead of ignoring it.
-- **Bandwidth — compression at every boundary.** A node on a slow link shouldn't
+- **Bandwidth — compression at every boundary.** A node on a slow link should not
   hold up the round, so updates are compressed (e.g. PowerSGD low-rank gradient
   averaging, subspace-compressed pipeline-stage boundaries). Heterogeneous bandwidth
   becomes a tuning parameter, not a correctness problem.
@@ -136,7 +136,7 @@ roadmap handles each axis explicitly rather than pretending the fleet is uniform
 
 So heterogeneity is *designed in*: fast nodes, slow nodes, big GPUs, old GPUs, and
 CPUs all contribute to the same run, and the merge is built to stay consistent across
-all of them rather than to assume they're identical.
+all of them rather than to assume they are identical.
 
 ## Pillar 5 — The clearing-layer discipline ties it together
 
@@ -147,11 +147,11 @@ liability wearing a deliverable."*
 
 Applied to training, that means: **a model update is only merged if it cleared
 verification and left a dereferenceable receipt.** Every accepted coding outcome is
-simultaneously revenue *and* a verified training trace; the update that comes from it
+simultaneously revenue *and* a verified training trace. The update that comes from it
 is consistent-by-construction because it was replay-verified before it was paid and
 before it was folded in. There is no path by which an unverified, non-reproducible
-update reaches the canonical weights. Consistency isn't a cleanup step we run after
-training — it's the gate work has to pass to count at all.
+update reaches the canonical weights. Consistency is not a cleanup step we run after
+training — it is the gate work has to pass to count at all.
 
 ## Honest status (receipt-first, as always)
 
@@ -165,8 +165,8 @@ high-risk, high-reward."** So, precisely:
 - **Being proven live right now:** the full contributor loop on real, independent,
   heterogeneous machines — an outside worker on one device, an outside validator on a
   *distinct* device, a Verified replay, and a settled receipt. Trace pairing is
-  enabled in production; what it needs is independent contributors and a second
-  distinct device. (If you want to be the one who closes that loop, that's the open
+  enabled in production. What it needs is independent contributors and a second
+  distinct device. (If you want to be the one who closes that loop, that is the open
   call.)
 - **On the roadmap:** the full Pluralis-adapted distributed-training merge described
   in Pillar 4 (shadow-window ramp, robust aggregation, staleness handling, compression)

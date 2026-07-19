@@ -103,18 +103,18 @@ from conversation before it becomes a maintainer-owned issue.
 Agents should be able to report mismatches without guessing product intent.
 When an agent observes a mismatch, it should:
 
-- cite the exact surface and claim text;
-- include the route, command, or page it checked;
-- include only public-safe observations;
+- cite the exact surface and claim text.
+- include the route, command, or page it checked.
+- include only public-safe observations.
 - avoid raw credentials, raw payment artifacts, wallet material, provider
-  payloads, or customer-sensitive content;
+  payloads, or customer-sensitive content.
 - post the report or commentary in the Product Promises Forum unless the
-  surface advertises a more specific Forum thread;
+  surface advertises a more specific Forum thread.
 - open a GitHub issue only for a concrete reproducible bug that satisfies the
-  strict bug form;
+  strict bug form.
 - propose whether the promise should move to red, yellow, degraded, or remain
   green with a narrower explanation.
-- use Autopilot Desktop's Surface Promise Gap flow when available; it keeps the
+- use Autopilot Desktop's Surface Promise Gap flow when available. It keeps the
   posture Forum-first and includes the live ledger state instead of asking the
   agent to open a pull request.
 
@@ -122,9 +122,9 @@ When an agent observes a mismatch, it should:
 
 Every closed promise report should include:
 
-- final promise state;
-- fixed or accepted safe copy;
-- evidence refs;
-- blocker refs, if any remain;
-- regression check or documented exception;
+- final promise state.
+- fixed or accepted safe copy.
+- evidence refs.
+- blocker refs, if any remain.
+- regression check or documented exception.
 - next owner or product area, if follow-up remains.

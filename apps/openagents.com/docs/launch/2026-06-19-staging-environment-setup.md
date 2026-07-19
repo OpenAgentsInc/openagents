@@ -36,12 +36,12 @@ them is shared with production.
 The `ADJUTANT_ENRICHMENT_QUEUE` consumer is also wired to the staging queue.
 
 Binding *names* are intentionally identical to production (e.g. `OPENAGENTS_DB`,
-`AUTH_STORAGE`, `ARTIFACTS`) because the Worker code reads those binding names;
+`AUTH_STORAGE`, `ARTIFACTS`) because the Worker code reads those binding names.
 only the underlying resources differ.
 
 Durable Object bindings are left as-is — DO storage is per-script, so the
 `openagents-staging` script already gets its own isolated DO namespace
-(staging only binds `SYNC_ROOM`; MDK container DOs are not bound on staging).
+(staging only binds `SYNC_ROOM`, MDK container DOs are not bound on staging).
 
 ### Staging vars
 
@@ -62,7 +62,7 @@ One-time seed note: the historical seed migration
 `teams.owner_user_id → users(id)` FK on a fresh DB. To let the historical
 migration batch apply cleanly on an empty staging DB, a single placeholder owner
 user row (`github:14167547`, `staging-owner`) was seeded before re-running the
-apply. This is staging-only seed data; the shared migration files and production
+apply. This is staging-only seed data. The shared migration files and production
 are untouched.
 
 To (re)apply migrations later:

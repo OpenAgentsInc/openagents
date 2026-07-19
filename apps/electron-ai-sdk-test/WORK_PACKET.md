@@ -10,7 +10,7 @@ chat UI, then asked for it to be launched in development mode and merged into
 ## Scope and boundaries
 
 - This is an owner-local proof of concept, not a production agent surface.
-- The harness runs only in Electron's main process; the renderer gets a narrow
+- The harness runs only in Electron's main process. The renderer gets a narrow
   local HTTP endpoint through a context-isolated preload bridge.
 - The local sandbox adapter is a developer fixture. It is not a containment or
   public multi-tenant security boundary.

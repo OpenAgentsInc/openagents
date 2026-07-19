@@ -3,14 +3,14 @@
 How to write, register, and test a server-authoritative mutator for the
 Khala Sync push engine. Normative background: [`SPEC.md`](./SPEC.md) §2.4
 (mutations), §4 (Postgres substrate), §7 (invariants). Engine source:
-`packages/khala-sync-server/src/push-engine.ts`; the landed Worker surface
+`packages/khala-sync-server/src/push-engine.ts`. The landed Worker surface
 is `POST /api/sync/push`
 (`apps/openagents.com/workers/api/src/khala-sync-push-routes.ts`) with its
 registry in `apps/openagents.com/workers/api/src/khala-sync-mutators.ts`.
 
 A mutator is a **named, server-authoritative write**: the client applies
 its own optimistic implementation to an in-memory overlay and pushes the
-named mutation; the server executes ITS implementation — the only one that
+named mutation. The server executes ITS implementation — the only one that
 counts — and the client rebases onto whatever the server decided. You are
 writing the server side. The shape:
 
@@ -63,7 +63,7 @@ below are what your code must uphold inside that wrapper.
 
 The registry in `apps/openagents.com/workers/api/src/khala-sync-mutators.ts`
 currently carries (server implementations for the fleet domain live in
-`packages/khala-sync-server/src/fleet-mutators.ts`; paired desktop client
+`packages/khala-sync-server/src/fleet-mutators.ts`. Paired desktop client
 mutators in `clients/khala-code-desktop/src/bun/khala-sync-service.ts`, with
 a cross-package completeness test in
 `clients/khala-code-desktop/tests/khala-sync-mutator-registry.test.ts`):
@@ -72,27 +72,27 @@ a cross-package completeness test in
 | --- | --- | --- | --- |
 | `sync.debugEcho` | `scope`, `entityId`, `echo` | `sync_debug_echo` post-image in the caller's own personal scope | `unauthorized_scope` |
 | `chat.createThread` | `threadId`, `title` | `khala_sync_chat_threads` row + `chat_thread` post-image in `scope.user.<owner>` and `scope.thread.<threadId>` | `thread_exists`, `unauthorized_scope` |
-| `chat.appendMessage` | `threadId`, `messageId`, `body` | `khala_sync_chat_messages` row + updated `chat_thread`; message body only in `scope.thread.<threadId>` | `thread_not_found`, `message_exists`, `unauthorized_scope` |
+| `chat.appendMessage` | `threadId`, `messageId`, `body` | `khala_sync_chat_messages` row + updated `chat_thread`. Message body only in `scope.thread.<threadId>` | `thread_not_found`, `message_exists`, `unauthorized_scope` |
 | `chat.renameThread` | `threadId`, `title` | updated `khala_sync_chat_threads.title` + `chat_thread` post-image in owner and thread scopes | `thread_not_found`, `unauthorized_scope` |
-| `chat.bindThreadRepo` | `threadId`, `repo: {owner, name, defaultBranch} \| null` | updated `khala_sync_chat_threads.repo_binding_*` columns + `chat_thread` post-image (`repoBinding`) in owner and thread scopes; `repo: null` clears an existing binding | `thread_not_found`, `unauthorized_scope` |
-| `coding.publishCatalog` | bounded `openagents.coding_catalog.v1` project/repository/worktree/session/navigation change set | schema-validated ref-only catalog post-images at one dense version in the authenticated caller's personal scope; no local path binding or optimistic hosted authority | `invalid_args`, `unauthorized_scope` |
-| `runtime.startTurn` | `KhalaRuntimeControlIntent` kind `turn.start` | `khala_sync_runtime_control_intents` body-free row + `runtime_control_intent` post-image in owner/thread scopes; `khala_sync_runtime_turns` row + `runtime_turn` post-image in owner/thread scopes | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_exists`, `unauthorized_scope` |
-| `runtime.appendUserMessage` | `KhalaRuntimeControlIntent` kind `message.append` | body-free control-intent row/post-image; updates `runtime_turn.latestIntentId` when tied to an existing turn; raw prompt/body content must be represented by refs | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_message_required`, `runtime_turn_not_found`, `unauthorized_scope` |
+| `chat.bindThreadRepo` | `threadId`, `repo: {owner, name, defaultBranch} \| null` | updated `khala_sync_chat_threads.repo_binding_*` columns + `chat_thread` post-image (`repoBinding`) in owner and thread scopes. `repo: null` clears an existing binding | `thread_not_found`, `unauthorized_scope` |
+| `coding.publishCatalog` | bounded `openagents.coding_catalog.v1` project/repository/worktree/session/navigation change set | schema-validated ref-only catalog post-images at one dense version in the authenticated caller's personal scope. No local path binding or optimistic hosted authority | `invalid_args`, `unauthorized_scope` |
+| `runtime.startTurn` | `KhalaRuntimeControlIntent` kind `turn.start` | `khala_sync_runtime_control_intents` body-free row + `runtime_control_intent` post-image in owner/thread scopes. `khala_sync_runtime_turns` row + `runtime_turn` post-image in owner/thread scopes | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_exists`, `unauthorized_scope` |
+| `runtime.appendUserMessage` | `KhalaRuntimeControlIntent` kind `message.append` | body-free control-intent row/post-image. Updates `runtime_turn.latestIntentId` when tied to an existing turn. Raw prompt/body content must be represented by refs | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_message_required`, `runtime_turn_not_found`, `unauthorized_scope` |
 | `runtime.interruptTurn` | `KhalaRuntimeControlIntent` kind `turn.interrupt` | body-free control-intent row/post-image + `runtime_turn` status `interrupted` | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_not_found`, `unauthorized_scope` |
 | `runtime.continueTurn` | `KhalaRuntimeControlIntent` kind `turn.continue` | body-free control-intent row/post-image + `runtime_turn` status `queued` | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_not_found`, `unauthorized_scope` |
 | `runtime.retryTurn` | `KhalaRuntimeControlIntent` kind `turn.retry` | body-free control-intent row/post-image + `runtime_turn` status `queued` | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_not_found`, `unauthorized_scope` |
 | `runtime.closeTurn` | `KhalaRuntimeControlIntent` kind `turn.close` | body-free settled control-intent row/post-image + `runtime_turn` status `closed` | `runtime_intent_kind_mismatch`, `runtime_raw_body_not_allowed`, `runtime_intent_exists`, `runtime_turn_required`, `runtime_turn_not_found`, `unauthorized_scope` |
-| `runtime.recordEvent` | `KhalaRuntimeEvent` | `khala_sync_runtime_events` row + full `runtime_event` post-image **only** in `scope.thread.<threadId>`; updates safe `runtime_turn` summary in owner/thread scopes | `runtime_event_sequence_invalid`, `runtime_event_exists`, `runtime_turn_not_found`, `unauthorized_scope` |
+| `runtime.recordEvent` | `KhalaRuntimeEvent` | `khala_sync_runtime_events` row + full `runtime_event` post-image **only** in `scope.thread.<threadId>`. Updates safe `runtime_turn` summary in owner/thread scopes | `runtime_event_sequence_invalid`, `runtime_event_exists`, `runtime_turn_not_found`, `unauthorized_scope` |
 | `fleet.setDesiredSlots` | `runId`, `desiredSlots` (0–1024) | intent row + `fleet_run` post-image | `unauthorized_scope` |
 | `fleet.pauseRun` | `runId` | intent row + `fleet_run` post-image (`status: paused`) | `unauthorized_scope` |
 | `fleet.resumeRun` | `runId` | intent row + `fleet_run` post-image (`status: running`) | `unauthorized_scope` |
 | `fleet.pauseWorker` | `runId`, `workerId` | intent row (`worker_id`) + `fleet_worker` post-image (`phase: paused`) | `unauthorized_scope` |
 | `fleet.resumeWorker` | `runId`, `workerId` | intent row (`worker_id`) + `fleet_worker` post-image (`phase: idle`) | `unauthorized_scope` |
-| `fleet.acknowledgeInboxFlag` | `runId`, `flagRef` | intent row (`flag_ref`) + `fleet_inbox_flag` post-image (`status: acknowledged`; preserves `kind`/`openedAt` when the flag was projected, else records the ack with kind `unclassified`) | `unauthorized_scope` |
+| `fleet.acknowledgeInboxFlag` | `runId`, `flagRef` | intent row (`flag_ref`) + `fleet_inbox_flag` post-image (`status: acknowledged`, preserves `kind`/`openedAt` when the flag was projected, else records the ack with kind `unclassified`) | `unauthorized_scope` |
 | `fleet.stopRun` | `runId`, `confirm` | intent row (`stop`) + `fleet_run` post-image (`status: stopped`, `desiredSlots: 0`) — TERMINAL | `confirmation_required` (when `confirm !== true`, checked before any write incl. the scope claim), `unauthorized_scope` |
 
 Every fleet mutator is owner-gated via `khala_sync_scope_owners`
-(first-writer-wins claim; foreign user ⇒ `unauthorized_scope` with zero
+(first-writer-wins claim, foreign user ⇒ `unauthorized_scope` with zero
 writes) and executes intent row + post-image append in ONE transaction,
 attributable to `ctx.mutationRef`.
 
@@ -113,16 +113,16 @@ whenever `OPENAGENTS_ADMIN_API_TOKEN` is present:
 - **Exactly-once:** the `nextAfter` watermark persists in the orchestration
   store (`pylon_orchestration_meta`, survives restarts) and every intent id
   records one `pylon_orchestration_fleet_intent_outcomes` row
-  (`applied` / `skipped_stale` / `failed`); a redelivered intent with a
+  (`applied` / `skipped_stale` / `failed`). A redelivered intent with a
   recorded outcome is deduped, never re-applied.
 - **Mapping:** `set_desired_slots` → durable operator slots cap +
-  `targetConcurrency` (the loop reads `effectiveFleetRunDesiredSlots`);
-  `pause`/`resume` → `FleetRun` state with operator provenance; `stop` →
-  terminal `stopped` + live-claim release; `pause_worker`/`resume_worker` →
+  `targetConcurrency` (the loop reads `effectiveFleetRunDesiredSlots`).
+  `pause`/`resume` → `FleetRun` state with operator provenance. `stop` →
+  terminal `stopped` + live-claim release. `pause_worker`/`resume_worker` →
   dispatch-context `paused` gate (`dispatchEligibility` refuses with
   `worker_paused`).
 - **Failure isolation:** a bad intent records a `failed` outcome with a
-  bounded public-safe detail and never wedges the loop; poll/transport
+  bounded public-safe detail and never wedges the loop. Poll/transport
   failures leave the watermark untouched and retry next beat.
 
 Remaining honest gaps (epic #8282): `acknowledge_inbox_flag` is a recorded
@@ -138,7 +138,7 @@ outcome rows, not in a corrected post-image.
 
 The MC-1 chat mutators are owner-private by construction: thread metadata
 appears in the caller's personal scope for thread-list discovery and in the
-thread scope; message bodies appear only in `scope.thread.<threadId>`. Thread
+thread scope. Message bodies appear only in `scope.thread.<threadId>`. Thread
 read authority for newly-created chat scopes is the first-writer-wins
 `khala_sync_scope_owners` row, while legacy thread scopes continue to resolve
 through the `agent_runs` / autopilot-thread D1 mapping. Integration coverage
@@ -149,7 +149,7 @@ The #8370 runtime mutators reuse the same owner-private thread authority:
 `scope.thread.<threadId>` is claimed/read through `khala_sync_scope_owners`,
 and a foreign user receives an in-band `unauthorized_scope` rejection with no
 runtime business rows or changelog entries. Runtime control intents are stored
-and projected only after raw `body` payloads are rejected; callers must use
+and projected only after raw `body` payloads are rejected. Callers must use
 `bodyRef` / `promptRef` / `reasonRef` for private material. Runtime event
 post-images may include text/tool/provider deltas, so they are projected only
 to the exact thread scope. The owner's personal scope receives only
@@ -176,7 +176,7 @@ changelog appends, and the ledger recording. Concretely:
   on by a separate consumer of the changelog.
 - Version allocation is automatic: `appendChange` allocates (or reuses)
   this transaction's per-scope version under the scope-counter row lock.
-  Do not touch `khala_sync_scopes` yourself; that lock discipline is what
+  Do not touch `khala_sync_scopes` yourself. That lock discipline is what
   keeps versions dense and monotonic (invariant 1).
 - Appending the same `(scope, entityType, entityId)` twice in one
   transaction collapses to one row, last write wins — one changelog row per
@@ -185,7 +185,7 @@ changelog appends, and the ledger recording. Concretely:
 ## 2. Replay-safety (SPEC §2.4)
 
 Clients apply your mutator optimistically and **re-apply** unconfirmed
-mutations on every rebase; the server may also see the same envelope again
+mutations on every rebase. The server may also see the same envelope again
 after a crash between execute and respond. Two consequences:
 
 - **Server side:** you do NOT need application-level idempotency keys — the
@@ -195,7 +195,7 @@ after a crash between execute and respond. Two consequences:
   ctx): no wall-clock branching, no randomness that changes the decision,
   no hidden inputs. If you need generated values (ids, timestamps), either
   take them from args (client-supplied, validated) or derive them
-  deterministically inside the transaction; remember the recorded result is
+  deterministically inside the transaction. Remember the recorded result is
   what a replayed envelope gets back.
 - **Client side (for the paired client mutator):** the optimistic
   implementation must tolerate being rewound and re-applied any number of
@@ -204,10 +204,10 @@ after a crash between execute and respond. Two consequences:
 ## 3. In-band rejection discipline — never 4xx business validation
 
 This is the load-bearing acceptance rule (SPEC §2.4, invariant 2 of the
-push engine; behavior contract
+push engine. Behavior contract
 `khala_sync.push.validation_never_blocks_queue.v1`):
 
-> acceptance is synchronous with the transaction; **validation failures ack
+> acceptance is synchronous with the transaction. **Validation failures ack
 > the mutation and report the error in-band** — they never 4xx/block the
 > queue.
 
@@ -233,7 +233,7 @@ the PowerSync scar tissue this design imports. So:
 - `errorMessageSafe` must be safe to show and to log client-side: no raw
   argument echoes, no internal identifiers, no secrets. (The engine already
   refuses to echo decode errors for the same reason.) Error CODES are the
-  contract; keep them stable, lower_snake_case, and typed on the client.
+  contract. Keep them stable, lower_snake_case, and typed on the client.
 - The engine mints two rejection codes itself: `unknown_mutator` and
   `invalid_args` (a throwing `decodeArgs`). Both ack and are recorded —
   retrying identical bytes can never succeed, so blocking would be pure
@@ -283,11 +283,11 @@ transaction):
    concurrent pushes for the group) and enforces the group⇄user binding.
 2. `checkAndReserve` — the `khala_sync_mutations` ledger gate:
    - **duplicate** (`mutationId ≤ lastMutationId` with a recorded row):
-     answers from the recording; your `execute` is NOT called; no changelog
+     answers from the recording. Your `execute` is NOT called. No changelog
      side effects. This covers crash-between-execute-and-respond replays
      (invariant 3).
    - **out_of_order** (`mutationId > lastMutationId + 1`): in-band
-     rejection that acks nothing; the ledger stays dense.
+     rejection that acks nothing. The ledger stays dense.
    - **execute** (exactly `lastMutationId + 1`): your code runs, then
      `recordMutation` commits the result atomically with your writes.
 
@@ -322,13 +322,13 @@ byte-equality means value-equality across bootstrap/log/delta paths and in
 tests. Rules:
 
 - Pass post-images as plain **values** (objects), never pre-stringified
-  JSON; never hand-`JSON.stringify`.
+  JSON. Never hand-`JSON.stringify`.
 - The post-image is the entity's FULL state after the write (state-based
   replication, not diffs), containing only what every reader of that scope
   may see.
 - `op: "delete"` entries are tombstones and must not carry a post-image —
   enforced at the type level, at runtime, and by a schema CHECK.
-- Keep post-images bounded; large blobs ride elsewhere (R2 etc.) with refs
+- Keep post-images bounded. Large blobs ride elsewhere (R2 etc.) with refs
   in the post-image.
 
 ## 8. Registering in the Worker registry
@@ -346,10 +346,10 @@ The `openagents.com` Worker owns the production registry
    registry construction, so collisions fail at boot, not at runtime.
 3. Mutator names are `domain.verbCamel` (`sync.debugEcho`, `thing.set`)
    and are part of the wire contract — never rename or repurpose a shipped
-   name; add `thing.setV2` instead. The registry has no versioning beyond
-   names; removing a name turns in-flight client queues into recorded
+   name. Add `thing.setV2` instead. The registry has no versioning beyond
+   names. Removing a name turns in-flight client queues into recorded
    `unknown_mutator` rejections (acked, non-blocking — but user-visible).
-4. If args change compatibly, widen the schema; if incompatibly, that is a
+4. If args change compatibly, widen the schema. If incompatibly, that is a
    new name plus a client `schemaVersion` bump gate in the route
    (`KHALA_SYNC_PUSH_SUPPORTED_SCHEMA_VERSIONS`).
 5. Ship the paired client-side optimistic implementation under the same
@@ -358,18 +358,18 @@ The `openagents.com` Worker owns the production registry
 ## 9. Testing checklist
 
 Integration tests run `executePush` against **real local Postgres**
-(`src/test/local-postgres.ts` spins up a throwaway instance; tests skip
+(`src/test/local-postgres.ts` spins up a throwaway instance, tests skip
 cleanly when `postgresql@16` is absent). Follow
 `packages/khala-sync-server/src/push-engine.test.ts` as the template. For
 every new mutator, cover at least:
 
 - [ ] **Applied flow** — business rows, changelog entries (right scope,
       entity type/id, canonical post-image bytes, `mutationRef ===
-      ctx.mutationRef`), and ledger row all present after one push; dense
+      ctx.mutationRef`), and ledger row all present after one push. Dense
       per-scope versions.
 - [ ] **Validation rejection** — the in-band `rejected` result with your
-      typed `errorCode`; ledger row recorded; **no** business write, **no**
-      changelog entry; `lastMutationId` advanced (the ack).
+      typed `errorCode`. Ledger row recorded. **No** business write, **no**
+      changelog entry. `lastMutationId` advanced (the ack).
 - [ ] **Queue never blocks** — a `[valid, invalid, valid]` batch yields
       `[applied, rejected, applied]` with `lastMutationId` past all three,
       and a subsequent push applies normally (this is the behavior-contract

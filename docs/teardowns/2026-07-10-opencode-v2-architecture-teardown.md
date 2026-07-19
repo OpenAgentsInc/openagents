@@ -31,10 +31,10 @@ Evidence labels:
 
 No OpenCode source, user state, credentials, conversations, or runtime data was
 modified or inspected. V2 is a beta development surface. Source and docs show
-intended architecture at the pinned point; they do not prove every path is
+intended architecture at the pinned point. They do not prove every path is
 stable, released, or migrated into Desktop.
 
-## TL;DR
+## TL.DR
 
 OpenCode V2 is where the server-first direction visible inside V1 becomes the
 product architecture instead of a compatibility layer.
@@ -50,7 +50,7 @@ conclusions:
    lifecycle history, pending input, projected messages, and replayable events
    are different concepts.
 3. **Networked and embedded are the same application.** Promise and Effect
-   clients come from one HTTP contract; the embedded SDK invokes the same
+   clients come from one HTTP contract. The embedded SDK invokes the same
    router, middleware, codecs, handlers, and errors through memory transport.
 4. **Workspace context is a service scope.** Filesystem, tools, permissions,
    agents, providers, plugins, MCP, and the runner enter an explicit Location
@@ -64,7 +64,7 @@ conclusions:
 
 The process topology changes too. The V2 TUI normally connects to a
 discoverable, version-gated background service shared across invocations. A
-private registration contains endpoint, PID, version, and password; clients
+private registration contains endpoint, PID, version, and password. Clients
 health-check it, replace incompatible instances, and may instead choose an
 isolated standalone server or explicit remote endpoint.
 
@@ -85,7 +85,7 @@ managed server or in-memory router
           providers, plugins, MCP, instructions, PTY, and runner
 ~~~
 
-V2 is not finished. Data may be reset; server, client, SDK, and plugin APIs may
+V2 is not finished. Data may be reset. Server, client, SDK, and plugin APIs may
 change. Sharing is unimplemented, several accepted config fields are inert,
 cluster placement is reserved rather than built, hard-crash continuation is
 unresolved, shell matching is policy rather than containment, plugins run as
@@ -93,10 +93,10 @@ trusted server code, and Electron Desktop still bundles the V1 server.
 
 For OpenAgents, V2 adds four high-value requirements:
 
-- make command admission durable and idempotent before dispatch;
-- separate volatile events, durable event logs, and current projections;
+- make command admission durable and idempotent before dispatch.
+- separate volatile events, durable event logs, and current projections.
 - make local, remote, and embedded transports enter the same Effect request
-  processor; and
+  processor. And
 - model instruction change, compaction, restart, and staged rewind as engine
   state rather than UI conveniences.
 
@@ -131,8 +131,8 @@ compatibility shell.
 
 | Concern | V1 at the first teardown | V2 decision | Lesson |
 | --- | --- | --- | --- |
-| Engine ownership | Broad packages/opencode runtime plus next packages | packages/opencode is V1-only; Core/Schema/Protocol/Server are authoritative | Isolate legacy ownership |
-| Local process | Desktop utility sidecar; surface-specific lifecycle | Shared background service, standalone server, or remote endpoint | Lifecycle is a product contract |
+| Engine ownership | Broad packages/opencode runtime plus next packages | packages/opencode is V1-only. Core/Schema/Protocol/Server are authoritative | Isolate legacy ownership |
+| Local process | Desktop utility sidecar. Surface-specific lifecycle | Shared background service, standalone server, or remote endpoint | Lifecycle is a product contract |
 | API | Legacy plus next routes and two client families | One authoritative Effect HttpApi generating Promise and Effect clients | Generate from the handler contract |
 | Embedding | Direct paths could become a second API | Embedded SDK uses the HTTP router through memory transport | In-process is only transport |
 | Workspace scope | Project/instance scope with compatibility globals | Location.Ref and LocationServiceMap own runtime services | Ambient cwd is not tenancy |
@@ -197,10 +197,10 @@ service configuration, including a persistent password, is separate.
 
 Discovery:
 
-1. reads and schema-decodes registration;
-2. calls /api/health with Basic auth;
-3. confirms health PID matches registration;
-4. enforces requested exact version; and
+1. reads and schema-decodes registration.
+2. calls /api/health with Basic auth.
+3. confirms health PID matches registration.
+4. enforces requested exact version. And
 5. returns only a verified endpoint.
 
 Start is idempotent: reuse healthy compatible service, authenticate and stop a
@@ -210,22 +210,22 @@ removes registration. This protects against stale PID reuse. [source/test]
 
 Clients choose:
 
-- **managed** discovery/start;
-- **standalone** private server tied to the client; or
+- **managed** discovery/start.
+- **standalone** private server tied to the client. Or
 - **explicit server** validated at a supplied URL.
 
 The TUI can restart and reconnect. Diagnostics separate client and server run
 IDs and log roles. “OpenCode is broken” becomes client, service, or Location
 failure. [public/source]
 
-V1 proved a server boundary; V2 learned server lifecycle must be reusable and
+V1 proved a server boundary. V2 learned server lifecycle must be reusable and
 inspectable rather than owned by whichever window opened first. [inferred]
 
 Weaknesses remain:
 
-- the credential is a mode-0600 JSON secret, not an OS capability;
-- Basic auth has no client identity, scoped grant, or individual revocation;
-- explicit remote version mismatch warns rather than fails closed; and
+- the credential is a mode-0600 JSON secret, not an OS capability.
+- Basic auth has no client identity, scoped grant, or individual revocation.
+- explicit remote version mismatch warns rather than fails closed. And
 - only graceful restart continuation is designed.
 
 OpenAgents should adapt the lifecycle record and identity checks, then use
@@ -234,7 +234,7 @@ device/process-specific capability credentials and protocol ranges.
 ## 5. Location is the runtime-context unit
 
 Location.Ref explicitly routes project-sensitive API operations. Directory
-identifies local placement; optional workspaceID is reserved for future
+identifies local placement. Optional workspaceID is reserved for future
 placement. A process-global LocationServiceMap creates, caches, and evicts the
 service graph. [source/schema]
 
@@ -266,7 +266,7 @@ plugins, skills, references, commands, generation, and events. [schema]
 It generates:
 
 - a zero-Effect Promise client with structural values, tagged declared errors,
-  and one ClientError for infrastructure failures; and
+  and one ClientError for infrastructure failures. And
 - a rich Effect client with decoded brands, runtime schemas, typed failures,
   Streams, and an environment-provided HttpClient.
 
@@ -284,10 +284,10 @@ Local and remote therefore share executable request semantics, not only types.
 
 V2 separates:
 
-- HTTP query/command;
-- volatile instance-wide events;
-- replayable per-Session events;
-- ticketed PTY WebSocket bytes; and
+- HTTP query/command.
+- volatile instance-wide events.
+- replayable per-Session events.
+- ticketed PTY WebSocket bytes. And
 - embedded memory transport.
 
 That is better than asking one SSE channel to be notification bus, database,
@@ -302,8 +302,8 @@ projection, and consumes pending atomically. [source/schema/test]
 
 Caller-chosen message IDs define retries:
 
-- exact Session, prompt, and delivery reuse reconciles;
-- conflicting reuse fails; and
+- exact Session, prompt, and delivery reuse reconciles.
+- conflicting reuse fails. And
 - already-promoted input reconciles against history and admission.
 
 resume controls scheduling, not durability. False means admit without waking.
@@ -311,7 +311,7 @@ This gives mobile/network clients a real retry contract.
 
 Delivery is explicit:
 
-- **steer** promotes at the next safe boundary while the drain continues;
+- **steer** promotes at the next safe boundary while the drain continues.
 - **queue** waits until the Session would otherwise idle, then promotes one.
 
 Promoted input resets the agent's step allowance. Manual compaction uses the
@@ -337,7 +337,7 @@ V2 refuses to persist one overloaded running status.
 SessionRunCoordinator owns one fiber per active Session. It joins same-Session
 resumes, coalesces wakeups with a doorbell, lets different Sessions run
 concurrently, and preserves late wakes arriving during settlement. Interrupt
-stops locally owned work and awaits cleanup; await-idle never starts work.
+stops locally owned work and awaits cleanup. Await-idle never starts work.
 [source/test]
 
 One execution busy period can contain several drains. A drain can contain
@@ -354,16 +354,16 @@ with different retry and durability rules.
 V2 stores durable events per aggregate with unique event ID, aggregate ID,
 monotonic sequence, type, schema version, creation time, encoded data, and
 optional replay owner. Publishing validates aggregate identity, continuity,
-event uniqueness, and exact replay equality. Identical replay reconciles;
+event uniqueness, and exact replay equality. Identical replay reconciles.
 divergent payload or ownership fails. Event and projections commit together.
 [source/test]
 
 The experimental Session log reads after an exclusive sequence. With follow:
 
-1. subscribe before replay;
-2. capture a watermark;
-3. page durable events through it;
-4. emit one log.synced marker; and
+1. subscribe before replay.
+2. capture a watermark.
+3. page durable events through it.
+4. emit one log.synced marker. And
 5. tail newly committed durable events.
 
 The instance-wide event subscription is different: current native events are
@@ -372,8 +372,8 @@ during disconnection are missed. [public/schema]
 
 V2 therefore has three products:
 
-1. a durable log for causal replay;
-2. bounded query projections for current state; and
+1. a durable log for causal replay.
+2. bounded query projections for current state. And
 3. volatile events for low-latency UI.
 
 Clients recover through projection and log, then use live events for latency.
@@ -384,7 +384,7 @@ lease governing provider/tool dispatch. [limitation]
 
 ## 10. Step, attempt, tool, and retry semantics
 
-A Step is one logical LLM call. Most contain one physical provider attempt; a
+A Step is one logical LLM call. Most contain one physical provider attempt. A
 pre-output context-overflow recovery may rebuild one Step for a second attempt.
 Before every Step the runner reloads history, agent, model, instructions, and
 captured tools. [source]
@@ -397,10 +397,10 @@ running from an earlier process instead of replaying ambiguous side effects.
 
 Provider retry is narrow:
 
-- only typed rate-limit, provider-internal, and transport failures qualify;
-- no durable assistant content or tool evidence may exist;
-- initial request plus at most four retries use bounded exponential delay;
-- session.retry.scheduled records the next attempt and time; and
+- only typed rate-limit, provider-internal, and transport failures qualify.
+- no durable assistant content or tool evidence may exist.
+- initial request plus at most four retries use bounded exponential delay.
+- session.retry.scheduled records the next attempt and time. And
 - retry history never causes automatic post-crash provider replay.
 
 Retry safety is therefore a property of emitted evidence, not only error class.
@@ -414,10 +414,10 @@ prompt text authoritative. [history]
 Instruction producers include built-ins, AGENTS.md discovery, selected-agent
 skill guidance, references, MCP guidance, and API entries. Each owns:
 
-- stable namespaced key;
-- canonical typed value codec;
-- read effect;
-- initial/change/removal renderers; and
+- stable namespaced key.
+- canonical typed value codec.
+- read effect.
+- initial/change/removal renderers. And
 - distinct unavailable and removed semantics.
 
 At a safe boundary the runner reads every source once and concurrently, hashes
@@ -429,7 +429,7 @@ rebuildable fold cache, not authority. [source]
 Initial instructions and chronological updates are rendered while assembling a
 request. Privileged prose is never persisted in the log. Clients display
 changed keys. An unavailable initial source blocks the first complete delta and
-leaves pending input untouched; later unavailability retains prior value. An
+leaves pending input untouched. Later unavailability retains prior value. An
 observed removal can emit removal guidance. [source/test]
 
 Completed compaction advances an instruction epoch at an exact sequence.
@@ -450,7 +450,7 @@ verified bodies—not naked hashes—across Khala Sync.
 
 V2 estimates system text, history, and tool schemas against context capacity
 and output headroom. Successful compaction generates a structured summary and
-retains a bounded serialized tail. Older durable messages remain; active model
+retains a bounded serialized tail. Older durable messages remain. Active model
 history moves to the checkpoint. [public/source]
 
 Manual compaction is an admitted pending input. Repeats coalesce. When busy, it
@@ -463,11 +463,11 @@ input. Second overflow or any post-evidence overflow is terminal.
 
 The docs are candid:
 
-- token estimation is heuristic;
-- V1-style tool-output pruning is absent;
-- full durable history remains;
-- no fallback compaction model exists;
-- native continuation metadata does not cross the boundary; and
+- token estimation is heuristic.
+- V1-style tool-output pruning is absent.
+- full durable history remains.
+- no fallback compaction model exists.
+- native continuation metadata does not cross the boundary. And
 - instructions/tool schemas can dominate the window.
 
 OpenAgents should copy barrier and epoch semantics while keeping summaries
@@ -481,10 +481,10 @@ model projection. Built-ins, plugins, MCP tools, and deferred tools share it.
 
 Registration is Location- and Scope-owned:
 
-- name is assigned at registration;
-- latest active registration wins;
-- closing it reveals the previous generation;
-- later mutation of the caller record does nothing; and
+- name is assigned at registration.
+- latest active registration wins.
+- closing it reveals the previous generation.
+- later mutation of the caller record does nothing. And
 - every model request captures the exact tool values it advertised.
 
 The last rule closes a hot-reload race: a provider cannot advertise one
@@ -504,19 +504,19 @@ execution because cross-runtime policy must be independently auditable.
 
 V2 adds a private Effect-native Code Mode. It interprets a bounded JavaScript
 subset rather than evaluating Node or V8 code. Programs have no ambient
-filesystem, process, network, module, or application authority; only explicit
+filesystem, process, network, module, or application authority. Only explicit
 schema-described tools are callable. [source]
 
 Useful ideas:
 
-- group and defer tools behind one execute dispatcher;
-- show a token-budgeted catalog;
-- provide deterministic catalog search with exact callable signatures;
-- supervise Promise concurrency;
-- copy plain data across the boundary;
-- retain partial call identities on failure;
-- interrupt race losers and fire-and-forget calls;
-- compile OpenAPI operations while auth stays host-side; and
+- group and defer tools behind one execute dispatcher.
+- show a token-budgeted catalog.
+- provide deterministic catalog search with exact callable signatures.
+- supervise Promise concurrency.
+- copy plain data across the boundary.
+- retain partial call identities on failure.
+- interrupt race losers and fire-and-forget calls.
+- compile OpenAPI operations while auth stays host-side. And
 - skip unsupported OpenAPI operations instead of lying about them.
 
 Nested calls still execute captured ordinary tools and leaf permissions.
@@ -524,7 +524,7 @@ execute controls dispatcher visibility, not nested authority. [source/public]
 
 Two cautions:
 
-1. timeout, tool-call count, and output-byte limits have no library defaults;
+1. timeout, tool-call count, and output-byte limits have no library defaults.
 2. JSON Schema tools can be descriptive without runtime validation, whereas
    Effect Schema tools validate.
 
@@ -547,7 +547,7 @@ V2 uses ordered rules:
 }
 ~~~
 
-Action and resource have simple wildcards; last match wins. Global rules come
+Action and resource have simple wildcards. Last match wins. Global rules come
 before agent rules. For multi-resource operations, deny beats ask, which beats
 allow. No match asks. [public/source]
 
@@ -559,10 +559,10 @@ directories and reject relative/symlink escape. [source/test]
 
 Security gaps:
 
-- shell matches raw command text rather than parsed effects;
-- external-directory checks cover shell cwd, not every argument path;
-- shell retains host-user process, filesystem, and network authority;
-- child subagents use their own permission profile, not a parent intersection;
+- shell matches raw command text rather than parsed effects.
+- external-directory checks cover shell cwd, not every argument path.
+- shell retains host-user process, filesystem, and network authority.
+- child subagents use their own permission profile, not a parent intersection.
 - plugins can introduce actions and execute trusted server code.
 
 V2 has clearer approval, not an OS sandbox. OpenAgents must keep approval,
@@ -589,10 +589,10 @@ queries.
 
 OpenAgents should:
 
-- intersect child authority with parent delegation;
+- intersect child authority with parent delegation.
 - keep completion separate from integration, commit, push, review, acceptance,
-  and payment;
-- persist explicit graph edges and receipt refs; and
+  and payment.
+- persist explicit graph edges and receipt refs. And
 - unify questions, approvals, and forms under one typed request envelope.
 
 ## 17. Snapshots and staged revert
@@ -606,7 +606,7 @@ directory, tracked and non-ignored untracked files, with file-size exclusions.
 Undo is two-phase:
 
 1. **stage** a boundary, hide messages, restore attributed paths, and retain the
-   exact pre-undo state as redo baseline;
+   exact pre-undo state as redo baseline.
 2. **commit** when new work is admitted, or **clear** to restore messages/files.
 
 Repeated undo widens one staged range. Redo restores the full baseline. Server
@@ -625,26 +625,26 @@ destructive restore.
 
 V2 intentionally breaks the plugin API. A plugin exports stable ID and
 setup/effect. Its context resembles a server client plus narrow transforms,
-hooks, reloads, registrations, events, and options; public Effect plugins do
+hooks, reloads, registrations, events, and options. Public Effect plugins do
 not receive arbitrary Core services. [public/source]
 
 Lifecycle is Scope-owned:
 
-- local plugins reload from watched config;
-- new generation replaces old;
-- registrations release automatically;
-- plugin resources return cleanup;
-- one failure does not block unrelated plugins; and
+- local plugins reload from watched config.
+- new generation replaces old.
+- registrations release automatically.
+- plugin resources return cleanup.
+- one failure does not block unrelated plugins. And
 - disablement replays visible state without manual undo.
 
 The catalog decision record captures a key lesson. The team rejected arbitrary
 Config mutation followed by “reload everything,” because it destroys granular
 ownership. It selected replayable Location-scoped Catalog transforms:
 
-1. sources register transforms;
-2. active transforms replay in order;
-3. policy applies after sources;
-4. a diff commits; and
+1. sources register transforms.
+2. active transforms replay in order.
+3. policy applies after sources.
+4. a diff commits. And
 5. one updated event tells clients to refetch.
 
 Agents, commands, integrations, references, skills, and tools use related
@@ -665,24 +665,24 @@ execution, egress/secrets policy, and receipts.
 V2 reads V1 global/project config and translates it in memory without rewriting
 the source. Native V2 config makes explicit:
 
-- ordered permissions;
-- primary/subagent/all modes;
-- model variants inside model refs;
-- grouped MCP and separate catalog/execution timeouts;
-- compaction keep/buffer;
-- provider package/settings/headers/body;
+- ordered permissions.
+- primary/subagent/all modes.
+- model variants inside model refs.
+- grouped MCP and separate catalog/execution timeouts.
+- compaction keep/buffer.
+- provider package/settings/headers/body.
 - plural agents, commands, plugins, references, snapshots, attachments.
 
 This preserves user assets while letting server and plugin APIs break cleanly.
 
 Docs also mark accepted-but-inert fields:
 
-- sharing is not implemented;
-- username is not displayed;
-- formatter config does not execute;
-- LSP config does not start servers;
-- configured instruction paths are not loaded;
-- per-agent request overlays are not applied; and
+- sharing is not implemented.
+- username is not displayed.
+- formatter config does not execute.
+- LSP config does not start servers.
+- configured instruction paths are not loaded.
+- per-agent request overlays are not applied. And
 - provider policy is proposed, not implemented.
 
 OpenAgents should copy the honesty, not the inert surface. Compatibility fields
@@ -705,9 +705,9 @@ Server.listen in a utility process, and health-checks /global/health. [source]
 
 So:
 
-- the earlier Desktop teardown remains correct;
-- this file audits the V2 engine/TUI;
-- V2 source does not prove V2 Desktop cutover; and
+- the earlier Desktop teardown remains correct.
+- this file audits the V2 engine/TUI.
+- V2 source does not prove V2 Desktop cutover. And
 - OpenCode must still reconcile per-window sidecar and shared-service models.
 
 A clean engine is not product architecture until every surface consumes it.
@@ -747,12 +747,12 @@ A clean engine is not product architecture until every surface consumes it.
 
 Public seams have focused checks:
 
-- Promise/Effect generation drift and transport equivalence;
-- Schema V1 isolation, identifiers, optional encoding, and unsafe-value guards;
+- Promise/Effect generation drift and transport equivalence.
+- Schema V1 isolation, identifiers, optional encoding, and unsafe-value guards.
 - Core admission idempotency, replay, projection, retry, compaction,
   instructions, restart, permissions, tools, subagents, snapshots, VCS, shell,
-  and Location lifecycle;
-- service discovery, version replacement, readiness, and singleton election;
+  and Location lifecycle.
+- service discovery, version replacement, readiness, and singleton election.
 - TUI reconnect, hydration, permissions, forms, subagents, pending input,
   undo, history, and terminal behavior.
 
@@ -778,7 +778,7 @@ into sidecar sprawl.
 ### 23.2 Accept and execute need separate failure boundaries
 
 Network retry, mobile disconnect, and active follow-ups require a durable
-inbox. Advisory wake is not authority; admitted work is.
+inbox. Advisory wake is not authority. Admitted work is.
 
 ### 23.3 Live event streams are not databases
 
@@ -825,20 +825,20 @@ These are additive to the first OpenCode teardown.
 Before Runtime Gateway or Pylon work starts, persist client-chosen command ID,
 thread/run/work context, typed input/delivery, source client, causal parent,
 idempotency, authority-manifest ref, admission sequence, and time. Then
-schedule. Exact retry reconciles; conflict refuses. UI distinguishes admitted,
+schedule. Exact retry reconciles. Conflict refuses. UI distinguishes admitted,
 pending, promoted, executing, and terminal.
 
 ### B. Steer and queue
 
-Make mid-run delivery explicit. Steer applies at the next safe boundary; queue
+Make mid-run delivery explicit. Steer applies at the next safe boundary. Queue
 waits for yield. Never infer semantics from arrival time or spinner state.
 
 ### C. Three read surfaces
 
 Define:
 
-1. bounded current projection;
-2. replayable per-thread/run log with sequence and sync marker;
+1. bounded current projection.
+2. replayable per-thread/run log with sequence and sync marker.
 3. volatile coalesced live stream with gap/overflow rules.
 
 Desktop and mobile recover from projection/log, then use live for latency.
@@ -853,7 +853,7 @@ transport and credential acquisition differ.
 
 Compile repo, workspace, account, tool catalog, permissions, provider, MCP,
 plugin, filesystem, and containment under one typed WorkContext ref. A run
-resolves stored context; callers cannot swap it with a new path.
+resolves stored context. Callers cannot swap it with a new path.
 
 ### F. Typed instruction value sync
 
@@ -884,12 +884,12 @@ PID/socket confusion.
 
 If OpenAgents exposes model-authored orchestration:
 
-- use a confined language, not ambient Node;
-- expose only captured typed tools;
-- keep credentials host-side;
-- require timeout/tool/output/spend budgets;
-- retain nested calls in the parent receipt;
-- enforce leaf authority; and
+- use a confined language, not ambient Node.
+- expose only captured typed tools.
+- keep credentials host-side.
+- require timeout/tool/output/spend budgets.
+- retain nested calls in the parent receipt.
+- enforce leaf authority. And
 - treat OpenAPI conversion as schema import, not authorization.
 
 ## 25. Adapt later
@@ -939,9 +939,9 @@ them through those stronger boundaries.
 
 The target combines:
 
-- OpenCode V2 durable input and Location scoping;
-- Codex generated protocol, sandbox, graph, and remote replication;
-- Claude Code checkpoint/worktree recovery;
+- OpenCode V2 durable input and Location scoping.
+- Codex generated protocol, sandbox, graph, and remote replication.
+- Claude Code checkpoint/worktree recovery.
 - OpenAgents authority manifests, execution/delivery receipts, Khala Sync, and
   public-safe Blueprint projections.
 

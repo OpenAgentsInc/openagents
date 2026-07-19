@@ -9,25 +9,25 @@ promises as live.
 
 The gate accepts copy surfaces for:
 
-- `AGENTS.md`;
-- manifests;
-- OpenAPI descriptions;
-- Forum seed copy;
-- Artanis public summaries;
-- launch announcements;
+- `AGENTS.md`.
+- manifests.
+- OpenAPI descriptions.
+- Forum seed copy.
+- Artanis public summaries.
+- launch announcements.
 - pages, templates, and dashboards.
 
 ## Unsafe Phrase Areas
 
 The denylist covers affirmative claims for:
 
-- broad Pylon earning;
-- full GEPA network live;
-- Qwen 3.6 remote fine-tuning live;
-- provider capacity marketplace live;
-- referral sats streams;
-- hosted MDK direct payouts;
-- creator spendable settlement;
+- broad Pylon earning.
+- full GEPA network live.
+- Qwen 3.6 remote fine-tuning live.
+- provider capacity marketplace live.
+- referral sats streams.
+- hosted MDK direct payouts.
+- creator spendable settlement.
 - unbounded Artanis autonomy.
 
 Prohibition language such as "do not claim X" is allowed. Affirmative launch
@@ -38,16 +38,16 @@ carries a matching evidence ref.
 
 Each checked surface supplies:
 
-- `surfaceRef`;
-- `kind`;
-- `text`;
+- `surfaceRef`.
+- `kind`.
+- `text`.
 - `evidenceRefs`.
 
 Each evidence gate supplies:
 
-- `gateRef`;
-- `state`;
-- `unsafeCopyAllowed`;
+- `gateRef`.
+- `state`.
+- `unsafeCopyAllowed`.
 - `blockerRefs`.
 
 Stale health blocks green state even if an evidence gate is otherwise ready.

@@ -4,14 +4,14 @@ Canonical in-repo home for **ATIF — the Agent Trajectory Interchange Format**
 (ATIF-v1.7) so trace producers and consumers stop maintaining parallel
 definitions (#6207, epic #6206).
 
-Reference: `projects/repos/harbor/rfcs/0001-trajectory-format.md` (ATIF-v1.7);
+Reference: `projects/repos/harbor/rfcs/0001-trajectory-format.md` (ATIF-v1.7).
 spec `docs/traces/README.md`.
 
 ## Surfaces
 
 | Import | What |
 | --- | --- |
-| `@openagentsinc/atif/trace` | The strict, pinned ingest/store **schema** (`AtifTrajectory` Effect-Schema class), `decodeAtifTrajectorySync`/`encodeAtifTrajectory`, the structural `validateAtifTrajectory`, and the value-based public-safety `atifTraceTripwire` (+ finding/issue types). The canonical trace contract; the API worker re-exports it. |
+| `@openagentsinc/atif/trace` | The strict, pinned ingest/store **schema** (`AtifTrajectory` Effect-Schema class), `decodeAtifTrajectorySync`/`encodeAtifTrajectory`, the structural `validateAtifTrajectory`, and the value-based public-safety `atifTraceTripwire` (+ finding/issue types). The canonical trace contract. The API worker re-exports it. |
 | `@openagentsinc/atif/emit` | Producer-facing dependency-free TypeScript types a trajectory emitter builds (`AtifTrajectory` interface, `AtifStep`, `Json`, `AtifVerdict`, `serializeTrajectory`, …). |
 | `@openagentsinc/atif/validate` | Producer-facing (permissive) Effect-Schema validator: `AtifTrajectorySchema`, `validateAtif`, `assertValidAtif`, `AtifValidationError`. |
 | `@openagentsinc/atif/redaction` | Shared deterministic redaction service for trace capture and regulated corpus ingestion before external inference. Exposes the legacy trace helpers plus `redactForExternalInference` / `redactStringForExternalInference` with surface tags (`trace_capture`, `corpus_ingestion`) and public-safe aggregate reports. |

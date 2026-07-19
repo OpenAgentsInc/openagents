@@ -7,8 +7,8 @@ Date: 2026-06-08
 Generated Site payment smoke now carries a machine-readable
 `paymentLaunchGate`. The gate separates:
 
-- checkout evidence;
-- live Bitcoin checkout evidence;
+- checkout evidence.
+- live Bitcoin checkout evidence.
 - payout settlement evidence.
 
 This prevents generated Site public copy from treating a clean return page or
@@ -20,16 +20,16 @@ The retained generated Site fixture is `checkout_evidence_only`.
 
 It includes a public receipt bundle with:
 
-- checkout intent refs;
-- payment proof refs;
-- buyer receipt refs;
-- active entitlement refs;
+- checkout intent refs.
+- payment proof refs.
+- buyer receipt refs.
+- active entitlement refs.
 - matched reconciliation refs.
 
 It does not include payout settlement receipt refs, so:
 
-- `liveBitcoinCheckoutClaimAllowed:false`;
-- `payoutSettlementClaimAllowed:false`;
+- `liveBitcoinCheckoutClaimAllowed:false`.
+- `payoutSettlementClaimAllowed:false`.
 - public copy must use `copy.generated_site_payment.checkout_evidence_only`.
 
 ## Claim Rules

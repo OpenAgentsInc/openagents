@@ -1,7 +1,7 @@
 # Artanis Treasury Runbook
 
 Status: **retired by VP-1 on 2026-07-14**. The daemon, routes, jobs, and spend
-authority described below are deleted; this file is historical evidence only.
+authority described below are deleted. This file is historical evidence only.
 For the owner-controlled recovery of the last observed wallet value, use
 [`VP-1 treasury wallet recovery runbook`](../ops/2026-07-14-vp1-treasury-wallet-recovery-runbook.md).
 Nothing below authorizes restarting a service or moving funds.
@@ -24,7 +24,7 @@ It is NOT:
 
 The mnemonic backup lives in the workspace-root secrets convention
 (documented in the workspace `AGENTS.md`). The production container is the
-ONLY node allowed to run on that mnemonic — never start a local daemon on it;
+ONLY node allowed to run on that mnemonic — never start a local daemon on it.
 concurrent nodes corrupt LDK/VSS state.
 
 ## Surfaces Artanis may use
@@ -36,10 +36,10 @@ dependency wiring as its other operator actions.
 1. `GET /api/public/treasury/launch-status` — public-safe state
    (`unprovisioned | unavailable | unconfigured | configured`) plus the
    authority boundary and policy refs. Use this in status topics and public
-   reports; it never carries balances or wallet material.
+   reports. It never carries balances or wallet material.
 2. `GET /api/operator/treasury/status` — health flags plus
    `{ balanceSat, maxSendableSat, feeBudgetMsat }`. `maxSendableSat` is the
-   honest spendable figure (fee-buffered); use it, not `balanceSat`, for any
+   honest spendable figure (fee-buffered). Use it, not `balanceSat`, for any
    can-we-pay decision.
 3. `GET /api/operator/treasury/funding-destination` — the treasury's own
    receive rails: a variable-amount JIT BOLT11 invoice and a BOLT12 offer.
@@ -56,15 +56,15 @@ dependency wiring as its other operator actions.
    body with `error`, `policyApplied`, a public-safe `reasonRef`, and safe
    diagnostics when the treasury container can provide them (`destinationKind`,
    `failureStage`, `preflightMaxSendableSat`, `reasonClass`, `timeoutSecs`,
-   `errorName`, `errorCode`, `messageFingerprint`);
+   `errorName`, `errorCode`, `messageFingerprint`).
    manual operator calls must use `curl --fail-with-body` or omit `-f` so that
    body is not suppressed. The container classifies known failures before the
    Worker sees them, and the Worker falls back to its own classifier for older
    or generic payloads. `messageFingerprint` is a SHA-256 fingerprint of the
-   raw daemon message for correlation only; the route still refuses to store or
+   raw daemon message for correlation only. The route still refuses to store or
    echo raw daemon text, destinations, invoices, payment hashes, or preimages.
    A failure before a durable payment id means no sats have been proven to leave
-   the treasury; confirm by re-reading `balanceSat` / `maxSendableSat`.
+   the treasury. Confirm by re-reading `balanceSat` / `maxSendableSat`.
    Large Lightning Address sends may fail even while smaller sends to the same
    recipient settle. In that case, split an owner-approved obligation into
    explicit smaller payouts and record each settled row, rather than retrying a
@@ -76,11 +76,11 @@ dependency wiring as its other operator actions.
    tip-recipient wallet store, claims one row by moving it to `dispatched`,
    calls the treasury container, stores the private treasury payment id for
    later polling, and records only public-safe dispatch/settlement refs.
-   Pending payments are polled on later ticks; rows are never re-paid.
+   Pending payments are polled on later ticks. Rows are never re-paid.
 
 Do not call the container's raw `/pay` surface from arbitrary new code. The
 operator payout route and the scheduled X-claim dispatcher are the two modeled
-Worker-side policy boundaries; raw `/pay` stays reserved for those internal
+Worker-side policy boundaries. Raw `/pay` stays reserved for those internal
 paths.
 
 ## Owner payout policy: 10% fractional fallback
@@ -106,7 +106,7 @@ trail until topped up or the operator closes it explicitly.
 
 ## What Artanis must do around any payout
 
-1. Before: read operator status; log `maxSendableSat` and the intended
+1. Before: read operator status. Log `maxSendableSat` and the intended
    amount in its decision evidence.
 2. Pay only destinations that come from a registered, public-safe source
    (an agent's registered `bolt12Offer`, a tip-recipient wallet claim) —
@@ -115,7 +115,7 @@ trail until topped up or the operator closes it explicitly.
    `paymentId` ref, recipient actor ref) in the relevant issue or Forum
    topic. Never the destination string, invoice, hash, or preimage.
 4. Anti-Sybil and reward dedupe stay in the reward ledger (one X-claim
-   reward per X account, ever). The payout route does not re-check them;
+   reward per X account, ever). The payout route does not re-check them.
    the dispatcher (#4699) drives rows through `approve_dispatch` first, and
    an operator approval remains the human gate before any send.
 5. Funding state belongs in Artanis's status reporting: when launch-status
@@ -128,7 +128,7 @@ trail until topped up or the operator closes it explicitly.
 - The treasury pays bounded campaign rewards only. New payout classes
   (anything beyond the campaign ledgers the owner has approved) require an
   owner decision first — propose, do not spend.
-- No payout may be triggered from unauthenticated or agent-bearer surfaces;
+- No payout may be triggered from unauthenticated or agent-bearer surfaces.
   admin-token gating is load-bearing.
 - The fractional policy is not a budget: the #4699 dispatcher applies
   `TREASURY_DISPATCH_PER_RUN_REWARD_CAP` (default 1) and
@@ -154,9 +154,9 @@ Ledger: every successful payout through `POST /api/operator/treasury/payout`,
 every pre-dispatch payout failure, and every donation is recorded in the
 `treasury_transactions` D1 table (migrations 0159, 0197, 0198). Failed payout
 attempts without a durable MDK payment id store `payment_ref:null` and a
-public-safe `failure_reason_ref`; they never store raw destinations, BOLT11
+public-safe `failure_reason_ref`. They never store raw destinations, BOLT11
 invoices, hashes, preimages, or daemon error text. Operator failure responses
-may include the public-safe diagnostics listed above; the public page reads
+may include the public-safe diagnostics listed above. The public page reads
 from the ledger but shows only time, direction, amount, and state.
 
 Outbound MDK payment outcomes are now also journaled in the Worker-side

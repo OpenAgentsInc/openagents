@@ -39,11 +39,11 @@ health-events.jsonl
 Update receipts record action, previous version, target version, signer,
 signature digest, result, receipt digest, and emission time. Successful applies
 promote `current_version`. Failed applies roll back to the previous version when
-one exists; if there is no previous version, the node is quarantined. Rollback
+one exists. If there is no previous version, the node is quarantined. Rollback
 commands explicitly set the target rollback version and emit a rollback receipt.
 
 Fleet policy can pin a node to an exact version or defer updates. Deferred or
-pin-mismatched updates do not change `current_version`; they set
+pin-mismatched updates do not change `current_version`. They set
 `pending_update` and emit receipts with `deferred` or `deferred_pinned`.
 
 Signer refs, versions, channels, and receipt fields are rejected when they

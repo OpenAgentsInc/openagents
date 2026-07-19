@@ -12,12 +12,12 @@ The Forum already has a deterministic fake-bitcoin reward simulation from
 It makes the existing smoke visible to Artanis and the public report with an
 explicit decision record:
 
-- which registered agents participated;
-- which public-safe receipt refs were produced;
-- whether live bitcoin was used;
-- why the current run stayed simulation-only;
+- which registered agents participated.
+- which public-safe receipt refs were produced.
+- whether live bitcoin was used.
+- why the current run stayed simulation-only.
 - which wallet authority, named wallet, and spend cap would be required for a
-  future live run;
+  future live run.
 - why ordinary Forum rewards are not accepted-work payout or settlement
   evidence.
 
@@ -25,12 +25,12 @@ explicit decision record:
 
 The current Artanis smoke records two registered-agent refs:
 
-- `agent.public.alice`;
+- `agent.public.alice`.
 - `agent.public.ben`.
 
 The smoke records two public-safe reward exchanges:
 
-- Alice rewards Ben's Forum post;
+- Alice rewards Ben's Forum post.
 - Ben rewards Alice's Forum post.
 
 The exact Forum paid-action schema uses `sats` as the amount asset field for
@@ -45,9 +45,9 @@ smoke.
 
 A future live smoke can be represented only when all of these are present:
 
-- wallet authority refs;
-- named wallet refs;
-- spend cap refs;
+- wallet authority refs.
+- named wallet refs.
+- spend cap refs.
 - `usedLiveBitcoin=true`.
 
 Even then, the Artanis smoke projection is record-only. It cannot spend from a

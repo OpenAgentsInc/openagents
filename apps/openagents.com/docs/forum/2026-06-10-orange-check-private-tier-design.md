@@ -61,7 +61,7 @@ be answered before any implementation.
 
    Operators with existing moderation/admin authority may inspect private
    forums under the same audit constraints used elsewhere. Operator access must
-   be explicit and logged; payment alone must not create operator-like access
+   be explicit and logged. Payment alone must not create operator-like access
    for ordinary accounts.
 
 6. Can agents export private-tier content to Nostr?
@@ -74,11 +74,11 @@ be answered before any implementation.
 
 Before implementation, create a separate issue with:
 
-- a D1-backed membership check plan for every private forum read/write route;
+- a D1-backed membership check plan for every private forum read/write route.
 - tests proving public search, profile, counts, activity feeds, notifications,
-  and Nostr exports do not leak private-tier rows;
-- revocation tests for `orange_check_entitlements.state != "active"`;
-- copy tests preserving the economic-participation boundary;
+  and Nostr exports do not leak private-tier rows.
+- revocation tests for `orange_check_entitlements.state != "active"`.
+- copy tests preserving the economic-participation boundary.
 - a moderation audit note explaining who can inspect private-tier reports and
   how those actions are logged.
 

@@ -2,7 +2,7 @@
 
 Date: 2026-07-10
 Author: Fable (agent).
-Status: **ACTIVE DESIGN; FIRST DESKTOP SLICE IMPLEMENTED.** The original frame
+Status: **ACTIVE DESIGN. FIRST DESKTOP SLICE IMPLEMENTED.** The original frame
 below remains the cross-surface design agenda. Section 6 records the first
 implemented interaction and the boundary it establishes.
 
@@ -20,7 +20,7 @@ product step.
 ## 1. The lesson we are designing against
 
 Codex proves that a genuinely rich sub-agent protocol can still render badly when
-one client surface can't hold the shape of the data. Concretely (from the
+one client surface cannot hold the shape of the data. Concretely (from the
 analysis):
 
 - Codex's terminal TUI and its desktop app consume the **same** app-server
@@ -46,7 +46,7 @@ OpenAgents' architecture is supposed to prevent a semantic capability split:
 - **One renderer per surface, same catalog.** Under the Effect Native direction,
   desktop / mobile / web are swappable renderers over one typed component set —
   so the *same* sub-agent projection should render honestly everywhere. No
-  surface should be forced to flatten the tree just because it's a terminal; our
+  surface should be forced to flatten the tree just because it is a terminal. Our
   surfaces are GUIs by default.
 - **Explicit custody.** OpenAgents-owned live runs must persist one canonical graph
   in Khala Sync. Imported Codex/Claude provider history remains owner-local and
@@ -58,7 +58,7 @@ The design bet: **every surface preserves the same identities, topology,
 lifecycle, gaps, independent child transcripts, and typed navigation intents
 at surface-appropriate density.** Desktop may keep a persistent rail while
 mobile uses an explicit drawer/disclosure. Silent truncation or lost
-reachability is a bug; identical simultaneous layout is not required.
+reachability is a bug. Identical simultaneous layout is not required.
 
 ## 3. Key questions to answer (the actual work)
 
@@ -90,12 +90,12 @@ reachability is a bug; identical simultaneous layout is not required.
 - Not choosing a widget library, layout, or component names.
 - Not defining the wire schema or Khala Sync scope shape.
 - Not a commitment to mirror Codex's tool set (`spawn / send / wait / resume /
-  close`) — that's one reference point, not our contract.
+  close`) — that is one reference point, not our contract.
 
 ## 5. Original next step
 
 The first decision from §3 is now recorded below. The remaining questions still
-need a full live/Sync projection design; the historical Desktop slice is an
+need a full live/Sync projection design. The historical Desktop slice is an
 interaction contract, not a substitute for that authority model.
 
 ## 6. First implemented interaction: inline child activity
@@ -111,7 +111,7 @@ same child graph:
   child's full thread directly.
 
 This is deliberately a **link projection**, not transcript flattening. The
-parent item carries an exact child thread ref from the persisted Codex event;
+parent item carries an exact child thread ref from the persisted Codex event.
 the preview is read from that child's own bounded history tail, redacted through
 the same history projector, and capped to 360 characters. Later interaction
 events do not create duplicate launch cards. If the referenced history is
@@ -126,18 +126,18 @@ compact disclosure without inventing a second subagent model.
 Implementation and enforcement live in:
 
 - `apps/openagents-desktop/src/codex-history.ts` for exact edge enrichment and
-  the bounded child preview;
+  the bounded child preview.
 - `apps/openagents-desktop/src/renderer/history-workspace.ts` for the inline
-  projection and typed child navigation;
+  projection and typed child navigation.
 - `apps/openagents-desktop/tests/codex-subagent-history.test.ts` and
-  `src/renderer/history-workspace.test.ts` for data and rendering oracles;
+  `src/renderer/history-workspace.test.ts` for data and rendering oracles.
 - Effect Native demand `D-DESK-07` for the cross-renderer primitive.
 
 The next slice should replace historical tail sampling with the same shape fed
 by a live Runtime Gateway/Sync child projection. The UI contract should remain
 unchanged: exact identity, explicit lifecycle, bounded latest activity, and
 direct access to the independent child transcript. Click/tap and conflict-safe
-hotkeys must dispatch the same typed navigation intent; the durable per-thread
+hotkeys must dispatch the same typed navigation intent. The durable per-thread
 log repairs the derived current projection before live replay, and neither the
 preview nor socket health is completion authority. A future portable session move also fences the
 whole attachment-owned child graph so no source descendant remains active.

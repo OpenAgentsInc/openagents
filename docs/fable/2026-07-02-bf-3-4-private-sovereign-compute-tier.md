@@ -44,7 +44,7 @@ profile, and one placement ref:
 
 - `workspaceRef`: opaque customer workspace identifier, never a client name.
 - `verticalProfile`: descriptor such as `legal`, `health`, `agency`, or
-  `commerce`; no client-identifying strings.
+  `commerce`. No client-identifying strings.
 - `placementRef`: cloud-lane placement id from the Cloud control plane or
   SHC lane.
 - `trustTier`: `regulated_private` for this BF-3.4 lane.
@@ -114,7 +114,7 @@ BF-3.4 is complete only when all of the following evidence exists:
 1. One customer workspace is provisioned on the isolated lane with opaque refs
    only in committed docs, tests, and public proof.
 2. The lane runs on a Cloud/SHC placement explicitly marked
-   `regulated_private`; it does not fall back to local/default/shared compute.
+   `regulated_private`. It does not fall back to local/default/shared compute.
 3. The workspace has an attached corpus/redaction policy from BF-3.1/BF-3.2,
    or the run is explicitly marked as a no-corpus infrastructure smoke.
 4. Setup, run, pause/resume if exercised, and closeout lifecycle events are

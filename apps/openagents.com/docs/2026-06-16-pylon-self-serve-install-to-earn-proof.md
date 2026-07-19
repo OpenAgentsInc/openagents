@@ -24,8 +24,8 @@ their wallet, work assignment, or closeout:
 | Element (was operator-staged 2026-06-11) | Now |
 | --- | --- |
 | Wallet funded by operator | **Self-provisioned.** Pylon bootstrap/`presence register` auto-creates an MDK wallet + Nostr identity on first run — zero wallet knowledge, no bitcoin loaded by the user. |
-| Assignment dispatched by operator | **Self-claimed.** Contributor runs `pylon training claim` and gets a window lease; no operator dispatch. |
-| Closeout by operator | **Self-completed.** Worker `pylon training submit-trace`; an independent validator's `pylon training validate --auto --watch` auto-discovers the pending contribution from a distinct device and submits the replay verdict. No operator hand-feeding. |
+| Assignment dispatched by operator | **Self-claimed.** Contributor runs `pylon training claim` and gets a window lease. No operator dispatch. |
+| Closeout by operator | **Self-completed.** Worker `pylon training submit-trace`. An independent validator's `pylon training validate --auto --watch` auto-discovers the pending contribution from a distinct device and submits the replay verdict. No operator hand-feeding. |
 | Payout approved by operator | **Still operator-gated — by design.** Settlement is `requireAdmin` + bounded-spend (per-payout + run spend cap). This is a permanent treasury spend-safety control, NOT participation staging, and the contributors agree it should stay operator-gated. See Authority boundary below. |
 
 ## Dereferenceable evidence
@@ -53,14 +53,14 @@ their wallet, work assignment, or closeout:
 - **Settled earning = the provider-confirmed settlement receipt**, which exists
   and dereferences. Actual on-chain/Lightning delivery of the earned sats into
   the contributor's wallet can be in-flight (pending) and is covered by retry +
-  the rc5 Spark backup-receive path; wallet-landed balance is not required for
+  the rc5 Spark backup-receive path. Wallet-landed balance is not required for
   the settled-receipt claim (the promise's authority boundary already separates
   "settled earning" from wallet balance).
 - **Operator payout approval remains** a bounded-spend, owner-gated safety
   control. Green asserts the *user's participation* is staging-free, not that
   the treasury self-spends.
 - Linux clean-machine smoke and an Autopilot-Desktop-driven first-run remain
-  nice-to-have hardening; the promise (install **Pylon** without wallet
+  nice-to-have hardening. The promise (install **Pylon** without wallet
   knowledge → earn) is proven on real non-owner darwin-arm64 machines via the
   Pylon CLI, which is stronger than a synthetic smoke.
 
@@ -68,4 +68,4 @@ their wallet, work assignment, or closeout:
 
 Receive readiness and balance are not send readiness, payout dispatch, or
 settled earning. Self-serve participation does not grant self-serve treasury
-spend; payouts remain operator-approved under bounded spend authority.
+spend. Payouts remain operator-approved under bounded spend authority.

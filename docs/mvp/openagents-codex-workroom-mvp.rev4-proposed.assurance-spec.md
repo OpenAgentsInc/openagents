@@ -2,7 +2,7 @@
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.desktop.codex.workroom.mvp"
 assurance_revision: 4
-title: "OpenAgents Desktop Codex Workroom MVP Assurance Spec"
+title: "OpenAgents Desktop Codex Workroom MVP AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
 author: "OpenAgents"
@@ -12,7 +12,7 @@ author: "OpenAgents"
 
 ### Revision 4 Expected-Working Surface Congruence (2026-07-14, proposed)
 
-Owner decision (verbatim, 2026-07-14): "The assurance spec needs to be fully
+Owner decision (verbatim, 2026-07-14): "The AssuranceSpec needs to be fully
 covering everything that we should expect to actually work, and then nothing
 else, and ensure that that is specified in the contract."
 
@@ -42,7 +42,7 @@ owner-directed supersession removals: `apps/autopilot-desktop`,
 deleted from the workspace (recover any path with
 `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`).
 `clients/khala-code-desktop` was subsequently removed under the same owner
-supersession direction. `packages/autopilot-ui` remains as an internal package;
+supersession direction. `packages/autopilot-ui` remains as an internal package.
 it does not authorize an additional OpenAgents Desktop visible surface.
 
 The full-sweep `test` command of record for this revision is the
@@ -59,14 +59,14 @@ The embedded `assurancespec-environments` repository inventory below is the
 admitted-time machine-generated snapshot (head
 `376d98fa4cc973af334b09a61e7ecba0dcae127a`, before the removals) and is
 retained byte-for-byte: it is generated evidence bound to that head and
-digest, so it is not hand-edited; it still names the removed
+digest, so it is not hand-edited. It still names the removed
 `apps/autopilot-desktop/**` candidate artifacts and
 `apps/autopilot-desktop/package.json` /
 `packages/sarah-take-scoreboard/package.json` declared scripts as
 historical enumeration. It must be regenerated against the post-removal
 head as part of admitting this revision. The admitted revision-2 document,
 its evidence index, and its receipts remain byte-stable historical proof
-and are not retargeted; admitting this revision is a subsequent owner/gate
+and are not retargeted. Admitting this revision is a subsequent owner/gate
 act per `specs/CONVENTIONS.md` and `docs/assurance/ASSURANCE_SPEC.md`.
 Full removal record: `docs/refactor/2026-07-14-mvp-prune-ledger.md`
 (Part 2) and `docs/promises/2026-07-14-owner-supersession-removals.md`.
@@ -144,11 +144,11 @@ The proof design treats runtime compatibility, ordinary Codex-session custody, d
 
 ## Assurance Scope
 
-Every executable ProductSpec criterion is required and has exactly one criterion obligation in this MVP run. UX-5 additionally requires every expected-working dock interaction to map to those obligations, enforced behavior contracts, and executable oracles in the checked-in coverage matrix; the congruence sweep fails both omissions and non-MVP additions. No criterion is deferred or marked not applicable; release and public-promise authority remain outside the execution grant even after all observations are confirmed.
+Every executable ProductSpec criterion is required and has exactly one criterion obligation in this MVP run. UX-5 additionally requires every expected-working dock interaction to map to those obligations, enforced behavior contracts, and executable oracles in the checked-in coverage matrix. The congruence sweep fails both omissions and non-MVP additions. No criterion is deferred or marked not applicable. Release and public-promise authority remain outside the execution grant even after all observations are confirmed.
 
 ## Environments
 
-Execution uses the admitted first-party macOS ARM64 Bun environment with network and credential access forbidden. Native JUnit remains private; normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.
+Execution uses the admitted first-party macOS ARM64 Bun environment with network and credential access forbidden. Native JUnit remains private. Normalized receipts expose only digests and bounded references. The historical signed RC9 receipt supplies release-artifact evidence and is not regenerated or published by this run.
 
 ```assurancespec-environments
 {
@@ -3580,7 +3580,7 @@ Execution uses the admitted first-party macOS ARM64 Bun environment with network
 
 ## Obligations
 
-Each obligation binds one criterion to a criterion-local contract oracle and a deterministic missing-anchor falsifier. The UX-5 coverage matrix is the interaction-level projection of those items; it adds the explicit UX-1/UX-2/UX-3 contract and oracle links and rejects any visible surface not justified by this exact scope. The complete Desktop suite and installed RC9 journey are required companion evidence, so a narrow contract result cannot independently authorize release or a public completion claim.
+Each obligation binds one criterion to a criterion-local contract oracle and a deterministic missing-anchor falsifier. The UX-5 coverage matrix is the interaction-level projection of those items. It adds the explicit UX-1/UX-2/UX-3 contract and oracle links and rejects any visible surface not justified by this exact scope. The complete Desktop suite and installed RC9 journey are required companion evidence, so a narrow contract result cannot independently authorize release or a public completion claim.
 
 ```assurancespec-obligations
 [
@@ -4432,7 +4432,7 @@ Links remain evidence locations rather than verdicts. Native output stays privat
 
 ## Authority Boundaries
 
-The owner admits this exact proof design and has accepted the installed ProductSpec-native journey and its read-only review boundary. The runner may execute and report only; it cannot alter owner acceptance, publish RC9, change registries or promises, waive failures, or infer authority from prose or green tests.
+The owner admits this exact proof design and has accepted the installed ProductSpec-native journey and its read-only review boundary. The runner may execute and report only. It cannot alter owner acceptance, publish RC9, change registries or promises, waive failures, or infer authority from prose or green tests.
 
 ```assurancespec-authority
 {

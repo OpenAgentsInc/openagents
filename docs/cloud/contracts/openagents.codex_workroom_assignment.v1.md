@@ -19,7 +19,7 @@ Codex task on a managed node while Probe can consume the same normalized event s
 | `repo_ref` | Non-secret repo/project context. |
 | `prompt` | Bounded instruction for Codex. |
 | `required_artifacts` | Artifact filenames Codex must create in the workroom. |
-| `sandbox` | `read_only`, `workspace_write`, or `danger_full_access`; SHC Codex smoke uses `danger_full_access` inside the no-wallet VM boundary. |
+| `sandbox` | `read_only`, `workspace_write`, or `danger_full_access`. SHC Codex smoke uses `danger_full_access` inside the no-wallet VM boundary. |
 | `timeout_ms` | Optional run timeout, capped at one hour. |
 | `wallet_authority` | Must be `false`. |
 | `audit_context` | Non-secret source context such as issue/run refs. |

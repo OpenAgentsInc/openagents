@@ -25,21 +25,21 @@ POST /api/operator/crm/contacts/:id/resend-send   (admin-gated)
 ```
 
 Result `kind`:
-- `dry_run` (200) — send disabled; nothing sent.
+- `dry_run` (200) — send disabled. Nothing sent.
 - `not_configured` (200) — armed but no api key / from address.
 - `suppressed` (409) — address opted out / bounced / complained.
 - `sent` (200) — `{ message: { providerMessageId, status:'sent', ... } }`.
-- `failed` (502) — provider rejected (e.g. unverified domain); recorded.
+- `failed` (502) — provider rejected (e.g. unverified domain). Recorded.
 
 Composition + the suppression/unsubscribe gate (`readEmailSendEligibility`) are
-shared with the Gmail channel. Every attempt records a `crm_email_messages` row;
+shared with the Gmail channel. Every attempt records a `crm_email_messages` row.
 a success also records a `crm_activity` (`email_sent`). Bounce/complaint events
 flow back through the existing `resend-webhooks.ts` into `email_provider_events`
 + suppression.
 
 ## Deliverability proof (the green) — OWNER-GATED
 
-`autopilot_sites.native_email_sequences.v1` is YELLOW; its remaining blocker is
+`autopilot_sites.native_email_sequences.v1` is YELLOW. Its remaining blocker is
 `email_deliverability_unproven`. Clearing it honestly requires a **live
 send→deliver receipt** with bounce/complaint handling, which needs a real
 `RESEND_API_KEY` + a **verified sending domain** — owner-gated secrets/DNS.

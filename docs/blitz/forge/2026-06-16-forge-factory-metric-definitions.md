@@ -50,8 +50,8 @@ live delivery evidence available in the Runs projection.
 | Pass rate            | `accepted / (accepted + rejected + invalid)`.                                                                                | Live when at least one accepted/rejected/invalid decision exists. Blocked, delivered, revision-required, and scheduled are excluded.         |
 | Token efficiency     | Useful accepted output per model token or credit spend, reconciled with accepted-outcomes-per-kWh when compute power exists. | Seeded/absent. `/forge` has no token/power join yet.                                                                                         |
 | MTTR                 | Median time from incident signal to accepted correction/deploy receipt.                                                      | Seeded/absent. Incident-resolution receipts are not wired yet.                                                                               |
-| Backlog / queue burn | Scheduled backlog is `scheduled`; triage count is the Triage stage bucket, which already includes scheduled runs.            | Live. The "Runs Triaged" panel now uses the Triage stage bucket directly to avoid double-counting scheduled backlog.                         |
-| Week-over-week delta | `(last 7 days created - prior 7 days created) / prior 7 days created`, rounded to percent.                                   | Live for the intake band when Runs projection has created timestamps. Direction is neutral: up means more intake; down can mean load easing. |
+| Backlog / queue burn | Scheduled backlog is `scheduled`. Triage count is the Triage stage bucket, which already includes scheduled runs.            | Live. The "Runs Triaged" panel now uses the Triage stage bucket directly to avoid double-counting scheduled backlog.                         |
+| Week-over-week delta | `(last 7 days created - prior 7 days created) / prior 7 days created`, rounded to percent.                                   | Live for the intake band when Runs projection has created timestamps. Direction is neutral: up means more intake. Down can mean load easing. |
 
 ## Instrumentation Notes
 
@@ -59,7 +59,7 @@ live delivery evidence available in the Runs projection.
 - The Triage and Signal sparklines use `dailyCreated` because that is the only
   real historical series currently available.
 - Other per-stage sparklines remain seeded until stage transition receipts exist.
-- Provider pool capacity is live only when the pool projection has loaded; until
+- Provider pool capacity is live only when the pool projection has loaded. Until
   then Code Gen capacity remains seeded.
 - Power/kWh efficiency must not be inferred from tokens alone. It needs a joined
   compute-source estimate or measurement and must preserve the uncertainty range

@@ -28,7 +28,7 @@ The verify command was:
 test -f docs/launch/2026-06-18-pylon-w7-dogfood-proof.md
 ```
 
-The auto approval policy was selected for the run; no pending approvals were
+The auto approval policy was selected for the run. No pending approvals were
 needed.
 
 ## Acceptance Chain
@@ -49,12 +49,12 @@ needed.
 - Task `w7-batch-plan`: sessionRef
   `session.pylon.control.cfd09a23932bebf5aaf4ec16`, resultRef
   `result.pylon.control_session.cd3ed831903e27e2f2f24d65`, artifactRef
-  `artifact.pylon.control_session.proof.cb70fff2a3f838f566795c45`; verify
+  `artifact.pylon.control_session.proof.cb70fff2a3f838f566795c45`. Verify
   passed with a clean changeset.
 - Task `w7-batch-runbook`: sessionRef
   `session.pylon.control.0e121291cfdc231f1c0fa297`, resultRef
   `result.pylon.control_session.dd2910f3725dc0abc016acff`, artifactRef
-  `artifact.pylon.control_session.proof.83102ebef3b65e056970d4cb`; verify
+  `artifact.pylon.control_session.proof.83102ebef3b65e056970d4cb`. Verify
   passed with a clean changeset.
 - failures: empty
 

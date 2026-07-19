@@ -22,9 +22,9 @@ Covered cases:
 
 Every case asserts:
 
-- the target RPC response passes the schema oracle;
-- the response includes a typed degraded-state projection;
-- no driver or fixture console errors are observed;
+- the target RPC response passes the schema oracle.
+- the response includes a typed degraded-state projection.
+- no driver or fixture console errors are observed.
 - the fixture explicitly preserves data (`dataLoss: false` or the matching
   `qa.error_state.<case>.data_preserved` marker).
 

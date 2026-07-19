@@ -17,19 +17,19 @@ Every validated update is admitted to the private native evidence store before c
 | Native input                  | Canonical projection                                     | Merge rule                                                                   |
 | ----------------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `user_message_chunk`          | user Item state plus private content reference           | append accepted chunks in wire order                                         |
-| `agent_message_chunk` text    | `text.delta`, then one `text.completed`                  | repeated equal chunks are legitimate; duplicate envelope is not              |
+| `agent_message_chunk` text    | `text.delta`, then one `text.completed`                  | repeated equal chunks are legitimate. Duplicate envelope is not              |
 | `agent_thought_chunk` text    | `reasoning.delta`, then one `reasoning.completed`        | same channel FSM as message text                                             |
 | non-text content              | `raw.sidecar_ref` plus degraded/attachment state         | never stringify blobs into text                                              |
 | `tool_call`                   | one canonical tool item and `tool.call`                  | provider report is evidence, not OpenAgents execution authority              |
-| `tool_call_update`            | patch metadata; terminal `tool.result` or `tool.error`   | absent retains, replace-on-present content/locations, terminal states absorb |
-| `plan`                        | atomic plan snapshot                                     | full-list replacement; informative, not approval                             |
-| commands, mode, config        | provider/session metadata snapshots                      | complete replacement; IDs remain generation scoped                           |
-| session info                  | provider/session metadata                                | partial patch; explicit null clears                                          |
+| `tool_call_update`            | patch metadata. Terminal `tool.result` or `tool.error`   | absent retains, replace-on-present content/locations, terminal states absorb |
+| `plan`                        | atomic plan snapshot                                     | full-list replacement. Informative, not approval                             |
+| commands, mode, config        | provider/session metadata snapshots                      | complete replacement. IDs remain generation scoped                           |
+| session info                  | provider/session metadata                                | partial patch. Explicit null clears                                          |
 | usage                         | cumulative context/cost snapshot                         | replace, never sum or mislabel as generation tokens                          |
 | prompt response               | exactly one `turn.finished` with native reason reference | standard/private completion races settle once                                |
 | unknown stable/vendor variant | private sidecar plus degraded state                      | no canonical state mutation or crash                                         |
 
-Accepted stop mappings are `end_turn → stop`, `max_tokens → length`, `cancelled → cancelled`, and `refusal → content-filter`; unrecognized reasons map to `unknown` while preserving a private native reference. `max_turn_requests` remains `unknown` rather than asserting tool-call semantics.
+Accepted stop mappings are `end_turn → stop`, `max_tokens → length`, `cancelled → cancelled`, and `refusal → content-filter`. Unrecognized reasons map to `unknown` while preserving a private native reference. `max_turn_requests` remains `unknown` rather than asserting tool-call semantics.
 
 Admission IDs use `(connection, generation, receive sequence)`, not payload hashes: adjacent identical text chunks must survive. Reusing an admitted envelope is a no-op. Lower/out-of-order sequence, old generation, unowned session, terminal tool regression, and post-turn updates are quarantined visibly. Tool states follow `absent → pending → in_progress → completed | failed`, with terminal states absorbing.
 
@@ -44,12 +44,12 @@ The Node broker adapter implements canonical workspace containment (including re
 | `session/request_permission` | canonical policy plus durable `RuntimeInteraction` decision                                | exact selected offered option, or cancelled                         |
 | filesystem read/write        | normalized workspace broker with containment, symlink, encoding, byte, cancellation policy | protocol response plus refs-only receipt                            |
 | terminal lifecycle           | command/cwd/env policy and owned process broker with bounded output/cancellation           | protocol response plus refs-only receipt                            |
-| MCP material                 | scoped, expiring capability-broker reference resolved only for authorized session creation | native launch material is callback-scoped; receipt stores refs only |
+| MCP material                 | scoped, expiring capability-broker reference resolved only for authorized session creation | native launch material is callback-scoped. Receipt stores refs only |
 | Grok/Cursor questions        | `provider_question` interaction bound to generation/session/request/deadline               | profile codec returns exact native response                         |
-| Cursor plan request          | `plan_review` interaction; plan notifications remain snapshots                             | profile codec returns exact native response                         |
-| Cursor todos                 | namespaced work/plan snapshot                                                              | notification only; never implicit authority                         |
+| Cursor plan request          | `plan_review` interaction. Plan notifications remain snapshots                             | profile codec returns exact native response                         |
+| Cursor todos                 | namespaced work/plan snapshot                                                              | notification only. Never implicit authority                         |
 
-Permission refusal selects one peer-offered rejection option; cancellation/expiry returns the protocol's cancelled outcome. Filesystem and terminal faults use bounded structured failures and never copy paths, commands, contents, output, environment, or secrets into error data. MCP credentials, headers, environment, and raw launch material must not enter native evidence, logs, renderer state, or durable receipts.
+Permission refusal selects one peer-offered rejection option. Cancellation/expiry returns the protocol's cancelled outcome. Filesystem and terminal faults use bounded structured failures and never copy paths, commands, contents, output, environment, or secrets into error data. MCP credentials, headers, environment, and raw launch material must not enter native evidence, logs, renderer state, or durable receipts.
 
 While a permission/question/plan interaction is pending, ordinary user input queues a later prompt. Only a typed interaction decision may steer the active reverse request. Renderer callbacks are never authority.
 

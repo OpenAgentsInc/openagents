@@ -137,13 +137,13 @@ accepted as send-ready evidence, even if `balance` reports enough sats.
 
 For public Pylon readiness, keep these claims separate:
 
-- wallet configured;
-- receive-ready;
-- positive balance;
-- outbound send-ready;
-- accepted work;
-- payment sent;
-- recipient settlement observed; and
+- wallet configured.
+- receive-ready.
+- positive balance.
+- outbound send-ready.
+- accepted work.
+- payment sent.
+- recipient settlement observed. And
 - Nexus/Pylon public settlement receipt recorded.
 
 Raw invoices, payment hashes, preimages, mnemonics, wallet homes, and daemon

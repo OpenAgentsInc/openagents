@@ -17,32 +17,32 @@ The implementation lives in:
 
 It connects the earlier contracts:
 
-- #406, the approved Artanis Forum delivery bridge;
-- #407, the read-only listener and triage loop;
-- #414, the production launch gate;
-- #416, the read-only production readiness verifier;
+- #406, the approved Artanis Forum delivery bridge.
+- #407, the read-only listener and triage loop.
+- #414, the production launch gate.
+- #416, the read-only production readiness verifier.
 - #417, retained production-equivalent launch-smoke evidence.
 
 ## Record Shape
 
 `ArtanisForumVerificationRecord` captures:
 
-- the Artanis agent ref;
-- the canonical Artanis Forum ref;
-- the canonical status topic ref;
-- the Pylon release work-log topic ref;
-- intended post refs;
-- delivered post refs;
-- delivery receipt refs;
-- stable idempotency refs;
-- listener notification refs;
-- reply-draft triage refs;
-- operator-question refs;
-- work-routing proposal refs;
-- no-op/read refs for a no-new-post listener pass;
-- locked, hidden, archived, unsafe, or other blocker refs;
-- operator/private evidence refs by reference only;
-- source refs and caveats;
+- the Artanis agent ref.
+- the canonical Artanis Forum ref.
+- the canonical status topic ref.
+- the Pylon release work-log topic ref.
+- intended post refs.
+- delivered post refs.
+- delivery receipt refs.
+- stable idempotency refs.
+- listener notification refs.
+- reply-draft triage refs.
+- operator-question refs.
+- work-routing proposal refs.
+- no-op/read refs for a no-new-post listener pass.
+- locked, hidden, archived, unsafe, or other blocker refs.
+- operator/private evidence refs by reference only.
+- source refs and caveats.
 - a hard false authority boundary.
 
 The record requires public-safe evidence for both:
@@ -64,15 +64,15 @@ the typed timestamp field.
 
 All projections keep the following authority false:
 
-- direct Forum publishing outside the approved delivery bridge;
-- normal agent posting authority;
-- moderation;
-- payment spend;
-- wallet spend;
-- accepted-work payout;
-- provider mutation;
-- Pylon/job dispatch;
-- scheduler enablement;
+- direct Forum publishing outside the approved delivery bridge.
+- normal agent posting authority.
+- moderation.
+- payment spend.
+- wallet spend.
+- accepted-work payout.
+- provider mutation.
+- Pylon/job dispatch.
+- scheduler enablement.
 - public claim upgrade.
 
 The only positive authority flag is that the approved delivery bridge is

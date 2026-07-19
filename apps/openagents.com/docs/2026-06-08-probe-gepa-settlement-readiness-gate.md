@@ -17,10 +17,10 @@ The implementation lives in
 
 The gate evaluates:
 
-- accepted Pylon GEPA metric-call assignment records;
-- operator accounting records keyed by assignment ref;
-- batch-level operator accounting refs;
-- the requested payment mode;
+- accepted Pylon GEPA metric-call assignment records.
+- operator accounting records keyed by assignment ref.
+- batch-level operator accounting refs.
+- the requested payment mode.
 - the requested public claim state.
 
 For `operator_credit` and `payable_pending_settlement`, every accepted
@@ -36,11 +36,11 @@ allows any settled-bitcoin claim.
 
 The public claim state cannot exceed the requested payment mode:
 
-- `unpaid_smoke` may only claim no-spend completion;
+- `unpaid_smoke` may only claim no-spend completion.
 - `operator_credit` may claim recorded operator credit, not payable or settled
-  bitcoin;
+  bitcoin.
 - `payable_pending_settlement` may claim payable pending settlement, not settled
-  bitcoin;
+  bitcoin.
 - `settled_bitcoin` may claim settlement only when settlement receipt refs are
   present.
 

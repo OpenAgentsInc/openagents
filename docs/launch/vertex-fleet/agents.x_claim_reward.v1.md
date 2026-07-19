@@ -5,7 +5,7 @@ Promise: `agents.x_claim_reward.v1` (state: yellow — unchanged by this work).
 ## Blocker advanced
 
 `blocker.product_promises.x_claim_reward_live_dispatch_smoke_missing`
-(NOT cleared — no live reward has settled yet; the blocker stays listed).
+(NOT cleared — no live reward has settled yet, the blocker stays listed).
 
 ## What was built
 
@@ -31,7 +31,7 @@ codes).
 
 ## Follow-up: post-settlement receipt audit (this run)
 
-The preflight evaluator gates *before* the smoke; nothing gated the settled
+The preflight evaluator gates *before* the smoke. Nothing gated the settled
 record *after* it. This run adds the after-the-fact counterpart — a pure,
 public-safe **post-settlement receipt auditor** the operator runs on the
 settled reward row before publishing the issue #4626 transition receipt.
@@ -128,7 +128,7 @@ wires it into the dispatch route so leaky material never reaches the row.
 ## Follow-up: worker-side dispatch run outcome auditor (this run)
 
 The candidate gate, settlement-evidence gate, and post-settlement receipt audit
-all inspect ledger *rows*; the aggregate preflight inspects *stats* before the
+all inspect ledger *rows*. The aggregate preflight inspects *stats* before the
 run. But when the smoke runs through the flag-gated worker-side dispatcher
 (`runXClaimRewardTreasuryDispatch`), nothing audited the
 `XClaimRewardTreasuryDispatchSummary` it returns — i.e. whether the run itself
@@ -165,7 +165,7 @@ that closes that hole.
   `XClaimRewardSmokeCompletionReport` / `XClaimRewardSmokeCompletionInput` types.
   It runs `assertXClaimRewardSmokeDispatchOutcome(summary)` (run-level) AND
   `buildXClaimRewardSmokeTransitionRequest(reward)` (row-level) and emits the
-  public-safe `transitionRequest` only when BOTH pass; `blockingReasonRefs` is
+  public-safe `transitionRequest` only when BOTH pass. `blockingReasonRefs` is
   the deduped union of both gates' reasons. It moves no funds and flips no state.
 - `apps/openagents.com/workers/api/src/x-claim-reward-smoke-completion.test.ts`
   — covers the both-pass emit, run-not-clean withhold (clean row), pending-payment

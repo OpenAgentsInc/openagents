@@ -1,11 +1,11 @@
 # khala-live-hub
 
 The owned Google Cloud Run replacement for the `openagents.com` Worker's
-`KhalaSyncHubDO` (CFG-5, [#8520](https://github.com/OpenAgentsInc/openagents/issues/8520);
+`KhalaSyncHubDO` (CFG-5, [#8520](https://github.com/OpenAgentsInc/openagents/issues/8520).
 epic [#8515](https://github.com/OpenAgentsInc/openagents/issues/8515)):
 the Khala Sync per-scope live hub — recent changelog window, live-tail
 WebSocket fan-out, offset-resumable catch-up, MustRefetch-below-window —
-as a Node WS/HTTP service. Postgres stays authoritative; this service is a
+as a Node WS/HTTP service. Postgres stays authoritative. This service is a
 CACHE AND FAN-OUT LAYER ONLY (docs/khala-sync/SPEC.md §5 semantics,
 ported 1:1 — see `src/scope-hub.ts`).
 
@@ -15,7 +15,7 @@ ported 1:1 — see `src/scope-hub.ts`).
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `GET /health`                       | liveness (no auth)                                                                                                 |
 | `POST /append?scope=…`              | capture batch append (idempotent by version, dense with the window edge, 409 `khala_sync_hub_version_gap` on gaps) |
-| `GET /log?scope=…&cursor=…&limit=…` | LogPage from the window; 410 behind-window / 409 ahead-of-window typed `SyncError`s                                |
+| `GET /log?scope=…&cursor=…&limit=…` | LogPage from the window. 410 Behind-window / 409 ahead-of-window typed `SyncError`s                                |
 | `POST /access-changed` `{scope}`    | broadcast `MustRefetch(access_changed)` + close every scope socket (KS-7.1)                                        |
 | `GET /connect?scope=…&cursor=…`     | live-tail WebSocket upgrade (catch-up from cursor, then DeltaFrame fan-out)                                        |
 
@@ -34,7 +34,7 @@ front of the DO.
 
 A Cloud Run restart loses the in-memory windows. On first touch of a
 scope the service rebuilds the newest window from Postgres
-(`src/rebuild.ts`, direct Cloud SQL connection, single-flight per scope);
+(`src/rebuild.ts`, direct Cloud SQL connection, single-flight per scope).
 if Postgres is unreachable the hub starts empty and capture's next append
 hydrates it mid-stream — the DO's own reset semantics.
 

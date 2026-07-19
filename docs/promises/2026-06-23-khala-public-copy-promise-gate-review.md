@@ -24,7 +24,7 @@ The page now stays inside the evidence envelope:
 - `openagents/khala-mini` and `openagents/khala-code` are described as public
   catalog ids, with availability controlled by gateway readiness and lane
   arming.
-- `openagents/khala-code` no longer promises that tests simply pass; it says the
+- `openagents/khala-code` no longer promises that tests simply pass. It says the
   receipt records whether executable acceptance actually ran, failed, or remains
   unverified.
 - `verified:true` is explicitly reserved for an executed acceptance verdict.

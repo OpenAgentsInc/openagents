@@ -2,10 +2,10 @@
 
 Server substrate for Khala Sync. Production runs entirely on Google Cloud:
 
-- the OpenAgents Node 24 API runs on Cloud Run;
-- relational and changelog state lives in Cloud SQL Postgres;
-- `khala-live-hub` runs on Cloud Run and provides bounded WebSocket fan-out;
-- capture, compaction, and migrations use direct Cloud SQL connections; and
+- the OpenAgents Node 24 API runs on Cloud Run.
+- relational and changelog state lives in Cloud SQL Postgres.
+- `khala-live-hub` runs on Cloud Run and provides bounded WebSocket fan-out.
+- capture, compaction, and migrations use direct Cloud SQL connections. And
 - credentials live in Secret Manager.
 
 Cloudflare Workers, Durable Objects, D1, Hyperdrive, Queues, R2, and Wrangler
@@ -37,7 +37,7 @@ primary infrastructure, and is not accepted by current dispatch admission.
   authoritative Cloud SQL state.
 
 The API integration lives under
-`apps/openagents.com/workers/api/`; `workers/api` is a historical directory
+`apps/openagents.com/workers/api/`. `workers/api` is a historical directory
 name and does not identify the runtime provider.
 
 ## Connection authority
@@ -63,10 +63,10 @@ Khala Sync runbook.
    mutation receipt commit or roll back together.
 3. Read pages never split a version, and bootstrap cursors fail closed once
    compaction passes their retained window.
-4. Authorization is checked live; storage failures never become grants.
+4. Authorization is checked live. Storage failures never become grants.
 5. Public projections use explicit allowlists and refuse private material.
-6. Capture delivery is at least once; hub and client apply are idempotent.
-7. The production admission lane is `cloud-gcp`; the managed runner backend is
+6. Capture delivery is at least once. Hub and client apply are idempotent.
+7. The production admission lane is `cloud-gcp`. The managed runner backend is
    `gcloud_vm`. Retired pilot provenance is terminal history only.
 8. Managed-sandbox command bytes enter Cloud SQL before provider effects.
 9. One sandbox has at most one `pending` command and one generation with

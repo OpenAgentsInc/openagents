@@ -1,7 +1,7 @@
 # M14 And #4786 Closeout Decision
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Date: 2026-06-14
@@ -34,7 +34,7 @@ The remaining open work is accepted as non-MVP or post-MVP tail:
 | Bootstrap                   | #4755, #4756, #4757, #4758        | Closed child issues.                                                                                          |
 | MVP M1-M13                  | #4759-#4771, including #4768      | Closed child issues, with #4767 live rotation and #4768 live two-lane proof.                                  |
 | Agent parity                | #4773, #4774, #4775, #4776        | Closed child issues plus live paid labor evidence from P1.                                                    |
-| Post-MVP early receipt      | #4777                             | Live negotiated labor job settled; see `docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md`. |
+| Post-MVP early receipt      | #4777                             | Live negotiated labor job settled. See `docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md`. |
 | Other post-MVP closed rungs | #4778, #4779, #4780, #4784, #4785 | Closed child issues and recorded scope boundaries.                                                            |
 
 ## Evidence Refs

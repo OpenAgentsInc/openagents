@@ -26,10 +26,10 @@ The adapter posts to:
 
 The request body uses schema `openagents.oa_node.nexus_registry.v1` and carries:
 
-- action: `register` or `heartbeat`;
-- node id and org id from `node-state.json`;
-- the current `openagents.cloud_node.v1` snapshot digest;
-- observed status and desired mode labels;
+- action: `register` or `heartbeat`.
+- node id and org id from `node-state.json`.
+- the current `openagents.cloud_node.v1` snapshot digest.
+- observed status and desired mode labels.
 - a signature block containing algorithm, signing-key reference, and digest.
 
 The MVP signature is `sha256-ref-bound-mvp`: a deterministic digest over the
@@ -70,8 +70,8 @@ contract enum. `rejected`, `stale`, `expired`, invalid HTTP responses, and
 transport failures degrade the local admin store instead of crashing or
 claiming capacity:
 
-- `observed_status` becomes `degraded`;
-- `last_degradation_reason` records a registry-specific reason;
+- `observed_status` becomes `degraded`.
+- `last_degradation_reason` records a registry-specific reason.
 - `health-events.jsonl` receives an append-only event such as
   `nexus_registration_rejected`, `nexus_registration_stale`, or
   `nexus_registration_expired` (event type strings keep the historical prefix).
@@ -84,9 +84,9 @@ when registry authority is missing, stale, or actively rejecting the node.
 The integration tests in `crates/oa-node/tests/nexus_registry.rs` run a local
 single-request HTTP server and verify that:
 
-- registration posts a signed envelope with the snapshot digest;
-- accepted registration can apply desired mode;
-- rejected heartbeats degrade safely and emit a health event;
+- registration posts a signed envelope with the snapshot digest.
+- accepted registration can apply desired mode.
+- rejected heartbeats degrade safely and emit a health event.
 - stale registration degrades safely.
 
 ## Related

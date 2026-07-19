@@ -21,12 +21,12 @@ bun run smoke:forum:mdk-readiness -- --post POST_ID --approve-live-spend
 
 The smoke keeps these states separate:
 
-- local MDK agent-wallet daemon/config/balance preflight;
-- receive readiness for the target Forum post author;
-- payable hosted-MDK challenge issuance;
-- MDK-confirmed ordinary Forum tip payment;
-- hosted provider payout authority for other payout flows;
-- local wallet send readiness;
+- local MDK agent-wallet daemon/config/balance preflight.
+- receive readiness for the target Forum post author.
+- payable hosted-MDK challenge issuance.
+- MDK-confirmed ordinary Forum tip payment.
+- hosted provider payout authority for other payout flows.
+- local wallet send readiness.
 - receipt creation after live payment.
 
 It must not print bearer tokens, L402 credentials, raw invoices, payment

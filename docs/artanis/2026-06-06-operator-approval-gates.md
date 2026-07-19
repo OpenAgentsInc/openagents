@@ -123,12 +123,12 @@ the approved gate and enforce its own target-specific authority checks.
 
 Coverage lives in `workers/api/src/artanis-approval-gates.test.ts`. It proves:
 
-- the risky action set is enumerated;
-- all gate states project correctly;
+- the risky action set is enumerated.
+- all gate states project correctly.
 - public projections redact authority, private evidence, rollback, and
-  operator refs;
+  operator refs.
 - approved actions require explicit authority receipts, operator receipts,
-  caveats, expiry, and rollback posture where applicable;
+  caveats, expiry, and rollback posture where applicable.
 - Forum posts, Model Lab records, retained failures, and Pylon stats cannot
-  approve risky actions by themselves;
+  approve risky actions by themselves.
 - approved gates become ineffective after expiry.

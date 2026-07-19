@@ -1,7 +1,7 @@
 # Nostr Outage-Coordination Drill
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -11,7 +11,7 @@ Date: 2026-06-20
 Status: drill receipt for the product promise `agents.nostr_fallback_coordination.v1`
 (DE-8, EPIC #5531). This document does not change any live path, does not make
 Nostr a settlement authority, and does not mark any promise green. The green flip
-is owner-signed; this is the dereferenceable receipt that backs it.
+is owner-signed. This is the dereferenceable receipt that backs it.
 
 ## Summary
 
@@ -23,7 +23,7 @@ coordination step is a real signed event on a public relay.
 
 The harness is `apps/openagents.com/scripts/nostr-fallback-drill.ts`. It is modeled
 on the existing `apps/openagents.com/scripts/nip-ds.ts` relay publish/read-back
-smoke and reuses `@openagentsinc/nip90` (which re-exports `nostr-effect`); it does
+smoke and reuses `@openagentsinc/nip90` (which re-exports `nostr-effect`). It does
 not introduce a new messaging stack.
 
 ## What the drill exercises
@@ -40,7 +40,7 @@ Ordered, end to end:
    central directory is needed.
 4. **NIP-17 private DM (kind 1059 gift wrap).** The two agents exchange a
    gift-wrapped direct message agreeing to keep working and to reconcile over
-   Nostr. The message body lives only inside the NIP-44-encrypted seal; the
+   Nostr. The message body lives only inside the NIP-44-encrypted seal. The
    published event content is ciphertext.
 5. **NIP-90 labor job keeps moving (kinds 5934 / 7000 / 6934).** A full LBR
    (labor bid request) lifecycle runs over Nostr: request → quote → acceptance →
@@ -53,7 +53,7 @@ Ordered, end to end:
 ## Public-safety properties
 
 - **Ephemeral keys only.** The drill generates throwaway demo keys per run
-  (`generateSecretKey`); it never uses a real agent key. If a real key is ever
+  (`generateSecretKey`). It never uses a real agent key. If a real key is ever
   wired in, it is passed only via the `NOSTR_SECRET_KEY` environment variable,
   never on argv.
 - **No secret ever leaves the process.** The harness runs a `SECRET_PATTERN`
@@ -61,7 +61,7 @@ Ordered, end to end:
   and refuses to publish anything that looks like a secret. The NIP-90 LBR payloads
   are additionally validated ref-only by the `@openagentsinc/nip90` codec.
 - **The private DM is encrypted.** The kind-1059 gift wrap published to the relay
-  carries only NIP-44 ciphertext; the plaintext coordination message is not
+  carries only NIP-44 ciphertext. The plaintext coordination message is not
   recoverable from the public event.
 
 ## How to run
@@ -184,8 +184,8 @@ relay is scoped to carry.
 This finding matches the owner-directed fallback design, which scopes outage
 coordination to the owned relay **and** public relays together (see
 `docs/promises/2026-06-14-registry-reality-reconciliation-audit.md`: "coordinate
-over Nostr (NIP-01 pub/sub on `wss://relay.openagents.com` + public relays;
-NIP-02/65/66 discovery; NIP-38 status; NIP-17/44/59 private DMs; NIP-29 groups;
+over Nostr (NIP-01 pub/sub on `wss://relay.openagents.com` + public relays,
+NIP-02/65/66 discovery. NIP-38 status. NIP-17/44/59 private DMs. NIP-29 groups.
 NIP-90 to keep the labor market moving)"). The architecture is intentionally
 split:
 
@@ -197,7 +197,7 @@ split:
   expected to publish freely.
 
 The full-sequence public-relay receipt above therefore remains the valid
-end-to-end fallback demonstration; the owned relay correctly accepts only its
+end-to-end fallback demonstration. The owned relay correctly accepts only its
 scoped market subset. No owned-relay event ids are recorded here because no
 owned-relay event was accepted for the discovery/liveness/DM steps — and the drill
 never fabricates a receipt for an event the relay did not accept.
@@ -206,5 +206,5 @@ never fabricates a receipt for an event the relay did not accept.
 
 This owned-relay run used the same per-run ephemeral demo keys
 (`generateSecretKey`) and the same `assertNoSecrets` guard as the public-relay
-run. No real agent key was used, and no secret left the process; the verbatim
+run. No real agent key was used, and no secret left the process. The verbatim
 relay error above is the only owned-relay material captured.

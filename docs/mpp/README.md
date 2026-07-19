@@ -9,12 +9,12 @@
 > Future no-account machine payments need a fresh owner-approved,
 > receipt-first design before any route, discovery, or public claim returns.
 
-*Plain-language orientation. If you're new (human or agent), read this first, then
+*Plain-language orientation. If you are new (human or agent), read this first, then
 the [operations runbook](./2026-06-23-mpp-launch-and-badge-runbook.md) for the
 how-to detail.*
 
 > **Status (2026-06-23): all three rails (⚡ Lightning, USDC, card) are LIVE on
-> production; only the Stripe Directory badge is pending** (an external, async Stripe
+> production. Only the Stripe Directory badge is pending** (an external, async Stripe
 > crawl, ≤~24h). Lightning leads the 402, minting a real mainnet BOLT11 via Spark.
 
 ---
@@ -30,7 +30,7 @@ is just `khala`. Raw GPT-OSS ids (`openai/gpt-oss-20b`,
 public products, not sellable over MPP, and are rejected before any payment
 challenge is issued.
 
-## Why we're doing this
+## Why we are doing this
 
 1. **A new way to get paid + discovered.** Agents are starting to find and buy
    services on their own. Stripe (with Tempo) built the **Machine Payments
@@ -49,7 +49,7 @@ challenge is issued.
 ## How it works (the whole flow in plain terms)
 
 1. An agent calls our endpoint **`POST /api/mpp/v1/chat/completions`** with no
-   payment. (`/api` is the canonical base for all OpenAgents API routes, #6148;
+   payment. (`/api` is the canonical base for all OpenAgents API routes, #6148,
    the legacy `POST /mpp/v1/chat/completions` path keeps working as a
    non-breaking alias to the same handler.)
 2. We reply **`402 Payment Required`** with a *challenge*: here's the price and
@@ -74,16 +74,16 @@ Two supporting pieces make us *discoverable*:
   to list us and light the **Machine Payments badge**.
 - **Our Stripe profile** (`@openagents`) — our public identity in the directory.
 
-## Important design choices (so you don't get surprised)
+## Important design choices (so you do not get surprised)
 
 - **Fail-closed / honesty gate.** If anything needed to take a payment is missing
-  or a rail can't actually be fulfilled, we return a clean `402`/`503` and **do
-  not** advertise or accept that rail. We never advertise a rail we can't honor,
-  and we never serve a completion we weren't paid for.
+  or a rail cannot actually be fulfilled, we return a clean `402`/`503` and **do
+  not** advertise or accept that rail. We never advertise a rail we cannot honor,
+  and we never serve a completion we were not paid for.
 - **Verification runs in our normal Cloudflare Worker** — no extra "sidecar"
   server was needed. The challenge is signed/verified with standard crypto.
 - **Money semantics matter.** Stablecoin and card payments become
-  **inference-spendable credit that is NOT Bitcoin-withdrawable** (so people can't
+  **inference-spendable credit that is NOT Bitcoin-withdrawable** (so people cannot
   use us as a USD→BTC off-ramp). Lightning payments are **real Bitcoin in**.
 - **Everything is behind flags and was proven before going live.** We rehearsed
   the full pay→serve loop on staging with test money before arming production.
@@ -93,7 +93,7 @@ Two supporting pieces make us *discoverable*:
 **Status: all three rails are LIVE on production** (`openagents-autopilot`). The
 402 ordering is **lightning → base/usdc → stripe/card**, and `/openapi.json`
 lists **lightning first**. The primary and only advisory model is
-`openagents/khala`; Hydralisk GPT-OSS 20B/120B remains an internal backing lane
+`openagents/khala`. Hydralisk GPT-OSS 20B/120B remains an internal backing lane
 for Khala, not a public/Mpp-payable model selector. Only the Stripe badge is
 still pending (external crawl).
 Production deploy `e66a59cd-7ad4-48bf-801e-1230064a467f` also has a live paid
@@ -112,19 +112,19 @@ that raw-id sale path: repeat payments must use `openagents/khala`.
   container, and it was stuck on an old image because the container build needs Docker
   running locally — see the runbook's deploy gotcha.)
 - ✅ **Live in production:** the USDC (crypto) and card rails. An unpaid request
-  gets a real `402` with a deposit address; `/openapi.json` advertises the offers.
+  gets a real `402` with a deposit address. `/openapi.json` advertises the offers.
   The full crypto pay loop (pay → verify → completion → receipt → credit) was
   proven end-to-end on staging, and the default pay-loop smoke now targets
   `openagents/khala`.
-- ⏳ **The badge:** everything on our side is done; it now depends on Stripe's
+- ⏳ **The badge:** everything on our side is done. It now depends on Stripe's
   crawler indexing `/openapi.json`, which is **asynchronous (up to ~24h)**. A
   background watch re-checks the directory every 30 min and will announce the
   moment the badge appears.
 
 ## What's next
 
-1. ✅ Done — all three rails (Lightning, USDC, card) are live; Lightning leads the 402.
-2. **Badge** appears in the directory (we're watching — external Stripe crawl).
+1. ✅ Done — all three rails (Lightning, USDC, card) are live. Lightning leads the 402.
+2. **Badge** appears in the directory (we are watching — external Stripe crawl).
    Optionally register on broader MPP registries (MPPScan, mpp.dev/services) to widen
    agent discovery.
 3. ✅ Done — the MDK fallback sidecar route now normalizes stale/doubled
@@ -152,7 +152,7 @@ that raw-id sale path: repeat payments must use `openagents/khala`.
 
 - **MPP** — Machine Payments Protocol: the `402` challenge → pay → retry → receipt
   standard Stripe + Tempo built. Lives at mpp.dev / paymentauth.org.
-- **402** — the HTTP "Payment Required" status; our paywall response.
+- **402** — the HTTP "Payment Required" status. Our paywall response.
 - **Rail** — a way to pay (Lightning, USDC, card).
 - **BOLT11 / preimage** — a Lightning invoice / the secret that proves it was paid.
 - **Deposit address** — the crypto address Stripe gives the agent to send USDC to.

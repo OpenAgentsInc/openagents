@@ -121,7 +121,7 @@ sidecar-to-OpenAgents calls. Current Cloudflare docs describe service bindings
 and Worker RPC as a way for one Worker to call another without exposing a public
 URL. If the sidecar gets Durable Object-backed Flue agents, its `wrangler.jsonc`
 must carry top-level Durable Object migrations. D1 bindings and local
-development should follow the existing Wrangler/D1 pattern; local secrets belong
+development should follow the existing Wrangler/D1 pattern. Local secrets belong
 in `.dev.vars` and must not be committed.
 
 ## Data Model
@@ -142,8 +142,8 @@ OpenAgents Worker records:
   generatedAt, staleness contract, blockers.
 - `connector_agent_sessions`: connector event refs mapped to Flue session ids,
   sanitized state only.
-- `connector_writeback_requests`: draft, approval, posted, blocked, failed; fixed
-  destination refs; authority receipt refs; provider response summary only.
+- `connector_writeback_requests`: draft, approval, posted, blocked, failed. Fixed
+  destination refs. Authority receipt refs. Provider response summary only.
 
 Sidecar records:
 
@@ -565,7 +565,7 @@ idempotency, mapping, UI projection, bound-tool, and writeback approval tests.
 
 Checked against Cloudflare docs on 2026-06-16:
 
-- Durable Object bindings belong in `durable_objects.bindings`; class changes
+- Durable Object bindings belong in `durable_objects.bindings`. Class changes
   require top-level `migrations` entries with unique tags.
 - D1 bindings are configured through Wrangler and are simulated locally by
   default under `wrangler dev`.

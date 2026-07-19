@@ -17,11 +17,11 @@ refund, or upgrade a public claim.
 
 `workers/api/src/omni-investor-outcome-economics-metrics.ts` defines:
 
-- `OmniInvestorOutcomeEconomicsMetricRecord`;
-- revenue, provider-settlement, and refund claim states;
-- read-only authority flags;
-- aggregate metrics by work kind;
-- audience-aware projections;
+- `OmniInvestorOutcomeEconomicsMetricRecord`.
+- revenue, provider-settlement, and refund claim states.
+- read-only authority flags.
+- aggregate metrics by work kind.
+- audience-aware projections.
 - validation for unsafe refs, raw timestamps, private payment material, wallet
   material, private provider material, private customer material, and false
   authority.
@@ -34,17 +34,17 @@ economics table while letting later investor bundles consume a richer summary.
 
 Each projected aggregate includes:
 
-- accepted outcome count;
-- accepted revenue;
-- accepted gross profit;
-- gross margin basis points;
+- accepted outcome count.
+- accepted revenue.
+- accepted gross profit.
+- gross margin basis points.
 - runner, provider, retry, review, grading, artifact, and refund exposure cost
-  components;
-- review minutes;
-- provider payable amount;
-- provider settled amount;
-- refund exposure and refunded amount;
-- revenue, provider-settlement, and refund claim labels;
+  components.
+- review minutes.
+- provider payable amount.
+- provider settled amount.
+- refund exposure and refunded amount.
+- revenue, provider-settlement, and refund claim labels.
 - public-safe evidence, caveat, blocker, source, economics, revenue, review,
   grading, retry, refund, and settlement refs.
 
@@ -84,9 +84,9 @@ refs, and raw timestamps.
 
 `workers/api/src/omni-investor-outcome-economics-metrics.test.ts` covers:
 
-- work-class aggregation and margin math;
-- public redaction while retaining public settlement evidence;
-- accepted, payable, settled, modeled, and refund claim separation;
-- false authority rejection;
-- invalid provider settlement/refund overclaim rejection;
+- work-class aggregation and margin math.
+- public redaction while retaining public settlement evidence.
+- accepted, payable, settled, modeled, and refund claim separation.
+- false authority rejection.
+- invalid provider settlement/refund overclaim rejection.
 - unsafe ref and raw timestamp rejection.

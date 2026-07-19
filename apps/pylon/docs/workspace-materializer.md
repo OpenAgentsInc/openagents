@@ -1,7 +1,7 @@
 # The Workspace Materializer
 
 Issues #4798 and #4799 (epic #4786). Source:
-`apps/pylon/src/workspace-materializer.ts`; tests:
+`apps/pylon/src/workspace-materializer.ts`. Tests:
 `apps/pylon/tests/workspace-materializer.test.ts` and
 `apps/pylon/tests/workspace-worktree.test.ts`. Background:
 `docs/autopilot-coder/2026-06-11-autopilot-worktree-support-audit.md`.
@@ -12,7 +12,7 @@ The adapter-neutral service behind every `workspace.kind = "git_checkout"`
 coding assignment. Both local coding adapters — the Claude Agent lane
 (B2 #4756) and the Codex lane (CX5 #4792) — consume the same validator,
 the same checkout strategy, and the same cleanup law from this one module.
-"Worktree" is an implementation strategy inside Pylon; the wire contract
+"Worktree" is an implementation strategy inside Pylon. The wire contract
 never changes.
 
 ## The contract
@@ -25,7 +25,7 @@ required), branch values carrying traversal, absolute verification paths,
 argv-only and runs without a shell. Private GitHub checkouts are admitted only
 when the assignment carries a `github_user_oauth` SCM broker whose
 `repositoryRef`, `github.com` host, and exact `/<owner>/<repo>.git` path
-match the checkout; anonymous fallback is refused for private repos.
+match the checkout. Anonymous fallback is refused for private repos.
 
 Optional `scmAuthBroker` metadata is ref-only. The materializer accepts only
 the `openagents.pylon.scm_auth_broker.v1` shape, HTTPS broker URLs without
@@ -40,7 +40,7 @@ outside the bounded limit are rejected before checkout.
 When a `git_checkout` workspace carries `scmAuthBroker`, Pylon installs a
 Git credential helper for that task workspace. The helper script, broker
 config, and short cache live under Git's private admin directory for the
-materialized worktree; they are not files in the checked-out repository and
+materialized worktree. They are not files in the checked-out repository and
 are not projected publicly. Shared bare-cache fetches also install a transient
 helper while the cache lock is held, and linked worktrees receive a
 `gitdir`-scoped include that points only that task's Git admin directory at its
@@ -48,7 +48,7 @@ helper config. The materializer does not enable Git's worktree-config
 extension, so the bare-cache checkout semantics stay unchanged.
 
 The helper implements Git's credential-helper protocol. For each `get`
-operation it first checks the requested protocol, host, and path prefix; an
+operation it first checks the requested protocol, host, and path prefix. An
 out-of-scope request fails closed unless the assignment explicitly configured
 `anonymous_read_only`. In-scope requests call the broker URL with the
 workspace's public refs and the Pylon process's control-plane auth from the
@@ -64,7 +64,7 @@ agent bearer, derives the expected `github-identity:token:<userId>` storage ref
 from that owner, verifies the requested repository through GitHub before
 returning a credential, and emits no token material in public responses or error
 bodies. The MVP GitHub OAuth path is intentionally cache-bounded and scanner-
-guarded; a GitHub App installation-token broker is the least-privilege upgrade
+guarded. A GitHub App installation-token broker is the least-privilege upgrade
 path once app installation is owner-approved.
 
 BA-D3 adds the runtime enforcement sweep. `scanLongLivedScmCredentials` scans
@@ -72,12 +72,12 @@ bounded worker roots for GitHub PATs, raw Forge git tokens, credentialed Git
 URLs, and Git authorization extraheaders. Codex and Claude `git_checkout`
 runs invoke that scanner on the materialized checkout plus the selected
 isolated account home (`CODEX_HOME` or `CLAUDE_CONFIG_DIR`) before verification
-or PR publication; any finding becomes a typed
+or PR publication. Any finding becomes a typed
 `scm_credential_policy_failed` refusal. Lease cleanup also scans before dirty
 retention: a workspace that contains long-lived SCM credential material is
 removed and receives a cleanup receipt even if it otherwise has dirty files.
 The scanner deliberately allows the bounded short-lived helper cache under Git
-admin state; that cache is not a long-lived SCM credential.
+admin state. That cache is not a long-lived SCM credential.
 
 ## Materialization strategies
 
@@ -123,7 +123,7 @@ typed reason `restore_quick_sync_reset`.
 The cache is local-only. Prepared directories and metadata stay out of public
 lease projections and closeouts. A byte budget
 (`preparedWorktreeDiskBudgetBytes`, default 5 GiB) is enforced by evicting the
-oldest prepared entries until the cache is back under budget; if a single entry
+oldest prepared entries until the cache is back under budget. If a single entry
 is larger than the configured budget, it is evicted too.
 
 ## Prebuilt-baseline cache
@@ -160,12 +160,12 @@ materialization state, TTL (default 24h), retention policy
 and — once cleaned — a cleanup receipt ref. Every materialization starts
 with an opportunistic sweep (`cleanupExpiredWorkspaces`), so the cache is
 self-maintaining without a daemon. Cleanup acts only on targets that
-resolve strictly inside the recorded Pylon-owned cache root; a tampered
+resolve strictly inside the recorded Pylon-owned cache root. A tampered
 record pointing elsewhere is never acted on.
 
 Cleanup deletes only workspaces it can prove are clean. A dirty or unreadable
 git worktree is retained and the lease records a retention reason such as
-`retention.workspace.dirty`; this keeps half-finished lane work available for
+`retention.workspace.dirty`. This keeps half-finished lane work available for
 operator review instead of silently deleting it during TTL cleanup or closeout
 release.
 

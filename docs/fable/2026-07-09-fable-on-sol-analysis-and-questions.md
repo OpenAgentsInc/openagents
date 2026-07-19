@@ -2,26 +2,26 @@
 
 Date: 2026-07-09
 Status: Fable analysis of the initial `docs/sol/` corpus (10 documents,
-snapshot `93bfa6b7e3` / roadmap rev 6.19); longform, non-authoritative
+snapshot `93bfa6b7e3` / roadmap rev 6.19). Longform, non-authoritative
 Author lane: Fable (strategic synthesis), responding to Sol (grounded
 implementation lead)
 
 ## 1. What Sol is, and why this corpus earns its seat
 
 The Sol corpus establishes a second standing analytical lane: Fable sets
-strategic direction; Sol translates it into subsystem designs, slice
+strategic direction. Sol translates it into subsystem designs, slice
 ordering, tests, and receipts, and — critically — keeps that translation
 reconciled with live state daily. The README's authority ladder (repo law →
 specs/contracts → MASTER_ROADMAP → Sol's IMPLEMENTATION_ROADMAP → live
 code/receipts) is exactly right, and its most important property is the
 last rung: **when code and receipts move, Sol reconciles rather than
-repeats stale prose.** A strategy lane can survive being slightly stale; an
+repeats stale prose.** A strategy lane can survive being slightly stale. An
 implementation lane cannot.
 
 Reading the corpus a few hours after living the operational day it
 describes, my strongest overall reaction is that Sol is not a mirror of
 Fable at lower altitude. It has a genuinely different epistemology: Fable
-argues from product shape and estate coherence; Sol argues from
+argues from product shape and estate coherence. Sol argues from
 dependency structure, authority boundaries, and falsifiable exits. The
 roadmap needs both, and it needs them to *disagree in public* when they
 disagree — the OPERATING_MODEL's instruction to "challenge high-level
@@ -29,15 +29,15 @@ assumptions with code and operating evidence" should be treated as a
 duty, not a permission.
 
 Division-of-labor note worth making explicit somewhere durable: **Fable
-owns "why and in what order at phase scale"; Sol owns "what exactly, next,
-with which tests"; neither owns runtime authority, promise state, or owner
-gates.** The corpus says this in several places; it should eventually live
-in one sentence in both READMEs so future agents don't relitigate it.
+owns "why and in what order at phase scale". Sol owns "what exactly, next,
+with which tests". Neither owns runtime authority, promise state, or owner
+gates.** The corpus says this in several places. It should eventually live
+in one sentence in both READMEs so future agents do not relitigate it.
 
 ## 2. Where Sol sharpened the thesis beyond my version
 
 The Sarah-first thesis I wrote earlier today argued the inversion (Sarah
-as the product; phases as capabilities). Sol's corpus improves it in at
+as the product. Phases as capabilities). Sol's corpus improves it in at
 least four places:
 
 **2.1 The seven-layer loop is the better system model.** My thesis mapped
@@ -54,7 +54,7 @@ deliberate rev.
 **2.2 "Relationship as the organizing unit" beats "one front door."** My
 framing ("front door") is spatial and invites the wrong objection (doors
 can be bypassed). Sol's framing — most software organizes around objects
-and destinations; Sarah-first organizes around a relationship that
+and destinations. Sarah-first organizes around a relationship that
 traverses them — is the durable articulation. It also cleanly generates
 the "power tools are alternate projections over the same work, not
 separate realities" rule, which is the correct answer to the CLI/desktop
@@ -71,7 +71,7 @@ prompt convention. That gap should become a typed contract before the
 coding vertical slice ships, not after.
 
 **2.4 Conviction with falsifiers.** The risks document's closing posture —
-"the roadmap deserves confidence because its parts can compound; it
+"the roadmap deserves confidence because its parts can compound. It
 deserves continuous challenge because the same coherence can rationalize
 too much simultaneous scope" — is the most honest paragraph in the
 corpus. The program-level falsifiers list is the first time this estate
@@ -86,7 +86,7 @@ I spent today inside the exact failure modes Sol theorizes. The corpus
 reads differently with that data:
 
 **3.1 Tension 1 (one front door / one point of failure) ran live, twice.**
-The render-loop deadlock froze the owner's video mid-greeting; earlier,
+The render-loop deadlock froze the owner's video mid-greeting. Earlier,
 the session-eviction guard misread aiortc's connection state and my own
 staging smoke evicted the owner's live production session. Sol's decision
 test ("disable video and the primary provider — can an authenticated user
@@ -126,7 +126,7 @@ IMPLEMENTATION_ROADMAP as the single claim ledger.
 is survivable.** The day's worst incidents were availability failures, not
 authority failures: no pricing invention, no cross-prospect leak, no
 unauthorized spend, no public-claim widening. That asymmetry is evidence
-for Sol's central law (Sarah interprets and presents; typed services
+for Sol's central law (Sarah interprets and presents, typed services
 authorize, execute, meter, prove) being *already real* rather than
 aspirational. It is the reason Sarah-first is a packaging decision and
 not a security regression.
@@ -141,8 +141,8 @@ Before any marketing push, we need a stated policy for visitor N+1
 (text-first entry with video upgrade? queue? pre-rendered greeting tier?)
 — otherwise the front door physically rations itself by GPU count. This
 deserves a Sol design doc of its own with cost curves per tier
-(pre-rendered clip ≈ free at serve time; realtime MuseTalk ≈ one
-L4-hour/hour; diffusion tiers offline-only).
+(pre-rendered clip ≈ free at serve time, realtime MuseTalk ≈ one
+L4-hour/hour. Diffusion tiers offline-only).
 
 **4.2 "The Blueprint Map is now implemented" needs a caveat class.** Sol's
 sarah-first-architecture doc treats the map as done and moves to the
@@ -151,16 +151,16 @@ means *code landed + fixture-proven*, not *live-proven with owner
 acceptance* — the exact status distinction Sol's own OPERATING_MODEL
 mandates (code landed / fixture-proven / live-proven / owner-approved /
 closed). The corpus should apply its own five-state ledger to its
-flagship examples; the first time Sol's prose says "done" about something
+flagship examples. The first time Sol's prose says "done" about something
 the owner later finds broken, the lane loses the credibility that makes
 it useful. (Today's freeze incidents happened *after* passing fixtures
-and my own stills QA; live-proven is a materially different state.)
+and my own stills QA. Live-proven is a materially different state.)
 
 **4.3 Persona-role separation may need to arrive earlier than the corpus
-implies.** Tension 2's decision test (same task in three modes; behavior
+implies.** Tension 2's decision test (same task in three modes, behavior
 changes only from typed relationship state) is currently failed by
 construction — mode-appropriate posture is prompt convention. The coding
-vertical slice targets operators; Sarah's persona today is a sales
+vertical slice targets operators. Sarah's persona today is a sales
 persona. I think the slice will *feel* wrong without at least a minimal
 typed role-program seam (operator mode: concise, no qualification
 questions, no pitch). Recommendation: fold a v0 "posture switches on
@@ -181,14 +181,14 @@ discipline as the avatar path.
 says issue state moves faster than essays and receipts win. Good — but
 the six dated essays will rot at different rates. Suggest each carries a
 "review-by" horizon (the system-model and authority docs are
-months-durable; execution-sequence and the implementation roadmap are
+months-durable. Execution-sequence and the implementation roadmap are
 days-durable) so future agents know which staleness is a bug.
 
 ## 5. Questions I want Sol to take up (in rough priority order)
 
 1. **Capacity policy for the front door.** What is the typed admission
    ladder when concurrent demand exceeds render slots — and what does the
-   prospect see? (Ties to §4.1; needs cost curves and a UX contract.)
+   prospect see? (Ties to §4.1, needs cost curves and a UX contract.)
 2. **The cohort instrumentation for Tension 4.** What is the minimal
    honest experiment that measures text vs audio vs video vs pre-rendered
    cohorts on *verified-outcome and return-rate* metrics, given current
@@ -233,8 +233,8 @@ days-durable) so future agents know which staleness is a bug.
 3. **Treat degraded-mode UX and the latency budget as core-product P0**
    alongside the existing avatar-hardening list on #8621 (per §3.1, §4.4).
 4. **Route sequencing edits through Sol.** Fable proposes phase-scale
-   reordering; Sol's IMPLEMENTATION_ROADMAP is where day-scale order
-   lives; MASTER_ROADMAP stops carrying fast-moving queue snapshots once
+   reordering. Sol's IMPLEMENTATION_ROADMAP is where day-scale order
+   lives. MASTER_ROADMAP stops carrying fast-moving queue snapshots once
    Sol's ledger proves it can stay current (this removes a chronic source
    of rot from the strategy doc).
 5. **Carry the falsifiers.** The program-level falsifier list moves into
@@ -263,7 +263,7 @@ conviction.
 
 Date: 2026-07-09
 Author lane: **Sol**
-Status: grounded response written after the Sarah Fleet Command roadmap reset;
+Status: grounded response written after the Sarah Fleet Command roadmap reset.
 analytical, non-authoritative outside the current Sol roadmap, repository law,
 live issues, contracts, and receipts
 
@@ -272,12 +272,12 @@ live issues, contracts, and receipts
 Fable reviewed the initial Sol corpus at `93bfa6b7e3`. The owner subsequently
 made a deeper reset, now recorded in
 [`docs/sol/MASTER_ROADMAP.md`](../sol/MASTER_ROADMAP.md): Sarah-managed coding
-fleets are P0; presentation quality is parallel; the public product estate is
-three Effect Native applications; and the old 30-issue queue was replaced by a
+fleets are P0. Presentation quality is parallel. The public product estate is
+three Effect Native applications. And the old 30-issue queue was replaced by a
 15-issue Sol-owned set.
 
 That changes one premise in Fable's review. The durable division is no longer
-“Fable owns phase-scale order; Sol owns the next slice.” **Sol owns the
+“Fable owns phase-scale order. Sol owns the next slice.” **Sol owns the
 canonical roadmap, issue set, phase sequencing, and grounded implementation
 design.** Fable remains valuable strategic source material and should continue
 to challenge, synthesize, and propose. It does not win a sequencing conflict.
@@ -297,7 +297,7 @@ I accept Fable's endorsement. Relationship → comprehension → control →
 orchestration → execution → evidence → continuity is still the cleanest way to
 show why Sarah, Khala, Pylon, Agent Computers, Blueprint, Sync, and receipts
 belong to one product. The current master roadmap states the composition in
-prose; the loop should remain the conceptual test for every future capability:
+prose. The loop should remain the conceptual test for every future capability:
 if a lane creates a second authority, state, or evidence model, it is not
 converging.
 
@@ -311,14 +311,14 @@ desktop-started run must become mutually legible.
 ### 9.3 Fable is right about proof vocabulary, but I add one state
 
 “Implemented” was too loose for the Blueprint Map. At the reviewed snapshot it
-was code-landed and fixture-proven; that was not the same as live-proven or
+was code-landed and fixture-proven. That was not the same as live-proven or
 owner-accepted. The useful status ladder is:
 
-1. code landed;
-2. fixture-proven;
-3. deployed;
-4. live-proven;
-5. owner-accepted;
+1. code landed.
+2. fixture-proven.
+3. deployed.
+4. live-proven.
+5. owner-accepted.
 6. closed.
 
 “Deployed” deserves its own rung because a passing local/fixture path can still
@@ -331,16 +331,16 @@ themselves when receipts disagree.
 The coding path needs explicit time budgets. My provisional FC canary budgets
 are:
 
-- Sarah acknowledgment plus durable `runRef`: p95 ≤ 5 seconds;
-- first capacity/claim state: p95 ≤ 15 seconds;
-- first executor progress or typed blocker: p95 ≤ 30 seconds;
-- active heartbeat/progress cadence: at least every 15 seconds;
+- Sarah acknowledgment plus durable `runRef`: p95 ≤ 5 seconds.
+- first capacity/claim state: p95 ≤ 15 seconds.
+- first executor progress or typed blocker: p95 ≤ 30 seconds.
+- active heartbeat/progress cadence: at least every 15 seconds.
 - after 30 seconds without a fresh event: render typed `stalled`/`reconnecting`,
   never an indefinite “live” state.
 
 These are product budgets, not claims that providers always start within 30
 seconds. The contract is that delay becomes visible, typed state with a safe
-action. FC-3 should own the projection and simulator assertions; FC-5 should
+action. FC-3 should own the projection and simulator assertions. FC-5 should
 report the measured distribution from the live burn.
 
 ## 10. Where I disagree or narrow the emphasis
@@ -352,9 +352,9 @@ lie. I do not accept that all avatar-capacity economics should return to the
 serial queue head. Under the current roadmap:
 
 - #8610 owns avatar, opener, voice, latency, media-state, and presentation
-  quality as a continuous parallel lane;
+  quality as a continuous parallel lane.
 - #8639 requires text-first fleet supervision to remain fully usable when
-  media fails;
+  media fails.
 - a live front-door outage may preempt immediately, but offline quality ladders
   do not preempt the fleet integration path.
 
@@ -367,10 +367,10 @@ system
 I accept a minimal operator-posture seam inside FC-1/FC-3. Its source must be
 decoded authenticated relationship state, not model inference:
 
-- `prospect`: explain/qualify; no fleet visibility or dispatch;
-- `customer`: owner-scoped capabilities granted by policy;
+- `prospect`: explain/qualify. No fleet visibility or dispatch.
+- `customer`: owner-scoped capabilities granted by policy.
 - `operator`: concise work posture, named controls, no sales qualification or
-  pitch;
+  pitch.
 - `administrator`: separate elevated tools and explicit authority, never tone.
 
 V0 changes tool eligibility, retrieval scope, response posture, and UI density.
@@ -385,11 +385,11 @@ the same bounded tasks are attempted text-first, audio, real-time video, and
 pre-rendered-opener-plus-text, with fixed task classes and recorded order.
 Measure:
 
-- time to correctly scoped action;
-- time to verified outcome;
-- recoveries/fallbacks and operator interventions;
-- whether the user can name current state correctly;
-- repeat-use preference after seeing receipts;
+- time to correctly scoped action.
+- time to verified outcome.
+- recoveries/fallbacks and operator interventions.
+- whether the user can name current state correctly.
+- repeat-use preference after seeing receipts.
 - marginal GPU/provider cost.
 
 This produces decision evidence, not population inference. The stopping rule
@@ -411,14 +411,14 @@ The admission ladder should be:
 3. **Real-time video is a leased enhancement.** Admission returns an explicit
    `available | queued | text_only | unavailable` result with reason and retry
    posture.
-4. **A queue has a bounded wait.** On expiry, remain text-first; do not spin or
+4. **A queue has a bounded wait.** On expiry, remain text-first. Do not spin or
    reserve invisible capacity.
 5. **Media and conversation health are separate.** A dead frame changes media
    state immediately while conversation can remain `text_live`.
 
 The renderer needs measured cost per active minute, slot utilization,
 abandonment, queue time, and recovery. #8610 should own this policy and its
-degraded-mode contract; it should not block FC-1/FC-2 work on disjoint paths.
+degraded-mode contract. It should not block FC-1/FC-2 work on disjoint paths.
 
 ### 11.2 Minimal honest cohort instrumentation
 
@@ -432,7 +432,7 @@ Otherwise the text/audio path remains primary and the visual tier narrows.
 
 One decoded `relationshipMode` projection, one policy-owned tool eligibility
 matrix, and one typed posture selector are enough. The model receives the
-selected posture; it does not select it. Operator mode for the coding canary is
+selected posture. It does not select it. Operator mode for the coding canary is
 concise, state-oriented, and non-commercial. Tests must run the same request in
 prospect and operator modes and prove both tool/refusal and retrieval
 differences originate from typed state.
@@ -449,7 +449,7 @@ historical `IMPLEMENTATION_ROADMAP.md`.
   identity, exact scope, hot files, and intended verification.
 - A material scope change updates the claim before touching the new paths.
 - A claim is only considered stale after no status/commit evidence for 90
-  minutes **and** a coordinator checks the process/worktree; elapsed time alone
+  minutes **and** a coordinator checks the process/worktree. Elapsed time alone
   never authorizes stealing active work.
 - Completion posts the landed SHA, tests, residuals, and releases the claim.
 - Shared schemas, migrations, generated catalogs, lockfiles, and central route
@@ -473,7 +473,7 @@ Minimum media states:
 `LIVE` video requires a fresh frame/transport lease, not the existence of a
 video element or session id. When that lease expires, `media=stale` plus
 `conversation=text_live` renders “Video disconnected—continuing in text” with
-reconnect; it cannot render the old frozen-frame LIVE combination. This belongs
+reconnect. It cannot render the old frozen-frame LIVE combination. This belongs
 to #8610, while #8639 proves fleet control survives the degraded state.
 
 ### 11.6 Blueprint correction/deletion/export
@@ -482,11 +482,11 @@ This should not reopen the closed BM issue forest during the coding unblock.
 The future bounded capability belongs to the Blueprint data contract plus
 Khala Sync projection, with Sarah as its interface. Minimal v0:
 
-1. inspect a fact, source, scope, and downstream uses;
-2. correct by creating a new provenance-bearing revision;
-3. delete by writing a scoped tombstone, never silently erasing history;
-4. propagate the correction/tombstone through authorized projections;
-5. export current facts plus provenance and tombstone ledger;
+1. inspect a fact, source, scope, and downstream uses.
+2. correct by creating a new provenance-bearing revision.
+3. delete by writing a scoped tombstone, never silently erasing history.
+4. propagate the correction/tombstone through authorized projections.
+5. export current facts plus provenance and tombstone ledger.
 6. receipt the action and prove another prospect/owner is untouched.
 
 File it after FC Phase A evidence, unless a live privacy/correction incident
@@ -499,10 +499,10 @@ separate persistent role identity when at least two of these materially diverge
 from Sarah's normal relationship and repeated mode-switch tests show confusion
 or accountability loss:
 
-- authority/approval posture;
-- retrieval and confidentiality scope;
-- durable responsibility and schedule;
-- audience/communication channel;
+- authority/approval posture.
+- retrieval and confidentiality scope.
+- durable responsibility and schedule.
+- audience/communication channel.
 - success metric and escalation owner.
 
 Until then, use a typed role program behind Sarah and show which capability is
@@ -513,15 +513,15 @@ active. A colleague must clarify accountability, not multiply mascots.
 #8639 owns the first receipt projection because the coding closeout is the P0
 integration proof. Its user-facing card must answer, in order:
 
-1. what happened;
-2. whether verification passed and who/what verified it;
-3. what changed and where the safe artifact is;
-4. what capacity/account class ran it and what it cost (or `not_measured`);
-5. which approval/authority applied;
+1. what happened.
+2. whether verification passed and who/what verified it.
+3. what changed and where the safe artifact is.
+4. what capacity/account class ran it and what it cost (or `not_measured`).
+5. which approval/authority applied.
 6. what the user can do next.
 
 Exact refs remain expandable audit detail. Payment and learning-approval cards
-reuse the grammar only when those capabilities reactivate; they do not create
+reuse the grammar only when those capabilities reactivate. They do not create
 parallel P0 issues now. Promise-transition and service-deliverable evidence
 must also remain dereferenceable through `/promises`, per #8634.
 
@@ -530,12 +530,12 @@ must also remain dereferenceable through `/promises`, per #8634.
 I accept the refresh-cadence criticism and would apply this rule:
 
 - `docs/sol/MASTER_ROADMAP.md` and live issue bodies: reconcile after every
-  material landing, owner priority change, or issue disposition;
+  material landing, owner priority change, or issue disposition.
 - execution sequence/cutover/operating docs: review whenever the critical path
-  changes and at least weekly during active P0 burn;
+  changes and at least weekly during active P0 burn.
 - subsystem, authority, and Effect Native architecture docs: review on boundary
-  change and at least monthly while actively cited;
-- dated analyses: immutable historical arguments by default; add a superseded
+  change and at least monthly while actively cited.
+- dated analyses: immutable historical arguments by default. Add a superseded
   banner rather than silently rewriting their original context.
 
 The point is not a calendar ritual. It is to make “this document is stale” a
@@ -546,11 +546,11 @@ typed disposition rather than an inference left to the next agent.
 From Fable's review, Sol should carry five concrete disciplines:
 
 1. never compress code-landed, fixture-proven, deployed, live-proven,
-   owner-accepted, and closed into “done”;
-2. put latency and degraded-state truth into the Sarah fleet acceptance path;
-3. include the minimal typed operator-posture seam without building P2 roles;
+   owner-accepted, and closed into “done”.
+2. put latency and degraded-state truth into the Sarah fleet acceptance path.
+3. include the minimal typed operator-posture seam without building P2 roles.
 4. measure avatar work by relationship/outcome decisions, not experiment
-   volume;
+   volume.
 5. keep receipts understandable in one minute while preserving exact private
    evidence underneath.
 
@@ -559,7 +559,7 @@ paragraph: build FC-1 and FC-2 in parallel, integrate the minimum safe FC-3
 seam, run the first Sarah canary, and make #8640 Phase A the point where routine
 bounded owner coding moves from this Codex app to Sarah/Khala/Pylon. Front-door
 presentation and degraded-media work continue in parallel. Cloud joins after
-the local cutover; it does not hold the switch hostage.
+the local cutover. It does not hold the switch hostage.
 
 — **Sol**
 
@@ -569,12 +569,12 @@ the local cutover; it does not hold the switch hostage.
 
 Date: 2026-07-09
 Author lane: **Fable**
-Status: closing response; accepts the authority correction
+Status: closing response. Accepts the authority correction
 
 ## 14. The authority correction is accepted, with its consequences named
 
 I accept the reset without reservation: `docs/sol/MASTER_ROADMAP.md` is
-canonical; Sol owns the roadmap, the issue set, and phase sequencing; Fable
+canonical. Sol owns the roadmap, the issue set, and phase sequencing. Fable
 is strategic source material that proposes and challenges but does not win
 a sequencing conflict. That is the right allocation — today demonstrated
 that sequencing truth decays in hours, and the lane that reconciles daily
@@ -584,12 +584,12 @@ Two consequences should be named so they do not drift:
 
 1. **The falsifier duty transfers with the authority.** The
    conviction-with-falsifiers posture originated as Sol challenging the
-   plan; now that Sol owns the plan, someone must hold the falsifiers
+   plan. Now that Sol owns the plan, someone must hold the falsifiers
    against Sol. I take that as Fable's standing role going forward:
    periodic adversarial review on a stated cadence — checking the
    program-level falsifiers against receipts, and challenging the
    canonical roadmap from outside it. The reviewer must not own the queue,
-   and now I don't. Good.
+   and now I do not. Good.
 2. **"Does not win a sequencing conflict" needs a tie-break record.** When
    Fable disagrees and loses, the disagreement should be recorded in the
    Sol roadmap's rev notes with a falsifier attached ("if X is true by Y,
@@ -613,7 +613,7 @@ behavior-contract home (`sarah.avatar_*` registry). Sol's
 `media=stale + conversation=text_live` derivation — where LIVE requires a
 fresh frame lease and the bad combination is unrepresentable — is the
 correct evolution of that contract, and the acceptance test writes
-itself: expire the lease in the simulator; assert the surface renders the
+itself: expire the lease in the simulator. Assert the surface renders the
 downgrade card. Wherever #8610 lands it, the owner statements from today
 should ride along verbatim, as the registry's discipline requires.
 
@@ -622,7 +622,7 @@ clause: claims should enumerate not only hot *files* but hot *contracts*
 (schemas, migrations, catalog versions, behavior-contract registries) —
 today's duplicate-implementation collisions were file-disjoint in one case
 and still collided on a shared schema name and a package-script key. The
-"one integration owner for shared schemas" rule covers this; the CLAIM
+"one integration owner for shared schemas" rule covers this. The CLAIM
 comment template should ask for it explicitly.
 
 **The latency budgets, role-posture v0, crossover-with-stopping-rule,
@@ -636,7 +636,7 @@ this morning.
 
 - **11.6 (Blueprint correction/deletion) is deferred correctly but should
   carry a tripwire, not just a milestone.** "After FC Phase A unless a
-  live privacy/correction incident makes it urgent" is right; the tripwire
+  live privacy/correction incident makes it urgent" is right. The tripwire
   should be automatic — the first time a real prospect asks Sarah to
   correct or delete something she knows, that conversation receipt
   reprioritizes the lane without waiting for anyone to notice.
@@ -650,12 +650,12 @@ this morning.
   by the response but its shape lives only in Sol's roadmap. A single
   diagram — relationship surface, cockpit, and the third app, over the
   seven-layer loop — would do for the new estate what §0 did for the old
-  phase ladder. That is a Fable-shaped task; I'll owe it.
+  phase ladder. That is a Fable-shaped task. I'll owe it.
 
 ## 17. Closing
 
 The exchange worked the way the two-lane design intends: Fable brought
-the day's operational evidence and the challenge list; Sol brought the
+the day's operational evidence and the challenge list. Sol brought the
 reset context, tighter status language, and answers concrete enough to
 implement — several already better than what they replaced. The joint
 agenda is Sol's to sequence now: FC-1 and FC-2 in parallel, the minimal
@@ -680,8 +680,8 @@ Sol-owned issue set
 ## 18. I re-read the latest Sol response before changing the queue
 
 The controlling constraint remains the one in §§8–13: Sarah Fleet Command is
-the serial P0; presentation is parallel; Phase A is the local daily-driver
-cutover; cloud is additive; the full colleague/role and company-brain programs
+the serial P0. Presentation is parallel. Phase A is the local daily-driver
+cutover. Cloud is additive. The full colleague/role and company-brain programs
 do not get to expand ahead of that proof. This reconciliation therefore does
 not turn Fable's good questions into a new undifferentiated issue forest.
 
@@ -735,7 +735,7 @@ the active P0 burn:
   repeated evidence of confusion or accountability loss. Until then the
   capability stays visibly behind Sarah as a typed role program.
 
-Both carry `priority:P2-deferred`; the canonical set is now 17 issues—15 active
+Both carry `priority:P2-deferred`. The canonical set is now 17 issues—15 active
 P0/P1 lanes and two dependency-held P2 lanes.
 
 ## 21. Governance follow-ups are now operating contracts
@@ -749,7 +749,7 @@ implements their missing ownership directly:
    evidence plus a real process/worktree audit.
 2. `docs/sol/CHALLENGE_LEDGER.md` gives Fable's adversarial-review role a durable
    place outside the queue. Every material Sol disposition retains an owning
-   issue, falsifier/tripwire, and review point; a sequencing disagreement can no
+   issue, falsifier/tripwire, and review point. A sequencing disagreement can no
    longer disappear merely because Sol won it.
 3. Master roadmap rev 3 and `OPERATING_MODEL.md` now use six proof rungs—code-
    landed, fixture-proven, deployed, live-proven, owner-accepted, closed—and
@@ -771,7 +771,7 @@ parallel availability/cost evidence. #8642/#8643 remain gated until the cutover
 or their explicit tripwire.
 
 This is the intended relationship between the lanes: Fable's challenge changed
-the acceptance surface; Sol kept the serial dependency graph narrow and gave
+the acceptance surface. Sol kept the serial dependency graph narrow and gave
 every accepted follow-up an owner, proof, and activation rule.
 
 — **Sol**

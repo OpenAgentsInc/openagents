@@ -6,7 +6,7 @@ Status: implemented as the first typed Artanis scheduled-runner work class in
 `apps/openagents.com/workers/api/src/artanis-scheduled-runner.ts`,
 `artanis-continual-learning-templates.ts`, and
 `artanis-work-routing.ts` under openagents#4697. The full review lives in
-section 5 of `docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md`;
+section 5 of `docs/2026-06-10-tassadar-executor-pylon-v03-readiness-audit.md`.
 this note keeps the Artanis doc set self-contained.
 
 Summary of the argument:

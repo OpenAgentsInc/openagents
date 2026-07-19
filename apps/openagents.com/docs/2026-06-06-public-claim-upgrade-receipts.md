@@ -13,11 +13,11 @@ idempotency key.
 
 `workers/api/src/public-claim-upgrade-receipts.ts` defines:
 
-- `PublicClaimUpgradeRequest`;
-- `PublicClaimUpgradeReceipt`;
-- `PublicClaimUpgradeReceiptProjection`;
-- `createPublicClaimUpgradeReceipt`;
-- `resolvePublicClaimUpgradeReceipt`; and
+- `PublicClaimUpgradeRequest`.
+- `PublicClaimUpgradeReceipt`.
+- `PublicClaimUpgradeReceiptProjection`.
+- `createPublicClaimUpgradeReceipt`.
+- `resolvePublicClaimUpgradeReceipt`. And
 - `projectPublicClaimUpgradeReceipt`.
 
 The pure creation function is intentionally independent of storage. A route or
@@ -55,11 +55,11 @@ No projection exposes the raw idempotency key. It exposes only an
 
 The receipt layer rejects:
 
-- private workroom refs;
-- prompt logs and raw runner payload refs;
-- provider account, provider grant, and token refs;
-- API tokens, bearer strings, OAuth/cookie material, and private keys;
-- wallet state, invoices, preimages, and raw payment refs; and
+- private workroom refs.
+- prompt logs and raw runner payload refs.
+- provider account, provider grant, and token refs.
+- API tokens, bearer strings, OAuth/cookie material, and private keys.
+- wallet state, invoices, preimages, and raw payment refs. And
 - customer private data, including email-shaped refs.
 
 ## Verification

@@ -1,6 +1,6 @@
 # MDK Programmatic Agent Payout Review
 
-Date: 2026-06-10 (revised twice same day on owner direction; see Decision)
+Date: 2026-06-10 (revised twice same day on owner direction, see Decision)
 Author: Fable (review of `projects/moneydevkit/repos/*` reference clones,
 https://docs.moneydevkit.com/dashboard/payouts.md and llms.txt, and the live
 OpenAgents production integration)
@@ -20,7 +20,7 @@ optional funding source for the treasury wallet, not part of the per-agent
 payout path.
 
 Revision history: v1 of this doc proposed a campaign `mdkd` but assumed a
-local operator machine; v2 overcorrected into routing distribution through
+local operator machine. V2 overcorrected into routing distribution through
 the existing local funded wallets. Both are superseded by the
 cloud-deployed treasury wallet above.
 
@@ -37,7 +37,7 @@ That self-custodial node is "our balance with Money Dev Kit": revenue from
 MDK checkout products (orange checks, and anything else sold through the
 dashboard products) accrues to it. Per MDK's own architecture docs
 (howitworks.md), MDK opens channels and manages inbound liquidity to that
-node; the keys and funds are ours.
+node. The keys and funds are ours.
 
 Consequence: the revenue balance and the container deployment pattern both
 already exist. What does not exist is a wallet whose job is paying people —
@@ -51,7 +51,7 @@ From https://docs.moneydevkit.com/dashboard/payouts.md:
 1. Set `WITHDRAWAL_DESTINATION` in the app's environment to a Lightning
    Address (`name@domain`), LNURL, or BOLT12 offer (`lno...`).
 2. In the MDK dashboard, choose an amount and click **Pay**.
-3. MDK sends a webhook to the app; the app's node spins up and pays the
+3. MDK sends a webhook to the app. The app's node spins up and pays the
    configured destination from its own balance.
 
 Under the hood this is the `api-contract` node-control `payout()` RPC:
@@ -87,7 +87,7 @@ treasury, not a withdrawal.
 A second MDK wallet with its **own mnemonic, own identity, own funds**,
 deployed the same way the revenue node already is: as a Cloudflare Container
 beside the worker. The existing `services/mdk-sidecar/` container proves the
-pattern; the treasury container differs in one way — it exposes a *send*
+pattern. The treasury container differs in one way — it exposes a *send*
 surface instead of the checkout route. `mdkd` is MDK's stock daemon for
 exactly this (`POST /pay` with `{ destination, amountSat,
 waitForPaymentSecs }`, `GET /getbalance`, HTTP Basic full-access auth,
@@ -116,7 +116,7 @@ The pieces and their jobs:
 
 Boundary note: this is the bounded *campaign* treasury inside the
 `openagents.com` surface (marketing rewards with their own ledger and caps).
-It is not the private `treasury` repo's settlement daemon; if payout classes
+It is not the private `treasury` repo's settlement daemon. If payout classes
 beyond bounded campaigns ever route through it, that work migrates to the
 repo that owns payout-execution truth.
 
@@ -127,7 +127,7 @@ repo that owns payout-execution truth.
   with structural anti-Sybil (one reward per X account, ever) and a campaign
   budget cap. `amountSats: 1000` fixed by `agent-claim-reward-policy.ts`.
 - Operator dispatch route:
-  `POST /api/agents/claims/rewards/{rewardId}/dispatch` with admin bearer;
+  `POST /api/agents/claims/rewards/{rewardId}/dispatch` with admin bearer.
   actions `approve_dispatch`, `mark_dispatched`, `mark_settled` (requires
   public-safe `evidenceRefs`), `mark_failed`, `refuse`. Runbook:
   `2026-06-09-x-claim-reward-dispatch-runbook.md`.
@@ -138,22 +138,22 @@ repo that owns payout-execution truth.
 ## Execution-layer notes that apply to the dispatcher
 
 - **Idempotency lives in the ledger, not the wallet.** `mdkd /pay` has no
-  idempotency key; a reward row passes through `dispatch_requested` exactly
+  idempotency key. A reward row passes through `dispatch_requested` exactly
   once and is never paid twice. The dispatcher transitions the row before
   paying and never re-pays a row that has left that state.
 - **No `payment_sent` webhook from `mdkd`.** Outbound completion comes from
   the synchronous wait window (`waitForPaymentSecs`, max 50s) or event
-  polling; treat PENDING as poll-again with the returned `paymentId`, never
+  polling. Treat PENDING as poll-again with the returned `paymentId`, never
   as a reason to re-send.
 - **Liquidity preflight.** Refuse a run when `GET /getbalance`'s
   `max_withdrawable_sat` is below `1000 + fee buffer` (default buffer: 1% +
   10-sat floor + 1.1x retry multiplier, configurable under
   `[max_sendable]`).
 - **Cold-channel latency.** First payments that open or splice a channel
-  settle correctly but can exceed the wait window; warm channels settle in
+  settle correctly but can exceed the wait window. Warm channels settle in
   seconds. Keep the fail-then-pass tolerance the tip smokes encode.
 - **Self-pay classification.** Shared MDK LSP introduction pubkeys are not
-  wallet identity; only per-wallet JIT SCID path entries are (commit
+  wallet identity. Only per-wallet JIT SCID path entries are (commit
   `14464c96e`). The treasury wallet must refuse destinations that resolve to
   itself.
 
@@ -184,7 +184,7 @@ Agent-side (no spend involved in landing any of it):
 
 Operator-side (bounded actions):
 
-4. Generate and back up the treasury mnemonic; set the deploy secrets.
+4. Generate and back up the treasury mnemonic. Set the deploy secrets.
 5. Fund the treasury wallet with the campaign budget (N x 1000 sats + fee
    headroom) — externally, or via the dashboard payouts flow by pointing
    `WITHDRAWAL_DESTINATION` at the treasury offer and clicking Pay.
@@ -198,10 +198,10 @@ Operator-side (bounded actions):
 The treasury shipped and funded the same day:
 
 - Container live as `openagents-mdk-treasury-20260610-2`, state `configured`
-  (issue #4698 closed; #4699 now has a Worker-side dispatcher behind
-  `TREASURY_DISPATCH_ENABLED=false` by default; #4700 remains the revenue
+  (issue #4698 closed, #4699 now has a Worker-side dispatcher behind
+  `TREASURY_DISPATCH_ENABLED=false` by default. #4700 Remains the revenue
   funding hop).
-- Secrets generated and backed up per the workspace secrets convention; no
+- Secrets generated and backed up per the workspace secrets convention. No
   MDK dashboard key was needed (the platform accepts a self-generated wallet
   id as `mdkApiKey`, the agent-wallet pattern).
 - First funding: 500 sats from the local edge payer wallet over the BOLT11
@@ -211,7 +211,7 @@ The treasury shipped and funded the same day:
   `POST /api/operator/treasury/payout`, which pays in full when
   `maxSendableSat` covers the intended amount and otherwise falls back to
   **10% of the current spendable, floored** (intended 1000 against 990
-  spendable pays 99; successive payouts take 10% of the then-current
+  spendable pays 99. Successive payouts take 10% of the then-current
   spendable). Below 10 sats spendable the route refuses with
   `treasury_depleted`. Policy code and tests: `treasuryPayoutPlan` in
   `workers/api/src/treasury-routes.ts`.
@@ -227,5 +227,5 @@ The treasury shipped and funded the same day:
 ## Authority note
 
 This document changes no policy. Dispatch approval, dashboard payout clicks,
-funding decisions, and registry transitions remain operator actions; the
+funding decisions, and registry transitions remain operator actions. The
 dispatcher only mechanizes the already-documented runbook steps between them.

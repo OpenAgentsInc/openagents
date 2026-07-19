@@ -13,9 +13,9 @@ action suites, and autonomy promotion.
 
 Scenario Forks separate:
 
-- base production snapshot refs;
-- simulated fork state refs;
-- simulated effect refs;
+- base production snapshot refs.
+- simulated fork state refs.
+- simulated effect refs.
 - production effect refs.
 
 ## No Production Effects

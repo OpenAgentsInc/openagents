@@ -29,7 +29,7 @@ allowed surface.
 
 The result always sets `actionSubmissionRequiredForDirectEffects: true`.
 `directMutationAllowed` only becomes true if every selected entry and Program
-Type explicitly allows it; the current safe registry validation rejects direct
+Type explicitly allows it. The current safe registry validation rejects direct
 mutation, so current Probe selections remain evidence-first. Later issues can
 feed this result into the backend-independent tool menu planner and then into
 Apple FM's upfront tool projection.

@@ -2,7 +2,7 @@
 
 Date: 2026-07-08
 Status: working scorecard (opinion + pointers)
-Update rule: append dated rows; never silently rewrite history
+Update rule: append dated rows. Never silently rewrite history
 
 Not the product-promise registry. When a promise flips, note the ID here.
 
@@ -15,7 +15,7 @@ Not the product-promise registry. When a promise flips, note the ID here.
 | F1 | Mobile/desktop tool stays worse than raw harness for real work | No kindling for the network |
 | F2 | Promise greens without dereferenceable evidence | Trust culture collapses |
 | F3 | Surfaces grow parallel ledgers, sync, or claims paths | Suite thesis fails |
-| F4 | Operator-minutes scale linearly with revenue | Agency trap; not a product company |
+| F4 | Operator-minutes scale linearly with revenue | Agency trap. Not a product company |
 | F5 | Harness becomes non-swappable (one-vendor identity) | Wrapper strategy abandoned |
 | F6 | Standing employees require constant babysitting | $8-VPS still wins |
 | F7 | Sales automation sends without approval receipts | Authority model broken |
@@ -41,13 +41,13 @@ Not the product-promise registry. When a promise flips, note the ID here.
 
 ## Snapshot — fable-dated (2026-07-07/08 writing)
 
-Re-verify before acting; this is not a live scrape.
+Re-verify before acting. This is not a live scrape.
 
 | Item | Fable-stated state |
 | --- | --- |
 | P0 QAM-1..7 | Closed |
 | Agent computer / writeback proofs | Closed (#8503, #8477 class) |
-| Store *artifacts* | Closed; public review submissions deferred |
+| Store *artifacts* | Closed. Public review submissions deferred |
 | Launch readiness E2E | Open / owner-gated |
 | Credits rails (web) | Live (card + crypto + Lightning noted) |
 | Exact token counters | Production discipline claimed |
@@ -80,7 +80,7 @@ Re-verify before acting; this is not a live scrape.
 1. **Straight-line success** — GitHub sign-in → repo → turn → live update
    → writeback/PR path without manual ops.
 2. **Operator-minutes** — human time to progress one unit (send, fulfill,
-   approve batch); exclude pure engineering.
+   approve batch). Exclude pure engineering.
 3. **Kinetic network event** — ≥2 economic roles paid from one acceptance
    or reuse receipt without manual broker.
 4. **Spine integrity** — one account, one balance, one sync plane, one

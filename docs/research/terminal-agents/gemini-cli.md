@@ -1,7 +1,7 @@
 # Gemini CLI tool-layer study for Khala built-in tools
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 Issue: [#6954](https://github.com/OpenAgentsInc/openagents/issues/6954)
@@ -21,10 +21,10 @@ The model-facing function declarations are centralized under
 classes under `packages/core/src/tools/`. The useful pattern for OpenAgents is
 not the exact API shape, but the split:
 
-- a stable tool name, display name, kind, description, and JSON Schema;
-- schema validation plus per-tool semantic validation before any side effect;
+- a stable tool name, display name, kind, description, and JSON Schema.
+- schema validation plus per-tool semantic validation before any side effect.
 - a `ToolInvocation` object that can describe affected paths, ask for approval,
-  execute, stream progress, and return both model-facing and UI-facing output;
+  execute, stream progress, and return both model-facing and UI-facing output.
 - a scheduler that resolves tool names, builds invocations, runs confirmation
   loops, then executes and serializes results back to the model.
 
@@ -79,7 +79,7 @@ Examples worth copying:
   audio, and PDF formats.
 - `write_file` accepts `file_path` and full `content`. Its description says it
   overwrites, creates parent directories, and should be reserved for new or
-  small files; targeted edits should use `replace`.
+  small files. Targeted edits should use `replace`.
 - `grep_search_ripgrep` is described as the preferred alternative to
   `run_shell_command("grep ...")`, because it is faster and output-limited.
 
@@ -195,11 +195,11 @@ warnings.
 
 `packages/core/src/tools/shell.ts` defines `ShellToolParams` with:
 
-- `command`;
-- optional `description`;
-- optional `dir_path`;
-- optional `is_background`;
-- optional `delay_ms`;
+- `command`.
+- optional `description`.
+- optional `dir_path`.
+- optional `is_background`.
+- optional `delay_ms`.
 - optional additional sandbox permissions.
 
 The shell invocation exposes a concise display title, a contextual explanation
@@ -233,7 +233,7 @@ Gemini CLI has several overlapping guardrails:
 
 `BaseToolInvocation.shouldConfirmExecute(...)` first honors auto-edit for tools
 that explicitly respect it, then asks the message bus for a policy decision.
-Decision outcomes are allow, deny, or ask user. Deny throws before execution;
+Decision outcomes are allow, deny, or ask user. Deny throws before execution.
 ask user returns confirmation details. `packages/core/src/scheduler/confirmation.ts`
 then runs an interactive confirmation loop that can proceed, cancel, modify via
 an external editor, or accept inline modifications from an IDE/TUI.
@@ -258,9 +258,9 @@ The `ToolResult` contract in `tools.ts` has three useful lanes:
   typed result body.
 
 Errors are typed with `ToolErrorType`. Parameter validation failures become
-`INVALID_TOOL_PARAMS`; missing tools become `TOOL_NOT_REGISTERED`; path issues
-become `PATH_NOT_IN_WORKSPACE`; execution exceptions become
-`EXECUTION_FAILED`; discovered-tool subprocess failures become
+`INVALID_TOOL_PARAMS`. Missing tools become `TOOL_NOT_REGISTERED`. Path issues
+become `PATH_NOT_IN_WORKSPACE`. Execution exceptions become
+`EXECUTION_FAILED`. Discovered-tool subprocess failures become
 `DISCOVERED_TOOL_EXECUTION_ERROR`.
 
 Large or unsafe outputs are shaped close to the tool:
@@ -313,7 +313,7 @@ who approves writing one file should not approve all writes. Gemini CLI's
   invocation should be the only thing allowed to cross from validation into side
   effects.
 - Return both model-facing and UI-facing output. Keep `llmContent` concise and
-  factual; render richer diffs, shell output, and path summaries through
+  factual. Render richer diffs, shell output, and path summaries through
   structured UI payloads.
 - Require path validation for every file operation and shell working directory.
 - Make approvals argument-narrowed by default: file path patterns, command
@@ -340,7 +340,7 @@ who approves writing one file should not approve all writes. Gemini CLI's
   workspace paths, line ranges, replacement uniqueness, command substitution,
   redirection, and network/file permission expansion.
 - Do not silently apply fuzzy edit recovery without surfacing what changed.
-  Start with reliable literal edits and diffs; add recovery only as an explicit,
+  Start with reliable literal edits and diffs. Add recovery only as an explicit,
   inspectable helper.
 - Do not let extension discovery failures crash the core tool catalog. Treat
   extension errors as typed diagnostics and keep built-ins available.

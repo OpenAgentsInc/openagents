@@ -18,19 +18,19 @@ policy, free/paid posture, and closeout requirements using public-safe refs.
 
 `omni_accepted_outcome_contracts` records:
 
-- `id` and unique `idempotency_key`;
-- `work_kind`;
-- `subject_ref`;
-- optional `customer_ref`;
-- typed `expected_artifacts_json`;
-- `review_policy`;
-- `acceptance_state`;
-- `proof_policy`;
-- `economic_state`;
-- typed `closeout_requirements_json`;
-- `legal_sensitive`;
-- `public_receipt_ref`;
-- bounded `metadata_json`;
+- `id` and unique `idempotency_key`.
+- `work_kind`.
+- `subject_ref`.
+- optional `customer_ref`.
+- typed `expected_artifacts_json`.
+- `review_policy`.
+- `acceptance_state`.
+- `proof_policy`.
+- `economic_state`.
+- typed `closeout_requirements_json`.
+- `legal_sensitive`.
+- `public_receipt_ref`.
+- bounded `metadata_json`.
 - lifecycle timestamps.
 
 Supported work kinds:
@@ -46,15 +46,15 @@ Supported work kinds:
 
 Expected artifact entries include:
 
-- artifact kind;
-- required flag;
-- public-safe flag;
+- artifact kind.
+- required flag.
+- public-safe flag.
 - source ref.
 
 Closeout requirement entries include:
 
-- requirement kind;
-- required flag;
+- requirement kind.
+- required flag.
 - source ref.
 
 Review policies are:
@@ -95,27 +95,27 @@ Economic states are:
 
 `createOmniAcceptedOutcomeContract`:
 
-- records idempotently by `idempotency_key`;
-- requires at least one expected artifact;
-- requires at least one closeout requirement;
-- validates all refs as public-safe refs;
+- records idempotently by `idempotency_key`.
+- requires at least one expected artifact.
+- requires at least one closeout requirement.
+- validates all refs as public-safe refs.
 - rejects raw provider, run-log, email, payment, wallet, token, invoice,
-  preimage, customer-private, and secret-like material;
-- requires legal-sensitive work to use `legal_sensitive_private` proof policy;
+  preimage, customer-private, and secret-like material.
+- requires legal-sensitive work to use `legal_sensitive_private` proof policy.
 - rejects `public_safe_proof` contracts that require private artifacts.
 
 `publicOmniAcceptedOutcomeContractProjection` exposes:
 
-- work kind;
-- subject ref;
-- review policy;
-- acceptance state;
-- proof policy;
-- economic state;
-- legal-sensitive flag;
-- expected artifact count;
-- closeout requirement count;
-- public-safe expected artifact refs only;
+- work kind.
+- subject ref.
+- review policy.
+- acceptance state.
+- proof policy.
+- economic state.
+- legal-sensitive flag.
+- expected artifact count.
+- closeout requirement count.
+- public-safe expected artifact refs only.
 - public receipt ref.
 
 It excludes metadata, customer refs, private expected artifact refs, and any
@@ -125,14 +125,14 @@ payment or settlement material.
 
 This slice does not:
 
-- create workrooms;
-- accept or reject work;
-- request revisions;
-- generate Mission Briefings;
-- record economics;
-- send emails;
-- create payment evidence;
-- grant payout eligibility;
+- create workrooms.
+- accept or reject work.
+- request revisions.
+- generate Mission Briefings.
+- record economics.
+- send emails.
+- create payment evidence.
+- grant payout eligibility.
 - dispatch or settle funds.
 
 It creates the accepted-outcome contract layer that later Omni workroom issues

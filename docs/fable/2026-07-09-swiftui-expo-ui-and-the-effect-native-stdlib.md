@@ -14,10 +14,10 @@ design-target screenshots.
 
 ## The question this answers
 
-The owner's ask, in his words: "I don't want to have to go completely out of my
+The owner's ask, in his words: "I do not want to have to go completely out of my
 way to do shit on Android. I like to just specify certain things and we get the
-SwiftUI version if they're Swift and Android if it's not." And: "I'm hoping
-there's a unified type definition that we can pull in and use as building
+SwiftUI version if they are Swift and Android if it is not." And: "I'm hoping
+there is a unified type definition that we can pull in and use as building
 blocks easily."
 
 Short answers up front, argued below:
@@ -41,12 +41,12 @@ Short answers up front, argued below:
    renderer as an implementation detail (its MIT-licensed universal components
    and SwiftUI/Compose trees become lowering targets for our catalog tags),
    while effect-native#70 grows the owned host-kind seam and eventually the
-   `render-swiftui` lane. App code never imports `@expo/ui`; the catalog stays
-   the contract; migration off Expo later is invisible to every screen.
+   `render-swiftui` lane. App code never imports `@expo/ui`. The catalog stays
+   the contract. Migration off Expo later is invisible to every screen.
 
-## 1. SwiftUI for a reader who doesn't know SwiftUI
+## 1. SwiftUI for a reader who does not know SwiftUI
 
-The owner said he doesn't know much about SwiftUI. Here is the working mental
+The owner said he does not know much about SwiftUI. Here is the working mental
 model, in Effect Native terms, because the two systems are structurally the
 same idea.
 
@@ -55,7 +55,7 @@ same idea.
 A SwiftUI screen is a value: a tree of typed view structs (`VStack`, `Text`,
 `Button`, `List`) computed from state. When state changes, the framework
 recomputes the tree and diffs it against what is on screen. There is no
-imperative "set this label's text"; you re-describe the whole view and the
+imperative "set this label's text". You re-describe the whole view and the
 runtime reconciles.
 
 ```swift
@@ -81,8 +81,8 @@ Stack({ direction: "column" }, [
 
 The differences that matter:
 
-- **SwiftUI's tree is Swift code; EN's tree is Schema-validated data.** SwiftUI
-  views are compiled structs with closures; EN views are serializable values
+- **SwiftUI's tree is Swift code. EN's tree is Schema-validated data.** SwiftUI
+  views are compiled structs with closures. EN views are serializable values
   with typed `IntentRef`s instead of callbacks. EN can log, replay, conformance-
   test, and render the same tree on four renderers. SwiftUI can only ever be
   Apple's renderer.
@@ -90,7 +90,7 @@ The differences that matter:
   is no Android story at all. Its Android sibling in spirit is Jetpack Compose
   — also a typed declarative tree driven by state, also platform-locked.
 - **State drives rendering in both.** SwiftUI uses `@State` / `@Observable` /
-  `ObservableObject`; EN uses `SubscriptionRef` + a view stream. The Liquid
+  `ObservableObject`. EN uses `SubscriptionRef` + a view stream. The Liquid
   Glass island already bridges the two: an `ObservableObject` whose
   `@Published` fields are projected from the EN program's `SubscriptionRef`.
 - **Styling is modifiers, not stylesheets.** `.padding(16)`,
@@ -150,7 +150,7 @@ boundary rules:
   glass effects, native controls, sheets, menus, animations, SF Symbols. The
   mechanism is a `UIHostingController` mounted inside a UIKit view that RN
   lays out (Expo's `Host`, our island's `ExpoView`). Yoga/flexbox sizes and
-  places the island; SwiftUI owns everything inside it.
+  places the island. SwiftUI owns everything inside it.
 - **Awkward from islands:** whole-screen navigation transitions, toolbar
   morphing tied to `NavigationStack`, `.searchable` pinned to a system nav
   bar. RN owns the navigation container, so system-level chrome behaviors
@@ -167,7 +167,7 @@ boundary rules:
 
 ## 2. Expo UI dissected: the proof the dream works
 
-`@expo/ui` 56.0.14 (MIT, 650 Industries; version rides the Expo SDK train) is
+`@expo/ui` 56.0.14 (MIT, 650 Industries, version rides the Expo SDK train) is
 the closest existing thing to "specify once, get SwiftUI on iOS and Compose on
 Android." We read the full package. Structure:
 
@@ -233,7 +233,7 @@ EN's typed style tokens already embody.
 ### 2.2 How the native lowering works (both platforms, same pattern)
 
 Per component, both platforms follow one shape — TypeScript wrapper calls
-`requireNativeView('ExpoUI', 'Button')`; native side declares a typed props
+`requireNativeView('ExpoUI', 'Button')`. Native side declares a typed props
 class and a declarative view that reads it:
 
 ```swift
@@ -269,7 +269,7 @@ class ButtonColors : Record {
 
 Cross-cutting machinery worth stealing:
 
-- **`Host` boundary.** RN lays out one UIKit/Android view; inside it a
+- **`Host` boundary.** RN lays out one UIKit/Android view. Inside it a
   `UIHostingController` (iOS) or `ComposeView` (Android) renders the native
   subtree. Children under `Host` are *virtual* nodes, not one UIKit wrapper
   per leaf. `matchContents` reports measured native size back into RN's
@@ -284,8 +284,8 @@ Cross-cutting machinery worth stealing:
   `matchedGeometryEffect`, presentation detents, list row styling, and a
   broad accessibility set.
 - **`useNativeState`.** A shared observable object both JS and native can
-  read/write, so keystrokes and slider drags don't round-trip through the JS
-  thread. Conceptually EN's `SubscriptionRef` doing the same job; theirs
+  read/write, so keystrokes and slider drags do not round-trip through the JS
+  thread. Conceptually EN's `SubscriptionRef` doing the same job. Theirs
   needs `react-native-worklets` for synchronous UI-thread writes.
 
 ### 2.3 Are the types complete and unified? Honestly: no — by design
@@ -299,13 +299,13 @@ This is the crux for the owner's "unified type definition I can pull in" hope.
 - The **platform trees diverge on purpose.** expo-ui's own `CLAUDE.md`
   doctrine is to mirror native API shapes with minimal abstraction. So iOS
   gets `Form`/`Section`/`Gauge`/`Chart`/`SwipeActions`/`GlassEffectContainer`/
-  `TabView`/`ContextMenu`; Android gets `Card`/`Chip`/`Surface`/
+  `TabView`/`ContextMenu`. Android gets `Card`/`Chip`/`Surface`/
   `NavigationBar`/`Carousel`/`FloatingActionButton`/`Snackbar`/
   `SegmentedButton`/`PullToRefreshBox`. Even shared concepts split shapes:
   iOS expresses button variants as a `buttonStyle` modifier including
-  `'glass'`; Android expresses them as five distinct Material components.
+  `'glass'`. Android expresses them as five distinct Material components.
   Universal `Picker`'s `appearance: 'wheel'` silently degrades to a dropdown
-  on Android; `BottomSheet` fractional snap points degrade to half/full.
+  on Android. `BottomSheet` fractional snap points degrade to half/full.
 - **Maturity:** no in-repo alpha warnings (those live on the docs site), but
   the CHANGELOG shows high churn — breaking changes routinely per minor,
   rapid patch cadence, iOS 26 features landing weekly. The type surface is
@@ -339,12 +339,12 @@ Two readings of that table:
 1. **SwiftUI relates to EN as a target, not a rival.** SwiftUI and Compose are
    both "typed declarative view trees driven by state" — the same species as
    EN's catalog — but each is platform-captive. EN's catalog is the
-   renderer-independent statement of the same idea; a SwiftUI renderer's whole
+   renderer-independent statement of the same idea. A SwiftUI renderer's whole
    job is the mechanical walk from catalog node to SwiftUI struct, exactly
    like expo-ui's `ios/` directory does per component today.
 2. **Expo UI relates to EN as a sibling one level up.** Their universal layer
-   is a JSX-and-callbacks catalog; ours is a data-and-intents catalog. Theirs
-   trades governability for developer familiarity; ours trades familiarity
+   is a JSX-and-callbacks catalog. Ours is a data-and-intents catalog. Theirs
+   trades governability for developer familiarity. Ours trades familiarity
    for replay, conformance, and agent-safety. Their native lowering machinery
    (Host mounting, virtual children, props classes, modifier registry) is
    excellent and largely reusable *below* our contract.
@@ -360,7 +360,7 @@ progress — clean. Liquid Glass specifically is an *Apple* design language:
 Compose has no glass API, so the Android lowering of `surface: "glass"` is an
 approximation (Material 3 tonal surface + blur/scrim), not the same pixels.
 That is fine — it is exactly the owner's stated expectation ("we get the
-SwiftUI version if they're Swift and Android if it's not") — but the spec
+SwiftUI version if they are Swift and Android if it is not") — but the spec
 must say "glass surface" (semantic), never `.glassEffect` (Apple API), or
 Android becomes a lie.
 
@@ -372,9 +372,9 @@ per-platform trees where needed) instead of bare RN `Pressable`/`View`.
 *Fastest to native fidelity*: their types become our building blocks, glass
 buttons and native sheets arrive this week, and because the dependency lives
 inside the renderer, no app code ever sees it. Risks: SDK-locked churn and
-routine breaking changes land in our renderer's lap; their universal layer's
+routine breaking changes land in our renderer's lap. Their universal layer's
 shape (JSX children, callback events, `ObservableState`) has to be adapted to
-EN's data/intent model at every seam; and their LCD layer misses things we
+EN's data/intent model at every seam. And their LCD layer misses things we
 need (drawer, toolbar, icon button as a first-class thing on iOS).
 
 **Option 2 — mirror the pattern inside effect-native (the stdlib play).**
@@ -398,11 +398,11 @@ EN-S lanes mature:
 - **`render-rn` lowers catalog tags to `@expo/ui` components on native**, the
   way it lowers to RN host components today. `Button({variant})` maps to their
   universal Button (or `swift-ui` Button + `buttonStyle('glass')` when the
-  resolved style says glass); `Sheet` maps to their BottomSheet;
+  resolved style says glass). `Sheet` maps to their BottomSheet.
   `List`/`SectionList` rows to their List/ListItem. Web and desktop renderers
   are untouched.
 - **Expo churn is firewalled** at one layer: when `@expo/ui` breaks, we fix
-  renderer internals; no screen changes. When the owned `render-swiftui` (or
+  renderer internals. No screen changes. When the owned `render-swiftui` (or
   per-family native host kinds via the #70 driver seam) lands, we swap the
   lowering component-by-component and *delete* the expo-ui path —
   convert-and-delete, the same discipline as every EN migration.
@@ -432,44 +432,44 @@ List, SectionList, Card, Spacer, Link, Modal, Sheet, Transcript, StatusBanner,
 GraphFigure, marketing/pager extensions, and `Host` with six kinds
 (`code-editor`, `terminal`, `canvas`, `voice-input`, `on-device-model`,
 `media-video`). The gaps below are ranked. "expo-ui" column says what exists
-to lower onto today; SwiftUI/Compose columns say the eventual owned lowering.
+to lower onto today. SwiftUI/Compose columns say the eventual owned lowering.
 
 ### P0 — the ChatGPT-look structural set (demanded by the mobile Home)
 
 | Proposed EN surface | expo-ui today | SwiftUI lowering | Compose lowering | Notes |
 | --- | --- | --- | --- | --- |
-| `Button` glass variant (style token `surface: "glass"` + existing `variant`) | universal Button + `buttonStyle('glass'/'glassProminent')` (iOS 26+), capsule via `buttonBorderShape` | `.buttonStyle(.glass)`, `.tint`, capsule shape; `.ultraThinMaterial` fallback pre-26 | Material 3 tonal/elevated button; blur approximation only | The "Chat" pill with icon. Semantic token, never an Apple API name in the contract |
-| `IconButton` (new tag: `icon`, `accessibilityLabel`, `onPress`, shape) | swift-ui Button + `systemImage` + glass + circle shape; compose `IconButton` exists first-class | `Button` + `Image(systemName:)` + `.glassEffect(in: .circle)` | `IconButton`/`FilledIconButton` | The circular search/settings buttons. Needs a typed icon vocabulary (SF Symbol name on iOS, Material Symbol on Android) — expo-ui ships `sf-symbols-typescript` for exactly this |
-| Glass surface/container (style capability, not a component: `surface: "glass"` on Stack/Card + optional `GlassGroup` for morphing) | `GlassEffectContainer` + `glassEffect`/`glassEffectId` modifiers | `GlassEffectContainer`, `.glassEffect(_:in:)`, `glassEffectID` for morphs | no equivalent; `Surface` + haze-style blur/scrim | The layered glass-over-content depth look. Container morphing (pills melting together) is iOS-only sugar; contract must degrade honestly |
-| `Drawer` / nav flyout (new tag: edge, open state via intent, scrim) | **not shipped** in any tree | owned: overlaid glass panel (`.glassEffect` panel + offset animation); full-native later via `NavigationSplitView` sidebar | Material 3 `ModalNavigationDrawer` (in Compose proper, not expo-ui) | The ChatGPT left flyout. First implementation is honest EN composition (animated overlay Stack + List) with the panel itself glass-styled; a native host kind only if gesture fidelity demands it |
-| `ListItem` row contract (leading icon, label, trailing accessory, `selected` state) | universal List/ListItem; swift-ui `List`+`Label`; compose `ListItem` | `List` row with `Label`, `.listRowBackground` for selected highlight | `ListItem` with `leadingContent` | The flyout rows (icon+label, selected-row highlight) and the Recents list. Extends existing List/SectionList rather than a parallel list |
-| `Toolbar` / floating composer (composition contract: glass capsule containing TextField + IconButtons) | swift-ui HStack+TextField+glassEffect; compose `HorizontalFloatingToolbar` exists first-class | `HStack` in `.glassEffect(in: .capsule)`; `matchedGeometryEffect` for expand-on-focus | `HorizontalFloatingToolbar` | The floating composer bar with embedded mic/voice controls. Mic button dispatches through the existing `voice-input` host kind — the composer chrome is catalog; the audio capture is Host |
-| `Sheet` native lowering upgrade (detents: half/full/fraction) | universal BottomSheet (`snapPoints: 'half'\|'full'\|{fraction}\|{height}`) | `.sheet` + `presentationDetents`, `presentationBackground` for glass sheets | `ModalBottomSheet` (no fractional snap) | Catalog `Sheet` exists; this is a lowering-fidelity upgrade plus a detents prop. Approvals live here |
+| `Button` glass variant (style token `surface: "glass"` + existing `variant`) | universal Button + `buttonStyle('glass'/'glassProminent')` (iOS 26+), capsule via `buttonBorderShape` | `.buttonStyle(.glass)`, `.tint`, capsule shape. `.ultraThinMaterial` fallback pre-26 | Material 3 tonal/elevated button. Blur approximation only | The "Chat" pill with icon. Semantic token, never an Apple API name in the contract |
+| `IconButton` (new tag: `icon`, `accessibilityLabel`, `onPress`, shape) | swift-ui Button + `systemImage` + glass + circle shape. Compose `IconButton` exists first-class | `Button` + `Image(systemName:)` + `.glassEffect(in: .circle)` | `IconButton`/`FilledIconButton` | The circular search/settings buttons. Needs a typed icon vocabulary (SF Symbol name on iOS, Material Symbol on Android) — expo-ui ships `sf-symbols-typescript` for exactly this |
+| Glass surface/container (style capability, not a component: `surface: "glass"` on Stack/Card + optional `GlassGroup` for morphing) | `GlassEffectContainer` + `glassEffect`/`glassEffectId` modifiers | `GlassEffectContainer`, `.glassEffect(_:in:)`, `glassEffectID` for morphs | no equivalent. `Surface` + haze-style blur/scrim | The layered glass-over-content depth look. Container morphing (pills melting together) is iOS-only sugar. Contract must degrade honestly |
+| `Drawer` / nav flyout (new tag: edge, open state via intent, scrim) | **not shipped** in any tree | owned: overlaid glass panel (`.glassEffect` panel + offset animation). Full-native later via `NavigationSplitView` sidebar | Material 3 `ModalNavigationDrawer` (in Compose proper, not expo-ui) | The ChatGPT left flyout. First implementation is honest EN composition (animated overlay Stack + List) with the panel itself glass-styled. A native host kind only if gesture fidelity demands it |
+| `ListItem` row contract (leading icon, label, trailing accessory, `selected` state) | universal List/ListItem. Swift-ui `List`+`Label`. Compose `ListItem` | `List` row with `Label`, `.listRowBackground` for selected highlight | `ListItem` with `leadingContent` | The flyout rows (icon+label, selected-row highlight) and the Recents list. Extends existing List/SectionList rather than a parallel list |
+| `Toolbar` / floating composer (composition contract: glass capsule containing TextField + IconButtons) | swift-ui HStack+TextField+glassEffect. Compose `HorizontalFloatingToolbar` exists first-class | `HStack` in `.glassEffect(in: .capsule)`. `matchedGeometryEffect` for expand-on-focus | `HorizontalFloatingToolbar` | The floating composer bar with embedded mic/voice controls. Mic button dispatches through the existing `voice-input` host kind — the composer chrome is catalog. The audio capture is Host |
+| `Sheet` native lowering upgrade (detents: half/full/fraction) | universal BottomSheet (`snapPoints: 'half'\|'full'\|{fraction}\|{height}`) | `.sheet` + `presentationDetents`, `presentationBackground` for glass sheets | `ModalBottomSheet` (no fractional snap) | Catalog `Sheet` exists. This is a lowering-fidelity upgrade plus a detents prop. Approvals live here |
 
 ### P1 — Sarah home, fleet supervision, approvals
 
 | Proposed EN surface | expo-ui today | SwiftUI lowering | Compose lowering | Notes |
 | --- | --- | --- | --- | --- |
 | `Toggle` (new tag) | universal Switch (`value`, `onValueChange`, `label`) | `Toggle` | `Switch` | Approval gates, settings. Intent-dispatching, not callback |
-| `Menu` / `ContextMenu` (new tag: typed items → intents) | swift-ui Menu + ContextMenu (with `.Trigger`/`.Preview`/`.Items`); compose DropdownMenu | `Menu`, `.contextMenu` with preview | `DropdownMenu` | Per-run actions (pause/drain/stop) on fleet rows; long-press on Recents |
-| `Picker` incl. segmented (new tag: `appearance: 'segmented'\|'menu'\|'wheel'`) | universal Picker; community segmented-control; compose SegmentedButton rows | `Picker` + `.pickerStyle(.segmented)` | `SingleChoiceSegmentedButtonRow` | Fleet filter (running/queued/done); wheel degrades on Android per expo-ui precedent |
-| `Progress` (new tag: linear/circular, determinate/indeterminate) | swift-ui ProgressView + `progressViewStyle`; compose Circular/LinearProgress + `LoadingIndicator` | `ProgressView` | `CircularProgressIndicator` etc. | Run progress on fleet cards |
-| `Gauge` (new tag) | swift-ui Gauge (with value labels); no compose equivalent | `Gauge` | owned canvas/arc composition | Capacity/quota dials. Low cost given expo-ui reference, iOS-first honest |
-| `Badge` (prop on ListItem/Tab rather than component) | compose Badge/BadgedBox; iOS via `badge` modifier | `.badge(_:)` | `BadgedBox` | Unread approvals count |
-| `SearchField` (new tag or TextField role) | compose SearchBar/DockedSearchBar; iOS via TextField-in-glass (native `.searchable` needs nav ownership) | TextField + glass capsule now; `.searchable` under render-swiftui | `SearchBar` | The flyout's search affordance |
-| `Tabs` (new tag: items → intents) | swift-ui TabView; compose NavigationBar/NavigationBarItem | `TabView` | `NavigationBar` | Only if the app shell adopts tabs; drawer-first shape may not need it |
+| `Menu` / `ContextMenu` (new tag: typed items → intents) | swift-ui Menu + ContextMenu (with `.Trigger`/`.Preview`/`.Items`). Compose DropdownMenu | `Menu`, `.contextMenu` with preview | `DropdownMenu` | Per-run actions (pause/drain/stop) on fleet rows. Long-press on Recents |
+| `Picker` incl. segmented (new tag: `appearance: 'segmented'\|'menu'\|'wheel'`) | universal Picker. Community segmented-control. Compose SegmentedButton rows | `Picker` + `.pickerStyle(.segmented)` | `SingleChoiceSegmentedButtonRow` | Fleet filter (running/queued/done). Wheel degrades on Android per expo-ui precedent |
+| `Progress` (new tag: linear/circular, determinate/indeterminate) | swift-ui ProgressView + `progressViewStyle`. Compose Circular/LinearProgress + `LoadingIndicator` | `ProgressView` | `CircularProgressIndicator` etc. | Run progress on fleet cards |
+| `Gauge` (new tag) | swift-ui Gauge (with value labels). No compose equivalent | `Gauge` | owned canvas/arc composition | Capacity/quota dials. Low cost given expo-ui reference, iOS-first honest |
+| `Badge` (prop on ListItem/Tab rather than component) | compose Badge/BadgedBox. IOS via `badge` modifier | `.badge(_:)` | `BadgedBox` | Unread approvals count |
+| `SearchField` (new tag or TextField role) | compose SearchBar/DockedSearchBar. IOS via TextField-in-glass (native `.searchable` needs nav ownership) | TextField + glass capsule now. `.searchable` under render-swiftui | `SearchBar` | The flyout's search affordance |
+| `Tabs` (new tag: items → intents) | swift-ui TabView. Compose NavigationBar/NavigationBarItem | `TabView` | `NavigationBar` | Only if the app shell adopts tabs. Drawer-first shape may not need it |
 
-### P2 — complete-the-set (demand-gated per #8572; do not build speculatively)
+### P2 — complete-the-set (demand-gated per #8572, do not build speculatively)
 
 | Proposed EN surface | expo-ui today | Notes |
 | --- | --- | --- |
 | `DateTimePicker` | universal/community DatePicker both platforms | Scheduling runs/reminders — no current screen demands it |
-| `Slider` / `Stepper` | universal Slider; swift-ui Stepper | Budget/concurrency dials |
-| `SwipeActions` on ListItem | swift-ui SwipeActions; compose via gestures | Archive/approve from a row |
-| `PullToRefresh` (List prop) | `refreshable` modifier (iOS); compose PullToRefreshBox | Fleet list refresh |
-| `Snackbar`/toast | compose Snackbar; iOS owned overlay | Catalog `StatusBanner` may already cover it |
-| `Alert`/`ConfirmationDialog` | swift-ui Alert/ConfirmationDialog; compose AlertDialog | Destructive-action confirms (stop fleet run) |
-| `Chart` | swift-ui Chart (Swift Charts); no compose equivalent | Dashboards later; `GraphFigure`/canvas covers current need |
+| `Slider` / `Stepper` | universal Slider. Swift-ui Stepper | Budget/concurrency dials |
+| `SwipeActions` on ListItem | swift-ui SwipeActions. Compose via gestures | Archive/approve from a row |
+| `PullToRefresh` (List prop) | `refreshable` modifier (iOS). Compose PullToRefreshBox | Fleet list refresh |
+| `Snackbar`/toast | compose Snackbar. IOS owned overlay | Catalog `StatusBanner` may already cover it |
+| `Alert`/`ConfirmationDialog` | swift-ui Alert/ConfirmationDialog. Compose AlertDialog | Destructive-action confirms (stop fleet run) |
+| `Chart` | swift-ui Chart (Swift Charts). No compose equivalent | Dashboards later. `GraphFigure`/canvas covers current need |
 | `ShareLink`, `ColorPicker`, `Grid`, `Popover` | swift-ui only | No product demand yet |
 
 Stdlib admission rule stays exactly the EN-2 loop: a real converting screen
@@ -484,10 +484,10 @@ Mapping the owner's screenshots ("the buttons, the nav fly out, and that kind
 of stuff") to a concrete composition for the mobile Home, piece by piece:
 
 - **Layered background.** Plain EN: root `Stack` with the Protoss-blue theme
-  surface; content scrolls under the chrome. No native code.
+  surface. Content scrolls under the chrome. No native code.
 - **Top glass pill cluster** (the "Chat" pill + circular icon buttons). P0
   catalog pieces: `Button` with glass surface + `IconButton`, grouped so the
-  iOS lowering can wrap them in `GlassEffectContainer` (pills blend/morph);
+  iOS lowering can wrap them in `GlassEffectContainer` (pills blend/morph).
   Android renders tonal buttons. Until those catalog tags land, this cluster
   is the natural *second* SwiftUI island — same `UIHostingController` +
   props-projection + typed-intent shape as the shipped Liquid Glass island,
@@ -496,7 +496,7 @@ of stuff") to a concrete composition for the mobile Home, piece by piece:
   animated from the leading edge, glass-surfaced, containing `SearchField`
   (interim: TextField-in-glass), a `List` of `ListItem` rows (icon + label +
   selected highlight), a Recents `SectionList`, and a pinned bottom row
-  (account + settings `IconButton`s). Open/close are typed intents; the scrim
+  (account + settings `IconButton`s). Open/close are typed intents. The scrim
   tap dispatches close. This is deliberately *not* a SwiftUI island first —
   drawer state interleaves with the whole screen's layout and navigation,
   which is the thing islands are worst at.
@@ -504,8 +504,8 @@ of stuff") to a concrete composition for the mobile Home, piece by piece:
   Rows' long-press `ContextMenu` (P1) for rename/delete.
 - **Floating composer.** The P0 `Toolbar`/composer contract: glass capsule,
   `TextField`, mic `IconButton`. Mic press hands off to the existing
-  `voice-input` host kind; the chrome is pure catalog. On iOS 26 the capsule
-  gets `.glassEffect`; the expand-on-focus morph is `matchedGeometryEffect`
+  `voice-input` host kind. The chrome is pure catalog. On iOS 26 the capsule
+  gets `.glassEffect`. The expand-on-focus morph is `matchedGeometryEffect`
   sugar inside the lowering, absent on Android without contract change.
 - **Approvals sheet.** Catalog `Sheet` with the P0 detents upgrade: half-detent
   glass sheet listing pending approvals (`ListItem` + `Toggle`/`Button`
@@ -535,14 +535,14 @@ every load-bearing assumption.
 What it is not: catalog-native. The island is app-local wiring
 (`loadLiquidGlassView()` in the screen shell), invisible to the catalog,
 unreproducible by other EN apps, and per-island bespoke. D-MB-02 records this
-precisely: interim = shell-boundary island; gap = "SwiftUI host kind +
-`render-rn` host-driver seam (or the `render-swiftui` lane)"; upstream =
+precisely: interim = shell-boundary island. Gap = "SwiftUI host kind +
+`render-rn` host-driver seam (or the `render-swiftui` lane)". Upstream =
 effect-native#70.
 
 The path, in order:
 
 1. **Land the `render-rn` host-driver seam (effect-native#70, ask 2).**
-   `render-dom` already has a Scope-bound driver registry for host kinds;
+   `render-dom` already has a Scope-bound driver registry for host kinds.
    `render-rn` has none — unsupported kinds render loud markers. Mirror the
    `DomHostDriver` shape: `makeRNRenderer({ hostDrivers })` where an app
    registers a driver (native component + props codec + event→intent map) for
@@ -571,8 +571,8 @@ The path, in order:
 
 ## 8. Decision summary
 
-- **Mental model:** SwiftUI ≈ EN's catalog idea, platform-captive; Compose is
-  Android's same idea; the EN catalog is the renderer-independent version, and
+- **Mental model:** SwiftUI ≈ EN's catalog idea, platform-captive. Compose is
+  Android's same idea. The EN catalog is the renderer-independent version, and
   renderers lower to each — exactly the per-component job expo-ui's `ios/` and
   `android/` directories perform.
 - **The dream is real:** one TS spec → SwiftUI + Compose is proven shipping
@@ -581,14 +581,14 @@ The path, in order:
   degrade gracefully where a platform lacks the concept.
 - **Adopt:** Option 3 (hybrid). `@expo/ui` (MIT) becomes a lowering target
   inside `render-rn` — never a public API, never imported by app code. Its
-  types inform our catalog's new tags; our catalog remains the unified type
+  types inform our catalog's new tags. Our catalog remains the unified type
   definition.
 - **Stdlib:** grow the catalog by the P0/P1 tables (glass Button/IconButton,
-  glass surface capability, Drawer, ListItem, Toolbar/composer, Sheet detents;
+  glass surface capability, Drawer, ListItem, Toolbar/composer, Sheet detents.
   then Toggle, Menu, Picker, Progress, Gauge, Badge, SearchField), through the
   normal EN-2 demand loop with per-renderer support limits stated.
 - **Now:** land the effect-native#70 `render-rn` host-driver seam and convert
-  the Liquid Glass island to a typed `Host` kind (closes D-MB-02's interim);
+  the Liquid Glass island to a typed `Host` kind (closes D-MB-02's interim).
   build the ChatGPT-look Home from catalog pieces per section 6.
 - **Later, on demand:** owned `render-swiftui` per EN-S0..S6 replaces the
-  expo-ui iOS lowerings component-by-component; convert-and-delete.
+  expo-ui iOS lowerings component-by-component. Convert-and-delete.

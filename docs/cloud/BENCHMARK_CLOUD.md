@@ -69,7 +69,7 @@ Every benchmark or workroom run should also carry
 receipt records host/device facts, run resource usage, artifact/log sizes, and
 model token usage or an explicit unavailable-token reason. Subscription-backed
 Codex currently records `count_source=unavailable` with
-`subscription_backed_codex_no_token_counts`; product surfaces must not treat missing token
+`subscription_backed_codex_no_token_counts`. Product surfaces must not treat missing token
 counts as silently complete proof.
 
 The first local implementation lives in `runners/py-bench-runner`. It can run
@@ -84,7 +84,7 @@ Terminal-Bench adapters build on.
 launch path. It carries only public-safe refs and digests, sets
 `walletAuthority=false`, `payoutAuthority=false`, and
 `publicClaimAuthority=false`, and marks `authorityOwner=worker` (historical label `omega` means product authority, not a separate Cloud owner). Cloud can prove
-that a bounded SHC/Benchmark task ran and produced artifacts; it does not
+that a bounded SHC/Benchmark task ran and produced artifacts. It does not
 approve public claims, settle payouts, or act as a wallet provider.
 
 ## Execution Backends
@@ -136,7 +136,7 @@ Measured SHC smoke:
 - A preserved selected 16-task SHC Codex run then passed 11/16 tasks with mean
   reward `0.6875` and reported model cost `$13.300340`. Raw Harbor traces,
   verifier outputs, aggregate JSON, per-file checksums, and tarballs remain on
-  `oa-shc-katy-01`; the committed report records artifact paths and digests
+  `oa-shc-katy-01`. The committed report records artifact paths and digests
   without copying raw benchmark secrets or auth material into Git. See
   `docs/bootstrap/CND-052-shc-codex-terminal-bench-16task-preserved.md`.
 - The failed retained tasks now have public-safe signature-routing fixtures
@@ -176,7 +176,7 @@ Runner artifact writers redact secret-like text in logs and JSON artifacts
 before the manifest and closeout are generated. The redaction gate covers common
 provider token, authorization, password, API key, access-token, refresh-token,
 private-key, and wallet-seed markers. Secret refs may appear only as
-server-side references from the relevant contract layer; raw auth material must
+server-side references from the relevant contract layer. Raw auth material must
 not appear in Benchmark Cloud evidence.
 
 ## Terminal-Bench MVP
@@ -208,7 +208,7 @@ and proof-bundle artifacts without adding dataset-specific product-state couplin
 
 The first Probe+Codex signature lane uses retained Terminal-Bench fixtures under
 `runners/py-bench-runner/fixtures/signature-routing/`. Raw Codex baselines
-record `selectionEnabled=false`; `probe-codex` runs record
+record `selectionEnabled=false`. `probe-codex` runs record
 `signature_selector_trace.json` with the selected Probe signature, required
 evidence, closeout artifacts, and forbidden signature ids for comparison.
 
@@ -216,16 +216,16 @@ evidence, closeout artifacts, and forbidden signature ids for comparison.
 
 No benchmark result should become public unless the projected claim includes:
 
-- pinned dataset slug and version;
-- disclosed task selector/subset;
-- agent, model, and harness version;
-- retry, timeout, and budget policy;
-- artifact retention state;
-- proof bundle digest;
-- redaction status;
-- verifier/scorer result;
+- pinned dataset slug and version.
+- disclosed task selector/subset.
+- agent, model, and harness version.
+- retry, timeout, and budget policy.
+- artifact retention state.
+- proof bundle digest.
+- redaction status.
+- verifier/scorer result.
 - resource/device receipt and token ledger or explicit unavailable-token
-  receipt;
+  receipt.
 - superseded or invalidated state when applicable.
 
 Modeled cost, online nodes, and runner self-reported summaries are not accepted
@@ -254,7 +254,7 @@ Cloud issues:
 - CND-050: resource/device and model token usage receipts for every run.
 
 Historical product-surface companion issues (filed in the deprecated Vortex
-repo; the current product surface is the `openagents.com` Worker + Khala Sync
+repo. The current product surface is the `openagents.com` Worker + Khala Sync
 / Khala Code — route any new companion work to `openagents`):
 
 - OpenAgentsInc/vortex#91: Benchmark Cloud Convex state and Effect control

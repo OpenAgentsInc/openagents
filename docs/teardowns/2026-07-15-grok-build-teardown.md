@@ -35,7 +35,7 @@ development sequence, or checked-in PTY performance baselines. External
 contributions are explicitly not accepted. Those boundaries matter when
 distinguishing source-visible design from release-proven behavior.
 
-## TL;DR
+## TL.DR
 
 Grok Build is a terminal-first Rust coding-agent platform, not a chat loop
 wrapped in ANSI output. One binary supports a full-screen TUI, an experimental
@@ -59,10 +59,10 @@ checkpoints, and child metadata. A separate SQLite FTS5 index accelerates
 search. Resume, fork, rewind, compaction, worktree creation, and remote-session
 lookup are engine operations rather than TUI inventions. Unlike Codex's
 append-log-plus-index design, Grok can replace chat history during compaction or
-rewind; the user-visible update log remains the restore authority.
+rewind. The user-visible update log remains the restore authority.
 
 The terminal product is unusually mature. A thin event loop feeds explicit
-state/action/effect machinery; rendering is decomposed into scrollback blocks,
+state/action/effect machinery. Rendering is decomposed into scrollback blocks,
 selection, layout, prompt, modal, dashboard, and terminal-host behavior. The
 native-scrollback mode prints finalized blocks once and keeps only live content
 in a pinned region. Crash recovery restores terminal modes. Diagnostics turn
@@ -75,18 +75,18 @@ Authority is more mixed. Permission rules, approval modes, hooks, folder trust,
 managed requirements, and OS sandboxing are separate mechanisms, which is
 correct. Grok also documents their gaps with unusual candor:
 
-- sandboxing is off by default;
-- built-in sandbox application can warn and continue without enforcement;
-- macOS child-network restriction is a no-op;
-- in-process web/model/MCP networking is outside child-network restriction;
-- a Bash allow prefix can approve a dangerous chained suffix;
-- direct read/edit path checks do not canonicalize symlinks; and
+- sandboxing is off by default.
+- built-in sandbox application can warn and continue without enforcement.
+- macOS child-network restriction is a no-op.
+- in-process web/model/MCP networking is outside child-network restriction.
+- a Bash allow prefix can approve a dangerous chained suffix.
+- direct read/edit path checks do not canonicalize symlinks. And
 - hooks fail open.
 
 The source audit adds less visible gaps: local leader authorization appears to
 depend on ambient socket-directory permissions rather than peer credentials or
-a per-client secret; several hot actor and IPC paths use unbounded channels;
-unknown or misclassified hub tools can miss the intended approval gate; and
+a per-client secret. Several hot actor and IPC paths use unbounded channels.
+unknown or misclassified hub tools can miss the intended approval gate. And
 subagents inherit broad parent runtime resources without one proven authority-
 intersection law. These are architecture risks, not demonstrated exploits.
 
@@ -108,14 +108,14 @@ it is not release transparency.
 For OpenAgents, the highest-value adaptations are:
 
 1. ACP-compatible multi-client runtime semantics behind one managed local
-   supervisor;
+   supervisor.
 2. durable session identity plus explicit client/leader generations and
-   reconnect;
-3. native-scrollback and full-screen terminal hosts over one typed projection;
+   reconnect.
+3. native-scrollback and full-screen terminal hosts over one typed projection.
 4. layered terminal verification that includes emulator, real host, race, and
-   performance gates;
-5. typed, default-off observability with an exporter-side fail-closed schema;
-6. durable file rewind and worktree lifecycle as engine state; and
+   performance gates.
+5. typed, default-off observability with an exporter-side fail-closed schema.
+6. durable file rewind and worktree lifecycle as engine state. And
 7. atomic component update mechanics strengthened with signatures, provenance,
    protocol compatibility, rollback receipts, and fail-closed containment.
 
@@ -133,7 +133,7 @@ scale.
 | Snapshot commit | c1b5909ec707c069f1d21a93917af044e71da0d7 | [source] |
 | Commit time | 2026-07-15 21:11:03 +01:00 | [source] |
 | Public history | One export commit | [source] [limitation] |
-| License | Apache-2.0 first-party code; retained upstream licenses for ports and vendored source | [source] |
+| License | Apache-2.0 first-party code. Retained upstream licenses for ports and vendored source | [source] |
 | Tracked files | 2,715 | [source] |
 | Rust files | 2,219 | [source] |
 | Tracked Rust lines | Approximately 1,348,496, including vendored Rust | [source] |
@@ -143,8 +143,8 @@ scale.
 | Primary runtime | Rust 2024 edition, Tokio | [source] |
 | Public agent protocol | Agent Client Protocol 0.10.4 with unstable extensions | [schema] |
 | Primary UI | Ratatui/Crossterm terminal application | [source] |
-| Public build version | Crate manifests name 0.1.220-alpha.4; shared version crate defaults to 0.2.0-dev unless injected | [source] [limitation] |
-| Source-build hosts | macOS and Linux supported; Windows best-effort and not tested from this tree | [public] |
+| Public build version | Crate manifests name 0.1.220-alpha.4. Shared version crate defaults to 0.2.0-dev unless injected | [source] [limitation] |
+| Source-build hosts | macOS and Linux supported. Windows best-effort and not tested from this tree | [public] |
 
 ### 1.1 2026-07-16 Agent Client Protocol package verification
 
@@ -153,10 +153,10 @@ The public export advanced after the original snapshot. A targeted follow-up at
 confirmed that the protocol architecture and versions remain:
 
 - workspace dependency `agent-client-protocol = 0.10.4` with the `unstable`
-  feature;
-- lockfile dependency `agent-client-protocol-schema = 0.11.4`;
+  feature.
+- lockfile dependency `agent-client-protocol-schema = 0.11.4`.
 - xAI wrapper crate `crates/codegen/xai-acp-lib` for bidirectional channels,
-  gateways, messages, line reading, and normalization; and
+  gateways, messages, line reading, and normalization. And
 - Grok's `MvpAgent` implementing the Rust `acp::Agent` trait.
 
 The public JavaScript example's `initialize` → `authenticate` → `session/new`
@@ -175,11 +175,11 @@ state were inspected.
 Confidence is high for source architecture, typed contracts, bundled user
 documentation, and encoded tests. Confidence is lower for:
 
-- which ignored suites and platforms gate official releases;
-- how private Grok, registry, sync, telemetry, and Computer Hub services behave;
-- whether every public-build feature is enabled in released binaries;
-- artifact signing, publication authorization, and release attestations;
-- production retention and enterprise policy configuration; and
+- which ignored suites and platforms gate official releases.
+- how private Grok, registry, sync, telemetry, and Computer Hub services behave.
+- whether every public-build feature is enabled in released binaries.
+- artifact signing, publication authorization, and release attestations.
+- production retention and enterprise policy configuration. And
 - performance claims whose platform baselines are absent from the export.
 
 ## 2. Architecture at a glance
@@ -232,13 +232,13 @@ for this run?”
 [source] The root Cargo manifest is generated and explicitly read-only. Its 79
 members divide the system into:
 
-- pager, renderer, minimal renderer, PTY harness, prompt, and terminal support;
-- shell, session, agent, lifecycle, chat-state, sampling, and compaction;
-- tools, tool protocol/runtime/types, Computer Hub, MCP, LSP, and workspace;
-- config, auth, secrets, paths, environment, models, hooks, plugins, and skills;
-- memory, telemetry, tracing, update, crash handling, system power, and voice;
+- pager, renderer, minimal renderer, PTY harness, prompt, and terminal support.
+- shell, session, agent, lifecycle, chat-state, sampling, and compaction.
+- tools, tool protocol/runtime/types, Computer Hub, MCP, LSP, and workspace.
+- config, auth, secrets, paths, environment, models, hooks, plugins, and skills.
+- memory, telemetry, tracing, update, crash handling, system power, and voice.
 - Git status, fast worktrees, file events, code graph, hunk tracking, and
-  SQLite journal selection; and
+  SQLite journal selection. And
 - four vendored graph/Mermaid crates.
 
 [source] The repository explains that this is a periodically synchronized
@@ -253,7 +253,7 @@ governance or upstream contribution path.
 
 [source] Grok Build ports tool implementations from OpenAI Codex and OpenCode,
 with prominent Apache/MIT notices and change attribution. Release builds may
-embed ripgrep and optionally ugrep/bfs; the repository includes a large
+embed ripgrep and optionally ugrep/bfs. The repository includes a large
 third-party notice corpus and crate-local notices.
 
 [inferred] Reusing mature open tool implementations is sensible. The stronger
@@ -287,7 +287,7 @@ PTY, and agent subcommands.
 ### 4.2 Native-scrollback mode
 
 [source] The minimal renderer is not a cosmetic theme. Finalized conversation
-blocks are committed once into native terminal history; only the active turn
+blocks are committed once into native terminal history. Only the active turn
 and prompt remain in a pinned live region. The implementation handles
 synchronized terminal updates, resize races, viewport remeasurement, and
 multi-block commits explicitly.
@@ -299,9 +299,9 @@ projection and permit both a full-screen renderer and a native-history host.
 ### 4.3 Headless automation
 
 [public] Headless mode supports plain output, one JSON result, or streaming
-NDJSON; prompts from arguments, stdin, files, or JSON; structured output
-schemas; exact resume/continue behavior; tool allow/deny filters; model and
-permission selection; and session identity in output.
+NDJSON. Prompts from arguments, stdin, files, or JSON. Structured output
+schemas. Exact resume/continue behavior. Tool allow/deny filters. Model and
+permission selection. And session identity in output.
 
 [public] Machine output stays on stdout while logs and update notices use
 stderr. This is a small but essential automation contract.
@@ -336,7 +336,7 @@ but not yet a complete cross-process, cross-device Fleet authority.
 
 [source] The pager event loop is a Tokio select loop over terminal input,
 runtime messages, timers, notifications, and task results. AppView owns UI
-state and rendering. Dispatch produces Effect values; the effect executor
+state and rendering. Dispatch produces Effect values. The effect executor
 returns TaskResult values through the same state transition path.
 
 [inferred] This resembles the OpenAgents Effect Native intent/service goal even
@@ -376,19 +376,19 @@ typed command rather than parallel callbacks.
 
 [source] The leader uses a private local socket plus sibling lock. Different
 backend WebSocket URLs derive different socket suffixes, allowing environment
-isolation. Connect-or-spawn is serialized by the lock; clients verify listener
+isolation. Connect-or-spawn is serialized by the lock. Clients verify listener
 readiness, register, and can adopt an existing compatible process.
 
 [schema] Each leader client has:
 
-- monotonically generated local client identity;
-- client mode (stdio or headless);
-- protocol version and binary version;
-- yolo/automatic mode;
-- default model;
-- code-navigation capability;
-- client-owned terminal capability;
-- client-owned filesystem read/write capability; and
+- monotonically generated local client identity.
+- client mode (stdio or headless).
+- protocol version and binary version.
+- yolo/automatic mode.
+- default model.
+- code-navigation capability.
+- client-owned terminal capability.
+- client-owned filesystem read/write capability. And
 - extension/control feature discovery.
 
 [source] IPC frames are length-prefixed JSON with a 64 MiB maximum. The
@@ -443,7 +443,7 @@ stack, a current-thread Tokio runtime, and a `LocalSet`. That keeps the
 non-`Send` session actor inside one ownership boundary, while tool calls can
 execute concurrently and reassemble results in stable order.
 
-[inferred] The ownership model is clear; the resource curve is not free.
+[inferred] The ownership model is clear. The resource curve is not free.
 OpenAgents should copy one-owner typed actor boundaries and explicit retry
 ownership, but prefer bounded task actors on shared runtimes unless profiling
 justifies a thread and reserved stack per session.
@@ -454,7 +454,7 @@ justifies a thread and reserved stack per session.
 the current turn. A send-now path can cancel current work before admitting the
 new input. Dashboard replies reuse the same queue behavior.
 
-[schema] Queue events carry session identity and per-item metadata; broadcasts
+[schema] Queue events carry session identity and per-item metadata. Broadcasts
 without session identity fail to parse.
 
 [limitation] The source has prompt IDs, persistence acknowledgements, replay
@@ -529,7 +529,7 @@ derived active-history file is compacted or rewritten.
 record is bounded, malformed update/chat lines can be skipped, the first
 corrupt chat source is preserved, and replay repairs partial tool cards and
 orphaned background state. Leader reconnect also flushes, replays from disk,
-then delta-replays bytes appended after the starting offset; a missing cursor
+then delta-replays bytes appended after the starting offset. A missing cursor
 or event ID forces full replay instead of unsafe incremental application.
 
 [source/limitation] Ordinary JSONL writes flush userspace buffers but do not
@@ -541,8 +541,8 @@ tolerant parsing and careful replay ordering, not transactional or power-loss-
 durable persistence.
 
 [inferred] OpenAgents should name `flush`, `replay_ready`, and
-`durable_barrier` separately; keep one writer/lease per session; fsync required
-checkpoint files and directories; and make terminal persistence failure typed
+`durable_barrier` separately. Keep one writer/lease per session. Fsync required
+checkpoint files and directories. And make terminal persistence failure typed
 state rather than a warning.
 
 ### 8.5 Remote restore is incomplete in this export
@@ -602,7 +602,7 @@ PDF/PPTX reading, and deferred tool discovery. Different implementation
 families include Grok-native, concise, hashline, Codex-derived, and
 OpenCode-derived adapters.
 
-[source] Default model-visible tool output is bounded to 40 KB; shell output is
+[source] Default model-visible tool output is bounded to 40 KB. Shell output is
 bounded to 20,000 characters. MCP output has its own configurable cap.
 
 [schema/source] The common runtime gives tools schema-bearing typed arguments,
@@ -626,8 +626,8 @@ hooks, server status/eviction, and telemetry donation methods.
 
 [source] The SDK adds connection pooling, reconnect, harness, and tool-server
 runtime. Its call path uses session, connection, and global admission limits
-with one shared deadline; installs waiters before sending to avoid an early-
-response race; bounds cancel-before-register tombstones; and removes waiter
+with one shared deadline. Installs waiters before sending to avoid an early-
+response race. Bounds cancel-before-register tombstones. And removes waiter
 state when streams are dropped. MCP-discovered tools can bridge into the native
 hub registry.
 
@@ -648,7 +648,7 @@ optional read/write scope. The contract says absent scope is treated as read
 and mutating tools should declare write so the hub can route them to a leader.
 
 [limitation] The audited client/core crates declare and serialize that scope,
-but do not enforce leader-only routing; that consumer appears to live in the
+but do not enforce leader-only routing. That consumer appears to live in the
 unavailable hub service. The snapshot therefore proves a metadata contract,
 not containment. Missing or misclassified scope defaulting to read is unsafe
 for new extensions.
@@ -694,7 +694,7 @@ rules receive more segment analysis than allow rules. Prefixes also have no
 word-boundary guarantee unless written carefully.
 
 [public] Direct read/edit path rules match the supplied string without
-canonicalization; shell-level denied-path checks resolve symlinks, but direct
+canonicalization. Shell-level denied-path checks resolve symlinks, but direct
 tools do not.
 
 [public] Project permission allow rules can apply without a separate trust
@@ -720,7 +720,7 @@ script failure, timeout, or absence proceeds as if allowed and is surfaced in
 the UI.
 
 [inferred] Fail-open hooks are appropriate for advisory automation, not policy.
-OpenAgents first-party invariants should remain typed Effect services;
+OpenAgents first-party invariants should remain typed Effect services.
 enforcement hooks must have a separately declared fail-closed class.
 
 ### 11.4 Always-approve is explicit but broad
@@ -742,7 +742,7 @@ separate containment receipt.
 
 [public/source] Sandbox profiles apply to the entire Grok process at startup,
 so in-process file tools and child commands inherit filesystem restrictions.
-The profile is fixed for the life of a session; resume refuses a different
+The profile is fixed for the life of a session. Resume refuses a different
 profile rather than silently widening or narrowing it.
 
 Built-ins include off, workspace, devbox, read-only, and strict. Custom profiles
@@ -762,7 +762,7 @@ their own configuration overrides individual keys. Worktree-isolated
 subagents can also fall back to the shared workspace when worktree setup or
 rehydration fails.
 
-[public] Linux glob denial expands files present at startup; matching files
+[public] Linux glob denial expands files present at startup. Matching files
 created later are not covered. macOS translates globs into runtime Seatbelt
 regex and covers later-created matches.
 
@@ -803,7 +803,7 @@ sessions remain normal session directories. The runtime has explicit
 coordinator, activity, roster, cancellation, usage-fold, and completion paths.
 
 [source] Depth is capped at one and child builders remove recursive task tools
-at that boundary. Foreground cancellation is scoped to the parent prompt;
+at that boundary. Foreground cancellation is scoped to the parent prompt.
 background work intentionally survives it. Children retain parent/prompt/
 session provenance, but share the parent's permission handle, terminal
 backend, environment, memory/config snapshots, scheduler, and MCP pool unless
@@ -928,7 +928,7 @@ settings also govern trace/research collection and remote behavior.
 
 [public/source] External OTEL is off by default and requires both a master
 switch and an exporter. It does not reuse SpaceXAI credentials. Prompt text and
-tool detail require separate gates; Bash command text is never exported in the
+tool detail require separate gates. Bash command text is never exported in the
 documented v1 schema.
 
 [schema] Metrics and events use closed attribute/event vocabularies with
@@ -976,7 +976,7 @@ provenance, or release-attestation bundle.
 
 [source] bin/protoc does use Dotslash with platform hashes, Cargo.lock pins
 registry checksums, and the Git dependency is commit-pinned. This proves the
-team understands content-addressed dependencies; it does not close the final
+team understands content-addressed dependencies. It does not close the final
 binary distribution chain.
 
 [source/limitation] Managed configuration includes an Ed25519,
@@ -1073,17 +1073,17 @@ the actual baselines, gate commands, platform matrix, and receipts.
 
 | Dimension | Grok Build | Codex | Claude Code snapshot | OpenAgents conclusion |
 | --- | --- | --- | --- | --- |
-| Rich-client seam | ACP plus shared leader and xAI extensions | Generated app-server used by TUI and rich clients | Bidirectional SDK stream but interactive owner still partly separate | One canonical generated protocol; ACP as adapter |
+| Rich-client seam | ACP plus shared leader and xAI extensions | Generated app-server used by TUI and rich clients | Bidirectional SDK stream but interactive owner still partly separate | One canonical generated protocol. ACP as adapter |
 | Managed runtime | Socket/lock leader with client caps, reconnect, update relaunch | App-server daemon and remote-control relay | Local engine plus evolving remote transports | Typed Pylon lifecycle and process generation |
 | Session state | Per-session ACP/chat JSONL, metadata, checkpoints, FTS5 | Rollout JSONL plus SQLite index/graph | Parent-linked JSONL plus sidecars | Append evidence plus indexed authority |
 | File recovery | Prompt-indexed snapshots and conflict-preview rewind | No general file rewind found | File-history checkpoint rewind | Keep Grok/Claude recovery with receipts |
-| Worktrees | First-class create/apply/remove/resume; Git/jj modes | Not first-class lifecycle in audited snapshot | Outcome-aware lifecycle | Typed worktree ownership and delivery |
+| Worktrees | First-class create/apply/remove/resume. Git/jj modes | Not first-class lifecycle in audited snapshot | Outcome-aware lifecycle | Typed worktree ownership and delivery |
 | Subagents | Independent sessions, capability modes, process-local dashboard | Persisted graph and rich protocol/TUI | Sidechain histories, topology partly implicit | Persistent graph plus fast roster/control |
 | Permission policy | Deny/ask/allow, compatibility, explicit known holes | Profiles, execpolicy, managed requirements | Layered trust/rules/hooks/classifier | Structured effects, canonical paths, deny first |
-| Containment | Whole-process Landlock/bwrap/Seatbelt; off by default and conditional | Cross-platform named profiles, proxy, fail-closed translation | Capable but opt-in in snapshot | Uniform fail-closed profiles and receipts |
+| Containment | Whole-process Landlock/bwrap/Seatbelt. Off by default and conditional | Cross-platform named profiles, proxy, fail-closed translation | Capable but opt-in in snapshot | Uniform fail-closed profiles and receipts |
 | Extensions | MCP, skills, plugins, hooks, Computer Hub | MCP, skills, plugins, apps, hooks, code mode | MCP, skills, plugins, hooks, agents | Signed isolated generations |
-| Terminal proof | Deep emulator/PTY/race/perf system | Extensive Ratatui snapshots and integration tests | Capable custom React terminal renderer; no tests in extract | Combine semantic snapshots with real PTY faults |
-| Updates | Atomic versioned swap plus leader relaunch; signature not visible | Signed release lanes and atomic standalone install | Multi-channel updater; signature not established in extract | Signed component ledger plus coordinated relaunch |
+| Terminal proof | Deep emulator/PTY/race/perf system | Extensive Ratatui snapshots and integration tests | Capable custom React terminal renderer. No tests in extract | Combine semantic snapshots with real PTY faults |
+| Updates | Atomic versioned swap plus leader relaunch. Signature not visible | Signed release lanes and atomic standalone install | Multi-channel updater. Signature not established in extract | Signed component ledger plus coordinated relaunch |
 
 ## 21. What OpenAgents should adapt
 
@@ -1103,25 +1103,25 @@ The subsequent
 turns this product direction into an exact TypeScript/Effect transport,
 method-coverage, Grok-package, schema-drift, capability, authority, and phased
 client implementation plan. It makes controlling Grok and other compatible
-coding agents the required direction; exposing OpenAgents as an agent is out
+coding agents the required direction. Exposing OpenAgents as an agent is out
 of scope.
 
 ### 21.2 Make Pylon lifecycle as explicit as the Grok leader
 
 Persist and expose:
 
-- runtime/process generation;
-- binary and protocol versions;
-- endpoint/socket and backend identity;
-- authenticated client identity and capability set;
-- readiness and active sessions;
-- update/relaunch state;
-- reconnect/eviction reason;
-- last transition; and
+- runtime/process generation.
+- binary and protocol versions.
+- endpoint/socket and backend identity.
+- authenticated client identity and capability set.
+- readiness and active sessions.
+- update/relaunch state.
+- reconnect/eviction reason.
+- last transition. And
 - bounded shutdown/flush outcome.
 
 Start must be idempotent. Replacement must avoid PID/socket reuse. A newer
-client may request a compatible relaunch; it may not silently kill active work
+client may request a compatible relaunch. It may not silently kill active work
 or attach to an unverified old process.
 
 Authenticate local clients with peer identity or a protected per-generation
@@ -1130,7 +1130,7 @@ bound every hot queue, and expose overload/backpressure as protocol state.
 
 ### 21.3 Copy the replay and retry ownership, not the durability ambiguity
 
-Use stable event IDs and reconnect cursors; fall back to full replay whenever
+Use stable event IDs and reconnect cursors. Fall back to full replay whenever
 incremental idempotency cannot be proven. During reload, gate live delivery,
 flush pending writes, replay the stable prefix, then delta-replay the appended
 tail. Assign transport retry to the provider/sampler layer and compaction,
@@ -1145,9 +1145,9 @@ file-plus-directory fsync for the checkpoints whose receipts claim durability.
 
 Use one typed transcript/command projection with:
 
-- full-screen workbench renderer;
-- native-scrollback renderer;
-- bounded headless JSON/NDJSON output; and
+- full-screen workbench renderer.
+- native-scrollback renderer.
+- bounded headless JSON/NDJSON output. And
 - ACP/editor projection.
 
 Define atomic frame, resize, focus, paste, selection, clipboard, image, crash
@@ -1158,13 +1158,13 @@ invariants.
 
 Combine:
 
-- pure reducer/buffer tests;
-- scenario fixtures;
-- emulator-backed PTY tests against a real binary;
-- real OS signals and terminal-mode cleanup;
-- leader/client reconnect and version skew;
-- clipboard, mouse, paste, resize, and scroll matrices;
-- fuzzing; and
+- pure reducer/buffer tests.
+- scenario fixtures.
+- emulator-backed PTY tests against a real binary.
+- real OS signals and terminal-mode cleanup.
+- leader/client reconnect and version skew.
+- clipboard, mouse, paste, resize, and scroll matrices.
+- fuzzing. And
 - checked-in p50/p95/p99 performance baselines per supported platform.
 
 The public gate should name exactly which ignored/real-host suites ran and
@@ -1198,11 +1198,11 @@ Use versioned staging, atomic publication, concurrent-update convergence,
 stale cleanup, bounded graceful drain, process relaunch, client reconnect, and
 session reload. Add the pieces absent from the public Grok path:
 
-- signed manifest and publisher identity;
-- artifact digest and transparency/provenance;
-- protocol/client compatibility range;
-- rollback floor and last-known-good set;
-- notarization/platform signature; and
+- signed manifest and publisher identity.
+- artifact digest and transparency/provenance.
+- protocol/client compatibility range.
+- rollback floor and last-known-good set.
+- notarization/platform signature. And
 - install/update/rollback receipts.
 
 ### 21.10 Preserve security-limit candor
@@ -1269,8 +1269,8 @@ green shield.
 
 Grok Build is now one of the strongest open references for the **terminal
 product** layer of an agent system. Codex remains the stronger generated
-rich-client protocol and cross-platform containment reference; OpenCode V2
-remains the clearest durable-admission/scoped-service reference; Claude Code
+rich-client protocol and cross-platform containment reference. OpenCode V2
+remains the clearest durable-admission/scoped-service reference. Claude Code
 remains the clearest historical recovery/worktree ergonomics reference. Grok
 adds the missing terminal-host discipline: a shared leader under ACP clients,
 two serious rendering modes, a fast multi-agent dashboard, deep local session
@@ -1288,14 +1288,14 @@ auth in a local JSON file, and exposes no public binary-signature gate.
 OpenAgents should adapt Grok Build's terminal and supervisor mechanics while
 keeping the stricter thesis already established by the other teardowns:
 
-- durable admission before execution;
-- one generated protocol and request processor;
-- complete agent graph and independent transcripts;
-- parent-intersected authority;
-- named fail-closed containment;
-- authority and execution receipts;
-- signed extension/component generations;
-- public-safe cross-device projections; and
+- durable admission before execution.
+- one generated protocol and request processor.
+- complete agent graph and independent transcripts.
+- parent-intersected authority.
+- named fail-closed containment.
+- authority and execution receipts.
+- signed extension/component generations.
+- public-safe cross-device projections. And
 - delivery, acceptance, and settlement distinct from agent completion.
 
 That combination would give OpenAgents a terminal surface as capable and

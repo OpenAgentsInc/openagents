@@ -32,12 +32,12 @@ stream sent to Probe remains the provider stream.
 
 Recorded events use:
 
-- `producerSystem: "openagents"`;
-- `sourceRoute: "openagents_provider_broker"`;
-- `provider: "google_gemini"`;
-- `backendProfile: "worker_secret_gemini_api_key"`;
-- `usageTruth: "exact"` when Gemini supplies `usageMetadata`;
-- actor user id from the authenticated programmatic agent; and
+- `producerSystem: "openagents"`.
+- `sourceRoute: "openagents_provider_broker"`.
+- `provider: "google_gemini"`.
+- `backendProfile: "worker_secret_gemini_api_key"`.
+- `usageTruth: "exact"` when Gemini supplies `usageMetadata`.
+- actor user id from the authenticated programmatic agent. And
 - safe metadata containing only provider HTTP status and succeeded/failed
   status.
 
@@ -67,9 +67,9 @@ Content-Type: application/json
 
 The response uses:
 
-- `provider: "google_gemini"`;
-- `providerSecretRef: "provider-account://google-gemini/worker-secret/GEMINI_API_KEY"`;
-- `materialization.kind: "probe_gemini_api_key"`;
+- `provider: "google_gemini"`.
+- `providerSecretRef: "provider-account://google-gemini/worker-secret/GEMINI_API_KEY"`.
+- `materialization.kind: "probe_gemini_api_key"`.
 - `materialization.target.name: "GOOGLE_GENERATIVE_AI_API_KEY"`.
 
 The grant response is a public-safe reference contract. It does not contain the

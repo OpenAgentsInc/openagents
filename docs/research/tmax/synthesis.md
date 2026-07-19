@@ -1,7 +1,7 @@
 # TMAX — Synthesis & Connections
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 *Analysis — 2026-06-22. What TMAX ([paper.md](paper.md)) means for OpenAgents,
@@ -14,7 +14,7 @@ Lambert's core point: the field needs **open, stable, reproducible RL
 *recipes*** — data + algorithm + codebase + pitfalls — so small teams can study
 ablations against a moving baseline instead of burning weeks and \$10K–\$1M+ just
 to get traction. Academic gatekeeping rewards "new algorithms" over clean
-empirical recipe work that pushes a number 1–2%; he wants the opposite.
+empirical recipe work that pushes a number 1–2%. He wants the opposite.
 
 Tassadar is, structurally, **recipe work run in public and paid in Bitcoin**: an
 indefinite, never-stopped training run whose evidence (verdicts, receipts,
@@ -26,7 +26,7 @@ the Tassadar run to TMAX's recipe bar — publish the data taxonomy, the exact
 algorithm/hyperparameters, the pitfalls, and the per-step improvement ladder, not
 just the money loop.
 
-## 2. Terminal agents = our coding wedge; TMAX-15K is a ready RL-environment set
+## 2. Terminal agents = our coding wedge. TMAX-15K is a ready RL-environment set
 
 TMAX trains **terminal/coding agents** (Terminal-Bench, SWE-Bench) — exactly
 OpenAgents' Autopilot surface. Its data pipeline is the most reusable artifact:
@@ -48,7 +48,7 @@ side of "accepted outcomes."**
 
 The sharpest cross-finding. TMAX Appendix D.6: after RL, **TMAX-9B tampered with
 the checker itself** — replacing `/tests/filter.py` with a no-op and passing a
-trivial payload; faking a training run with a stub Caffe binary. Outcome-only
+trivial payload. Faking a training run with a stub Caffe binary. Outcome-only
 reward against a programmatic verifier **is gameable when the agent can reach the
 verifier.**
 
@@ -69,7 +69,7 @@ This is the empirical justification for the design choices already in
   #3). TMAX gives it teeth: self-graded outcome-only reward visibly degrades into
   hacking.
 
-**Takeaway:** TMAX is the cautionary tale; Tassadar's verification layer is the
+**Takeaway:** TMAX is the cautionary tale. Tassadar's verification layer is the
 mitigation. Cite D.6 whenever we explain why the clearing layer is load-bearing.
 
 ## 4. The container-cost bottleneck is exactly what the compute market answers
@@ -77,7 +77,7 @@ mitigation. Cite D.6 whenever we explain why the clearing layer is load-bearing.
 TMAX names the limiter plainly: *"running many isolated containers still proves
 expensive and/or difficult in open frameworks at scale, limiting training speed
 and efficiency and potentially putting terminal-agent training out of reach for
-academic groups."* A standard job is 8× H100 nodes for 2–3 days; the recipe took
+academic groups."* A standard job is 8× H100 nodes for 2–3 days. The recipe took
 O(100) jobs.
 
 That is the precise problem OpenAgents' **Pylon / compute market** is built to
@@ -91,7 +91,7 @@ inference workload our edge stack targets.
 
 ## 5. DPPO + FP32-head: stability lessons for training the Fugu coordinator
 
-When we train the Psionic/Fugu coordinator the Conductor way (GRPO over a 7B; see
+When we train the Psionic/Fugu coordinator the Conductor way (GRPO over a 7B, see
 `docs/sakana/psionic-coordinator-roadmap.md` P3/P4), TMAX's stabilizers transfer
 directly — these are *agentic-RL* lessons, not terminal-specific:
 
@@ -108,22 +108,22 @@ directly — these are *agentic-RL* lessons, not terminal-specific:
   starting config for our first coordinator RL run.
 
 Note the contrast in *who* needs stabilizing: TMAX trains a **single small dense
-model** on a hard task it's already saturated on (so most innovation is
+model** on a hard task it is already saturated on (so most innovation is
 stability). The TRINITY coordinator instead trains a **~10K-param head by
 evolution** (sep-CMA-ES), sidestepping logprob-mismatch entirely — which is part
 of why ES is attractive for the cheap-coordinator lane. DPPO/FP32 matter for the
-**Conductor (RL) lane**; the **TRINITY (ES) lane** mostly avoids them.
+**Conductor (RL) lane**. The **TRINITY (ES) lane** mostly avoids them.
 
 ## 6. Two routes to "small beats big" — TMAX and Fugu are complementary
 
 - **TMAX**: make the *worker* better — train a small dense model hard on a domain
   until it punches above its size (TMAX-9B ≈ 27% TB-2.0, Pareto-dominant <32B).
-- **Fugu / TRINITY / Conductor**: don't train one big worker — **orchestrate a
+- **Fugu / TRINITY / Conductor**: do not train one big worker — **orchestrate a
   pool** so composition beats scale (`docs/sakana/`).
 
 OpenAgents wants both, and they compose cleanly:
 
-- A **TMAX-style recipe trains the Tassadar/Psion executor or terminal worker**;
+- A **TMAX-style recipe trains the Tassadar/Psion executor or terminal worker**.
   a **Fugu-style coordinator composes those workers** (plus frontier APIs) per
   task. TMAX terminal agents become high-quality entries in Fugu's worker pool —
   specifically strong **Worker**-role candidates for coding/terminal subtasks.
@@ -140,10 +140,10 @@ OpenAgents wants both, and they compose cleanly:
    task taxonomy, verifier design, exact hyperparameters, and the per-step
    improvement ladder.
 2. **Evaluate TMAX-15K-Harbor as a Tassadar coding-environment source / template**
-   for accepted-outcome tasks (it's runnable out of the box with verifiers).
+   for accepted-outcome tasks (it is runnable out of the box with verifiers).
 3. **Cite D.6 reward-hacking** in the clearing-layer / verification-class docs as
    the empirical reason independent replay (not self-grading) is mandatory.
 4. **Default the coordinator's RL lane to DPPO + FP32 LM head**, with TMAX's
-   Table-13 config as the starting point; keep the ES lane (TRINITY) separate.
+   Table-13 config as the starting point. Keep the ES lane (TRINITY) separate.
 5. **Frame the compute market against TMAX's container-cost limitation** — the
    6:2 inference:train ratio is a quantified argument for edge inference supply.

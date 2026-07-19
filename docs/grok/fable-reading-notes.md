@@ -22,7 +22,7 @@ code, issues, and product intent so fleets and humans can execute.
 | `MASTER_ROADMAP.md` | **Top-level sequencing wins** when docs disagree. Phases P0–P7. |
 | `README.md` | Index of roadmaps and analysis docs |
 | `EXECUTION.md` | How work ships: issues, worktrees, PRs, review, token counters |
-| `ROADMAP.md` | Desktop/harness/fleet workstreams (content authority; sequencing demoted) |
+| `ROADMAP.md` | Desktop/harness/fleet workstreams (content authority, sequencing demoted) |
 | `ROADMAP_QA.md` | Nightly QA cycle, budgets, visual/mobile tiers |
 | `ROADMAP_BIZ.md` | Business fulfillment funnel (intake → multiply) |
 | `ROADMAP_AFTER.md` | Market-contact / after-launch economy lanes |
@@ -35,7 +35,7 @@ From the 2026-07-07 strategy set, compressed:
 > OpenAgents is the front door to the agentic economy — coding agents you
 > dispatch from a phone, AI employees that run repeatable business work,
 > and the trust infrastructure (receipts, isolation, verification,
-> payments) that makes delegation safe. Come for the tool; stay for the
+> payments) that makes delegation safe. Come for the tool. Stay for the
 > network. Own the layer that matters (up to private models in *your*
 > walls). Every claim ships with a receipt.
 
@@ -56,7 +56,7 @@ the middle, sell work not seats.
 | Surface | Job |
 | --- | --- |
 | **Khala Code mobile** | Front door: App Store → GitHub → repo → cloud turn → PR |
-| **Khala Code desktop** | Operator console: fleets, inbox, multi-harness; editor as supervision instrument |
+| **Khala Code desktop** | Operator console: fleets, inbox, multi-harness. Editor as supervision instrument |
 | **openagents.com** | Counting house: pay, spend, roster, approvals, receipts, promises |
 | **Reactor** | Private open-weight inference inside customer trust boundary |
 
@@ -94,7 +94,7 @@ P0 MVP tested + store artifacts
 ```
 
 P0 is largely complete as of the master roadmap's 2026-07-07 status note
-(QAMs closed; store *artifacts* closed; public review submissions and
+(QAMs closed, store *artifacts* closed, public review submissions and
 launch-readiness issue remain owner-gated). Treat that status as a
 **fable-dated snapshot**, not live CI truth — re-check issues before acting.
 
@@ -102,33 +102,33 @@ launch-readiness issue remain owner-gated). Treat that status as a
 
 | System | Role in the thesis |
 | --- | --- |
-| **Agent Computers** | Isolation + metering; blast-radius sentence is product |
+| **Agent Computers** | Isolation + metering. Blast-radius sentence is product |
 | **agent_definition.v1** | Typed standing agents: tools, triggers, budgets, escalation |
 | **Blueprint** | Typed business ops / governance (company brain substrate) |
-| **Khala Sync** | Postgres-backed sync engine; one threads/agents/receipts plane |
-| **Promise registry** | Machine-readable claims; green only on evidence + owner |
+| **Khala Sync** | Postgres-backed sync engine. One threads/agents/receipts plane |
+| **Promise registry** | Machine-readable claims. Green only on evidence + owner |
 | **Behavior contracts** | UX expectations → typed oracles in the normal test sweep |
-| **QA Swarm** | Nightly agents against *our* product; productized as service |
-| **Exact accounting** | Counters are projections of receipt rows; else `not_measured` |
+| **QA Swarm** | Nightly agents against *our* product. Productized as service |
+| **Exact accounting** | Counters are projections of receipt rows. Else `not_measured` |
 | **Artanis** | Fleet administrator persona / operator automation |
 | **Pylon** | Provider/runtime surface (proposal: fold into Khala Code primary) |
 
 ## Strategy motifs that recur
 
-1. **Come for the tool, stay for the network** — harnesses churn; fleet +
+1. **Come for the tool, stay for the network** — harnesses churn. Fleet +
    receipts + economy are the durable layer. Labs can beat pure tool UX.
-2. **Wrapper, don't compete** — multi-harness orchestration over
-   Codex/Claude; product identity in trust/hosting/receipts.
+2. **Wrapper, do not compete** — multi-harness orchestration over
+   Codex/Claude. Product identity in trust/hosting/receipts.
 3. **Verticals are configs** — connectors + grounding corpus + verification
-   rubric; never product forks.
+   rubric. Never product forks.
 4. **Agency trap** — operator-minutes per engagement must fall as volume
    rises (BF-9.4 series).
-5. **Dogfood as sales** — point QA Swarm / fleet / Reactor Zero at ourselves;
+5. **Dogfood as sales** — point QA Swarm / fleet / Reactor Zero at ourselves.
    receipts become collateral.
-6. **ONE-UI** — React + Tailwind + TanStack Start for web; Protoss/StarCraft
-   blue; no light/dark split on primary surfaces.
+6. **ONE-UI** — React + Tailwind + TanStack Start for web. Protoss/StarCraft
+   blue. No light/dark split on primary surfaces.
 7. **Direction cleanup (2026-07-08)** — Effect Native full conversion is the
-   long UI bet; some Foldkit/Tassadar/training lanes demoted or retired in
+   long UI bet. Some Foldkit/Tassadar/training lanes demoted or retired in
    active sequencing (see cleanup audit).
 
 ## Analysis clusters (by date wave)
@@ -176,4 +176,4 @@ Code proposal.
 3. `2026-07-07-product-suite-...` + `overarching-roadmap-...`
 4. `2026-07-02-come-for-the-tool-stay-for-the-network.md`
 5. `EXECUTION.md` + active phase's issue index
-6. Deep-dive only the system you're about to touch
+6. Deep-dive only the system you are about to touch

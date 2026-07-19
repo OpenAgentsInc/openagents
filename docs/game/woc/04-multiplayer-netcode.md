@@ -1,7 +1,7 @@
 # WoC Multiplayer, Netcode, Persistence, and Moderation
 
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
-business focus (MASTER_ROADMAP rev 6).** Direction retained;
+business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
 the owner pulls it forward. Do not route new work from it now.
 
@@ -41,9 +41,9 @@ authoritative state into a read-only world the renderer consumes.
 
 `server/game.ts` runs a 50 ms interval that drains an accumulator in `DT` (0.05 s) steps:
 clear stale inputs (held keys dropped after 750 ms silence), `sim.tick()`, route per-player
-events, run anti-bot tick; then broadcast distance-tiered snapshots and a cheap ~1 Hz
-social-position push; autosave every 30 s. Clients stream movement intent at 20 Hz
-(`{ t:'input', forward, back, turn..., strafe..., jump, facing, seq }`); the server echoes
+events, run anti-bot tick. Then broadcast distance-tiered snapshots and a cheap ~1 Hz
+social-position push. Autosave every 30 s. Clients stream movement intent at 20 Hz
+(`{ t:'input', forward, back, turn..., strafe..., jump, facing, seq }`). The server echoes
 the input `seq` as an `ack` for latency telemetry.
 
 For the Verse, this does not mean a global 20 Hz Worker loop. It means Region DO command
@@ -57,10 +57,10 @@ tick architecture.
 This is the most valuable netcode pattern in WoC for us:
 
 - **Interest scoping with hysteresis.** Entities enter interest at ~90 yd
-  (`INTEREST_RADIUS`) and drop at ~100 yd (`INTEREST_DROP_RADIUS`); NPCs/landmarks use
+  (`INTEREST_RADIUS`) and drop at ~100 yd (`INTEREST_DROP_RADIUS`). NPCs/landmarks use
   120/130 yd. The gap prevents create/destroy churn at the boundary. On first sight an
-  entity is sent as a full record; afterward as a lite record (dynamics only) unless its
-  identity changed; on leaving interest it is pruned so re-entry re-sends full.
+  entity is sent as a full record. Afterward as a lite record (dynamics only) unless its
+  identity changed. On leaving interest it is pruned so re-entry re-sends full.
 - **Distance-tiered update rates.** Full rate within ~55 yd (nameplate/targeting/combat),
   half rate to ~80 yd, quarter beyond. The viewer's current target and anything attacking
   the viewer are always full rate.
@@ -121,12 +121,12 @@ All server-authoritative, mostly ephemeral in the `Sim`:
   credit, vanilla XP split bonuses, party roster pushed in the self snapshot only when
   changed.
 - **Trading**: staged and atomic. Both sides stage items/copper, can un-accept, and only a
-  mutual confirm commits; the server re-validates item validity and balances at confirm
-  time. Quest items cannot be traded; walking apart cancels.
+  mutual confirm commits. The server re-validates item validity and balances at confirm
+  time. Quest items cannot be traded. Walking apart cancels.
 - **Duels**: countdown, fight to 1 hp, no loot, forfeit on running away.
 - **Whispers / channels**: say/yell routed by distance (~90 yd event radius), party/guild
   routed via the social service, whispers cross-zone with `/r` reply tracking.
-- **Tap rights / away status**: first to damage owns loot/XP/credit; presence status
+- **Tap rights / away status**: first to damage owns loot/XP/credit. Presence status
   (online/combat/dungeon/dead) pushed to friends and guild on join/leave.
 
 ### Relevance to us
@@ -136,7 +136,7 @@ avatar/position rows and deltas) and, if/when we add peer interactions, the **at
 staged-confirm pattern for trades**. That pattern is the right template for any
 owner-gated, two-party Verse action (for example a confirmed tip/zap or co-sign).
 Parties/duels/tap-rights are game mechanics we would only adapt if the Verse grows
-group/competitive surfaces; note them, do not build them now.
+group/competitive surfaces. Note them, do not build them now.
 
 ## Auth and moderation
 
@@ -145,14 +145,14 @@ group/competitive surfaces; note them, do not build them now.
   separate per-account failed-login throttle (defeats distributed credential stuffing that
   per-IP limits miss), careful X-Forwarded-For handling.
 - **Chat moderation (two-tier + escalation).** Soft words = cosmetic, masked client-side
-  only if the user opts in; the server never blocks them. Hard words = server-enforced,
+  only if the user opts in. The server never blocks them. Hard words = server-enforced,
   **whole-token** matching (not substring, so "class" and "despicable" are safe) after
   Unicode confusable-folding (NFKD + leet map). **The hard list ships empty in
-  open-source; operators seed it privately** via env/admin. Strikes escalate
+  open-source. Operators seed it privately** via env/admin. Strikes escalate
   warning -> 10 min -> 1 h -> 24 h mute, stored in DB.
 - **IP block, bot detector, report target.** In-memory IP block list refreshed on an
-  interval; a behavioral bot-detector seam (private module) observing input/command/protocol
-  anomalies that can kick; player reports resolved to account ids for an admin queue.
+  interval. A behavioral bot-detector seam (private module) observing input/command/protocol
+  anomalies that can kick. Player reports resolved to account ids for an admin queue.
 
 ### Relevance to us
 
@@ -167,7 +167,7 @@ is a strong, ship-ready template to **adapt into the Cloudflare world command pa
   auth surface.
 - **Escalation ladder** (warn -> timed mutes) is a clean default for chat strikes.
 
-The bot-detector and IP-block specifics are server-shaped; we would implement equivalents
+The bot-detector and IP-block specifics are server-shaped. We would implement equivalents
 at the Worker/edge rather than port the Node modules.
 
 ## Net for the adaptation plan
@@ -176,7 +176,7 @@ High priority: **interest-scoped + distance-tiered + delta-encoded presence** in
 Region Durable Objects, **"absent means unchanged"** as a `WorldDelta` invariant,
 **bounded handshake buffering**, and **seq/ack command receipts**. Medium: **two-tier chat
 moderation with private hard-list seeding** and **per-account login throttle** in the
-Cloudflare command/auth path; **atomic staged-confirm** as the template for owner-gated
+Cloudflare command/auth path. **Atomic staged-confirm** as the template for owner-gated
 two-party Verse actions. Adapt, do not port: persistence (we use D1 + DO storage),
 parties/duels/tap-rights (game mechanics), bot-detector/IP-block (reimplement at the
 edge).

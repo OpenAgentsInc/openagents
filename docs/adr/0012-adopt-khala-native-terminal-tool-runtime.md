@@ -54,9 +54,9 @@ between local private artifacts and public-safe receipts.
 Chosen option: "Build a shared `@openagentsinc/khala-tools` runtime with
 Effect Schema-first built-ins and scoped authority services", because it gives
 Khala a native tool contract while reusing the strongest existing OpenAgents
-pieces: Probe for browser, PTY, scoped filesystem, and timeline primitives;
+pieces: Probe for browser, PTY, scoped filesystem, and timeline primitives.
 Pylon for workspace materialization, approval queue, assignment closeouts, and
-public-safe reporting; `packages/ui` for diff review.
+public-safe reporting. `packages/ui` for diff review.
 
 The accepted native core catalog is:
 

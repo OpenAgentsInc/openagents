@@ -28,11 +28,11 @@ The relevant public evidence endpoints are:
 | Resource | Endpoint | Use |
 |---|---|---|
 | Activity timeline | `GET /api/public/activity-timeline` | Cursor-addressable activity across Pylon presence, training, verification, settlement receipts, Forum, Artanis, and capacity snapshots. |
-| Activity timeline stream | `GET /api/public/activity-timeline/stream` | Server-sent event tail for the same public timeline event shape; resume with `since` or `Last-Event-ID`. |
+| Activity timeline stream | `GET /api/public/activity-timeline/stream` | Server-sent event tail for the same public timeline event shape. Resume with `since` or `Last-Event-ID`. |
 | Run summary | `GET /api/public/tassadar-run-summary` | One live summary for the Tassadar run, including run state, summary metrics, verification refs, and settlement rows. |
-| Run settlements | `GET /api/public/training/runs/{trainingRunRef}/settlements` | Receipt-backed per-run settlement rows; simulation and real Bitcoin rows stay distinct. |
+| Run settlements | `GET /api/public/training/runs/{trainingRunRef}/settlements` | Receipt-backed per-run settlement rows. Simulation and real Bitcoin rows stay distinct. |
 | Verification challenge | `GET /api/public/training/verification-challenges/{challengeRef}` | One public-safe verification challenge with digest/verdict refs and staleness metadata. |
-| Receipt detail | `GET /api/public/nexus-pylon/receipts/{receiptRef}` | Public-safe Nexus/Pylon receipt detail; no invoices, preimages, wallet material, or private payout targets. |
+| Receipt detail | `GET /api/public/nexus-pylon/receipts/{receiptRef}` | Public-safe Nexus/Pylon receipt detail. No invoices, preimages, wallet material, or private payout targets. |
 | Proof replay | `GET /api/public/proof-replays?ref={replayRef}` or `GET /api/public/proof-replays?mode=activity-timeline&from={iso}&to={iso}` | Deterministic public replay bundle for named stories or bounded generated activity timeline ranges. |
 | Product promises | `GET /api/public/product-promises` | Current claim registry. Use this before repeating product or world-first claims. |
 
@@ -51,7 +51,7 @@ Query parameters:
 | `since` | Cursor returned by a previous event. Returns events with a cursor greater than this value. |
 | `from` | Inclusive ISO-8601 lower timestamp bound. |
 | `to` | Inclusive ISO-8601 upper timestamp bound. |
-| `limit` | Event count, clamped to `1..200`; default is `50`. |
+| `limit` | Event count, clamped to `1..200`. Default is `50`. |
 | `kind` | Repeated or comma-separated event-kind filter. |
 | `source` | Repeated or comma-separated source-kind filter. |
 
@@ -62,7 +62,7 @@ Cursor ordering is stable and deterministic:
 ```
 
 Events sort by timestamp, then source kind, then event ref. Use `nextCursor`
-when present; otherwise the page is exhausted for the current filter.
+when present. Otherwise the page is exhausted for the current filter.
 
 ## Envelope
 
@@ -128,7 +128,7 @@ openagents.public_activity_timeline.v1`.
 ```
 
 Every event must carry `sourceRefs` or `blockerRefs`. A fresh `generatedAt`
-does not mean each source family is current; inspect `sourceLag`.
+does not mean each source family is current. Inspect `sourceLag`.
 
 Proof URL derivation used by `/activity`:
 
@@ -189,7 +189,7 @@ The metadata frame contains only timeline-envelope fields. Event frames carry
 `data.event` with the exact `PublicActivityTimelineEvent` shape shown above.
 The response also includes an `x-openagents-polling-fallback` header pointing
 to the equivalent JSON polling URL. Treat stream frames as observation-only
-progress signals; they do not grant payout, settlement, accepted-work,
+progress signals. They do not grant payout, settlement, accepted-work,
 deployment, provider, wallet, or claim authority.
 
 Source lag statuses:
@@ -197,7 +197,7 @@ Source lag statuses:
 | Status | Meaning |
 |---|---|
 | `current` | The source family was readable and within its declared lag bound. |
-| `stale` | The source family was readable but older than its bound; show caveat refs. |
+| `stale` | The source family was readable but older than its bound. Show caveat refs. |
 | `unavailable` | The source family could not be read or was not configured. |
 | `projection_gap` | The timeline knows the source family is needed but cannot project it safely. |
 
@@ -332,7 +332,7 @@ Safe copy:
 
 - "The public timeline observed a work claim."
 - "This row is a simulation settlement and does not count as real Bitcoin."
-- "This source family is stale/unavailable; see sourceLag and blocker refs."
+- "This source family is stale/unavailable. See sourceLag and blocker refs."
 
 Unsafe copy:
 

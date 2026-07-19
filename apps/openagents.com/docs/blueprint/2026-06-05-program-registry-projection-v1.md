@@ -20,12 +20,12 @@ agent reasoning out of the registry UI/API path.
 
 Promotion state is derived from Module Versions and Release Gates:
 
-- production modules project as `production`;
-- promotable release gates project as `promotable`;
-- blocked, rejected, failed, or self-promotion gates project as `blocked`;
-- draft or pending gates project as `review_pending`;
+- production modules project as `production`.
+- promotable release gates project as `promotable`.
+- blocked, rejected, failed, or self-promotion gates project as `blocked`.
+- draft or pending gates project as `review_pending`.
 - unpromoted module candidates project as `candidate`.
 
 The seed covers every Autopilot continuation action and leaves direct mutation
-disabled. Program Runs remain evidence-only; write authority still belongs to
+disabled. Program Runs remain evidence-only. Write authority still belongs to
 Action Submission plus approval and receipt paths.

@@ -124,7 +124,7 @@ artifact stays inside the local PR/main gate. See
   Accessibility for Terminal, iTerm, Codex, or the app running Bun.
 - `Packaged Khala Code app was not found`: run the build command above or set
   `QA_KHALA_CODE_APP_PATH`.
-- `No executable was found`: the `.app` bundle is incomplete; rebuild it.
+- `No executable was found`: the `.app` bundle is incomplete. Rebuild it.
 - `click failed: AX element not found`: inspect `native-desktop-axtree.json`.
   If the AX labels changed, rerun with selector overrides or a `point:x,y`
   coordinate fallback.
@@ -132,4 +132,4 @@ artifact stays inside the local PR/main gate. See
   name differ. Rerun with `--app-process-name` or
   `QA_KHALA_CODE_APP_PROCESS_NAME`.
 - Packaged app exits before or during the smoke: inspect the stdout/stderr JSONL
-  artifacts first; the child process is always shut down before the runner exits.
+  artifacts first. The child process is always shut down before the runner exits.

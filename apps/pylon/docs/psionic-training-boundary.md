@@ -16,7 +16,7 @@ The Pylon side owns these public-safe checks:
   an allowed Psionic signer ref before a training sidecar can be considered.
 - Training artifacts must match their manifest SHA-256 digest before they can
   count as usable model/runtime inputs.
-- The local sidecar lifecycle must reach `health_ready`; crashed, stopped, or
+- The local sidecar lifecycle must reach `health_ready`. Crashed, stopped, or
   merely started sidecars keep the boundary blocked.
 - `openagents.psionic.training_worker_receipt.v0.3` receipts must verify as
   signed by an allowed Psionic signer ref before Pylon imports them into

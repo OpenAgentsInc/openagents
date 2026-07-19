@@ -9,7 +9,7 @@
 
 ## Historical title
 
-Sarah-first: one front door (Khala Code MVP ships; everything else becomes
+Sarah-first: one front door (Khala Code MVP ships, everything else becomes
 what Sarah can do)
 
 Date: 2026-07-09 (rev 6.19 — FAR-FORWARD PARALLEL LANES RECONCILED)
@@ -22,12 +22,12 @@ still next), but residual status for EN/PY/CX/OB/WEB lanes is now current:
 
 | Issue | Commit(s) on `main` | Landed | Residual / status |
 |---|---|---|---|
-| **#8578 PY-1** | `1472a2f3c0`, `135a85d362`, `95022d2538` (+ earlier executor leaves) | Executor leaves: `dispatch-failure-taxonomy`, `effect-runtime-patterns`, `proof-redaction`, `required-artifact-gate`, `remote-verify`; shared: `ssh-target`, `execution-provider`. Package tests green (55+). | OPEN — wallet RC-binary/WASM, top-of-graph (`codex-agent-executor`/`assignment`/`khala-spawn`), RPC client consumption (PY-2), MCP consolidation |
-| **#8573 EN-4** | `38d61fc812` `/download`, `06e1381511` `/privacy` | Route inventory burn-down table + first public routes on EN DOM (`makeDomRenderer` + typed `ViewProgram`); convert-and-delete for those routes | OPEN — full burn-down (`/terms`, mid-size public, funnel batch, Foldkit `apps/web`) |
-| **#8549 CX-5** | `26c7fae5a3` mobile Connect Claude UI, `2aa841ffcb` CLI | Mobile Settings paste-token path + bearer local-auth; `pylon accounts connect claude` / `pylon auth claude` with `claude-oauth-token` (0600), public-safe projection | OPEN — live Firecracker Claude turn via `claude_pylon` + org-cloud receipt |
-| **#8561 OB-4** | `3e3cda4ccd` | Aiur batch approval operator surface; `no_send_without_approval_receipt.v1` preserved | OPEN — live Sarah S-8 reply/send at 100/day volume |
-| **#8595 WEB-1-EN** | `0625e8b291` (+ prior landing-en catalog work) | Full marketing catalog on `/landing-en` incl. `LogoRow`; catalog pin `effect-native/v26`; fail-soft tests | OPEN — owner copy sign-off + root cutover (`/` flip) |
-| **#8559 OB-2** | `4771af6560` | Fixture-tier ≥100 Apollo wave dry-run + subjectRef dedupe | **CLOSED** (completed); live Apollo production waves = operator follow-up |
+| **#8578 PY-1** | `1472a2f3c0`, `135a85d362`, `95022d2538` (+ earlier executor leaves) | Executor leaves: `dispatch-failure-taxonomy`, `effect-runtime-patterns`, `proof-redaction`, `required-artifact-gate`, `remote-verify`. Shared: `ssh-target`, `execution-provider`. Package tests green (55+). | OPEN — wallet RC-binary/WASM, top-of-graph (`codex-agent-executor`/`assignment`/`khala-spawn`), RPC client consumption (PY-2), MCP consolidation |
+| **#8573 EN-4** | `38d61fc812` `/download`, `06e1381511` `/privacy` | Route inventory burn-down table + first public routes on EN DOM (`makeDomRenderer` + typed `ViewProgram`). Convert-and-delete for those routes | OPEN — full burn-down (`/terms`, mid-size public, funnel batch, Foldkit `apps/web`) |
+| **#8549 CX-5** | `26c7fae5a3` mobile Connect Claude UI, `2aa841ffcb` CLI | Mobile Settings paste-token path + bearer local-auth. `pylon accounts connect claude` / `pylon auth claude` with `claude-oauth-token` (0600), public-safe projection | OPEN — live Firecracker Claude turn via `claude_pylon` + org-cloud receipt |
+| **#8561 OB-4** | `3e3cda4ccd` | Aiur batch approval operator surface. `no_send_without_approval_receipt.v1` preserved | OPEN — live Sarah S-8 reply/send at 100/day volume |
+| **#8595 WEB-1-EN** | `0625e8b291` (+ prior landing-en catalog work) | Full marketing catalog on `/landing-en` incl. `LogoRow`. Catalog pin `effect-native/v26`. Fail-soft tests | OPEN — owner copy sign-off + root cutover (`/` flip) |
+| **#8559 OB-2** | `4771af6560` | Fixture-tier ≥100 Apollo wave dry-run + subjectRef dedupe | **CLOSED** (completed). Live Apollo production waves = operator follow-up |
 | Prior closed (already in rev 6.16–6.17) | SQ-4 `#8621`, BM-5 `#8631` + epic `#8626`, MH-4 `#8590`, SQ-1/5/6/7, EN-2 `#8572`, MH-3 `#8589`, LiveAvatar `#8598` | See those revs | — |
 
 Queue head is unchanged: **#8615 OAV-5** → **#8620 SQ-3** → **#8619 SQ-2**
@@ -43,9 +43,9 @@ and the company brain are CAPABILITIES surfaced through her one
 conversational surface (video + Blueprint Map canvas, epic #8626), with
 the Khala model, gateway, and Pylon/Codex fleets as the engine room and
 the mobile app as Sarah in your pocket. Phase mechanics below are
-unchanged where they build capability; their FRONT ENDS re-target to
+unchanged where they build capability. Their FRONT ENDS re-target to
 Sarah's conversation + canvas: P2's user entry is Sarah (CLI/desktop stay
-power tools), P3/P4 become "deepen Sarah" (roles behind approval gates;
+power tools), P3/P4 become "deepen Sarah" (roles behind approval gates,
 CB-1 matures the Blueprint Map into the brain), the mobile home screen is
 Sarah, and the conversation loop's quality (OAV realtime #8610/#8621,
 turn latency, ASR, persona-neutral Khala lane #8600) is core-product P0
@@ -54,7 +54,7 @@ work. Prerequisite chain for the first vertical slice: BM-1..5
 conversation over the existing typed Khala→Pylon→Codex rail (dogfood,
 operator exemption) → #8600 persona-neutral model id for prod.
 Historical status at rev 6.19: this was the consolidated execution roadmap for
-the 2026-07-07 strategy set. That authority ended with the 2026-07-09 Sol reset;
+the 2026-07-07 strategy set. That authority ended with the 2026-07-09 Sol reset.
 the queue below no longer wins sequencing conflicts and must not receive new
 issues.
 
@@ -69,7 +69,7 @@ between-turns -> second-utterance -> idle profile at realtime cadence:
 24.03 fps utterance_2, 24.00 fps idle_10s, max inter-frame gap 0.746s,
 910 frames received, `failures: []`, final server state `idle`.
 Hydralisk commits: `80383251250f`, `78faf3c371e`,
-`73991d76e5`; OpenAgents receipt:
+`73991d76e5`. OpenAgents receipt:
 `docs/sarah/2026-07-09-oav2-render-service-closeout.md`. Also removed
 **#8559 OB-2** from the remaining queue: it is closed as completed at
 fixture-tier volume proof (`4771af6560`) with live Apollo production
@@ -84,17 +84,17 @@ state after `origin/main` reached `1472a2f3c0`. Four entries from the
 previous ordered queue are now closed and removed from the remaining-work
 list: **#8621 SQ-4** (owned renderer hardening: LiveAvatar fallback,
 MuseTalk invalid-bbox fail-closed, honest-fps labeling, deploy e2e smoke,
-and real-session simulator; openagents `d191755080`, hydralisk
+and real-session simulator. Openagents `d191755080`, hydralisk
 `8c08dad37`, receipt `docs/sarah/2026-07-09-sq4-hardening-receipt.md`),
 **#8631 BM-5** (split-layout deploy-smoke rail, `blueprint_delta` live
 proof, concurrent-ref isolation, and
 `sarah.split_screen_blueprint_map.v1` contract registry version
-`2026-07-09.2`; `b3048b7a0b`), **#8626 Sarah Blueprint Map epic**
-(BM-1..5 complete; owner visual review remains welcome but implementation
+`2026-07-09.2`. `b3048b7a0b`), **#8626 Sarah Blueprint Map epic**
+(BM-1..5 complete, owner visual review remains welcome but implementation
 gates are enforced), and **#8590 MH-4** (Grok Axis B worker executor plus
-RL-3/RL-5/RL-6 extended matrix; `a5754786d2`, `bun test` in
+RL-3/RL-5/RL-6 extended matrix. `a5754786d2`, `bun test` in
 `packages/grok-harness` → 11 pass). At that snapshot, the live open issue
-list was 32 items and **#8612 OAV-2** was next; rev 6.17 supersedes that
+list was 32 items and **#8612 OAV-2** was next. Rev 6.17 supersedes that
 queue state after the OAV-2 closeout and later OB-2 reconciliation.
 
 **Rev 6.15 changes (owner directive, 2026-07-09 — HOW FUTURE CODING
@@ -134,12 +134,12 @@ listed issue unless the owner tells the agent to stop.
    changes a contract, proof surface, public promise, or Effect Native
    demand.
 7. Run the targeted tests first, then the smallest relevant full suite.
-   A `--no-verify` push is not permission to skip validation; it is only
+   A `--no-verify` push is not permission to skip validation. It is only
    the owner-mandated push mechanism for this queue. If a known
    pre-existing check still fails, report the exact file/error in the
    issue closeout.
 8. Commit only scoped files from the worktree. Before pushing, fetch
-   `origin/main`; if main moved, rebase or replay the scoped commit onto
+   `origin/main`. If main moved, rebase or replay the scoped commit onto
    the new head without stashing or moving other agents' work.
 9. Push the finished commit directly to `main` with:
    `git push --no-verify origin HEAD:main`.
@@ -172,8 +172,8 @@ unit suites passed after BM-4 (`bun test` in `apps/sarah`: 264 pass).
 pass.
 
 **Ordered open-issue queue (OpenAgentsInc/openagents, checked
-2026-07-09 after `2aa841ffcb` / rev 6.19 parallel-lane reconcile; live
-`gh issue list` ~30 open; OAV/SQ head still first):**
+2026-07-09 after `2aa841ffcb` / rev 6.19 parallel-lane reconcile. Live
+`gh issue list` ~30 open. OAV/SQ head still first):**
 
 1. **#8615 OAV-5** — pre-rendered takes for opener/cache hits, using
    the now-owned renderer path and receipts.
@@ -186,7 +186,7 @@ pass.
 5. **#8610 OAV epic** — close after OAV-5/6 and the SQ quality lanes
    above have receipts.
 6. **#8600 KHS-1** — Sarah inference through Khala gateway: receipts,
-   cost caps, quota fallback lanes; reconcile current production state
+   cost caps, quota fallback lanes. Reconcile current production state
    with the issue and close only with proof.
 7. **#8607 KHS-8** — in-conversation payments: card attach + pay in
    chat, after the no-improvised-pricing/receipt path remains green.
@@ -195,21 +195,21 @@ pass.
 9. **#8467 Khala Code Mobile-Only MVP epic** — close only after the
     P0.8 launch-readiness receipt and mobile MVP proof set are complete.
 10. **#8571 EN hosting** — host effectnative.org on OpenAgents cloud:
-    Cloud Run service deployed; domain mapping still owner Google
+    Cloud Run service deployed. Domain mapping still owner Google
     Search Console verification only.
 11. **#8595 WEB-1-EN** — fully Effect Native landing. *Agent residual
     landed (`0625e8b291`): full marketing catalog on `/landing-en`.*
     Still open for owner copy sign-off + root cutover.
 12. **#8573 EN-4** — web absorption. *Progress: burn-down table +
     `/download` (`38d61fc812`) + `/privacy` (`06e1381511`) on EN DOM.*
-    Continue route-by-route (`/terms` next legal twin; then mid-size
+    Continue route-by-route (`/terms` next legal twin, then mid-size
     public / funnel batch / Foldkit tree).
 13. **#8597 MB-EN** — rewrite the Khala Code mobile app on Effect
     Native, with cross-app Khala Sync as exit proof.
-14. **#8574 EN-5** — Khala Code desktop conversion to Effect Native;
+14. **#8574 EN-5** — Khala Code desktop conversion to Effect Native.
     this is also the substrate for PY-2.
 15. **#8575 EN-6** — canvas/Verse under the Effect Native canvas
-    contract; fold in the three-effect kernel and retire the Foldkit
+    contract. Fold in the three-effect kernel and retire the Foldkit
     adapter.
 16. **#8566 EN epic** — close after the EN child issues above produce
     receipts and downstream surfaces are actually on the substrate.
@@ -225,31 +225,31 @@ pass.
 20. **#8547 CX-3** — Codex inside the Agent Computer: broker
     redemption, scratch `CODEX_HOME`, `codex_app_server` org-cloud proof.
 21. **#8588 MH-9** — cloud parity for Grok/Claude workers on Agent
-    Computers; strictly after #8547 is genuinely green.
+    Computers. Strictly after #8547 is genuinely green.
 22. **#8546 CX-2** — mobile Codex connect: phone device-auth into token
-    custody and accounts UI. *Code-complete; owner re-test only.*
+    custody and accounts UI. *Code-complete. Owner re-test only.*
 23. **#8548 CX-4** — harness/target selection UX: execution targets,
-    per-thread pill, quota-aware auto. *Code-complete; live proof
+    per-thread pill, quota-aware auto. *Code-complete. Live proof
     gated on CX-2 owner + CX-3.*
 24. **#8549 CX-5** — Claude account parity. *Agent residual advanced:
     mobile Connect Claude UI (`26c7fae5a3`) + CLI
     `pylon accounts connect claude` / `pylon auth claude`
     (`2aa841ffcb`).* Residual: live Firecracker `claude_pylon` turn.
 25. **#8550 CX-6** — Codex session continuity across ephemeral
-    microVMs; thread resume survives reclaim. *Fixture tier done;
+    microVMs. Thread resume survives reclaim. *Fixture tier done.
     live multi-provision proof needs CX-3.*
 26. **#8551 CX-7** — multi-account concurrency + rotation in the
     cloud: per-account serialization and typed queueing. *Fixture tier
-    done; live dual-thread needs CX-3.*
+    done. Live dual-thread needs CX-3.*
 27. **#8552 CX-8** — daily-driver ergonomics from the phone:
     steer/interrupt/follow-up and monorepo-scale workspaces.
 28. **#8553 CX-9** — dogfood cutover: our coding runs through Khala
     Code mobile on our own Codex.
 29. **#8558 OB-1** — Sarah sending identity + deliverability foundation.
-    *Owner arming + live proof send done; residual: opt-out round-trip,
+    *Owner arming + live proof send done. Residual: opt-out round-trip,
     warm-up cap refusal, deliverability webhooks → ledger.*
 30. **#8561 OB-4** — draft→approve→send at 100/day. *Batch approval
-    operator surface landed (`3e3cda4ccd`); residual: live Sarah S-8
+    operator surface landed (`3e3cda4ccd`). Residual: live Sarah S-8
     reply handling at volume.*
 
 **Rev 6.13 changes (owner directive, 2026-07-09 — SARAH BLUEPRINT MAP
@@ -262,15 +262,15 @@ graph / buttons / code / chat etc." Epic **#8626**, lanes **BM-1..5
 spec's own named-but-deferred visual surface ("Blueprint Map") arrives
 as Sarah's prospect-facing graph: the KHS-9 customer Blueprint draft +
 KHS-2 distilled facts project onto the EXISTING Effect Native
-`GraphFigure` (catalog v19, effect-native#37 — the arbiter-graph model;
+`GraphFigure` (catalog v19, effect-native#37 — the arbiter-graph model,
 the vendored v26 snapshot already includes the DOM/SVG path), streamed
 live over the AV-3 SSE bus via new typed `blueprint_delta` events, on a
-split desktop layout (video ~50vw full-height left; right pane = tabbed
+split desktop layout (video ~50vw full-height left, right pane = tabbed
 canvas: Blueprint map / chat / actions / code+receipts) that also
 settles the owner's "too much bullshit on the page" verdict (declutter
-cuts listed in the audit; the AI-disclosure banner stays, copy
+cuts listed in the audit. The AI-disclosure banner stays, copy
 unchanged). Edges light only from real provenance
-(matchedNeedTurnIds/receipts — the arbiter law); KHS-3 isolation,
+(matchedNeedTurnIds/receipts — the arbiter law). KHS-3 isolation,
 no-improvised-pricing, and the EN demand-register discipline
 (components upstream, never local one-offs) bind every lane.
 Cross-linked to EN-6 #8575 (the same typed model moves onto the unified
@@ -280,7 +280,7 @@ gate). See the P1 "Sarah Blueprint Map surface" entry.
 
 **Rev 6.12 changes (2026-07-09 — OAV QUALITY PROGRAM adopts the owner's
 research doc):** the owned avatar video lane family (epic **#8610**,
-OAV-1..6 #8611–…; OAV-4 renderer seam #8614 landed) gets an explicit
+OAV-1..6 #8611–…. OAV-4 renderer seam #8614 landed) gets an explicit
 quality program driven by `docs/sarah/research.md` (the owner's
 prioritized paper/repo triage: LatentSync 1.6, FLAIR, RIFE,
 CosyVoice2/3, MuseTalk tuning, BasicVSR++/RealBasicVSR, tamed GFPGAN,
@@ -289,9 +289,9 @@ recorded as policy in `docs/sarah/2026-07-09-oav-quality-strategy.md`
 (adopted plan + empirical status) and the pipeline spec's new §9
 (enhancement/quality-tier policy). Empirical state: the tamed-GFPGAN v3
 recipe (alpha-blend + feathered mask + temporal EMA) measured the
-smoothest take (jerk 0.15); LatentSync 1.6 is the articulation winner
-but shows a 16-frame chunk-boundary hitch; the opener library v1 is
-rendered both ways awaiting QA; FLAIR (MIT — corrects the earlier
+smoothest take (jerk 0.15). LatentSync 1.6 is the articulation winner
+but shows a 16-frame chunk-boundary hitch. The opener library v1 is
+rendered both ways awaiting QA. FLAIR (MIT — corrects the earlier
 "every temporal restorer is license-blocked" claim), RIFE 48fps,
 CosyVoice prosody variants, and Hallo2 remain queued. Full-strength
 per-frame GFPGAN is banned as a default enhancer. See the P1 "OAV
@@ -302,16 +302,16 @@ lane family):** spoken to Sarah herself in her own production surface and
 executed the same night. Epic **#8599**, lanes **KHS-1..9 (#8600–#8608)**,
 grounded in `2026-07-09-sarah-khala-connection-assessment.md`: gateway
 inference migration first (the owner's own session — 54 persisted turns —
-was degraded by a per-VAD-fragment 429 quota storm on the raw key; an
+was degraded by a per-VAD-fragment 429 quota storm on the raw key. An
 interim per-model fallback chain shipped same night), then prospect
 memory ("she learns the user she's talking to"), the cross-prospect
 isolation law BEFORE owner-approved collective learning (the admin
 approval queue for anything she learns generally), Sarah's own Blueprint
 (the P4 `ai_employee.v1` seed as data migration), the semantic answer
-cache (embedding-matched non-LLM responses; pre-recorded audio gated on
+cache (embedding-matched non-LLM responses, pre-recorded audio gated on
 the LITE lane), and in-conversation account creation + payments (sign
 up, log in, attach a card, and pay without leaving the chat). Sequenced
-under P1/P4; the semantic-routing invariant, registry honesty, and
+under P1/P4. The semantic-routing invariant, registry honesty, and
 no-improvised-pricing bind every lane. Also same night: the avatar
 opener simplified by owner copy edit ("Hello! I'm Sarah. What's on your
 mind today?") with a base-context cache TTL so copy edits propagate
@@ -331,10 +331,10 @@ text and voice. Components pop via SDK data-channel transcriptions + a
 session-keyed SSE tool-effect bus into typed cards. **The /sarah surface
 is reauthored in Effect Native** (`@effect-native/core` + DOM renderer,
 zero React, the hand-rolled sarah.js shell deleted) — satisfying the
-open SM-2 item on #8594; the avatar video mounts in a sibling container
+open SM-2 item on #8594. The avatar video mounts in a sibling container
 pending a `media-video` Host kind (demand filed in
 `docs/sarah/EN-GAPS.md` → EN-2 #8572). Session minting is S-3-guarded
-(caps + usage JSONL — avatar minutes are credit-metered); LITE mode
+(caps + usage JSONL — avatar minutes are credit-metered). LITE mode
 (1 vs 2 credits/min, BYO STT/TTS) is deferred until usage data justifies
 it. Owner gates: production avatar_id selection (sandbox default until
 then) and the LiveAvatar credit budget.
@@ -346,20 +346,20 @@ removed, CRM email rail replacing the local Resend/suppression stack,
 migration receipt + redaction audit in `docs/sarah/MIGRATION.md`), and
 the private repo is marked historical. **Serving amendment recorded
 during execution:** no `sarah.openagents.com` subdomain — Sarah mounts
-at **`openagents.com/sarah`** (`/sarah/api/*`; recorded as
+at **`openagents.com/sarah`** (`/sarah/api/*`, recorded as
 owner-directed in `docs/sarah/MIGRATION.md` — flag to the owner if that
 attribution is wrong). Forward references below are updated to the
-`/sarah` path; historical paragraphs keep the subdomain as written.
+`/sarah` path. Historical paragraphs keep the subdomain as written.
 A post-landing review re-ran every oracle from a clean checkout and
 hardened two: the S-13 smoke was non-idempotent (state accumulation
 under `.sarah/` failed reruns) and S-3 required a hand-configured
 server and printed minted client tokens — both fixed (S-3 now spawns
-its own isolated capped server and redacts tokens; S-12 re-verified
+its own isolated capped server and redacts tokens. S-12 re-verified
 6/6 live). **Honest SM-2 status:** the shipped surface is a zero-React
-DOM shell with EN demand recorded in `docs/sarah/EN-GAPS.md`; authoring
+DOM shell with EN demand recorded in `docs/sarah/EN-GAPS.md`. Authoring
 it in actual Effect Native components remains OPEN on #8594 — the
 mandate is not satisfied by the interim shell. SM-5 mount on openagents-monolith ships with the path cutover
-(`/sarah` → handleSarahRequest); live S-12 + Vercel teardown complete the
+(`/sarah` → handleSarahRequest). Live S-12 + Vercel teardown complete the
 lane, then SM-6 final retirement receipts.
 
 **Rev 6.7 changes (owner directive, 2026-07-09 — SARAH IN-REPO, EFFECT
@@ -369,13 +369,13 @@ separate-repo posture is **reversed**: `OpenAgentsInc/sarah` consolidates
 into this monorepo as `apps/sarah/` (Bun/Effect service, Effect Native
 UI on the DOM renderer, Cloud Run from monorepo-built images), following
 the Cloud-consolidation pattern (#8591). Plan:
-`2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md`; epic
+`2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md`. Epic
 **#8594** (lanes SM-0..6: freeze/scrub → port-as-move → EN voice surface
 → email/CRM convergence onto the one approval-gated rail → owned Effect
 agent runtime replacing eve → cutover → repo retirement). Superseded:
-sarah#14 (Next lift-and-shift) and sarah#15 (TanStack port); remaining
+sarah#14 (Next lift-and-shift) and sarah#15 (TanStack port). Remaining
 sarah S-6/S-7/S-8/S-11 scope absorbs into the SM lanes. Authority is
-unchanged (the openagents.com API stays the system of record; in-repo
+unchanged (the openagents.com API stays the system of record, in-repo
 Sarah calls
 its public APIs), and the P1 SR exit receipts are unchanged — this
 moves where Sarah lives and what renders her, not what she must prove.
@@ -387,11 +387,11 @@ deploy of the `#8591` cloud consolidation ("Phase 6"), executed same-night:
 linux/amd64 images for `oa-codex-control`/`oa-workroomd`/`oa-node` built and
 pushed from **this monorepo** to Artifact Registry
 (`us-central1-docker.pkg.dev/openagentsgemini/oa-cloud`, tag
-`openagents-main-a82a8dd358e0`); production instance `oa-codex-control-1`
-redeployed onto that image and confirmed live (`GET /healthz` → 200); a real
+`openagents-main-a82a8dd358e0`). Production instance `oa-codex-control-1`
+redeployed onto that image and confirmed live (`GET /healthz` → 200). A real
 live smoke sequence passed against it (`cloud-gcp` placement →
 `cloud.gce.provisioned` + `cloud.gce.resource_usage_receipt`, cancel 202,
-fake Cloud-VM lifecycle ok); `oa-workroomd` staged for guest bake on
+fake Cloud-VM lifecycle ok). `oa-workroomd` staged for guest bake on
 `agent-computer-gce-1`. Full receipt:
 `docs/cloud/receipts/2026-07-09-phase6-openagents-cutover.md`.
 
@@ -403,7 +403,7 @@ microVM lane is the **separate** host `agent-computer-gce-1`. Do not
 conflate "the control plane is live" with "in-VM Codex execution is
 proven" — they are different hosts and different proofs. Per the
 receipt's own #8503 DoD table: control-plane-from-monorepo, live
-placement+receipts, and fake-VM lifecycle are **done**; the full
+placement+receipts, and fake-VM lifecycle are **done**. The full
 mobile-dispatched Firecracker turn with writeback + exact token receipt is
 **not re-run this pass** — prior substrate proofs exist on
 `agent-computer-gce-1`, but a fresh one still needs `work_context` armed +
@@ -425,7 +425,7 @@ burn-down — status + unblocks, no new policy):** a sustained multi-agent
 parallel push closed **28 issues** across `openagents` + public
 `effect-native`, fixed **3 live production incidents**, merged **1 PR**, and
 correctly reopened **1** issue after independent re-verification found it
-didn't meet its acceptance criteria on first close. Headlines:
+did not meet its acceptance criteria on first close. Headlines:
 
 - **The full MH wave (§MH) is COMPLETE**: MH-0 `#8581` → MH-1 `#8582` → MH-2
   `#8583` → MH-5 `#8584` → MH-6 `#8585` → MH-8 `#8587`, every one
@@ -444,14 +444,14 @@ didn't meet its acceptance criteria on first close. Headlines:
   (1) Khala completions had been returning 502 **since 2026-07-05** — root
   cause was an exhausted OpenRouter platform credit balance whose 402 was
   misclassified non-retryable, so requests never overflowed to the healthy
-  Vertex/Fireworks lanes; fixed + deployed
+  Vertex/Fireworks lanes. Fixed + deployed
   (`docs/incidents/2026-07-08-khala-502-openrouter-credit-exhaustion-aar.md`).
   (2) That same investigation found a **latent deploy blocker** (dangling
   imports from the PRUNE) that would have blocked any deploy from `main` —
   fixed in the same pass. (3) `khala-sync-pg` had been hitting its
   100-connections-per-instance cap since ~2026-07-07 (10 call sites
   constructing a fresh `postgres.js` client per statement instead of sharing
-  a pool); fixed, staged, promoted to prod, and verified against **live
+  a pool). Fixed, staged, promoted to prod, and verified against **live
   production traffic** (the error flood confirmed stopped at the exact
   revision cut).
 - **Pylon fold (PY-1 `#8578`) — multi-session progress, not yet closed
@@ -461,7 +461,7 @@ didn't meet its acceptance criteria on first close. Headlines:
   remote/artifact/redaction leaves, Claude executor, etc.), and an RPC
   contract seed are extracted into `packages/pylon-core`. The Spark
   wallet is **deliberately still untouched** (needs RC-binary
-  verification not available headlessly; the owner's live-rail mandate
+  verification not available headlessly. The owner's live-rail mandate
   is being honored). Top-of-graph `codex-agent-executor` / `assignment`
   / `khala-spawn` and MCP consolidation remain.
 - **Cloud repo consolidation (`#8591`) landed** — the private
@@ -474,23 +474,23 @@ didn't meet its acceptance criteria on first close. Headlines:
   `CODEX_HOME`-on-scratch, org-capacity billing, the owner-local
   `codex_app_server` dispatch lane). The real remaining wall: no
   source-controlled rootfs build script exists yet (hand-`debootstrap`ped on
-  the GCE host), and `provider_credential_policy: broker_only` isn't yet
+  the GCE host), and `provider_credential_policy: broker_only` is not yet
   threaded into the Rust crates. A #8591 residual bug (a build script
   pointing at pre-move Dockerfile paths that would have broken the image
-  build) was found and fixed in the same pass; a second #8591 residual (a
+  build) was found and fixed in the same pass. A second #8591 residual (a
   smoke script landing non-executable) was fixed via PR `#8592`, reviewed
   and merged same night.
 - **EN-1 → EN-3, Effect Native landing/mobile proofs**: the `/stage1` web
-  route (EN-1) is the first production-adjacent Effect Native render; EN-3
+  route (EN-1) is the first production-adjacent Effect Native render. EN-3
   `#8568` proved the React Native adapter on one new (not migrated) mobile
   screen — discovering along the way that the premise "desktop already
   consumes effect-native" was false (only the web app did), and that landing
   required bumping the web app's vendored `core`/`render-dom` snapshot from
   v0 to v5 — verified independently to NOT regress `/stage1`.
-- **Public `effect-native` repo**: Phase 2 is fully complete; Phase 3 is
+- **Public `effect-native` repo**: Phase 2 is fully complete. Phase 3 is
   4/5 (DevTools, gallery, testkit, the guide — the guide was caught mid-close
   on a premature merge and correctly reopened, then genuinely completed on a
-  second pass); Phase 4 (`#20` epic) is deep in progress — 12 of ~22 child
+  second pass). Phase 4 (`#20` epic) is deep in progress — 12 of ~22 child
   issues closed in two large sequential batches (a monolith-file collision
   pattern: `packages/core/src/index.ts` is shared by every catalog issue, so
   one agent works the queue serially rather than many agents racing the same
@@ -505,22 +505,22 @@ coding claim registry) and with **CX-3 `#8547` as the protected cloud
 linchpin whose capacity is never reassigned**. Authorities: the Fable
 analysis + Grok dialogue in
 `2026-07-08-multi-harness-parallelization-effect-native-analysis.md`
-(§1–§12; consensus complete) and the `docs/grok/` pair. Settled law:
-Axis A (chat harness) ≠ Axis B (worker kind); Grok enters via ACP
-(`grok agent stdio`), never TUI scraping; contract-first waves; the
+(§1–§12, consensus complete) and the `docs/grok/` pair. Settled law:
+Axis A (chat harness) ≠ Axis B (worker kind). Grok enters via ACP
+(`grok agent stdio`), never TUI scraping. Contract-first waves. The
 June 29 claims/verify/refill/product-visibility laws hold at 3×
-engines; **one typed intent/mutator vocabulary shared by Effect Native
-UI and Khala Sync** (steering is serializable data end to end); the
+engines. **One typed intent/mutator vocabulary shared by Effect Native
+UI and Khala Sync** (steering is serializable data end to end). The
 multi-harness cockpit is the effect-native Phase 4 catalog build
-(demand via EN-2 `#8572`); the Grok executor is born inside the rev 6.3
-`pylon-core` boundary; an enum-driven **harness conformance suite**
-makes adapter consistency mechanical; `auto` v1 is deliberately dumb
+(demand via EN-2 `#8572`). The Grok executor is born inside the rev 6.3
+`pylon-core` boundary. An enum-driven **harness conformance suite**
+makes adapter consistency mechanical. `auto` v1 is deliberately dumb
 and fully typed. **Free-Grok economic window:** Grok 4.5 is currently
 free for us — bias fixture/dogfood fan-out toward Grok under *measured*
 rate-limit ceilings (RL-1..6 probes), encoded as
 `marginal_cost_class: free|subscription|api_metered|not_measured` on
 capacity rows, never hard-coded. Division of labor: **the Grok lane
-files and executes its own adapters (MH-3/MH-4 + RL probes)**; the main
+files and executes its own adapters (MH-3/MH-4 + RL probes)**. The main
 fleet owns the spine — filed tonight as **MH-0 `#8581` (serial Wave 0),
 MH-1 `#8582`, MH-2 `#8583`, MH-5 `#8584`, MH-6 `#8585`, MH-7 `#8586`,
 MH-8 `#8587`, MH-9 `#8588`**, dispatched as the disjoint-path subagent
@@ -538,36 +538,36 @@ the Pylon-into-Khala-Code proposal
 (`2026-07-08-pylon-into-khala-code-proposal.md`) is **ACCEPTED**:
 **Khala Code desktop is the primary human surface for everything Pylon
 does**, on the daemon-cockpit model — typed `pylon-core` engine packages
-(custody, executor, presence, wallet) behind a typed RPC contract; a
-desktop-optional engine daemon carries 24/7 standing capacity; the
-desktop's stdout-subprocess seam is deleted; one MCP surface (Khala
+(custody, executor, presence, wallet) behind a typed RPC contract. A
+desktop-optional engine daemon carries 24/7 standing capacity. The
+desktop's stdout-subprocess seam is deleted. One MCP surface (Khala
 Code's). Gate resolutions: the name stays **Pylon** (npm
-`@openagentsinc/pylon` continuity, no rebrand); the **OpenTUI surface is
-retired**, gated on desktop cockpit-parity receipts; **the Spark wallet
+`@openagentsinc/pylon` continuity, no rebrand). The **OpenTUI surface is
+retired**, gated on desktop cockpit-parity receipts. **The Spark wallet
 is preserved as a live rail by owner mandate** (never a retirement
 candidate — it stays in the engine daemon, surfaced read-only in the
-desktop); the non-Spark earning/labor rails go to `#8577`'s Wave-4
+desktop). The non-Spark earning/labor rails go to `#8577`'s Wave-4
 ask-first list. Lanes filed: **PY-1 `#8578`** (pylon-core extraction +
-daemon + typed RPC; runs after `#8577` waves 1–2), **PY-2 `#8579`**
+daemon + typed RPC. Runs after `#8577` waves 1–2), **PY-2 `#8579`**
 (desktop cockpit parity — Go online toggle, accounts/runs/receipts —
 authored Effect Native, rides EN-5 `#8574`), **PY-3 `#8580`** (TUI
 retirement, gated on PY-2). Boundaries unchanged: org-cloud CX lanes,
 server dispatch gates, token accounting, payments/credits, and the
-`khala fleet connect` CLI front door are untouched; owner-local capacity
+`khala fleet connect` CLI front door are untouched. Owner-local capacity
 and org-cloud remain two additive rails meeting only at the shared
 custody registry.
 
 **Rev 6.2 changes (2026-07-08 evening — status refresh, no policy
 change):** the status snapshot and review addendum are reconciled
 against `origin/main` and live production: `#8569` pylon-stats is
-repaired and CLOSED (live probe `available:true`); the docs/direction
+repaired and CLOSED (live probe `available:true`). The docs/direction
 cleanup `#8576` is CLOSED (RETIRED FOR NOW / SUPERSEDED / POSTPONED /
-HISTORICAL banners landed, `docs/RETIRED.md` ledger live); **the
+HISTORICAL banners landed, `docs/RETIRED.md` ledger live). **The
 Tassadar/Psionic code-removal gate on `#8577` is LIFTED by owner
 direction** — physical removal to the `backroom` archive is now
-mandated execution work; **EN-1's first render receipt landed** (the
+mandated execution work. **EN-1's first render receipt landed** (the
 `/stage1` Effect Native staging route,
-`2026-07-08-en-1-stage1-effect-native-receipt.md`); and OB-2's Apollo
+`2026-07-08-en-1-stage1-effect-native-receipt.md`). And OB-2's Apollo
 wave-ingest path landed as code. The "Retired programs" subsection is
 re-homed to the end of the snapshot (it had split the review addendum).
 
@@ -575,22 +575,22 @@ re-homed to the end of the snapshot (it had split the review addendum).
 CONVERSION, ASAP):** the **entire repository converts to Effect Native as
 fast as the substrate allows.** Rev 5's pacing rule ("greenfield adopts
 first, shipping code migrates on touch, nothing working is rewritten just
-to move it; EN rides inside product work") is **revoked as pacing** — it
+to move it. EN rides inside product work") is **revoked as pacing** — it
 survives only as the safety floor: every conversion PR keeps its
 surface's tests, QAM gates, and behavior contracts green, and nothing
 destabilizes the P0 store-submission artifacts. Concretely: (1) §EN gains
 a **conversion program** (waves CV0–CV5) run as dedicated parallel lanes
 — conversion is first-class scheduled work, no longer a rider inside
-product phases; (2) the previously deferred EN lane issues are **filed
+product phases. (2) The previously deferred EN lane issues are **filed
 now** — EN-2 #8572 (catalog demand), EN-4 #8573 (web absorption), EN-5
 #8574 (Khala Code desktop conversion), EN-6 #8575 (canvas/Verse) — and
 EN-3 #8568 is upgraded from migrate-on-touch to a **scheduled mobile
-burn-down**; (3) Khala Code desktop's shell target is **Effect Native**
+burn-down**. (3) Khala Code desktop's shell target is **Effect Native**
 via the effect-native Phase 4 epic (effect-native#20, children #21–#43,
 filed 2026-07-08: desktop adapter, canvas renderer, foreign-host `Host`
 node, interaction expansion, theme, streaming binding, and the full
 desktop component set) — **the earlier React+Tailwind shell-rewrite plan
-is cancelled**; (4) discipline 5 and the repo agent contract (CLAUDE.md
+is cancelled**. (4) Discipline 5 and the repo agent contract (CLAUDE.md
 UI clause) are amended in the same commit. Dependency order still binds:
 the public `OpenAgentsInc/effect-native` repo is the substrate critical
 path (Phase 2/3 issues #9–#19, Phase 4 epic #20–#43 gate the waves) —
@@ -603,29 +603,29 @@ surface in this repo converges on **Effect Native** — one typed
 Effect-Schema component set with typed intents, an Effect v4 runtime, and
 thin swappable renderers (see `../effect-native/` and the public framework
 repo `OpenAgentsInc/effect-native`). This supersedes the 2026-07-04 ONE-UI
-"React + Tailwind everywhere" clause **for new surfaces**; React/TanStack
+"React + Tailwind everywhere" clause **for new surfaces**. React/TanStack
 Start and React Native remain as renderer adapters and serving hosts, never
 the architecture. Concretely in this rev: (1) a new cross-phase **EN lane
 family** (§EN below) binds the public effect-native ROADMAP phases 0–6 to
 the product phases here, so each substrate piece is built exactly when it
-unlocks the next product surface's refactor; (2) **WEB-1 (#8565) forward
+unlocks the next product surface's refactor. (2) **WEB-1 (#8565) forward
 work is rescoped** — the landed Phase 1 React replica (`/demo`, `/new`)
 stands as the visual reference/baseline, and the production root-cutover
 landing is authored in the Effect Native component set with launch-ui's
-theme ported into tokens, not adopted as React components; (3) Sarah's UI
-work (sarah#15 / S-10) folds into the Effect Native web renderer;
+theme ported into tokens, not adopted as React components. (3) Sarah's UI
+work (sarah#15 / S-10) folds into the Effect Native web renderer.
 (4) cross-cutting discipline 5 is amended. The governing rule of this
 rev — greenfield adopts first, shipping code migrates on touch, EN rides
-inside product work — **is superseded as pacing by rev 6 above**; only
+inside product work — **is superseded as pacing by rev 6 above**. Only
 its safety floor survives. (Rev 4.4's status snapshot below is retained
 unchanged.)
 
 **Rev 2 changes (owner direction):** (1) P0's exit is strengthened from
-"launch-ready" to **submitted to the app stores**; (2) **Sarah** — the AI
+"launch-ready" to **submitted to the app stores**. (2) **Sarah** — the AI
 sales agent (`2026-07-07-sarah-sales-agent-spec.md`) — is inserted as
-**Phase P1**, immediately after the MVP and ahead of Codex; (3) Sarah's web
+**Phase P1**, immediately after the MVP and ahead of Codex. (3) Sarah's web
 surface ships as part of **the new openagents.com app on React/TanStack
-Start** (the ONE-UI stack), which begins its route-by-route life in P1;
+Start** (the ONE-UI stack), which begins its route-by-route life in P1.
 (4) all later phases renumber (Codex P1→P2, employees P2→P3, brain P3→P4,
 templates P4→P5, trust P5→P6, scale P6→P7). Cross-referencing docs are
 updated in the same commit.
@@ -652,12 +652,12 @@ Consolidates:
   (`2026-07-07-palantir-institutional-sovereignty-smb-analysis.md`)
 - The web-stack decision: **one UI ecosystem — React + Tailwind on
   TanStack Start** for web (owner decision 2026-07-04,
-  `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`; ONE-UI
+  `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`. ONE-UI
   epic #8339 and TS-6 web app-shell migration #8348 reopen here) —
   **amended 2026-07-08 by the Effect Native decision** (§EN): the typed
-  component set is the substrate; React/RN are renderer adapters
+  component set is the substrate. React/RN are renderer adapters
 - **Effect Native — the UI substrate (§EN, EN-0..EN-9)**
-  (`../effect-native/README.md` + the six 2026-07-08 docs; public
+  (`../effect-native/README.md` + the six 2026-07-08 docs, public
   framework repo `OpenAgentsInc/effect-native` with its ROADMAP
   phases 0–6)
 - The standing lane families: ROADMAP.md (desktop/harness),
@@ -668,7 +668,7 @@ Consolidates:
 
 Reconciled against `origin/main`, GitHub issue state, and live production
 probes. **26 issues open, all ≥ #8467** — the rev 6 EN lane set (#8572–#8575)
-and the #8577 removal-execution lane joined the backlog; `#8569` and `#8576`
+and the #8577 removal-execution lane joined the backlog. `#8569` and `#8576`
 closed. The backlog is entirely current-direction work: the Effect Native
 conversion program, the Khala Code mobile P2 lanes, the outbound sales engine,
 and the retired-program physical removal. What is genuinely DONE vs what is
@@ -680,7 +680,7 @@ only DIRECTION:
   owner-attributed `token_usage_events` row → full reclaim lifecycle) and
   `#8477` (real branch **+ PR** writeback from inside the microVM under the
   owner's brokered GitHub identity) — both CLOSED and proven live. QAM-1..7
-  (`#8536–#8542`) CLOSED; store artifacts `#8544` CLOSED (public review
+  (`#8536–#8542`) CLOSED. Store artifacts `#8544` CLOSED (public review
   submissions deferred by owner decision).
 - **Khala Sync realtime + credits (hardened 2026-07-08):** `#8554` (capture
   daemon moved to the `khala-capture` Cloud Run service — restored the dead
@@ -691,7 +691,7 @@ only DIRECTION:
   projection was backfilled (42 real users seeded). Live send→reply→**metered
   credit debit** proven end-to-end on a real Android device (turn recorded
   server-side with an exact `usage_truth=exact` row + a `paid` charge). Honest
-  caveat: one Flash turn is sub-cent so it does not move a *whole-cent* display;
+  caveat: one Flash turn is sub-cent so it does not move a *whole-cent* display.
   any ≥1¢ change pushes live.
 - **GCP migration (`#8515`) CLOSED** — MVP path fully on Cloud Run + Cloud SQL.
 - **CX foundation:** **CX-1 (`#8545`) CLOSED** — the broker-only provider-
@@ -712,10 +712,10 @@ only DIRECTION:
   (`openagents-com-start-stage1`) with live public projections (tokens
   served, pylon stats, Khala Code plans) — using an app-local snapshot
   of effect-native `6dda1d44` while upstream packages are pre-alpha.
-  `/`, `/new`, `/demo` untouched as baselines; upstream schema/style
+  `/`, `/new`, `/demo` untouched as baselines. Upstream schema/style
   exactness bug filed as effect-native#44.
 
-**Build-forward / owner-gated (open; partially landed as code):**
+**Build-forward / owner-gated (open, partially landed as code):**
 - **WEB-1 (`#8565`) sales landing — React/Tailwind split preview live on Cloud
   Run.** Commit `7899f3ec15` ports the Launch UI homepage replica into
   `apps/openagents.com/apps/start` as the reference milestone. The production
@@ -742,20 +742,20 @@ only DIRECTION:
   (`90163e2c3b`), **OB-5 is CLOSED** (`6f69317da6`/`5561280e65`), and
   **OB-6 is CLOSED** (`c38b34869a`/`e78e95369f`). **OB-1:** owner
   waived dedicated subdomain and armed live Resend from
-  `Sarah <sarah@openagents.com>` (prod proof send delivered); residual
+  `Sarah <sarah@openagents.com>` (prod proof send delivered). Residual
   is opt-out round-trip, warm-up cap refusal, and deliverability
   webhooks into the OB-6 ledger. **OB-4:** batch approval operator
-  surface landed (`3e3cda4ccd`); residual is live Sarah S-8 reply
+  surface landed (`3e3cda4ccd`). Residual is live Sarah S-8 reply
   handling and draft→approve→send proven at 100/day volume.
 - **CX-2..9 (`#8546–#8553`) "your own Codex in the cloud" — OPEN with
   substantial code on `main` (rev 6.19).** Fixture/UI/CLI slices landed
-  for CX-2/4/5/6/7/8; live exit proofs still share the **CX-3**
+  for CX-2/4/5/6/7/8. Live exit proofs still share the **CX-3**
   bake-host / Firecracker wall. **CX-5 agent residual advanced:**
-  mobile Connect Claude + CLI setup-token connect on `main`; live
+  mobile Connect Claude + CLI setup-token connect on `main`. Live
   `claude_pylon` turn remains.
 - **`#8543` (P0.8 launch readiness) OPEN** — blocked on the owner-gated seeded
   public-safe test account, the full dual-platform straight-line E2E (the
-  chat→reply→credit half is now device-proven; the pick-repo→push→writeback half
+  chat→reply→credit half is now device-proven. The pick-repo→push→writeback half
   depends on CX-3), and the promises/copy pass with owner sign-off.
 - **`#8467` (Khala Code Mobile MVP epic) OPEN** — the live multi-workstream P0
   program that `#8543` gates.
@@ -765,7 +765,7 @@ early morning):** MH-0 through MH-8 (except Grok's own MH-3/MH-4) are
 CLOSED and independently re-verified. Current recommended order:
 
 - **effect-native Phase 4 catalog (continuous, one sequential agent —
-  file-collision constraint):** 12 of ~22 issues closed; the remaining
+  file-collision constraint):** 12 of ~22 issues closed. The remaining
   queue (`#35`/`#36`/`#37` next, then `#42` proof, `#43` docs) stays a
   single serial lane against `packages/core/src/index.ts` — do not
   fan multiple agents across that file.
@@ -793,27 +793,27 @@ CLOSED and independently re-verified. Current recommended order:
   list + pause/resume/drain/stop + approvals), bound to the existing
   `KhalaCodeDesktopFleetStatus` data via a pure adapter, dispatching typed
   `@openagentsinc/khala-fleet-intents` values. Mounted via the DOM renderer
-  (not `platform-desktop` — that adapter isn't in the vendored EN snapshot
-  and `DesktopBridge` doesn't fit Electrobun's `Electroview` bridge; see
+  (not `platform-desktop` — that adapter is not in the vendored EN snapshot
+  and `DesktopBridge` does not fit Electrobun's `Electroview` bridge. See
   `docs/fable/2026-07-08-mh7-en-cockpit-desktop-receipt.md`). Phase 4
   data-display/chip/tabs + shared `khalaTheme` were NOT yet in the vendored
   snapshot, so the cockpit composes from `Card`/`Text`/`Button` (like
-  `/stage1`) and skips `GraphFigure`; swap for first-class components on the
+  `/stage1`) and skips `GraphFigure`. Swap for first-class components on the
   next re-vendor. EN-5's full desktop shell conversion remains its own scope.
 - **EN-4 `#8573` (web absorption) — rev 6.19 progress:** burn-down table
-  committed; `/download` (`38d61fc812`) and `/privacy` (`06e1381511`)
+  committed. `/download` (`38d61fc812`) and `/privacy` (`06e1381511`)
   converted to Effect Native DOM with convert-and-delete. Next agent
   slices: `/terms` (legal twin of privacy), then mid-size public routes
-  and the shared funnel-placeholder batch — catalog is deep enough; keep
+  and the shared funnel-placeholder batch — catalog is deep enough. Keep
   demand gaps on EN-2, never local one-offs.
 - **PY-1 `#8578` continuation — rev 6.19 progress:** presence + custody
   waves and a large executor leaf set are extracted (including
   `dispatch-failure-taxonomy`, `effect-runtime-patterns`, pure leaves
   `ssh-target` / `execution-provider` / `proof-redaction` /
   `required-artifact-gate` / `remote-verify` through `95022d2538`).
-  Next: wallet only with RC-binary verification; top-of-graph
+  Next: wallet only with RC-binary verification. Top-of-graph
   `codex-agent-executor` / `assignment` / `khala-spawn` after closure
-  re-trace; do not shove `tips` into executor just to unblock
+  re-trace. Do not shove `tips` into executor just to unblock
   `khala-dispatch`.
 - **WEB-1-EN `#8595` — rev 6.19 progress:** agent-side full marketing
   catalog on `/landing-en` landed (`0625e8b291`, catalog v26). Remaining
@@ -825,17 +825,17 @@ CLOSED and independently re-verified. Current recommended order:
   draft→approve→send loop proven at volume.
 - **CX-2/CX-4 `#8546`/`#8548`:** code-complete, correctly left open —
   closing needs a real human device-auth tap-through
-  (`~/work/NEEDS_OWNER.md` has the exact steps); do not re-dispatch
+  (`~/work/NEEDS_OWNER.md` has the exact steps). Do not re-dispatch
   agent work here, this is an owner action.
 
 - **CV0 substrate lanes (continuous, fleet-parallel):** effect-native
-  Phase 0/1 (`#1–#8`) are CLOSED; work the open Phase 2/3 set
+  Phase 0/1 (`#1–#8`) are CLOSED. Work the open Phase 2/3 set
   (`#11–#19`) and the Phase 4 epic (`#20`, children `#21–#43`) as
   parallel lanes — this is the critical path for every conversion wave.
   Fix effect-native#44 (schema/style exactness) early — the `/stage1`
   consumer already depends on it.
-- **CV1 next steps:** `/stage1` (EN-1 first render) is landed; WEB-1-EN
-  agent catalog residual is landed on `/landing-en` (rev 6.19); walk
+- **CV1 next steps:** `/stage1` (EN-1 first render) is landed. WEB-1-EN
+  agent catalog residual is landed on `/landing-en` (rev 6.19). Walk
   the owner cutover gates on `#8595` (copy sign-off, pricing, CTAs,
   root flip + rollback notes). Continue EN-4 `#8573` route burn-down
   (`/terms` and beyond) in parallel.
@@ -844,15 +844,15 @@ CLOSED and independently re-verified. Current recommended order:
   reduction with archive-before-delete, production kept green. Hard
   guardrail: the Spark wallet modules are live-rail code, never removal
   candidates (rev 6.3).
-- **Pylon fold (rev 6.3, accepted; rev 6.19 progress):** PY-1 `#8578`
-  leaf extractions continue on `main`; full exit still needs wallet
+- **Pylon fold (rev 6.3, accepted, rev 6.19 progress):** PY-1 `#8578`
+  leaf extractions continue on `main`. Full exit still needs wallet
   RC-binary, top-of-graph executor, RPC consumption, then PY-2 #8579
   (desktop cockpit parity as Effect Native surfaces, riding EN-5
   #8574), then PY-3 #8580 (TUI retirement, gated on PY-2 receipts).
 - **In parallel, non-EN:** the sales push now centers on OB-1 residual
-  proofs and OB-4 volume/reply (OB-2 closed at fixture-tier; OB-3/5/6
+  proofs and OB-4 volume/reply (OB-2 closed at fixture-tier, OB-3/5/6
   closed) and P2 Codex lanes (CX-2..) — they are mostly backend/live
-  proof; their UI surfaces are authored EN-native as their turn arrives.
+  proof. Their UI surfaces are authored EN-native as their turn arrives.
 
 **Bottom line:** the substrate is real and proven, and the first
 production surface now renders through it. Most open non-EN work still
@@ -862,7 +862,7 @@ conversion program itself is first-class scheduled work — the substrate
 lanes, CV1 parity work, the retired-code removal, and the sales push
 proceed at maximum parallel capacity.
 
-### Retired programs (rev 6.1; execution status rev 6.2)
+### Retired programs (rev 6.1, execution status rev 6.2)
 
 Tassadar/Psionic and their training, gym, inference, proof/replay, and
 speculative compute-market satellites are retired from active OpenAgents and
@@ -924,26 +924,26 @@ EN  Phase 0 core + DOM renderer ──► RN adapter ──► catalog growth �
 with a typed intent algebra (interactions as data, never closures), an
 Effect v4 runtime that binds data and dispatches intents as Effect
 programs, typed style values on one token set (StyleX-model +
-Tailwind-derived tokens; no class strings in any contract), and thin
+Tailwind-derived tokens. No class strings in any contract), and thin
 per-platform renderers as the *only* platform-specific UI code. Design
 docs: `../effect-native/` (read the framing doc first, then the
 UI-layer analysis with the internal EN-0..EN-9 phases). The framework
 itself is built in the open in the **public repo
 `OpenAgentsInc/effect-native`** (workspace sibling
-`~/work/effect-native`; MIT; keep it public-safe — no internal
-codenames); its public ROADMAP phases 0–6 are the substrate build
+`~/work/effect-native`. MIT. Keep it public-safe — no internal
+codenames). Its public ROADMAP phases 0–6 are the substrate build
 order, and this section binds them to the product phases.
 
-**Issue index (updated rev 6, 2026-07-08):** epic **#8566**; lanes
+**Issue index (updated rev 6, 2026-07-08):** epic **#8566**. Lanes
 **EN-1 #8567** (production landing on the DOM renderer), **EN-2 #8572**
 (catalog demand register + version adoption), **EN-3 #8568** (RN adapter
-#1 — proved; superseded as pacing by MB-EN below), **MB-EN #8597** (rev
-6.9 — full Khala mobile app rewrite on Effect Native, iOS + Android;
-pulled by upstream mobile epic **effect-native#52** children #53–#65;
+#1 — proved. Superseded as pacing by MB-EN below), **MB-EN #8597** (rev
+6.9 — full Khala mobile app rewrite on Effect Native, iOS + Android.
+pulled by upstream mobile epic **effect-native#52** children #53–#65.
 cross-app Khala Sync messaging exit test),
 **EN-4 #8573** (web absorption route-by-route, legacy deleted), **EN-5
-#8574** (Khala Code desktop conversion; cancels the React+Tailwind shell
-rewrite), **EN-6 #8575** (canvas/Verse under the canvas contract; Foldkit
+#8574** (Khala Code desktop conversion, cancels the React+Tailwind shell
+rewrite), **EN-6 #8575** (canvas/Verse under the canvas contract, Foldkit
 adapter retired), plus the deploy lanes **#8570** (component gallery on
 Cloud Run) and **#8571** (effectnative.org hosting). Substrate in the
 public repo: **#1–#8** (Phase 0 core + Phase 1 renderers/proof — CLOSED),
@@ -961,53 +961,53 @@ value-gated per component and its substrate (Phase 5) does not exist yet.
 refactor.** Dependency order remains the law for EN work. **Pacing is
 rev 6's conversion program below** — the "rides inside" column records
 rev 5's original just-in-time pacing and no longer gates when a wave
-starts; a wave starts the moment its substrate dependency lands.
+starts. A wave starts the moment its substrate dependency lands.
 
 | # | Effect Native piece (public repo phase) | Internal lane | Unlocks (the next OpenAgents surface on the substrate) | Rides inside |
 |---|---|---|---|---|
-| 1 | **Phase 0 — the core**: catalog v0 (~8 components), typed intent algebra, Effect runtime, `@effect-native/tokens` (Protoss blue; launch-ui's Tailwind theme — already vendored in the WEB-1 Phase 1 replica — ported as typed token *values*) | EN-0 | Everything below — gates all adoption; exit = one screen, two renderers, snapshot-tested | P1 Track A (a focused sprint on WEB-1's critical path) |
-| 2 | **Phase 1 — DOM renderer** (no React) | EN-0/EN-1 | **WEB-1 #8565 forward work**: the production root-cutover landing is the first Effect Native surface (the landed React replica at `/demo`/`/new` stays as the visual baseline it's compared against); then **Sarah's branded UI** (SM-2 #8594, was sarah#15 / S-10) — the `/sarah` surface and the landing are one component system *by construction* (rev 6.8: interim DOM shell shipped; EN authoring open) | P1 Track A / SR-0.5 |
-| 3 | **Phase 1 — RN renderer** (wrapping the ~94 shipping khala-mobile primitives as adapter #1; zero new native work) | EN-0/EN-3 | New/changed mobile screens author the component set from then on — the P2 surfaces (CX-2 accounts UI, CX-4 harness pill) are the first candidates; existing screens convert on the **scheduled burn-down** (rev 6 — was on-touch), with the safety floor that the launch straight line and store artifacts stay green through every PR | P2 (CX-2/CX-4) |
-| 4 | **Phase 2 — catalog growth**: forms/validation, virtualized + section lists, modals/sheets/tabs, images/media, **typed navigation intent**, typed variants (state/platform/breakpoint) | EN-2 | **P4 phone-cockpit web twin + Agents panel (AE-2.3)** and the business-dashboard build-out; the deeper mobile migration; demand-driven — a component enters the catalog when one of these screens needs it | P4 (AE-2.3) |
-| 5 | **Phase 3 — DX**: DevTools (view-tree inspection, intent log/replay, time-travel), deterministic snapshot + intent-driven testing, visual baselines per renderer | EN-2/EN-9 | The QAM discipline extended natively to Effect Native surfaces; **agent-authored UI validated against the catalog by construction** (the substrate's whole point at 1000 edits/day) | parallel with #4 |
-| 6 | **Phase 4 — desktop + canvas** (epic effect-native#20, children #21–#43, filed 2026-07-08): desktop adapter (Electrobun consumes the DOM renderer), `@effect-native/render-canvas` (three-effect's ~600-LOC reconciler/frame-clock/scope kernel reimplemented on Effect `Scope`/`Stream`/`Layer`; the 24k-LOC VFX/Verse domain library stays standalone as the catalogue), the foreign-host `Host` node (Monaco/terminal), interaction expansion, theme, streaming binding, and the full desktop component set with the Khala-chat port proof (#42) | EN-5/EN-6 | **Khala Code desktop — full shell + panel conversion** (EN-5 #8574; the React+Tailwind shell rewrite is cancelled); **Verse/3D surfaces under the same contract** (EN-6 #8575); the Foldkit three-effect adapter retired | after web is solid (P4+) |
+| 1 | **Phase 0 — the core**: catalog v0 (~8 components), typed intent algebra, Effect runtime, `@effect-native/tokens` (Protoss blue, launch-ui's Tailwind theme — already vendored in the WEB-1 Phase 1 replica — ported as typed token *values*) | EN-0 | Everything below — gates all adoption. Exit = one screen, two renderers, snapshot-tested | P1 Track A (a focused sprint on WEB-1's critical path) |
+| 2 | **Phase 1 — DOM renderer** (no React) | EN-0/EN-1 | **WEB-1 #8565 forward work**: the production root-cutover landing is the first Effect Native surface (the landed React replica at `/demo`/`/new` stays as the visual baseline it is compared against). Then **Sarah's branded UI** (SM-2 #8594, was sarah#15 / S-10) — the `/sarah` surface and the landing are one component system *by construction* (rev 6.8: interim DOM shell shipped, EN authoring open) | P1 Track A / SR-0.5 |
+| 3 | **Phase 1 — RN renderer** (wrapping the ~94 shipping khala-mobile primitives as adapter #1, zero new native work) | EN-0/EN-3 | New/changed mobile screens author the component set from then on — the P2 surfaces (CX-2 accounts UI, CX-4 harness pill) are the first candidates. Existing screens convert on the **scheduled burn-down** (rev 6 — was on-touch), with the safety floor that the launch straight line and store artifacts stay green through every PR | P2 (CX-2/CX-4) |
+| 4 | **Phase 2 — catalog growth**: forms/validation, virtualized + section lists, modals/sheets/tabs, images/media, **typed navigation intent**, typed variants (state/platform/breakpoint) | EN-2 | **P4 phone-cockpit web twin + Agents panel (AE-2.3)** and the business-dashboard build-out. The deeper mobile migration. Demand-driven — a component enters the catalog when one of these screens needs it | P4 (AE-2.3) |
+| 5 | **Phase 3 — DX**: DevTools (view-tree inspection, intent log/replay, time-travel), deterministic snapshot + intent-driven testing, visual baselines per renderer | EN-2/EN-9 | The QAM discipline extended natively to Effect Native surfaces. **Agent-authored UI validated against the catalog by construction** (the substrate's whole point at 1000 edits/day) | parallel with #4 |
+| 6 | **Phase 4 — desktop + canvas** (epic effect-native#20, children #21–#43, filed 2026-07-08): desktop adapter (Electrobun consumes the DOM renderer), `@effect-native/render-canvas` (three-effect's ~600-LOC reconciler/frame-clock/scope kernel reimplemented on Effect `Scope`/`Stream`/`Layer`, the 24k-LOC VFX/Verse domain library stays standalone as the catalogue), the foreign-host `Host` node (Monaco/terminal), interaction expansion, theme, streaming binding, and the full desktop component set with the Khala-chat port proof (#42) | EN-5/EN-6 | **Khala Code desktop — full shell + panel conversion** (EN-5 #8574, the React+Tailwind shell rewrite is cancelled). **Verse/3D surfaces under the same contract** (EN-6 #8575). The Foldkit three-effect adapter retired | after web is solid (P4+) |
 | 7 | **Phase 5 — native Swift/Compose renderers**, per component, RN as the long-tail fallback | EN-7 | Fidelity/perf upgrades on the highest-value mobile components — a migration, never a rewrite, because the contract is renderer-agnostic | value-gated, multi-quarter (P5+) |
-| 8 | **Phase 6 + governance**: server-driven-UI option, lint boundary | EN-8/EN-9 | Steady state: **new UI authors the component set only**; direct React/RN/DOM authoring outside renderer adapters is deprecated and lint-guarded | continuous once #2–#3 land |
+| 8 | **Phase 6 + governance**: server-driven-UI option, lint boundary | EN-8/EN-9 | Steady state: **new UI authors the component set only**. Direct React/RN/DOM authoring outside renderer adapters is deprecated and lint-guarded | continuous once #2–#3 land |
 
 **Full-conversion scope (every part of this repo, per the analysis
 doc's EN-0..EN-9):** the openagents.com landing (WEB-1) and Sarah UI
-(greenfield — first); the web product routes — dashboard, Forum, Sites,
+(greenfield — first). The web product routes — dashboard, Forum, Sites,
 operator/Aiur, Autopilot — absorbed route-by-route from legacy Foldkit
 and interim React onto the DOM renderer, deleting legacy surfaces as
-replaced (EN-4 #8573); the mobile app's ~94 `.tsx` screens (EN-3 #8568,
-scheduled burn-down); Khala Code desktop (EN-5 #8574); canvas/Verse
+replaced (EN-4 #8573). The mobile app's ~94 `.tsx` screens (EN-3 #8568,
+scheduled burn-down). Khala Code desktop (EN-5 #8574). Canvas/Verse
 (EN-6 #8575). **Definition of done:** every UI surface renders from the
-one component set; renderer adapters are the only platform-specific UI
-code in the tree; a bad UI change fails at the schema boundary.
+one component set. Renderer adapters are the only platform-specific UI
+code in the tree. A bad UI change fails at the schema boundary.
 
 **The conversion program (rev 6 — supersedes rev 5's sequencing
 discipline as pacing).** Conversion is the program, not a rider. Waves
-run as dedicated parallel fleet lanes; a wave starts the moment its
-substrate dependency lands in the public repo; every conversion PR lands
+run as dedicated parallel fleet lanes. A wave starts the moment its
+substrate dependency lands in the public repo. Every conversion PR lands
 green (tests, QAM gates, behavior contracts, `check:deploy`) and
 **deletes the legacy surface it replaces** in the same change:
 
-- **CV0 — substrate (continuous; the critical path):** the public repo's
+- **CV0 — substrate (continuous, the critical path):** the public repo's
   Phase 2/3 issues (#11–#19) and the Phase 4 epic (#20–#43), worked as
-  parallel lanes with maximal fleet concurrency; internal demand routes
+  parallel lanes with maximal fleet concurrency. Internal demand routes
   through EN-2 #8572 into `GAPS.md` under the growth rule.
-- **CV1 — web greenfield (unblocked NOW; DOM renderer shipped):** the
+- **CV1 — web greenfield (unblocked NOW, DOM renderer shipped):** the
   WEB-1 root landing authored in EN (EN-1 #8567), Sarah's branded UI
   (SM-2 #8594, was sarah#15 / S-10), the component gallery deploy (#8570), and
   effectnative.org (#8571).
 - **CV2 — web absorption (starts as Phase 2 catalog pieces land):**
   every product route converted route-by-route on the EN-4 #8573
-  burn-down table, legacy Foldkit/interim React deleted as replaced;
+  burn-down table, legacy Foldkit/interim React deleted as replaced.
   the P4 cockpit web twin and business dashboard are authored EN-native
   when they arrive.
-- **CV3 — mobile full rewrite (MB-EN #8597; rev 6.9 — upgraded from
+- **CV3 — mobile full rewrite (MB-EN #8597, rev 6.9 — upgraded from
   burn-down to a full rewrite program).** EN-3 #8568 proved adapter #1
-  (vendored `render-rn` + the about-effect-native screen); MB-EN #8597
+  (vendored `render-rn` + the about-effect-native screen). MB-EN #8597
   now rewrites **the entire Khala mobile app** on Effect Native (iOS +
   Android), pulled by the upstream mobile epic **effect-native#52** (the
   peer of the Phase 4 desktop epic #20): the RN renderer parity program
@@ -1020,27 +1020,27 @@ green (tests, QAM gates, behavior contracts, `check:deploy`) and
   (typecheck + depcruise + tests incl. `src/contracts/ux-contracts.ts`
   behavior contracts + generator conformance), QAM visual baselines,
   Maestro e2e, the P0 launch straight line, and the store-submission
-  artifacts (#8543/#8544) stay green through **every** PR; native STT +
+  artifacts (#8543/#8544) stay green through **every** PR. Native STT +
   Apple FM modules and the owned OTA layer are hosts/services, untouched.
   **Exit test (owner-named):** a message travels **desktop↔mobile live over
   Khala Sync** with both UIs rendered by Effect Native (effect-native#64).
 - **CV4 — desktop + canvas (starts as effect-native Phase 4 lanes
   land):** Khala Code desktop shell + panels (EN-5 #8574) on the desktop
   adapter, Monaco/terminal via the `Host` node, fleet/gym graphs and
-  Verse under the canvas contract (EN-6 #8575); the Foldkit three-effect
-  adapter retired; the legacy desktop shell stays buildable until the
+  Verse under the canvas contract (EN-6 #8575). The Foldkit three-effect
+  adapter retired. The legacy desktop shell stays buildable until the
   owner-gated cutover.
 - **CV5 — native fidelity (the one demand-paced wave):** Swift/Compose
-  per component (EN-7), value-gated; unchanged from rev 5.
+  per component (EN-7), value-gated. Unchanged from rev 5.
 
 Governance is immediate, not phased: from rev 6, new UI anywhere in the
 repo authors the component set wherever a renderer exists for that
-surface; direct React/RN/DOM authoring outside renderer adapters is
+surface. Direct React/RN/DOM authoring outside renderer adapters is
 deprecated now and lint-guarded as EN-8/EN-9 land. Non-UI systems — the
 voice runtime, eve, services, brokers, runtimes, sync — are not UI and
 are untouched throughout.
 
-## MH — multi-harness parallelization (cross-phase, now-priority; rev 6.4)
+## MH — multi-harness parallelization (cross-phase, now-priority, rev 6.4)
 
 **The program:** Khala Code mobile + desktop steer parallel coding
 agents across `codex | claude | grok | auto`, on one claim registry, one
@@ -1055,29 +1055,29 @@ consensus closed at §12) and `docs/grok/`.
 
 | Lane | Issue | Scope | Owner |
 |---|---|---|---|
-| MH-0 | `#8581` | Wave 0 contracts — **SERIAL critical path**; additive only; `grok_cli` literals, workerKind enum, `khala.chat_turn_event.v1`, shared intent/mutator package, opaque `sessionRef`+capabilities, `marginal_cost_class` | main fleet (one agent) |
-| MH-1 | `#8582` | Enum-driven harness conformance suite (red-until-proven; rate-limit failure fixtures) | main fleet |
+| MH-0 | `#8581` | Wave 0 contracts — **SERIAL critical path**. Additive only. `grok_cli` literals, workerKind enum, `khala.chat_turn_event.v1`, shared intent/mutator package, opaque `sessionRef`+capabilities, `marginal_cost_class` | main fleet (one agent) |
+| MH-1 | `#8582` | Enum-driven harness conformance suite (red-until-proven, rate-limit failure fixtures) | main fleet |
 | MH-2 | `#8583` | Claude Axis A/B parity to 100% — the fastest real two-harness fleet | main fleet |
 | MH-3 | *(Grok files)* | `GrokAcpChatRuntime` — Axis A, mock-ACP fixture first | **Grok lane** |
 | MH-4 | *(Grok files)* | Grok worker executor in the `pylon-core` boundary + RL-1..6 rate-limit probes + plane labeling | **Grok lane** |
-| MH-5 | `#8584` | Mixed-kind FleetRun under one claim registry (simulated; zero collisions ≥3) | main fleet |
-| MH-6 | `#8585` | Sync fleet projections + the three mutators as MH-0 intents; phone pause/approve/steer dogfood | main fleet |
-| MH-7 | `#8586` | The one cockpit (merges into PY-2 `#8579`); EN chrome; data-first exceptions | main fleet |
+| MH-5 | `#8584` | Mixed-kind FleetRun under one claim registry (simulated, zero collisions ≥3) | main fleet |
+| MH-6 | `#8585` | Sync fleet projections + the three mutators as MH-0 intents. Phone pause/approve/steer dogfood | main fleet |
+| MH-7 | `#8586` | The one cockpit (merges into PY-2 `#8579`). EN chrome. Data-first exceptions | main fleet |
 | MH-8 | `#8587` | Typed dumb `auto` v1 + per-harness economics (`marginal_cost_class`) | main fleet |
 | MH-9 | `#8588` | Cloud parity for Grok/Claude workers — **strictly after CX-3 `#8547`** | held |
 
-**Dispatch shape (analysis doc §12.3):** WP-A (MH-0) runs alone; then
+**Dispatch shape (analysis doc §12.3):** WP-A (MH-0) runs alone. Then
 Batch 1 in parallel on disjoint mutable paths — MH-1, MH-2, MH-5, Grok's
-MH-3/MH-4, upstream effect-native#44, and the EN-2 demand rows; Batch 2
-(MH-6/7/8) follows on Batch-1 partials; MH-9 held for CX-3. One claim
-per lane; no two agents on `agent-runtime-schema` simultaneously; every
+MH-3/MH-4, upstream effect-native#44, and the EN-2 demand rows. Batch 2
+(MH-6/7/8) follows on Batch-1 partials. MH-9 held for CX-3. One claim
+per lane. No two agents on `agent-runtime-schema` simultaneously. Every
 PR green under the safety floor.
 
-**Standing rules:** CX-3 keeps dedicated capacity throughout; sales
-(OB-*) capacity is separate; free-Grok burn only under measured RL
-ceilings with honest metering (`not_measured` over invented tokens);
+**Standing rules:** CX-3 keeps dedicated capacity throughout. Sales
+(OB-*) capacity is separate. Free-Grok burn only under measured RL
+ceilings with honest metering (`not_measured` over invented tokens).
 harness-internal auto-approve only when the *product* approval posture
-grants it (one authority surface — the Inbox); public multi-agent copy
+grants it (one authority surface — the Inbox). Public multi-agent copy
 stays promise-gated until live receipts exist.
 
 ## P0 — Khala Code mobile MVP: fully tested, submitted to the stores
@@ -1089,7 +1089,7 @@ Store.** Testing spec:
 `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md`.
 
 **P0 STATUS (2026-07-07 night): largely COMPLETE.** #8503 and #8477
-CLOSED (the microVM proof landed); QAM-1..7 all CLOSED (#8536–#8542);
+CLOSED (the microVM proof landed). QAM-1..7 all CLOSED (#8536–#8542).
 P0.9 #8544 CLOSED with an owner decision recorded on the issue: the P0
 exit is the **shippable/testable submission artifacts** — TestFlight
 build 20 VALID with a reviewer demo-login, installable Android release
@@ -1100,50 +1100,50 @@ open: **#8543** (launch readiness — owner-gated seeded test account →
 unattended straight-line E2E, promises/copy pass) and the epic #8467.
 
 P0 issue index: QAM-1..7 = #8536 #8537 #8538 #8539 #8540 #8541 #8542
-(closed); launch readiness #8543 (OPEN); store artifacts #8544 (closed,
-review submissions deferred); proofs #8503, #8477 (closed) under epic
+(closed). Launch readiness #8543 (OPEN). Store artifacts #8544 (closed,
+review submissions deferred). Proofs #8503, #8477 (closed) under epic
 #8467.
 
-Order inside P0 (testing starts immediately; nothing waits on infra):
+Order inside P0 (testing starts immediately, nothing waits on infra):
 
 - **P0.1 = QAM-1 (#8536)** The gate. `qa:mobile:gate` (static → units → mounts →
   contracts → generator conformance → fixture tier), typecheck/depcruise
   promoted to blocking, pre-push wiring.
 - **P0.2 = QAM-2 (#8537)** Mount debt + fixture suites. Thread-list,
-  thread-messages, credits-history, settings mounted (or typed waivers);
+  thread-messages, credits-history, settings mounted (or typed waivers).
   the **agent-computer streaming fixture suite** (runtime events →
   thread UI, typed refusals, writeback card).
 - **P0.3 = QAM-3 (#8538)** Generators as the enforced path (screen gen emits
   mount test + stories + contract stub + flow stub + visual
-  registration; conformance policy test).
-- **P0.4** MVP proofs (existing scope, unchanged; in flight with the
+  registration. Conformance policy test).
+- **P0.4** MVP proofs (existing scope, unchanged, in flight with the
   other agent): the full #8503 receipt bundle verified and the issue
-  closed; #8477 writeback E2E; Aiur #8500/#8501 (closed 2026-07-07).
+  closed. #8477 Writeback E2E. Aiur #8500/#8501 (closed 2026-07-07).
 - **P0.5 = QAM-4 (#8539)** Visual tier: story screenshots + screen checkpoints
-  into `openagents.khala_visual_baselines.v1`; blessing workflow.
+  into `openagents.khala_visual_baselines.v1`. Blessing workflow.
 - **P0.6 = QAM-5 (#8540)** Nightly mobile row on an owned Mac (Maestro flows,
   device monkey, visual capture, perf budgets, seam probes) reporting
-  into the QA nightly/status/strict-issue discipline; mobile nodes on
+  into the QA nightly/status/strict-issue discipline. Mobile nodes on
   the QA Swarm board.
 - **P0.7 = QAM-6 (#8541)** Android lane (emulator boot proof, flows, capture
   parity).
 - **P0.8 (#8543)** Launch readiness: seeded test account (owner-gated, R4) →
   unattended straight-line E2E green
-  (`khala_mobile.platform.launched_app_interaction_smoke.v1` enforced);
+  (`khala_mobile.platform.launched_app_interaction_smoke.v1` enforced).
   promises/copy pass.
 - **P0.9 (#8544) Store submission (the exit).** App Store submission executed
   (build uploaded, metadata/screenshots final, review answers prepared,
   account-deletion + 3.1.1 compliance verified — #8483/#8502/#8491
   packs current) and Play submission executed through the Play lane
   (#8490 owner actions). "Submitted" means in review at both stores —
-  approval timing is theirs; ours is the submission receipt.
+  approval timing is theirs. Ours is the submission receipt.
 
-**P0 exit receipts:** the verified #8503 proof bundle; the release gate
-refusing an unbundled screen; 7 consecutive nightly mobile receipts
-incl. one auto-filed strict issue; every MVP feature at its target
-ladder rung; straight-line E2E green on iOS + Android emulator; **both
+**P0 exit receipts:** the verified #8503 proof bundle. The release gate
+refusing an unbundled screen. 7 Consecutive nightly mobile receipts
+incl. one auto-filed strict issue. Every MVP feature at its target
+ladder rung. Straight-line E2E green on iOS + Android emulator. **Both
 store submissions recorded** (submission IDs + review states in the
-registry evidence); QAM-7 (#8542) fixture-first suites authored (red/waived) for
+registry evidence). QAM-7 (#8542) fixture-first suites authored (red/waived) for
 every P1+ feature named below.
 
 ## P1 — Sarah: inbound + OUTBOUND sales (in-repo `apps/sarah` + the LG engine)
@@ -1157,8 +1157,8 @@ replaced by an owned Effect agent runtime (converging with
 generalization seed), email folded onto the one approval-gated CRM send
 rail, Cloud Run serving from monorepo-built images, and
 `OpenAgentsInc/sarah` retired read-only historical at cutover. Plan:
-`2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md`; epic
-**#8594** (SM-0..6). sarah#14/#15 are superseded; open sarah S-lane
+`2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md`. Epic
+**#8594** (SM-0..6). sarah#14/#15 are superseded. Open sarah S-lane
 scope absorbs into SM. The two paragraphs below are retained as the
 decision history they are.
 
@@ -1168,7 +1168,7 @@ by rev 6.7 above):** Sarah lives in a
 Vercel + AI SDK stack (Next.js 16, `ai`/`@ai-sdk/react`/
 `@ai-sdk/gateway` canary realtime), deploying to
 **sarah.openagents.com** — so the newest voice-agent surface works
-unmodified before any monorepo integration; a later merge into the
+unmodified before any monorepo integration. A later merge into the
 monorepo is possible but not assumed.
 
 **Hosting update (2026-07-08, owner decision — the sarah#14/#15 filings
@@ -1177,11 +1177,11 @@ Bun/Effect port-as-move and the SM-2 Effect Native UI, #8594):** the
 Vercel deployment
 was a bootstrap, not the home. Sarah moves to **our own infrastructure
 (Cloud Run)** — eve officially self-hosts (`eve build && eve start`,
-workflow state on `@workflow/world-postgres` against our Cloud SQL;
+workflow state on `@workflow/world-postgres` against our Cloud SQL.
 its deploy guide's "Deploy without Vercel" checklist is the spec), the
 Next app lifts-and-shifts as a container, and the realtime WebSocket is
 browser↔provider direct so no server-side WS infra is needed. Filed as
-**sarah#14** (Cloud Run migration; the AI Gateway key may remain
+**sarah#14** (Cloud Run migration, the AI Gateway key may remain
 short-term as the one Vercel service, with its removal path recorded)
 and **sarah#15** (front-end ported to **TanStack Start** with/before
 S-10's branded UI, per the ONE-UI standard — eve untouched). Sarah
@@ -1190,7 +1190,7 @@ works locally** (server-minted gateway token for `openai/gpt-realtime-2`,
 browser `useRealtime` with mic capture/server VAD/playback/text send) —
 which **pulls SR-4 voice to the front**: v1 Sarah is voice+text from day
 one, inverting the spec's original deferral. The monorepo remains the
-system of record (CRM, credits, checkout, receipts, promise registry);
+system of record (CRM, credits, checkout, receipts, promise registry).
 the sarah repo calls its APIs and never re-implements them.
 
 **Track A (revised 2026-07-08, HIGH PRIORITY) — the new openagents.com
@@ -1208,21 +1208,21 @@ public counters, credit-tier pricing, production CTAs, and owner-approved root
 cutover remain. Owner directive: switch the
 openagents.com landing/marketing site from this replica milestone to a
 sales-focused site built from
-**launch-ui** (`projects/repos/launch-ui` — MIT; shadcn/ui + Tailwind 4 +
-React 19; a complete landing kit: hero/navbar/pricing/stats/logos/items/
-faq/cta/footer; only **4 files** import `next/*`, so the TanStack Start
+**launch-ui** (`projects/repos/launch-ui` — MIT, shadcn/ui + Tailwind 4 +
+React 19. A complete landing kit: hero/navbar/pricing/stats/logos/items/
+faq/cta/footer. Only **4 files** import `next/*`, so the TanStack Start
 port is link/image swaps, not a rewrite). Phase 1 establishes the
 **TanStack Start openagents.com app**: launch-ui components themed to
 Protoss blue (one theme — next-themes/mode-toggle dropped), the stats
 section wired to the LIVE public counters, pricing wired to the credit
 tiers, CTAs → business intake + **"Talk to Sarah"**, copy through the
 promise-registry gates with owner sign-off before the switch. The new landing
-serves through the production Cloud Run monolith; existing product routes stay
+serves through the production Cloud Run monolith. Existing product routes stay
 on their current Cloud Run monolith paths until absorbed route-by-route. Filed as
 **#8565**. Synergy: sarah#15's TanStack port shares the same
 launch-ui/shadcn base, so the Sarah surface and openagents.com become
 one component system. (Rev 6.8: Sarah's home is now
-**openagents.com/sarah** in this repo — no subdomain; the dashboard
+**openagents.com/sarah** in this repo — no subdomain. The dashboard
 shell still lands with P4.)
 
 **Track A rescope (2026-07-08, Effect Native — §EN):** the landed
@@ -1232,7 +1232,7 @@ the forward path. The **production root-cutover landing is authored in
 the Effect Native component set** rendered by the DOM renderer (§EN
 unlocks #1–#2, which gate this track and are built inside it):
 launch-ui's theme and section designs — already vendored and themed in
-the replica — port into `@effect-native/tokens` and catalog components;
+the replica — port into `@effect-native/tokens` and catalog components.
 zero further React components are authored for the landing. The
 TanStack Start app remains the serving shell/host (routing, SSR entry)
 — a host, not the architecture. Everything else stands: owner copy
@@ -1247,12 +1247,12 @@ be recorded on #8565.
 order):**
 
 1. Persona + honesty grounding: Sarah instructions (AI disclosure,
-   one-question-at-a-time, sales posture) via session config;
+   one-question-at-a-time, sales posture) via session config.
    promise-registry state fetched server-side into the instructions.
 2. Token-route hardening before public deploy: origin/rate limits,
    session caps + TTLs, gateway spend alerts (today it mints client
    secrets unauthenticated).
-3. Durable sessions + opaque prospect ref; transcript persistence;
+3. Durable sessions + opaque prospect ref. Transcript persistence.
    CRM summary sync over the monorepo API.
 4. First tools on the realtime tool channel: `human_handoff`, intake
    capture → business-pipeline API, pack-priced checkout link.
@@ -1261,21 +1261,21 @@ order):**
 6. Production wiring: the `/sarah` mount on the production Cloud Run
    monolith (no DNS needed — rev 6.8 serving amendment) + env + model
    pin + cost caps (owner/infra actions → NEEDS_OWNER as they arise) —
-   **SM-5 #8594 (was sarah#14)**; the interim Vercel deploy is
+   **SM-5 #8594 (was sarah#14)**. The interim Vercel deploy is
    decommissioned at cutover.
 7. The Sarah Eval Suite (authored under QAM-7 #8542) pointed at the
-   deployment; discount-pressure/honesty/injection probes green.
+   deployment. Discount-pressure/honesty/injection probes green.
 
-**Framework — eve (DECIDED owner 2026-07-07; rev 6.7: retained only
+**Framework — eve (DECIDED owner 2026-07-07, rev 6.7: retained only
 through the SM-1..3 move, then replaced by the owned Effect agent
 runtime in SM-4 #8594, S-12 suite as the conformance oracle):**
 Sarah's brain is
-vercel/eve (filesystem-first durable agents; reference clone
+vercel/eve (filesystem-first durable agents, reference clone
 `projects/repos/eve`) — durable sessions, `instructions.md` persona,
 typed tools, cron schedules, and channels including the Chat SDK
 **Resend email adapter** (SR-3's inbound/outbound email continuity) and
 Twilio (future phone lane), same Vercel deploy target. It is **not** a
-voice runtime — the realtime loop stays as built; realtime = voice I/O,
+voice runtime — the realtime loop stays as built. Realtime = voice I/O,
 eve = sessions/tools/email/schedules, realtime tool calls execute
 against eve. Setup work is filed as **OpenAgentsInc/sarah issues
 S-1..S-13** (#1–#13): eve integration, honesty grounding, token
@@ -1283,30 +1283,30 @@ hardening (blocks public deploy), durable sessions/prospect ref, tool
 bridge, first tools, CRM sync, email channel, deal rules v0, branded
 UI, Vercel/DNS wiring, eval suite, schedules/receipts.
 
-**Track B — Sarah lanes (from the spec; SR-1 partially underway in the
+**Track B — Sarah lanes (from the spec, SR-1 partially underway in the
 sarah repo):**
 
-- **SR-1** Sarah v1 (text, on-site): durable sessions + prospect refs;
-  persona program (public-scoped Artanis pattern); qualification on the
-  shipped intake spine; registry-bound honesty; component channel on;
-  `human_handoff`; pack-priced `credit_kickoff` checkout; behavior
-  contracts registered; Eval Suite green at the fixture tier.
+- **SR-1** Sarah v1 (text, on-site): durable sessions + prospect refs.
+  persona program (public-scoped Artanis pattern). Qualification on the
+  shipped intake spine. Registry-bound honesty. Component channel on.
+  `human_handoff`. Pack-priced `credit_kickoff` checkout. Behavior
+  contracts registered. Eval Suite green at the fixture tier.
 - **SR-2** Deal engine + checkout tool: `sarah.deal_rules.v1` (rate
-  card owner-signed; volume tiers + Bitcoin stack imported; bundle
-  rules; `close_on_call` tactic armed or parked);
+  card owner-signed. Volume tiers + Bitcoin stack imported. Bundle
+  rules. `close_on_call` tactic armed or parked).
   `sales.checkout_link.create` (arbitrary amount ≤ cap, split support,
-  Lightning, honest TTLs); `quote_card`/`deal_summary` components.
-- **SR-3** Email + CRM continuity: Sarah's mailbox; inbound routing →
-  `event_ledger` **email source** → `inbox_match`; prospect↔contact
-  binding; approval-gated continuation replies; one relationship
+  Lightning, honest TTLs). `quote_card`/`deal_summary` components.
+- **SR-3** Email + CRM continuity: Sarah's mailbox. Inbound routing →
+  `event_ledger` **email source** → `inbox_match`. Prospect↔contact
+  binding. Approval-gated continuation replies. One relationship
   thread across web and email.
 
 **Resequenced within the Sarah family:** SR-4 voice is **pulled to the
-front** (the realtime loop already works; voice ships with v1). SR-5
-contracts + custom bundles land with P5's template work; SR-6
+front** (the realtime loop already works, voice ships with v1). SR-5
+contracts + custom bundles land with P5's template work. SR-6
 Sarah-as-template stays P5, under the catalog gate.
 
-**Track C — the outbound sales engine (OB-1..6; owner directive
+**Track C — the outbound sales engine (OB-1..6, owner directive
 2026-07-08: "sales sales sales — start getting targeted outreach to
 people NOW").** Sarah does outbound too. The substrate is **already
 built and closed** — the SELL epic (#8261, LG-1..9 all closed) shipped
@@ -1320,80 +1320,80 @@ contracts `lead_gen_agent.drafting_only_toolset.v1` /
 `no_send_without_approval_receipt.v1`), and affiliate/partner
 bookkeeping. Apollo.io is connected via MCP (owner OAuth) with the
 audit-first plan and segments written
-(`2026-07-03-apollo-outbound-sales-plan.md`; blitz §5.3 clone-segments;
+(`2026-07-03-apollo-outbound-sales-plan.md`, blitz §5.3 clone-segments,
 own-your-ai target list). Track C connects that engine to Sarah's
 identity and turns the volume knob. Issues filed: **#8558–#8563**.
 
 - **OB-1 (#8558) Sending identity + deliverability foundation.** Sarah's
   outbound address on a **dedicated sending subdomain** (protect the
-  root domain's reputation) with SPF/DKIM/DMARC; Resend arming
-  (`CRM_RESEND_SEND_ENABLED` + keys — owner gate); CAN-SPAM
-  identification + working opt-out on every send; suppression list
-  live; **warm-up ramp** to the 100/day target (field discipline says
+  root domain's reputation) with SPF/DKIM/DMARC. Resend arming
+  (`CRM_RESEND_SEND_ENABLED` + keys — owner gate). CAN-SPAM
+  identification + working opt-out on every send. Suppression list
+  live. **Warm-up ramp** to the 100/day target (field discipline says
   10–20/day/identity sub-spam at the start — ramp gated on
   bounce/complaint rates, and add identities rather than burning one).
 - **OB-2 (#8559) Apollo sourcing at volume — CLOSED.** Segment waves from the written
   plans (mastermind clone-segments, own-your-ai sovereignty targets,
   legal/agency verticals) enriched through the Apollo MCP into
-  `business_pipeline_rows` with LG-6 source attribution; Apollo stays a
+  `business_pipeline_rows` with LG-6 source attribution. Apollo stays a
   mirror — our pipeline is the system of record (BF-9.2 law). Closed at
-  fixture-tier volume proof in `4771af6560`; live Apollo production waves
+  fixture-tier volume proof in `4771af6560`. Live Apollo production waves
   are operator follow-up, not a remaining code issue.
 - **OB-3 (#8560) Audit-first personalization at fleet scale.** Every email
   leads with the prospect's own agent-readiness report (LG-1/LG-5),
   upgraded with the 15-step assessment rubric (P7.1 pulled forward as
-  content); fleet lane renders one report per prospect — no generic
+  content). Fleet lane renders one report per prospect — no generic
   blasts, ever (compliance-guardrails law: value before ask).
 - **OB-4 (#8561) The draft→approve→send loop at 100/day.** Sarah drafts
   sequences into the **existing CRM approval queue** (propose →
   operator approve → `dispatchCrmSend`) — the owner's "queue drafts,
-  send manually" is already the enforced law; what's new is a **batch
+  send manually" is already the enforced law. What's new is a **batch
   approval UX** (review/edit/approve a day's queue in minutes, one-tap
   per batch with receipts) so 100/day is operable by one human.
   Replies route to Sarah's inbox (sarah repo S-8 email channel) and the
-  CRM; every send/reply is a `crm_activity` + email-ledger row.
+  CRM. Every send/reply is a `crm_activity` + email-ledger row.
   *Rev 6.19:* Aiur batch approval operator surface landed
-  (`3e3cda4ccd`); residual is live S-8 reply handling + volume proof.
+  (`3e3cda4ccd`). Residual is live S-8 reply handling + volume proof.
 - **OB-5 (#8562) Close via Stripe.** Reply → Sarah conversation (email or a
   link into openagents.com/sarah) → qualification → checkout link
-  (pack-priced now; deal-rules quotes when SR-2 lands) → settled
-  Stripe receipt → provision; pipeline states tracked on
-  `crm_opportunities`; funnel counters per LG-6 attribution.
+  (pack-priced now, deal-rules quotes when SR-2 lands) → settled
+  Stripe receipt → provision. Pipeline states tracked on
+  `crm_opportunities`. Funnel counters per LG-6 attribution.
 - **OB-6 (#8563) The daily sales ledger.** Sent / delivered / replies /
   report-clicks / conversations / quotes / closes per day, per segment,
-  with deliverability health (bounce/complaint) gating the ramp;
+  with deliverability health (bounce/complaint) gating the ramp.
   surfaced to the owner daily (ops view + a one-line digest). The
   agency-trap discipline applies: operator-minutes per send must fall
   as volume rises — the batch UX and Sarah's drafting quality are the
   levers.
 
 Authority posture (unchanged law): outbound send remains
-**approval-gated** — the existing contracts stay enforced; promotion of
+**approval-gated** — the existing contracts stay enforced. Promotion of
 any send class to policy-bound is a later, receipted owner decision.
 Owner gates for Track C: Resend/domain arming + DNS, the sending
 subdomain choice, daily-cap ramp sign-offs, and pricing on anything
 Sarah quotes beyond existing packs.
 
-**OAV quality program (epic #8610; OAV-1 #8611, OAV-2 #8612, OAV-3
-#8613, OAV-4 #8614 landed; OAV-5 #8615 and OAV-6 #8616 remain):** the owned avatar renderer's
+**OAV quality program (epic #8610, OAV-1 #8611, OAV-2 #8612, OAV-3
+#8613, OAV-4 #8614 landed. OAV-5 #8615 and OAV-6 #8616 remain):** the owned avatar renderer's
 "beautiful audio and video" bar is run as an experiment program, not
 taste. Authority: `docs/sarah/research.md` (the owner's prioritized
 triage — P0: LatentSync 1.6 / FLAIR / RIFE / CosyVoice2/3 / MuseTalk
-tuning / BasicVSR++/RealBasicVSR / tamed-only GFPGAN; P1: Hallo2/3
-openers; blocked: KEEP/PGTFormer/CodeFormer et al. — plus the A0–F2
+tuning / BasicVSR++/RealBasicVSR / tamed-only GFPGAN. P1: Hallo2/3
+openers. Blocked: KEEP/PGTFormer/CodeFormer et al. — plus the A0–F2
 matrix) + `docs/sarah/2026-07-09-oav-quality-strategy.md` (adopted plan
 and measurements) + spec §9 (binding enhancement policy — full-strength
 per-frame GFPGAN banned as a default enhancer). Empirical state: the
-tamed-GFPGAN v3 recipe measured smoothest (jerk 0.15); OAV-2 now has a
-MuseTalk/WebRTC L4 service simulator pass with empty blockers; LatentSync 1.6
+tamed-GFPGAN v3 recipe measured smoothest (jerk 0.15). OAV-2 now has a
+MuseTalk/WebRTC L4 service simulator pass with empty blockers. LatentSync 1.6
 is the articulation winner with a 16-frame chunk-boundary hitch to
-smooth; the opener library v1 is rendered both ways awaiting QA;
+smooth. The opener library v1 is rendered both ways awaiting QA.
 FLAIR/RIFE/CosyVoice-prosody/Hallo2 experiments are queued. Reference
-clones live in the workspace `projects/repos/`; papers in
+clones live in the workspace `projects/repos/`. Papers in
 `projects/papers/`.
 
-**Sarah Blueprint Map surface (epic #8626; lanes BM-1 #8627, BM-2
-#8628, BM-3 #8629, BM-4 #8630, BM-5 #8631; rev 6.13):** the live
+**Sarah Blueprint Map surface (epic #8626, lanes BM-1 #8627, BM-2
+#8628, BM-3 #8629, BM-4 #8630, BM-5 #8631. Rev 6.13):** the live
 per-prospect Blueprint map rendered while Sarah talks — what she knows
 about this prospect and what she is still trying to learn, plus which
 offerings the stated needs map onto. Authority:
@@ -1402,7 +1402,7 @@ findings, data inventory, page keep/cut verdicts, layout spec,
 streaming architecture). **Status after rev 6.16:** BM-1 is landed via
 PR #8632 plus `7838a9a1ca`, BM-2 is landed in `9ee02315f5`, BM-3 is
 landed in `4fb1ec6ba7`, BM-4 is landed in `dc0c67948c`, and BM-5 is
-landed in `b3048b7a0b`; epic #8626 is closed. The implementation now
+landed in `b3048b7a0b`. Epic #8626 is closed. The implementation now
 has typed `blueprint_delta` events on the existing avatar SSE bus, an
 Effect Native `GraphFigure` Blueprint map seeded from the stored draft
 and animated from deltas, the owner's split layout with the verbatim
@@ -1410,27 +1410,27 @@ and animated from deltas, the owner's split layout with the verbatim
 Actions + Code/Receipts panel, and a deploy-smoke gate covering the
 split-layout screenshot, contract sweep, and live `blueprint_delta`
 proof.
-Laws: KHS-3 isolation on every read, receipt, and delta; no improvised
-pricing; semantic matching only; edges light only from dereferenceable
-provenance; EN catalog components only.
+Laws: KHS-3 isolation on every read, receipt, and delta. No improvised
+pricing. Semantic matching only. Edges light only from dereferenceable
+provenance. EN catalog components only.
 
 **P1 exit receipts:** openagents.com/sarah live and hardened (SR-0
-list complete, token route protected, spend-capped); a stranger
+list complete, token route protected, spend-capped). A stranger
 completes qualification → quote → settled starter credit purchase
-entirely with Sarah (voice or text); a composed multi-module quote with
+entirely with Sarah (voice or text). A composed multi-module quote with
 a bundle rule applied closes via an agent-created link, with property
-tests proving no unruled price is reachable; a web conversation resumed
-by prospect email and answered through the approval queue; Sarah's Eval
+tests proving no unruled price is reachable. A web conversation resumed
+by prospect email and answered through the approval queue. Sarah's Eval
 Suite green against the live deployment. **Track C exits:** the sending
-identity warm and healthy at the 100/day cap (deliverability receipts);
-a full week of the daily sales ledger; and **the first outbound-sourced,
+identity warm and healthy at the 100/day cap (deliverability receipts).
+a full week of the daily sales ledger. And **the first outbound-sourced,
 Sarah-conversed, Stripe-settled sale** with its attribution chain
 (segment → email → reply → conversation → checkout receipt) dereferencing
 end to end.
 
 ## P2 — Your Codex on your agent computer (CX-1..9) — the workflow cutover sprint
 
-> **Sarah-first (rev 6.18):** CX lanes keep the workflow cutover; the
+> **Sarah-first (rev 6.18):** CX lanes keep the workflow cutover. The
 > user-facing entry becomes Sarah's conversation + canvas. Desktop/CLI
 > remain power tools, not the front door.
 
@@ -1441,7 +1441,7 @@ Khala Code.** That raises the bar from "one proven turn" to a daily
 driver, so the lane set grows from CX-1..5 to CX-1..9. Issues filed:
 **#8545–#8553**.
 
-**STATUS (2026-07-08): mainline slices landed; owner proof gates remain.**
+**STATUS (2026-07-08): mainline slices landed. Owner proof gates remain.**
 CX-1 (`#8545`) is CLOSED (`7bd4fb2eb1`). CX-2..CX-8 have contract/UI/runtime
 slices landed on `main` (`9b963db890`, `b9b56d8e0f`, `4aa8ca37db`,
 `92dbe36614` + CX-5 mobile `26c7fae5a3` + CLI `2aa841ffcb`, `ffb157415f`,
@@ -1455,7 +1455,7 @@ at least five real mobile-Codex tasks, zero desktop fallback, billing sanity,
 friction report, and owner sign-off.
 
 **Owner test build (2026-07-08):** Khala Code iOS TestFlight build **22** is
-uploaded from `main` (`99098e4b15`, receipt `0578374bbf`; Delivery UUID
+uploaded from `main` (`99098e4b15`, receipt `0578374bbf`, Delivery UUID
 `f30897f8-ee48-448f-b7bd-f37aa51dc626`). It is the current phone artifact for
 CX-9: test fresh GitHub sign-in, Codex account connect, account-targeted
 dispatch, interrupt / steer / resume / retry, multi-account busy/quota truth,
@@ -1464,13 +1464,13 @@ dogfood ledger. Receipt:
 `docs/khala-mobile/2026-07-08-khala-mobile-testflight-build-22-receipt.md`.
 
 - **CX-1 (#8545)** Provider-credential invariant + broker contract
-  (`provider_credential_policy: broker_only`; never-pooled /
-  never-cross-owner law; scanner coverage; fail-closed tests; ToS
-  position documented). *An INVARIANTS change; write the law first.*
+  (`provider_credential_policy: broker_only`, never-pooled /
+  never-cross-owner law. Scanner coverage. Fail-closed tests. ToS
+  position documented). *An INVARIANTS change. Write the law first.*
 - **CX-2 (#8546)** Mobile Codex connect (device-auth → the existing
   custody rail — device-login/start, local-auth/import, auth-material,
-  grants/resolve routes all exist; accounts UI with readiness/quota;
-  revocation; multi-account from day one). QAM-7's fixture suite turns
+  grants/resolve routes all exist. Accounts UI with readiness/quota.
+  revocation. Multi-account from day one). QAM-7's fixture suite turns
   green here.
 - **CX-3 (#8547)** Codex inside the agent computer: codex baked into the
   rootfs (re-pinned digest), `auth_grant_ref` populated in placement,
@@ -1478,32 +1478,32 @@ dogfood ledger. Receipt:
   `codex_app_server` added to the org-cloud dispatch lanes. **The P2
   proof:** one real mobile-dispatched turn on the user's own Codex
   inside Firecracker — `tokenChargeMetered: false` model rows +
-  compute-time receipts + reclaim evidence; grant replay after reclaim
+  compute-time receipts + reclaim evidence. Grant replay after reclaim
   structurally impossible.
 - **CX-4 (#8548)** Harness/target selection UX (model-preference store →
-  execution targets `codex:<accountRefHash>`; per-thread harness pill;
+  execution targets `codex:<accountRefHash>`. Per-thread harness pill.
   quota-aware `auto` with typed fallback events — never silent
   substitution).
 - **CX-5 (#8549)** Claude account parity (same broker,
   `CLAUDE_CODE_OAUTH_TOKEN` delivery, `claude_pylon` lane).
   *Rev 6.19:* mobile Connect Claude UI + bearer routes (`26c7fae5a3`)
   and CLI `pylon accounts connect claude` / `pylon auth claude`
-  (`2aa841ffcb`) landed; residual is live Firecracker Claude proof.
+  (`2aa841ffcb`) landed. Residual is live Firecracker Claude proof.
 - **CX-6 (#8550)** Session continuity across ephemeral microVMs:
   durable per-thread account pin + re-prime-and-replay resume from
   Khala Sync history (persisted-home volumes deferred, recorded).
 - **CX-7 (#8551)** Multi-account concurrency: serialize per account with
-  typed `account_busy_queued` events; more accounts = real concurrency;
+  typed `account_busy_queued` events. More accounts = real concurrency.
   health/quota truth on the phone. (Resolves the spec's open question
   on concurrency semantics.)
 - **CX-8 (#8552)** Daily-driver ergonomics: interrupt/continue/steer
-  from the phone on running turns; long-turn streaming quality;
+  from the phone on running turns. Long-turn streaming quality.
   **monorepo-scale workspaces** (the openagents repo via the SCM broker
-  at real size, measured checkout/turn-latency envelope); verify
+  at real size, measured checkout/turn-latency envelope). Verify
   commands + writeback + push deep-link loop.
 - **CX-9 (#8553)** **Dogfood cutover — the P2 exit.** Owner accounts
-  connected (custody import; never the live `~/.codex`), real backlog
-  work on our own repos through Khala Code mobile; cutover ledger +
+  connected (custody import, never the live `~/.codex`), real backlog
+  work on our own repos through Khala Code mobile. Cutover ledger +
   friction report. Build 22 is uploaded for this proof window. *Exit receipt:
   one full working day — ≥5 real tasks completed through Khala Code mobile on
   our own Codex, zero desktop fallback, receipts linked, owner sign-off.*
@@ -1511,7 +1511,7 @@ dogfood ledger. Receipt:
 Standing policy throughout: `subscription_capacity_resale` blocked
 unconditionally — connected accounts serve their owner's work only.
 Provider-ToS diligence documented in CX-1. Dependency spine: CX-1 →
-CX-2/CX-3 → CX-4 → CX-5; CX-6/CX-7/CX-8 after CX-3, parallel; CX-9
+CX-2/CX-3 → CX-4 → CX-5. CX-6/CX-7/CX-8 after CX-3, parallel. CX-9
 last.
 
 ## P3 — Standing employees (AE-1: the cloud lane unification)
@@ -1525,9 +1525,9 @@ The definition cloud lane IS the Agent Computer (retires the parked
 roadmap H2.
 
 - **AE-1.1** Dispatch `agent_definition.v1` runs through the same
-  admission gate + metering rail as mobile turns; definition-run
-  work-context kind; compiled toolset policy in the placement payload.
-- **AE-1.2** Trigger-latency measurement first; warm pool only if
+  admission gate + metering rail as mobile turns. Definition-run
+  work-context kind. Compiled toolset policy in the placement payload.
+- **AE-1.2** Trigger-latency measurement first. Warm pool only if
   receipts justify it.
 - **AE-1.3** Budgets as payroll (`maxCreditsPerDay` at admission,
   per-employee rollups in balance UI + Aiur).
@@ -1539,26 +1539,26 @@ lifecycle receipts nightly, auto-pause proven on budget exhaustion.
 ## P4 — The employee and the brain (AE-2..4 + CB-1, Blueprint-lite)
 
 > **Sarah-first (rev 6.18):** CB-1 is the Blueprint Map's maturation
-> (#8626 → the company brain); "generalizes Sarah" is now literal —
+> (#8626 → the company brain). "Generalizes Sarah" is now literal —
 > capabilities land inside her first.
 
-Specs: integration doc Phases 2–3; post-MVP doc §3; sovereignty analysis
+Specs: integration doc Phases 2–3. Post-MVP doc §3. Sovereignty analysis
 §3 (the brain adopts the **Blueprint-lite typed vocabulary** — typed
 objects/properties/links with per-fact provenance, Action-Submission
 writes, Access Explanation as the permission surface, versioned/forkable
 entries). **Sarah is the generalization seed:** the P1 persona program,
 CRM-mapped memory, and authority posture harden into the formal
-`ai_employee.v1` record here; Sarah is migrated onto the formal record
+`ai_employee.v1` record here. Sarah is migrated onto the formal record
 as its flagship instance.
 
 - **AE-2.1** `ai_employee.v1` (persona + authority state
   `observe|draft|act_with_approval|act_within_policy` + identity
-  bindings; promotions typed and receipted).
+  bindings. Promotions typed and receipted).
 - **AE-2.2** Identity bindings via the broker pattern (mailbox/calendar
   grants scoped to the employee's own address — Sarah's mailbox from
   SR-3 is the precedent).
 - **AE-2.3** The phone cockpit: Agents panel + event-ledger inbox +
-  one-tap push approvals; pending contracts land with it. The **web
+  one-tap push approvals. Pending contracts land with it. The **web
   twin lands on the P1 Track A web codebase authored in the Effect
   Native component set** (§EN unlock #4 — the catalog's forms/lists/
   modals/navigation growth is paced by exactly this surface), beginning
@@ -1568,21 +1568,21 @@ as its flagship instance.
 - **AE-4 (scopes)** Authority scoping law before the cockpit ships:
   `owner_self | shared_fleet | owner_operator`.
 - **CB-1.1–1.3** `company_brain.v1` (named owner-scoped collections on
-  Khala Sync; ingestion in trust-cost order; role-scoped slices
+  Khala Sync. Ingestion in trust-cost order. Role-scoped slices
   compiled into toolset policy).
 - **CB-1.4** The prefill pipeline as a fleet lane (intake → public-data
   research run → seeded brain + starter employee in `observe` → intro
   receipt naming every source) — fed directly by Sarah's intake specs.
 
 **Exit:** one employee promoted observe→draft→act-with-approval from the
-phone, each transition receipted, one push-approved outbound action; one
-brain serving two employees with disjoint slices; one prospect workspace
-prefilled end-to-end with zero hand-editing; Sarah running on the formal
+phone, each transition receipted, one push-approved outbound action. One
+brain serving two employees with disjoint slices. One prospect workspace
+prefilled end-to-end with zero hand-editing. Sarah running on the formal
 employee record.
 
 ## P5 — Templates and business integrations (AE-3 + BI-1..5 + SR-5/6)
 
-Specs: integration doc Phase 4; post-MVP doc §4; BF-6 connector lanes;
+Specs: integration doc Phase 4. Post-MVP doc §4. BF-6 connector lanes.
 Sarah spec §13.
 
 - **AE-3.1** Template = preset bundle (definition preset + persona +
@@ -1594,24 +1594,24 @@ Sarah spec §13.
   "costs extra").
 - **SR-6** **Sarah as product**: the sales-employee template extracted
   into the catalog — customers hire their own Sarah on their brain and
-  rate card; her outcome ledger is the template's receipted proof.
+  rate card. Her outcome ledger is the template's receipted proof.
 - **AE-3.2** Catalog gate, promise-registry style: no template lists
-  without a receipted *external* outcome; template pages carry live
+  without a receipted *external* outcome. Template pages carry live
   outcome ledgers.
-- **AE-3.3** Hiring flow; time-to-first-receipt as activation metric.
-- **BI-1..5** Connector grants on the custody rail; GitHub sidecar
-  first, Slack second; CRM-as-mirror lane; ingestion + redaction; the
+- **AE-3.3** Hiring flow. Time-to-first-receipt as activation metric.
+- **BI-1..5** Connector grants on the custody rail. GitHub sidecar
+  first, Slack second. CRM-as-mirror lane. Ingestion + redaction. The
   owner-priced connector/orchestration margin as a third labeled
   receipt kind.
 
 **Exit:** three templates listed with receipted external outcomes (the
-sales-employee template among them); one customer running two employees
+sales-employee template among them). One customer running two employees
 off one brain against a real business system through a brokered
-connector; one signed Sarah-originated order form.
+connector. One signed Sarah-originated order form.
 
 ## P6 — The trust layer (AE-4.x/CB-2 + sovereignty deltas)
 
-Specs: integration doc Phase 5; sovereignty analysis §6.
+Specs: integration doc Phase 5. Sovereignty analysis §6.
 
 - **AE-4.1** Provenance-receipted skill registry (content hash, source,
   injection-audit receipt, capability manifest, regenerate-under-audit).
@@ -1623,28 +1623,28 @@ Specs: integration doc Phase 5; sovereignty analysis §6.
 - **P6.4** Corpus canaries (seeded facts + periodic external probes →
   misappropriation-detection receipts).
 - **P6.5** Data-posture policy objects per inference lane (typed,
-  receipt-backed retention statements). *Cheap; may land earlier
+  receipt-backed retention statements). *Cheap. May land earlier
   opportunistically.*
 - **SR-4 voice** lands here at the latest (push-to-talk web voice with
   the transport-invariant safety fixtures), unless pulled forward by
   owner priority after P2.
 
 **Exit:** registry live with our own templates' skills as the first
-audited entries; input ceiling sweep-enforced; first canary receipt;
+audited entries. Input ceiling sweep-enforced. First canary receipt.
 Sarah voice v1 receipts if not earlier.
 
 ## P7 — Scale, the suite, and the network
 
-Specs: product suite doc; integration doc Phase 6 + §5 campaign;
-sovereignty analysis §5–6; suite/pricing owner gates.
+Specs: product suite doc. Integration doc Phase 6 + §5 campaign.
+sovereignty analysis §5–6. Suite/pricing owner gates.
 
 - **P7.1** The assessment instrument upgraded to the 15-step
   sovereignty rubric (SMB translation) feeding the prefill lane —
   audit-first outbound at fleet scale, with Sarah as the landing
   conversation for every assessment link.
 - **P7.2** Suite arming, owner-timed: IAP reopen (#8481/#8482) with the
-  credits-brand decision (*"minerals"* gate); desktop pairing reopen
-  (MC-5); the two-register design spec; the **openagents.com business
+  credits-brand decision (*"minerals"* gate). Desktop pairing reopen
+  (MC-5). The two-register design spec. The **openagents.com business
   dashboard** completed on the P1/P4 web codebase in the Effect Native
   component set (spend, receipts, roster, approvals, team) with
   legacy-web retirement per the reopen ledger — this is where the EN-4
@@ -1656,13 +1656,13 @@ sovereignty analysis §5–6; suite/pricing owner gates.
   Reactor Zero serving share as a tracked internal metric (public claim
   owner-gated).
 - **P7.4** Network graduation: employee outcome ledgers → consented
-  public outcome stories → forum identity → tips → routed work; partner
+  public outcome stories → forum identity → tips → routed work. Partner
   prong fulfillment receipted under LG-8/LG-9 bookkeeping.
 - **P7.5** The agency-trap tripwire watched continuously
   (operator-minutes per engagement falling per cohort, in Aiur).
 
-**Exit:** falling operator-minutes across a growing cohort; first
-partner-fulfilled prong receipted; first assessment-sourced customer
+**Exit:** falling operator-minutes across a growing cohort. First
+partner-fulfilled prong receipted. First assessment-sourced customer
 closed by Sarah running a templated employee.
 
 ## Cross-cutting disciplines (bind every phase)
@@ -1671,7 +1671,7 @@ closed by Sarah running a templated employee.
    Suites (expected-* fixtures as oracles), pass the release gate, and
    record receipts incl. the could-not-prove list. Feature ladder rungs
    cap claims.
-2. **Receipt-first, exact-only; owner-gated greens; public-safe
+2. **Receipt-first, exact-only. Owner-gated greens. Public-safe
    projections.**
 3. **Config, not fork** — verticals, templates, customers, deal rules
    are config.
@@ -1681,12 +1681,12 @@ closed by Sarah running a templated employee.
    UI surface — web, mobile, desktop, canvas — authors the **Effect
    Native typed component set** on the one Protoss-blue token set (§EN).
    React/TanStack Start and React Native serve as renderer adapters and
-   serving hosts, never the architecture; no new UI authors platform
+   serving hosts, never the architecture. No new UI authors platform
    primitives outside a renderer adapter. The whole estate converts on
    the scheduled §EN wave program (ASAP, substrate-gated — never
-   substrate-skipping); every conversion PR lands green and deletes the
-   legacy surface it replaces; legacy UI never grows.
-6. **Owned vocabulary** — Blueprint (never "ontology"); no third-party
+   substrate-skipping). Every conversion PR lands green and deletes the
+   legacy surface it replaces. Legacy UI never grows.
+6. **Owned vocabulary** — Blueprint (never "ontology"). No third-party
    company names in public copy.
 7. **No hosted CI / no third-party build-update-visual SaaS** — owned
    runners, owned OTA, owned engines.
@@ -1695,13 +1695,13 @@ closed by Sarah running a templated employee.
 
 ## Current owner gates (as of 2026-07-08 rev 6.4)
 
-Rev 6.4 additions (§MH; also filed to NEEDS_OWNER):
+Rev 6.4 additions (§MH, also filed to NEEDS_OWNER):
 
 - **X.ai auth plane per fleet capacity host** — plane A (free
   `grok login` / grok.com session) vs plane B (`XAI_API_KEY`, published
-  pricing); pick the burn plane while the free window holds; hosts must
+  pricing). Pick the burn plane while the free window holds. Hosts must
   record which plane each account uses.
-- **Weekly free-window verification** for Grok 4.5; on expiry flip
+- **Weekly free-window verification** for Grok 4.5. On expiry flip
   `marginal_cost_class` and let MH-8 re-rank `auto` (no code change).
 
 Rev 6.2 note: the `#8577` Tassadar/Psionic code-removal gate is **no longer
@@ -1716,7 +1716,7 @@ New this pass (Khala Sync realtime hardening, 2026-07-08):
   deploy log was ever persisted/shared (it was local scratchpad only) — can be
   done non-interactively via the automation SA on the owner's say-so.
 
-Standing gates (carried; still open):
+Standing gates (carried, still open):
 
 
 - #8503 DoD verification + production arming decisions (P0.4).
@@ -1724,17 +1724,17 @@ Standing gates (carried; still open):
 - **Store submission actions** (App Store Connect + Play Console) at
   P0.9.
 - **Sarah SR-2 sign-offs**: rate card, bundle rules, tactics registry
-  parameters, per-transaction cap; the tactic-vs-no-discounts
+  parameters, per-transaction cap. The tactic-vs-no-discounts
   reconciliation confirmation (Sarah spec §14.4).
-- Sarah surname/IP check before any public use beyond "Sarah";
+- Sarah surname/IP check before any public use beyond "Sarah".
   investor-routing posture (qualify-and-route only) confirmation.
 - **Track C (outbound) gates:** Resend send arming
   (`CRM_RESEND_SEND_ENABLED` + keys) and the dedicated sending
-  subdomain/DNS; daily-cap ramp sign-offs on deliverability receipts;
+  subdomain/DNS. Daily-cap ramp sign-offs on deliverability receipts.
   send-class promotion beyond approval-gated (never without a receipted
   owner decision).
-- Agent-computer compute rate; IAP arming + credits-brand
-  ("minerals"); template/services pricing; any promise green flips.
+- Agent-computer compute rate. IAP arming + credits-brand
+  ("minerals"). Template/services pricing. Any promise green flips.
 
 ## Document map (content authorities under this roadmap)
 
@@ -1744,13 +1744,13 @@ Standing gates (carried; still open):
 | Agent Computers strategy | `../khala-code/2026-07-06-agent-computers-strategy.md` |
 | Mobile testing system (P0) | `../khala-code/2026-07-07-mobile-testing-audit-and-plan.md` |
 | **Sarah (P1, SR-*)** | `2026-07-07-sarah-sales-agent-spec.md` |
-| **Sarah implementation home** | `apps/sarah/` in this monorepo (rev 6.7, epic #8594; private `OpenAgentsInc/sarah` freezes at SM-0, retired at SM-6) |
+| **Sarah implementation home** | `apps/sarah/` in this monorepo (rev 6.7, epic #8594, private `OpenAgentsInc/sarah` freezes at SM-0, retired at SM-6) |
 | **Sarah consolidation plan (SM-0..6)** | `2026-07-09-sarah-monorepo-effect-native-consolidation-plan.md` |
-| **Multi-harness parallelization (§MH, MH-0..9, rev 6.4)** | `2026-07-08-multi-harness-parallelization-effect-native-analysis.md` (Fable §1–10 + Grok §11 + Fable §12 — consensus + dispatch plan); `docs/grok/parallel-multi-harness-asap.md` + `docs/grok/grok-cli-as-third-harness.md` (adapter design); `docs/grok-cli/` (CLI reference) |
-| **Pylon fold (PY-1..3, rev 6.3)** | `2026-07-08-pylon-into-khala-code-proposal.md` (ACCEPTED — daemon-cockpit model; lanes #8578/#8579/#8580; Spark wallet preserved by owner mandate) |
-| **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first; UI-layer analysis holds EN-0..EN-9); public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order; issues: #1–#8 Phase 0/1 closed, #9–#19 Phase 2/3, #20–#43 the Phase 4 desktop/canvas epic; #52 + #53–#65 the mobile epic — RN full-peer renderer + mobile catalog + cross-app Khala Sync exit test). Internal lanes: epic #8566, EN-1 #8567, EN-2 #8572, EN-3 #8568, MB-EN #8597 (full mobile rewrite), EN-4 #8573, EN-5 #8574, EN-6 #8575, deploys #8570/#8571 |
-| **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference; **design/tokens reference per §EN** — theme ports into `@effect-native/tokens`; the vendored React replica at `/demo`/`/new` is the visual baseline, not the forward path) |
-| **Outbound engine (P1 Track C)** | `2026-07-03-apollo-outbound-sales-plan.md` (audit-first motion, segments); SELL epic #8261 / LG-1..9 (closed substrate); blitz compliance-guardrails (binding) |
+| **Multi-harness parallelization (§MH, MH-0..9, rev 6.4)** | `2026-07-08-multi-harness-parallelization-effect-native-analysis.md` (Fable §1–10 + Grok §11 + Fable §12 — consensus + dispatch plan). `docs/grok/parallel-multi-harness-asap.md` + `docs/grok/grok-cli-as-third-harness.md` (adapter design). `docs/grok-cli/` (CLI reference) |
+| **Pylon fold (PY-1..3, rev 6.3)** | `2026-07-08-pylon-into-khala-code-proposal.md` (ACCEPTED — daemon-cockpit model, lanes #8578/#8579/#8580, Spark wallet preserved by owner mandate) |
+| **Effect Native substrate (§EN, EN-*)** | `../effect-native/README.md` + the six 2026-07-08 docs (framing doc first, UI-layer analysis holds EN-0..EN-9). Public framework repo `OpenAgentsInc/effect-native` (ROADMAP phases 0–6 = the substrate build order, issues: #1–#8 Phase 0/1 closed, #9–#19 Phase 2/3, #20–#43 the Phase 4 desktop/canvas epic, #52 + #53–#65 the mobile epic — RN full-peer renderer + mobile catalog + cross-app Khala Sync exit test). Internal lanes: epic #8566, EN-1 #8567, EN-2 #8572, EN-3 #8568, MB-EN #8597 (full mobile rewrite), EN-4 #8573, EN-5 #8574, EN-6 #8575, deploys #8570/#8571 |
+| **Landing site kit (P1 Track A, WEB-1 #8565)** | `projects/repos/launch-ui` (MIT reference, **design/tokens reference per §EN** — theme ports into `@effect-native/tokens`, the vendored React replica at `/demo`/`/new` is the visual baseline, not the forward path) |
+| **Outbound engine (P1 Track C)** | `2026-07-03-apollo-outbound-sales-plan.md` (audit-first motion, segments). SELL epic #8261 / LG-1..9 (closed substrate). Blitz compliance-guardrails (binding) |
 | Web stack decision (P1 Track A) | `2026-07-04-tanstack-start-sites-and-web-app-evaluation.md` |
 | Codex/BYO harness (P2) | `2026-07-07-beyond-mvp-codex-agent-computers-and-ai-employees.md` |
 | Horizon ladder + lane reconciliation | `2026-07-07-overarching-roadmap-khala-code-agent-computers-ai-employees.md` |

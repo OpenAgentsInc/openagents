@@ -33,7 +33,7 @@ server alongside the existing preview/RPC server:
   port, which stays loopback-only because its `/rpc/*` routes carry a
   per-boot secret token. The health beacon carries no secret and exposes
   nothing but liveness + hostname, so widening its bind address is safe.
-- Configurable via env: `KHALA_CODE_DESKTOP_TAILNET_HEALTH=0` disables it;
+- Configurable via env: `KHALA_CODE_DESKTOP_TAILNET_HEALTH=0` disables it.
   `KHALA_CODE_DESKTOP_TAILNET_HEALTH_PORT` overrides the port. Both are typed
   entries in `khala-code-config.ts`'s `KhalaCodeEnvKey` union.
 - Started once at boot via `startTailnetHealthBeacon()`, right after the
@@ -95,7 +95,7 @@ intentional rather than a placeholder:
 
 Confirmed live in both states via the iOS Simulator: green dot + hostname when
 a local `bun run dev` Khala Code desktop instance is up and the beacon
-responds on `:50099`; red dot + "no khala code instance found" when the
+responds on `:50099`. Red dot + "no khala code instance found" when the
 desktop app (and thus the beacon) is not running.
 
 ## Chat sync over Khala Sync
@@ -126,11 +126,11 @@ server-authoritative mutators `chat.createThread` / `chat.appendMessage` /
   message. Since `chat_message` has no role/sender field (MC-1 is an
   owner-private primitive — `authorUserId` is always the calling user),
   messages render as a plain chronological list rather than fabricating a
-  left/right bubble distinction the data doesn't support.
+  left/right bubble distinction the data does not support.
 - Both screens share one generic hook, `src/sync/use-khala-sync-collection.ts`:
   POST `/api/sync/bootstrap` once, then open a live WebSocket to
   `/api/sync/connect` (React Native's `WebSocket` third-argument `{ headers }`
-  extension carries the bearer token — browsers can't do this, RN can), and
+  extension carries the bearer token — browsers cannot do this, RN can), and
   merge every `DeltaFrame` in. Parametrized by entity type + decoder, so the
   same hook backs both `chat_thread` and `chat_message` collections. The pure
   merge/sort/decode logic lives in `src/sync/khala-sync-entities-core.ts`
@@ -178,10 +178,10 @@ this change). Both overages were resolved:
 - The one remaining `throw new Error` overage (a `Date.parse`-of-an-already-
   serialized-value invariant guard, caught by the same outer route
   try/catch + typed error classifier every sibling route already uses)
-  couldn't be converted to its obvious typed-error sibling
+  could not be converted to its obvious typed-error sibling
   (`ProviderGrantExpired` / `GitHubWriteGrantExpired`) without changing that
   route's HTTP status code (400 -> 409), which needed real verification this
-  didn't have time for — the budget was raised 12 -> 13 with a dated
+  did not have time for — the budget was raised 12 -> 13 with a dated
   justification instead, mirroring the same reviewed-raise precedent already
   used elsewhere in that check file.
 
@@ -220,7 +220,7 @@ part still goes through the `chatAppendMessage` RPC this session added).
 
 This surfaced a real gap: a thread created purely as a Khala-Sync-only
 entity (no matching local Codex/Claude session file) shows up in that
-history list but fails to open ("This chat couldn't be opened. Its session
+history list but fails to open ("This chat could not be opened. Its session
 may be missing or unavailable") because `codexThreadRead` only knows how to
 read real local session transcripts, not synthesize one from Khala Sync
 messages alone. The fix for THIS session's demo was to drive a real chat
@@ -248,8 +248,8 @@ path when no local session file exists) — not done here.
   app-restart cursor resume without duplicate messages, public-safe rejection
   state).
 - Live-verified on the iOS Simulator: thread list renders both real threads
-  with recency + message counts; tapping a thread opens the message view
-  with correctly formatted, chronologically ordered, timestamped messages;
+  with recency + message counts. Tapping a thread opens the message view
+  with correctly formatted, chronologically ordered, timestamped messages.
   the header dot renders as a plain small circle (not native button chrome)
   on both screens, confirmed via simulator screenshots.
 
@@ -295,7 +295,7 @@ session id assigned by the desktop's local fleet cockpit (`local.runRef` in
 `fleet-sync-projection.ts`) — there is no stable "list all my fleet runs"
 scope to discover it from. `EXPO_PUBLIC_KHALA_SYNC_DEMO_FLEET_RUN_ID` points
 mobile at one specific run id for now (empty by default, showing a
-"no fleet run configured" state); a stable per-owner fleet-roster scope
+"no fleet run configured" state). A stable per-owner fleet-roster scope
 would be the real fix, and is a separate follow-up, not done here.
 
 ### No production writer creates `fleet_run`/`fleet_worker`/`fleet_account` today — verified, then seeded for real
@@ -343,7 +343,7 @@ is a status report of already-true fact from the desktop, so it skips
 the `khala_sync_fleet_intents` durable-intent table entirely (no
 migration needed) and goes straight to the scope-owner gate + entity
 append every fleet mutator uses. 2 new integration tests against real
-local Postgres (merge-across-reports, foreign-user rejection); full
+local Postgres (merge-across-reports, foreign-user rejection). Full
 khala-sync-server suite (350 tests) and khala-sync suite (90 tests)
 stayed green. Desktop got the matching client mutator + a new
 `khalaSyncFleetReportAccountState` RPC
@@ -372,7 +372,7 @@ that goal has two remaining pieces, neither built yet:
    `runtime_turn`/`runtime_control_intent`/`runtime_event` rows into
    `scope.user.<owner>` + `scope.thread.<threadId>` — exactly the shape
    you'd want a mobile-initiated "start this chat" command to ride. But
-   it's 100% declarative today: no Worker route, Durable Object, queue, or
+   it is 100% declarative today: no Worker route, Durable Object, queue, or
    Pylon poller consumes these intents to actually dispatch real Codex/
    Claude execution (confirmed by grepping `apps/pylon/`, the Worker, and
    the desktop for any consumer — zero hits outside the mutator/registry
@@ -401,7 +401,7 @@ aware account selection, depends on #8388).
 
 The gap above (#8388) is closed. A real Pylon-side consumer exists and
 was proven end-to-end against real Postgres (see below), though it is not
-yet wired into production process supervision (that's the deploy/ops
+yet wired into production process supervision (that is the deploy/ops
 follow-up, not a code gap).
 
 **New consumption seam (mirrors the fleet-intents pattern exactly):**
@@ -467,7 +467,7 @@ translated events landed via the REAL `runtime.recordEvent` mutator
 `usage.recorded`, `turn.finished`, sequence 1-7, all `applied`) and that
 `khala_sync_runtime_turns.status` correctly reached `"completed"` with
 `event_count: 7`. Only the Codex SDK invocation and the local account
-registry were faked; storage, mutators, readers, the push engine, and the
+registry were faked. Storage, mutators, readers, the push engine, and the
 event translator were all real production code.
 
 **Known gaps, kept honest, not silently papered over:**
@@ -480,7 +480,7 @@ event translator were all real production code.
 - **`message.append` for an in-flight turn is explicitly rejected, not
   silently dropped or faked.** The Codex SDK's `runStreamed(prompt)` call
   has no mid-turn steering API, so there is no real way to inject the
-  message into an already-running turn; the control-intent outcome records
+  message into an already-running turn. The control-intent outcome records
   `failed` with a clear detail saying so.
 - **`turn.continue` / `turn.retry` / `turn.close` are recorded
   `skipped_stale`** with an explicit "not implemented in this pass" detail
@@ -603,11 +603,11 @@ for a `scope.fleet_run.<runId>` scope:
   `options.provider` is set) an exact `provider` match — an account with
   no reported `provider` never matches a set filter. A
   `cooldown`/`unavailable`/`unknown` account is excluded even if it still
-  reports leftover capacity; a missing `capacityAvailable` is treated as
+  reports leftover capacity. A missing `capacityAvailable` is treated as
   ineligible, never as "assume available" or "zero is fine."
-- Among eligible accounts: highest `capacityAvailable` wins; ties break by
+- Among eligible accounts: highest `capacityAvailable` wins. Ties break by
   lowest `capacityBusy + capacityQueued` (missing busy/queued count as 0
-  for this sum only); remaining ties break by `accountRefHash` ascending.
+  for this sum only). Remaining ties break by `accountRefHash` ascending.
 - If the top-ranked group is still a full tie (equal capacity and load)
   and the caller passes `lastUsedAccountRefHash`, the selector cycles to
   the next account in that tied group (wrapping) instead of repeating the
@@ -624,7 +624,7 @@ all-missing-capacity, non-ready exclusion (`cooldown`, `unavailable`,
 `unknown`), provider filtering (match + no-provider-reported exclusion),
 and the full round-robin cycle/wrap/ignore-stale-hash cases. Full
 `khala-sync-server` suite: 366 pass / 0 fail across 37 files
-(Postgres-backed `fleet-mutators`/`fleet-projection` suites included);
+(Postgres-backed `fleet-mutators`/`fleet-projection` suites included).
 `tsc --noEmit` clean.
 
 **Integration point for `#8388`'s consumer (still open):** whichever
@@ -649,7 +649,7 @@ currently guesses/hardcodes an account:
 4. If it returns an account, dispatch to `account.accountRefHash` and
    remember that hash as the next call's `lastUsedAccountRefHash`.
 
-This is a one-line call once `#8388` lands; no further schema or mutator
+This is a one-line call once `#8388` lands. No further schema or mutator
 changes are needed on the `khala-sync`/`khala-sync-server` side for basic
 capacity-aware selection.
 
@@ -677,7 +677,7 @@ changes behavior based on whether the thread has an active (unsettled)
 
 Pure logic lives in `khala-runtime-compose-core.ts` (`findActiveTurn`,
 mutation-arg builders — 10 unit tests) and `khala-sync-push-core.ts`
-(push request wiring, safe-ref id generation — 6 unit tests); `RuntimeTurnEntity`
+(push request wiring, safe-ref id generation — 6 unit tests). `RuntimeTurnEntity`
 is now also subscribed on the thread screen (alongside `chat_message` and
 `runtime_event`) to drive this. `use-khala-sync-push.ts` mints a fresh
 `clientId` per app session so the mutation counter can always start at 1
@@ -687,19 +687,19 @@ without colliding with a prior session's ledger watermark (the same
 **Verified end-to-end on the iOS Simulator against production Khala Sync**,
 against the same real thread used for the transcript proof above:
 1. Typed a message with no active turn, tapped Send — a real `runtime.startTurn`
-   landed; the transcript screen picked it up live and showed "● TURN QUEUED"
+   landed. The transcript screen picked it up live and showed "● TURN QUEUED"
    with the composer switching to the Stop button.
 2. Typed a follow-up while that turn was queued — the Steer/Queue picker
-   appeared; tapped Send with Steer selected — a real `runtime.appendUserMessage`
+   appeared. Tapped Send with Steer selected — a real `runtime.appendUserMessage`
    landed (text cleared, turn stayed queued).
-3. Tapped Stop — a real `runtime.interruptTurn` landed; the turn left the
+3. Tapped Stop — a real `runtime.interruptTurn` landed. The turn left the
    active set and the composer reverted cleanly to the idle Send state.
 
-**Still a gap:** none of these turns actually execute anything yet — there's
+**Still a gap:** none of these turns actually execute anything yet — there is
 still no consumer (#8388) reading `khala_sync_runtime_control_intents` and
 starting a real Codex/Claude session, so a `runtime.startTurn` from this
 composer sits `queued` forever until that consumer exists. This composer
-proves the write side of the contract is complete and correct; #8388/#8389
+proves the write side of the contract is complete and correct. #8388/#8389
 are what make a tapped Send actually produce a new assistant turn.
 
 ## #8388 follow-up: real account selection, real steering fallback, turn.close, and a standing production supervisor (2026-07-05)
@@ -732,14 +732,14 @@ only affects fairness, never dispatch correctness). The naive placeholder
 
 Honest residual limitation: `candidateAccountsFromRegistry` still projects a
 placeholder `capacityAvailable: 1` for every ready registry account — real
-live per-account capacity isn't wired yet, so today the real ranking mostly
-reduces to readiness + round-robin. The *algorithm* is no longer naive; its
+live per-account capacity is not wired yet, so today the real ranking mostly
+reduces to readiness + round-robin. The *algorithm* is no longer naive. Its
 *inputs* still are.
 
 ### Steering: no literal mid-turn injection exists, so append becomes a real follow-up turn instead of a flat rejection
 
 Verified against `@openai/codex-sdk`'s own type surface: `Thread` exposes
-only `run`/`runStreamed`; there is no `send`/`interject`/mid-stream input API.
+only `run`/`runStreamed`. There is no `send`/`interject`/mid-stream input API.
 Every consumer in this codebase (`codex-agent-executor.ts`,
 `codex-composer.ts`, and this one) calls `runStreamed` once and drains it to
 completion — literal mid-turn steering is not possible without vendoring a
@@ -768,7 +768,7 @@ ACTIVELY dispatching on this same Pylon process now:
 
 Outcome is `applied` (not `failed`) for the case above — the composer's steer
 flow should read this as success/queued, not an error toast. If the intent's
-`turnId` isn't currently active locally (different process, already
+`turnId` is not currently active locally (different process, already
 settled, or never started here), the outcome is `skipped_stale` with a detail
 explaining the message remains durably visible in the thread and a new turn
 will pick it up — mirrors `turn.interrupt`'s existing precedent for "nothing
@@ -780,10 +780,10 @@ account that resumes a thread differs from the one that created it (each
 account has an isolated `~/.codex`-equivalent home), the resume fails cleanly
 into a normal `turn.finished(error)` — never a crash — but that turn loses
 context. This mostly matters once an owner has 2+ ready Codex accounts
-feeding the round-robin tie-break; it does not affect the common
+feeding the round-robin tie-break. It does not affect the common
 one-or-two-accounts-mostly-idle topology this Pylon runs today.
 
-### turn.close implemented; turn.continue/turn.retry stay honestly skipped_stale
+### turn.close implemented. Turn.continue/turn.retry stay honestly skipped_stale
 
 The server-side `runtime.closeTurn` mutator already makes `closed`
 authoritative at mutation-apply time (mirrors how `turn.interrupt`'s mutator
@@ -840,7 +840,7 @@ end-to-end):
    top of all three wrappers.
 
 Both fixes apply equally to the codex/claude supervisor wrappers, which had
-the same latent bugs — they just hadn't been caught because neither was
+the same latent bugs — they just had not been caught because neither was
 currently loaded either.
 
 Verified running: `launchctl list | grep openagents` shows
@@ -939,7 +939,7 @@ history.
 
 That same live testing surfaced the honest limitation already documented up
 front in sharp relief: only `codex-4` and `codex-5` currently report
-`ready`; `codex-2` (`credentials_missing`), `codex-3` (`usage_limited`), and
+`ready`. `codex-2` (`credentials_missing`), `codex-3` (`usage_limited`), and
 `codex-7` (`credentials_revoked`) all round-robin into the pool anyway
 because `candidateAccountsFromRegistry` treats every REGISTERED account as
 equally `ready` with fake `capacityAvailable: 1`, regardless of real health.
@@ -1000,7 +1000,7 @@ Opened as a new tracking issue (see the closing comment on #8388):
    moves to a different account than the one that created a given Codex
    thread id, resume fails cleanly but loses context every time. A real fix
    needs either per-account thread-id tracking or pinning one account per
-   Khala thread until it's demonstrably unhealthy.
+   Khala thread until it is demonstrably unhealthy.
 3. **No sanctioned way for an admin-authenticated dispatch consumer to push
    into an arbitrary linked owner's scope** other than holding that exact
    owner-Pylon's own credential file (see the auth-gap section above) — fine
@@ -1056,7 +1056,7 @@ closes that gap by adding a second, parallel real provider path.
   `reasoning_output_tokens`.
 - **Lane-aware routing.** `handleTurnStart` now reads the intent's
   `target.lane`: `codex_app_server` dispatches the Codex path exactly as
-  before; `claude_pylon` dispatches the new Claude path, scoping
+  before. `claude_pylon` dispatches the new Claude path, scoping
   `selectDispatchAccount`'s `options.provider` to `"codex"` or
   `"claude_agent"` respectively. Any OTHER `target.lane` (e.g.
   `ai_sdk_core`) is an explicit `failed` outcome naming the unsupported lane
@@ -1079,7 +1079,7 @@ closes that gap by adding a second, parallel real provider path.
   mirroring `Codex#resumeThread`'s best-effort semantics (a mismatched
   account fails cleanly into a normal `turn.finished(error)`, never a crash).
 
-### Investigated: does the Claude Agent SDK support real mid-turn steering? Yes — but it isn't wired in this pass
+### Investigated: does the Claude Agent SDK support real mid-turn steering? Yes — but it is not wired in this pass
 
 The Codex-only pass above documented mid-turn steering as flatly impossible:
 `@openai/codex-sdk`'s `Thread` only exposes `run`/`runStreamed`, no
@@ -1111,7 +1111,7 @@ providers, `message.append` against an in-flight turn is queued and
 dispatched as a real follow-up `runtime.startTurn` once the turn settles —
 never literal injection. Wiring genuine live Claude steering via streaming
 input mode is a concrete, scoped follow-up (tracked as unfinished work
-below), not a "we didn't check" gap.
+below), not a "we did not check" gap.
 
 ### Verified end-to-end, with a REAL (not scripted/faked) Claude Agent SDK call
 
@@ -1176,7 +1176,7 @@ account.pylon.claude_agent.ba8894450b3f9e52c5bbca01` as constructed by
 4. **The mobile/desktop composer still always sends `target: {lane:
    "codex_app_server"}`** (`khala-runtime-compose-core.ts`'s `RUNTIME_TARGET`
    constant) — this pass makes `claude_pylon` dispatch actually WORK once
-   selected, but does not add the composer-side lane-picker UI; that is a
+   selected, but does not add the composer-side lane-picker UI. That is a
    separate, sibling issue.
 5. **Cross-turn Claude session-id affinity has the same limitation as
    Codex's thread-id affinity** (follow-up item 2 above): `resumeSessionId`
@@ -1190,7 +1190,7 @@ account.pylon.claude_agent.ba8894450b3f9e52c5bbca01` as constructed by
 Two asks in one issue: (1) make the "connected accounts" visibility this doc
 already covers (the "`fleet.reportAccountState` closes the account-visibility
 gap" section above) actually recur automatically instead of needing a manual
-push, and extend it to Claude accounts; (2) investigate whether Claude needs
+push, and extend it to Claude accounts. (2) Investigate whether Claude needs
 a Codex-style server-side "OpenAgents link" (`--openagents-link`) and either
 build it or explicitly decide against it.
 
@@ -1228,10 +1228,10 @@ enabled, disposed on shutdown).
   (`CodexAgentReadinessState` / `ClaudeAgentReadinessState`,
   `apps/pylon/src/{codex,claude}-agent.ts` — 10 and 5 states respectively)
   maps into the Khala Sync `FleetAccountEntity`'s coarser 4-value public enum:
-  `ready` stays `ready`; `usage_limited`/`rate_limited` become `cooldown`
-  (expected to self-recover); `credentials_missing`/`credentials_revoked`/
+  `ready` stays `ready`. `usage_limited`/`rate_limited` become `cooldown`
+  (expected to self-recover). `credentials_missing`/`credentials_revoked`/
   `sdk_missing`/`auth_error`/`platform_unsupported`/`disabled_by_config`
-  become `unavailable` (needs an owner action); `network`/`timeout` and
+  become `unavailable` (needs an owner action). `network`/`timeout` and
   anything unrecognized become `unknown` — never guessed as `ready`.
 - **Capacity is reported only when resolved, never fabricated.** Unlike
   `candidateAccountsFromRegistry`'s documented `capacityAvailable: 1`
@@ -1243,13 +1243,13 @@ enabled, disposed on shutdown).
   -documented gap ("Fleet runs are scoped per session, not per owner") is
   still open — this reporter does not solve it. It reports into whichever
   `fleet_run` scope id(s) an operator explicitly configures via the new
-  `KHALA_SYNC_FLEET_ACCOUNT_REPORT_RUN_ID` env var (comma-separated; mirrors
+  `KHALA_SYNC_FLEET_ACCOUNT_REPORT_RUN_ID` env var (comma-separated, mirrors
   mobile's existing `EXPO_PUBLIC_KHALA_SYNC_DEMO_FLEET_RUN_ID`). With none
   configured, the reporter is an honest no-op (`{ skipped:
   "no_run_id_configured" }`) every tick — it never guesses a scope.
 - **Cadence**: the issue asked to "match whatever cadence Codex uses" — there
   was none to match (see above), so a new default of 30s was chosen
-  (`KHALA_SYNC_FLEET_ACCOUNT_REPORT_INTERVAL_MS` overrides;
+  (`KHALA_SYNC_FLEET_ACCOUNT_REPORT_INTERVAL_MS` overrides,
   `KHALA_SYNC_FLEET_ACCOUNT_REPORT_DISABLED=1` turns it off), matching the
   existing `startKhalaCodeDesktopTokenUsageBackgroundSync` scheduler shape
   (`codex-token-usage-telemetry.ts`) exactly: injectable `setInterval`/
@@ -1262,7 +1262,7 @@ enabled, disposed on shutdown).
   multi-run-id fan-out, per-account failure isolation (one account's
   rejection does not stop the others or throw), and timer scheduling/dispose
   with fake timers. Full `khala-code-desktop` suite: 689 pass / 0 fail across
-  81 files; `tsc --noEmit` clean.
+  81 files. `tsc --noEmit` clean.
 
 ### Live verification against production — genuinely automatic, no manual push
 
@@ -1298,7 +1298,7 @@ account.pylon.codex.f3f6feb61b8af31479fe6acd  provider=codex  readiness=ready  c
 Two things worth calling out: (1) `claude-supervisor`'s real local
 `credentials_missing` state correctly mapped to `readiness: "unavailable"`,
 not fabricated as ready — the mapping table is exercised by real data, not
-just unit-test fixtures; (2) the `updatedAt` timestamps on each entity are
+just unit-test fixtures. (2) The `updatedAt` timestamps on each entity are
 spread across the full ~13s window in tick order, which is exactly the
 signature of several independent automatic ticks re-reporting the same
 accounts, not one static push. This is the same scope-and-mutator path the
@@ -1347,7 +1347,7 @@ Findings, from reading the real code rather than guessing:
   Claude account it used.
 
 **Decision: (a).** Claude accounts authenticate via Anthropic's own
-OAuth/keychain-backed login already; local registry discovery
+OAuth/keychain-backed login already. Local registry discovery
 (`pylon accounts list`) plus this issue's new recurring `fleet_account`
 reporting is sufficient for visibility, and nothing in the current dispatch
 consumer, billing, or fleet-visibility path reads or needs
@@ -1377,7 +1377,7 @@ Gap 4 above is closed: the mobile composer can now actually request
 - **`chat-composer.tsx`** — a small idle-only two-pill toggle ("Codex" /
   "Claude", reusing the existing Steer/Queue pill's visual pattern per the
   issue's own suggested precedent) appears above the input row whenever
-  there's no active turn. It preselects `defaultLane` (the thread's
+  there is no active turn. It preselects `defaultLane` (the thread's
   `mostRecentTurnLane`, itself falling back to `DEFAULT_RUNTIME_LANE`) until
   the user taps a pill, after which their choice sticks even if `defaultLane`
   recomputes. The picker is intentionally hidden while a turn is running —
@@ -1411,14 +1411,14 @@ published as a `KhalaRuntimeEvent` back to the thread. The `runtime_turn`
 entity the mobile app subscribes to was already created `queued` by the
 `runtime.startTurn` mutator itself, and nothing ever moves it out of
 `queued` in this failure path — so **today, for Codex, a "no dispatch-ready
-account" turn just sits `queued` forever with zero user-visible signal**;
+account" turn just sits `queued` forever with zero user-visible signal**.
 there is no timeout/stuck-detection anywhere in the mobile client either
 (confirmed: no such logic exists in `chat-composer.tsx` or
 `app/thread/[threadId].tsx`).
 
 Given that, the honest decision for Claude is: **do not invent a new error
 class**, per the issue's own instruction — there is no existing one to
-reuse (Codex's failure isn't surfaced to the user at all), and adding a
+reuse (Codex's failure is not surfaced to the user at all), and adding a
 Claude-only surfaced error would be a worse, asymmetric experience than
 matching Codex's current (silent) behavior. Picking Claude with no `ready`
 `claude_agent` account produces the exact same "queued forever, no
@@ -1434,7 +1434,7 @@ than a Claude-specific patch that would leave Codex still silently stuck.
 
 Follow-up to the "Follow-up work not completed in this pass" list above.
 Addressed items 1, 2, and 4 with real end-to-end verification (not just unit
-mocks); items 3 and 5 are still open and re-scoped below.
+mocks). Items 3 and 5 are still open and re-scoped below.
 
 ### Item 1: real per-account readiness in `candidateAccountsFromRegistry`
 
@@ -1445,7 +1445,7 @@ is now exported and wired into `candidateAccountsFromRegistry`
 (`apps/pylon/src/orchestration/runtime-intent-enforcement.ts`) via a new
 optional `{ summary, env }` option. When given a bootstrap-shaped `paths`
 summary, every registered Codex/Claude account gets a REAL readiness probe
-instead of a hardcoded `"ready"`; the result is mapped onto
+instead of a hardcoded `"ready"`. The result is mapped onto
 `FleetAccountEntity`'s bounded `readiness` (`"ready" | "cooldown" |
 "unavailable" | "unknown"`) — `usage_limited`/`rate_limited` become
 `"cooldown"` (self-clearing), everything else non-ready becomes
@@ -1469,12 +1469,12 @@ exercises the actual filesystem probe, not a stub.
 ### Item 2: Codex/Claude thread-resume account affinity via a per-thread account pin
 
 Rather than per-(thread, account) resume-id tracking, took the issue's other
-sanctioned option: **pin one account per Khala thread until it's demonstrably
+sanctioned option: **pin one account per Khala thread until it is demonstrably
 unhealthy**. `PylonOrchestrationStore` gained
 `getRuntimeDispatchAccountRefHash`/`setRuntimeDispatchAccountRefHash`
 (`apps/pylon/src/orchestration/store.ts`), and `handleTurnStart` now checks
-the thread's pinned account FIRST: if it's still in the real dispatch-ready
-set (item 1) for the intent's lane/provider, it's used directly, bypassing
+the thread's pinned account FIRST: if it is still in the real dispatch-ready
+set (item 1) for the intent's lane/provider, it is used directly, bypassing
 `selectDispatchAccount`'s round-robin tie-break entirely for that thread.
 After a dispatch, the thread is (re-)pinned to whichever account was
 actually used. Only when the pinned account goes unhealthy does the thread
@@ -1509,7 +1509,7 @@ Postgres schema is behind — the exact gap the 2026-07-04/05 hardening
 session hit live with migration `0032_khala_sync_runtime_control_intents_seq.sql`.
 Wired into `apps/openagents.com/workers/api/package.json`'s `deploy:safe`
 right after the existing D1 `check:pending-migrations` step and before the
-final production `wrangler deploy`; the pure decision core
+final production `wrangler deploy`. The pure decision core
 (`decidePendingKhalaSyncMigrations`) also has a `test:pending-migrations-guard`
 unit test wired into `apps/openagents.com`'s `check:deploy` sweep (no live DB
 needed there — mirrors the D1 guard/live-check split).
@@ -1528,7 +1528,7 @@ exited zero.
 - **Item 3 (agent-scope delegation into an arbitrary linked owner's scope)**
   and **item 5 (`turn.continue`/`turn.retry`)** are both a comparable-or-larger
   lift than items 1/2/4 above (item 3 touches Khala Sync's scope-ownership
-  model directly; item 5 needs a correct "resume a stale/failed turn under
+  model directly. Item 5 needs a correct "resume a stale/failed turn under
   its EXISTING id" state-machine, not just a fresh dispatch). Neither was
   attempted in this pass to keep the shipped diff reviewable and each part
   independently verified. Tracked as remaining scope on the tracking issue
@@ -1563,7 +1563,7 @@ chat thread or runtime turn created by a human's own browser/mobile session
 owner's own Pylon posting `runtime.recordEvent`/`turn.close`/etc through its
 OWN agent bearer — `ctx.userId` (the agent's own id) would never match the
 thread's `owner_user_id`, and `ensureScopeOwner` correctly rejected it as a
-foreign scope. This is the literal "agent identities can't write into a human
+foreign scope. This is the literal "agent identities cannot write into a human
 owner's own thread" gap.
 
 The fix reuses an ALREADY-EXISTING, already-owner-approved delegation
@@ -1590,7 +1590,7 @@ export const resolveKhalaSyncActorUserId = (actor: AuthenticatedActor): string =
 Wired into all 5 `/api/sync/*` route `authenticate` callbacks (`push`, `log`,
 `bootstrap`, `cvr-pull`, `connect`) so the fix is consistent across the whole
 sync surface, not just the write path. A linked agent now resolves to its
-OWNER's scope; an unlinked agent (or one linked to a DIFFERENT owner) is
+OWNER's scope. An unlinked agent (or one linked to a DIFFERENT owner) is
 UNAFFECTED — it still resolves to its own agent-user id, exactly as before,
 and `ensureScopeOwner`'s reject-on-mismatch behavior is completely untouched.
 No new schema, no new header, no new trust boundary — a single upstream
@@ -1614,7 +1614,7 @@ instance with the real production mutator registry:
    delegation never widens to an arbitrary owner.
 
 Plus direct unit coverage of `resolveKhalaSyncActorUserId` for all four actor
-shapes (human; agent linked; agent with `openauthUserId: null`; agent with no
+shapes (human, agent linked, agent with `openauthUserId: null`, agent with no
 `openauthUserId` key at all).
 
 ### Item 5: real `turn.continue`/`turn.retry` dispatch
@@ -1625,7 +1625,7 @@ correctly re-queue the turn's EXISTING `turnId` back to `"queued"` status —
 they do not create a new turn. The gap was entirely on the Pylon dispatch
 consumer (`apps/pylon/src/orchestration/runtime-intent-enforcement.ts`):
 `turn.continue`/`turn.retry` were recorded `skipped_stale` with an explicit
-"not implemented" detail; nothing locally redispatched the turn.
+"not implemented" detail. Nothing locally redispatched the turn.
 
 New `handleTurnContinueOrRetry` implements real redispatch of the SAME
 `turnId`, reusing `handleTurnStart`'s exact account selection/pin (extracted
@@ -1649,9 +1649,9 @@ correctly rather than as a shortcut:
 2. **The prompt.** `turn.continue`/`turn.retry` are not new user messages — a
    caller-supplied `bodyRef` (if present) still resolves exactly like
    `turn.start`'s, but absent one (the expected common case) there is no
-   original message to resend; this consumer sends a short built-in
+   original message to resend. This consumer sends a short built-in
    continuation instruction instead ("Continue where you left off." /
-   "That didn't complete — please try again.") rather than looking up and
+   "That did not complete — please try again.") rather than looking up and
    replaying the turn's ORIGINAL triggering message verbatim. Documented as a
    deliberate, honest, bounded limitation in the code, not a silent shortcut —
    the resumed provider session already has full prior conversation context
@@ -1673,23 +1673,23 @@ Verified for real (not mocked):
   end-to-end dispatch tests drive `enforcePendingRuntimeIntents` with a fake
   Codex thread runner and assert (1) a `turn.continue` redispatch sends the
   built-in continuation prompt and its FIRST pushed event lands at sequence
-  4 (not 1) when the fetched turn already had `eventCount: 3`; (2) a
+  4 (not 1) when the fetched turn already had `eventCount: 3`. (2) A
   `turn.retry` with a resolvable `bodyRef` uses that message's body as the
-  prompt instead of the built-in instruction; (3) a still-locally-active
-  turn is `skipped_stale`; (4) a turn that does not exist, or one whose
+  prompt instead of the built-in instruction. (3) A still-locally-active
+  turn is `skipped_stale`. (4) A turn that does not exist, or one whose
   `bodyRef` points at a deleted message, is honestly `failed`.
 
 ### Test/typecheck evidence for this pass
 
-- `apps/pylon`: `bun run typecheck` clean; `bun test` — 2156 pass / 6
+- `apps/pylon`: `bun run typecheck` clean. `bun test` — 2156 pass / 6
   pre-existing fail / 2 pre-existing errors (Codex external `sessionRef`
   normalization, a flaky assignment-progress timing test, and a
   `cloudflare:workers` module-resolution error under plain `bun test` — same
   3 pre-existing classes flagged in the first #8410 follow-up pass, confirmed
   unrelated to this change's files).
-- `packages/khala-sync-server`: `bun run typecheck` clean; `bun test` — 355
+- `packages/khala-sync-server`: `bun run typecheck` clean. `bun test` — 355
   pass / 0 fail (up from 353).
-- `apps/openagents.com/workers/api`: `bun run typecheck` clean; targeted
+- `apps/openagents.com/workers/api`: `bun run typecheck` clean. Targeted
   suite (`khala-sync-agent-delegation.e2e`, `khala-sync-runtime-intents-routes`,
   `khala-sync-push-routes`, `khala-sync-mutators`, `admin-access`,
   `khala-sync-log-routes`, `khala-sync-bootstrap-routes`,
@@ -1717,9 +1717,9 @@ any lane" framework.
   has an unrelated `src/security/delegation-prompt.ts` (validates a
   user-typed prompt for the separate "Khala -> Pylon -> Codex own-capacity
   coding delegation" runbook in the root `CLAUDE.md`). Same English word,
-  different feature; kept the names visibly distinct rather than overload
+  different feature. Kept the names visibly distinct rather than overload
   "delegation" for two unrelated mechanisms.
-  - `handoffTargetLane(lane)` — maps `codex_app_server` <-> `claude_pylon`;
+  - `handoffTargetLane(lane)` — maps `codex_app_server` <-> `claude_pylon`.
     `undefined` for every internal routing lane (no user-facing counterpart
     to hand off to).
   - `summarizeTurnEventsForHandoff(events)` — re-runs the turn's OWN
@@ -1750,7 +1750,7 @@ any lane" framework.
   user-pickable lanes, never an internal routing lane): "ask
   claude/codex to review this". New optional props `onRequestHandoff`,
   `handoffPending`, `handoffDisabled` — all optional, so this stays a pure
-  display component when the caller doesn't wire them. Also deduplicated
+  display component when the caller does not wire them. Also deduplicated
   this file's own `LANE_LABEL`/`laneLabel` lookup down to a re-export of the
   new module's `handoffLaneLabel` (one lane->label mapping instead of two in
   the same file).
@@ -1822,7 +1822,7 @@ account available"` instead of mis-dispatching, because:
 `~/.pylon-fable/config.json`'s `dev.accounts` registry has five `codex`
 entries and ZERO `claude_agent` entries — `~/.pylon-fable/accounts/claude_agent/`
 does not exist on disk. `candidateAccountsFromRegistry` (the standing
-supervisor's account source) reads ONLY that exact registry list; it does
+supervisor's account source) reads ONLY that exact registry list. It does
 not do the broader home-directory auto-discovery scan `pylon accounts list`
 does (that CLI command has no `--pylon-home` flag at all — it was silently
 reading a completely different, unrelated default pylon home the whole
@@ -1866,7 +1866,7 @@ differences from React Native:
    Worker (`openagents-com-start-staging.workers.dev`), not the same origin
    as production `openagents.com`'s `/api/sync/*` routes — so a plain
    cross-origin browser `fetch` would need CORS support the production
-   Worker doesn't grant, and a standard browser `WebSocket` cannot set an
+   Worker does not grant, and a standard browser `WebSocket` cannot set an
    `Authorization` header on the upgrade request at all (React Native's
    3-arg `WebSocket` constructor with a `{ headers }` option is an
    RN-specific extension with no browser equivalent).
@@ -1910,7 +1910,7 @@ local `/api/khala-sync/push` proxy). `-khala-sync-session.ts` wraps
 `GET`/`POST`/`DELETE /api/khala-sync/session` as a small sign-in/out hook —
 the token never reaches this hook or any other browser JS. The route itself
 (`routes/khala/chat-sync.tsx`) now renders: a sign-in form (owner user id +
-bearer token) when signed out; otherwise a real two-pane chat UI — a thread
+bearer token) when signed out. Otherwise a real two-pane chat UI — a thread
 list bootstrapped + live-tailed from `scope.user.<owner>` (`chat_thread`
 entities, sorted/searchable via the already-existing
 `-chat-sync-collection.ts` helpers) with a real "New thread" form that pushes
@@ -1977,7 +1977,7 @@ Tailscale itself is the real security boundary here: only devices already
 authorized on the owner's own tailnet can reach the desktop's Tailnet-bound
 port at all (see the health-beacon section above — same bind address, same
 port, same "why 0.0.0.0 is safe here" reasoning). So the pairing endpoint adds
-no second auth layer on top; it's a narrowly-scoped credential read, gated
+no second auth layer on top. It is a narrowly-scoped credential read, gated
 only by network reachability plus "is this desktop actually signed in".
 
 **Desktop side** (`clients/khala-code-desktop/src/bun/index.ts`):
@@ -1992,11 +1992,11 @@ only by network reachability plus "is this desktop actually signed in".
 - Not signed in (either half missing) -> `{ ok: false, reason: "not_signed_in", hostname }`.
   Signed in -> `{ ok: true, ownerUserId, token, hostname }`. `hostname` is
   included in BOTH branches (not secret) so the mobile fallback screen can
-  say "found your Mac (name), but it isn't signed in yet" instead of a bare
+  say "found your Mac (name), but it is not signed in yet" instead of a bare
   "nothing found".
 - Disable with `KHALA_CODE_DESKTOP_MOBILE_PAIRING=0`.
 - The token is never logged: the route builds the JSON response directly
-  from the resolved credentials and returns; nothing touches `console.*`.
+  from the resolved credentials and returns. Nothing touches `console.*`.
 
 **Where `khalaSyncOwnerUserId` comes from**: the existing device-auth flow
 (`khalaCodeOpenAgentsAuthStart` / `khalaCodeOpenAgentsAuthPoll` in
@@ -2005,13 +2005,13 @@ only by network reachability plus "is this desktop actually signed in".
 already returns a `linkedAgent.userId` field in its "linked" response — the
 D1 agent record's own user id, i.e. exactly the Khala Sync personal-scope
 owner id (`scope.user.<id>`) this token authenticates as. The desktop simply
-wasn't capturing it before this change. `khalaCodeOpenAgentsAuthPoll` now
+was not capturing it before this change. `khalaCodeOpenAgentsAuthPoll` now
 reads `payload.linkedAgent.userId` and passes it to
 `writeKhalaCodeDesktopOpenAgentsAgentToken(agentToken, env, linkedAgentUserId)`,
 which persists both fields atomically in `desktop-settings.json`. Dev/manual
 setups that predate a real device link can still set
 `KHALA_SYNC_CHAT_OWNER_USER_ID` as an env fallback (used only when nothing is
-persisted yet); a persisted value always wins.
+persisted yet). A persisted value always wins.
 
 **Mobile side** (`clients/khala-mobile/src/auth/`):
 
@@ -2041,7 +2041,7 @@ persisted yet); a persisted value always wins.
 - `sign-in-screen.tsx`: no longer a bare form. The primary view is now
   `AutoDiscoveryPanel` — shows "Looking for a signed-in Mac on your
   Tailnet…" while `status === "discovering"`, then either nothing-found or
-  "found `<hostname>` but it isn't signed in yet" once discovery settles,
+  "found `<hostname>` but it is not signed in yet" once discovery settles,
   plus a Retry button. The original owner-user-id/token form survives only
   behind a secondary "Sign in manually instead" link (`ManualSignInForm`) —
   first-time setups with no desktop yet, or a phone-only user, still have a
@@ -2087,7 +2087,7 @@ production route byte-for-byte:
   `100.127.107.31:50099` — independent, real confirmation that the shared
   bind-address/port design this new route reuses is genuinely reachable over
   this Mac's real Tailscale interface today, not just in a sandbox.
-- `bun test` (desktop: 699 pass; mobile: 142 pass, including 9 new pairing-
+- `bun test` (desktop: 699 pass, mobile: 142 pass, including 9 new pairing-
   discovery tests and 5 new harness-setting pairing-credential tests) and
   `tsc --noEmit` (both packages) all green after every change in this
   section.
@@ -2149,7 +2149,7 @@ a real security regression (the same reason `gh auth login` or `codex login`
 need an explicit approval step). The honest fix here is a better fallback
 message, not bypassing the precondition: `sign-in-screen.tsx`'s
 `reachable_not_signed_in` message now reads "Found Khala Code on
-`<hostname>`, but it hasn't completed 'Connect OpenAgents' yet. Open Khala
+`<hostname>`, but it has not completed 'Connect OpenAgents' yet. Open Khala
 Code on your Mac, finish Connect, then retry." — naming the exact desktop
 UI panel instead of a vague "sign in there."
 
@@ -2163,7 +2163,7 @@ UI panel instead of a vague "sign in there."
    produce "no signed-in Mac found" regardless of the localhost bug, so it
    was a compounding factor in whatever the owner's exact session hit.
    Stopped that stale process tree and relaunched `bun run dev` from the
-   primary checkout (source already had the route; only the running build
+   primary checkout (source already had the route, only the running build
    was stale) — confirmed via a fresh `curl /health` + `/khala-mobile-pairing`
    against the new process.
 2. Built `KhalaCode.app` for the Simulator from a clean worktree at the
@@ -2203,7 +2203,7 @@ day-to-day "just works" experience still requires the owner to complete
 "Connect OpenAgents" on the desktop once — that is an owner action, not
 something this fix (or any future one) should silently bypass.
 
-Build 5 (TestFlight) ships this fix; build 4 predates it and still has the
+Build 5 (TestFlight) ships this fix. Build 4 predates it and still has the
 localhost gap.
 
 ## MC-7: all 4 desktop<->mobile Codex/Claude cross-device scenarios proven end-to-end (#8425)
@@ -2227,7 +2227,7 @@ app instances and real production Khala Sync — not mocked.
   `xcrun simctl io booted screenshot` + `cliclick`-driven taps against the
   Simulator window (calibrated via a full-screen `screencapture` crop to
   compute exact click coordinates) for the READ side (opening threads,
-  confirming rendered content); the WRITE side (typing into the composer)
+  confirming rendered content). The WRITE side (typing into the composer)
   could not be made to focus reliably through synthetic hardware-keyboard
   events in this session (see gaps below), so mobile-initiated turns were
   proven by pushing the exact same `chat.appendMessage` +
@@ -2263,7 +2263,7 @@ app instances and real production Khala Sync — not mocked.
    again — every other real user would hit this permanently, forever, on
    every mobile-initiated turn. Desktop already avoided this
    (`khala-code-desktop.<uuid>`, persisted per install,
-   `khala-sync-service.ts`); mobile now derives the group id from the
+   `khala-sync-service.ts`). Mobile now derives the group id from the
    signed-in `ownerUserId` instead (`khala-mobile-composer.<ownerUserId>`),
    so it collides with nobody and a relaunch still resolves the same bound
    group for the same user.
@@ -2292,7 +2292,7 @@ app instances and real production Khala Sync — not mocked.
 Both fixes: `bun run typecheck` and the full existing test suites green in a
 clean worktree at current `main` (pylon: 56 pass across the two directly
 relevant files, no regressions in the broader 2156-pass suite beyond
-pre-existing, unrelated failures called out below; khala-mobile: 162 pass).
+pre-existing, unrelated failures called out below. Khala-mobile: 162 pass).
 
 ### Proof: all 4 scenarios, real production data
 
@@ -2321,13 +2321,13 @@ than a mobile screenshot).
    pointed at the real sibling pooled Claude account. First attempts failed
    with "Claude Code process exited with code 1" — root-caused (not a
    product bug) to this session's own test script passing a non-UUID
-   `sessionId`; the Claude Agent SDK requires a UUID-shaped session id, and
+   `sessionId`. The Claude Agent SDK requires a UUID-shaped session id, and
    the real desktop UI always generates one. With a real UUID, the turn
    completed for real (`backend.kind: "claude_app_sdk"`) with the exact
    requested reply `"claude desktop-to-mobile-test-ok"`. Screenshotted on
    the real Simulator: thread "Claude desktop-to-mobile sync test" shows
    both messages.
-3. **Codex started in MOBILE -> shows in desktop (data plane proven; render
+3. **Codex started in MOBILE -> shows in desktop (data plane proven, render
    gap found).** Pushed the real `chat.appendMessage` + `runtime.startTurn`
    (`target.lane: "codex_app_server"`, `origin.surface: "mobile"`)
    mutations to production `POST /api/sync/push`, exactly matching
@@ -2339,8 +2339,8 @@ than a mobile screenshot).
    `"codex mobile-to-desktop-test-ok"` — the exact requested reply, with
    real token usage recorded. **Desktop's own `khalaSyncChatMessages` RPC
    does not show this reply** — see the gap below.
-4. **Claude started in MOBILE -> shows in desktop (data plane proven; same
-   render gap).** Same path with `target.lane: "claude_pylon"`; after the
+4. **Claude started in MOBILE -> shows in desktop (data plane proven, same
+   render gap).** Same path with `target.lane: "claude_pylon"`. After the
    sibling-account fix above, the supervisor dispatched against the real
    sibling Claude account, and the resulting `runtime_turn` completed with
    `text.delta` body `"claude mobile-to-desktop-test-ok"`.
@@ -2359,12 +2359,12 @@ systems currently coexist:
   real composer path does **not** itself push the user prompt or the
   assistant reply as `chat_message` entities (this pass's scenario 1/2
   proof pushed those two messages manually via extra
-  `khalaSyncChatAppendMessage` calls to demonstrate content sync; the real
+  `khalaSyncChatAppendMessage` calls to demonstrate content sync. The real
   UI does not do this today). And for a thread ALREADY sourced from Khala
   Sync, sending a new message goes through `submitKhalaSyncChatMessage`
   (`chat.appendMessage` only) — no `runtime.startTurn` push, no local turn
   either, so a second message in an existing khala-sync-driven thread
-  currently doesn't dispatch anything.
+  currently does not dispatch anything.
 - **Mobile's path**: the composer pushes `chat.appendMessage` (user text)
   and `runtime.startTurn` (a `khala_runtime_control_intent`), consumed by
   the Pylon runtime-intent-supervisor, which streams the reply back as
@@ -2393,7 +2393,7 @@ projection), and this Mac currently has dozens of concurrent agent
 worktrees under `.claude/worktrees/` actively touching this exact area —
 attempting a rushed version risked colliding with in-flight work rather
 than helping it. Tracked here so the next pass building this can start from
-"the data already round-trips correctly; only desktop's read/render path is
+"the data already round-trips correctly. Only desktop's read/render path is
 missing" instead of re-discovering it.
 
 ### Gap closeout: desktop now renders mobile-dispatched turns (this pass)
@@ -2412,26 +2412,26 @@ rendered message list, in a scoped, additive way:
   folds a thread's `runtime_turn` + `runtime_event` rows into one
   synthesized assistant message per turn (concatenated `text.delta` reply
   text), with an honest status suffix (` (running…)`, ` (queued…)`,
-  ` (failed)`, ` (interrupted)`) appended for any turn that hasn't settled
+  ` (failed)`, ` (interrupted)`) appended for any turn that has not settled
   cleanly, so an in-flight or non-clean turn never renders as if it were a
   normal finished reply. This is a deliberately scoped-down port of mobile's
   richer `TranscriptPart`-by-part reducer
   (`khala-runtime-transcript-core.ts`) — desktop's message-list model is
   `{ id, role, body }`, so tool calls/reasoning/usage parts are not
-  individually rendered; only the text reply is folded per turn. A future
+  individually rendered. Only the text reply is folded per turn. A future
   pass wanting mobile's full part-by-part fidelity on desktop has that
   reference implementation to port from.
 - **Wired into the RPC**: `khala-sync-service.ts`'s `chatMessages()` now
   also ensures/preloads the two new per-thread collections and returns an
   additive `runtimeMessages` array (new required field on
-  `KhalaCodeDesktopKhalaSyncChatMessagesResult`, always `[]` when there's
+  `KhalaCodeDesktopKhalaSyncChatMessagesResult`, always `[]` when there is
   nothing to fold, never `undefined`) alongside the existing `chat_message`-only
   `messages` array. `messages` itself is completely unchanged — this is
   additive, not a replacement, matching the "preserve existing chat_message
   rendering for desktop-started turns" requirement.
 - **Wired into the actual render**: a new pure module,
   `clients/khala-code-desktop/src/ui/khala-sync-thread-messages-core.ts`
-  (extracted out of `main.ts`, which is a DOM-mounting entrypoint that isn't
+  (extracted out of `main.ts`, which is a DOM-mounting entrypoint that is not
   otherwise unit-testable, mirroring how `main-shell-model.ts` already
   extracts other pure shell-model logic from the same file), merges
   `messages` + `runtimeMessages` into one chronological
@@ -2457,8 +2457,8 @@ rendered message list, in a scoped, additive way:
   RPC surface — one reproduces the exact MC-7 production proof shape
   (`turn.mc7.codex.1` / `"codex mobile-to-desktop-test-ok"`) and asserts the
   human prompt still lands as the only `chat_message` row while the
-  assistant reply now appears in `runtimeMessages`; one covers a
-  still-running turn's partial-reply suffix; one covers the empty case.
+  assistant reply now appears in `runtimeMessages`. One covers a
+  still-running turn's partial-reply suffix. One covers the empty case.
 - `clients/khala-code-desktop/tests/khala-sync-thread-messages-core.test.ts`:
   6 new tests for the final render-layer merge, including the literal
   "prompt then reply" ordering a user would see.
@@ -2476,10 +2476,10 @@ rendered message list, in a scoped, additive way:
   `clients/khala-code-desktop`.
 
 This closes the gap fully: the data already round-tripped correctly (proven
-in MC-7 above); now desktop's read path AND render path both exist and are
+in MC-7 above). Now desktop's read path AND render path both exist and are
 tested. Not yet re-verified with a fresh live Simulator-dispatch-to-desktop-screenshot
 in this pass (the MC-7 pass's own note on synthetic-typing limitations in the
-Simulator still applies); the test suite above exercises the exact production
+Simulator still applies). The test suite above exercises the exact production
 entity shapes recorded in the MC-7 proof instead.
 
 ### Other honest gaps from this pass
@@ -2515,13 +2515,13 @@ threads directly in the owner's own real Khala Code Desktop chat sidebar —
 "Mobile-started Codex/Claude session test"), the owner reported two live,
 reproducible bugs while actively using the app: (1) a chat title appearing
 twice in the sidebar as two distinguishable entries, and (2) clicking a
-"Claude session" row failing with "This chat couldn't be opened. Its
+"Claude session" row failing with "This chat could not be opened. Its
 session may be missing or unavailable — try again or start a new chat."
 
 Both were investigated and fixed on a separate, scoped pass. Neither turned
 out to be caused by the `runtime_event`/`runtime_turn` render gap closed
 above (that gap was about a thread rendering with a missing assistant
-reply once opened; these two bugs are about the sidebar list and the
+reply once opened. These two bugs are about the sidebar list and the
 open-thread path itself), though the investigation deliberately checked
 that possibility first given the overlapping area and timing.
 
@@ -2547,7 +2547,7 @@ owner saw regardless of which upstream mechanism actually produced it in
 this instance, without merging two genuinely distinct thread ids that
 happen to share a similar title.
 
-**Bug 2 (Claude session won't open) — root cause fully pinned.** The
+**Bug 2 (Claude session will not open) — root cause fully pinned.** The
 session-catalog projection
 (`clients/khala-code-desktop/src/shared/session-catalog.ts`) that feeds the
 sidebar's local (non-Khala-Sync) thread list has an `isResumableCatalogEntry`
@@ -2566,7 +2566,7 @@ UUID-shaped id. Such a record renders with the generic fallback title
 "Claude session" (no real title/preview data available) and, when clicked,
 attempts a genuine resume that fails with the SDK's internal "no rollout
 found"/"invalid session id" error — correctly mapped to the friendly
-"couldn't be opened" message by the existing
+"could not be opened" message by the existing
 `friendlyKhalaCodeCodexThreadOpenErrorMessage` machinery, but the entry
 never should have been offered as a normal clickable chat in the first
 place. Fixed by generalizing `isResumableCatalogEntry` to apply the same
@@ -2592,7 +2592,7 @@ touch disjoint regions of the shared files):
   disabled "Stored Claude session" row (`resumable: false`, with the
   Claude-specific `unavailableReason`), and a stored-only Claude record
   with a genuine UUID-shaped id stays resumable even without a live
-  `listThreads()` confirmation (proving the fix doesn't over-restrict real
+  `listThreads()` confirmation (proving the fix does not over-restrict real
   sessions).
 - Both fixes landed as enforced behavior contracts in
   `clients/khala-code-desktop/src/contracts/ux-contracts.ts` (and the human

@@ -74,10 +74,10 @@ pylon.issue502.local.20260608024927
 
 D1 confirmed the assignment is in `accepted_work` state and has retained:
 
-- accepted work refs;
-- artifact refs;
-- proof refs;
-- closeout refs; and
+- accepted work refs.
+- artifact refs.
+- proof refs.
+- closeout refs. And
 - fresh wallet-readiness evidence for the current smoke window.
 
 ## Result
@@ -102,7 +102,7 @@ PROGRAMMATIC_PAYOUTS_DISABLED
 The MDK source describes it as a non-retryable app setting until the dashboard
 toggle is enabled for the app whose `MDK_ACCESS_TOKEN` is bound to the Worker.
 Issue #556 codifies this as the public-safe mode blocker
-`blocker.mdk.hosted_programmatic_payouts_disabled`; hosted direct payout
+`blocker.mdk.hosted_programmatic_payouts_disabled`. Hosted direct payout
 claims stay disabled until the hosted app setting and funded key are both
 verified.
 
@@ -125,8 +125,8 @@ treasury_receipt.public.mdk_agent_wallet.issue503_3fdf88a715773db16f5ddf45
 
 The Pylon assignment then recorded:
 
-- `payment_receipt` with status `settled_real_bitcoin`;
-- `settlement_status` with status `settled_real_bitcoin`; and
+- `payment_receipt` with status `settled_real_bitcoin`.
+- `settlement_status` with status `settled_real_bitcoin`. And
 - operator settlement bridge receipt
   `receipt.nexus_pylon.settlement.assignment_public_issue502_20260608024927`.
 
@@ -183,15 +183,15 @@ toggle and enough bitcoin liquidity is deployed.
 
 This smoke intentionally does not record or publish:
 
-- raw invoice;
-- raw payment hash;
-- preimage;
-- wallet mnemonic;
-- wallet config;
-- exact wallet balance;
-- raw payout destination;
-- MDK access token;
-- MDK mnemonic;
-- webhook secret;
-- raw command stdout or stderr; or
+- raw invoice.
+- raw payment hash.
+- preimage.
+- wallet mnemonic.
+- wallet config.
+- exact wallet balance.
+- raw payout destination.
+- MDK access token.
+- MDK mnemonic.
+- webhook secret.
+- raw command stdout or stderr. Or
 - private customer/operator data.

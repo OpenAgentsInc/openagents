@@ -65,23 +65,23 @@ manual signed-product journey before publication. [source] [test]
 The same audit also requires restraint:
 
 - the MLS integration is explicitly unaudited, so the code demonstrates a
-  careful design intent, not a verified confidentiality guarantee; [source]
+  careful design intent, not a verified confidentiality guarantee. [Source]
 - group content is encrypted, but relay-visible routing, account, membership,
-  epoch, quota, timing, IP, and size metadata remain visible; [source]
+  epoch, quota, timing, IP, and size metadata remain visible. [Source]
 - retained local history keys deliberately trade forward secrecy for local
-  history readability; [source]
+  history readability. [Source]
 - the trusted main webview remains part of the Tauri trusted computing base,
   room IDs are scopes rather than unforgeable authorization tokens, and the
   host shell is constrained host-user execution rather than a general tenant
-  sandbox; [source]
+  sandbox. [Source]
 - the relay is intentionally one Node process with one SQLite writer, not an
-  active-active collaboration service; [source]
+  active-active collaboration service. [Source]
 - the product is Apple-Silicon-only alpha software tested on macOS 15, despite
-  a minimum deployment target of macOS 11; [source]
+  a minimum deployment target of macOS 11. [Source]
 - a failed Codex `thread/resume` silently starts a new thread, which preserves
-  availability while making continuity ambiguous; [source]
+  availability while making continuity ambiguous. [Source]
 - local preview uses a public Cloudflare quick tunnel, which turns an obscure
-  preview URL into bearer-like access to a host service; [source] [inferred]
+  preview URL into bearer-like access to a host service. [Source] [inferred]
 - broad GitHub `repo` scope and an automated `git add -A` workflow are a poor
   fit for OpenAgents' narrower repository authority and main-branch rules.
   [source] [inferred]
@@ -173,13 +173,13 @@ architecture makes the “trusted” and “hosted” qualifications load-bearin
 
 A room combines:
 
-- multi-member chat and attachments;
-- agent-turn proposals and a visible follow-up queue;
-- shared bounded Codex activity and results;
-- file search, preview, editing, and diffs;
-- a terminal, browser, local preview, Git, GitHub pull requests, and Actions;
+- multi-member chat and attachments.
+- agent-turn proposals and a visible follow-up queue.
+- shared bounded Codex activity and results.
+- file search, preview, editing, and diffs.
+- a terminal, browser, local preview, Git, GitHub pull requests, and Actions.
 - roster, device, invite, host-handoff, settings, history, diagnostics, and
-  encrypted archive flows; and
+  encrypted archive flows. And
 - one current project and one current execution host. [source]
 
 The host runs the ordinary locally installed `codex app-server`. multAIplayer
@@ -199,7 +199,7 @@ That yields a clean responsibility split:
 | Whether a shell command or PTY input may run | Host-native one-shot confirmation/grant |
 | What team members can observe | Explicit room event and bounded activity projection |
 | What the relay may accept | Device auth, membership/host rules, room epoch, quotas, and exact schema |
-| What happened canonically in OpenAgents | Not answered by multAIplayer; OpenAgents receipts must remain authoritative |
+| What happened canonically in OpenAgents | Not answered by multAIplayer. OpenAgents receipts must remain authoritative |
 
 The product does not distribute one runtime over multiple machines, move a
 live process image, transfer a Codex account, transfer a shell, or give a new
@@ -241,7 +241,7 @@ flowchart LR
 
 The repository has five meaningful layers:
 
-1. **React desktop product.** Zustand owns presentation and interaction state;
+1. **React desktop product.** Zustand owns presentation and interaction state.
    typed application actions cross the Tauri bridge. [source]
 2. **Rust native capability boundary.** Tauri commands own secrets, crypto,
    filesystem and process access, native confirmation, Git/GitHub, browser,
@@ -272,7 +272,7 @@ The design is better described as:
 
 multAIplayer implements Messaging Layer Security using `mls-rs` `0.55.2`,
 AWS-LC-backed cryptography, and a SQLCipher storage provider. The protocol is
-pinned to the P-256/AES-128-GCM/SHA-256 ciphersuite identified as `0x0002`;
+pinned to the P-256/AES-128-GCM/SHA-256 ciphersuite identified as `0x0002`.
 there is no negotiation surface. [source] [schema]
 
 Each device has an MLS signing identity and HPKE identity kept in macOS
@@ -282,12 +282,12 @@ short cosmetic code. [source]
 
 The Rust boundary, not the webview, owns:
 
-- MLS private keys and group state;
-- group and history exporter secrets;
-- KeyPackage generation and validation;
-- membership Commit and Welcome processing;
-- retained epoch material and blob keys;
-- invite verification state; and
+- MLS private keys and group state.
+- group and history exporter secrets.
+- KeyPackage generation and validation.
+- membership Commit and Welcome processing.
+- retained epoch material and blob keys.
+- invite verification state. And
 - exact encrypted outbox mutation. [source]
 
 The webview receives typed plaintext application events after native
@@ -303,7 +303,7 @@ allow only that leaf to produce membership Commits. The relay separately
 checks active device and epoch state before accepting the transition. [source]
 
 Duplicating the check is intentional. The cryptographic group state makes
-host identity part of the authenticated room evolution; relay enforcement
+host identity part of the authenticated room evolution. Relay enforcement
 limits what the service will route and persist. Neither alone proves the host
 machine applied OpenAgents authority correctly. [inferred]
 
@@ -312,11 +312,11 @@ machine applied OpenAgents authority correctly. [inferred]
 The relay receives opaque MLS bytes, never the application event kind or
 plaintext content. It still observes and stores enough metadata to operate:
 
-- account, device, team, room, and active-host identifiers;
-- KeyPackage and invite lifecycle records;
-- message sender, room, epoch, digest, size, timing, and acceptance state;
-- connection IP and session/rate-limit facts;
-- membership and quota operations; and
+- account, device, team, room, and active-host identifiers.
+- KeyPackage and invite lifecycle records.
+- message sender, room, epoch, digest, size, timing, and acceptance state.
+- connection IP and session/rate-limit facts.
+- membership and quota operations. And
 - encrypted attachment/blob identifiers and sizes. [source]
 
 The honest claim is “room content is E2EE” rather than “the relay learns
@@ -402,18 +402,18 @@ claims, and owner-approved collaboration. [inferred]
 The accepted host-handoff decision record is the most reusable part of the
 repository. The handoff protocol binds:
 
-- room;
-- exact candidate GitHub user ID and device ID;
-- candidate MLS leaf;
-- current and target epoch;
-- one offer ID;
-- outgoing host authorization; and
+- room.
+- exact candidate GitHub user ID and device ID.
+- candidate MLS leaf.
+- current and target epoch.
+- one offer ID.
+- outgoing host authorization. And
 - the resulting MLS Commit. [source] [schema]
 
 The candidate proposes. The outgoing host explicitly approves. The MLS Commit
 changes the mandatory host GroupContext extension. The relay verifies the
 signed authorization and atomically changes active device and room epoch. A
-later `room.host.accepted` application event is informational; the Commit is
+later `room.host.accepted` application event is informational. The Commit is
 the completion boundary. [source]
 
 Candidate selection is deterministic rather than dependent on whichever UI
@@ -427,11 +427,11 @@ more honest than two machines believing they can mutate the same room.
 
 The new host must independently establish or revalidate:
 
-- its own MLS membership and device identity;
-- its own selected repository and canonical root;
-- its own Codex installation, account, model, and compatibility;
-- its own MCP, Git, GitHub, browser, credential, network, and sandbox posture;
-- room policy; and
+- its own MLS membership and device identity.
+- its own selected repository and canonical root.
+- its own Codex installation, account, model, and compatibility.
+- its own MCP, Git, GitHub, browser, credential, network, and sandbox posture.
+- room policy. And
 - every still-pending privileged action. [source]
 
 Credentials, Codex processes, sessions, terminal processes, browser cookies,
@@ -455,7 +455,7 @@ host credentials or authority grants
 OpenAgents should bind an execution attachment to exact owner/device/runtime/
 WorkContext/generation and change it through a receipted transition. Handoff
 must invalidate or reauthorize pending approvals and side effects. A portable
-checkpoint can move separately; neither a room event nor a copied transcript
+checkpoint can move separately. Neither a room event nor a copied transcript
 proves a live session moved. [inferred]
 
 ## 7. Persist before publish: MLS state, outbox, and exact receipts
@@ -470,7 +470,7 @@ The relay returns exact-digest acceptance receipts and retains them for 180
 days. Membership Commits have a separate pool from ordinary application
 receipts. Relay Commit admission uses epoch compare-and-swap so two conflicting
 advances cannot both become accepted state. Application messages are accepted
-for the current or two prior epochs; future and sufficiently stale epochs are
+for the current or two prior epochs. Future and sufficiently stale epochs are
 rejected according to typed rules. [source] [schema]
 
 This is not exactly-once application processing by itself. It is a strong
@@ -494,7 +494,7 @@ does not prove a Codex effect, Git mutation, test result, or human acceptance.
 
 The hosted relay is intentionally one Node process and one SQLite writer.
 Connection fanout, presence, counters, and some operational state are
-process-local; durable entity maps are normalized into SQLite tables rather
+process-local. Durable entity maps are normalized into SQLite tables rather
 than treated as one monolithic JSON blob. Synchronous durable writes complete
 before successful HTTP responses or broadcasts. [source]
 
@@ -512,14 +512,14 @@ active-active system that continues from divergent memory would be worse.
 
 The schema includes tables for:
 
-- metadata and schema state;
-- teams, members, rooms, settings, epochs, and active hosts;
-- invites and invite delivery/acknowledgement state;
-- devices, KeyPackages, consumed KeyPackages, and retirements;
-- join requests, responses, and receipts;
-- durable message receipts;
-- auth sessions, account restrictions, and quotas;
-- encrypted blobs/attachments; and
+- metadata and schema state.
+- teams, members, rooms, settings, epochs, and active hosts.
+- invites and invite delivery/acknowledgement state.
+- devices, KeyPackages, consumed KeyPackages, and retirements.
+- join requests, responses, and receipts.
+- durable message receipts.
+- auth sessions, account restrictions, and quotas.
+- encrypted blobs/attachments. And
 - opaque MLS messages and backlog. [source]
 
 The default capacity policy is explicit and bounded. Representative limits
@@ -538,19 +538,19 @@ relays rather than make one room active-active. [source]
 
 Keep:
 
-- durable-before-broadcast semantics;
-- idempotency keys and exact digests;
-- epoch compare-and-swap;
-- bounded retention and quotas as schema, not marketing prose;
-- readiness that fails when durability is unavailable; and
+- durable-before-broadcast semantics.
+- idempotency keys and exact digests.
+- epoch compare-and-swap.
+- bounded retention and quotas as schema, not marketing prose.
+- readiness that fails when durability is unavailable. And
 - whole-process fail-stop on an unrecoverable persistence split. [inferred]
 
 Refuse:
 
-- making this relay a second transcript or execution authority beside Sync;
+- making this relay a second transcript or execution authority beside Sync.
 - equating a single SQLite process with a portable or highly available
-  session fabric;
-- trusting process-local limits as global multi-replica enforcement; and
+  session fabric.
+- trusting process-local limits as global multi-replica enforcement. And
 - using opaque encrypted payloads to hide weak metadata, deletion, backup, or
   account contracts. [inferred]
 
@@ -580,7 +580,7 @@ requests. [source]
 The dangerous edge is resume recovery. If `thread/resume` fails, the adapter
 starts a new thread and emits a note. This avoids a dead room, but it changes
 conversation identity and native history. OpenAgents should classify that as
-an explicit recovery fork with lineage and loss, or require user approval; it
+an explicit recovery fork with lineage and loss, or require user approval. It
 must not render the new thread as continuous with the old one. [source]
 [inferred]
 
@@ -610,12 +610,12 @@ already exposed to the trusted product webview. [source]
 Raw app-server notifications are consumed by native code and reduced to a
 bounded activity vocabulary:
 
-- reasoning;
-- command;
-- file change;
-- tool;
-- web;
-- image; and
+- reasoning.
+- command.
+- file change.
+- tool.
+- web.
+- image. And
 - agent/subagent activity. [schema]
 
 The room keeps at most 160 projected activity items. Raw provider reasoning is
@@ -627,14 +627,14 @@ room transcript. [source]
 This is the right privacy and compatibility direction. OpenAgents should keep
 both planes: the exact native event envelope privately for replay/debug/
 receipts, and a separately versioned room-safe projection for collaborators.
-The projection must name omitted fields and semantic losses; it cannot become
+The projection must name omitted fields and semantic losses. It cannot become
 canonical runtime truth. [inferred]
 
 ### 9.4 Queue, steer, and prompt construction
 
 The follow-up queue is bounded to five items and records explicit queued,
 cancelled, coalesced, promoted, and dropped events. Follow-ups select steer or
-queue behavior. A successful steer gets an acknowledgement; attachments
+queue behavior. A successful steer gets an acknowledgement. Attachments
 cannot steer an in-flight turn and are queued for the next safe turn instead.
 [source] [test]
 
@@ -646,7 +646,7 @@ them as review aids, not authorization. [source]
 
 OpenAgents may reuse bounded untrusted-content framing, but user-facing tool
 selection or authority cannot become keyword routing. Risk signals may inform
-review; typed policy, semantic selection, and native authorization decide.
+review. Typed policy, semantic selection, and native authorization decide.
 [inferred]
 
 ## 10. Native boundary: generated shape, central errors, broad trusted TCB
@@ -693,12 +693,12 @@ The desktop's local footprint is intentionally split by secret class.
 The macOS Keychain service `com.multaiplayer.desktop.room-secrets` stores
 accounts for:
 
-- `mls-identity:v1`;
-- `mls-hpke:v1`;
-- `mls-store-wrap:v1`; and
+- `mls-identity:v1`.
+- `mls-hpke:v1`.
+- `mls-store-wrap:v1`. And
 - invite-verifier material. [source]
 
-GitHub state is separate. The identity flow requests `read:user`; repository
+GitHub state is separate. The identity flow requests `read:user`. Repository
 operations use a separate token with `repo` scope, and the application verifies
 that both flows resolve to the same GitHub user. [source]
 
@@ -711,12 +711,12 @@ and join receipts. The wrapping key comes from Keychain. [source]
 
 If the database is corrupt, the database plus WAL/SHM files are quarantined
 rather than partially reused. A new store is created and the device must
-rejoin; lost historical key material means lost historical readability.
+rejoin. Lost historical key material means lost historical readability.
 [source]
 
 The relay session persists a digest of its bearer token rather than the raw
 token. Onboarding web storage has a narrow allowlist of presentation state,
-bounded identifiers, and booleans; it excludes secrets, repository paths,
+bounded identifiers, and booleans. It excludes secrets, repository paths,
 prompts, and room contents. [source] [test]
 
 ### 11.3 Diagnostics and archives
@@ -739,7 +739,7 @@ identity, runtime processes, credentials, and approvals. [source]
 The separation is good, but it does not remove endpoint risk. Any process
 running as the same macOS user may have some access depending on Keychain ACLs,
 screen capture, accessibility permission, debugger rights, backups, or host
-compromise. E2EE protects against relay plaintext access; it does not make a
+compromise. E2EE protects against relay plaintext access. It does not make a
 compromised participant endpoint safe. [inferred]
 
 ## 12. Files, Monaco, diffs, and the coding workbench
@@ -752,7 +752,7 @@ Git, GitHub Actions, pull requests, room history/archive, roster, and settings.
 ### 12.1 File discovery and reads
 
 Recursive search skips `.git`, `node_modules`, `target`, `dist`, and other
-generated directories; it refuses symlink traversal. The default result limit
+generated directories. It refuses symlink traversal. The default result limit
 is 80 and clamps at 200. Text reads default to 80,000 bytes and clamp between
 1,024 and 250,000 bytes. Decoding is lossy UTF-8. Image preview is capped at
 2.5 MB and
@@ -779,8 +779,8 @@ language services. The release checks impose an 18 MiB total editor bundle
 budget and 9 MiB per-file budget. [source] [test]
 
 This is a useful reference for the OpenAgents Desktop editor lane, but not its
-authority. The existing Pierre/trees/diffs plan remains the projection seam;
-Effect Native owns product UI and theming; the engine owns workspace grants,
+authority. The existing Pierre/trees/diffs plan remains the projection seam.
+Effect Native owns product UI and theming. The engine owns workspace grants,
 file generations, Git state, review, approval, and receipts. Monaco can be a
 replaceable code-editing component behind that boundary. [inferred]
 
@@ -805,7 +805,7 @@ Every shell spawn requires a native one-shot token valid for 120 seconds and
 bound to exact room, canonical working directory, command bytes, and command
 kind. A repeated exact remote command can receive a ten-minute room/cwd/bytes
 grant unless it is classified high-risk. PTY input has a separate native
-confirmation bound to exact room, session, and input; control characters are
+confirmation bound to exact room, session, and input. Control characters are
 escaped in the confirmation display. [source]
 
 On macOS, commands run through a `sandbox-exec` profile that defaults to deny,
@@ -816,11 +816,11 @@ terminal execution is disabled. [source]
 That is meaningful filesystem confinement and much better than a browser
 modal. It is not a complete sandbox:
 
-- the process still runs as the host user;
-- environment variables may be inherited;
-- subprocesses, interpreters, Git hooks, compilers, and package scripts run;
-- network is allowed;
-- approved workspace writes can modify executable source and hooks; and
+- the process still runs as the host user.
+- environment variables may be inherited.
+- subprocesses, interpreters, Git hooks, compilers, and package scripts run.
+- network is allowed.
+- approved workspace writes can modify executable source and hooks. And
 - macOS Seatbelt cannot represent every higher-level intent. [source]
 [inferred]
 
@@ -873,11 +873,11 @@ whose policy is direct scoped commits to `main`. [source] [inferred]
 
 OpenAgents should retain:
 
-- exact repository/worktree identity;
-- scoped mutation previews;
-- explicit stage/commit/push steps;
-- remote and account verification;
-- protected-branch and repository-policy projection; and
+- exact repository/worktree identity.
+- scoped mutation previews.
+- explicit stage/commit/push steps.
+- remote and account verification.
+- protected-branch and repository-policy projection. And
 - separate receipts for changed, staged, committed, pushed, PR-opened,
   checked, reviewed, merged, and accepted. [inferred]
 
@@ -900,10 +900,10 @@ authority. [source] [test]
 
 The release contract requires:
 
-- one updater `.tar.gz` archive;
-- its signature;
-- `latest.json`;
-- `SHA256SUMS.txt`; and
+- one updater `.tar.gz` archive.
+- its signature.
+- `latest.json`.
+- `SHA256SUMS.txt`. And
 - one DMG. [schema]
 
 Before publication, an authorized human must exercise the signed product:
@@ -930,17 +930,17 @@ the stronger target authority. [inferred]
 
 The repository has verification at several levels:
 
-- React and application-action contract tests;
+- React and application-action contract tests.
 - Rust unit, integration, and property tests for MLS, native policy, GitHub,
-  terminal, files, browser, diagnostics, archives, and Codex projection;
-- native two-client invite/message/handoff journeys;
+  terminal, files, browser, diagnostics, archives, and Codex projection.
+- native two-client invite/message/handoff journeys.
 - browser-driven packaged-shell journeys for invite, Codex approvals, chat,
-  Monaco language services, terminal, browser, and handoff;
+  Monaco language services, terminal, browser, and handoff.
 - relay schema, auth, quota, persistence, restart, restore, rate-limit, fuzz,
-  and security tests;
-- a five-minute chaos/soak lane and recorded Railway-volume benchmark;
+  and security tests.
+- a five-minute chaos/soak lane and recorded Railway-volume benchmark.
 - Cargo fuzz targets for KeyPackage deserialization and Codex activity
-  projection; and
+  projection. And
 - scheduled macOS two-client coverage. [test]
 
 The process-security journey places sentinel plaintext and private material in
@@ -1002,7 +1002,7 @@ signatures. [inferred]
 ## 19. Where claims need narrower wording
 
 1. **E2EE is not endpoint security or metadata privacy.** The host sees the
-   project and effects; members retain received content; the relay sees
+   project and effects. Members retain received content. The relay sees
    operational metadata. [source]
 2. **An unaudited MLS integration is not a completed security guarantee.** The
    protocol and tests are evidence of intent and discipline. [limitation]
@@ -1033,15 +1033,15 @@ ways, without becoming a parallel architecture.
 An optional collaboration object should attach to a canonical OpenAgents
 Thread/Work Unit and declare:
 
-- scope ID and generation;
-- members, devices, roles, and visibility;
-- current execution attachment;
-- proposal, observation, review, and mutation rights;
-- room-safe projection schema/version;
-- encryption protocol/library/generation when enabled;
-- retention and history-key policy;
-- relay/Sync metadata disclosure;
-- delivery cursor/epoch; and
+- scope ID and generation.
+- members, devices, roles, and visibility.
+- current execution attachment.
+- proposal, observation, review, and mutation rights.
+- room-safe projection schema/version.
+- encryption protocol/library/generation when enabled.
+- retention and history-key policy.
+- relay/Sync metadata disclosure.
+- delivery cursor/epoch. And
 - closure, removal, export, and deletion state. [inferred]
 
 It must not copy the transcript, runtime state, or acceptance state into a
@@ -1099,14 +1099,14 @@ shape as native truth.
 Owner-private Sync and multi-member E2EE are different product promises. Do
 not imply one from the other. If private team rooms are admitted:
 
-- use a reviewed/audited group protocol implementation;
-- bind identity, device, membership, and execution attachment explicitly;
-- document relay-visible metadata;
-- decide whether history readability or forward secrecy wins per scope;
+- use a reviewed/audited group protocol implementation.
+- bind identity, device, membership, and execution attachment explicitly.
+- document relay-visible metadata.
+- decide whether history readability or forward secrecy wins per scope.
 - make new-member, removed-member, lost-device, backup, archive, and account-
-  deletion behavior executable contracts;
-- persist exact send intent before publish;
-- make epoch and retry laws testable; and
+  deletion behavior executable contracts.
+- persist exact send intent before publish.
+- make epoch and retry laws testable. And
 - retain endpoint-compromise limitations in product copy. [inferred]
 
 ### 20.6 Extend release proof to real collaboration
@@ -1123,7 +1123,7 @@ be independently checkable. [inferred]
    `ExecutionAttachment`, `CollaborationProposal`, `ProjectionEnvelope`, and
    handoff receipt schemas beside canonical Thread/Work Unit/Sync contracts.
 2. **Project locally.** Let an owner open a second local read-only collaborator
-   view over a bounded event projection; prove it cannot invoke effects.
+   view over a bounded event projection. Prove it cannot invoke effects.
 3. **Admit proposals.** Add durable participant proposals that flow through
    the normal queue/steer/approval/receipt path and cannot bypass current
    attachment generation.
@@ -1134,7 +1134,7 @@ be independently checkable. [inferred]
    persist-before-publish outbox behavior, idempotency, repair, and distinct
    relay/delivery/effect/acceptance receipts.
 6. **Decide privacy separately.** Threat-model group membership, metadata,
-   history, device loss, removal, backup, and deletion; select an audited
+   history, device loss, removal, backup, and deletion. Select an audited
    implementation only after owner/product authority admits the lane.
 7. **Ship the signed journey.** Require real multi-client cold/warm invite,
    offline/reconnect, handoff, reauthorization, and negative leakage proof on
@@ -1148,47 +1148,47 @@ model and collaboration projection over existing OpenAgents substrate.
 
 ### Adapt
 
-- proposal versus execution authority;
-- one explicit current execution attachment;
-- exact, fenced, epoch/generation-bound host handoff;
-- fresh authorization on the receiving host;
-- persist-before-publish encrypted/event outbox;
-- idempotent exact-digest acceptance receipts;
-- bounded room-safe runtime activity projection;
-- native request-bound positive confirmations;
-- fail-stop durability when persistent truth becomes unavailable;
-- optimistic file concurrency plus atomic bounded writes;
-- exact-version Codex compatibility tracking;
-- split secret stores and explicit local-retention inventory;
-- signed updater plus signed-product collaboration journey; and
+- proposal versus execution authority.
+- one explicit current execution attachment.
+- exact, fenced, epoch/generation-bound host handoff.
+- fresh authorization on the receiving host.
+- persist-before-publish encrypted/event outbox.
+- idempotent exact-digest acceptance receipts.
+- bounded room-safe runtime activity projection.
+- native request-bound positive confirmations.
+- fail-stop durability when persistent truth becomes unavailable.
+- optimistic file concurrency plus atomic bounded writes.
+- exact-version Codex compatibility tracking.
+- split secret stores and explicit local-retention inventory.
+- signed updater plus signed-product collaboration journey. And
 - leakage-oriented process/storage/wire regression tests.
 
 ### Study
 
-- audited group-messaging libraries and MLS operational practice;
-- account/device recovery without weakening member-removal guarantees;
-- group history policy versus forward secrecy;
-- Sync-native encrypted fanout and metadata minimization;
-- checkpoint/materialization packaging for true host portability;
-- independent publication/signing authority for small-team releases;
-- native browser child-window isolation and authenticated preview; and
+- audited group-messaging libraries and MLS operational practice.
+- account/device recovery without weakening member-removal guarantees.
+- group history policy versus forward secrecy.
+- Sync-native encrypted fanout and metadata minimization.
+- checkpoint/materialization packaging for true host portability.
+- independent publication/signing authority for small-team releases.
+- native browser child-window isolation and authenticated preview. And
 - how the product behaves under real high-latency, offline, and multi-device
   conflict beyond the finite chaos tests.
 
 ### Reject
 
-- room membership as shell, spend, file, Git, or publication authority;
-- a room event as proof of host handoff or effect completion;
-- an unaudited crypto integration marketed as verified secure;
-- E2EE wording that hides metadata, retention, or endpoint limits;
-- main-webview trust as a future plugin or untrusted-content boundary;
-- host-user execution presented as complete containment;
-- automatic `thread/resume` to new-thread fallback without explicit lineage;
-- public quick tunnels as the default private-preview path;
-- one global identity/device assumption for every project or organization;
-- broad `repo` OAuth scope without operation-specific need;
-- `git add -A` and automatic branch creation as universal workflow;
-- a single-node relay as canonical session/acceptance authority; and
+- room membership as shell, spend, file, Git, or publication authority.
+- a room event as proof of host handoff or effect completion.
+- an unaudited crypto integration marketed as verified secure.
+- E2EE wording that hides metadata, retention, or endpoint limits.
+- main-webview trust as a future plugin or untrusted-content boundary.
+- host-user execution presented as complete containment.
+- automatic `thread/resume` to new-thread fallback without explicit lineage.
+- public quick tunnels as the default private-preview path.
+- one global identity/device assumption for every project or organization.
+- broad `repo` OAuth scope without operation-specific need.
+- `git add -A` and automatic branch creation as universal workflow.
+- a single-node relay as canonical session/acceptance authority. And
 - macOS-only assumptions in a cross-platform OpenAgents contract.
 
 ## 23. Detailed source map
@@ -1242,9 +1242,9 @@ real multiplayer work without turning remote collaboration into ambient shell
 authority. [inferred]
 
 The security details should be learned from, not copied. E2EE must name its
-metadata and retention limits; crypto needs independent review; the webview is
-not a tenant boundary; the host shell is not full containment; a relay receipt
-is not effect evidence; and a handoff event is not session portability. If
+metadata and retention limits. Crypto needs independent review. The webview is
+not a tenant boundary. The host shell is not full containment. A relay receipt
+is not effect evidence. And a handoff event is not session portability. If
 OpenAgents preserves those distinctions, multAIplayer becomes a valuable
 reference for a capability the rest of the catalog mostly treats as vague
 “sharing”: a private, explicit, receipted collaboration relationship around an

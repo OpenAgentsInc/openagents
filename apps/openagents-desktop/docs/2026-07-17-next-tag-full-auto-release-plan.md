@@ -2,7 +2,7 @@
 
 Date prepared: 2026-07-17 (worker lane oa-w0-f). Part of EPIC #8913.
 This is the NEEDS_OWNER-compatible ceremony record required by #8993. It
-PREPARES the release; it does not sign, tag, publish, or promote anything.
+PREPARES the release. It does not sign, tag, publish, or promote anything.
 Every owner-gated step below stays owner-gated.
 
 The operator sequence authority is
@@ -21,7 +21,7 @@ facts.
 | FullAutoRun model commit | `eb15ce99c5` (FA-RUN-01 #8969, 2026-07-17 15:39:30 -0500) | introduced `src/full-auto-run-registry.ts` |
 | **rc.17 contains the FullAutoRun model** | **NO** | `git merge-base --is-ancestor eb15ce99c5 openagents-desktop-v0.1.0-rc.17` → exit 1 |
 | `main` at preparation time | `88b126733b` | `git rev-parse origin/main` |
-| Commits rc.17 → main | 117 total; 36 touch `apps/openagents-desktop` | `git rev-list --count openagents-desktop-v0.1.0-rc.17..origin/main` |
+| Commits rc.17 → main | 117 total. 36 Touch `apps/openagents-desktop` | `git rev-list --count openagents-desktop-v0.1.0-rc.17..origin/main` |
 | `package.json` version already staged | `0.1.0-rc.18` | `apps/openagents-desktop/package.json` |
 
 rc.17 does carry the earlier Full Auto lane/registry/control-server files, but
@@ -33,7 +33,7 @@ shipped in any tag — this is the #1 gap named by the Full Auto audit and issue
 ## 2. What the next tag must include
 
 Tag name: `openagents-desktop-v0.1.0-rc.18` · channel `rc` · version
-`0.1.0-rc.18` (already in `package.json`; no bump commit needed unless further
+`0.1.0-rc.18` (already in `package.json`, no bump commit needed unless further
 rc.18-scoped work lands first).
 
 The tag commit is the exact `origin/main` HEAD frozen at ceremony start. It
@@ -71,7 +71,7 @@ override fail-closed — plus the staging-channel end-to-end feed proof.
   `no_source_checkout_paths`
 - FAIL `clean_origin_main` — expected here: the prep worktree carried the
   uncommitted REL-FEED-01 change. At ceremony time the owner runs from a
-  clean `origin/main`; this row must be green.
+  clean `origin/main`. This row must be green.
 - FAIL `signing_credentials_present` — expected and CORRECT: this agent
   session holds no Developer ID / notary credentials and there is no unsigned
   fallback. Green only in the owner's credentialed shell.
@@ -101,16 +101,16 @@ OPENAGENTS_DESKTOP_UPDATE_FEED_STAGING_PIN='<staging PUBLIC pin JSON>' \
   open -a OpenAgents   # or the packaged binary directly
 ```
 
-Both variables default to off; unset means the production feed + production
+Both variables default to off. Unset means the production feed + production
 pin, byte-identical to prior behavior. A staging pin never applies to the
 production host, and any invalid override disables update checks entirely.
 
-## 5. Ordered owner ceremony (owner-gated; do not delegate)
+## 5. Ordered owner ceremony (owner-gated, do not delegate)
 
 Per `docs/deploy/openagents-desktop-production-release.md` §10. Steps marked
 **[OWNER]** need the owner's credentials/custody and must be run by the owner.
 
-1. Freeze: fresh worktree at exact `origin/main`; verify clean tree, record
+1. Freeze: fresh worktree at exact `origin/main`. Verify clean tree, record
    the tag commit SHA, and re-run the §1 `merge-base --is-ancestor` check for
    `eb15ce99c5`.
 2. Gates: run the §10 focused contract gate set, `typecheck`, `build`, then
@@ -120,18 +120,18 @@ Per `docs/deploy/openagents-desktop-production-release.md` §10. Steps marked
 3. **[OWNER] Sign + notarize:** in the credentialed shell (Developer ID
    `OpenAgents, Inc. (HQWSG26L43)`, `ASC_API_*`, per the release-signing
    runbook): `pnpm --dir apps/openagents-desktop run make:mac`. Wait for the
-   Apple notarization ticket; the make fails closed unless every Gatekeeper
+   Apple notarization ticket. The make fails closed unless every Gatekeeper
    oracle (codesign/spctl/stapler on BOTH `.app` and `.dmg`) is green.
 4. **[OWNER] Post-staple preflight:** re-run preflight with `--dmg`/`--app`
-   against the final stapled bytes; record sha256 + byte length of the DMG.
+   against the final stapled bytes. Record sha256 + byte length of the DMG.
 5. **[OWNER] Sign the update manifest:** stage v1 via
    `scripts/publish-release.ts --channel rc --version 0.1.0-rc.18` with
    `OPENAGENTS_RELEASE_SECRETS_PATH` (production Ed25519 key, kid
-   `2dbe811d19f67528`; never printed). The script self-verifies through the
+   `2dbe811d19f67528`. Never printed). The script self-verifies through the
    client seam and prints the exact artifact upload command.
 6. **[OWNER] Upload + candidate deploy:** upload the immutable DMG bytes to
-   the printed GCS URL; deploy oa-updates via the incremental Cloud Build
-   path (`OA_UPDATES_DEPLOY_MODE` auto-selects; never a metadata-only
+   the printed GCS URL. Deploy oa-updates via the incremental Cloud Build
+   path (`OA_UPDATES_DEPLOY_MODE` auto-selects, never a metadata-only
    `--source .` deploy). Verify the three rc documents and the mobile
    manifest through the tagged candidate BEFORE any traffic moves (§10 curl
    block).
@@ -143,8 +143,8 @@ Per `docs/deploy/openagents-desktop-production-release.md` §10. Steps marked
    and the bundled Codex artifact oracle (`state:"ready"`,
    `signatureVerified:true`).
 9. Update-path acceptance: on a machine running rc.17, let the packaged app
-   check → stage → apply rc.18; confirm the first-launch receipt lands and
-   the retained rc.17 slot exists; record the receipt per §16.
+   check → stage → apply rc.18. Confirm the first-launch receipt lands and
+   the retained rc.17 slot exists. Record the receipt per §16.
 
 ## 6. Verification oracles that must pass
 
@@ -161,10 +161,10 @@ Per `docs/deploy/openagents-desktop-production-release.md` §10. Steps marked
 
 ## 7. Rollback plan
 
-- **Before promotion:** abandon the candidate; production pointer never
+- **Before promotion:** abandon the candidate. Production pointer never
   moved. No client impact.
 - **Service revision unhealthy:** move Cloud Run traffic back to the previous
-  ready revision; this does not touch the signed channel pointer.
+  ready revision. This does not touch the signed channel pointer.
 - **Bad release after promotion:** never repoint the channel to an older
   version. Publish a strictly newer corrective release through the same
   ceremony. Installed clients hold in `awaiting_launch_receipt` and
@@ -172,7 +172,7 @@ Per `docs/deploy/openagents-desktop-production-release.md` §10. Steps marked
   window if the new build never demonstrates a healthy launch (proven in the
   staging e2e and `update-rollback` oracles).
 - **ReleaseSet v2 feed (when v2 publication begins):** typed CAS pointer
-  rollback restores exactly the one retained previous generation; clients
+  rollback restores exactly the one retained previous generation. Clients
   refuse the resulting downgrade on the feed and only their local retained
   slot may go backward (proven in the staging e2e).
 
@@ -181,7 +181,7 @@ Per `docs/deploy/openagents-desktop-production-release.md` §10. Steps marked
 - This plan does not claim automatic update delivery on production. That
   becomes true only after the owner ceremony above promotes rc.18 and the
   rc.17 → rc.18 update-path acceptance (step 9) is recorded.
-- The v2 ReleaseSet public candidate for production remains unpublished; the
+- The v2 ReleaseSet public candidate for production remains unpublished. The
   sanctioned production lane for this tag is still the §10 v1 macOS arm64
   compatibility procedure. The staging e2e proves the v2 machinery, not a
   production v2 receipt.

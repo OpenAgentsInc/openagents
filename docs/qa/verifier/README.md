@@ -1,7 +1,7 @@
 # Independent verifier — no agent accepts its own work (QA-5, #8910)
 
 The transcripts are explicit (docs/transcripts/253-notes.md: "executor
-self-verification or self-acceptance" is CUT; MP-AC-09: "An independent
+self-verification or self-acceptance" is CUT. MP-AC-09: "An independent
 verifier can reproduce the declared checks and attach a verdict. Executor
 completion and passing tests cannot self-promote the packet to accepted.").
 This directory owns the standing recipe: given a completed work unit (a
@@ -10,7 +10,7 @@ DIFFERENT agent re-runs the claimed proofs from a clean checkout,
 adversarially probes at least one claim, and produces a typed verdict.
 
 Program context: epic #8904. The QA observer (`docs/qa/observer/README.md`)
-watches live surfaces; this verifier judges completed work units. Verdicts
+watches live surfaces. This verifier judges completed work units. Verdicts
 are acceptance **evidence** for the maintainer/coordinator — never merge,
 release, promise, or public-claim authority.
 
@@ -36,19 +36,19 @@ the typed verdict artifact) is `scripts/qa-verify.ts`.
 ### 0. Independence gate
 
 You must not be the implementer. Read the issue's `CLAIM` comment and closing
-comment; the actor/session that implemented the work unit goes into the
+comment. The actor/session that implemented the work unit goes into the
 claims file as `implementer`, and you pass your own session id as `--actor`.
 The executor REFUSES (exit 2) when they match — do not work around it by
 renaming your session. If you cannot establish who implemented it, record
 what you know in `source` and leave `implementer` unset (the gate then rests
-on your honesty; say so in your report).
+on your honesty. Say so in your report).
 
 ### 1. Pin the work unit
 
 - `--issue <n>`: the closed issue whose claims you are verifying.
 - `--commit <sha>`: the integration commit named in the closing comment
   ("merged to main in <sha>"). The executor resolves it and pins the scratch
-  checkout there; the claims file must name the same commit.
+  checkout there. The claims file must name the same commit.
 
 ### 2. Parse the claims (judgment)
 
@@ -81,10 +81,10 @@ implementer's own named test as the probe command. The executor applies the
 mutation in the scratch copy, expects the cited proof to FAIL (exit
 nonzero), and restores the file. Outcomes:
 
-- proof fails against the mutation → `verified` (the proof really guards it);
+- proof fails against the mutation → `verified` (the proof really guards it).
 - proof still passes → `failed` → **reject** (the claimed proof does not
-  guard what it says);
-- mutation anchor missing → `unverifiable_here` (source drifted; pick a new
+  guard what it says).
+- mutation anchor missing → `unverifiable_here` (source drifted, pick a new
   anchor).
 
 An accept REQUIRES at least one verified adversarial probe — re-running
@@ -111,7 +111,7 @@ pnpm run qa:verify -- --issue <n> --commit <sha> \
 It creates a scratch `git worktree` detached at the claimed commit, runs
 `pnpm install --prefer-offline`, runs `setup` steps, then every claim, and
 writes the verdict artifact beside the claims file. `--keep-scratch`
-preserves the scratch for debugging; `--scratch-dir` pins its location.
+preserves the scratch for debugging. `--scratch-dir` pins its location.
 
 macOS note: if `vp` fails with a dlopen/codesign error inside the scratch,
 add the standard codesign setup step (see the #8907 demo claims file) — it
@@ -124,11 +124,11 @@ re-signs the Vite Plus native binary in the scratch checkout.
   NOT covered by the accept.
 - `reject` (exit 1) — a claim was re-run and contradicted (test failed,
   artifact missing, or an adversarial mutation went uncaught). File the
-  rejection back to the issue/coordinator with the artifact; the rejection
+  rejection back to the issue/coordinator with the artifact. The rejection
   must be actioned, not shrugged off.
 - `unverifiable-here` (exit 3) — nothing failed, but this environment could
   not establish the accept conditions (owner-gated env, unbuildable scratch,
-  no adversarial probe possible). NEVER auto-accepted; route to an
+  no adversarial probe possible). NEVER auto-accepted. Route to an
   environment that can run the missing proofs or to the owner.
 
 Reclassification rule: when a `command` claim fails for a provably
@@ -140,7 +140,7 @@ an assertion failure — that is a reject.
 ### 7. Commit and hand off
 
 Commit the claims file and the verdict artifact. The executor prints the
-ready-to-post issue comment; hand it to the coordinator/maintainer. **The
+ready-to-post issue comment. Hand it to the coordinator/maintainer. **The
 verifier does not post the verdict to the issue and does not close/reopen
 issues** — acceptance stays with an authority distinct from both the
 implementer and the verifier's mechanical run.
@@ -148,14 +148,14 @@ implementer and the verifier's mechanical run.
 ## Wiring
 
 - **QA-1 swarm findings fixes:** a fix for a swarm finding is accepted only
-  after this recipe runs against its integration commit; the coordinator
+  after this recipe runs against its integration commit. The coordinator
   posts the verdict comment on the finding issue.
 - **Issue closeouts (standing):** any agent may run this against a closed
-  issue's claims; a `reject` verdict reopens the conversation with the
+  issue's claims. A `reject` verdict reopens the conversation with the
   artifact as evidence.
 - **Full Auto tie-in (future L6/L7):** a Full Auto lane's completed turn can
   be marked "pending independent verification" — the loop continues while a
-  different lane runs this recipe behind it; the verdict artifact is the
+  different lane runs this recipe behind it. The verdict artifact is the
   gate for marking the unit accepted.
 
 ## Demos (first real verdicts)
@@ -163,7 +163,7 @@ implementer and the verifier's mechanical run.
 Committed under `results/`:
 
 - `#8907` (QA observer) @ `08096cae24` — claims re-run + adversarial probe
-  on the high-severity exit gate; admin-token claim honestly env-gated.
+  on the high-severity exit gate. Admin-token claim honestly env-gated.
 - `#8886` (Full Auto control surface) @ `0353b307fa` — named test file
   re-run, `pnpm run smoke:full-auto-control` against real Electron, and an
   adversarial probe on the bearer-auth guard.

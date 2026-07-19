@@ -6,7 +6,7 @@ the eleven oldest issues converge on one missing event — a Pylon that
 stays online. The directive is to gain the ability to spin up machines
 that DO stay online, using whatever works: local machines, Tailnet
 remotes, SHC, gcloud. This is the plan. Windows/WSL is deliberately out
-of scope by the same directive (strongly deprioritized; removed from
+of scope by the same directive (strongly deprioritized, removed from
 the registry blocker and the platform matrix in the same change).
 
 ## What "online" means, precisely
@@ -44,12 +44,12 @@ on crash and login:
   recorded in `artanis_admin_tick_decisions`.
 - **Executed 2026-06-11 ~01:00 UTC.** Operational notes from the live
   bring-up, for every future host:
-  - Use a dedicated `PYLON_HOME` per identity; the shared default home
+  - Use a dedicated `PYLON_HOME` per identity. The shared default home
     hits the registration-ownership 401 when another agent's token
     registered it first.
   - `pylon provider go-online` is required once per home (writes
     `lifecycle: online` and auto-declares the executor/NIP-90/labor
-    capabilities); without it admission denies with
+    capabilities). Without it admission denies with
     `blocker.assignment.lifecycle_offline`.
   - The supervised loop is `presence heartbeat` + `assignment
     run-no-spend` every 60s (`run-no-spend` is the full
@@ -69,7 +69,7 @@ go-online + report-readiness, then supervise — launchd on the Macs,
 systemd lesson generalizes: a unit file is what finally kept their
 wallet daemon answering invoice requests).
 
-- Acceptance: 2–3 distinct `pylonRef`s online simultaneously; the
+- Acceptance: 2–3 distinct `pylonRef`s online simultaneously. The
   fleet survives one deliberate `kill -9` per host (supervisor brings
   it back inside the heartbeat window).
 
@@ -116,7 +116,7 @@ Once rungs 0–1 exist, the watching side: the capacity-funnel snapshots
 already record online counts every tick. Add an Artanis responder-style
 alert — when `pylonsOnlineNow` drops below the standing floor (initially
 1), Artanis posts to its status topic and (rung 2+) requests an SHC
-replacement. The fleet keeps itself awake; dark-capacity accounting
+replacement. The fleet keeps itself awake. Dark-capacity accounting
 stays honest because every gap is a recorded event, not a silent zero.
 
 ## Sequencing and ownership
@@ -142,9 +142,9 @@ turn "a machine" into "a fleet with a floor."
 ## Boundaries
 
 - Standing Pylons run with the operator's identity and wallet on owned
-  hardware; SHC/gcloud Pylons use dedicated refs and never carry
+  hardware. SHC/gcloud Pylons use dedicated refs and never carry
   personal wallet mnemonics.
-- Paid capacity (rung 3) is bounded and recorded; owned hardware is
+- Paid capacity (rung 3) is bounded and recorded. Owned hardware is
   the default. No capacity claims in public copy beyond live
   `pylon-stats` counters — the no-overclaim gates extend unchanged.
 - Windows/WSL: out of scope, not on this ladder, per the owner

@@ -84,4 +84,4 @@ grok --no-auto-update -p "List top-level packages" \
   compatibility verdict, and OpenAgents client plan
 - `docs/grok/` — Grok's product/strategy analysis sandbox (different folder)
 - Fleet/coding-agent work still prefers monorepo `EXECUTION.md` norms when
-  shipping OpenAgents code; Grok CLI is an alternate runtime you may script.
+  shipping OpenAgents code. Grok CLI is an alternate runtime you may script.

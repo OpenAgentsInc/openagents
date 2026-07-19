@@ -1,7 +1,7 @@
 # Electron AI SDK test
 
 A deliberately small Electron/Vite proof of concept for the experimental AI SDK
-Codex harness. The renderer uses `useChat` and `DefaultChatTransport`; Electron's
+Codex harness. The renderer uses `useChat` and `DefaultChatTransport`. Electron's
 main process owns the harness, session state, and a loopback-only streaming route.
 
 ## Run

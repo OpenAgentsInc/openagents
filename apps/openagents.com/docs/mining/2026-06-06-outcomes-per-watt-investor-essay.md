@@ -186,27 +186,27 @@ OpenAgents product surface implementation of `OmniOutcomePowerProductivityRecord
 
 The contract records:
 
-- accepted outcome count;
-- accepted revenue;
-- accepted gross profit;
-- provider payable value;
-- provider settled value;
-- energy in watt-hours;
-- dark-capacity energy in watt-hours;
-- modeled, measured, mixed, or unknown power-data state;
-- payable, verified, settled, mixed, or not-settled provider state;
-- accepted outcome refs;
-- energy evidence refs;
-- measured meter refs;
+- accepted outcome count.
+- accepted revenue.
+- accepted gross profit.
+- provider payable value.
+- provider settled value.
+- energy in watt-hours.
+- dark-capacity energy in watt-hours.
+- modeled, measured, mixed, or unknown power-data state.
+- payable, verified, settled, mixed, or not-settled provider state.
+- accepted outcome refs.
+- energy evidence refs.
+- measured meter refs.
 - settlement refs.
 
 It derives:
 
-- accepted outcomes per kWh;
-- accepted outcomes per MWh;
-- accepted revenue per kWh;
-- accepted gross profit per kWh;
-- provider payable per kWh;
+- accepted outcomes per kWh.
+- accepted outcomes per MWh.
+- accepted revenue per kWh.
+- accepted gross profit per kWh.
+- provider payable per kWh.
 - dark-capacity MWh.
 
 This supports the essay's second claim:
@@ -243,11 +243,11 @@ modeled rows become accepted revenue or payable rows become settled payouts.
 `docs/omni/2026-06-06-margot-export-ingestion-contract.md` supports
 read-only packets for:
 
-- mining floor per MWh;
-- GPU rental floor per MWh;
-- OpenAgents accepted-work assumption value per MWh;
-- grid-service and curtailment value assumptions per MWh;
-- power cost per MWh;
+- mining floor per MWh.
+- GPU rental floor per MWh.
+- OpenAgents accepted-work assumption value per MWh.
+- grid-service and curtailment value assumptions per MWh.
+- power cost per MWh.
 - market and dispatch-policy labels.
 
 It also preserves a critical caveat: GPU chip TDP is not facility power. Real
@@ -331,8 +331,8 @@ and energy evidence are joined.
 The root SHC compute-versus-mining model turns Dimi's sats-per-watt intuition
 into revenue-per-kWh arithmetic. A 600 W refurbished server earning:
 
-- `$200/month` implies about `$0.463/kWh`;
-- `$600/month` implies about `$1.389/kWh`;
+- `$200/month` implies about `$0.463/kWh`.
+- `$600/month` implies about `$1.389/kWh`.
 - `$960/month` implies about `$2.222/kWh`.
 
 Against an implied `$0.023/kWh` mining/offtake floor, those are roughly
@@ -394,7 +394,7 @@ The Artanis issues split into two categories:
 - closed issues #386-#404, which give Artanis typed contracts, public-safe
   projection, claim-state discipline, health/staleness, work-routing,
   readiness, marketplace, reward visibility, launch smoke, D1 persistence, and
-  scheduled tick execution;
+  scheduled tick execution.
 - open issues #405-#415, which still gate operator UI, Forum
   delivery/listening, Nexus/Pylon adapters, marketplace intake implementation,
   continual-learning templates, reward smoke, launch communications, the
@@ -480,16 +480,16 @@ Artanis can already support the outcomes-per-kWh essay in these ways.
 
 The standalone autonomy claim ledger covers:
 
-- autonomous loop;
-- operator steering;
-- Forum communication;
-- Pylon campaign;
-- Nexus/Pylon administration;
-- Model Lab stewardship;
-- work routing;
-- spend authority;
-- bitcoin rewards;
-- accepted-work payout;
+- autonomous loop.
+- operator steering.
+- Forum communication.
+- Pylon campaign.
+- Nexus/Pylon administration.
+- Model Lab stewardship.
+- work routing.
+- spend authority.
+- bitcoin rewards.
+- accepted-work payout.
 - settlement.
 
 It projects planned, modeled, measured, verified, blocked, prohibited, and
@@ -524,13 +524,13 @@ validation.
 
 Each proposal can carry:
 
-- source evidence refs;
-- target capability refs;
-- acceptance criteria refs;
-- risk label;
-- resource mode;
-- spend/cost caveat;
-- approval requirement refs;
+- source evidence refs.
+- target capability refs.
+- acceptance criteria refs.
+- risk label.
+- resource mode.
+- spend/cost caveat.
+- approval requirement refs.
 - traceable work refs and receipt refs when accepted.
 
 This supports the essay's routing argument:
@@ -581,10 +581,10 @@ Closed Artanis issues already give the vocabulary needed for an
 outcomes-per-kWh proof packet:
 
 - Pylon readiness states: source-ready, release-ready, platform-ready,
-  eligible, accepted, paid, settled;
-- resource modes: background, balanced, overnight, dedicated;
+  eligible, accepted, paid, settled.
+- resource modes: background, balanced, overnight, dedicated.
 - marketplace job kinds: inference, optimization, fine-tuning/training,
-  benchmark evaluation, embedding/data prep, validation;
+  benchmark evaluation, embedding/data prep, validation.
 - reward visibility that separates Forum content rewards from accepted-work
   payouts and settlement.
 
@@ -605,9 +605,9 @@ essay into a repeatable public proof program.
 
 Needed measurement support:
 
-- operator view of loop state, blockers, approvals, and private evidence;
-- approve/reject flows for risky proposals;
-- spend/cost caps and rollback posture;
+- operator view of loop state, blockers, approvals, and private evidence.
+- approve/reject flows for risky proposals.
+- spend/cost caps and rollback posture.
 - private evidence by reference.
 
 Why it matters:
@@ -622,9 +622,9 @@ that decides what can be summarized by Artanis.
 
 Needed measurement support:
 
-- delivery of public-safe proof summaries into canonical Forum topics;
-- listener/triage for investor, operator, and agent questions;
-- idempotent replies and blocker creation;
+- delivery of public-safe proof summaries into canonical Forum topics.
+- listener/triage for investor, operator, and agent questions.
+- idempotent replies and blocker creation.
 - unsafe material handling.
 
 Why it matters:
@@ -639,12 +639,12 @@ blocked.
 
 Needed measurement support:
 
-- Pylon fleet status;
-- provider inventory;
-- job offers and assignments;
-- run status;
-- artifacts;
-- acceptance;
+- Pylon fleet status.
+- provider inventory.
+- job offers and assignments.
+- run status.
+- artifacts.
+- acceptance.
 - payout and settlement caveats.
 
 Why it matters:
@@ -659,11 +659,11 @@ connect it to accepted outcome refs, energy refs, and payout/settlement refs.
 
 Needed measurement support:
 
-- owner-approved background, overnight, and dedicated setup packets;
-- CPU/GPU/memory/network/storage intent;
-- pause/resume/checkpoint expectations;
-- telemetry refs;
-- resource-mode caveats;
+- owner-approved background, overnight, and dedicated setup packets.
+- CPU/GPU/memory/network/storage intent.
+- pause/resume/checkpoint expectations.
+- telemetry refs.
+- resource-mode caveats.
 - command dry-run and completion receipts.
 
 Why it matters:
@@ -677,14 +677,14 @@ mode and a dedicated full-blast mode are not the same energy claim.
 
 Needed measurement support:
 
-- authenticated job intake;
-- work kind;
-- capability requirements;
-- budget/spend cap;
-- acceptance criteria;
-- artifact requirements;
-- public/private projection;
-- proposed assignment state;
+- authenticated job intake.
+- work kind.
+- capability requirements.
+- budget/spend cap.
+- acceptance criteria.
+- artifact requirements.
+- public/private projection.
+- proposed assignment state.
 - separation of payment, acceptance, payout, and settlement.
 
 Why it matters:
@@ -698,13 +698,13 @@ was merely created, assigned, or run is not an accepted outcome.
 
 Needed measurement support:
 
-- eval reruns;
-- GEPA/DSPy prompt/program optimization;
-- dataset curation;
-- adapter validation;
-- LoRA/fine-tuning/training;
-- regression analysis;
-- benchmark target and acceptance criteria;
+- eval reruns.
+- GEPA/DSPy prompt/program optimization.
+- dataset curation.
+- adapter validation.
+- LoRA/fine-tuning/training.
+- regression analysis.
+- benchmark target and acceptance criteria.
 - rollback posture and approval requirement.
 
 Why it matters:
@@ -719,10 +719,10 @@ evidence proves it.
 
 Needed measurement support:
 
-- deterministic fake-bitcoin or approved live bitcoin reward smoke;
-- receipt projection;
-- earning notification;
-- accepted-contribution bridge boundary;
+- deterministic fake-bitcoin or approved live bitcoin reward smoke.
+- receipt projection.
+- earning notification.
+- accepted-contribution bridge boundary.
 - separation between Forum rewards and accepted-work payout.
 
 Why it matters:
@@ -736,11 +736,11 @@ accepted-work payout or provider settlement unless the receipt chain says so.
 
 Needed measurement support:
 
-- public-safe launch copy;
-- readiness status;
-- production enable/disable/check/recover runbook;
+- public-safe launch copy.
+- readiness status.
+- production enable/disable/check/recover runbook.
 - launch-gate checklist across persistence, runner, operator UI, Forum,
-  Nexus/Pylon adapters, marketplace intake, rewards, and public report;
+  Nexus/Pylon adapters, marketplace intake, rewards, and public report.
 - rollback steps for claim mistakes.
 
 Why it matters:
@@ -756,21 +756,21 @@ gate is satisfied.
 Needed measurement support:
 
 - Margot simulator provenance: repo, commit, data timestamps, source URLs, and
-  normalized export refs;
+  normalized export refs.
 - GPU rental evidence: Vast.ai sample timestamp, GPU model, listing sample
-  size, dollars per GPU-hour, TDP/source, and derived dollars per MWh;
+  size, dollars per GPU-hour, TDP/source, and derived dollars per MWh.
 - token economics evidence: OpenRouter price timestamp and raw/display units,
   ML.Energy run/task/GPU/J-token/tokens-sec/stability fields, and derived
-  dollars per MWh;
+  dollars per MWh.
 - OCOLO or similar throughput-calculator refs as modeled evidence only, with
-  URL/query, timestamp, model, hardware, context, quantization, and caveats;
+  URL/query, timestamp, model, hardware, context, quantization, and caveats.
 - Pylon capacity evidence: node/cohort, GPU count/model, VRAM, interconnect,
   runtime/framework, resource mode, system power, chip TDP, effective watts per
   GPU, measured-meter availability, cooling/PUE assumption, availability
-  window, and cost term;
+  window, and cost term.
 - ERCOT/NYISO power-market windows, missing-data flags, and unsupported-market
-  caveats for anything outside ERCOT/NYISO;
-- mining counterfactuals for the same windows;
+  caveats for anything outside ERCOT/NYISO.
+- mining counterfactuals for the same windows.
 - accepted-work refs when actual work runs.
 
 Why it matters:
@@ -790,121 +790,121 @@ portfolio claim.
 
 Measure:
 
-- device average watts;
-- workroom runtime watt-hours;
-- site or rack overhead when available;
-- resource mode;
-- start/end window;
-- measured meter refs or modeled-energy refs;
+- device average watts.
+- workroom runtime watt-hours.
+- site or rack overhead when available.
+- resource mode.
+- start/end window.
+- measured meter refs or modeled-energy refs.
 - whether power data is measured, modeled, mixed, or unknown.
 
 Do not claim:
 
-- GPU chip TDP as facility energy;
-- nameplate MW as usable AI capacity;
+- GPU chip TDP as facility energy.
+- nameplate MW as usable AI capacity.
 - accepted outcome energy efficiency when energy denominator is unknown.
 
 ### 2. Outcome Numerator
 
 Measure:
 
-- accepted outcome refs;
-- work kind;
-- assignment refs;
-- artifact refs;
-- grading refs;
-- acceptance criteria refs;
-- rejected/retried/failed/aborted counts;
+- accepted outcome refs.
+- work kind.
+- assignment refs.
+- artifact refs.
+- grading refs.
+- acceptance criteria refs.
+- rejected/retried/failed/aborted counts.
 - acceptance rate.
 
 Do not claim:
 
-- online node equals outcome;
-- assigned job equals accepted outcome;
+- online node equals outcome.
+- assigned job equals accepted outcome.
 - runtime activity equals accepted revenue.
 
 ### 3. Economic Numerator
 
 Measure:
 
-- buyer accepted revenue;
-- runner/model/provider costs;
-- review/grading/retry/artifact costs;
-- accepted gross profit;
-- provider payable;
-- provider settled amount;
+- buyer accepted revenue.
+- runner/model/provider costs.
+- review/grading/retry/artifact costs.
+- accepted gross profit.
+- provider payable.
+- provider settled amount.
 - refund exposure.
 
 Do not claim:
 
-- modeled revenue equals accepted revenue;
-- provider payable equals settled provider payout;
+- modeled revenue equals accepted revenue.
+- provider payable equals settled provider payout.
 - Forum reward equals accepted-work payout.
 
 ### 4. Mining And Alternative Floor
 
 Measure for the same time window:
 
-- mining revenue per kWh or MWh;
-- mining margin per kWh or MWh;
-- power price;
-- ASIC efficiency and uptime;
-- pool/firmware/ops fees;
-- VPS/colo opportunity cost where relevant;
-- curtailment or grid-service value where relevant;
+- mining revenue per kWh or MWh.
+- mining margin per kWh or MWh.
+- power price.
+- ASIC efficiency and uptime.
+- pool/firmware/ops fees.
+- VPS/colo opportunity cost where relevant.
+- curtailment or grid-service value where relevant.
 - idle/dark capacity.
 
 Do not claim:
 
-- AI beats mining without same-window opportunity-cost comparison;
+- AI beats mining without same-window opportunity-cost comparison.
 - whole-site economics changed when only a small compute island was measured.
 
 ### 5. Routing And Governance
 
 Measure:
 
-- proposed route;
-- selected route;
-- rejected alternatives;
-- approval gates;
-- public claim state;
-- health/staleness state;
-- public-safe proof refs;
+- proposed route.
+- selected route.
+- rejected alternatives.
+- approval gates.
+- public claim state.
+- health/staleness state.
+- public-safe proof refs.
 - operator-only private evidence refs.
 
 Do not claim:
 
-- Artanis self-authorized dispatch;
+- Artanis self-authorized dispatch.
 - Artanis had spend, wallet, provider, training, runtime, or settlement
-  authority;
+  authority.
 - stale proof remains current.
 
 ### 6. Comparative Model Inputs
 
 Measure:
 
-- Margot repo commit and data timestamps;
+- Margot repo commit and data timestamps.
 - Vast.ai pricing sample timestamp, listing sample size, GPU model, and TDP
-  source;
-- OpenRouter model price timestamp, raw price unit, and display unit;
+  source.
+- OpenRouter model price timestamp, raw price unit, and display unit.
 - ML.Energy benchmark run, task, GPU, J/token, tokens/sec, stability flag, and
-  number of GPUs;
+  number of GPUs.
 - OCOLO or similar calculator URL/query/source when used as a modeled
-  throughput reference;
+  throughput reference.
 - node system power, chip TDP, effective watts per GPU, and whether the value
-  is measured, vendor-rated, modeled, or operator-supplied;
+  is measured, vendor-rated, modeled, or operator-supplied.
 - token throughput estimate, quantization, context length, framework,
-  interconnect, active parameters, and VRAM-fit result;
+  interconnect, active parameters, and VRAM-fit result.
 - ERCOT/NYISO zone, LMP window, refresh timestamp, and unsupported-market
   caveats.
 
 Do not claim:
 
 - token economics are diligence-ready before unit labels and sample arithmetic
-  have been audited;
+  have been audited.
 - ML.Energy, OCOLO, or OpenRouter rows transfer directly to OpenAgents
-  workloads without workload, latency, batching, and acceptance caveats;
-- chip-only rental `$ / MWh` is equivalent to full node or facility economics;
+  workloads without workload, latency, batching, and acceptance caveats.
+- chip-only rental `$ / MWh` is equivalent to full node or facility economics.
 - PJM or another unsupported market is in-scope without an explicit caveat.
 
 ## First Diligence-Grade Proof Packet
@@ -972,7 +972,7 @@ Safe to say now:
 - Margot's current simulator can model GPU rental, token inference, node-power,
   mining, and ERCOT/NYISO power-market comparisons in common per-MWh units.
 - Artanis can become the public proof steward for outcomes-per-kWh packets.
-- Mining is the economic floor; accepted outcomes are the upside.
+- Mining is the economic floor. Accepted outcomes are the upside.
 
 Not safe to say yet:
 

@@ -19,29 +19,29 @@ The executable fixture catalog lives in
 
 Implemented fixtures:
 
-- amount checkout creation;
-- product checkout creation;
-- customer field normalization;
-- metadata limits;
-- signed checkout URL creation and verification with Web Crypto;
-- safe Site-local checkout path handling;
-- sandbox flag preservation;
-- stale hosted challenge behavior;
+- amount checkout creation.
+- product checkout creation.
+- customer field normalization.
+- metadata limits.
+- signed checkout URL creation and verification with Web Crypto.
+- safe Site-local checkout path handling.
+- sandbox flag preservation.
+- stale hosted challenge behavior.
 - typed error envelopes.
 
 Adapted fixtures:
 
-- L402 token parsing through OpenAgents product surface's Worker-compatible credential service;
-- price re-check through credential verification expectations;
+- L402 token parsing through OpenAgents product surface's Worker-compatible credential service.
+- price re-check through credential verification expectations.
 - proof verification boundary through redacted proof refs instead of raw
   preimages.
 
 Deferred behaviors:
 
-- live MDK checkout network calls;
-- direct wallet/node state;
-- provider payout settlement;
-- production invoice minting;
+- live MDK checkout network calls.
+- direct wallet/node state.
+- provider payout settlement.
+- production invoice minting.
 - customer-owned MDK account mode.
 
 ## Redaction Rules
@@ -58,13 +58,13 @@ denomination `bitcoin_millisatoshi` is required.
 
 The conformance tests execute:
 
-- human amount and product checkout preparation;
-- redacted projections;
-- route dispatch;
-- metadata limit failures;
-- signed URL validity and tamper checks;
-- stale hosted challenge errors;
-- L402 valid, malformed, amount-mismatch, and proof-missing states;
+- human amount and product checkout preparation.
+- redacted projections.
+- route dispatch.
+- metadata limit failures.
+- signed URL validity and tamper checks.
+- stale hosted challenge errors.
+- L402 valid, malformed, amount-mismatch, and proof-missing states.
 - L402 error response redaction.
 
 ## Commands

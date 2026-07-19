@@ -54,7 +54,7 @@ retained public-safe evidence:
 13. Repeated use: at least two distinct Pylons complete paid jobs through the
     normal network path, not manual database insertion.
 14. Host breadth: local macOS and at least one reachable second host pass the
-    clean install/registration/job/payment path; Linux, WSL Ubuntu, and native
+    clean install/registration/job/payment path. Linux, WSL Ubuntu, and native
     Windows are either proven or retained as explicit release blockers.
 15. Failure drills: offline Pylon, stale heartbeat, stale wallet readiness,
     invalid proof, duplicate assignment, duplicate payout, adapter pause, and
@@ -69,7 +69,7 @@ retained public-safe evidence:
 | Issue | Required outcome |
 | --- | --- |
 | #499 | Freeze new releases and define this checklist. |
-| #500 | Proved source-level self-serve install, registration, heartbeat, and status visibility on one clean local host and one reachable Arch Linux host; Linux resolved to `pylon-v0.2.2`, so platform asset alignment still belongs to #505. |
+| #500 | Proved source-level self-serve install, registration, heartbeat, and status visibility on one clean local host and one reachable Arch Linux host. Linux resolved to `pylon-v0.2.2`, so platform asset alignment still belongs to #505. |
 | #501 | Proved source-level MDK agent-wallet setup, redacted wallet readiness, and payout-target admission for a registered Pylon. |
 | #502 | Proved live OpenAgents product surface assignment lease, owned Pylon assignment list, execution progress, artifact/proof refs, accepted-work closeout, and post-closeout public-safe payment-evidence refs for `pylon.issue502.local.20260608024927`. |
 | #503 | Settle accepted Pylon work with real bitcoin payouts and public receipts. |

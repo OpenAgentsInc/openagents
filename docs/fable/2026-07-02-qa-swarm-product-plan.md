@@ -3,7 +3,7 @@
 Date: 2026-07-02
 Status: product plan + execution roadmap in the Fable lane. **Nothing here is
 a product promise, served capability, or public claim copy** — the registry
-(`docs/promises/`) governs claims; `qa.agentic_qa_runner.v1` is yellow and the
+(`docs/promises/`) governs claims. `qa.agentic_qa_runner.v1` is yellow and the
 QA Swarm records proposed below enter at planned/yellow through the normal
 gates. This doc flips no promise state and broadens no copy. Issue map in §9.
 
@@ -24,8 +24,8 @@ services engine analysis
 **QA Swarm: point a swarm of QA agents at your product and get proof it
 works.** A coordinated fleet of autonomous QA agents — scripted scenarios,
 seeded monkeys, LLM explorers, perf probes — drives your app through a real
-browser, a real terminal, and (on macOS) the real native window; every
-discovery distills into a committed, re-runnable e2e test; every run produces
+browser, a real terminal, and (on macOS) the real native window. Every
+discovery distills into a committed, re-runnable e2e test. Every run produces
 an honest CONFIRMED/REFUTED verdict, videos, exact accounting, and a
 **shareable web URL** where the whole swarm is visible as a live, cinematic
 StarCraft-blue board — nodes for every agent and scenario, edges that light
@@ -44,16 +44,16 @@ record, each now mapped to its QA Swarm surface:
 
 | # | He asked for | QA Swarm answer | Substrate state |
 | --- | --- | --- | --- |
-| Thesis | Verify agent work **without running anything locally** — read the e2e test + its output | The share URL: verdict + distilled test + video + trace, reviewable in a browser | `/trace/{uuid}` live; share page is QS2 |
+| Thesis | Verify agent work **without running anything locally** — read the e2e test + its output | The share URL: verdict + distilled test + video + trace, reviewable in a browser | `/trace/{uuid}` live. Share page is QS2 |
 | 1 | Real dev tools (Chrome, terminal) | qa-runner drivers: Chromium/CDP, PTY terminal, container, native macOS AX | shipped |
-| 2 | Develop → **distill into committed tests** | The distiller emits `*.e2e.test.ts`; explore→distill→regress is ROADMAP_QA Q6.2 | shipped (distiller); loop is Q6.2 |
-| 3 | Pluggable targets (dev/prod, same test) | Multi-target registry; prod read-only policy | shipped; third-party onboarding is QS9 |
-| 4 | Fast + cross-OS | Parallel sharding, container/native backends; swarm parallelism via the FleetRun engine | shipped core; swarm-parallel runs QS5 |
+| 2 | Develop → **distill into committed tests** | The distiller emits `*.e2e.test.ts`. Explore→distill→regress is ROADMAP_QA Q6.2 | shipped (distiller). Loop is Q6.2 |
+| 3 | Pluggable targets (dev/prod, same test) | Multi-target registry. Prod read-only policy | shipped. Third-party onboarding is QS9 |
+| 4 | Fast + cross-OS | Parallel sharding, container/native backends. Swarm parallelism via the FleetRun engine | shipped core. Swarm-parallel runs QS5 |
 | 5 | **OSS + local** | MIT `@openagentsinc/qa-runner@0.1.0` on npm, BYO model, no login | shipped |
-| 6 | Video output | Playwright video + ffmpeg compose (verdict cards); auto-attach to PRs via the gh-attach motion | shipped; PR bot polish in QS7 |
-| 7 | **"Chill evals"** — compare agents across MCP/config changes | `/trace/compare/{ids}` live + the comparison runner; productized variant axis is QS8 | partially shipped |
+| 6 | Video output | Playwright video + ffmpeg compose (verdict cards). Auto-attach to PRs via the gh-attach motion | shipped. PR bot polish in QS7 |
+| 7 | **"Chill evals"** — compare agents across MCP/config changes | `/trace/compare/{ids}` live + the comparison runner. Productized variant axis is QS8 | partially shipped |
 | Sales | *"the best way to make me believe in your product is to show it working"* — a demo PR on his repo with auto-attached webm + terminal video | The QS7 sales motion: demo PR on `RhysSullivan/executor` with video + distilled test + verdict + share URL | not yet run |
-| Candid | *"my setup is decent but the last 10% would go so far"* | The reviewed, typed harness quality bar (`apps/qa-runner/docs/harness-quality-bar.md`) + the ROADMAP_QA gates | shipped bar; gates are QA-8 |
+| Candid | *"my setup is decent but the last 10% would go so far"* | The reviewed, typed harness quality bar (`apps/qa-runner/docs/harness-quality-bar.md`) + the ROADMAP_QA gates | shipped bar. Gates are QA-8 |
 
 Plus everything ROADMAP_QA adds beyond his list — the parts that make it a
 *swarm* rather than a runner: the seeded monkey and LLM explorers with a
@@ -81,7 +81,7 @@ The dogfood engagement is not a demo — it is the standing production run:
   the distilled-regression count, videos of the worst findings — generated
   from the same Q1.5 status surface, styled like the product (§4).
 - Per the services doctrine (`AW-0`, A0.4): the engagement's own receipts
-  become the sales collateral, opaque refs only when the client isn't us.
+  become the sales collateral, opaque refs only when the client is not us.
 
 ## 3. What A Business Buys (packages, owner-gated)
 
@@ -113,7 +113,7 @@ published or quoted until signed off.
 
 The differentiating surface: QA evidence rendered as the same
 StarCraft-Protoss energy language as the rest of the product (root
-`DESIGN.md`; uniform blue, no light/dark modes), built on the two graphics
+`DESIGN.md`. Uniform blue, no light/dark modes), built on the two graphics
 substrates this repo already owns:
 
 ### 4.1 The Swarm Board — `arbiter-effect` (2D, live, evidence-bound)
@@ -128,7 +128,7 @@ its second consumer (after the Gym pane):
   headed AX driver), each target surface (panel/RPC group), each oracle
   family, the verdict/distiller stage.
 - **Edges light on evidence**: a scenario→oracle edge pulses only when a
-  phase's oracle actually evaluated (receipt = the run report row); a
+  phase's oracle actually evaluated (receipt = the run report row). A
   finding→distilled-test edge lights only when the committed test merges. No
   animation without a receipt — the Verse discipline applied to QA.
 - **Live datum on nodes**: coverage counts ticking, current seed, p95 vs
@@ -144,7 +144,7 @@ For the share page hero and episode/demo material: the swarm as a Verse-grade
 settlement-burst-class visual effects on verdict landings. Quality bar per
 the standing graphics mandate: additive-HDR + bloom spark-burst grade, not
 thin flat lines. Deliberately optional and behind the 2D board in priority —
-the 2D board is the daily tool; the 3D scene is the demo weapon.
+the 2D board is the daily tool. The 3D scene is the demo weapon.
 
 ### 4.3 The share URL — public-safe QA evidence at a link
 
@@ -154,7 +154,7 @@ a standing engagement's latest): verdict wall
 (CONFIRMED/REFUTED/INCONCLUSIVE per commitment), coverage ledger + frontier,
 perf trends vs named budgets, embedded videos, per-finding links to
 `/trace/{uuid}` and distilled tests, and the Arbiter swarm board rendered
-live. Redaction-checked like every projection; opaque client refs for
+live. Redaction-checked like every projection. Opaque client refs for
 non-owner targets. This is the artifact a buyer forwards to their team — the
 "review without running anything" thesis as a URL.
 
@@ -178,62 +178,62 @@ run, the standing dogfood engagement report, the external send of the executor
 demo PR, the chill-evals product surface, the third-party target-adapter
 onboarding, and metering/receipts for hosted runs.
 
-## 6. Execution Roadmap (workstream QS; issues in §9)
+## 6. Execution Roadmap (workstream QS, issues in §9)
 
 | Task | Description | Deps | Delegable |
 | --- | --- | --- | --- |
-| QS1 | **Product definition + registry records**: QA Swarm named surface through the copy gates; extend `qa.agentic_qa_runner.v1` and add `qa_swarm.*` records (product yellow; hosted runs, share surface, packages planned) with honest blockers; modeled rate card staged for the owner sitting (publishing prices is owner-gated) | — | MED (owner-adjacent at the copy/price step) |
-| QS2 | **The share URL** `openagents.com/qa/{runRef}`: public-safe run-projection schema (`openagents.qa_swarm.run_projection.v1`) fed by the Q1.5 status artifact + trace/coverage/perf/video refs; render page on the khala design tokens; redaction-checked; deep links to `/trace/{uuid}` | Q1.5 | MED |
-| QS3 | **The Arbiter swarm board**: swarm-run GraphSpec projection (agents/surfaces/oracles/verdicts as nodes; receipt-lit edges; live datum) rendered via `@openagentsinc/arbiter-effect` on the share page and as a Khala Code Desktop QA panel; evidence-binding rule enforced (no receipt, no light) | QS2 | MED |
-| QS4 | **The 3D swarm scene** (`three-effect`, demo-grade): share-page hero + demo/episode asset at the spark-burst quality bar; strictly a projection of the same run data; reduced-motion + static fallback | QS2 | MED |
-| QS5 | **One-command hosted swarm run**: `qa swarm run --target <url>` / one API call composes qa-runner control API + FleetRun parallelism + the nightly-matrix recipe into a single product run on owned runners (GCE Tier-2 + CF Browser Rendering), emitting the QS2 projection; skip-safe live tiers; per-run resource caps | QS2, Q1.1 | MED |
+| QS1 | **Product definition + registry records**: QA Swarm named surface through the copy gates. Extend `qa.agentic_qa_runner.v1` and add `qa_swarm.*` records (product yellow, hosted runs, share surface, packages planned) with honest blockers. Modeled rate card staged for the owner sitting (publishing prices is owner-gated) | — | MED (owner-adjacent at the copy/price step) |
+| QS2 | **The share URL** `openagents.com/qa/{runRef}`: public-safe run-projection schema (`openagents.qa_swarm.run_projection.v1`) fed by the Q1.5 status artifact + trace/coverage/perf/video refs. Render page on the khala design tokens. Redaction-checked. Deep links to `/trace/{uuid}` | Q1.5 | MED |
+| QS3 | **The Arbiter swarm board**: swarm-run GraphSpec projection (agents/surfaces/oracles/verdicts as nodes, receipt-lit edges, live datum) rendered via `@openagentsinc/arbiter-effect` on the share page and as a Khala Code Desktop QA panel. Evidence-binding rule enforced (no receipt, no light) | QS2 | MED |
+| QS4 | **The 3D swarm scene** (`three-effect`, demo-grade): share-page hero + demo/episode asset at the spark-burst quality bar. Strictly a projection of the same run data. Reduced-motion + static fallback | QS2 | MED |
+| QS5 | **One-command hosted swarm run**: `qa swarm run --target <url>` / one API call composes qa-runner control API + FleetRun parallelism + the nightly-matrix recipe into a single product run on owned runners (GCE Tier-2 + CF Browser Rendering), emitting the QS2 projection. Skip-safe live tiers. Per-run resource caps | QS2, Q1.1 | MED |
 | QS6 | **Customer-one standing engagement**: brand the Khala Code nightly loop as the QA Swarm engagement — weekly public-safe report at the share URL, findings→issues→distilled-regression counts tracked, the 2026-07-02 session written up as case-study seed (A0.9 pattern) | Q1.1, QS2 | HIGH |
-| QS7 | **The Rhys sales motion**: run the Swarm Audit package against `RhysSullivan/executor` and open the demo PR he asked for — auto-attached webm + terminal video (gh-attach), distilled `*.e2e.test.ts`, verdict, share URL; chill-evals comparison of his MCP variants included; owner reviews before the PR goes out (outward-facing). The in-repo evidence packet is `docs/fable/2026-07-02-qs7-rhys-sales-motion-owner-review.md`; the external send remains owner-gated. | QS2, QS8 | MED (owner gate on send) |
+| QS7 | **The Rhys sales motion**: run the Swarm Audit package against `RhysSullivan/executor` and open the demo PR he asked for — auto-attached webm + terminal video (gh-attach), distilled `*.e2e.test.ts`, verdict, share URL. Chill-evals comparison of his MCP variants included. Owner reviews before the PR goes out (outward-facing). The in-repo evidence packet is `docs/fable/2026-07-02-qs7-rhys-sales-motion-owner-review.md`. The external send remains owner-gated. | QS2, QS8 | MED (owner gate on send) |
 | QS8 | **Chill-evals productized**: the variant axis (MCP set / config / model / before-after) as a first-class run mode with a side-by-side comparison view on the share surface (pass-rate/latency/behavior deltas + videos), reusing `/trace/compare` + the benchmark aggregates | QS2 | HIGH |
-| QS9 | **Third-party target onboarding**: the minimal Target adapter contract for arbitrary apps (auth, fresh identity, optional restart, prod-read-only policy) documented + one worked example beyond our own surfaces; "bring your app, get a scenario corpus, an explore night, and a coverage ledger" | QS5 | MED |
-| QS10 | **Metering + receipts for hosted runs**: run = dereferenceable receipt (traceRef already lands on receipts); hosted-run metering rows (exact-only discipline), engagement receipts through the quick-win payment machinery; settlement seams stay INERT until owner-armed | QS5 | MED |
+| QS9 | **Third-party target onboarding**: the minimal Target adapter contract for arbitrary apps (auth, fresh identity, optional restart, prod-read-only policy) documented + one worked example beyond our own surfaces. "Bring your app, get a scenario corpus, an explore night, and a coverage ledger" | QS5 | MED |
+| QS10 | **Metering + receipts for hosted runs**: run = dereferenceable receipt (traceRef already lands on receipts). Hosted-run metering rows (exact-only discipline), engagement receipts through the quick-win payment machinery. Settlement seams stay INERT until owner-armed | QS5 | MED |
 
 Sequencing: QS1 (definition) and QS6 (dogfood engagement) start immediately —
 QS6 needs only ROADMAP_QA Q1.1/Q1.5 landing. QS2 is the spine everything
-visual and outward-facing hangs on; QS3/QS4/QS8 fan out behind it. QS7 is the
+visual and outward-facing hangs on. QS3/QS4/QS8 fan out behind it. QS7 is the
 first external sales artifact and should ship the week QS2+QS8 are usable.
 QS5/QS9/QS10 make it repeatable for strangers.
 
 ## 7. How This Relates To The Other Plans
 
-- **ROADMAP_QA is the engine; QA Swarm is the product skin.** Every QS task
+- **ROADMAP_QA is the engine. QA Swarm is the product skin.** Every QS task
   consumes ROADMAP_QA outputs (run reports, coverage, budgets, traces) —
   none duplicates them. The nightly loop (Q1.1) is simultaneously our merge
   gate and customer-one's engagement run.
 - **AW-0 services engine**: the Swarm Audit / Sprint / Retainer slot directly
-  into the `/business` intake and the quick-win receipt machinery; QA Swarm
+  into the `/business` intake and the quick-win receipt machinery. QA Swarm
   is the second productized service line after coding quick-wins.
 - **#6181 "out-ship Factory"**: QS completes that epic's productization arc —
   distill-to-committed-test + honest verdicts + native-desktop driver breadth
   + the visual evidence layer Factory's droid-control lacks, plus the two
-  things Rhys couldn't get anywhere: committed tests and chill-evals.
+  things Rhys could not get anywhere: committed tests and chill-evals.
 - **The tool/network strategy**: OSS qa-runner stays the free single-player
-  tool; hosted swarm runs and the share surface are the network-facing
-  product; distilled tests and traces are the solved-problem exhaust.
+  tool. Hosted swarm runs and the share surface are the network-facing
+  product. Distilled tests and traces are the solved-problem exhaust.
 
 ## 8. Invariants
 
-- Registry governs claims: QA Swarm records enter planned/yellow; no green
-  without receipts; published prices are an owner decision; no copy implies
+- Registry governs claims: QA Swarm records enter planned/yellow. No green
+  without receipts. Published prices are an owner decision. No copy implies
   self-serve while delivery is operator-assisted.
 - Public-safe projections everywhere: the share page, the boards, and every
-  video/screenshot pass redaction tripwires; client refs opaque.
-- Honest evidence only: verdicts from observed runs; no fake green; edges
+  video/screenshot pass redaction tripwires. Client refs opaque.
+- Honest evidence only: verdicts from observed runs. No fake green. Edges
   light only on dereferenceable receipts (the Arbiter rule).
-- Exact-only accounting for hosted runs; settlement INERT until owner-armed.
-- OSS core stays BYO-model, no-login; hosted tiers are more/faster, never
+- Exact-only accounting for hosted runs. Settlement INERT until owner-armed.
+- OSS core stays BYO-model, no-login. Hosted tiers are more/faster, never
   lock-in.
 - Outward-facing artifacts (the Rhys PR, customer reports) get owner review
   before sending.
 
 ## 9. Issue Map
 
-Filed 2026-07-02 under the QA Swarm epic; see the epic checklist for state.
+Filed 2026-07-02 under the QA Swarm epic. See the epic checklist for state.
 
 Epic: [#8071](https://github.com/OpenAgentsInc/openagents/issues/8071)
 
@@ -260,7 +260,7 @@ and commits to the sequencing in the owner's words:
 - **"We'll build QA Swarm first for Khala Code, then add it to our
   Autopilot product suite for businesses."** §2's customer-number-one
   engagement is therefore the announced plan of record, not just internal
-  doctrine; the Autopilot-suite step is design intent, and the registry
+  doctrine. The Autopilot-suite step is design intent, and the registry
   records it that way (`qa_swarm.product_surface.v1`, registry
   `2026-07-03.1`, still yellow/operator-assisted — the episode changes no
   promise state).
@@ -287,7 +287,7 @@ records public-safe intake plus checkout/deposit receipt refs, provisions the QA
 Swarm Audit workspace and active service promise, and writes the first-report
 commitment into `business_commitment_ledger`. Public readback is
 `GET /api/public/qa-swarm/first-engagements/{receiptRef}`. This clears the
-checkout/intake receipt blocker only; first paid delivery, self-serve hosted
+checkout/intake receipt blocker only. First paid delivery, self-serve hosted
 delivery, broad hosted availability, payout, settlement, and promise-green copy
 remain blocked.
 
@@ -295,7 +295,7 @@ remain blocked.
 
 AssuranceSpec now has a canonical design home at
 [`../assurance/README.md`](../assurance/README.md). QA Swarm remains an
-execution/exploration substrate; it does not authoritatively interpret product
+execution/exploration substrate. It does not authoritatively interpret product
 intent, admit proof design, accept its own evidence, release, or promote a
 promise. No current QA Swarm path is claimed to consume Assurance Manifests,
 and the product/promise states above remain unchanged.

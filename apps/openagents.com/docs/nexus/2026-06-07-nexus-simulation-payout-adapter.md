@@ -6,12 +6,12 @@ The simulation payout adapter is the first green gate before OpenAgents product 
 bitcoin through MDK. It runs behind the `TreasuryPaymentAuthority` service, so
 the same authority gates apply before any adapter behavior can run:
 
-- accepted work evidence is required;
-- payout target approval is required;
-- wallet readiness must be fresh;
-- spend amount must be within the spend cap;
-- authority and adapter pause states block dispatch;
-- payout dispatch requires an existing payout intent;
+- accepted work evidence is required.
+- payout target approval is required.
+- wallet readiness must be fresh.
+- spend amount must be within the spend cap.
+- authority and adapter pause states block dispatch.
+- payout dispatch requires an existing payout intent.
 - replayed payout attempt idempotency keys return the existing attempt.
 
 The adapter is deterministic under test and lives at
@@ -21,12 +21,12 @@ The adapter is deterministic under test and lives at
 
 The adapter can simulate:
 
-- dispatch accepted;
-- dispatch rejected;
-- confirmation pending;
-- confirmation succeeded;
-- confirmation failed;
-- reconciliation found duplicate;
+- dispatch accepted.
+- dispatch rejected.
+- confirmation pending.
+- confirmation succeeded.
+- confirmation failed.
+- reconciliation found duplicate.
 - reconciliation found stale pending attempt.
 
 These states are policy and receipt exercises only. A simulation receipt is not
@@ -46,12 +46,12 @@ before any live-wallet smoke is attempted.
 
 The suite covers:
 
-- preview through `TreasuryPaymentAuthority`;
-- intent creation before dispatch;
-- accepted dispatch;
-- rejected dispatch;
-- idempotent dispatch replay;
-- pending, succeeded, failed, duplicate, and stale-pending reconciliation;
+- preview through `TreasuryPaymentAuthority`.
+- intent creation before dispatch.
+- accepted dispatch.
+- rejected dispatch.
+- idempotent dispatch replay.
+- pending, succeeded, failed, duplicate, and stale-pending reconciliation.
 - spend cap, target approval, wallet readiness, pause, and missing-intent
   policy gates.
 
@@ -59,9 +59,9 @@ The suite covers:
 
 The simulation adapter can build public-safe receipt records for:
 
-- dispatch recorded;
-- confirmation recorded;
-- verification recorded;
+- dispatch recorded.
+- confirmation recorded.
+- verification recorded.
 - settlement recorded.
 
 Every generated public projection includes:

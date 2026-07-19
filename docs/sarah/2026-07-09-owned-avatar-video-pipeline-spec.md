@@ -83,19 +83,19 @@ Key decisions and why:
    small U-Net pass per frame. Full-frame models (Ditto, SoulX-FlashHead)
    regenerate every pixel — they buy audio-driven head motion at the cost of
    identity shimmer and they *fight* our clip library instead of exploiting
-   it. They're the v2 A/B, not the v1.
+   it. They are the v2 A/B, not the v1.
 2. **The idle/speak state machine is the product feel.** Silent → loop clip 6/3
-   (seamless because the README already verified clean joins); user speaking →
-   listening clips 4/5 (nods/smile); Sarah speaking → the scheduler pulls
+   (seamless because the README already verified clean joins). User speaking →
+   listening clips 4/5 (nods/smile). Sarah speaking → the scheduler pulls
    frames from a talking-pose clip and MuseTalk re-lips them against the live
-   TTS PCM; interrupt → crossfade back to listening. This mirrors what
+   TTS PCM. Interrupt → crossfade back to listening. This mirrors what
    LiveTalking ships in production (idle-video + speak compositing) and what
    LiveAvatar LITE's own docs describe (`agent.start_listening` /
    `agent.speak` chunks / `agent.interrupt`).
 3. **One preprocessing pass, then cheap forever.** MuseTalk's honest real-time
    numbers depend on precomputed reference embeddings per avatar — a one-time
    job over our ten clips (this is exactly why fixed footage wins: Ditto's
-   paper measured MuseTalk at RTF 2.248 *including* preprocessing; LiveTalking
+   paper measured MuseTalk at RTF 2.248 *including* preprocessing. LiveTalking
    measures 42 FPS on an RTX 3080Ti / 72 FPS on a 4090 *after* it, because
    production setups preprocess once).
 4. **Same seam, swappable vendor.** The browser contract stays our
@@ -103,19 +103,19 @@ Key decisions and why:
    even keep LiveAvatar as a fallback renderer behind the same seam while the
    owned service matures (env-selected renderer).
 
-## 3. Component selection (from the mid-2026 survey; licenses checked)
+## 3. Component selection (from the mid-2026 survey, licenses checked)
 
 | Slot | v1 pick | License | Measured performance | Alternates / ladder |
 |---|---|---|---|---|
-| Lip sync | **MuseTalk 1.5** ([TMElyralab/MuseTalk](https://github.com/TMElyralab/MuseTalk)) | MIT, models commercial-OK | 42 FPS @ RTX 3080Ti, 72 FPS @ 4090 inside LiveTalking (256² crop → 720p paste-back) | v2: **Ditto** (Apache-2.0, TensorRT, 385 ms first-frame, adds head motion); **SoulX-FlashHead-Lite** (Apache-2.0, 96 FPS @ 4090, 3 streams @ 25 FPS — young); **LatentSync 1.6** = the offline quality tier for the recording lane (license verified Apache-2.0; 18GB VRAM fits the L4 — see §9) |
-| Pipeline skeleton | **LiveTalking pattern** ([lipku/livetalking](https://github.com/lipku/livetalking), Apache-2.0, 8.3k★, v2.0.4 06/2026) — adopt it directly or port its frame-scheduler/sync/idle-compositing design into an owned Bun/Effect+Python service | Apache-2.0 | Two years of production use; WebRTC+RTMP egress; pluggable lip-sync + TTS seams | [OpenAvatarChat](https://github.com/HumanAIGC-Engineering/OpenAvatarChat) as architecture reference (handler graph, ~2.2 s e2e); Duix/HeyGem rejected (offline toolkit + revenue-carve-out license) |
-| TTS | **CosyVoice 2/3** ([FunAudioLLM/CosyVoice](https://github.com/FunAudioLLM/CosyVoice)) | Apache-2.0 | ~150 ms first packet, bidirectional streaming, 24 kHz, zero-shot clone from seconds of audio; already a LiveTalking plugin | **Chatterbox/Turbo** (MIT; vendor-claimed sub-200 ms — verify ourselves); interim managed: **Google Chirp 3 HD** `streaming_synthesize` (instant custom voice is allow-list gated); Kokoro as no-clone fallback. Disqualified for cloning: F5-TTS weights (CC-BY-NC), XTTS (CPML), Fish S1-mini (NC) |
+| Lip sync | **MuseTalk 1.5** ([TMElyralab/MuseTalk](https://github.com/TMElyralab/MuseTalk)) | MIT, models commercial-OK | 42 FPS @ RTX 3080Ti, 72 FPS @ 4090 inside LiveTalking (256² crop → 720p paste-back) | v2: **Ditto** (Apache-2.0, TensorRT, 385 ms first-frame, adds head motion), **SoulX-FlashHead-Lite** (Apache-2.0, 96 FPS @ 4090, 3 streams @ 25 FPS — young), **LatentSync 1.6** = the offline quality tier for the recording lane (license verified Apache-2.0, 18GB VRAM fits the L4 — see §9) |
+| Pipeline skeleton | **LiveTalking pattern** ([lipku/livetalking](https://github.com/lipku/livetalking), Apache-2.0, 8.3k★, v2.0.4 06/2026) — adopt it directly or port its frame-scheduler/sync/idle-compositing design into an owned Bun/Effect+Python service | Apache-2.0 | Two years of production use, WebRTC+RTMP egress, pluggable lip-sync + TTS seams | [OpenAvatarChat](https://github.com/HumanAIGC-Engineering/OpenAvatarChat) as architecture reference (handler graph, ~2.2 s e2e), Duix/HeyGem rejected (offline toolkit + revenue-carve-out license) |
+| TTS | **CosyVoice 2/3** ([FunAudioLLM/CosyVoice](https://github.com/FunAudioLLM/CosyVoice)) | Apache-2.0 | ~150 ms first packet, bidirectional streaming, 24 kHz, zero-shot clone from seconds of audio, already a LiveTalking plugin | **Chatterbox/Turbo** (MIT, vendor-claimed sub-200 ms — verify ourselves), interim managed: **Google Chirp 3 HD** `streaming_synthesize` (instant custom voice is allow-list gated), Kokoro as no-clone fallback. Disqualified for cloning: F5-TTS weights (CC-BY-NC), XTTS (CPML), Fish S1-mini (NC) |
 | Voice | Clone from a curated Sarah read (we record/generate the reference audio we own) | — | — | The synthetic character means the voice is also fully ours to define |
 | Egress | WebRTC — LiveKit self-hosted (we hold deep LiveKit reference expertise in `projects/livekit/`) or aiortc as LiveTalking ships | Apache-2.0 | — | The /sarah page already attaches remote WebRTC video (same UX as today) |
 
 Rejected on license (do not revisit without legal): Sonic (non-commercial),
 FLOAT (CC-BY-NC-ND), Hallo3 (CogVideoX conditional), LivePortrait's bundled
-InsightFace models (research-only; MediaPipe swap required if ever used).
+InsightFace models (research-only, MediaPipe swap required if ever used).
 
 ## 4. Latency budget (voice-to-voice target p50 ≤ 800 ms on the avatar lane)
 
@@ -124,7 +124,7 @@ InsightFace models (research-only; MediaPipe swap required if ever used).
 | ASR (user speech → text) | 60–120 ms | production voice-agent practice |
 | Brain first token (Khala gateway → Gemma) | 150–500 ms | our measured 0.17 s first byte + thinking variance |
 | TTS first packet (CosyVoice) | ~150 ms | published streaming latency |
-| **Video time-to-first-frame** | **150–300 ms** | MuseTalk per-frame (no chunking) fits; first inpainted frame follows first audio chunk |
+| **Video time-to-first-frame** | **150–300 ms** | MuseTalk per-frame (no chunking) fits. First inpainted frame follows first audio chunk |
 | WebRTC transport | 30–80 ms | standard |
 
 The mouth only needs to move when audio plays, and audio pacing is ours — the
@@ -137,7 +137,7 @@ scheduler holds a small (~200 ms) jitter buffer so lips never lead the sound.
   workload). Spot/on-demand g2 ≈ $0.2–0.7/hr — versus LiveAvatar FULL at
   2 credits/min. Break-even is measured in *hours per day* of conversation.
 - Scale-to-zero: the render service runs on Cloud Run GPU (or a GCE MIG at
-  min 0) and cold-starts on session mint; idle loops cost nothing when nobody
+  min 0) and cold-starts on session mint. Idle loops cost nothing when nobody
   is talking to her.
 - Preprocessing (one-time per clip set) and any LatentSync marketing renders
   run as batch jobs, not standing capacity.
@@ -145,53 +145,53 @@ scheduler holds a small (~200 ms) jitter buffer so lips never lead the sound.
 ## 6. What we reuse from tonight's stack (nothing is thrown away)
 
 - The **avatar-session seam** (`mint/status/stop/events`) — the browser and
-  EN surface don't change; a `renderer: liveavatar | owned` field on mint
+  EN surface do not change. A `renderer: liveavatar | owned` field on mint
   selects the backend during the transition.
-- The **brain** — same Khala-gateway completions; the render service consumes
+- The **brain** — same Khala-gateway completions. The render service consumes
   the same streaming text the LiveAvatar custom-LLM hook consumes today.
 - **KHS-6 semantic cache → true pre-recorded clips**: owning the renderer
   makes the owner's "pre-recorded audio to save on generation" trivial — a
   cache hit can play a pre-rendered audio+lip take with zero GPU inference
   (the exact capability FULL-mode LiveAvatar could not give us).
 - **Turn persistence, isolation contracts, pricing guard** — all upstream of
-  the renderer; untouched.
+  the renderer. Untouched.
 
 ## 7. Honesty flags (from the research, kept visible)
 
 - MuseTalk's "real-time" claim assumes preprocessed reference embeddings —
   true for us (fixed clips), but never quote the 30 fps figure without that
-  caveat; Ditto's end-to-end accounting put unpreprocessed MuseTalk at
+  caveat. Ditto's end-to-end accounting put unpreprocessed MuseTalk at
   RTF 2.248.
-- Chatterbox latency and its ElevenLabs blind-test numbers are vendor-run;
+- Chatterbox latency and its ElevenLabs blind-test numbers are vendor-run.
   measure before relying on them.
 - LatentSync's license question is RESOLVED (2026-07-09): the official
-  ByteDance repo is Apache-2.0; 1.6 needs 18GB VRAM, which fits the L4.
+  ByteDance repo is Apache-2.0. 1.6 Needs 18GB VRAM, which fits the L4.
 - Known MuseTalk failure modes: teeth smearing, occasional single-frame
   jitter, chin seam under rotation — mitigated by fixed framing, and clip
   selection can avoid strong head turns during speech.
 - Quality ceiling honesty: 256² mouth crops at 720p are good, not
-  LatentSync-512² good; the v2 ladder exists for a reason.
+  LatentSync-512² good. The v2 ladder exists for a reason.
 
 ## 8. Build lanes (OAV-*)
 
-- **OAV-1 — offline proof (no streaming):** preprocess the 10 clips; render
+- **OAV-1 — offline proof (no streaming):** preprocess the 10 clips. Render
   one Sarah reply (CosyVoice-cloned audio + MuseTalk over a talking clip) to
-  MP4; side-by-side vs LiveAvatar for a quality go/no-go. One GPU day.
+  MP4. Side-by-side vs LiveAvatar for a quality go/no-go. One GPU day.
 - **OAV-2 — the render service:** LiveTalking (or a ported scheduler) on one
   L4: idle/listen/speak state machine over the clip library, MuseTalk
   backend, WebRTC egress, `speak/interrupt/listening` control API mirroring
-  the LITE cycle. **Status 2026-07-09:** complete on Hydralisk; see
+  the LITE cycle. **Status 2026-07-09:** complete on Hydralisk. See
   `docs/sarah/2026-07-09-oav2-render-service-closeout.md` and Hydralisk
   `docs/evidence/2026-07-09-oav2-musetalk-gpu-smoke.md` for the empty-blocker
   L4 simulator pass.
 - **OAV-3 — TTS ownership:** CosyVoice deployment + Sarah voice clone from
-  owned reference audio; Chirp 3 HD as the managed interim behind the same
+  owned reference audio. Chirp 3 HD as the managed interim behind the same
   PCM-stream seam.
-- **OAV-4 — seam integration:** `renderer: owned` on the avatar mint; the
-  render service consumes the brain's streaming text; SSE cards unchanged;
+- **OAV-4 — seam integration:** `renderer: owned` on the avatar mint. The
+  render service consumes the brain's streaming text. SSE cards unchanged.
   A/B against LiveAvatar on staging.
 - **OAV-5 — pre-rendered takes:** KHS-6 cache hits map to pre-rendered
-  audio+video takes (zero-inference answers); opener pre-rendered
+  audio+video takes (zero-inference answers). Opener pre-rendered
   (no-initialism scripts — §9).
 - **OAV-6 — quality ladder:** Ditto A/B (head motion), SoulX-FlashHead-Lite
   trial, LatentSync offline renders per the §9 recording-lane tier,
@@ -205,7 +205,7 @@ retained as a fallback until the owner retires it.
 ## 9. Enhancement + quality-tier policy (adopted 2026-07-09 from `research.md`)
 
 The OAV-1 proof round (#8610/#8611) produced owner verdicts and
-measurements; `docs/sarah/research.md` (the prioritized paper/repo triage)
+measurements. `docs/sarah/research.md` (the prioritized paper/repo triage)
 and `docs/sarah/2026-07-09-oav-quality-strategy.md` (empirical status)
 turned them into binding pipeline policy:
 
@@ -218,7 +218,7 @@ turned them into binding pipeline policy:
    fixed/smoothed. This tamed recipe measured the smoothest take to date
    (jerk 0.15). Touches: OAV-1 (#8611), OAV-2 (#8612).
 2. **LatentSync 1.6 is the offline quality tier for the recording lane** —
-   512² diffusion lip-sync; best measured articulation, pending a fix for
+   512² diffusion lip-sync. Best measured articulation, pending a fix for
    its 16-frame chunk-boundary hitch. Not realtime. Touches: OAV-5,
    OAV-6, and the opener library.
 3. **FLAIR (MIT, `wustl-cig/FLAIR`) is the P0 permissive temporal
@@ -226,11 +226,11 @@ turned them into binding pipeline policy:
    face crop, paste back with the existing feathered mask, measure
    temporal boil. Touches: OAV-1 enhancement step, OAV-6.
 4. **RIFE 24→48 fps is a final-pass presentation option** (MIT, cheap,
-   reversible) after mux timing is correct; never retime audio. Touches:
+   reversible) after mux timing is correct. Never retime audio. Touches:
    OAV-1, OAV-5 recorded takes.
 5. **The TTS seam includes CosyVoice prosody variants + a per-segment STT
    round-trip gate.** Spoken-form normalization already runs before
-   synthesis (hydralisk `tts/normalize.py`, commit `40b2783`); prosody
+   synthesis (hydralisk `tts/normalize.py`, commit `40b2783`). Prosody
    variants (punctuated "A.I.", paused letter-speech, instruct/speed
    controls) are selected by ear with the STT round-trip as the hard
    correctness gate. Touches: OAV-3 (#8613), OAV-2 (#8612).

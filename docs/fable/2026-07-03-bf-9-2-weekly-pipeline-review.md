@@ -1,7 +1,7 @@
 # BF-9.2 Weekly Pipeline Review
 
 Date: 2026-07-03
-Status: BF-9.2 operating artifact; no promise state flip; no public copy change
+Status: BF-9.2 operating artifact. No promise state flip. No public copy change
 Source issue: OpenAgentsInc/openagents#8116
 Roadmap refs: [`ROADMAP_BIZ.md`](./ROADMAP_BIZ.md) BF-9.2 and
 [`ROADMAP_AFTER.md`](./ROADMAP_AFTER.md) AW-0 A0.3
@@ -39,7 +39,7 @@ Every row must carry:
   `e-commerce`, `health`, or `internal`.
 - `sourceRef`: public-safe attribution ref, not raw UTM or private contact data.
 - `businessSignupRequestId`: optional link to the originating
-  `business_signup_requests.id`; when present, the row's `sourceRef` must match
+  `business_signup_requests.id`. When present, the row's `sourceRef` must match
   the signup row.
 - `stage`: one of the queue states above.
 - `ownerRole`: role label only, such as `operator`, `reviewer`, or
@@ -61,24 +61,24 @@ identity.
 
 | Metric | Definition | Review rule |
 | --- | --- | --- |
-| Qualified intakes | Count of `intake_received` rows accepted into scope during the window | Split by vertical and source; rejected rows need a typed reason. |
+| Qualified intakes | Count of `intake_received` rows accepted into scope during the window | Split by vertical and source. Rejected rows need a typed reason. |
 | Scope calls completed | Count of qualified intakes that reached `scope_completed` | Any no-show or reschedule older than seven days gets a blocker. |
-| Intake-to-scope rate | `scope_completed / qualified_intakes` | Report as `pending` when denominator is zero; never fabricate a rate. |
+| Intake-to-scope rate | `scope_completed / qualified_intakes` | Report as `pending` when denominator is zero. Never fabricate a rate. |
 | Receipt plans sent | Count of `receipt_plan_sent` rows | Each plan must name deliverables, review gates, receipts, and non-goals. |
 | Scope-to-plan time | Median elapsed time from `scope_completed` to `receipt_plan_sent` | Use `pending` until at least one completed elapsed interval exists. |
-| Close rate | `closed_won / receipt_plan_decisions` | Decisions are `closed_won + closed_lost`; parked rows are not decisions. |
+| Close rate | `closed_won / receipt_plan_decisions` | Decisions are `closed_won + closed_lost`. Parked rows are not decisions. |
 | Time-to-quick-win | Median elapsed time from `closed_won` to first accepted outcome receipt | Use `not_started` when no closed-won row has reached delivery. |
-| Commitment coverage | Count of promised sends/deliverables with commitment-ledger rows | Must be 100%; missing rows are defects under BF-9.1. |
-| Overclaim incidents | Count of public or buyer-facing statements not backed by a receipt/promise gate | Target is zero; any incident creates a copy-gate follow-up. |
+| Commitment coverage | Count of promised sends/deliverables with commitment-ledger rows | Must be 100%. Missing rows are defects under BF-9.1. |
+| Overclaim incidents | Count of public or buyer-facing statements not backed by a receipt/promise gate | Target is zero. Any incident creates a copy-gate follow-up. |
 
 ## Review Entry: 2026-W27
 
 Status: scaffolded baseline review. The queue instrumentation exists as a
-review artifact; live data rows are not asserted by this document.
+review artifact. Live data rows are not asserted by this document.
 
 | Metric | Value | Evidence |
 | --- | --- | --- |
-| Qualified intakes | `pending` | Instrument defined above; awaiting first redacted weekly data pull. |
+| Qualified intakes | `pending` | Instrument defined above. Awaiting first redacted weekly data pull. |
 | Scope calls completed | `pending` | Instrument defined above. |
 | Intake-to-scope rate | `pending` | No denominator asserted in this public checkout. |
 | Receipt plans sent | `pending` | Receipt-plan contract defined above. |
@@ -186,7 +186,7 @@ bun apps/openagents.com/scripts/operator-business-pipeline.ts link-credit-redemp
 The credit grant writes a normal `usd_credit_grant` credit-ledger pay-in receipt
 and records `sales_starter_credit` attribution in
 `business_starter_credit_grants`. Defaults are hard-capped at 25 grants per
-window and 10000 USD cents per grant; cap exceedance is a typed refusal. The
+window and 10000 USD cents per grant. Cap exceedance is a typed refusal. The
 credit is non-transferable, engagement-scoped, and USD-origin
 (`usd_credit_msat`), so it is spendable against the engagement but has no
 crypto/cash-out path. Both the grant receipt and later redemption receipt refs
@@ -259,7 +259,7 @@ no automation, settlement, payout copy, public peer signup, or marketplace
 launch claim.
 
 The send row carries `sourceRef`, `mailboxRef`, approval receipt, template
-version, and `receipt.business.outreach_send.*`; that receipt is appended to the
+version, and `receipt.business.outreach_send.*`. That receipt is appended to the
 pipeline row's `receiptRefs`. The default and maximum configured mailbox cap is
 95 sends/day, so a route-level refusal stops over-volume recording before it can
 be reported as delivered.

@@ -25,7 +25,7 @@ Consolidates the per-area roadmaps: [`khala.md`](khala.md) (spec/§11),
 
 ## North-star goal (the end of the flow)
 
-Run our own version of the head-to-head that's circulating publicly — **Sakana
+Run our own version of the head-to-head that is circulating publicly — **Sakana
 Fugu Ultra vs. a frontier model**, same prompt, measured side by side:
 
 > Prompt: _"build a really high quality single html file crossy road game with
@@ -36,16 +36,16 @@ Fugu Ultra vs. a frontier model**, same prompt, measured side by side:
 > **Claude Opus 4.8 (Ultracode)** (reported): ~940k tokens, ~$37.85, 79 min.
 > Issues: stuck twice in a retry loop, wrong character position after restart,
 > hard from the start (Fugu correctly ramped difficulty).
-> Reported verdict: Opus won on functionality/quality/design; Fugu won on
+> Reported verdict: Opus won on functionality/quality/design. Fugu won on
 > speed/cost/efficiency.
-> _(Source: external X/Twitter comparison; treat the numbers as reported claims,
+> _(Source: external X/Twitter comparison, treat the numbers as reported claims,
 > not our measurements.)_
 
 **Our version is the same task, run through Khala, with four things no one else
 in that comparison has:**
 
 1. **Run it through Autopilot → Khala.** A real user (or agent) submits the
-   prompt to the Khala endpoint via the Autopilot cockpit; Khala's coordinator
+   prompt to the Khala endpoint via the Autopilot cockpit. Khala's coordinator
    composes the pool (plan / write / verify) instead of one model one-shotting.
 2. **Verified, not vibes.** "High quality crossy-road game" becomes a **rubric**
    (playable, correct controls, camera, difficulty ramps with progress, runs in
@@ -63,7 +63,7 @@ in that comparison has:**
 
 **We report the same axes plus ours:** tokens, $, wall-clock — **and**
 cost-per-accepted-outcome, accepted-outcomes-per-kWh, in-world-vs-gateway split,
-and verified-rate. The thesis we're proving: _composition + verification + a paid
+and verified-rate. The thesis we are proving: _composition + verification + a paid
 open pool_ can match frontier quality at lower cost, and — uniquely — you can
 **watch and audit every piece**.
 
@@ -79,9 +79,9 @@ This is the demo the entire buildout below is sequenced to reach.
   Bitcoin settlement to worker + validator, referral (revenue-loop RL-1/2/3).
   (`khala.md` §6–§7, §10.)
 - **C — Supply & training.** Pylon serving workers in the pool (capability →
-  dispatch → exact-parity receipt → payout); Psionic coordinator-training
-  primitives P1–P5; TMAX-style data/stability recipe for the worker side.
-  (psionic-coordinator-roadmap; tmax/synthesis.)
+  dispatch → exact-parity receipt → payout). Psionic coordinator-training
+  primitives P1–P5. TMAX-style data/stability recipe for the worker side.
+  (psionic-coordinator-roadmap, tmax/synthesis.)
 - **D — Verse visualization.** The crackling-energy serving view: arcs to Pylons,
   the gateway portal, coding-agent avatars, verify glow, settlement beams, HUD —
   on the Effect-centric multiplayer engine. (`khala-in-the-world.md`.)
@@ -118,7 +118,7 @@ intact and name any blocker in the handoff.
   `openagents/khala-code` behind `/v1/models` without breaking existing model
   ids.
 - Grow `ModelRouter` into a stable `Coordinator` interface. Keep v0 heuristic
-  routing simple and swappable; learned routing must drop in later without API
+  routing simple and swappable. Learned routing must drop in later without API
   shape changes.
 - Turn real provider adapters on behind flags, and return the non-breaking
   `openagents` response block from real provider `usage`.
@@ -146,7 +146,7 @@ issues #5508, #5512, #5520, #5521, #5524.
   bridge/grant receipt, inference charge receipt, referral accrual, and payout
   settlement receipt.
 - Preserve the asset boundary: USD-funded credits are inference-spendable, never
-  Bitcoin-withdrawable; Bitcoin settlement goes only through the approved
+  Bitcoin-withdrawable. Bitcoin settlement goes only through the approved
   payout path.
 - Do not print secrets or raw payment payloads. Owner-held Stripe/Spark/MDK
   arming remains a `NEEDS-OWNER` handoff, not an agent workaround.
@@ -159,7 +159,7 @@ still inert/test unless owner-armed.
 
 **Owns:** M2 and the verifier contract M6/M7 train against.
 **Primary files:** new rubric/harness code near the inference or accepted-outcome
-surfaces; product-promise evidence refs as needed.
+surfaces. Product-promise evidence refs as needed.
 **Read first:** `docs/sakana/tassadar-run-integration.md`,
 `docs/sakana/coordinator-as-verified-work.md`, `docs/research/tmax/synthesis.md`,
 issue #6010.
@@ -170,7 +170,7 @@ issue #6010.
   test: single HTML file, loads headless, controls are correct, camera is sane,
   difficulty ramps, restart places the character correctly.
 - Keep producer and verifier separate. The model/coding agent may produce the
-  artifact; the independent harness decides `test_passed|failed`.
+  artifact. The independent harness decides `test_passed|failed`.
 - Return structured verdict details in the receipt so Agent Psion can consume a
   scalar reward and Agent Demo can publish an honest benchmark.
 - Add negative fixtures: broken controls, broken camera/restart, missing single
@@ -241,7 +241,7 @@ live accepted-outcome pricing/settlement once M6/M7 are ready.
 ### Agent Psion — Learned coordinator and Psionic primitives
 
 **Owns:** M6 and the TRINITY/Conductor training substrate.
-**Primary repos/files:** `psionic/` for implementation; this repo only for
+**Primary repos/files:** `psionic/` for implementation. This repo only for
 OpenAgents integration docs/receipts.
 **Read first:** `docs/sakana/trinity.md`, `docs/sakana/conductor.md`,
 `docs/sakana/psionic-coordinator-roadmap.md`,
@@ -290,7 +290,7 @@ lane with a public-safe serve receipt, even if settlement stays owner-armed.
 > flows gateway → public `khala_inference_served` event → D1 `gateway_station`+
 > `world_event` rows → live region snapshot → desktop Verse render
 > (`gatewayLinkOk:true`) → receipt/source-ref inspector. `openagents-world`
-> deployed `5778bf03`; `createCracklingArc`/`createGatewayPortal` shipped in
+> deployed `5778bf03`. `createCracklingArc`/`createGatewayPortal` shipped in
 > `@openagentsinc/three-effect`. Remaining is richness (P1 coding-agent avatars +
 > verify glow, P2 fan-out + HUD, real-Pylon worker avatars once M4 lands), not
 > existence. The lane plan below is retained as historical record.
@@ -308,9 +308,9 @@ issue #6013.
 
 - Build the visualization against evidence-bound motion: no animation without a
   Khala receipt or source ref.
-- Add `gateway_station` and service-only `upsert_gateway_station`; model request
+- Add `gateway_station` and service-only `upsert_gateway_station`. Model request
   activity as a `world_event` payload first, not a broad new authority surface.
-- Implement `createCracklingArc` and `createGatewayPortal`; reuse existing Pylon
+- Implement `createCracklingArc` and `createGatewayPortal`. Reuse existing Pylon
   stations, agent avatars, payment beams, HUD meters, and source-ref inspectors.
 - Use fixtures from Agent Nexus/Pylon while live events are immature, but mark
   fixture-only demos as inert visual proof.
@@ -322,7 +322,7 @@ its receipt ref.
 **Active claim — 2026-06-22:** this session claims the Agent Verse lane for M5
 under parent issue #6013. The claim is deliberately scoped to evidence-bound
 world projection and rendering. It does not claim live Khala serving, live Pylon
-payout, Bitcoin settlement, or learned coordination; those stay with Agent
+payout, Bitcoin settlement, or learned coordination. Those stay with Agent
 Nexus, Agent Pylon, Agent Ledger, and Agent Psion until their receipt-backed
 gates land.
 
@@ -348,7 +348,7 @@ gates land.
 
 **Starting issue:** start on parent #6013 with subissue #6013-A ("Contract and
 bridge shape"). Create real GitHub child issues only when multiple agents need
-separate queues; until then the #6013 checklist plus these anchors is enough.
+separate queues. Until then the #6013 checklist plus these anchors is enough.
 
 **Progress — 2026-06-22:** #6013-A is implemented in the shared contract and
 world service: `gateway_station`, service-only `upsert_gateway_station`, typed
@@ -379,12 +379,12 @@ gateway → timeline → world → desktop.
 
 - Add a Khala provider/model selection path that submits to `openagents/khala-*`
   and displays the `openagents` receipt block without exposing private internals.
-- Preserve BYO-provider behavior; Khala is an available first-party route, not a
+- Preserve BYO-provider behavior. Khala is an available first-party route, not a
   forced replacement.
 - Save/render the returned single-file HTML artifact and hand its refs to Agent
   Verifier for acceptance and Agent Verse for world playback.
 - Keep UI claims scoped: show receipt, route, cost, verification, and settlement
-  state; do not claim learned coordination until Agent Psion has promoted a
+  state. Do not claim learned coordination until Agent Psion has promoted a
   candidate.
 
 **First useful output:** the crossy-road prompt runs through the cockpit against
@@ -407,9 +407,9 @@ and DE-10 #5533.
   outcome, accepted outcomes per kWh where measured, in-world vs gateway split,
   and settlement refs.
 - Treat external Fugu/Opus numbers as reported claims unless independently
-  reproduced; label them separately from OpenAgents measurements.
+  reproduced. Label them separately from OpenAgents measurements.
 - Publish wins and losses honestly. A failed Khala run with good receipts is
-  still useful evidence; do not turn benchmark copy into product proof without
+  still useful evidence. Do not turn benchmark copy into product proof without
   receipts and owner sign-off.
 
 **First useful output:** a dry-run evidence template that can ingest one Khala
@@ -420,7 +420,7 @@ under parent issue #6016. The claim is scoped to the benchmark runbook, evidence
 manifest, metric reducers, and publication-pack skeleton for the head-to-head.
 It does not claim M0/M1 gateway or cockpit wiring, the already-claimed Agent
 Verifier or Agent Verse lanes, live Bitcoin settlement, Pylon payout, or learned
-coordinator promotion; those remain upstream receipt sources that Agent Demo
+coordinator promotion. Those remain upstream receipt sources that Agent Demo
 ingests only after they become dereferenceable.
 
 **Brief operator plan:**
@@ -448,7 +448,7 @@ ingests only after they become dereferenceable.
 
 **Starting issue:** start on #6016 with subissue anchor #6016-A ("Evidence schema
 and runbook"). Create real GitHub child issues only when separate agents need
-independent queues; until then the #6016 checklist plus these anchors is enough.
+independent queues. Until then the #6016 checklist plus these anchors is enough.
 
 **Progress — 2026-06-22:** #6016-A and #6016-B have a repo-owned scaffold in
 `docs/inference/khala-head-to-head-demo.md`,
@@ -480,8 +480,8 @@ whole-small-model adapter shape, Agent Cockpit on receipt display against a mock
 Khala response, and Agent Demo on the runbook/template.
 
 **Work that must wait for live evidence:** settlement claims wait on Agent
-Ledger; real Pylon-payout claims wait on Agent Pylon + Agent Ledger; learned
-router promotion waits on Agent Psion + Agent Verifier + Agent Pylon; published
+Ledger. Real Pylon-payout claims wait on Agent Pylon + Agent Ledger. Learned
+router promotion waits on Agent Psion + Agent Verifier + Agent Pylon. Published
 head-to-head claims wait on Agent Demo with receipt-backed measurements.
 
 ## Next-wave delegation — 2026-06-22 (post first wave)
@@ -503,7 +503,7 @@ The single highest-leverage step is **NEEDS-OWNER**, not an agent lane:
 
 Owner direction (2026-06-22): **all payment work is Bitcoin-only for now**, with
 **Spark as the primary payout method** (over Lightning). **No Stripe.** (MDK is
-checkout-only and not relevant to payouts; card/credit funding is explicitly out
+checkout-only and not relevant to payouts. Card/credit funding is explicitly out
 of scope this wave.) Bitcoin/Spark lets us move real money in testing without
 prod card secrets or fragile env wiring, so M3 is **agent-testable today** rather
 than gated on a card-payment chain.
@@ -521,9 +521,9 @@ control.
 Below is the next wave as **5 parallel lanes** that do not block on that owner
 step (they build against the stub adapter / fixtures / staging) and **do not
 collide**. Every lane: work on a **fresh worktree off clean `origin/main`**
-(never touch another agent's dirty checkout — CLAUDE.md rule); read the cited
-docs first; keep edits inside your owned paths; post a claim + status comment on
-your issue; label fixture/inert results as scaffold, never product proof.
+(never touch another agent's dirty checkout — CLAUDE.md rule). Read the cited
+docs first. Keep edits inside your owned paths. Post a claim + status comment on
+your issue. Label fixture/inert results as scaffold, never product proof.
 
 ### Shared-seam ownership (collision rules)
 
@@ -531,8 +531,8 @@ A few files are touched by more than one lane. To avoid stepping on each other:
 
 | Shared seam | Sole owner (edits) | Everyone else |
 |---|---|---|
-| `src/inference/provider-adapter.ts` (registry/interface) + adapter registration | **Lane B (Supply)** | read-only; request a registration via Lane B |
-| `src/inference/chat-completions-routes.ts` `openagents` block | **Lane A (Cockpit)** may extend *consumption*; **Lane B/E** add fields only via PR review | coordinate field additions in the issue first |
+| `src/inference/provider-adapter.ts` (registry/interface) + adapter registration | **Lane B (Supply)** | read-only. Request a registration via Lane B |
+| `src/inference/chat-completions-routes.ts` `openagents` block | **Lane A (Cockpit)** may extend *consumption*. **Lane B/E** add fields only via PR review | coordinate field additions in the issue first |
 | `src/inference/metering-hook.ts` + billing/referral/settlement | **Lane E (Ledger)** | read-only |
 | `packages/world-contract` + `apps/openagents-world` bridge | **Lane D (Verse)** | read-only |
 | `@openagentsinc/three-effect` (separate repo) | **Lane D (Verse)** | n/a |
@@ -548,26 +548,26 @@ other rebases — never edit the same file from two worktrees in flight.
 `apps/autopilot-desktop` cockpit + the web client call path. **Reads:**
 `docs/inference/khala.md` §3, `chat-completions-routes.ts` (read-only).
 **Not blocked by owner:** build against a local/staging gateway or the stub
-adapter; gate the "live" badge on a real receipt. **First output:** the
+adapter. Gate the "live" badge on a real receipt. **First output:** the
 crossy-road prompt round-trips through the cockpit and shows the receipt block.
-**Collision rule:** consume the `openagents` block; do not change its shape
+**Collision rule:** consume the `openagents` block. Do not change its shape
 without Lane B/E sign-off.
 
 ### Lane B — Supply / Pylon (M4, #6012)
 
 **Goal:** the **fabric supply adapter** (gateway↔Psionic: ask-plan → execute →
-consume exact-parity receipt), whole-small-model serving first; register it
+consume exact-parity receipt), whole-small-model serving first. Register it
 behind the existing adapter registry. **Owns:** the new adapter file +
 `provider-adapter.ts` registration + the Psionic serving seam.
 **Reads:** `docs/inference/2026-06-19-decentralized-serving-shard-wan.md`,
 `apps/pylon`. **Not blocked by owner:** prove the adapter against a local Psionic
-serve + parity receipt; defer shard-WAN. **Use the guinea-pig Pylon as the
+serve + parity receipt. Defer shard-WAN. **Use the guinea-pig Pylon as the
 primary test worker** — dispatch test assignments to the node at
 `KHALA_TEST_PAYOUT_SPARK_ADDRESS` (`.secrets/khala-test-payout.env`) so its
 serve → parity receipt → Bitcoin payout (with Lane E) is the first proven loop.
 **First output:** a Khala request served by that Pylon adapter returns an
 exact-parity receipt in tests. **Collision rule:** sole owner of the adapter
-registry; other lanes request registrations.
+registry. Other lanes request registrations.
 
 ### Lane C — Psion (M6, #6014) — the long pole, start now
 
@@ -578,7 +578,7 @@ worker-pool binding), then a first shadow run rewarded by the M2 verdict.
 **Reads:** `docs/sakana/psionic-coordinator-roadmap.md`,
 `docs/sakana/coordinator-as-verified-work.md`, `docs/research/tmax/synthesis.md`.
 **First output:** P1 hidden-state extraction with a reproducibility test, then the
-ES optimizer on a trivial head. **Note:** needs real ML-training compute later;
+ES optimizer on a trivial head. **Note:** needs real ML-training compute later.
 begin the primitives now so they are ready when M0–M5 are green.
 
 ### Lane D — Verse (M5, #6013)
@@ -591,15 +591,15 @@ real public timeline and capture a dereferenceable owner-enabled Khala receipt i
 the desktop Verse scene. **Owns:** `@openagentsinc/three-effect` (separate
 repo), `apps/openagents-world` bridge inference-event path, the desktop Verse
 scene. **Reads:** `docs/inference/khala-in-the-world.md`. **Issue organization:**
-continue under parent #6013 with #6013-D/live-proof; create child issues only if
+continue under parent #6013 with #6013-D/live-proof. Create child issues only if
 another agent needs a separate queue.
 
 ### Lane E — Ledger (M3, #6011) — **Bitcoin-only**
 
 **Goal:** the end-to-end **Bitcoin** money loop — metered Khala spend →
-verified-work payout **settled over Spark** (our primary payout method; Lightning
+verified-work payout **settled over Spark** (our primary payout method, Lightning
 as the rail) to a real contributor, with a dereferenceable receipt. **No Stripe /
-no card funding this wave** (MDK is checkout-only, not used here); use the Spark
+no card funding this wave** (MDK is checkout-only, not used here). Use the Spark
 payout path the tip / treasury tests already exercise. **Owns:** `metering-hook.ts`
 + the Bitcoin
 settlement/referral path. **Reads:** the revenue-loop spine (#5457, RL-1/RL-2/
@@ -608,21 +608,21 @@ RL-3), the existing tip/treasury runbooks, `docs/inference/2026-06-19-pricing-mo
 small verified-work payout to the **guinea-pig Pylon's Spark address**
 (`.secrets/khala-test-payout.env`) and show the settled receipt
 (`realBitcoinMoved:true`) — **get that node paid first.** Then parallelize
-payouts to additional workers. Keep amounts small and treasury-bounded; this is
+payouts to additional workers. Keep amounts small and treasury-bounded. This is
 real money. **Collision rule:** sole owner of the metering/settlement path.
 
 ### What still waits (do NOT fake)
 
-- **M7 (Conductor)** waits on Lane C (M6) — no parallel start; it is the next
+- **M7 (Conductor)** waits on Lane C (M6) — no parallel start. It is the next
   thing after the learned substrate exists.
 - **M8 live run** waits on the owner gateway-enable + Lanes A/E (a real metered,
   settled completion) and ideally M6/M7. The M8 harness already refuses to close
-  on fixture evidence (`closureAudit.canClose:false`); feed it real refs, don't
+  on fixture evidence (`closureAudit.canClose:false`). Feed it real refs, do not
   add more scaffold.
 
 ## Sequenced milestones
 
-Each milestone converges the workstreams toward the demo; later ones depend on
+Each milestone converges the workstreams toward the demo. Later ones depend on
 earlier. EPIC anchors in parentheses where they exist.
 
 **M0 — Khala serves, metered, with a receipt.** _(A, B)_
@@ -637,24 +637,24 @@ receipt (route, workers, cost). _Done when:_ the crossy-road prompt runs through
 Autopilot end-to-end against `khala-code` and returns a single HTML file.
 
 **M2 — Verified coding outcomes.** _(B)_
-`khala-code` runs a verification command / headless checks → `test_passed`;
+`khala-code` runs a verification command / headless checks → `test_passed`.
 define the crossy-road **rubric** (playable, controls, camera, difficulty ramp,
 single file) as the acceptance test. _Done when:_ a run reports `verified: true`
 against the rubric, with a receipt.
 
 **M3 — Bitcoin settlement on accepted outcomes.** _(B)_
-Wire verified-lane settlement (RL-2) to pay the worker + validator; accepted-
+Wire verified-lane settlement (RL-2) to pay the worker + validator. Accepted-
 outcome pricing for `khala-code`. _Done when:_ a verified crossy-road build
 settles sats to a contributor with a public receipt.
 
 **M4 — Pylon workers in the pool.** _(C)_
 Pylon whole-small-model serving as a worker (capability → dispatch → exact-parity
-receipt → payout) via the fabric supply adapter; some of the work now stays
+receipt → payout) via the fabric supply adapter. Some of the work now stays
 in-world and paid. _Done when:_ a Khala request is served by a Pylon with a
 parity receipt and a Bitcoin payout.
 
 **M5 — The Verse serving view (P0/P1 of khala-in-the-world).** _(D)_
-Project inference events from the activity timeline; render crackling arcs to
+Project inference events from the activity timeline. Render crackling arcs to
 assigned Pylons, the gateway portal for external calls, and a coding-agent avatar
 for the build — under the evidence-bound motion contract. Build the two new
 three-effect primitives (`createCracklingArc`, `createGatewayPortal`) and the
@@ -662,14 +662,14 @@ three-effect primitives (`createCracklingArc`, `createGatewayPortal`) and the
 Autopilot shows the serve happening live in the world.
 
 **M6 — Learned coordinator (TRINITY lane), shadow-deployed.** _(A, C)_
-Psionic primitives P1–P5; train the logit router by sep-CMA-ES on the
-verification verdict; ship as a shadow candidate vs the heuristic router; promote
+Psionic primitives P1–P5. Train the logit router by sep-CMA-ES on the
+verification verdict. Ship as a shadow candidate vs the heuristic router. Promote
 on cost-per-accepted-outcome (a gated `runtime_promotion`). _Done when:_ the
 learned router beats heuristic on cost-per-accepted-outcome in shadow.
 
 Current guardrail: Pylon now exposes the read-only
 `openagents.khala.m6.shadow_run_preflight.v0.1` projection in
-`apps/pylon/src/khala-m6-shadow-preflight.ts`. It does not run the coordinator;
+`apps/pylon/src/khala-m6-shadow-preflight.ts`. It does not run the coordinator.
 it only composes owner approval, capped spend, Psionic training-boundary
 evidence, real Pylon serving preflight evidence, live verdict source, shadow
 candidate, baseline router, live rollout, paid-shadow-win, and publication refs
@@ -690,7 +690,7 @@ Current guardrail: Pylon now exposes the read-only
 preflight and mirrors the Psionic `ConductorReadiness` gates: 7B policy backend,
 GRPO training run, armed paid verdict source, paid M6 shadow win, Verse fan-out,
 crossy-road composition proof, and publication refs. A passing training
-preflight is enough to start the owner-capped Conductor run; the public M7 claim
+preflight is enough to start the owner-capped Conductor run. The public M7 claim
 still requires the executed GRPO run plus verified composition/publication
 evidence.
 
@@ -707,9 +707,9 @@ closed.
 **M8 — The head-to-head demo (north-star).** _(all)_
 Run the crossy-road prompt through `openagents/khala` vs a frontier baseline,
 side by side: report tokens, $, time, **cost-per-accepted-outcome**,
-**accepted-outcomes-per-kWh**, in-world-vs-gateway split, verified-rate; show the
-live Verse serve; **play the resulting three.js game inside our three-effect
-world**; and show the Bitcoin settlement receipts. _Done when:_ we can publish our
+**accepted-outcomes-per-kWh**, in-world-vs-gateway split, verified-rate. Show the
+live Verse serve. **Play the resulting three.js game inside our three-effect
+world**. And show the Bitcoin settlement receipts. _Done when:_ we can publish our
 own head-to-head with a verified, paid, watchable result.
 
 ## Critical path & honest gaps
@@ -726,10 +726,10 @@ M0 ─► M1 ─► M2 ─► M3 ─┐
 - The genuinely new capability is the **learned coordinator** (M6/M7) — Psionic
   P1–P5 (no CMA-ES / hidden-state extraction / SVF today) — and **verified coding
   outcomes for arbitrary tasks** (M2: rubric/verification-command discovery).
-- Until M6, the demo runs on the **heuristic router** (still a valid head-to-head;
-  it just isn't the learned-composition story yet).
+- Until M6, the demo runs on the **heuristic router** (still a valid head-to-head,
+  it just is not the learned-composition story yet).
 - The crossy-road rubric and headless verification harness are net-new and
-  gate M2 onward — define them early; they double as a reusable
+  gate M2 onward — define them early. They double as a reusable
   accepted-outcome template for the Tassadar coding lane.
 
 ## Why this is the right north-star

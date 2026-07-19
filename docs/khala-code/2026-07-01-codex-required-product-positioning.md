@@ -24,11 +24,11 @@ normal product path.
 
 Khala Code adds a desktop shell around Codex:
 
-- sidebar and web-native thread navigation;
-- Unified Inbox for approvals, MCP/auth blockers, and worker closeouts;
-- Settings and ecosystem panels backed by Codex app-server processors;
-- Pylon/Fleet controls for isolated worker Codex accounts;
-- Gym/proof panes and desktop smoke-test harnesses;
+- sidebar and web-native thread navigation.
+- Unified Inbox for approvals, MCP/auth blockers, and worker closeouts.
+- Settings and ecosystem panels backed by Codex app-server processors.
+- Pylon/Fleet controls for isolated worker Codex accounts.
+- Gym/proof panes and desktop smoke-test harnesses.
 - headless JSONL output that preserves Codex thread and turn correlation ids.
 
 These are wrapper and orchestration advantages. They are not replacements for
@@ -52,7 +52,7 @@ codex login
 Khala Code should say that `codex login` is a primary user action. The app must
 not run that command automatically against the default `~/.codex` home, because
 starting a login flow can clear an active auth file. A custom primary home may
-be selected with `CODEX_HOME`; a custom binary may be selected with
+be selected with `CODEX_HOME`. A custom binary may be selected with
 `KHALA_CODE_CODEX_BINARY` or `KHALA_CODE_CODEX_COMMAND`.
 
 ## Session Boundaries
@@ -61,9 +61,9 @@ There are three distinct session categories:
 
 | Category | Home | Purpose | Mutation rule |
 | --- | --- | --- | --- |
-| Primary user Codex session | `CODEX_HOME` or default `~/.codex` | Default Khala Code chat and thread surface | User signs in intentionally with `codex login`; Khala Code starts app-server only after the gate is ready |
+| Primary user Codex session | `CODEX_HOME` or default `~/.codex` | Default Khala Code chat and thread surface | User signs in intentionally with `codex login`. Khala Code starts app-server only after the gate is ready |
 | Worker Codex accounts | `<pylon home>/accounts/codex/<ref>` | Swarm/Pylon delegated work | `khala fleet connect` / `codex_spawn` use isolated homes and never reuse the primary home |
-| Legacy Khala-native mode | explicit feature flag | Fallback/prototype testing | Experimental only; not product-center and not a silent fallback when Codex is unavailable |
+| Legacy Khala-native mode | explicit feature flag | Fallback/prototype testing | Experimental only. Not product-center and not a silent fallback when Codex is unavailable |
 
 Settings and Fleet copy should keep those categories separate. "Connect account"
 in Fleet means "connect an isolated worker Codex account", not "sign in the

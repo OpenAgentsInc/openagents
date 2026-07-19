@@ -1,7 +1,7 @@
 # OpenCode Free Tier 402 Playbook
 
 **STATUS: HISTORICAL — point-in-time record (accurate as of its
-date). Not current direction; consult MASTER_ROADMAP.**
+date). Not current direction. Consult MASTER_ROADMAP.**
 
 
 > Khala free-tier inference: key minting, quota behavior, over-quota errors, and
@@ -91,7 +91,7 @@ Khala rate (see pricing model docs). If the balance is also zero or negative, th
 same 402 shape is returned with a different message pointing to the credits page.
 
 To add credits: visit `https://openagents.com/account` (payment methods, BTC
-discount, credit purchase — owner-gated; not yet a public product promise).
+discount, credit purchase — owner-gated. Not yet a public product promise).
 
 ## What OpenCode Should Show
 
@@ -99,7 +99,7 @@ When Khala returns 402:
 
 | Symptom | What happens in OpenCode |
 |---------|--------------------------|
-| `402` with `quota_exceeded` | OpenCode's AI SDK provider (`@ai-sdk/openai-compatible`) surfaces the error message. The user sees: *"Free tier quota exceeded. Add credits at https://openagents.com/account or wait for UTC-day reset."* The TUI shows a red error banner; the session continues but the next tool call fails with the same error. |
+| `402` with `quota_exceeded` | OpenCode's AI SDK provider (`@ai-sdk/openai-compatible`) surfaces the error message. The user sees: *"Free tier quota exceeded. Add credits at https://openagents.com/account or wait for UTC-day reset."* The TUI shows a red error banner. The session continues but the next tool call fails with the same error. |
 | UTC-day reset | A key that was over-quota at 23:59 UTC is auto-replenished at 00:00 UTC. The next request succeeds without any config change. |
 | No credits + over-quota | Same 402 shape with a message directing to the credits page. No fallback to a different model — OpenCode must either wait for reset or the user must add credits. |
 

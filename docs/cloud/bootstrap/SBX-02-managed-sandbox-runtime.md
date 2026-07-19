@@ -1,6 +1,6 @@
 # SBX-02 managed-sandbox GCE runtime
 
-Status: implemented component; public rollout remains blocked by SBX-09
+Status: implemented component. Public rollout remains blocked by SBX-09
 
 Issue: [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028)
 
@@ -119,8 +119,8 @@ earlier `deleting` settlement.
 Cleanup deletes the VM and the sandbox egress rule.
 It then queries GCE until all these counts are zero:
 
-- instance;
-- firewall rule; and
+- instance.
+- firewall rule. And
 - boot or scratch disk.
 
 The admitted profile creates no ingress rule and no guest service-account
@@ -180,7 +180,7 @@ sandbox budget, and zero compute, firewall, disk, ingress, or grant residue.
 Its refs-only evidence is
 [`docs/sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json`](../../sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json).
 Cloud Build `857943a8-6b19-4804-ade9-04ea9a261f00` produced the exercised
-staging image. The image and staging control node were acceptance-only; the
+staging image. The image and staging control node were acceptance-only. The
 node and its restricted ingress rule were deleted after the run.
 
 SBX-02 component acceptance does not publish the route and does not prove the

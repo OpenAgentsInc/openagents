@@ -53,7 +53,7 @@ mounted `<HomeScreen>` with:
   shape.
 
 No product code changed: `index.tsx` and `src/dev-fixture-harness.tsx` were
-reverted/deleted after capture; `git status` on `apps/openagents-mobile` is
+reverted/deleted after capture. `git status` on `apps/openagents-mobile` is
 clean. This was verification-only.
 
 ## Result

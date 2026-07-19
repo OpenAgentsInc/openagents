@@ -21,7 +21,7 @@ public window projection:
 1. **Staleness distribution of merged contributions**
    (`sealMetadata.staleness`): `stepsBehindMin` / `stepsBehindP50` /
    `stepsBehindP90` / `stepsBehindMax` plus `contributionCount`, with an
-   optional bounded per-contribution list (`contributionRef`, `stepsBehind`;
+   optional bounded per-contribution list (`contributionRef`, `stepsBehind`,
    at most 64 entries). The distribution must satisfy
    `min <= p50 <= p90 <= max`, every sampled `stepsBehind` must be a
    non-negative integer inside the declared bounds, and an empty
@@ -40,7 +40,7 @@ no raw device, wallet, or prompt material — the same redaction posture as
 `receiptRefs`.
 
 `sealMetadata` is accepted only on the `active -> sealed` transition
-(`POST /api/training/windows/:windowRef/seal`); supplying it on activate or
+(`POST /api/training/windows/:windowRef/seal`). Supplying it on activate or
 reconcile is a typed `validation_error`. Existing seal calls without the
 field still work and persist `sealMetadata: null`, so the contract change
 is backward compatible.
@@ -96,6 +96,6 @@ Landed and test-covered (`smoke:training-runs:public`):
 Remaining hardware-gated acceptance bullet, **not** claimed here: an R1
 rehearsal producing one real sealed window whose `sealMetadata` is derived
 from actual contributor devices. That waits on R1 operator devices and the
-rehearsal lane; until then every seal record carrying these fields is
+rehearsal lane. Until then every seal record carrying these fields is
 fixture or operator-synthesized evidence and must not be presented as a
 real-gradient receipt.

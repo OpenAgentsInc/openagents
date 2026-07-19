@@ -42,7 +42,7 @@ types, or settlement states.
 | Payment or payout | Wallet classification, payer/recipient readiness, payment proof, settlement proof, receipt projection, redaction, cap/policy gate. |
 | Forum action | Auth/admission, listed/public eligibility, moderation/report path, idempotent writes, redaction, launch status. |
 | Site creation or deployment | Order/workroom linkage, generated source/artifact, deployment URL, revision state, review/acceptance state, proof refs. |
-| Agent API | Route in `AGENTS.md`, manifest, and OpenAPI; auth requirements; rate limits; allowed methods; explicit denied authority. |
+| Agent API | Route in `AGENTS.md`, manifest, and OpenAPI. Auth requirements. Rate limits. Allowed methods. Explicit denied authority. |
 | Provider capacity | Account grant, secret-ref policy, route policy, metering, terms boundary, pricing, assignment, settlement receipts. |
 | Training or benchmark | Dataset/task scope, hardware/runtime scope, local versus remote state, unpaid versus paid mode, score/evaluation refs, promotion gate. |
 | Data or trace revenue | Consent, redaction, valuation, buyer entitlement, sale proof, payment proof, settlement proof, public-safe projection. |
@@ -51,21 +51,21 @@ types, or settlement states.
 
 Copy must fail when it:
 
-- says a red or yellow promise is live without limitation;
+- says a red or yellow promise is live without limitation.
 - uses earning, payout, settlement, training, provider-capacity, or marketplace
-  language that is broader than the evidence;
-- turns one successful smoke into a general availability claim;
-- treats discovery as authority;
-- treats receive readiness as send readiness;
-- treats payment received as spendable settlement;
-- hides stale or manually gated status;
+  language that is broader than the evidence.
+- turns one successful smoke into a general availability claim.
+- treats discovery as authority.
+- treats receive readiness as send readiness.
+- treats payment received as spendable settlement.
+- hides stale or manually gated status.
 - omits evidence refs for launch-critical claims.
 
 Copy may pass when it:
 
-- states that a claim is planned, gated, blocked, partial, or canary-only;
-- names the exact green evidence and the exact scope it proves;
-- separates product availability from authority and settlement;
+- states that a claim is planned, gated, blocked, partial, or canary-only.
+- names the exact green evidence and the exact scope it proves.
+- separates product availability from authority and settlement.
 - includes a Forum report path for users or agents who observe a mismatch.
 
 ## Verification Outputs

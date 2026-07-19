@@ -25,9 +25,9 @@ contract-level module:
     checkpoint — mirroring the seal-in-flight join barrier that fails toward
     queueing (#4850/#4851). A malformed/unknown descriptor also HOLDs.
 - `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal.test.ts`
-  - 7 tests: durable seal passes; ephemeral storage, non-content-addressed
-    digest, sub-minimum replication, and missing read-back each HOLD; malformed
-    descriptor fails toward HOLD; well-formed untrusted descriptor decodes.
+  - 7 tests: durable seal passes. Ephemeral storage, non-content-addressed
+    digest, sub-minimum replication, and missing read-back each HOLD. Malformed
+    descriptor fails toward HOLD. Well-formed untrusted descriptor decodes.
 
 ## 2026-06-20 live-boundary wiring
 
@@ -77,9 +77,9 @@ a self-contained, contract-level module:
     standby-gated abort path) rather than silently admitting an unqualified node.
     A malformed descriptor also HOLDs.
 - `apps/openagents.com/workers/api/src/training-standby-dispatch.test.ts`
-  - 9 tests: promotable standby passes; not-qualified, banned-for-round,
+  - 9 tests: promotable standby passes. Not-qualified, banned-for-round,
     bootstrap-not-verified, bootstrap/live window mismatch, no-vacancy, and stale
-    heartbeat each HOLD; a malformed descriptor fails toward HOLD; a well-formed
+    heartbeat each HOLD. A malformed descriptor fails toward HOLD. A well-formed
     untrusted descriptor decodes.
 
 This is contract-level only: a `promote_standby` verdict means the standby is
@@ -95,7 +95,7 @@ preflight:
   verifies the run exists, evaluates a public-safe `TrainingStandbyDispatch`
   descriptor, and returns the typed `promote_standby` / `hold_standby` gate.
 - The route fails malformed descriptors and path/body run-ref mismatches toward
-  `hold_standby`; it never turns incomplete evidence into a promotion.
+  `hold_standby`. It never turns incomplete evidence into a promotion.
 - The response includes the public run projection plus the gate only. It mutates
   no run/window/lease state, writes no receipt, dispatches no standby, spends no
   funds, and grants no promise-state authority.
@@ -158,10 +158,10 @@ module:
   - Two SLA constants: `MaxCurtailmentAckLatencyMs` (signal→ack) and
     `MaxCurtailmentHaltLatencyMs` (signal→sealed halt / load-shed response).
 - `apps/openagents.com/workers/api/src/training-curtailment-drill.test.ts`
-  - 10 tests: passing drill; not-scheduled, signal-not-acked, ack-SLA breach,
+  - 10 tests: passing drill. Not-scheduled, signal-not-acked, ack-SLA breach,
     halt-not-completed, halt-SLA breach, halt-without-durable-seal, and
-    resume-not-verified each yield INCOMPLETE; a malformed descriptor fails
-    toward INCOMPLETE; a well-formed untrusted descriptor decodes.
+    resume-not-verified each yield INCOMPLETE. A malformed descriptor fails
+    toward INCOMPLETE. A well-formed untrusted descriptor decodes.
 
 This is contract-level only: a `drill_passed` verdict means a recorded drill
 outcome satisfies the curtailment-readiness conditions. It grants no dispatch,
@@ -211,7 +211,7 @@ admin-gated preflight, mirroring the existing standby-dispatch preflight:
   verifies the run exists, evaluates a public-safe `TrainingCurtailmentDrill`
   descriptor, and returns the typed `drill_passed` / `drill_incomplete` gate.
 - The route fails malformed descriptors and path/body run-ref mismatches toward
-  `drill_incomplete`; it never turns an unscheduled, out-of-SLA, unsealed, or
+  `drill_incomplete`. It never turns an unscheduled, out-of-SLA, unsealed, or
   unverified-resume descriptor into a pass.
 - The response carries the public run projection plus the gate only. It mutates
   no run/window/lease state, writes no receipt, schedules/triggers no
@@ -249,9 +249,9 @@ gradient-window promotion-receipt pattern:
     a receipt can never be minted for an unscheduled, out-of-SLA, unsealed, or
     unverified-resume drill.
 - `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt.test.ts`
-  - 8 tests: passing drill emits a public-safe receipt; deterministic ref;
-    unscheduled / halt-SLA-breach / missing-seal / unverified-resume each refuse;
-    well-formed untrusted descriptor builds; malformed untrusted descriptor
+  - 8 tests: passing drill emits a public-safe receipt. Deterministic ref.
+    unscheduled / halt-SLA-breach / missing-seal / unverified-resume each refuse.
+    well-formed untrusted descriptor builds. Malformed untrusted descriptor
     refuses.
 
 This is the receipt FORMAT only. No scheduled live drill has run, so the public
@@ -285,9 +285,9 @@ patterns:
     so a receipt can never be minted for an unqualified, banned, unbootstrapped,
     window-mismatched, no-vacancy, or stale standby.
 - `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt.test.ts`
-  - 9 tests: promotable standby emits a public-safe receipt; deterministic ref;
+  - 9 tests: promotable standby emits a public-safe receipt. Deterministic ref.
     unqualified / banned / bootstrap-unverified / window-mismatch / no-vacancy /
-    stale-heartbeat each refuse; well-formed untrusted descriptor builds;
+    stale-heartbeat each refuse. Well-formed untrusted descriptor builds.
     malformed untrusted descriptor refuses.
 - `training-marathon-operations.ts` now lists the receipt module in the standby
   surface `sourceRefs`. All projection flags stay false — no live promotion has
@@ -328,10 +328,10 @@ mirroring the standby-dispatch and curtailment-drill patterns:
     malformed seal, so a receipt can never be minted for a non-durable
     checkpoint.
 - `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt.test.ts`
-  - 9 tests: durable seal emits a public-safe receipt; deterministic ref;
-    receipt omits the proof ref when the descriptor has none;
+  - 9 tests: durable seal emits a public-safe receipt. Deterministic ref.
+    receipt omits the proof ref when the descriptor has none.
     non-content-addressed / ephemeral-storage / under-replicated /
-    never-read-back each refuse; well-formed untrusted descriptor builds;
+    never-read-back each refuse. Well-formed untrusted descriptor builds.
     malformed untrusted descriptor refuses.
 - `training-marathon-operations.ts` now lists the receipt module in the
   checkpoint surface `sourceRefs`. All projection flags stay false — no window
@@ -377,8 +377,8 @@ sub-minimum replication. This change supplies that missing verifier:
     predicate's fail-toward-HOLD posture.
 - `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-verifier.test.ts`
   - 7 tests: a genuine emitted receipt verifies (trusted + untrusted-decode
-    paths); ref mismatch, non-content-addressed digest, and sub-minimum
-    replication each fail to verify; a malformed receipt and a forged-outcome
+    paths). Ref mismatch, non-content-addressed digest, and sub-minimum
+    replication each fail to verify. A malformed receipt and a forged-outcome
     receipt that does not decode each fail toward `not_verified`.
 - `training-marathon-operations.ts` now lists the verifier module in the
   checkpoint surface `sourceRefs`. All projection flags stay false — no window has
@@ -423,9 +423,9 @@ verifier, mirroring the durable-checkpoint-seal verifier:
   - Exports a shared `StandbyDispatchPublicSafeRefPattern` from
     `training-standby-dispatch.ts` so the verifier reuses a single source of truth.
 - `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt-verifier.test.ts`
-  - 8 tests: a genuine emitted receipt verifies (trusted + untrusted-decode paths);
+  - 8 tests: a genuine emitted receipt verifies (trusted + untrusted-decode paths).
     ref mismatch, non-public-safe run ref, non-public-safe standby ref, and
-    non-public-safe promoted-window ref each fail to verify; a malformed receipt and
+    non-public-safe promoted-window ref each fail to verify. A malformed receipt and
     a forged-outcome receipt that does not decode each fail toward `not_verified`.
 - `training-marathon-operations.ts` now lists the verifier module in the standby
   surface `sourceRefs`. All projection flags stay false — no live standby has been
@@ -466,8 +466,8 @@ contract, mirroring the existing two verifiers:
     `training-curtailment-drill.ts` (mirroring `StandbyDispatchPublicSafeRefPattern`).
 - `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt-verifier.test.ts`
   - 8 tests: a genuine emitted receipt verifies (trusted + untrusted-decode
-    paths); ref mismatch, non-public-safe run ref, and ack/halt latencies that
-    breach their SLA literals each fail to verify; a malformed receipt and a
+    paths). Ref mismatch, non-public-safe run ref, and ack/halt latencies that
+    breach their SLA literals each fail to verify. A malformed receipt and a
     forged-outcome receipt that does not decode each fail toward `not_verified`.
 
 Contract-level only: a `verified` verdict reports a published receipt is
@@ -505,10 +505,10 @@ promotion-receipt feed (`tassadar-gradient-window-promotion-receipt-feed.ts`):
     throws, so it is safe at the edge of a real public feed. The feed carries both
     SLA literals, the blocker ref, and `publicSafe: true`.
 - `apps/openagents.com/workers/api/src/training-curtailment-drill-receipt-feed.test.ts`
-  - 6 tests: empty list yields an empty public-safe feed; genuine receipts are
-    admitted ordered by receipt ref; duplicate refs drop keeping the first; a
-    malformed receipt is rejected without throwing; a decodable-but-ref-mismatched
-    receipt is rejected as not-verified; a mixed accepted/rejected batch is
+  - 6 tests: empty list yields an empty public-safe feed. Genuine receipts are
+    admitted ordered by receipt ref. Duplicate refs drop keeping the first. A
+    malformed receipt is rejected without throwing. A decodable-but-ref-mismatched
+    receipt is rejected as not-verified. A mixed accepted/rejected batch is
     deterministic.
 - `training-marathon-operations.ts` lists the feed module in the curtailment
   surface `sourceRefs`. All projection flags stay false.
@@ -530,7 +530,7 @@ unproven.
 
 The standby lane had a receipt EMITTER and a single-receipt VERIFIER, but — unlike
 the curtailment lane, which already has its feed — no aggregation layer. A public
-receipt route does not serve one receipt; it serves a COLLECTION. Nothing turned an
+receipt route does not serve one receipt. It serves a COLLECTION. Nothing turned an
 untrusted list of published promotion receipts into the one public-safe, verified,
 de-duplicated, ordered feed such a route would publish. This change adds that layer
 for the standby lane, mirroring the curtailment-drill receipt feed
@@ -546,10 +546,10 @@ for the standby lane, mirroring the curtailment-drill receipt feed
     throws, so it is safe at the edge of a real public feed. The feed carries the
     blocker ref and `publicSafe: true`.
 - `apps/openagents.com/workers/api/src/training-standby-dispatch-receipt-feed.test.ts`
-  - 6 tests: empty list yields an empty public-safe feed; genuine receipts are
-    admitted ordered by receipt ref; duplicate refs drop keeping the first; a
-    malformed receipt is rejected without throwing; a decodable-but-ref-mismatched
-    receipt is rejected as not-verified; a mixed accepted/rejected batch is
+  - 6 tests: empty list yields an empty public-safe feed. Genuine receipts are
+    admitted ordered by receipt ref. Duplicate refs drop keeping the first. A
+    malformed receipt is rejected without throwing. A decodable-but-ref-mismatched
+    receipt is rejected as not-verified. A mixed accepted/rejected batch is
     deterministic.
 - `training-marathon-operations.ts` lists the feed module in the standby surface
   `sourceRefs`. All projection flags stay false.
@@ -573,7 +573,7 @@ The durable-checkpoint-seal lane had a receipt EMITTER
 (`training-durable-checkpoint-seal-receipt.ts`) and a single-receipt VERIFIER
 (`training-durable-checkpoint-seal-receipt-verifier.ts`), but — unlike the
 standby-dispatch and curtailment-drill lanes, which already have their feeds — no
-aggregation layer. A public receipt route does not serve one receipt; it serves a
+aggregation layer. A public receipt route does not serve one receipt. It serves a
 COLLECTION. Nothing turned an untrusted list of published seal receipts into the one
 public-safe, verified, de-duplicated, ordered feed such a route would publish. This
 change adds that layer for the durable-checkpoint-seal lane, mirroring the existing
@@ -591,16 +591,16 @@ standby (`training-standby-dispatch-receipt-feed.ts`) and curtailment
     by receipt ref. It never throws, so it is safe at the edge of a real public
     feed. The feed carries the blocker ref and `publicSafe: true`.
 - `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed.test.ts`
-  - 6 tests: empty list yields an empty public-safe feed; genuine receipts admitted
-    ordered by receipt ref; duplicate refs drop keeping the first; malformed receipt
-    rejected without throwing; decodable-but-ref-mismatched receipt rejected as
-    not-verified; mixed accepted/rejected batch is deterministic.
+  - 6 tests: empty list yields an empty public-safe feed. Genuine receipts admitted
+    ordered by receipt ref. Duplicate refs drop keeping the first. Malformed receipt
+    rejected without throwing. Decodable-but-ref-mismatched receipt rejected as
+    not-verified. Mixed accepted/rejected batch is deterministic.
 
 Contract-level only: this is the aggregation layer a public read-back-receipt feed
 needs, not a proven remote checkpoint store read-back. It grants no dispatch,
 settlement, storage-backend, promise-state, or green-claim authority, and asserts no
 real remote checkpoint store was ever read back. No promise state or blocker list
-was changed; all projection flags stay false.
+was changed. All projection flags stay false.
 
 **What remains (`durable_checkpoint_seal_missing` stays listed):** no window has been
 sealed on a real remote content-addressed checkpoint store, no runtime emits a real
@@ -615,7 +615,7 @@ checkpoint-store read-back receipt
 
 Each receipt EMITTER gained a single-receipt VERIFIER, and each lane gained a feed
 BUILDER, but no lane had a FEED-level verifier. A feed builder aggregates a
-*trusted local* list; a downstream service instead dereferences a feed some OTHER
+*trusted local* list. A downstream service instead dereferences a feed some OTHER
 process published and must treat the whole feed object as untrusted input and
 re-validate it before relying on it. Decoding alone is insufficient: the feed
 schema pins `schemaVersion`, `blockerRef`, and `publicSafe`, but it does not
@@ -637,10 +637,10 @@ contract for the durable-checkpoint-seal lane:
     tally). They **fail toward `not_verified`** and never throw, mirroring the seal
     predicate's fail-toward-HOLD posture.
 - `apps/openagents.com/workers/api/src/training-durable-checkpoint-seal-receipt-feed-verifier.test.ts`
-  - 9 tests: a genuine built feed verifies (trusted + untrusted-decode paths); an
-    empty feed verifies; accepted-count mismatch, out-of-order entries, duplicate
+  - 9 tests: a genuine built feed verifies (trusted + untrusted-decode paths). An
+    empty feed verifies. Accepted-count mismatch, out-of-order entries, duplicate
     accepted ref, ref-not-bound-to-window+digest, sub-minimum replication, and an
-    inconsistent rejection tally each fail to verify; a malformed feed fails toward
+    inconsistent rejection tally each fail to verify. A malformed feed fails toward
     `not_verified` without throwing.
 - `training-marathon-operations.ts` lists the feed verifier module in the checkpoint
   surface `sourceRefs`. All projection flags stay false.
