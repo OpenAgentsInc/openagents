@@ -5,6 +5,22 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Linux AppImage updates retain a safe rollback image (#8921)
+
+- issues: #8921
+- commits: 1658d36548
+- contracts-specs: DesktopPlatformUpdateApplier; Linux AppImage retained-slot transaction
+- invariants: signed ReleaseSet selection remains authoritative; DEB/RPM remain package-manager handoffs with no app-owned rollback claim
+- evidence: apps/openagents-desktop/src/linux-update-applier.test.ts; native x64/arm64 receipt pending this RC
+- lane: codex-open-issue-sweep-20260719-linux-distribution
+
+Linux AppImage installs can now apply a verified full-image update without
+elevation, restart through one stable selected-image path, retain the previous
+image until a healthy launch, and roll back if that launch fails. Foreign or
+malformed AppImages fail before the current selection changes. DEB and RPM
+downloads continue to use the distribution package manager and do not claim
+application-owned rollback.
+
 ## macOS updates recognize real RC bundles and preserve offline notarization (#8993)
 
 - issues: #8993
