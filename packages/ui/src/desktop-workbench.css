@@ -3742,3 +3742,37 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 12px;
   color: var(--en-color-textMuted);
 }
+/* IDE-04 daily-workbench chrome. Monaco owns text pixels; this shared React
+   recipe layer owns typed navigation, tab/group state, and bounded overlays. */
+.oa-react-file-editor { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.oa-react-file-tab-actions,
+.oa-react-files-create,
+.oa-react-editor-breadcrumbs,
+.oa-react-editor-settings,
+.oa-react-editor-outline { display: flex; align-items: center; gap: var(--en-spacing-2); }
+.oa-react-file-tab-actions { justify-content: flex-end; padding: var(--en-spacing-1) var(--en-spacing-2); border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-file-tabs { display: flex; min-width: 0; overflow-x: auto; border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-file-tabs > [role="tab"] { display: flex; align-items: stretch; flex: 0 0 auto; border-right: 1px solid var(--en-color-borderSubtle); }
+.oa-react-file-tabs > [role="tab"][aria-selected="true"] { background: var(--en-color-surfaceElevated); }
+.oa-react-file-tabs button { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 5px; color: inherit; background: transparent; border: 0; }
+.oa-react-file-tabs button:first-child { padding-inline: var(--en-spacing-2); }
+.oa-react-file-tabs button:first-child[data-tab-mode="preview"] { font-style: italic; opacity: .78; }
+.oa-react-file-tabs svg { width: 13px; height: 13px; }
+.oa-react-editor-breadcrumbs { min-height: 28px; padding-inline: var(--en-spacing-3); overflow: hidden; color: var(--en-color-textMuted); white-space: nowrap; }
+.oa-react-editor-breadcrumbs span { display: inline-flex; align-items: center; gap: 3px; }
+.oa-react-editor-breadcrumbs svg { width: 12px; }
+.oa-react-quick-open { position: absolute; z-index: 40; top: 52px; left: 50%; width: min(680px, calc(100% - 32px)); max-height: min(520px, 70vh); overflow: auto; transform: translateX(-50%); background: var(--en-color-surfaceOverlay); border: 1px solid var(--en-color-borderStrong); border-radius: var(--en-radius-lg); box-shadow: var(--en-elevation-overlay-shadow); }
+.oa-react-quick-open > div,
+.oa-react-quick-open button { display: flex; align-items: center; gap: var(--en-spacing-2); width: 100%; }
+.oa-react-quick-open > div { padding: var(--en-spacing-2); }
+.oa-react-quick-open ol { margin: 0; padding: 0; list-style: none; }
+.oa-react-quick-open li button { justify-content: flex-start; padding: var(--en-spacing-2) var(--en-spacing-3); color: inherit; background: transparent; border: 0; text-align: left; }
+.oa-react-quick-open li button:hover,
+.oa-react-quick-open li button[aria-current="true"] { background: var(--en-color-surfaceHover); }
+.oa-react-quick-open li span { flex: 1; }
+.oa-react-quick-open li small { color: var(--en-color-textMuted); }
+.oa-react-editor-settings { flex-wrap: wrap; padding: var(--en-spacing-2) var(--en-spacing-3); border-block: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceSubtle); }
+.oa-react-editor-settings label { display: inline-flex; align-items: center; gap: var(--en-spacing-1); }
+.oa-react-editor-outline { min-height: 28px; padding-inline: var(--en-spacing-3); color: var(--en-color-textMuted); border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-editor-outline strong { color: var(--en-color-text); }
+.oa-react-files-create { padding: var(--en-spacing-2); }

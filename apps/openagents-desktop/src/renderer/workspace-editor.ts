@@ -523,8 +523,21 @@ export const withWorkspaceEditorMonacoEvent = (
     const maximum = tab.draft.length
     const start = Math.max(0, Math.min(maximum, Math.trunc(event.selection.start)))
     const end = Math.max(start, Math.min(maximum, Math.trunc(event.selection.end)))
-    if (start === tab.selection.start && end === tab.selection.end) return state
-    return updateTab(state, tab.pathRef, current => ({ ...current, selection: { start, end } }))
+    const selection = { start, end }
+    const next = start === tab.selection.start && end === tab.selection.end
+      ? state
+      : updateTab(state, tab.pathRef, current => ({ ...current, selection }))
+    const direction = String(event.viewRef).endsWith(".secondary") ? "right" : "primary"
+    return {
+      ...next,
+      workbench: {
+        ...next.workbench,
+        groups: next.workbench.groups.map(group => group.direction !== direction ? group : {
+          ...group,
+          viewStates: group.viewStates.map(view => view.documentRef === event.documentRef ? { ...view, selection } : view),
+        }),
+      },
+    }
   }
   const sequence = event.sequence as number
   const currentSequence = (tab.incrementalSequence ?? 0) as number

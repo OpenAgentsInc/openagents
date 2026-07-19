@@ -382,6 +382,13 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     const ownedMonacoHostImports = new Set([
       "../ide/monaco-document-contract.ts",
       "../ide/monaco-runtime-loader.ts",
+      "../ide/workbench-contract.ts",
+    ]);
+    const ownedWorkspaceEditorImports = new Set([
+      "../ide/monaco-document-contract.ts",
+      "../ide/path-index-contract.ts",
+      "../ide/project-contract.ts",
+      "../ide/workbench-contract.ts",
     ]);
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!);
@@ -391,12 +398,12 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
           sharedOrSibling.test(specifier) ||
             (name === "ide-path-index.ts" && ownedIdePathIndexImports.has(specifier)) ||
             (name === "monaco-editor-host.tsx" && ownedMonacoHostImports.has(specifier)) ||
-            (name === "workspace-editor.ts" && specifier === "../ide/monaco-document-contract.ts") ||
+            (name === "workspace-editor.ts" && ownedWorkspaceEditorImports.has(specifier)) ||
             (reactHostFiles.has(name) &&
               (reactHostImport.test(specifier) ||
                 specifier === sharedReactWorkbenchImport ||
                 (name === "react-workspace-surfaces.tsx" &&
-                  specifier === ownedPierreAdapterImport))),
+                  (specifier === ownedPierreAdapterImport || specifier === "../ide/workbench-contract.ts")))),
           `${name} imports disallowed renderer dependency ${specifier}`,
         ).toBe(true);
       }

@@ -155,7 +155,8 @@ pnpm run verify:ide-04
 It builds the production app, runs the scale benchmark, typechecks, executes
 the workbench/Monaco/editor/browser/Pierre/command/binding/DOM/accessibility and
 behavior-contract suites, and runs the IDE boundary checker. The focused sweep
-currently covers 149 assertions before the added registry-schema and group-view
+covers 149 assertions. The complete Desktop regression sweep also passed: 269
+files, 2,631 passed assertions, 39 intentionally skipped, and 2,670 total
 assertions.
 
 The public-safe benchmark receipt is
@@ -177,6 +178,12 @@ recovery v4 reload, private-scheme/offline assets, absolute-root withholding,
 and zero resource teardown. It writes
 `2026-07-19-ide-04-packaged-workbench.json` beside the benchmark and updates the
 IDE-03 screenshot with the daily-workbench chrome.
+
+The packaged receipt from core commit `a21e68b39fc781ac4b16e5a5fa151c01f6f02905`
+records `quickOpenReady`, `previewOpened`, `previewPinned`, recovery version 4,
+two split views, and absolute-root withholding as true. The paired Monaco
+receipt records edit, Vim, recovery reload, private-scheme/offline assets, no
+legacy textarea, and zero models/views/workers/listeners after close.
 
 ## Explicit non-goals and next packets
 

@@ -6,6 +6,7 @@ import type { DesktopWorkspaceDocument } from "../workspace-contract.ts"
 import {
   IdeDocumentGeneration,
   IdeDocumentSequence,
+  IdeEditorViewRef,
   IdeMonacoDocumentEventSchema,
   IdeMonacoModelVersion,
 } from "../ide/monaco-document-contract.ts"
@@ -202,6 +203,23 @@ describe("workspace editor state", () => {
       gapRecoveries: 1,
       reason: "Editor sequence gap recovered from the complete model snapshot at sequence 3.",
     })
+  })
+
+  test("split groups share a document model while retaining per-view selection", () => {
+    const initial = readyState()
+    const tab = initial.tabs[0]!
+    if (tab.documentRef === undefined || tab.generation === undefined) throw new Error("production identity missing")
+    const split = withWorkspaceEditorOpening({ ...initial, split: true }, tab.pathRef)
+    const secondary = withWorkspaceEditorMonacoEvent(split, IdeMonacoDocumentEventSchema.cases.Selection.make({
+      documentRef: tab.documentRef,
+      generation: tab.generation,
+      viewRef: IdeEditorViewRef.make(`ide.view.${tab.documentRef}.secondary`),
+      selection: { start: 4, end: 9 },
+    }))
+    expect(secondary.workbench.groups).toHaveLength(2)
+    expect(secondary.workbench.groups[0]?.documentRefs).toEqual(secondary.workbench.groups[1]?.documentRefs)
+    expect(secondary.workbench.groups[0]?.viewStates[0]?.selection).toEqual({ start: 0, end: 0 })
+    expect(secondary.workbench.groups[1]?.viewStates[0]?.selection).toEqual({ start: 4, end: 9 })
   })
 
   test("find is bounded, wraps, and projects the active selection", () => {
