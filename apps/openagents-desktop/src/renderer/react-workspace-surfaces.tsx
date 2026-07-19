@@ -42,7 +42,15 @@ function tablistKey<Ref extends string>(
 ): void {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key) || refs.length === 0) return
   event.preventDefault()
-  const current = activeRef === null ? 0 : Math.max(0, refs.indexOf(activeRef))
+  // Roving-tab keyboard navigation starts from the focused tab. The selected
+  // tab can legitimately differ while a user moves focus through the list;
+  // basing the next item on selection would skip tabs and break ARIA's
+  // expected Arrow-key behavior.
+  const focused = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')]
+    .findIndex(tab => tab === event.currentTarget.ownerDocument.activeElement)
+  const current = focused >= 0
+    ? focused
+    : activeRef === null ? 0 : Math.max(0, refs.indexOf(activeRef))
   const next = event.key === "Home" ? 0 : event.key === "End" ? refs.length - 1
     : (current + (event.key === "ArrowRight" ? 1 : -1) + refs.length) % refs.length
   select(refs[next]!)
