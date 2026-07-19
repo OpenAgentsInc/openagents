@@ -75,7 +75,7 @@ const verdictLabel = (verdict: TraceVerdict): string =>
 
 const verdictBadgeClass = (verdict: TraceVerdict): string => {
   const base =
-    'inline-flex min-h-6 items-center border px-2 font-mono text-xs uppercase tracking-[0.08em]'
+    'inline-flex min-h-6 items-center border px-2 text-xs uppercase tracking-[0.08em]'
   switch (verdict) {
     case 'PASS':
       return `${base} border-khala-success/60 bg-khala-success/10 text-khala-success`
@@ -399,7 +399,7 @@ function TraceCopyButton({ trajectory }: Readonly<{ trajectory: AtifTrajectory }
   return (
     <button
       aria-label="Copy trace as Markdown"
-      className="khala-focus inline-flex min-h-8 items-center gap-2 border border-khala-border bg-khala-surface px-2.5 font-mono text-xs text-khala-text-muted hover:border-khala-border-strong hover:text-khala-text"
+      className="khala-focus inline-flex min-h-8 items-center gap-2 border border-khala-border bg-khala-surface px-2.5 text-xs text-khala-text-muted hover:border-khala-border-strong hover:text-khala-text"
       onClick={handleClick}
       type="button"
     >
@@ -424,7 +424,7 @@ export function TraceLoadedView({
 
   return (
     <main
-      className="oa-react-workbench min-h-dvh w-full overflow-auto bg-khala-void font-mono text-khala-text"
+      className="min-h-dvh w-full overflow-auto bg-khala-void text-khala-text"
       data-component="trace-page"
       data-route="trace"
       style={desktopThemeCssVariables(khalaTheme)}
@@ -455,20 +455,20 @@ export function TraceLoadedView({
 
       <div className="mx-auto grid w-full max-w-[980px] gap-6 px-6 py-6 max-[760px]:px-3">
         <div className="grid gap-3">
-          <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+          <p className="m-0 text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
             Agent session trace
           </p>
           <h1 className="m-0 min-w-0 break-words text-lg font-medium text-khala-text">
             {terminalSummary(trajectory) ?? trajectory.trajectory_id}
           </h1>
-          <p className="m-0 font-mono text-xs text-khala-text-faint">{projection.uuid}</p>
+          <p className="m-0 text-xs text-khala-text-faint">{projection.uuid}</p>
           <span className={verdictBadgeClass(verdict)}>{verdictLabel(verdict)}</span>
         </div>
 
         <div className="grid grid-cols-2 gap-px border border-khala-border bg-khala-border sm:grid-cols-5">
           {metadataRows(projection).map(row => (
             <div className="grid gap-1 bg-khala-surface px-3 py-2.5" key={row.label}>
-              <span className="font-mono text-[0.625rem] uppercase tracking-[0.1em] text-khala-text-faint">
+              <span className="text-[0.625rem] uppercase tracking-[0.1em] text-khala-text-faint">
                 {row.label}
               </span>
               <span className="break-words text-sm text-khala-text">{row.value}</span>
@@ -476,13 +476,13 @@ export function TraceLoadedView({
           ))}
         </div>
 
-        <p className="m-0 font-mono text-xs text-khala-text-faint">
+        <p className="m-0 text-xs text-khala-text-faint">
           Evidence only. This trace grants no accepted-work, payout, or public-claim authority.
         </p>
 
         {goal === undefined ? null : (
           <div className="grid gap-2">
-            <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+            <p className="m-0 text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
               Goal
             </p>
             <div
@@ -495,7 +495,7 @@ export function TraceLoadedView({
         )}
 
         <div className="grid gap-2">
-          <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+          <p className="m-0 text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
             Timeline
           </p>
           <div className="flex min-w-0 flex-col gap-2.5" data-component="trace-timeline">
@@ -509,7 +509,7 @@ export function TraceLoadedView({
 
         {images.length === 0 ? null : (
           <div className="grid gap-3" data-component="trace-screenshots">
-            <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+            <p className="m-0 text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
               Screenshots
             </p>
             {images.map((image, index) => (
@@ -519,7 +519,7 @@ export function TraceLoadedView({
                   className="w-full border border-khala-border bg-black object-contain"
                   src={traceBlobUrl(projection.uuid, image.r2Key, token)}
                 />
-                <figcaption className="m-0 font-mono text-xs text-khala-text-faint">
+                <figcaption className="m-0 text-xs text-khala-text-faint">
                   {image.caption ?? image.r2Key}
                 </figcaption>
               </figure>
@@ -529,7 +529,7 @@ export function TraceLoadedView({
 
         {video === undefined ? null : (
           <section className="grid gap-3" data-component="trace-recording">
-            <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+            <p className="m-0 text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
               Session recording
             </p>
             <video
@@ -539,7 +539,7 @@ export function TraceLoadedView({
               preload="metadata"
               src={traceBlobUrl(projection.uuid, video.r2Key, token)}
             />
-            <p className="m-0 font-mono text-xs text-khala-text-faint">
+            <p className="m-0 text-xs text-khala-text-faint">
               {video.caption ?? video.r2Key}
             </p>
           </section>
@@ -557,12 +557,12 @@ function TraceStatusView({
   return (
     <main
       aria-busy={loading ? 'true' : undefined}
-      className="grid min-h-dvh place-items-center bg-khala-void px-4 py-12 font-mono text-khala-text"
+      className="grid min-h-dvh place-items-center bg-khala-void px-4 py-12 text-khala-text"
       data-component={loading ? 'trace-skeleton' : notFound ? 'trace-not-found' : 'trace-error'}
       data-route="trace"
     >
       <div className="grid max-w-[min(100%,32rem)] justify-items-start gap-3 border border-khala-border bg-khala-surface p-6">
-        <p className="m-0 font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
+        <p className="m-0 text-[0.6875rem] uppercase tracking-[0.16em] text-khala-text-faint">
           Trace
         </p>
         <h1 className="m-0 text-lg font-medium text-khala-text">
@@ -577,7 +577,7 @@ function TraceStatusView({
         </p>
         {loading ? null : (
           <a
-            className="khala-focus inline-flex min-h-10 w-fit items-center border border-khala-text bg-khala-text px-4 font-mono text-[0.8125rem] text-black hover:bg-white"
+            className="khala-focus inline-flex min-h-10 w-fit items-center border border-khala-text bg-khala-text px-4 text-[0.8125rem] text-black hover:bg-white"
             href="/"
           >
             Go home
