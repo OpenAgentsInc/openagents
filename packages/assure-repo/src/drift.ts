@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -33,6 +34,21 @@ const lineOf = (text: string, index: number): number => text.slice(0, index).spl
 const PATH_SPAN = /`([A-Za-z0-9._@-]+(?:\/[A-Za-z0-9._@-]+)+)`/g;
 const HAS_EXTENSION = /\.[A-Za-z0-9]+$/;
 const PNPM_RUN = /`?\bpnpm run ([a-z0-9:_-]+)`?/g;
+
+/**
+ * Whether a path is gitignored. A gitignored path (e.g. a `.secrets/*.env`
+ * file) is legitimately absent in a fresh worktree or CI, so its non-existence
+ * is environment-specific, not a documentation error. Side-effect-free
+ * (`git check-ignore -q` only reports).
+ */
+const isGitIgnored = (root: string, path: string): boolean => {
+  try {
+    execFileSync("git", ["-C", root, "check-ignore", "-q", "--", path], { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 /** Repo-root package.json scripts (side-effect-free read). */
 const rootScripts = (root: string): ReadonlyArray<string> => {
@@ -79,6 +95,17 @@ export const checkDocumentClaims = (
         claim,
         verdict: "unverifiable",
         detail: "context-relative path (first segment is not a repo-root entry)",
+      });
+    } else if (isGitIgnored(root, claim)) {
+      // Gitignored path (e.g. a secret file): legitimately absent in a fresh
+      // worktree or CI, so its non-existence is environment-specific.
+      findings.push({
+        file,
+        line,
+        kind: "path",
+        claim,
+        verdict: "unverifiable",
+        detail: "gitignored path (absence is environment-specific, not a doc error)",
       });
     } else if (HAS_EXTENSION.test(claim)) {
       findings.push({

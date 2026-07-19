@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,6 +93,28 @@ describe("checkDocumentClaims — command oracle", () => {
     const broken = findings.filter((f) => f.kind === "command" && f.verdict === "broken");
     expect(broken.length).toBe(1);
     expect(broken[0]!.claim).toBe("pnpm run nope");
+  });
+});
+
+describe("checkDocumentClaims — gitignored paths are environment-specific", () => {
+  test("a gitignored path is unverifiable, not broken", () => {
+    const root = mkdtempSync(join(tmpdir(), "assure-repo-drift-git-"));
+    roots.push(root);
+    execFileSync("git", ["-C", root, "init", "-q"]);
+    mkdirSync(join(root, "secrets"), { recursive: true });
+    writeFileSync(join(root, ".gitignore"), "secrets/\n");
+    writeFileSync(join(root, "package.json"), JSON.stringify({ scripts: {} }));
+    // secrets/token.env is gitignored and absent from a fresh checkout.
+    const findings = checkDocumentClaims(
+      root,
+      "DOC.md",
+      "Read `secrets/token.env`.",
+      [],
+      new Set(readdirSync(root)),
+    );
+    const secret = findings.find((f) => f.claim === "secrets/token.env");
+    expect(secret?.verdict).toBe("unverifiable");
+    expect(secret?.detail).toContain("gitignored");
   });
 });
 
