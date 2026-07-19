@@ -75,6 +75,69 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This contract owns exact agent attachment, context disclosure, proposal lifecycle, canonical apply/undo, backlinks, and host-observed post-image evidence inside the existing Effect IDE graph. A harness may propose but never writes files; the renderer, Monaco, Pierre, and native helpers remain projections without workspace authority. A harness completion or provider claim never becomes diagnostics, tests, Git delivery, verification, acceptance, or release evidence. ProductSpec/Desktop/Cursor AssuranceSpec criteria remain proposed until independent owner review.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_agent_native_code_graph.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+        "apps/openagents-desktop/src/ide/agent-code-service.ts",
+        "apps/openagents-desktop/src/ide/agent-code-host.ts",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-agent-code.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-acceptance.json",
+        "docs/ide/2026-07-19-ide-08-agent-native-code-graph.md",
+        "github:OpenAgentsInc/openagents#9036",
+      ],
+      oracles: [
+        {
+          description:
+            "Schema/service/host tests prove exact attachment and manifest accounting, semantic-retrieval-off utility, single/mixed/partial proposal decisions, stale/dirty/secret/private/binary/too-large/refused bases, compensating rollback, checkpoint undo, current/historical/unavailable backlinks, restart recovery, corrupt-state fencing, late-generation refusal, and public-safe receipts.",
+          id: "openagents_desktop.ide_agent_native_code_graph.contract_service",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/agent-code-service.test.ts",
+        },
+        {
+          description:
+            "The production React host renders every included and omitted context item plus effective runtime policy, and projects exact-base agent proposals through the existing Pierre adapter with keyboard-operable per-operation accept/reject, canonical apply, checkpoint undo, evidence, lineage, and backlinks.",
+          id: "openagents_desktop.ide_agent_native_code_graph.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents-desktop/src/renderer/react-agent-code.test.tsx",
+        },
+        {
+          description:
+            "The real packaged darwin-arm64 application performs diagnostic → context disclosure → exact proposal → Pierre review → keyboard apply → host evidence → backlink → keyboard undo, while withholding the root and recording the exact artifact digest, screenshot, trace, and candidate SHA.",
+          id: "openagents_desktop.ide_agent_native_code_graph.packaged",
+          kind: "script",
+          mode: "e2e",
+          ref: "apps/openagents-desktop/scripts/ide-agent-code-packaged-journey.ts",
+        },
+        {
+          description:
+            "The benchmark and deterministic acceptance evaluator freeze p50/p95/p99 rows, fault/resource/offline corpora, architecture custody, public-material scans, artifact ancestry, reviewer non-overridability, rollback target, claimed platform, and all remaining IDE-09+ gaps.",
+          id: "openagents_desktop.ide_agent_native_code_graph.acceptance",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-agent-code-acceptance.ts",
+        },
+      ],
+      productArea: "Desktop IDE agent-native code graph",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "A coding session attaches to one exact project/worktree generation, discloses every included and omitted runtime context item, admits only version-bound proposals, reviews them in the shared Pierre Changes plane, applies/refuses/undoes through canonical workspace authority, maintains code↔turn backlinks, and reports host-observed post-image evidence separately from agent completion.",
+      surface: "openagents-desktop",
+      verification:
+        "verify:ide-08 typechecks, runs targeted agent/context/proposal/review/host/accessibility/behavior tests, enforces Effect/widget authority boundaries, emits p50/p95/p99 and resource receipts, packages Desktop, drives the exact LaunchServices journey, and runs a deterministic public-safe acceptance oracle. The full normal Desktop sweep remains mandatory before landing.",
+    },
+    {
+      authorityBoundary:
         "This admits exact Monaco and Pierre Diffs artifacts plus an owned local theme registry and a first-party public-Monaco Vim contract. Khala editor is the fixed default and Tokyo Night the retained fallback. It does not make a widget canonical for files, grants, Git, processes, approvals, persistence, proposals, or receipts; it does not ship the opt-in admission fixture on the ordinary renderer path; and it does not admit remote or executable themes.",
       blockerRefs: [],
       contractId: "openagents_desktop.ide_package_admission.v1",
@@ -1570,5 +1633,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-19.2",
+  version: "2026-07-19.3",
 };

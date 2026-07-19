@@ -334,6 +334,8 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     "boot.ts",
     "lexical-composer-editor.tsx",
     "monaco-editor-host.tsx",
+    "react-agent-code.tsx",
+    "react-agent-context.tsx",
     "react-composer.tsx",
     "react-primitive-adapters.tsx",
     "react-review.tsx",
@@ -398,6 +400,12 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
       "../ide/review-contract.ts",
       "./ide/review-source.ts",
     ]);
+    const ownedAgentCodeImports = new Set([
+      "../ide/agent-code-contract.ts",
+      "../ide/pierre-diffs-adapter.tsx",
+      "../ide/review-contract.ts",
+      "./ide/agent-code-review.ts",
+    ]);
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!);
       specifiers.push(...[...source.matchAll(/import\s+"([^"]+)"/g)].map((match) => match[1]!));
@@ -407,12 +415,19 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
             (name === "ide-path-index.ts" && ownedIdePathIndexImports.has(specifier)) ||
             (name === "monaco-editor-host.tsx" && ownedMonacoHostImports.has(specifier)) ||
             (name === "workspace-editor.ts" && ownedWorkspaceEditorImports.has(specifier)) ||
+            (name === "boot.ts" && specifier === "./ide/agent-code.ts") ||
             ((name === "git-panel.ts" || name === "shell.ts") && specifier === "../ide/review-contract.ts") ||
+            (name === "shell.ts" && (
+              specifier === "../ide/agent-code-contract.ts" ||
+              specifier === "../ide/project-contract.ts" ||
+              specifier === "./ide/agent-code.ts")) ||
             (reactHostFiles.has(name) &&
               (reactHostImport.test(specifier) ||
                 specifier === sharedReactWorkbenchImport ||
                 ((name === "react-review.tsx" || name === "react-workspace-surfaces.tsx") &&
                   ownedReviewImports.has(specifier)) ||
+                ((name === "react-agent-code.tsx" || name === "react-agent-context.tsx") &&
+                  ownedAgentCodeImports.has(specifier)) ||
                 (name === "react-workspace-surfaces.tsx" &&
                   (specifier === ownedPierreAdapterImport || specifier === "../ide/workbench-contract.ts" ||
                     specifier === "../ide/language-workbench-contract.ts")))),

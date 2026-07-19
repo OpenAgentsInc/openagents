@@ -1,3 +1,5 @@
+@import "./desktop-agent-code.css";
+
 /* Shared OpenAgents workbench presentation. Desktop and web consume this same
    token-driven stylesheet; application state remains in their adapters. */
 .oa-react-workbench {

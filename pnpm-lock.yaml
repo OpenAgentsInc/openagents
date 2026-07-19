@@ -475,6 +475,9 @@ importers:
       '@lexical/react':
         specifier: ^0.41.0
         version: 0.41.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.31)
+      '@noble/hashes':
+        specifier: 1.7.1
+        version: 1.7.1
       '@openagentsinc/agent-client-protocol':
         specifier: workspace:*
         version: link:../../packages/agent-client-protocol

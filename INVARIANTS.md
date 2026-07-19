@@ -2313,6 +2313,39 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `apps/openagents-desktop/tests/pierre-tree-package.test.ts`,
   `apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.test.ts`, and
   `apps/openagents-desktop/tests/workspace-service.test.ts`.
+- Desktop agent editing has one main-owned, generation-fenced code graph at
+  `apps/openagents-desktop/src/ide/agent-code-contract.ts`. An attachment binds
+  the exact project, root, worktree, coding session, workspace grant,
+  placement generation, and attachment generation. Its context manifest
+  accounts exactly for every included or omitted item, destination,
+  sensitivity, freshness, retention, bytes/tokens, and effective runtime;
+  semantic retrieval may be disabled without disabling explicit, lexical,
+  language, symbol, or Git context. A harness or renderer can submit only a
+  Schema-decoded proposal whose bytes match its claimed SHA-256 and whose
+  create/edit/rename/delete operations bind an exact base plus explicit
+  encoding, line-ending, mode, and symlink policy. Exact retries reconcile;
+  conflicting ref reuse, late generations, dirty or changed bases, secrets,
+  private/binary/oversize material, and unsupported policy fail closed.
+  Partial decisions create a new exact child proposal. Pierre projects the
+  review and Monaco projects documents; neither applies bytes. Main's
+  `IdeAgentDocumentAuthority` alone creates checkpoints and performs the
+  canonical sequential mutation with compensating rollback. Undo is an
+  explicit `Undone` state, converts post-image evidence to stale, converts
+  backlinks to historical, and expires private preimages at the retained
+  policy boundary. Diagnostics, formatting, tests, Git, delivery,
+  verification, and owner acceptance are separate host-observed facts;
+  absent observation is `Unavailable`, and no harness completion or renderer
+  command can record evidence. ProductSpec revision/digest/criterion/packet
+  lineage must remain byte-identical across proposal and evidence. Private
+  roots, file bytes, prompts, and provider payloads never enter the public
+  receipt. Equal relative paths remain isolated by worktree attachment; a new
+  generation cancels unsettled proposals and late output cannot revive it.
+  This boundary is enforced by `agent-code-contract.test.ts`,
+  `agent-code-service.test.ts`, `agent-code-host.test.ts`,
+  `react-agent-code.test.tsx`, `electron-boundary.test.ts`, the IDE boundary
+  oracle, and the packaged IDE-08 journey. It implements the local agent-code
+  loop only; IDE-09 inline completion and IDE-10+ terminal/SCM/portable breadth
+  remain separate authorities.
 - Rich coding drafts use `@openagentsinc/composer-state`; apps must not create a
   second editor/attachment state machine. The private
   `openagents.coding_composer_draft.v1` snapshot carries only stable context and

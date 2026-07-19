@@ -73,7 +73,7 @@ authorized to execute and cannot be used as release evidence.
 | IDE-05 — Pierre review classes                    | Desktop AC-5, AC-6, AC-41, AC-43; Cursor CP-AC-04, CP-AC-20                                                                     | Desktop and Cursor proposed companions                                                                                     | Delivered by #9020: eight versioned diff classes remain distinct, stale bases refuse, Pierre stays projection-only, and mutation authority remains deferred to its owning packet                     |
 | IDE-06 — language/Problems                        | Desktop AC-42; Cursor CP-AC-19..20                                                                                              | Desktop and Cursor proposed companions                                                                                     | Delivered by #9021: visible local/project tiers, full first TypeScript capability corpus, document/service generations, cancellation, supervised restart, placement/evidence, shared projections, and unavailable truth; IDE-07 subsequently accepted the integrated rung |
 | IDE-07 — daily-use basic IDE gate                 | Desktop AC-39..42, AC-48..52; Cursor CP-AC-18..19, CP-AC-24..27                                                                 | Desktop and Cursor proposed companions                                                                                     | Delivered by #9022 for exact macOS arm64 candidate `48c32a1d4c`: 15/15 matrix rows and 27/27 metrics pass; release says only “OpenAgents basic IDE”; every later gap and epic owner disposition stay visible |
-| IDE-08 — agent context/proposals/backlinks        | Desktop AC-17, AC-43; Cursor CP-AC-20                                                                                           | Desktop and Cursor proposed companions                                                                                     | Inspectable disclosure, exact proposal base, review/apply/undo receipts, post-apply evidence, and no harness editor authority                                                                       |
+| IDE-08 — agent context/proposals/backlinks        | Desktop AC-17, AC-43; Cursor CP-AC-20                                                                                           | Desktop and Cursor proposed companions                                                                                     | Delivered by #9036: exact project/worktree attachment, eleven-source disclosure, hash/version-bound proposal and Pierre review, partial/full decision, canonical apply/rebase/undo, bidirectional backlinks, host-only evidence, retention/restart/fault/performance/package receipts, and zero harness/editor authority; broader criteria and owner assurance remain open |
 | IDE-09 — AI completion/inline/multi-file editing  | Desktop AC-26, AC-28; Cursor CP-AC-04, CP-AC-12..13                                                                             | Desktop and Cursor proposed companions                                                                                     | Quality/latency corpus, exact effective model/harness/placement/data disclosure, and canonical accept/reject/undo                                                                                   |
 | IDE-10 — terminal/tasks/tests/Output              | Desktop AC-42, AC-44, AC-47; Cursor CP-AC-19, CP-AC-23                                                                          | Desktop and Cursor proposed companions                                                                                     | Effect-owned identity/retention/evidence; xterm projection; narrowly admitted PTY helper; restart/gap/late-event proof                                                                              |
 | IDE-11 — debug/DAP                                | Desktop AC-42, AC-47; Cursor CP-AC-19, CP-AC-23                                                                                 | Desktop and Cursor proposed companions                                                                                     | Effect-owned DAP graph, adapter supervision, late-event fencing, and no native application authority                                                                                                |
@@ -205,6 +205,43 @@ That receipt admits only **OpenAgents basic IDE**. It does not promote either
 AssuranceSpec from `proposed`, satisfy the full Desktop or Cursor criteria,
 claim another platform, imply Zed quality, close IDE-08..19, close epic #9014,
 or replace its human owner disposition.
+
+### IDE-08 implementation evidence
+
+IDE-08 is implemented by the exact closing receipt in
+[#9036](https://github.com/OpenAgentsInc/openagents/issues/9036) and the full
+record in `docs/ide/2026-07-19-ide-08-agent-native-code-graph.md`. Its observed
+implementation evidence includes:
+
+- one identified Effect Schema graph for exact attachment, context manifest,
+  effective runtime, proposal operations/lifecycle, decisions, checkpoints,
+  apply/undo receipts, backlinks, ProductSpec lineage, evidence, and
+  public-safe receipt projection;
+- a scoped `Context.Service`/`Layer.effect` runtime whose named operations
+  reconcile exact retries, fence late generations, and expose typed failures;
+- a main-only workspace authority that hash-checks proposal bytes, re-reads
+  exact bases, refuses dirty/changed/secret/private/binary/oversize/symlink/
+  unsupported state, applies sequentially, and compensates on partial failure;
+- the shared Pierre Changes plane, accessible partial/full decisions,
+  explicit current-state rebase requirement, `Undone` lifecycle, and current/
+  historical/unavailable code↔conversation links;
+- eleven-source context accounting with fixed byte/token ceilings and useful
+  explicit/lexical/language/Git behavior while semantic retrieval is off;
+- host-observed language/Git evidence plus explicit unavailable test/delivery/
+  verification/acceptance facts, never harness or renderer assertions;
+- deterministic two-worktree, exact-retry, restart, corruption, retention,
+  ProductSpec-lineage, fault, accessibility, and rollback corpora; and
+- an exact-SHA macOS arm64 packaged diagnostic→context→proposal→Pierre→apply→
+  evidence→backlink→undo journey plus checked p50/p95/p99/resource receipts.
+
+The deterministic evaluator and issue closeout bind the final candidate,
+artifact tree digest, `main` SHA, rollback target, commands, and measurements.
+This evidence implements the IDE-08 packet but does not change either
+AssuranceSpec from `proposed`, does not set owner acceptance, does not satisfy
+Desktop AC-17/AC-43 or Cursor CP-AC-20 beyond the exact local implementation
+slice, and does not create the integrated-agent-IDE rung. IDE-09 through
+IDE-12 remain required for that group claim; IDE-13 through IDE-19 remain
+separate portable/platform/parity work.
 
 ## Cross-surface defaults and non-authorities
 

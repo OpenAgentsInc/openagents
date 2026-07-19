@@ -59,6 +59,7 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
     path.join(ideRoot, "project-contract.ts"),
     path.join(ideRoot, "path-index-contract.ts"),
     path.join(ideRoot, "monaco-document-contract.ts"),
+    path.join(ideRoot, "agent-code-contract.ts"),
     path.join(appRoot, "src", "workspace-contract.ts"),
   ];
   const widgetProjectionFiles = new Set([
@@ -147,6 +148,57 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
         rule,
         detail: `Required path-index Effect service primitive is missing: ${needle}.`,
       });
+    }
+  }
+
+  const agentCodeServicePath = path.join(ideRoot, "agent-code-service.ts");
+  const agentCodeService = readFileSync(agentCodeServicePath, "utf8");
+  for (const [needle, rule] of [
+    ["Context.Service", "agent-code-context-service"],
+    ["Layer.effect", "agent-code-layer-effect"],
+    ["Effect.fn", "agent-code-named-effect-functions"],
+    ["Schema.TaggedErrorClass", "agent-code-typed-expected-errors"],
+    ["Effect.addFinalizer", "agent-code-scoped-teardown"],
+    ["Schema.decodeUnknownEffect", "agent-code-boundary-decode"],
+  ] as const) {
+    if (!agentCodeService.includes(needle)) {
+      violations.push({
+        file: relative(agentCodeServicePath),
+        line: 1,
+        rule,
+        detail: `Required agent-code Effect service primitive is missing: ${needle}.`,
+      });
+    }
+  }
+
+  const agentContractSource = readFileSync(path.join(ideRoot, "agent-code-contract.ts"), "utf8");
+  for (const forbidden of ["absolutePath", "rootPath", "providerPayload", "RecordEvidence:"]) {
+    if (agentContractSource.includes(forbidden)) {
+      violations.push({
+        file: "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+        line: 1,
+        rule: "agent-code-public-boundary",
+        detail: `The public agent-code boundary may not expose ${forbidden}.`,
+      });
+    }
+  }
+  const agentRendererFiles = [
+    path.join(appRoot, "src", "renderer", "ide", "agent-code.ts"),
+    path.join(appRoot, "src", "renderer", "ide", "agent-code-review.ts"),
+    path.join(appRoot, "src", "renderer", "react-agent-code.tsx"),
+    path.join(appRoot, "src", "renderer", "react-agent-context.tsx"),
+  ];
+  for (const file of agentRendererFiles) {
+    const source = readFileSync(file, "utf8");
+    for (const forbidden of ['from "node:', 'from "electron"', "workspace-service", "writeFile", "renameSync", "unlinkSync"]) {
+      if (source.includes(forbidden)) {
+        violations.push({
+          file: relative(file),
+          line: 1,
+          rule: "agent-renderer-projection-only",
+          detail: `Agent renderer projection acquired forbidden authority through ${forbidden}.`,
+        });
+      }
     }
   }
 

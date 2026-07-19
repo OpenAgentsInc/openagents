@@ -149,6 +149,21 @@ import { idleVoiceModeState, voiceActive, voiceIndicatorText, withVoiceHostState
 import type { DesktopVoiceState } from "../voice-host.ts"
 import type { GitDiffResult } from "../git-github-contract.ts"
 import { boundedSelectedReviewPatch, type IdeReviewSelection } from "../ide/review-contract.ts"
+import {
+  IdeAgentDecisionRefSchema,
+  IdeAgentDecisionSchema,
+  IdeAgentReviewRefSchema,
+  emptyIdeAgentCodeSnapshot,
+  type IdeAgentCodeSnapshot,
+} from "../ide/agent-code-contract.ts"
+import { IdeTimestampSchema } from "../ide/project-contract.ts"
+import {
+  assembleActiveFileAgentManifest,
+  executeAgentCodeRendererCommand,
+  loadAgentCodeRendererSnapshot,
+  unavailableIdeAgentCodeRendererHost,
+  type IdeAgentCodeRendererHost,
+} from "./ide/agent-code.ts"
 import { DesktopWorkspacePathRefSchema } from "../workspace-contract.ts"
 import {
   emptyWorkspaceBrowserState,
@@ -530,6 +545,14 @@ export type DesktopShellState = Readonly<{
   workspaceBrowser: WorkspaceBrowserState
   /** Effect Native document tabs and conflict-safe draft lifecycle. */
   workspaceEditor: WorkspaceEditorState
+  /** Main-hosted exact context/proposal/checkpoint/backlink/evidence graph. */
+  agentCode: IdeAgentCodeSnapshot
+  /** Proposal selected in the shared Pierre review plane. */
+  agentReviewProposalRef: string | null
+  /** Inspectable included/omitted context disclosure. */
+  agentContextTrayOpen: boolean
+  /** Public-safe last agent-code host disposition. */
+  agentCodeNotice: string | null
   commandPaletteOpen: boolean
   /** Public-safe result of the latest deferred/native command admission. */
   commandNotice: string | null
@@ -652,6 +675,10 @@ export const initialDesktopShellState = (
     ? { ...emptyWorkspaceBrowserState(), phase: "loading" }
     : emptyWorkspaceBrowserState(),
   workspaceEditor: emptyWorkspaceEditorState(),
+  agentCode: emptyIdeAgentCodeSnapshot(),
+  agentReviewProposalRef: null,
+  agentContextTrayOpen: false,
+  agentCodeNotice: null,
   commandPaletteOpen: false,
   commandNotice: null,
   commandBindings: null,
@@ -737,6 +764,18 @@ export const DesktopCodexHandoffRequested = defineIntent("DesktopCodexHandoffReq
 export const DesktopReviewContextRemoved = defineIntent("DesktopReviewContextRemoved", Schema.Null)
 export const DesktopEditorFileAttached = defineIntent("DesktopEditorFileAttached", Schema.Null)
 export const DesktopFileContextRemoved = defineIntent("DesktopFileContextRemoved", Schema.Null)
+export const DesktopAgentContextTrayToggled = defineIntent("DesktopAgentContextTrayToggled", Schema.Null)
+export const DesktopAgentCodeRefreshed = defineIntent("DesktopAgentCodeRefreshed", Schema.Null)
+export const DesktopAgentProposalSelected = defineIntent("DesktopAgentProposalSelected", Schema.String)
+export const DesktopAgentProposalDecisionRequested = defineIntent("DesktopAgentProposalDecisionRequested", Schema.Struct({
+  proposalRef: Schema.String,
+  disposition: Schema.Literals(["accept", "reject"]),
+  operationRefs: Schema.Array(Schema.String).check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+}))
+export const DesktopAgentProposalApplyRequested = defineIntent("DesktopAgentProposalApplyRequested", Schema.String)
+export const DesktopAgentProposalUndoRequested = defineIntent("DesktopAgentProposalUndoRequested", Schema.String)
+export const DesktopAgentCreatingTurnOpened = defineIntent("DesktopAgentCreatingTurnOpened", Schema.String)
+export const DesktopAgentBacklinkOpened = defineIntent("DesktopAgentBacklinkOpened", Schema.String)
 export const DesktopTerminalContextRemoved = defineIntent("DesktopTerminalContextRemoved", Schema.Null)
 export const DesktopPreviewAnnotationAttached = defineIntent("DesktopPreviewAnnotationAttached", Schema.Struct({
   sessionRef: Schema.String,
@@ -941,6 +980,14 @@ export const desktopShellIntents = [
   DesktopReviewContextRemoved,
   DesktopEditorFileAttached,
   DesktopFileContextRemoved,
+  DesktopAgentContextTrayToggled,
+  DesktopAgentCodeRefreshed,
+  DesktopAgentProposalSelected,
+  DesktopAgentProposalDecisionRequested,
+  DesktopAgentProposalApplyRequested,
+  DesktopAgentProposalUndoRequested,
+  DesktopAgentCreatingTurnOpened,
+  DesktopAgentBacklinkOpened,
   DesktopTerminalContextRemoved,
   DesktopPreviewAnnotationAttached,
   DesktopPreviewContextRemoved,
@@ -2136,11 +2183,14 @@ export const makeDesktopShellHandlers = (
   // Appended last (rather than inserted among the historical positional
   // params above) so every existing call site keeps compiling unchanged.
   fullAutoRunHost: FullAutoRunRendererHost = unavailableFullAutoRunRendererHost,
+  // IDE-08 host is appended to preserve every historical positional caller.
+  agentCodeHost: IdeAgentCodeRendererHost = unavailableIdeAgentCodeRendererHost,
 ): IntentHandlers<typeof desktopShellIntents> => {
   // Latest-selection-wins fence for async host reads. An older click may
   // finish later, but it must never replace the newer visible conversation.
   let selectionRevision = 0
   let renameRevision = 0
+  let agentDecisionOrdinal = 0
   const initialNavigation = currentDesktopNavigationDestination(Effect.runSync(SubscriptionRef.get(state)))
   const navigationState = Effect.runSync(
     SubscriptionRef.make<DesktopNavigationHistory>(initialDesktopNavigationHistory(initialNavigation)),
@@ -2225,6 +2275,197 @@ export const makeDesktopShellHandlers = (
     },
     workspaceHost.language ?? unavailableWorkspaceLanguageBridge,
   )
+  const publishAgentCodeResult = (
+    result: Awaited<ReturnType<typeof executeAgentCodeRendererCommand>>,
+  ) => SubscriptionRef.update(state, current => ({
+    ...current,
+    agentCode: result.snapshot,
+    agentCodeNotice: result._tag === "Succeeded" ? null : result.message,
+  }))
+  const refreshAgentCode = Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    let snapshot = yield* Effect.promise(() => loadAgentCodeRendererSnapshot(agentCodeHost))
+    let notice: string | null = null
+    const cachedAttachment = current.agentCode.attachment
+    const cachedManifest = current.agentCode.manifests.at(-1) ?? null
+    if (snapshot.attachment === null && cachedAttachment !== null && cachedManifest !== null) {
+      // A legitimate workspace-service generation handoff can install a fresh
+      // main-owned host after the renderer has already assembled disclosure.
+      // Replay only the schema-decoded exact attachment and manifest; main
+      // still checks the current grant, and the service still fences every
+      // generation/ref/byte mismatch before restoring continuity.
+      const attached = yield* Effect.promise(() => executeAgentCodeRendererCommand(agentCodeHost, {
+        _tag: "Attach",
+        attachment: cachedAttachment,
+      }))
+      if (attached._tag === "Succeeded") {
+        const manifested = yield* Effect.promise(() => executeAgentCodeRendererCommand(agentCodeHost, {
+          _tag: "AssembleManifest",
+          input: {
+            manifest: cachedManifest,
+            expectedAttachmentGeneration: cachedAttachment.attachmentGeneration,
+          },
+        }))
+        snapshot = manifested.snapshot
+        if (manifested._tag === "Refused") notice = manifested.message
+      } else {
+        snapshot = attached.snapshot
+        notice = attached.message
+      }
+    }
+    yield* SubscriptionRef.update(state, latest => ({ ...latest, agentCode: snapshot, agentCodeNotice: notice }))
+  })
+  const assembleAgentContextForAttachedFile = Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const assembly = yield* Effect.promise(() => assembleActiveFileAgentManifest(current, new Date().toISOString()).then(
+      assembled => ({ ok: true as const, assembled }),
+      cause => ({
+        ok: false as const,
+        message: cause instanceof Error ? cause.message.slice(0, 400) : "The context manifest could not be assembled.",
+      }),
+    ))
+    if (!assembly.ok) {
+      yield* SubscriptionRef.update(state, latest => ({ ...latest, agentCodeNotice: `Agent context assembly failed: ${assembly.message}` }))
+      return
+    }
+    const assembled = assembly.assembled
+    if (assembled === null) {
+      yield* SubscriptionRef.update(state, latest => ({
+        ...latest,
+        agentCodeNotice: current.composerFileContext === null
+          ? "Agent context was not attached because no current editor file was available."
+          : "Agent context was not attached because the current workspace grant was unavailable.",
+      }))
+      return
+    }
+    yield* SubscriptionRef.update(state, latest => ({ ...latest, agentCodeNotice: "Agent context assembled; attaching workspace…" }))
+    const attached = yield* Effect.promise(() => executeAgentCodeRendererCommand(agentCodeHost, {
+      _tag: "Attach",
+      attachment: assembled.attachment,
+    }))
+    yield* publishAgentCodeResult(attached)
+    if (attached._tag !== "Succeeded") return
+    yield* SubscriptionRef.update(state, latest => ({ ...latest, agentCodeNotice: "Agent workspace attached; admitting manifest…" }))
+    const manifested = yield* Effect.promise(() => executeAgentCodeRendererCommand(agentCodeHost, {
+      _tag: "AssembleManifest",
+      input: {
+        manifest: assembled.manifest,
+        expectedAttachmentGeneration: assembled.attachment.attachmentGeneration,
+      },
+    }))
+    yield* publishAgentCodeResult(manifested)
+  })
+  const selectAgentProposal = (proposalRef: string) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    if (proposalRef === "") {
+      yield* SubscriptionRef.update(state, latest => ({ ...latest, agentReviewProposalRef: null }))
+      return
+    }
+    const proposal = current.agentCode.proposals.find(candidate => candidate.proposalRef === proposalRef)
+    if (proposal === undefined) return
+    if (proposal.lifecycle._tag === "Pending") {
+      const reviewed = yield* Effect.promise(() => executeAgentCodeRendererCommand(agentCodeHost, {
+        _tag: "BeginReview",
+        input: {
+          proposalRef: proposal.proposalRef,
+          reviewRef: IdeAgentReviewRefSchema.make(`ide.agent-review.renderer.${++agentDecisionOrdinal}`),
+          expectedAttachmentGeneration: proposal.attachment.attachmentGeneration,
+        },
+      }))
+      yield* publishAgentCodeResult(reviewed)
+      if (reviewed._tag !== "Succeeded") return
+    }
+    yield* SubscriptionRef.update(state, latest => ({
+      ...latest,
+      workspace: "review" as const,
+      agentReviewProposalRef: proposal.proposalRef,
+      agentContextTrayOpen: false,
+    }))
+  })
+  const decideAgentProposal = (
+    proposalRef: string,
+    disposition: "accept" | "reject",
+    requestedRefs: ReadonlyArray<string>,
+  ) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const proposal = current.agentCode.proposals.find(candidate => candidate.proposalRef === proposalRef)
+    if (proposal === undefined) return
+    const operationRefs = proposal.operations
+      .filter(operation => requestedRefs.includes(operation.operationRef))
+      .map(operation => operation.operationRef)
+    if (operationRefs.length === 0) return
+    const decision = IdeAgentDecisionSchema.make({
+      decisionRef: IdeAgentDecisionRefSchema.make(`ide.agent-decision.renderer.${++agentDecisionOrdinal}`),
+      proposalRef: proposal.proposalRef,
+      decidedAt: IdeTimestampSchema.make(new Date().toISOString()),
+      disposition,
+      operationRefs,
+      reason: disposition === "reject" ? "Owner rejected the selected proposal operations." : null,
+    })
+    const result = yield* Effect.promise(() => executeAgentCodeRendererCommand(agentCodeHost, {
+      _tag: "Decide",
+      decision,
+      expectedAttachmentGeneration: proposal.attachment.attachmentGeneration,
+    }))
+    yield* publishAgentCodeResult(result)
+    if (result._tag === "Succeeded" && disposition === "accept") {
+      const child = [...result.snapshot.proposals].reverse().find(candidate => candidate.parentProposalRef === proposal.proposalRef)
+      yield* SubscriptionRef.update(state, latest => ({
+        ...latest,
+        agentReviewProposalRef: child?.proposalRef ?? proposal.proposalRef,
+      }))
+    }
+  })
+  const applyAgentProposal = (proposalRef: string) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const proposal = current.agentCode.proposals.find(candidate => candidate.proposalRef === proposalRef)
+    if (proposal === undefined || proposal.lifecycle._tag !== "Accepted") return
+    const acceptedLifecycle = proposal.lifecycle
+    const dirtyPath = proposal.operations.find(operation => current.workspaceEditor.tabs.some(
+      tab => tab.pathRef === operation.pathRef && workspaceEditorTabDirty(tab),
+    ))?.pathRef
+    if (dirtyPath !== undefined) {
+      yield* SubscriptionRef.update(state, latest => ({
+        ...latest,
+        agentCodeNotice: `${dirtyPath} has an unsaved draft. Save, discard, or rebase before applying this exact proposal.`,
+      }))
+      return
+    }
+    const result = yield* Effect.promise(() => executeAgentCodeRendererCommand(agentCodeHost, {
+      _tag: "Apply",
+      input: {
+        proposalRef: proposal.proposalRef,
+        operationRefs: acceptedLifecycle.acceptedOperationRefs,
+        expectedAttachmentGeneration: proposal.attachment.attachmentGeneration,
+        expectedProposalRevision: current.agentCode.revision,
+      },
+    }))
+    yield* publishAgentCodeResult(result)
+    if (result._tag === "Succeeded") {
+      workspaceHost.browser?.refreshWorkspace()
+      yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
+    }
+  })
+  const undoAgentProposal = (proposalRef: string) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const proposal = current.agentCode.proposals.find(candidate => candidate.proposalRef === proposalRef)
+    if (proposal === undefined || proposal.lifecycle._tag !== "Applied") return
+    const appliedLifecycle = proposal.lifecycle
+    const result = yield* Effect.promise(() => executeAgentCodeRendererCommand(agentCodeHost, {
+      _tag: "Undo",
+      input: {
+        proposalRef: proposal.proposalRef,
+        applyRef: appliedLifecycle.applyRef,
+        checkpointRef: appliedLifecycle.checkpointRef,
+        expectedAttachmentGeneration: proposal.attachment.attachmentGeneration,
+      },
+    }))
+    yield* publishAgentCodeResult(result)
+    if (result._tag === "Succeeded") {
+      workspaceHost.browser?.refreshWorkspace()
+      yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
+    }
+  })
   const synchronizeWorkingDirectory = Effect.gen(function* () {
     const workingDirectory = yield* Effect.promise(
       () => workspaceHost.workingDirectory?.() ?? Promise.resolve(null),
@@ -2924,6 +3165,7 @@ export const makeDesktopShellHandlers = (
       yield* recoverWorkspaceEditor
     }
     if (workspace === "review") {
+      yield* refreshAgentCode
       yield* SubscriptionRef.update(state, current => ({ ...current, git: { ...current.git, causalItemRef: null } }))
       yield* refreshGitPanel(state, gitBridge)
     }
@@ -3134,8 +3376,8 @@ export const makeDesktopShellHandlers = (
     SubscriptionRef.update(state, (current) => withInput(current, value)),
   DesktopReviewContextRemoved: () =>
     SubscriptionRef.update(state, current => ({ ...current, composerReviewContext: null })),
-  DesktopEditorFileAttached: () =>
-    SubscriptionRef.update(state, current => {
+  DesktopEditorFileAttached: () => Effect.gen(function* () {
+    yield* SubscriptionRef.update(state, current => {
       const tab = current.workspaceEditor.tabs.find(
         candidate => candidate.pathRef === current.workspaceEditor.activePathRef,
       )
@@ -3152,11 +3394,70 @@ export const makeDesktopShellHandlers = (
           content: tab.draft,
           dirty: workspaceEditorTabDirty(tab),
         },
-        workspace: "chat" as const,
+        agentCodeNotice: "Attaching agent context…",
       }
-    }),
+    })
+    yield* assembleAgentContextForAttachedFile
+    // Do not tear down the Files projection until its exact context manifest
+    // has reached main. Navigation can replace renderer/workspace services;
+    // assembling first prevents the user-visible attachment from racing that
+    // lifecycle handoff.
+    yield* SubscriptionRef.update(state, current => ({ ...current, workspace: "chat" as const }))
+  }),
   DesktopFileContextRemoved: () =>
     SubscriptionRef.update(state, current => ({ ...current, composerFileContext: null })),
+  DesktopAgentContextTrayToggled: () =>
+    SubscriptionRef.update(state, current => ({ ...current, agentContextTrayOpen: !current.agentContextTrayOpen })),
+  DesktopAgentCodeRefreshed: () => refreshAgentCode,
+  DesktopAgentProposalSelected: proposalRef => selectAgentProposal(proposalRef),
+  DesktopAgentProposalDecisionRequested: ({ proposalRef, disposition, operationRefs }) =>
+    decideAgentProposal(proposalRef, disposition, operationRefs),
+  DesktopAgentProposalApplyRequested: proposalRef => applyAgentProposal(proposalRef),
+  DesktopAgentProposalUndoRequested: proposalRef => undoAgentProposal(proposalRef),
+  DesktopAgentCreatingTurnOpened: proposalRef => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const threadRef = current.agentCode.proposals.find(candidate => candidate.proposalRef === proposalRef)?.conversationThreadRef ?? null
+    if (threadRef === null || !current.threads.some(thread => thread.id === threadRef)) {
+      yield* SubscriptionRef.update(state, latest => ({
+        ...latest,
+        agentCodeNotice: "The creating conversation is no longer available on this device.",
+      }))
+      return
+    }
+    const revision = ++selectionRevision
+    const committedThreadRef = yield* commitLocalSession(threadRef, revision)
+    if (committedThreadRef === null || revision !== selectionRevision) return
+    const selected = yield* SubscriptionRef.get(state)
+    yield* recordNavigation({
+      kind: "local_session",
+      threadRef: committedThreadRef,
+      title: selected.threads.find(thread => thread.id === committedThreadRef)?.title || "Creating conversation",
+    })
+  }),
+  DesktopAgentBacklinkOpened: backlinkRef => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const backlink = current.agentCode.backlinks.find(candidate => candidate.backlinkRef === backlinkRef)
+    if (backlink === undefined) return
+    const resolution = backlink.resolution
+    if (resolution._tag !== "Current") {
+      const notice = resolution._tag === "Historical"
+        ? "This link resolves to a retained historical checkpoint in proposal review."
+        : `This code link is unavailable: ${resolution.reason}.`
+      yield* SubscriptionRef.update(state, latest => ({
+        ...latest,
+        agentCodeNotice: notice,
+        workspace: "review" as const,
+        agentReviewProposalRef: backlink.proposalRef,
+      }))
+      return
+    }
+    if (current.workspaceBrowser.grantRef === null) return
+    yield* SubscriptionRef.update(state, latest => ({ ...latest, workspace: "files" as const }))
+    yield* workspaceEditorHandlers.WorkspaceEditorOpenRequested({
+      grantRef: current.workspaceBrowser.grantRef,
+      pathRef: resolution.pathRef,
+    })
+  }),
   DesktopTerminalContextRemoved: () =>
     SubscriptionRef.update(state, current => ({ ...current, composerTerminalContext: null })),
   DesktopPreviewAnnotationAttached: ({ sessionRef, port, comment, viewport }) =>
@@ -3922,6 +4223,7 @@ export const makeDesktopShellHandlers = (
       const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
       yield* SubscriptionRef.update(state, current => ({ ...current, codingCatalog }))
       yield* workspaceBrowserHandlers.WorkspaceBrowserOpened()
+      yield* refreshAgentCode
       yield* recoverWorkspaceEditor
     }),
   DesktopNavigationBackRequested: () => traverseNavigation("back"),

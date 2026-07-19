@@ -85,6 +85,7 @@ import {
   LexicalComposerEditor,
   type LexicalComposerEditorHandle,
 } from "./lexical-composer-editor.tsx";
+import { AgentContextTray } from "./react-agent-context.tsx";
 
 const composerIconNames = {
   stop: "Stop",
@@ -847,6 +848,7 @@ export const ReactComposer = ({
         </DesktopComposerButton>
       </DesktopComposerBar>
       </DesktopComposerInput>
+      <AgentContextTray state={state} report={report} />
     </DesktopComposerFrame>
   );
 };

@@ -442,6 +442,12 @@ import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
 import { openAdmittedDesktopWorkspace } from "./desktop-workspace-admission.ts"
 import {
+  DesktopIdeAgentCodeCommandChannel,
+  DesktopIdeAgentCodeSnapshotChannel,
+  emptyIdeAgentCodeSnapshot,
+} from "./ide/agent-code-contract.ts"
+import { openIdeAgentCodeHost, type IdeAgentCodeHost } from "./ide/agent-code-host.ts"
+import {
   DesktopWorkspaceLanguageCancelChannel,
   DesktopWorkspaceLanguageRequestChannel,
   DesktopWorkspaceLanguageStopChannel,
@@ -1699,6 +1705,41 @@ hostLifecycle.replaceVoice(createDesktopVoiceHost({
   media: voiceMedia,
 }))
 const workspaceSearchRegistry = makeWorkspaceSearchRegistry(() => hostLifecycle.workspace())
+let ideAgentCodeHostEntry: Readonly<{
+  workspace: NonNullable<ReturnType<typeof hostLifecycle.workspace>>
+  host: Promise<IdeAgentCodeHost>
+}> | null = null
+let ideAgentCodeHostTransition: Promise<void> = Promise.resolve()
+const currentIdeAgentCodeHost = (): Promise<IdeAgentCodeHost | null> => {
+  const result = ideAgentCodeHostTransition.then(async () => {
+    const requestedWorkspace = hostLifecycle.workspace()
+    if (requestedWorkspace !== null && ideAgentCodeHostEntry?.workspace === requestedWorkspace) {
+      return ideAgentCodeHostEntry.host
+    }
+    const previous = ideAgentCodeHostEntry
+    ideAgentCodeHostEntry = null
+    // Workspace activation may replace an equivalent service more than once
+    // while Finder-open/catalog hydration settles. Flush the predecessor
+    // before the successor loads the same root-scoped state; fire-and-forget
+    // disposal loses the exact attachment/proposal generation in that race.
+    if (previous !== null) await (await previous.host).dispose()
+    const workspace = hostLifecycle.workspace()
+    if (workspace === null) return null
+    const rootDigest = createHash("sha256").update(workspace.summary().root).digest("hex")
+    const host = openIdeAgentCodeHost(workspace, {
+      persistencePath: path.join(app.getPath("userData"), "ide-agent-code", `${rootDigest}.json`),
+    })
+    ideAgentCodeHostEntry = { workspace, host }
+    return host
+  })
+  ideAgentCodeHostTransition = result.then(() => undefined, () => undefined)
+  return result
+}
+const disposeIdeAgentCodeHost = (): void => {
+  const entry = ideAgentCodeHostEntry
+  ideAgentCodeHostEntry = null
+  if (entry !== null) void entry.host.then(host => host.dispose())
+}
 const workspaceSearchOwnerRef = (webContentsId: number): string =>
   `webContents.${webContentsId}`
 const requestedWorkspaceChangeWindows = new Set<number>()
@@ -1846,6 +1887,12 @@ const revokeOutgoingWorkspaceTerminals = (): void => {
 const activateCodingCatalogRoot = () => {
   const root = hostLifecycle.sync()?.codingCatalog()?.selectedRoot() ?? null
   if (root !== null) {
+    // Catalog publication and renderer hydration can select the already-active
+    // root again. Replacing that service would revoke its grant while editor,
+    // language, and agent-code projections still hold the exact admitted
+    // generation. Preserve the current authority when the canonical root is
+    // unchanged; real root switches still revoke and rebuild below.
+    if (hostLifecycle.workspace()?.summary().root === root) return
     revokeOutgoingWorkspaceTerminals()
     if (!installAdmittedCodingWorkspace(root)) {
       hostLifecycle.replaceWorkspace(openSelectedWorkspace(root))
@@ -2044,6 +2091,29 @@ ipcMain.handle(DesktopWorkspaceDocumentSaveAsChannel, (event, value: unknown) =>
   return request === null || workspace === null
     ? { state: "unavailable", reason: "unavailable", message: "Choose a workspace folder before using Save As." }
     : workspace.saveDocumentAs(request)
+})
+ipcMain.handle(DesktopIdeAgentCodeSnapshotChannel, async (event) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return emptyIdeAgentCodeSnapshot()
+  return (await currentIdeAgentCodeHost())?.snapshot() ?? emptyIdeAgentCodeSnapshot()
+})
+ipcMain.handle(DesktopIdeAgentCodeCommandChannel, async (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) {
+    return {
+      _tag: "Refused",
+      reason: "unavailable",
+      message: "The agent-code request did not come from the trusted Desktop renderer.",
+      snapshot: emptyIdeAgentCodeSnapshot(),
+    }
+  }
+  const host = await currentIdeAgentCodeHost()
+  return host === null
+    ? {
+        _tag: "Refused",
+        reason: "unattached",
+        message: "Choose an admitted coding workspace before using agent proposals.",
+        snapshot: emptyIdeAgentCodeSnapshot(),
+      }
+    : host.command(value)
 })
 ipcMain.handle(DesktopWorkspaceLanguageRequestChannel, async (event, value: unknown) => {
   const request = decodeIdeLanguageRequest(value)
@@ -8463,6 +8533,7 @@ app.on("before-quit", () => {
   for (const flush of localTurnFlushers) flush()
   localTurnFlushers.clear()
   workspaceSearchRegistry.dispose()
+  disposeIdeAgentCodeHost()
   terminalHost.dispose()
   hostLifecycle.dispose()
   providerAccounts.dispose()

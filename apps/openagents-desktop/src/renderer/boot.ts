@@ -148,6 +148,11 @@ import { desktopCommandShortcutMatches } from "./command-shortcuts.ts"
 import { decodeDesktopPreviewChangeEvent } from "../dev-preview-contract.ts"
 import { desktopPreviewReloadRisk } from "./dev-preview.ts"
 import { decodeDesktopLaunchContext } from "../desktop-launch-context.ts"
+import {
+  loadAgentCodeRendererSnapshot,
+  unavailableIdeAgentCodeRendererHost,
+  type IdeAgentCodeRendererHost,
+} from "./ide/agent-code.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -182,6 +187,10 @@ type DesktopBridge = Readonly<{
   sendMessage?: (value: unknown) => Promise<unknown>
   chooseWorkspace?: () => Promise<unknown>
   workingDirectory?: () => Promise<unknown>
+  ideAgentCode?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    command?: (value: unknown) => Promise<unknown>
+  }>
   productSpec?: Readonly<{
     open?: (value: unknown) => Promise<unknown>
     create?: (value: unknown) => Promise<unknown>
@@ -410,6 +419,11 @@ const workspaceLanguageBridge: WorkspaceLanguageBridge = {
   requestWorkspaceLanguage: value => readBridge()?.requestWorkspaceLanguage?.(value) ?? unavailableWorkspaceLanguageBridge.requestWorkspaceLanguage(value),
   cancelWorkspaceLanguage: value => readBridge()?.cancelWorkspaceLanguage?.(value) ?? unavailableWorkspaceLanguageBridge.cancelWorkspaceLanguage(value),
   stopWorkspaceLanguage: value => readBridge()?.stopWorkspaceLanguage?.(value) ?? unavailableWorkspaceLanguageBridge.stopWorkspaceLanguage(value),
+}
+
+const ideAgentCodeRendererHost: IdeAgentCodeRendererHost = {
+  snapshot: () => readBridge()?.ideAgentCode?.snapshot?.() ?? unavailableIdeAgentCodeRendererHost.snapshot(),
+  command: value => readBridge()?.ideAgentCode?.command?.(value) ?? unavailableIdeAgentCodeRendererHost.command(value),
 }
 
 /**
@@ -710,6 +724,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       formatShellTimestamp(new Date()),
       documentLaunch ? "files" : "chat",
     ))
+    const initialAgentCode = yield* Effect.promise(() =>
+      loadAgentCodeRendererSnapshot(ideAgentCodeRendererHost).catch(() =>
+        loadAgentCodeRendererSnapshot(unavailableIdeAgentCodeRendererHost)))
+    yield* SubscriptionRef.update(state, current => ({ ...current, agentCode: initialAgentCode }))
     const program = makeViewProgramFromState(state, desktopShellView)
     document.documentElement.dataset.desktopPlatform = bridge?.platform ?? "unknown"
     if (typeof bridge?.localTurnRecovery?.onUpdate === "function") {
@@ -1276,7 +1294,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       } satisfies AcpProviderSettingsBridge, {
         snapshot: () => readBridge()?.codexExperimental?.snapshot?.() ?? Promise.resolve(null),
         request: value => readBridge()?.codexExperimental?.request?.(value) ?? Promise.resolve({ ok: false, reason: "unavailable" }),
-      }, fullAutoRunHost),
+      }, fullAutoRunHost, ideAgentCodeRendererHost),
     )
     if (!documentLaunch && typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

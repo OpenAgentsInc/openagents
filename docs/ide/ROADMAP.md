@@ -102,17 +102,17 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 
 | Surface                     | Current truth                                                                                                                 | First packet that closes the core gap      |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| source editor               | IDE-03/04 ship lazy packaged Monaco over the canonical Effect document/recovery service; IDE-06 adds exact-generation local language intelligence; IDE-07 accepts the integrated packaged daily journey | IDE-08+ adds agent/run/SCM/platform breadth |
+| source editor               | IDE-03/04 ship lazy packaged Monaco over the canonical Effect document/recovery service; IDE-06 adds exact-generation local language intelligence; IDE-07 accepts the integrated packaged daily journey; IDE-08 adds the exact agent proposal/apply graph | IDE-09+ adds inline AI/run/SCM/platform breadth |
 | Effect Native editor seam   | production uses the app-local React Monaco host; `makeStubCodeEditorDriver()` is an explicitly selected compatibility renderer only | later renderer convergence                 |
 | repository tree             | IDE-02/04 ship the complete Effect-owned, generation-fenced Pierre projection plus mouse/keyboard navigation, reveal, and durable workbench integration | IDE-02 and IDE-04 delivered                |
-| review                      | IDE-05 ships one eight-variant versioned review source and both production React surfaces render through the projection-only `@pierre/diffs@1.2.12` adapter | IDE-08 adds real proposals; IDE-12 adds safe SCM mutation |
+| review                      | IDE-05 ships one eight-variant versioned review source; IDE-08 routes real single/aggregate agent proposals through the same projection-only `@pierre/diffs@1.2.12` adapter | IDE-12 adds safe SCM mutation |
 | themes                      | The owner-selected Khala editor projection now mounts from native window/first paint through chrome, Pierre, Monaco, and terminal; Tokyo Night remains the built-in fallback | IDE-18 adds broader user-selectable modes  |
 | Vim                         | IDE-03/04 ship the persistent, off-by-default first-party controller with visible modes, durable keymap inspection, conflict reporting, scoped teardown, and IDE-07 packaged acceptance | later mapping breadth remains ledgered     |
 | language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared Problems/Outline/breadcrumb/location/editor evidence, cancellation, restart, and stale-result refusal; IDE-07 accepts the integrated path | later languages remain explicit gaps       |
 | terminal screen             | typed child-process terminal exists; no admitted xterm/PTY projection                                                         | IDE-10                                     |
 | tasks/tests/debug           | useful substrate is fragmented; no one project evidence graph                                                                 | IDE-10/11                                  |
 | integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph  | IDE-00 onward                              |
-| agent-to-code loop          | no inspectable context manifest plus version-bound proposal/review/apply/backlink loop in the editor                          | IDE-08                                     |
+| agent-to-code loop          | IDE-08 ships exact attachment, eleven-source disclosure, proposal/Pierre review, canonical apply/rebase/undo, backlinks, and host-only post-image evidence; broader delivery remains explicit | IDE-08 delivered locally; IDE-12 adds delivery |
 | inline AI editing           | no completion, next-edit, inline transform, or editor-native multi-file apply                                                 | IDE-09                                     |
 | managed agent sandbox       | GCP, Agent Computer, Firecracker, workroom, and placement seams exist, but no one durable SandboxResource, admitted Box-compatible facade, or IDE/Sarah create-to-cleanup journey is proven | SBX-00..09, then IDE-13/17                 |
 | full Cursor parity          | the ProductSpec ledger is a target, not a release fact                                                                        | IDE-19                                     |
@@ -633,6 +633,12 @@ Cursor parity. Every later gap remains visible.
 
 ### IDE-08 — Make agents native to the code graph
 
+Delivered by #9036. The implementation and exact evidence contract are in
+`docs/ide/2026-07-19-ide-08-agent-native-code-graph.md`. Closing the packet
+does not create the “integrated OpenAgents agent IDE” rung; IDE-09 through
+IDE-12 remain required for that group claim, and the ProductSpec AssuranceSpec
+bindings remain proposed/unreviewed.
+
 Bind a session to an exact project/worktree without granting implicit tools.
 Add an inspectable context tray for files, ranges, symbols, diagnostics,
 changes, rules, skills, retrieval reasons, destination, bytes/tokens, and
@@ -847,13 +853,13 @@ It maps every required Cursor family to its main closure packets.
 | --------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------- |
 | product shells              | agent-first Desktop plus Monaco, complete navigation/configuration, versioned Pierre review, and the IDE-07 packaged basic-IDE gate exist | IDE-17                    |
 | editor core                 | Effect documents/recovery, complete Pierre tree, Monaco, Khala editor default with Tokyo Night fallback, built-in Vim, daily workbench, eight-class review, TypeScript intelligence, and integrated IDE-07 acceptance exist; later run/SCM/theme breadth remains | IDE-10–12/18              |
-| AI editing                  | harness editing exists outside a complete editor-native loop                                     | IDE-08/09                 |
+| AI editing                  | IDE-08 provides the exact proposal/review/apply substrate; completion, next edit, inline transforms, and quality/latency evidence are still absent | IDE-09                    |
 | repository intelligence     | bounded path/content search; no complete symbol/semantic custody stack                           | IDE-02/06/09/18           |
 | conversations               | durable multi-provider/session substrate; parity search/branch/export lifecycle remains ledgered | IDE-17/18                 |
 | agent modes                 | agent runtime/mode substrate exists; integrated policy/result UX incomplete                      | IDE-08/17                 |
 | agent tools                 | broad typed tool substrate; IDE/browser/computer integration incomplete                          | IDE-08/10/12/16           |
 | parallel agency             | Full Auto/subagent/worktree foundations exist; IDE comparison/fan-in incomplete                  | IDE-12/17                 |
-| recovery and memory         | document recovery and stale-fenced review are inspectable; the agent proposal/memory lifecycle remains incomplete | IDE-08/18                 |
+| recovery and memory         | IDE-08 recovers pending/reviewed/partial/applied/undoable proposal state and expires private preimages; full inventory/export/deletion convergence remains absent | IDE-18                    |
 | background and cloud agents | portable/fleet foundations exist; project-capability symmetry is incomplete                      | IDE-13/17                 |
 | automations                 | Full Auto foundation exists; full trigger/review IDE integration is incomplete                   | IDE-17                    |
 | remote control              | cross-surface contracts exist; complete project review/continuation is incomplete                | IDE-13/14/17              |
@@ -944,19 +950,18 @@ The release-blocking integrated corpus must eventually cover:
 IDE-00 through IDE-07 are implemented and closed with exact issue receipts.
 IDE-07 accepted only the “OpenAgents basic IDE” rung for its exact macOS arm64
 candidate; it preserved the TypeScript-only project-language limit, every
-IDE-08..19 gap, and the epic's separate owner-acceptance boundary.
+IDE-09..19 gap, and the epic's separate owner-acceptance boundary.
 
-The next packet is IDE-08
-[#9036](https://github.com/OpenAgentsInc/openagents/issues/9036): make agents native to the existing project,
-document, language, and review graph through inspectable context manifests,
-exact version-bound proposals, backlinks, apply/reject/undo receipts, and
-post-apply evidence without granting a harness editor authority. IDE-09 and
-IDE-10 may proceed only at their documented dependency boundaries; neither may
-smuggle proposal or project authority into Monaco, xterm, a harness, or a
-native helper.
+IDE-08 is implemented and closed with its exact evidence record. The next
+packet is IDE-09: add Cursor-class completion, next-edit prediction, inline
+ask/edit/generate, selection transforms, and fast multi-file editing on the
+existing exact proposal graph, with selected/effective runtime, latency,
+cost/usage, fallback, custody, and quality disclosure. IDE-10 may proceed only
+at its documented dependency boundary; neither packet may smuggle project or
+mutation authority into Monaco, xterm, a harness, or a native helper.
 
 In parallel at P1, managed-sandbox epic
-[#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) begins with
-SBX-00 contract/assurance freeze. Its runtime packets may mature beneath the
-IDE, but SBX-06 cannot bypass IDE-08/10/12, and no managed placement claim may
-bypass SBX-09 live acceptance.
+[#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) has begun with
+its contract freeze and durable lifecycle authority. Its runtime packets may
+mature beneath the IDE, but SBX-06 cannot bypass IDE-08/10/12, and no managed
+placement claim may bypass SBX-09 live acceptance.

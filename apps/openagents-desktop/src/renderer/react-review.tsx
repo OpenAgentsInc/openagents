@@ -21,6 +21,7 @@ import type { DesktopShellState } from "./shell.ts"
 import { PierreReviewAdapter } from "../ide/pierre-diffs-adapter.tsx"
 import type { IdeReviewIntent, IdeReviewSelection } from "../ide/review-contract.ts"
 import { activeGitReviewSource } from "./ide/review-source.ts"
+import { AgentProposalList, AgentProposalReviewPanel } from "./react-agent-code.tsx"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
@@ -210,7 +211,11 @@ const ReviewBody = ({ state, report }: { readonly state: DesktopShellState; read
       identity,
     })
   }
+  if (state.agentReviewProposalRef !== null) return <div className="oa-react-review-scroll">
+    <AgentProposalReviewPanel state={state} report={report} />
+  </div>
   return <div className="oa-react-review-scroll">
+    <AgentProposalList state={state} report={report} />
     <p className="oa-react-readonly-boundary">Read-only review · no stage, discard, commit, branch, push, or terminal authority</p>
     {git.phase === "loading" || git.diffLoading ? <p role="status">Loading exact repository snapshot…</p> : null}
     {git.phase === "unavailable" ? <Alert variant="destructive"><AlertTitle>Repository review unavailable</AlertTitle><AlertDescription>{git.reason ?? "No bounded status is available."}</AlertDescription></Alert> : null}

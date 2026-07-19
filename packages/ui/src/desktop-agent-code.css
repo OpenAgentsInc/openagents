@@ -1,0 +1,80 @@
+/* IDE-08 agent-native context and proposal review. These are renderer-host
+   layouts over Effect-owned state; color and spacing remain semantic tokens. */
+.oa-react-agent-context {
+  margin: 0 var(--en-spacing-1);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceBase);
+}
+
+.oa-react-agent-context-summary,
+.oa-react-agent-proposal-heading,
+.oa-react-agent-evidence > header,
+.oa-react-agent-backlinks > header,
+.oa-react-agent-proposal-list > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-agent-context-summary > :first-child { flex: 1 1 auto; justify-content: flex-start; }
+.oa-react-agent-context-detail { display: grid; gap: var(--en-spacing-2); padding: var(--en-spacing-2); border-top: 1px solid var(--en-color-borderSubtle); }
+.oa-react-agent-context-detail > p { margin: 0; color: var(--en-color-textMuted); font-size: 12px; }
+.oa-react-agent-runtime { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-sm); background: var(--en-color-borderSubtle); }
+.oa-react-agent-runtime > span { display: grid; gap: 2px; min-width: 0; padding: var(--en-spacing-1\.5); background: var(--en-color-surfaceRaised); color: var(--en-color-textMuted); font-size: 10px; overflow-wrap: anywhere; }
+.oa-react-agent-runtime b { color: var(--en-color-textPrimary); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.oa-react-agent-context-items { display: grid; gap: var(--en-spacing-1); max-height: 240px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.oa-react-agent-context-items > li { display: grid; gap: 3px; padding: var(--en-spacing-1\.5); border-left: 2px solid var(--en-color-accent); background: var(--en-color-surfaceRaised); }
+.oa-react-agent-context-items > li[data-disposition="omitted"] { border-left-color: var(--en-color-textMuted); }
+.oa-react-agent-context-items > li > div { display: flex; align-items: center; gap: var(--en-spacing-1); min-width: 0; }
+.oa-react-agent-context-items strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.oa-react-agent-context-items small { margin-left: auto; color: var(--en-color-textMuted); font-size: 10px; }
+.oa-react-agent-context-items p { margin: 0; color: var(--en-color-textMuted); font-size: 10px; }
+.oa-react-agent-context-items dl { display: flex; flex-wrap: wrap; gap: var(--en-spacing-1) var(--en-spacing-3); margin: 0; font-size: 10px; }
+.oa-react-agent-context-items dl > div { display: flex; gap: 4px; }
+.oa-react-agent-context-items dt { color: var(--en-color-textMuted); }
+.oa-react-agent-context-items dd { margin: 0; }
+
+.oa-react-agent-proposal-list { display: grid; gap: 2px; padding: var(--en-spacing-2); border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-agent-proposal-list > button { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: var(--en-spacing-1); align-items: center; min-width: 0; padding: var(--en-spacing-1\.5); border: 0; border-radius: var(--en-radius-sm); color: var(--en-color-textPrimary); background: transparent; text-align: left; cursor: pointer; }
+.oa-react-agent-proposal-list > button:hover,
+.oa-react-agent-proposal-list > button[aria-current="true"] { background: var(--en-color-stateSelected); }
+.oa-react-agent-proposal-list > button svg { width: 14px; color: var(--en-color-accent); }
+.oa-react-agent-proposal-list > button span { display: grid; min-width: 0; }
+.oa-react-agent-proposal-list > button strong,
+.oa-react-agent-proposal-list > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-agent-proposal-list > button strong { font-size: 11px; }
+.oa-react-agent-proposal-list > button small { color: var(--en-color-textMuted); font-size: 10px; }
+
+.oa-react-agent-proposal-review { display: grid; min-width: 0; min-height: 0; gap: var(--en-spacing-2); padding: var(--en-spacing-3); overflow: auto; }
+.oa-react-agent-proposal-heading > div { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--en-spacing-1); min-width: 0; }
+.oa-react-agent-proposal-heading small { grid-column: 1 / -1; color: var(--en-color-textMuted); overflow-wrap: anywhere; }
+.oa-react-agent-operation-list { display: grid; gap: 2px; min-width: 0; margin: 0; padding: var(--en-spacing-2); border: 1px solid var(--en-color-borderSubtle); }
+.oa-react-agent-operation-list legend { padding: 0 var(--en-spacing-1); color: var(--en-color-textMuted); font-size: 10px; text-transform: uppercase; }
+.oa-react-agent-operation-list label { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: var(--en-spacing-1); padding: var(--en-spacing-1); border-radius: var(--en-radius-sm); cursor: pointer; }
+.oa-react-agent-operation-list label:hover { background: var(--en-color-stateHover); }
+.oa-react-agent-operation-list label > span { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--en-spacing-1); min-width: 0; font-size: 11px; }
+.oa-react-agent-operation-list label small { grid-column: 1 / -1; color: var(--en-color-textMuted); }
+.oa-react-agent-proposal-diff { min-height: 180px; max-height: 54vh; overflow: auto; border: 1px solid var(--en-color-borderSubtle); }
+.oa-react-agent-proposal-actions { display: flex; flex-wrap: wrap; gap: var(--en-spacing-2); }
+.oa-react-agent-lineage,
+.oa-react-agent-evidence,
+.oa-react-agent-backlinks { display: grid; gap: var(--en-spacing-1); padding: var(--en-spacing-2); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-sm); }
+.oa-react-agent-lineage p,
+.oa-react-agent-evidence p,
+.oa-react-agent-backlinks p { margin: 0; color: var(--en-color-textMuted); font-size: 11px; overflow-wrap: anywhere; }
+.oa-react-agent-evidence ol,
+.oa-react-agent-backlinks ol { display: grid; gap: var(--en-spacing-1); margin: 0; padding: 0; list-style: none; }
+.oa-react-agent-evidence li { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: var(--en-spacing-1); font-size: 11px; }
+.oa-react-agent-evidence li small { grid-column: 2; color: var(--en-color-textMuted); }
+.oa-react-agent-backlinks button { justify-content: flex-start; max-width: 100%; white-space: normal; text-align: left; }
+.oa-react-agent-proposal-empty { display: grid; place-items: center; align-content: center; min-height: 240px; padding: var(--en-spacing-6); text-align: center; }
+.oa-react-agent-proposal-empty svg { color: var(--en-color-textMuted); }
+.oa-react-agent-proposal-empty h3 { margin: var(--en-spacing-2) 0 0; }
+.oa-react-agent-proposal-empty p { max-width: 34rem; color: var(--en-color-textMuted); }
+
+@media (max-width: 760px) {
+  .oa-react-agent-runtime { grid-template-columns: 1fr; }
+  .oa-react-agent-context-items dl { display: grid; }
+}

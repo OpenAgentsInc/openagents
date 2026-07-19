@@ -15,6 +15,7 @@ import { resolveIdeMonacoEditorOptions } from "../ide/workbench-contract.ts"
 import { PierreReviewAdapter, type PierreDiffAnnotation } from "../ide/pierre-diffs-adapter.tsx"
 import type { IdeReviewIntent, IdeReviewSelection } from "../ide/review-contract.ts"
 import { activeGitReviewSource } from "./ide/review-source.ts"
+import { AgentProposalList, AgentProposalReviewPanel } from "./react-agent-code.tsx"
 import {
   languageItemsFor,
   languageResultFor,
@@ -225,6 +226,8 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
           <Button size="sm" variant="ghost" aria-pressed={editor.split} onClick={() => dispatch(report, "WorkspaceEditorSplitToggled")}><Columns2 aria-hidden="true" />Split</Button>
           {editor.workbench.groups.map((group, index) => <Button size="sm" variant={editor.workbench.focusedGroupRef === group.groupRef ? "secondary" : "ghost"} key={group.groupRef} onClick={() => dispatch(report, "WorkspaceEditorGroupFocused", group.groupRef)}>Group {index + 1}</Button>)}
           <Button size="sm" variant={editor.vimEnabled ? "default" : "outline"} aria-pressed={editor.vimEnabled} onClick={() => dispatch(report, "WorkspaceEditorVimToggled")}>{editor.vimEnabled ? "Vim on" : "Vim off"}</Button>
+          <Button size="sm" variant="outline" onClick={() => dispatch(report, "DesktopEditorFileAttached")}><FileDiff aria-hidden="true" />Add context</Button>
+          {state.agentCodeNotice === null ? null : <span role="status" aria-live="polite">{state.agentCodeNotice}</span>}
           <Button size="icon-sm" variant={settingsOpen ? "secondary" : "ghost"} aria-label="Editor settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(value => !value)}><Settings2 aria-hidden="true" /></Button>
           <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorSaveAllRequested")}>Save all</Button>
           <Button size="sm" variant="outline" disabled={tab.saveState === "saving"} onClick={() => dispatch(report, "WorkspaceEditorSaveAsStarted")}>Save As</Button>
@@ -339,6 +342,7 @@ export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopS
   }
   return <div className="oa-react-review-workbench" aria-label="Review surface">
     <aside className="oa-react-changed-files" aria-label="Changed files">
+      <AgentProposalList state={state} report={report} />
       <header><div><GitBranchLabel branch={status?.branch ?? null} /></div><Button size="icon-sm" variant="ghost" aria-label="Refresh changes" onClick={() => dispatch(report, "GitPanelRefreshRequested")}><RefreshCw aria-hidden="true" /></Button></header>
       {state.git.phase === "loading" ? <p role="status">Refreshing changes…</p>
         : state.git.phase === "unavailable" ? <p role="alert">{state.git.reason ?? "Review is unavailable."}</p>
@@ -347,7 +351,8 @@ export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopS
           </button>)}
     </aside>
     <section className="oa-react-rich-diff" aria-label="Versioned review">
-      {diff === null ? <div className="oa-react-editor-empty"><FileDiff aria-hidden="true" /><h3>Select a changed file</h3><p>Review exact host-projected hunks without Git mutation controls.</p></div> : <>
+      {state.agentReviewProposalRef !== null ? <AgentProposalReviewPanel state={state} report={report} />
+        : diff === null ? <div className="oa-react-editor-empty"><FileDiff aria-hidden="true" /><h3>Select a changed file or agent proposal</h3><p>Review exact host-projected changes before any mutation is admitted.</p></div> : <>
         <header><div><strong>{diff.path}</strong><small>{reviewSource?._tag ?? diff.source} · {diff.hunks.length} {diff.hunks.length === 1 ? "hunk" : "hunks"}</small></div><div><Button size="sm" disabled={reviewSource === null} onClick={() => dispatch(report, "GitPanelContextAttached", selection)}>Add {selection === null ? "diff" : "selection"}</Button><Button size="icon-sm" variant="ghost" aria-label="Close diff" onClick={() => dispatch(report, "GitPanelDiffClosed")}><X aria-hidden="true" /></Button></div></header>
         {reviewSource === null ? <div className="oa-react-editor-empty" role="alert"><h3>Version identity unavailable</h3><p>Refresh Files and Git status before rendering this exact diff.</p></div> : <>
           <div className="oa-react-review-source-label"><strong>{reviewSource.base.label}</strong><span aria-hidden="true"> → </span><strong>{reviewSource.target.label}</strong><small>{reviewSource.lifecycle._tag}</small></div>

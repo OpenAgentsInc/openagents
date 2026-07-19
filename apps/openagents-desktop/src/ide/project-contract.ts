@@ -371,28 +371,30 @@ export const IdeExcerptSchema = Schema.Struct({
 }).annotate({ identifier: "IdeExcerpt" });
 export type IdeExcerpt = typeof IdeExcerptSchema.Type;
 
-export const IdeProposalChangeSchema = Schema.Struct({
+// Identity-only navigation index. The mutation/review/apply authority is the
+// IDE-08 agent-code graph in agent-code-contract.ts, never this catalog row.
+export const IdeProposalIndexChangeSchema = Schema.Struct({
   fileRef: IdeFileRefSchema,
   documentRef: IdeDocumentRefSchema,
   baseDiskRevisionRef: Schema.NullOr(IdeDiskRevisionRefSchema),
   baseDocumentGeneration: IdeDocumentGenerationSchema,
   replacementExcerptRef: IdeExcerptRefSchema,
-}).annotate({ identifier: "IdeProposalChange" });
-export type IdeProposalChange = typeof IdeProposalChangeSchema.Type;
+}).annotate({ identifier: "IdeProposalIndexChange" });
+export type IdeProposalIndexChange = typeof IdeProposalIndexChangeSchema.Type;
 
-export const IdeProposalSchema = Schema.Struct({
+export const IdeProposalIndexEntrySchema = Schema.Struct({
   proposalRef: IdeProposalRefSchema,
   projectRef: IdeProjectRefSchema,
   rootRef: IdeRootRefSchema,
   worktreeRef: IdeWorktreeRefSchema,
   attachmentGeneration: IdeAttachmentGenerationSchema,
   createdAt: IdeTimestampSchema,
-  changes: Schema.Array(IdeProposalChangeSchema).check(
+  changes: Schema.Array(IdeProposalIndexChangeSchema).check(
     Schema.isMinLength(1),
     Schema.isMaxLength(200),
   ),
-}).annotate({ identifier: "IdeProposal" });
-export type IdeProposal = typeof IdeProposalSchema.Type;
+}).annotate({ identifier: "IdeProposalIndexEntry" });
+export type IdeProposalIndexEntry = typeof IdeProposalIndexEntrySchema.Type;
 
 export const IdeReviewActionSchema = Schema.Literals([
   "open",
@@ -583,7 +585,7 @@ export const IdeProjectSnapshotSchema = Schema.Struct({
   gitSnapshotRef: Schema.NullOr(IdeGitSnapshotRefSchema),
   documents: Schema.Array(IdeDocumentSnapshotSchema).check(Schema.isMaxLength(256)),
   excerpts: Schema.Array(IdeExcerptSchema).check(Schema.isMaxLength(1_000)),
-  proposals: Schema.Array(IdeProposalSchema).check(Schema.isMaxLength(200)),
+  proposals: Schema.Array(IdeProposalIndexEntrySchema).check(Schema.isMaxLength(200)),
   capabilities: Schema.Array(IdeCapabilitySnapshotSchema).check(Schema.isMaxLength(64)),
   navigation: Schema.Array(IdeNavigationTargetSchema).check(Schema.isMaxLength(200)),
   reviewSources: Schema.Array(IdeReviewSourceSchema).check(Schema.isMaxLength(200)),

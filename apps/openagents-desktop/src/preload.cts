@@ -115,6 +115,14 @@ import {
   decodeIdeLanguageStopResponse,
   decodeIdeLanguageStopRequest,
 } from "./ide/language-contract.ts"
+import {
+  DesktopIdeAgentCodeCommandChannel,
+  DesktopIdeAgentCodeSnapshotChannel,
+  decodeIdeAgentCodeCommand,
+  decodeIdeAgentCodeCommandResult,
+  decodeIdeAgentCodeSnapshot,
+  emptyIdeAgentCodeSnapshot,
+} from "./ide/agent-code-contract.ts"
 import { desktopLaunchContextFromArgv } from "./desktop-launch-context.ts"
 import { invokeDesktopThreadExportWrite } from "./thread-export-bridge-contract.ts"
 import { invokeDesktopThreadExportCreate } from "./thread-export-create-bridge-contract.ts"
@@ -393,6 +401,30 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   toggleFullScreen: async (): Promise<boolean> => {
     const result = await ipcRenderer.invoke(DesktopWindowFullscreenChannel)
     return result === true
+  },
+  ideAgentCode: {
+    snapshot: async () => decodeIdeAgentCodeSnapshot(
+      await ipcRenderer.invoke(DesktopIdeAgentCodeSnapshotChannel),
+    ) ?? emptyIdeAgentCodeSnapshot(),
+    command: async (value: unknown) => {
+      const command = decodeIdeAgentCodeCommand(value)
+      if (command === null) {
+        return {
+          _tag: "Refused",
+          reason: "invalid_input",
+          message: "The agent-code command is invalid.",
+          snapshot: emptyIdeAgentCodeSnapshot(),
+        }
+      }
+      return decodeIdeAgentCodeCommandResult(
+        await ipcRenderer.invoke(DesktopIdeAgentCodeCommandChannel, command),
+      ) ?? {
+        _tag: "Refused",
+        reason: "unavailable",
+        message: "The agent-code response is invalid.",
+        snapshot: emptyIdeAgentCodeSnapshot(),
+      }
+    },
   },
   runtimeRequest: async (value: unknown) => {
     const request = decodeDesktopRuntimeGatewayRequest(value)
