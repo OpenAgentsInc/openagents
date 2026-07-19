@@ -39,6 +39,27 @@ This is not a VS Code fork. It is VS Code-level basic workflow parity built from
 a stock editor engine, Pierre's focused projection libraries, and OpenAgents'
 typed authority plane.
 
+## Owner-directed first delivery: Command-E Files sidebar
+
+The first deliverable is deliberately narrower than Editor mode: **Command-E**
+on macOS (**Control-E** elsewhere) toggles the existing Files tree for the
+current selected coding session/worktree in the existing right sidebar. This
+uses the grant-scoped workspace browser and current surface manager already in
+Desktop. It does not wait for Monaco, Pierre, the new path index, or maximized
+Editor composition.
+
+The ordered implementation ledger is:
+
+1. [#9006](https://github.com/OpenAgentsInc/openagents/issues/9006) admits the
+   canonical command binding, pure surface transition, invariants, and behavior
+   contract.
+2. [#9007](https://github.com/OpenAgentsInc/openagents/issues/9007) wires the
+   effective shortcut to the mounted right sidebar, proves current-worktree
+   scope and toggle behavior, and records the packaged verification boundary.
+
+This quick-files slice is a prerequisite interaction rung, not a substitute
+for IDE-00 through IDE-07. The larger plan continues after the two issues land.
+
 ## Exact evidence pins
 
 The source checkouts were clean and synced before this plan was written.

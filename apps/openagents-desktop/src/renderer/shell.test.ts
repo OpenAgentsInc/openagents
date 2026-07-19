@@ -4557,6 +4557,16 @@ describe("EP250 window + sidebar owner contracts", () => {
     expect(entry?.defaultBindings).toEqual(["Meta+F", "Control+F"])
   })
 
+  test("workspace.files command contract carries the Meta+E/Control+E defaults", () => {
+    const entry = desktopCanonicalCommandRegistry.find((command) => command.id === "workspace.files")
+    expect(entry).toMatchObject({
+      label: "Toggle Files",
+      intentName: "DesktopWorkspaceSelected",
+      defaultBindings: ["Meta+E", "Control+E"],
+      palette: true,
+    })
+  })
+
   test("composer send and stop use canonical command identities", () => {
     expect(desktopCanonicalCommandRegistry.find(command => command.id === "chat.send")).toMatchObject({
       intentName: "DesktopNoteSubmitted",

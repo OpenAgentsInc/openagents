@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.4",
+    version: "2026-07-18.1",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
@@ -4918,6 +4918,52 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop renderer full-auto workspace/surface suites, behavior-contract validation, and Desktop typecheck in the normal test sweep.",
+      },
+      {
+        contractId: "openagents_desktop.workspace.files_sidebar_command_toggle.v1",
+        state: "pending",
+        surface: "openagents-desktop",
+        productArea: "Desktop current-worktree Files sidebar",
+        enforcementTier: "test-sweep",
+        blockerRefs: ["github:OpenAgentsInc/openagents#9007"],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-18" },
+        statement:
+          "In OpenAgents Desktop, Command-E toggles the tree of the current working directory in the right sidebar.",
+        authorityBoundary:
+          "The canonical workspace.files command owns Meta+E on macOS and Control+E elsewhere. It toggles only the existing right-side Files presentation for the currently selected coding session and its already-admitted WorkContext: closed opens Files, active Files closes, and another active workbench surface yields focus to Files without losing its tab. The shortcut, palette row, and visible controls converge on typed Desktop command and workspace intents. This adds no renderer filesystem access, absolute-root disclosure, ambient cwd inference, Git/process authority, Monaco/Pierre dependency, or new workspace grant.",
+        evidenceRefs: [
+          "docs/ide/2026-07-18-openagents-desktop-basic-ide-vscode-pierre-plan.md",
+          "github:OpenAgentsInc/openagents#9006",
+          "github:OpenAgentsInc/openagents#9007",
+        ],
+        oracles: [
+          {
+            id: "openagents_desktop.workspace.files_sidebar_command_toggle.registry",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves workspace.files remains the canonical palette command and carries Meta+E/Control+E defaults.",
+          },
+          {
+            id: "openagents_desktop.workspace.files_sidebar_command_toggle.transition",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/surface-layout.test.ts",
+            description:
+              "Proves the bounded presentation reducer opens Files from closed, closes active Files, and activates Files while retaining another surface tab.",
+          },
+          {
+            id: "openagents_desktop.workspace.files_sidebar_command_toggle.dom",
+            kind: "planned",
+            mode: "dom",
+            ref: "github:OpenAgentsInc/openagents#9007",
+            description:
+              "Follow-up wiring proves the effective shortcut toggles the mounted current-worktree Files sidebar without intercepting editable content.",
+          },
+        ],
+        verification:
+          "Issue #9006 admits the registry and pure transition. Issue #9007 wires and verifies the mounted shortcut path before this first delivery is complete.",
       },
     ],
   };

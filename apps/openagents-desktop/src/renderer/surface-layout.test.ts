@@ -14,6 +14,17 @@ describe("desktop surface layout", () => {
     expect(reduceDesktopSurfaceLayout(review, { type: "close", surface: "review" })).toMatchObject({ surfaces: ["files"], active: "files" })
   })
 
+  test("toggles Files closed, open, or active without discarding other surfaces", () => {
+    const opened = reduceDesktopSurfaceLayout(defaultDesktopSurfaceLayout(), { type: "toggle", surface: "files" })
+    expect(opened).toMatchObject({ surfaces: ["files"], active: "files" })
+    expect(reduceDesktopSurfaceLayout(opened, { type: "toggle", surface: "files" }))
+      .toMatchObject({ surfaces: [], active: null })
+
+    const review = reduceDesktopSurfaceLayout(defaultDesktopSurfaceLayout(), { type: "open", surface: "review" })
+    expect(reduceDesktopSurfaceLayout(review, { type: "toggle", surface: "files" }))
+      .toMatchObject({ surfaces: ["review", "files"], active: "files" })
+  })
+
   test("supports close others, close right, close all, maximize, and bounded resize", () => {
     const both = { ...defaultDesktopSurfaceLayout(), surfaces: ["files", "review"] as const, active: "files" as const }
     expect(reduceDesktopSurfaceLayout(both, { type: "close_right", surface: "files" }).surfaces).toEqual(["files"])

@@ -14,6 +14,7 @@ export type DesktopSurfaceLayout = Readonly<{
 
 export type DesktopSurfaceLayoutAction =
   | Readonly<{ type: "open"; surface: DesktopSurfaceKind }>
+  | Readonly<{ type: "toggle"; surface: DesktopSurfaceKind }>
   | Readonly<{ type: "activate"; surface: DesktopSurfaceKind }>
   | Readonly<{ type: "close"; surface: DesktopSurfaceKind }>
   | Readonly<{ type: "close_others"; surface: DesktopSurfaceKind }>
@@ -57,6 +58,11 @@ export const reduceDesktopSurfaceLayout = (
   state: DesktopSurfaceLayout,
   action: DesktopSurfaceLayoutAction,
 ): DesktopSurfaceLayout => {
+  if (action.type === "toggle") {
+    return state.active === action.surface
+      ? reduceDesktopSurfaceLayout(state, { type: "close", surface: action.surface })
+      : reduceDesktopSurfaceLayout(state, { type: "open", surface: action.surface })
+  }
   if (action.type === "open") {
     const surfaces = state.surfaces.includes(action.surface) ? state.surfaces : [...state.surfaces, action.surface]
     return { ...state, surfaces, active: action.surface }

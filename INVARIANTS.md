@@ -2218,7 +2218,13 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   admission, the single-instance lock, bounded pre-ready queuing, and duplicate
   suppression; the renderer can dispatch only the decoded typed intent. The
   isolated built-host second-process receipt enforces this boundary. Release
-  signing and distribution remain CUT-26 work.
+  signing and distribution remain CUT-26 work. The canonical `workspace.files`
+  command owns Meta+E on macOS and Control+E elsewhere and toggles only the
+  existing right-side Files projection for the currently selected coding
+  session's admitted WorkContext. The toggle may retain bounded renderer-local
+  surface layout, but it cannot infer an ambient cwd, disclose the selected
+  absolute root, create another workspace grant, or bypass the typed workspace
+  browser/open path.
 - Rich coding drafts use `@openagentsinc/composer-state`; apps must not create a
   second editor/attachment state machine. The private
   `openagents.coding_composer_draft.v1` snapshot carries only stable context and
