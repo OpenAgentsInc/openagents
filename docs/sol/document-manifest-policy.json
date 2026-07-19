@@ -3,6 +3,36 @@
   "inventoryReviewDate": "2026-07-12",
   "defaultOwner": "Sol roadmap",
   "overrides": {
+    "docs/sol/2026-07-19-asd-ste100-adoption-audit.md": {
+      "class": "current-status",
+      "owner": "OpenAgents documentation",
+      "disposition": "retain-active-audit",
+      "dispatch": false
+    },
+    "docs/sol/receipts/2026-07-19-desktop-rc24-publication.md": {
+      "class": "receipt",
+      "owner": "OpenAgents Desktop RC24 publication",
+      "disposition": "retain-evidence",
+      "dispatch": false
+    },
+    "docs/sol/receipts/2026-07-19-issue-8993-staging-update-rehearsal.md": {
+      "class": "receipt",
+      "owner": "Sol proof / issue #8993",
+      "disposition": "retain-evidence",
+      "dispatch": false
+    },
+    "docs/sol/receipts/2026-07-19-issue-9003-codex-full-auto-model-admission.md": {
+      "class": "receipt",
+      "owner": "Sol proof / issue #9003",
+      "disposition": "retain-evidence",
+      "dispatch": false
+    },
+    "docs/sol/2026-07-18-atif-thread-model-audit.md": {
+      "class": "historical-analysis",
+      "owner": "OpenAgents ATIF architecture",
+      "disposition": "retain-decision-analysis",
+      "dispatch": false
+    },
     "docs/sol/2026-07-18-sarah-openai-voice-api-audit.md": {
       "class": "historical-analysis",
       "owner": "OpenAgents Sarah voice architecture",

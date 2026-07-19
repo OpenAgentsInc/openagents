@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "91183ad8d8fe38eec69cff4b393305572c664b0b7800a6a4d16fda555434ea12",
+  "sourceTreeSha256": "f97f98debbd145726eaccb093104a129c9fa709308549262358ebc426e54921e",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2029,6 +2029,21 @@
       "issueLinks": []
     },
     {
+      "path": "docs/sol/2026-07-18-atif-thread-model-audit.md",
+      "class": "historical-analysis",
+      "owner": "OpenAgents ATIF architecture",
+      "disposition": "retain-decision-analysis",
+      "dispatch": false,
+      "sha256": "8301ac800ceeccbb59dbf847090776637e0c189bb97c4d6a968d47a06d78246f",
+      "status": "retain-decision-analysis",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": []
+    },
+    {
       "path": "docs/sol/2026-07-18-autonomous-release-feedback-and-changelog-accepted-plan.md",
       "class": "authority",
       "owner": "OpenAgents delegated release autonomy",
@@ -2246,6 +2261,21 @@
         9001,
         9002
       ]
+    },
+    {
+      "path": "docs/sol/2026-07-19-asd-ste100-adoption-audit.md",
+      "class": "current-status",
+      "owner": "OpenAgents documentation",
+      "disposition": "retain-active-audit",
+      "dispatch": false,
+      "sha256": "b3affc14c2c49890ad7471dadea12504cb2e2614b3ef8a8c57487b36609a771a",
+      "status": "active company requirement with incomplete repository enforcement",
+      "snapshot": "`030754d52632673f17cdd7b2a71a93866dd34800`",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": []
     },
     {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
@@ -3797,12 +3827,102 @@
       ]
     },
     {
+      "path": "docs/sol/receipts/2026-07-19-desktop-rc24-publication.md",
+      "class": "receipt",
+      "owner": "OpenAgents Desktop RC24 publication",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "1cfb4ca803e841ad23fad15e5deb4971438042db31140a8219db01a7787c1d67",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/receipts/2026-07-19-full-auto-assurance-design-reconciliation.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "a3aab76bd8db5d1234814bd1164b1e88d631bfc1d12f56da2137513c0f8901a7",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8978
+      ]
+    },
+    {
+      "path": "docs/sol/receipts/2026-07-19-issue-8993-staging-update-rehearsal.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #8993",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "c92370202e2cbfacdd2b99ab5f4d20add4671d1ea2bfdf317408e3f90c5d5d5d",
+      "status": "retain-evidence",
+      "snapshot": "2026-07-19",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": [
+        8993
+      ]
+    },
+    {
+      "path": "docs/sol/receipts/2026-07-19-issue-9003-codex-full-auto-model-admission.md",
+      "class": "receipt",
+      "owner": "Sol proof / issue #9003",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "adb7d3ae2e33a5e6d7172399a7a556d3b3e5963896e8df46ffe8fb3b9bc7172b",
+      "status": "implementation present on `main`; explicit regression coverage added",
+      "snapshot": "2026-07-19",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": [
+        9003
+      ]
+    },
+    {
+      "path": "docs/sol/receipts/2026-07-19-linux-native-distribution-reconciliation.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "ef4ad4aef241edb834dc0fc5b31e68ef8caa8f70ea9a3ebea8eaf6edb34b0814",
+      "status": "substantial native evidence landed; issue is not yet closeable",
+      "snapshot": "2026-07-19",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [
+        "docs/sol/receipts/README.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        8917,
+        8921,
+        8925,
+        8926
+      ]
+    },
+    {
       "path": "docs/sol/receipts/README.md",
       "class": "index",
       "owner": "Sol proof",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "165705660247a1c004eb91fc685eee31b29315724739d630007c2436e92db631",
+      "sha256": "651f73b4e71cbd87ca5eb153c66229c45686bbc9e05be5131db67da7617c1b9f",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -3858,6 +3978,7 @@
         8860,
         8861,
         8862,
+        8921,
         8950,
         8954,
         8961,
