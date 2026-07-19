@@ -329,6 +329,16 @@ sitting next to seniors. An open, fully-instrumented agent workbench is a
 T_sim environment that produces verification-grade ground truth (the
 paper's K_IP^ver) as a byproduct of ordinary work.
 
+**Provenance and settlement on one rail.** The paper's remark that "the
+same rails that settle payments can also carry the receipts" is, for this
+repository, not a metaphor: the transcript arc (episodes 141–237) built
+exactly that stack — per-node Nostr keypairs plus self-custodial Lightning
+wallets, NIP-90 job markets, and bonded labor closeouts — and the essay's
+Addendum II ([Verifiable Software](./2026-07-19-verifiable-software.md))
+maps how a keypair and wallet in every editor turns priced verification,
+independent falsification, and Liability-as-a-Service into editor-level
+product mechanics.
+
 **One honest tension.** The Codifier's Curse cuts against any
 verification-first business, including this one: every receipt, behavior
 contract, and adjudicated false green is training data for automating

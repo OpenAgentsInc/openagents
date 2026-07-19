@@ -12,7 +12,9 @@ program (`docs/ide/`), the surface specs (`specs/desktop/`, `specs/mobile/`,
 **Companion:** [`2026-07-19-some-simple-economics-of-agi-deepdive.md`](./2026-07-19-some-simple-economics-of-agi-deepdive.md)
 — a standalone deep dive on Catalini, Hui & Wu's _Some Simple Economics of
 AGI_ (arXiv:2602.20946), the macroeconomic theory behind the verification-gap
-argument this essay builds on.
+argument this essay builds on. Addendum II additionally draws on the market
+and wallet transcript arc (episodes 141–147, 153, 200, 207, 212–215, 223,
+230, 235, 237) and a code audit of the current Nostr/Lightning surface.
 
 ---
 
@@ -503,7 +505,7 @@ generator's priors. The AssuranceSpec format already refuses
 producer-admission. The gap is filling those reviewer roles with genuinely
 independent capacity at the cadence the pipeline needs.
 
-### Summary
+### Summary (Addendum I)
 
 What exists today is the _authority skeleton_ of verifiable software — the
 typed graph, the proposal plane, observed evidence, digest-bound specs, one
@@ -518,3 +520,202 @@ restored machine-checked completion for autonomous runs, and finally the
 priced tiers that turn proof into product. The gap is large, but it is
 enumerated, typed, and issue-addressed — which is exactly the state this
 essay argues a verifiable system should be able to report about itself.
+
+---
+
+## Addendum II: The Verification Economy — a Keypair and a Wallet in Every Editor (2026-07-19)
+
+Addendum I ended at priced proof: confidence tiers that turn verification
+into a product. This addendum asks what infrastructure that actually
+requires, and answers with a design thesis: **every editor carries a Nostr
+keypair and a Lightning wallet, so every editor — and every agent working
+inside one — can participate directly in a verification economy.** Buying
+proof, selling proof, signing proof, and settling against proof, from the
+place where claims are born.
+
+This is not a new idea for this project. It is the project's oldest idea,
+now aimed at its newest surface.
+
+### 1. The lineage: this network was already built once
+
+The transcript archive shows the thesis maturing across three product
+generations. Onyx (episode 153) shipped a mobile app with a Breeze-SDK
+Bitcoin wallet and a Nostr client, on the argument that "our AI agents…
+are going to pay each other in Bitcoin." Autopilot (episodes 207–215) moved
+it to the desktop and made it structural: "there will be a key pair
+generated automatically for you when you open the app for the first time,"
+with one BIP-39 seed phrase deriving *both* the Lightning wallet and the
+Nostr keypair — money and identity from the same root, stored locally,
+self-custodied. Pylon (episodes 235–237) made it a property of every node:
+"Every Pylon also ships a free, self-custodial Bitcoin Lightning wallet via
+MoneyDevKit, so a brand-new node — even one on an old GPU — can set up an
+identity and start earning sats the moment it comes online," with receive
+liquidity spliced in at wallet creation so a fresh participant can be paid
+immediately.
+
+Around those clients grew an open protocol inventory, all on Nostr and
+Lightning: NIP-89 service discovery, NIP-90 data vending machines (job
+kinds requested, fulfilled, and paid competitively — "the freest market of
+data processing AIs in the world"), NIP-DS dataset listings with canonical
+content digests, a Skills NIP whose trust signal is paid-workflow history,
+a Sovereign Agents draft using Frostr key-splitting so an agent can hold
+keys its owner cannot exfiltrate, and NIP-LBR — the labor rail — whose
+lifecycle runs request → quote → acceptance → result with provider *bonds*
+and a content-addressed closeout receipt. Five markets were named and two
+were launched on camera: compute, data, labor, liquidity, risk. Episode
+213's Economy Kernel ported Catalini's cost curves directly into the
+codebase; episode 237 named the atomic unit (the accepted outcome), the
+load-bearing wall (the clearing layer), and this essay's borrowed axiom:
+"money only travels across a gap it can verify."
+
+Episode 207 even priced the editor-to-editor case exactly: "you discover
+some gotcha… maybe they just want to pay you three cents and save that
+time." That sentence is the verification economy at the scale of one
+keystroke.
+
+### 2. What the keypair does: claims get an author
+
+Everything in this essay's first half is about making claims *checkable*.
+A keypair makes them *attributable* — and attribution is what lets a claim
+travel beyond the machine that produced it.
+
+Concretely: every object the IDE already mints — proposal admissions,
+apply receipts, host-observed evidence, behavior-contract oracle results,
+acceptance-oracle decodes, CodeShareBundle manifests — is a typed,
+digest-bound record. Signed with the editor's Nostr key, each becomes a
+portable attestation: *this* editor, under *this* identity, observed *this*
+fact at *this* generation. A second editor can verify the signature and the
+digest without trusting the transport, the platform, or the author's prose.
+The deep dive's provenance premium — P(π=1) > P(π=0) — becomes a concrete
+product feature: a diff that arrives with a signed evidence chain is worth
+more than an identical diff without one, and the difference is the
+verification labor a stranger no longer has to repeat.
+
+Identity also accumulates. A keypair that has signed a thousand receipts
+that later survived independent falsification *is* a verification track
+record — the "cryptographically verifiable career track record" Catalini's
+playbook prescribes for individuals, except it works identically for
+agents. Reputation stops being a platform database row and becomes a
+portable, checkable history of survived claims. This is the paper's
+verified network scale (N_V = ρN) built bottom-up: the authenticated share
+ρ is not asserted by a platform, it is computed from signatures.
+
+The authority discipline carries over unchanged: a signature is
+provenance, never privilege. Signing a receipt grants no write, merge,
+acceptance, or spend authority — exactly as the IDE's laws already hold
+that sharing identity and evidence must not imply sharing authority. And
+for agent-held keys, the Sovereign Agents/Frostr design keeps custody
+honest: an agent can sign without its key being copyable.
+
+### 3. What the wallet does: proof gets a price
+
+The wallet turns the essay's economic section from thesis into mechanism.
+Four flows, all denominated in the objects the IDE already produces:
+
+**Buying verification.** The structural risk named in Addendum I §7 is
+verifier correlation — AI checking AI shares blind spots (κ_corr ≫ 1). A
+market is the cleanest decorrelator we know of. An editor that wants
+independent proof posts a NIP-90-style job — "falsify this claim; here is
+the signed evidence bundle and the oracle" — and *strangers'* editors,
+running different models, different toolchains, different priors, compete
+to break it for sats. Paid independent falsification is not a nice-to-have
+on top of the assurance pipeline; it is the only scalable source of the
+independence the AssuranceSpec format already demands. The reviewer roles
+Addendum I could not fill by hire, a market fills by price.
+
+**Selling verification.** The same editor, idle overnight, is supply. It
+re-runs oracles, reproduces builds, executes falsifiers, reviews diffs
+against behavior contracts — and every accepted verification is itself an
+accepted outcome: scoped, executed, graded, receipted, settled. This is
+episode 213's labor market with verification as the first product, and it
+answers the deep dive's rationing problem (expert verification triaged and
+sampled) with elastic supply: verification bandwidth stops being a fixed
+human pool and becomes a priced network resource. The Codifier's Curse
+still applies — every sold verification teaches the network to automate
+that check — but here that is the flywheel working as intended: checks that
+become mechanical get cheap, and human attention migrates up to designing
+the next falsifier.
+
+**Bonding outcomes.** NIP-LBR's provider bonds already model the top
+confidence tier: a verifier stakes sats on its verdict, forfeited if an
+accepted claim is later refuted. That is Liability-as-a-Service at
+keystroke scale — "the product is no longer the agent; it is the
+indemnified outcome" — and it makes draft / verified / reviewed / bonded
+literal price points on one diff rather than marketing language.
+
+**Selling evidence.** Study packets, teardown findings, edge-case
+libraries, adjudicated false greens — verification-grade ground truth, the
+K_IP^ver the paper says makes risk insurable — become sellable as NIP-DS
+bundles with canonical digests: pay, receive, verify the digest, reuse the
+proof. Verification amortizes across the network instead of being re-run
+inside every editor. Money in, *checked* data out.
+
+Settlement and provenance ride the same rails — the deep dive's
+observation that "the same rails that settle payments can also carry the
+receipts" is literally the design: a Lightning payment resolving against a
+signed closeout receipt is one object, not a payment plus an invoice plus
+a claim in prose. And the essay's own discipline applies to money most of
+all: episode 237's formulation — "a payment the recipient cannot
+dereference is not a payment, it is a bug wearing money."
+
+### 4. Current state, honestly
+
+Following this essay's rules, the inventory:
+
+**Live today:** every Pylon derives a real Nostr identity — NIP-06 HD keys
+from a locally stored BIP-39 mnemonic (`packages/pylon-core/src/shared/nostr-identity.ts`)
+— and authenticates its control surfaces with NIP-98 signed events. The
+keypair half of the vision is running code in the node runtime today; the
+editor inherits it the moment the IDE binds to Pylon identity.
+
+**Protocol-complete, settlement-free:** `packages/nip90` implements the
+market grammar — job kinds, the labor lifecycle, provider bonds,
+content-addressed closeout receipts, dataset kinds — with tests and proof
+scripts, and *by explicit design* "moves no sats, opens no escrow, grants
+no settlement authority." The receipts are real; the money is not.
+
+**Deliberately retired or inert:** Pylon's wallet actions return
+`money_capability_retired`; the Spark/MDK scaffolding (wallet panes,
+control commands, payout targets) is present but unwired; the
+openagents.com MDK sidecar/treasury/tips services are emptied and the
+Lightning invoice rail is flag-gated inert; the Nostr relay app is
+stripped; `docs/nostr/` is marked postponed (2026-07-08) behind the
+current product focus. The network described in §1 was built, ran, paid
+real sats on camera — and its money paths are currently, intentionally,
+off.
+
+So the honest statement is symmetric with Addendum I: the *identity* half
+is live, the *market grammar* is implemented and tested, and the
+*settlement* half is a deliberate zero awaiting a product decision, not a
+technical unknown. Re-activation is a bounded list — bind IDE identity to
+the existing Pylon keypair; sign the evidence objects the IDE already
+mints; re-enable a wallet path on the MDK stack that episode 235 proved
+end-to-end; wire NIP-LBR closeouts to settlement — and every item on it is
+an owner-gated authority change under `AUTHORITY.md` and the payment
+invariants, not a research problem. This essay flips none of those
+switches; it argues they are worth flipping.
+
+### 5. Why this completes the argument
+
+The essay's core claim was that verification must be structural, not
+voluntary. The deep dive added that it must also be *economic*: markets
+under-supply verification unless it is priced, and "durable advantage
+belongs not to those who generate output but to those who can certify it,
+insure it, and absorb the liability when it fails." A keypair and a wallet
+in every editor is where those two claims meet. The keypair makes every
+receipt attributable and portable; the wallet makes every receipt
+priceable and settleable; the IDE makes both ambient, because it already
+mints the receipts as a side effect of ordinary work.
+
+Reed's Law then does the rest. Editors that can pay each other for proof
+form verification coalitions at machine speed — micro-markets around a
+single falsifier, standing guilds around a test suite, bonded underwriters
+around a release. The group-forming network the transcripts describe was
+always, at bottom, a network of parties who can *check each other's work
+and settle on it*. The editor is simply the right terminal for it: the
+place where the claims are born is the place where they should be signed,
+priced, verified, and paid for.
+
+One market, cleared in receipts, settled in sats — reaching all the way
+down to a three-cent gotcha and all the way up to a bonded release. That
+is the verification economy, and the editor is its exchange floor.
