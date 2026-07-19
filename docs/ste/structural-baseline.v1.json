@@ -4854,6 +4854,11 @@
       "STE-2.4": 50,
       "STE-8.1": 32
     },
+    "docs/cloud/contracts/openagents.managed_sandbox.v1.md": {
+      "STE-8.1": 19,
+      "STE-2.4": 8,
+      "STE-8.2": 3
+    },
     "docs/cloud/contracts/openagents.probe_worker_attachment.v1.md": {
       "STE-2.4": 1
     },
@@ -10719,6 +10724,12 @@
       "STE-5.1": 9,
       "STE-2.4": 19
     },
+    "packages/managed-sandbox-contract/README.md": {
+      "STE-8.1": 1
+    },
+    "packages/managed-sandbox-contract/THIRD_PARTY_NOTICES.md": {
+      "STE-8.1": 2
+    },
     "packages/mcp-contract/README.md": {
       "STE-2.4": 15,
       "STE-8.1": 13,
@@ -11150,6 +11161,11 @@
       "STE-5.1": 23,
       "STE-2.4": 32,
       "STE-8.1": 12
+    },
+    "specs/openagents/managed-agent-sandboxes.assurance-spec.md": {
+      "STE-8.1": 3,
+      "STE-8.2": 2,
+      "STE-2.4": 4
     },
     "specs/openagents/managed-agent-sandboxes.product-spec.md": {
       "STE-2.4": 23,

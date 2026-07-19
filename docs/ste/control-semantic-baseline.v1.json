@@ -4,7 +4,11 @@
   "files": {
     "AGENTS.md": {
       "sourceSha256": "0ee5472c798f8ed8fbf19aeab8cd94c12179ff650746d79e2992494e0532c3b1",
-      "normativeKeywords": ["NEVER", "NEVER", "ONLY"],
+      "normativeKeywords": [
+        "NEVER",
+        "NEVER",
+        "ONLY"
+      ],
       "inlineCode": [
         " + Xcode/Gradle); ",
         "$PYLON",
@@ -598,8 +602,14 @@
       ]
     },
     "INVARIANTS.md": {
-      "sourceSha256": "217ee3d712749409a1705826316f2b694fe92fa50a2e859d961ade370d55a412",
-      "normativeKeywords": ["MAY", "MUST", "ONLY", "ONLY", "ONLY"],
+      "sourceSha256": "4db5e3c621f0621d624987c4c3755800968e3dfa65c3d361e732e12f549638b8",
+      "normativeKeywords": [
+        "MAY",
+        "MUST",
+        "ONLY",
+        "ONLY",
+        "ONLY"
+      ],
       "inlineCode": [
         "$HOME",
         "--account-ref",
@@ -851,6 +861,7 @@
         "distilledTests",
         "docs/authority/SARAH_AUTHORITY.md",
         "docs/cloud/INVARIANTS.md",
+        "docs/cloud/INVARIANTS.md",
         "docs/cloud/MIGRATION.md",
         "docs/deploy/openagents-desktop-cross-platform-release.md",
         "docs/khala-sync/RUNBOOK.md",
@@ -975,6 +986,7 @@
         "openagents.desktop.legacy_lockout.v1",
         "openagents.desktop.target_build_descriptor.v1",
         "openagents.live_agent_graph.v1",
+        "openagents.managed_sandbox.v1",
         "openagents.qa_swarm.run_projection.v1",
         "openagents.runtime_interaction.v1",
         "openagents://auth",
@@ -1379,14 +1391,16 @@
       ]
     },
     "AUTHORITY.md": {
-      "sourceSha256": "286201c9a2b67b7798e119a95e5cf2e102b618b1f41333d69a611d524e416f42",
+      "sourceSha256": "2c747d7a3d36fcdac475b231e04ea476bfba2ac1d58d0552688bc948310e0bf0",
       "normativeKeywords": [],
       "inlineCode": [
         "/changelog",
         "AGENTS.md",
         "INVARIANTS.md",
         "docs/authority/AUTHORITY_DELEGATION_SPEC.md",
-        "docs/authority/SARAH_AUTHORITY.md"
+        "docs/authority/SARAH_AUTHORITY.md",
+        "gcloud",
+        "openagents.managed_sandbox.v1"
       ],
       "urls": [],
       "issueRefs": [],
@@ -1400,10 +1414,12 @@
         "100",
         "100",
         "16",
+        "19",
         "2",
         "2",
         "2",
         "2",
+        "2026-07",
         "2026-07",
         "2026-07",
         "3",
@@ -1413,7 +1429,10 @@
         "4",
         "4",
         "5",
-        "5"
+        "5",
+        "6",
+        "6",
+        "6"
       ]
     },
     "docs/sol/README.md": {
@@ -2447,7 +2466,9 @@
       "urls": [
         "https://github.com/OpenAgentsInc/backroom/blob/dec8ae52/archive/openagents-sol-docs-2026-07-12/july9/2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md"
       ],
-      "issueRefs": ["#8640"],
+      "issueRefs": [
+        "#8640"
+      ],
       "numericValues": [
         "09",
         "1",
@@ -2491,7 +2512,7 @@
       ]
     },
     "docs/sol/CLAIM_PROTOCOL.md": {
-      "sourceSha256": "c0aab92aa7ebf871d887df5a34b3324e8b794440da2195451901f14546bc2e82",
+      "sourceSha256": "153a608c4566fe25a3a599c883db31e52b77e95045d5eae9a8d94cb2bcbc35e3",
       "normativeKeywords": [],
       "inlineCode": [
         "2026-07-10-terra-execution-lane.md",
@@ -2501,7 +2522,17 @@
       ],
       "urls": [],
       "issueRefs": [],
-      "numericValues": ["09", "1", "10", "10", "2", "2026-07", "2026-07", "2026-07", "90"]
+      "numericValues": [
+        "09",
+        "1",
+        "10",
+        "10",
+        "2",
+        "2026-07",
+        "2026-07",
+        "2026-07",
+        "90"
+      ]
     },
     "specs/CONVENTIONS.md": {
       "sourceSha256": "c5a7da4b74c04bb98a30dc7152360ff252452c3a37f681274cbc62f51f19923b",
@@ -2548,8 +2579,20 @@
         "tool_metadata"
       ],
       "urls": [],
-      "issueRefs": ["#8593"],
-      "numericValues": ["0.19.0", "08", "1", "1", "2026-07", "5", "5", "8", "8593"]
+      "issueRefs": [
+        "#8593"
+      ],
+      "numericValues": [
+        "0.19.0",
+        "08",
+        "1",
+        "1",
+        "2026-07",
+        "5",
+        "5",
+        "8",
+        "8593"
+      ]
     },
     "apps/openagents.com/AGENTS.md": {
       "sourceSha256": "17d2f0d45aeeef4a86f92174788adca843a7883265802c4c14268108c6dfca1e",
@@ -2773,8 +2816,15 @@
         "~/.local/share/effect-solutions/effect",
         "~/.local/share/effect-solutions/effect"
       ],
-      "urls": ["https://openagents.com/`", "https://openagents.com/new`."],
-      "issueRefs": ["#5058", "#8610", "#8813"],
+      "urls": [
+        "https://openagents.com/`",
+        "https://openagents.com/new`."
+      ],
+      "issueRefs": [
+        "#5058",
+        "#8610",
+        "#8813"
+      ],
       "numericValues": [
         "0",
         "04",
@@ -4604,7 +4654,9 @@
         "{}",
         "~/.codex"
       ],
-      "urls": ["https://openagents.com`"],
+      "urls": [
+        "https://openagents.com`"
+      ],
       "issueRefs": [
         "#1",
         "#1",
@@ -5203,14 +5255,18 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "2dce7bd82b15dd071393b91a8be68e1471d5ba979da33517b78140ebfa0b51ff",
-      "normativeKeywords": ["NEVER", "ONLY"],
+      "sourceSha256": "f5b4c91ef55848ac511dcf88a6a574377e61b75da3a7c6a616407e98a5efe269",
+      "normativeKeywords": [
+        "ONLY"
+      ],
       "inlineCode": [
         "*_RAW_PER_VM_SEC_NANOUSD",
         "/dev/kvm",
         "/opt/agent/portable-session-control",
         "0067",
         "200",
+        "501 capability_not_implemented",
+        "@asciidev/box-sdk@0.0.24",
         "Auto",
         "CODEX_HOME",
         "CODEX_HOME",
@@ -5246,6 +5302,7 @@
         "codex_app_server",
         "compute_usage",
         "compute_usage",
+        "copy_out",
         "cost_basis",
         "cost_basis",
         "cost_driven = false",
@@ -5262,8 +5319,10 @@
         "danger_full_access",
         "docs/benchmarks/2026-06-14-cnd-042-gce-shc-receipt-comparison.md",
         "docs/cloud/MIGRATION.md",
+        "exec",
         "false",
         "floor(vm_seconds × cost-plus-10% rate)",
+        "gcloud",
         "gcloud",
         "git push",
         "git-writeback.json",
@@ -5279,11 +5338,14 @@
         "openagents.cloud_vm_provisioner.v1",
         "openagents.compute_quota_routing.v1",
         "openagents.gce_capacity_class.v1",
+        "openagents.managed_sandbox.v1",
         "openagents.resource_usage_receipt.v1",
         "openagents.resource_usage_receipt.v1",
         "openagents_cloud_contract",
+        "packages/authority/src/managed-sandbox-authority.test.ts",
         "packages/khala-sync-server/src/portable-managed-agent-computer-target.test.ts",
         "packages/khala-sync-server/src/portable-session-move.test.ts",
+        "packages/managed-sandbox-contract/src/{schemas,lifecycle,box-v1}.test.ts",
         "packages/portable-session-contract/src/capability-broker.test.ts",
         "provider_credential_policy: broker_only",
         "provision",
@@ -5291,6 +5353,7 @@
         "pylon-claude-org-capacity",
         "pylon-codex-org-capacity",
         "ready:true",
+        "recovery_required",
         "recovery_required",
         "release_at − acquire_at",
         "repository_clone_url",
@@ -5304,10 +5367,18 @@
         "vm_seconds"
       ],
       "urls": [],
-      "issueRefs": ["#8547", "#8636", "#8748", "#8748"],
+      "issueRefs": [
+        "#8547",
+        "#8636",
+        "#8748",
+        "#8748",
+        "#9029"
+      ],
       "numericValues": [
         "0",
         "0",
+        "0.0.24",
+        "00",
         "0067",
         "01",
         "01",
@@ -5318,6 +5389,7 @@
         "042",
         "042",
         "042",
+        "09",
         "1",
         "1.10",
         "10",
@@ -5331,11 +5403,13 @@
         "2026-07",
         "2026-07",
         "3",
+        "501",
         "503",
         "8547",
         "8636",
         "8748",
         "8748",
+        "9029",
         "96"
       ]
     },

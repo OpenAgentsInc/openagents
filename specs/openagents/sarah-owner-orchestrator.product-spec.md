@@ -18,11 +18,11 @@ custom_sections:
     label: "Promise Links"
     after: "custom-receipts"
 tool_metadata:
-  openagents_authority: "AUTHORITY.md revision 5 + Sarah runtime authority revision 3"
+  openagents_authority: "AUTHORITY.md revision 6 + Sarah runtime authority revision 4"
   openagents_source: "docs/transcripts/24Xsarah.md"
   openagents_assurance_level: "owner-private cross-resource orchestration"
   openagents_managed_sandbox_epic: "9023"
-  openagents_assurance_spec_status: "revision 1 is superseded as an exact rev-3 proposal; revision 2 rebinds this rev-4 intent and retains every obligation as needs_design"
+  openagents_assurance_spec_status: "revision 3 exactly rebinds this rev-4 intent after SBX-00 authority admission; SARAH-AC-21 through SARAH-AC-23 have complete proposed proof design while SARAH-AC-01 through SARAH-AC-20 remain needs_design"
   openagents_revision_4_note: "Rev 4 adds the owner-directed managed-sandbox outcome without granting a generic cloud shell or pretending the broker is already live. Sarah may create, list, inspect, dispatch into, interrupt, stop, resume, and delete exact owner-scoped OpenAgents-managed GCP sandboxes only after the managed-sandbox ProductSpec, SBX-00 authority revision, target broker, and live GCP proof land. Every action binds program/work-unit/target/profile/TTL/budget/capability refs and returns authority plus target receipts. It remains distinct from remote Full Auto start, raw topology, broad cloud credentials, and generic container administration. Adds SARAH-AC-21 through SARAH-AC-23."
 ---
 
@@ -239,11 +239,11 @@ ran until a target receipt exists.
 ## Owner Gates
 
 The current owner direction admits revision 4 as product and roadmap intent,
-alongside the already-live revision-3 runtime, TestFlight build 119, and server
+alongside the already-live pre-managed-sandbox Sarah runtime, TestFlight build 119, and server
 deploy. Sarah may request her own bounded terminal-history
 review, but the independent evaluator and Blueprint gate own release and
-activation. Managed-sandbox mutation stays unavailable until SBX-00 revises
-the root and Sarah authority profiles, the exact broker lands, and SBX-09
+activation. SBX-00 admits the managed-sandbox contract and exact root/Sarah
+action vocabulary. Managed-sandbox mutation stays unavailable until the exact broker lands and SBX-09
 records live GCP and cleanup proof. Only a
 future expansion into reserved financial, legal/people, destructive-data,
 human-identity, over-budget, or stable-release authority requires another

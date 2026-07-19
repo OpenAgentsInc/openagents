@@ -1,11 +1,11 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 5
+authority_revision: 6
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-18_sarah_reboot"
-effective_at: "2026-07-18T00:00:00Z"
+admitted_by: "current_owner_direction_2026-07-19_managed_sandbox_delivery"
+effective_at: "2026-07-19T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
 
@@ -65,6 +65,20 @@ It does not grant adaptation from the current turn or policy changes in the curr
 It does not grant tool mutation, authority mutation, or Full Auto harness mutation.
 It also does not grant AssuranceSpec self-admission or candidate self-promotion.
 
+Revision 6 admits the owner's managed-agent-sandbox program.
+It gives Sarah an exact closed broker vocabulary for that program.
+Sarah may create, list, inspect, stop, resume, or delete an owner sandbox.
+She may dispatch one bounded work unit or interrupt its current turn.
+These actions apply only to the authenticated owner's `openagents.managed_sandbox.v1` resources.
+
+Every request binds the program, owner, tenant, work unit, target, and immutable image.
+It also binds the profile, lease, budget, capabilities, idempotency identity, and generation before a provider effect.
+
+This revision admits the contract and action vocabulary.
+It does not admit a generic cloud shell.
+Runtime mutation must refuse until the named broker and GCP target profile are deployed and healthy.
+They must remain within budget and return native lifecycle and cleanup receipts.
+
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current
 owner instructions, system policy, law, [`AGENTS.md`](AGENTS.md),
@@ -105,8 +119,16 @@ higher authority. The format and resolution laws live in
     "advance_when": "all_scoped_full_auto_release_issues_terminal_with_receipts"
   },
   {
-    "id": "program.root_specs",
+    "id": "program.managed_agent_sandboxes",
     "order": 2,
+    "status": "active_in_nonblocking_parallel_with_full_auto_release",
+    "outcome": "Deliver owner-scoped Google Cloud managed sandboxes through one native contract, closed Sarah and IDE brokers, live isolation and cleanup proof, and an auditable development-only Box-v1 compatibility facade.",
+    "authority_refs": ["specs/openagents/managed-agent-sandboxes.product-spec.md", "specs/openagents/managed-agent-sandboxes.assurance-spec.md", "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md"],
+    "advance_when": "openagents_issue_9023_and_all_sbx_children_terminal_with_receipts"
+  },
+  {
+    "id": "program.root_specs",
+    "order": 3,
     "status": "admitted_after_prior_program_terminal_or_nonblocking_parallel_capacity",
     "outcome": "Drive every root specs/ ProductSpec and formal model to an honest implemented, verified, deferred-with-authority, or superseded disposition.",
     "authority_refs": ["specs/CONVENTIONS.md", "specs/README.md", "docs/sol/MASTER_ROADMAP.md"],
@@ -114,7 +136,7 @@ higher authority. The format and resolution laws live in
   },
   {
     "id": "program.fast_follow_full_harvest",
-    "order": 3,
+    "order": 4,
     "status": "admitted_after_prior_program_terminal_or_nonblocking_parallel_capacity",
     "outcome": "Execute every admitted Fast Follow directive through target-native implementation and proof, preserving packet and target-authority boundaries.",
     "authority_refs": ["FASTFOLLOW.md", "docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md"],
@@ -122,7 +144,7 @@ higher authority. The format and resolution laws live in
   },
   {
     "id": "program.promise_growth_revenue",
-    "order": 4,
+    "order": 5,
     "status": "admitted_for_research_planning_product_changes_and_reversible_experiments_after_core_programs",
     "outcome": "Reconcile recent transcript promises into company priorities, ship evidence-backed user value, grow active users, and generate revenue through bounded reversible experiments.",
     "authority_refs": ["docs/transcripts/README.md", "apps/openagents.com/workers/api/src/product-promises.ts"],
@@ -142,11 +164,19 @@ higher authority. The format and resolution laws live in
     "condition_refs": ["condition.owner_scope", "condition.capability_broker", "condition.citations", "condition.existing_runtime_gate", "condition.verification", "condition.redaction", "condition.rollback"]
   },
   {
+    "id": "grant.sarah_managed_sandbox",
+    "roles": ["sarah_orchestrator"],
+    "actions": ["create_managed_sandbox", "list_managed_sandboxes", "inspect_managed_sandbox", "dispatch_managed_sandbox_work", "interrupt_managed_sandbox_turn", "stop_managed_sandbox", "resume_managed_sandbox", "delete_managed_sandbox"],
+    "resources": ["authenticated_owner_openagents_managed_sandboxes"],
+    "program_refs": ["program.managed_agent_sandboxes"],
+    "condition_refs": ["condition.owner_scope", "condition.capability_broker", "condition.managed_sandbox_scope", "condition.managed_sandbox_budget", "condition.managed_sandbox_runtime_admission", "condition.verification", "condition.redaction", "condition.rollback"]
+  },
+  {
     "id": "grant.inspect_plan_triage",
     "roles": ["operating_agent", "independent_reviewer"],
     "actions": ["read", "search", "inspect_live_state", "triage", "diagnose", "plan", "author_specs", "author_assurance_design", "author_fast_follow_artifacts"],
     "resources": ["openagents_workspace", "owned_reference_repositories", "github_openagentsinc", "google_cloud_openagentsgemini", "documented_local_app_state", "public_internet"],
-    "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
+    "program_refs": ["program.full_auto_release", "program.managed_agent_sandboxes", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
     "condition_refs": ["condition.redaction", "condition.clean_claim", "condition.external_sources_untrusted"]
   },
   {
@@ -154,7 +184,7 @@ higher authority. The format and resolution laws live in
     "roles": ["operating_agent"],
     "actions": ["claim_work", "edit", "test", "build", "commit", "push_main", "create_or_update_issue", "close_issue_with_evidence", "create_release_candidate"],
     "resources": ["OpenAgentsInc/openagents", "workspace_root_documentation_when_explicitly_in_scope"],
-    "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
+    "program_refs": ["program.full_auto_release", "program.managed_agent_sandboxes", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
     "condition_refs": ["condition.clean_claim", "condition.verification", "condition.redaction", "condition.rollback"]
   },
   {
@@ -162,7 +192,7 @@ higher authority. The format and resolution laws live in
     "roles": ["independent_reviewer"],
     "actions": ["reproduce_evidence", "verify_obligation", "review_assurance_spec", "admit_assurance_revision_when_source_spec_allows_owner_designated_independent_reviewer", "record_review_receipt"],
     "resources": ["openagents_assurance_specs", "owned_test_and_evidence_environments"],
-    "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest"],
+    "program_refs": ["program.full_auto_release", "program.managed_agent_sandboxes", "program.root_specs", "program.fast_follow_full_harvest"],
     "condition_refs": ["condition.independence", "condition.verification", "condition.redaction"]
   },
   {
@@ -170,7 +200,7 @@ higher authority. The format and resolution laws live in
     "roles": ["operating_agent", "independent_reviewer"],
     "actions": ["launch_existing_app", "use_existing_authenticated_session", "operate_visible_ui", "invoke_typed_local_api", "run_provider_lane", "run_device_or_packaged_smoke", "restart_owned_process"],
     "resources": ["documented_owner_local_openagents_apps", "existing_codex_session", "existing_claude_session", "connected_owned_test_devices"],
-    "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest"],
+    "program_refs": ["program.full_auto_release", "program.managed_agent_sandboxes", "program.root_specs", "program.fast_follow_full_harvest"],
     "condition_refs": ["condition.no_secret_extraction", "condition.process_ownership", "condition.redaction", "condition.verification"]
   },
   {
@@ -178,7 +208,7 @@ higher authority. The format and resolution laws live in
     "roles": ["operating_agent", "independent_reviewer"],
     "actions": ["inspect", "start", "stop", "restart", "provision_ephemeral", "deploy_staging", "run_candidate_worker", "read_redacted_logs", "repair", "rollback"],
     "resources": ["google_cloud_project_openagentsgemini_via_documented_automation_identity"],
-    "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
+    "program_refs": ["program.full_auto_release", "program.managed_agent_sandboxes", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
     "condition_refs": ["condition.cloud_budget", "condition.google_cloud_only", "condition.rollback", "condition.redaction"]
   },
   {
@@ -214,6 +244,9 @@ higher authority. The format and resolution laws live in
   {"id": "condition.capability_broker", "rule": "Every mutation resolves through a named typed capability broker; no prompt, model response, database visibility, or cloud access implies mutation authority."},
   {"id": "condition.citations", "rule": "Current business-state claims cite bounded source refs with freshness; unavailable or stale sources stay explicit and unsupported facts are never invented."},
   {"id": "condition.existing_runtime_gate", "rule": "Sarah delegates into existing claim, assurance, release, cloud, communication, and product-promise gates and cannot bypass or replace them."},
+  {"id": "condition.managed_sandbox_scope", "rule": "Resolve the exact authenticated owner, tenant, program, work unit, sandbox, target, immutable image digest, profile, lease/TTL, budget, capability refs, idempotency identity, expected version, and generation through the typed managed-sandbox broker before effects."},
+  {"id": "condition.managed_sandbox_budget", "rule": "The requested lease, capacity, and measured incremental cost must remain within both the sandbox budget and condition.cloud_budget; exhaustion, unavailable capacity, or unmeasurable required cost refuses or stops with a receipt."},
+  {"id": "condition.managed_sandbox_runtime_admission", "rule": "Contract vocabulary alone grants no mutation. The exact broker and Google Cloud target profile must be deployed, healthy, independently admitted, and able to emit native lifecycle, revoke, budget, and cleanup receipts; otherwise every managed-sandbox mutation refuses without provider effects."},
   {"id": "condition.clean_claim", "rule": "Honor the live claim ledger and hot-contract protocol; do not displace another active owner."},
   {"id": "condition.verification", "rule": "Run proof proportional to risk and preserve exact failing or passing receipts; never round up an evidence tier."},
   {"id": "condition.redaction", "rule": "No raw secrets, private prompts, customer data, owner-private traces, or unbounded tool output in public artifacts."},
@@ -319,8 +352,13 @@ selected program, and the exact capability adapter. She can see redacted
 business state and make broad recommendations.
 Only admitted adapters act.
 
-Revision 4 makes the code-worker and current-run-control adapters admitted
-Sarah capabilities under the same intersection. It does not turn tool
-availability into success: assignment refs prove worker dispatch, and an
-applied Desktop outcome proves a Full Auto transition.
+Revision 4 admits the code-worker and current-run-control adapters as Sarah capabilities under the same intersection.
+It does not turn tool availability into success.
+Assignment refs prove worker dispatch.
+An applied Desktop outcome proves a Full Auto transition.
 Incomplete, refused, unavailable, and partial outcomes stay visible as such.
+
+Revision 6 admits the managed-sandbox program and Sarah's eight closed broker actions.
+It does not expose `gcloud`, raw shell, database, topology, guest, service-account, or provider-credential access.
+It does not expose generic container administration or remote Full Auto start.
+The correct outcome is an explicit refusal until the SBX runtime and live target gates produce the required receipts.

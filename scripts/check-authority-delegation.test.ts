@@ -108,10 +108,10 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     expect(readFrontmatterString("authority_profile_id")).toBe(
       "openagents.owner-delegated-autonomy",
     );
-    expect(readFrontmatterInteger("authority_revision")).toBe(5);
+    expect(readFrontmatterInteger("authority_revision")).toBe(6);
     expect(readFrontmatterString("lifecycle_state")).toBe("admitted");
     expect(readFrontmatterString("admitted_by")).toBe(
-      "current_owner_direction_2026-07-18_sarah_reboot",
+      "current_owner_direction_2026-07-19_managed_sandbox_delivery",
     );
     expect(order).toMatchObject({
       authority_may_amplify: false,
@@ -122,12 +122,13 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
     expect(order.precedence.at(-1)).toBe("fastfollowspec_and_transcript_evidence");
   });
 
-  test("orders Full Auto, root specs, Fast Follow, then growth and revenue", () => {
+  test("orders Full Auto, managed sandboxes, root specs, Fast Follow, then growth and revenue", () => {
     expect(programs.map(({ id, order: programOrder }) => [id, programOrder])).toEqual([
       ["program.full_auto_release", 1],
-      ["program.root_specs", 2],
-      ["program.fast_follow_full_harvest", 3],
-      ["program.promise_growth_revenue", 4],
+      ["program.managed_agent_sandboxes", 2],
+      ["program.root_specs", 3],
+      ["program.fast_follow_full_harvest", 4],
+      ["program.promise_growth_revenue", 5],
     ]);
     expect(programs[0]?.status).toBe("active");
     expect(unique(programs.map(({ id }) => id))).toBe(true);
@@ -247,6 +248,35 @@ describe("OpenAgents AuthorityDelegationSpec 0.1 root profile", () => {
         "promote_harness_candidate",
         "increase_own_authority",
       ]),
+    );
+  });
+
+  test("admits only Sarah's closed managed-sandbox vocabulary behind scope, budget, and runtime gates", () => {
+    const grant = grants.find(({ id }) => id === "grant.sarah_managed_sandbox");
+    expect(grant).toMatchObject({
+      roles: ["sarah_orchestrator"],
+      resources: ["authenticated_owner_openagents_managed_sandboxes"],
+      program_refs: ["program.managed_agent_sandboxes"],
+    });
+    expect(grant?.actions).toEqual([
+      "create_managed_sandbox",
+      "list_managed_sandboxes",
+      "inspect_managed_sandbox",
+      "dispatch_managed_sandbox_work",
+      "interrupt_managed_sandbox_turn",
+      "stop_managed_sandbox",
+      "resume_managed_sandbox",
+      "delete_managed_sandbox",
+    ]);
+    expect(grant?.condition_refs).toEqual(
+      expect.arrayContaining([
+        "condition.managed_sandbox_scope",
+        "condition.managed_sandbox_budget",
+        "condition.managed_sandbox_runtime_admission",
+      ]),
+    );
+    expect(grant?.actions).not.toEqual(
+      expect.arrayContaining(["run_gcloud", "operate_generic_container", "start_full_auto_run"]),
     );
   });
 

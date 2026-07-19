@@ -44,6 +44,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   fallback, environment configuration, or public current-state claims.
 - Historical receipts may describe former provider implementations, but this
   invariant ledger and every active runbook must describe Google Cloud only.
+
+## Managed Agent Sandboxes
+
+- The only admitted managed-sandbox resource identity is
+  `openagents.managed_sandbox.v1`. Provider objects and Box-v1 compatibility
+  objects are projections, never domain authority.
+- A managed sandbox is owner/tenant/work-unit scoped, generation fenced,
+  immutable-image pinned, lease and budget bounded, capability brokered, and
+  has receipts. Lifecycle, guest, filesystem, ingress, runtime, and cleanup
+  facts may not be collapsed into one optimistic status.
+- Contract admission does not imply runtime availability. Sarah, IDE, mobile,
+  and other callers must fail closed until the exact broker and GCP target
+  profile prove readiness, isolation, revocation, budget, and cleanup.
+- The Box SDK remains a development-only conformance dependency. It grants no
+  OCI compatibility and no generic cloud or container-administration surface.
+  Enforcement references live in `docs/cloud/INVARIANTS.md`.
   Retired-provider prose cannot authorize implementation.
 
 ## Preserved Transcript Archive

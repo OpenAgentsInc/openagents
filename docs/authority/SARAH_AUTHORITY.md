@@ -1,11 +1,11 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.sarah-owner-orchestrator"
-authority_revision: 3
+authority_revision: 4
 title: "Sarah Owner Orchestrator"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-18_sarah_reboot"
-effective_at: "2026-07-18T00:00:00Z"
+admitted_by: "current_owner_direction_2026-07-19_managed_sandbox_delivery"
+effective_at: "2026-07-19T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
 
@@ -13,7 +13,7 @@ expires_when: "revoked_or_superseded_by_current_owner_direction"
 
 This profile binds `principal.sarah` to the owner-facing orchestrator role. It
 composes by intersection with [`../../AUTHORITY.md`](../../AUTHORITY.md)
-revision 5. Sarah can recommend and prioritize broadly, maintain one durable
+revision 6. Sarah can recommend and prioritize broadly, maintain one durable
 owner conversation, read bounded owner-scoped business projections, and
 delegate admitted work through existing capability brokers. The model never
 receives raw credentials and cannot turn visibility into mutation authority.
@@ -25,7 +25,7 @@ receives raw credentials and cannot turn visibility into mutation authority.
   "composition": "intersection",
   "precedence": [
     "system_and_current_owner_instruction",
-    "AUTHORITY.md_revision_5",
+    "AUTHORITY.md_revision_6",
     "repository_agents_and_invariants",
     "resource_specific_policy_and_runtime_gates",
     "this_sarah_profile",
@@ -41,8 +41,8 @@ receives raw credentials and cannot turn visibility into mutation authority.
     "id": "program.sarah_company_operations",
     "order": 1,
     "status": "active",
-    "outcome": "Give the owner one durable, cited, action-capable point of contact across Full Auto, releases, issues, Forum, product delivery, cloud operations, users, and company priorities.",
-    "authority_refs": ["AUTHORITY.md", "specs/openagents/sarah-owner-orchestrator.product-spec.md"],
+    "outcome": "Give the owner one durable, cited, action-capable point of contact across Full Auto, managed agent sandboxes, releases, issues, Forum, product delivery, cloud operations, users, and company priorities.",
+    "authority_refs": ["AUTHORITY.md", "specs/openagents/sarah-owner-orchestrator.product-spec.md", "specs/openagents/managed-agent-sandboxes.product-spec.md"],
     "advance_when": "owner_direction_is_revoked_or_profile_is_superseded"
   }
 ]
@@ -65,6 +65,14 @@ receives raw credentials and cannot turn visibility into mutation authority.
     "resources": ["OpenAgentsInc/openagents", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "owner_private_sarah_harness", "google_cloud_project_openagentsgemini", "openagents_rc_release_channel", "openagents_github_and_forum"],
     "program_refs": ["program.sarah_company_operations"],
     "condition_refs": ["condition.owner_scope", "condition.redaction", "condition.existing_runtime_gate", "condition.rollback"]
+  },
+  {
+    "id": "grant.sarah.managed_sandbox",
+    "roles": ["sarah_orchestrator"],
+    "actions": ["create_managed_sandbox", "list_managed_sandboxes", "inspect_managed_sandbox", "dispatch_managed_sandbox_work", "interrupt_managed_sandbox_turn", "stop_managed_sandbox", "resume_managed_sandbox", "delete_managed_sandbox"],
+    "resources": ["authenticated_owner_openagents_managed_sandboxes"],
+    "program_refs": ["program.sarah_company_operations"],
+    "condition_refs": ["condition.owner_scope", "condition.managed_sandbox_scope", "condition.managed_sandbox_budget", "condition.managed_sandbox_runtime_admission", "condition.redaction", "condition.rollback"]
   }
 ]
 ```
@@ -75,6 +83,9 @@ receives raw credentials and cannot turn visibility into mutation authority.
   {"id": "condition.redaction", "rule": "Never place raw secrets, credentials, mnemonics, private paths, customer-private payloads, or unbounded evidence in context or receipts."},
   {"id": "condition.citations", "rule": "Current-state claims cite exact bounded source refs and identify stale or unavailable evidence honestly."},
   {"id": "condition.existing_runtime_gate", "rule": "Every mutation re-resolves through the existing typed claim, assurance, cloud, release, communication, or promise gate."},
+  {"id": "condition.managed_sandbox_scope", "rule": "The managed-sandbox broker must bind the authenticated owner, tenant, program, work unit, sandbox, target, immutable image digest, profile, lease/TTL, budget, capabilities, idempotency identity, expected version, and generation before effects."},
+  {"id": "condition.managed_sandbox_budget", "rule": "Lease, capacity, and measured incremental cost must stay within both the sandbox budget and the root cloud budget; unavailable or exhausted capacity refuses with a receipt."},
+  {"id": "condition.managed_sandbox_runtime_admission", "rule": "The exact broker and Google Cloud target profile must be deployed, healthy, admitted, and receipt-capable. Until then managed-sandbox mutations refuse; profile text, SDK status, or a provider object cannot substitute."},
   {"id": "condition.rollback", "rule": "Mutable operations require an exact bounded target and the target contract's rollback path."}
 ]
 ```
@@ -151,3 +162,14 @@ next-turn activation. It grants no raw shell, workspace-path, credential,
 cross-tenant/current-turn experience, Full Auto harness mutation, candidate
 self-promotion, assurance-admission, stable-release, or authority-expansion
 access. Finance/custody and legal/employment authority remain reserved.
+
+Revision 4 adds only the closed managed-sandbox broker actions admitted by
+root revision 6. They address the authenticated owner's exact
+`openagents.managed_sandbox.v1` resources and return authority plus native
+target receipts.
+
+They grant no raw `gcloud`, shell, database, topology, guest address,
+filesystem path, service-account/provider credential, generic
+container administration, remote Full Auto start, or optimistic success.
+
+The runtime stays unavailable until its separate SBX target gates are green.

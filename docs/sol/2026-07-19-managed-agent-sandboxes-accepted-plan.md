@@ -11,13 +11,14 @@
 
 ## Owner outcome
 
-Make OpenAgents-managed agent sandboxes operational on the existing Google
-Cloud substrate. The IDE must be able to create an isolated managed sandbox,
-attach a project and long-running agent, observe exact lifecycle and runtime
-truth, stop and resume it, and return reviewable code and evidence. Sarah must
-be able to create and supervise the same resource through a narrow owner-
-scoped broker. Mobile and authenticated web must supervise through bounded
-typed projections.
+Make OpenAgents-managed agent sandboxes operational on the existing Google Cloud substrate.
+The IDE must create an isolated managed sandbox and attach a project and
+long-running agent.
+It must observe exact lifecycle and runtime truth.
+It must stop and resume the sandbox, then return reviewable code and evidence.
+
+Sarah must create and supervise the same resource through a narrow owner-scoped broker.
+Mobile and authenticated web must supervise through bounded typed projections.
 
 Expose the useful first subset of the Ascii Box v1 API from an OpenAgents-owned
 base URL and prove the unmodified MIT TypeScript SDK against it. This is a
@@ -27,10 +28,10 @@ an adoption of Optibox source, or a second control plane.
 ## Decision
 
 1. Google Cloud remains the only production compute and storage authority.
-2. `SandboxResource` is the product concept. Its effective isolation unit may
-   be a full GCE VM or a Firecracker microVM and must be reported honestly; the
-   product does not claim OCI-container semantics merely because callers use
-   the word container.
+2. `SandboxResource` is the product concept.
+   Its effective isolation unit may be a full GCE VM or a Firecracker microVM.
+   The product must report that unit honestly.
+   The word container does not imply OCI-container semantics.
 3. Existing `oa-codex-control`, `oa-workroomd`, Agent Computer, capability
    broker, Khala Sync, event, artifact, portable-session, and receipt seams are
    composed before any new substrate is invented.
@@ -47,9 +48,11 @@ an adoption of Optibox source, or a second control plane.
 7. IDE-13 consumes the managed project capability; IDE-17 consumes background
    and long-running agent execution. Neither gets a second project, session,
    work-unit, or agent graph.
-8. Sarah ProductSpec revision 4 owns the conversational action outcome, but
-   the live Sarah authority remains unchanged until SBX-00 admits exact root
-   and Sarah profile revisions and SBX-07 lands the closed broker. Sarah never
+8. Sarah ProductSpec revision 4 owns the conversational action outcome.
+   SBX-00 admits root authority revision 6 and Sarah revision 4 with eight closed
+   actions.
+   Runtime admission still refuses mutation until SBX-07 lands the broker and
+   SBX-09 proves the live target. Sarah never
    receives generic `gcloud`, shell, database, topology, or container-admin
    access.
 9. Mobile revision 7, portable sessions revision 4, Desktop revision 7, and
@@ -86,19 +89,19 @@ or cleanup truth.
 
 ## Dependency-ordered issue ledger
 
-| Packet | GitHub | Outcome | Depends on |
-| --- | --- | --- | --- |
-| SBX-00 | [#9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | contract, authority, AssuranceSpec, model, and SDK conformance freeze | this plan |
-| SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store | SBX-00 |
-| SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission | SBX-00/01 |
-| SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof | SBX-00/01 |
-| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt | SBX-01/02/03 |
-| SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening | SBX-02/03 |
-| SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 |
-| SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker | SBX-00/04/05 |
-| SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision | SBX-06/07 |
-| SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout | SBX-00 through SBX-08 |
-| SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2 | SBX-09 |
+| Packet | GitHub | Outcome | Depends on | State |
+| --- | --- | --- | --- | --- |
+| SBX-00 | [#9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | contract, authority, AssuranceSpec, model, and SDK conformance freeze | this plan | contract frozen and runtime unavailable |
+| SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store | SBX-00 | next |
+| SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission | SBX-00/01 | not started |
+| SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof | SBX-00/01 | not started |
+| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt | SBX-01/02/03 | not started |
+| SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening | SBX-02/03 | not started |
+| SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | not started |
+| SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker | SBX-00/04/05 | not started |
+| SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision | SBX-06/07 | not started |
+| SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout | SBX-00 through SBX-08 | not started |
+| SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2 | SBX-09 | not started |
 
 The issues are native subissues of #9023. Each child owns one bounded claim;
 the epic is not a mutation claim. SBX-01, SBX-03, and the Assurance/model lane
@@ -159,9 +162,10 @@ provider credential, generic shell, or lifecycle authority.
 ### Full Auto
 
 This plan supports long-running managed agent work units but does not reopen
-Full Auto cross-machine admission. A later owner direction may bind a
-`FullAutoRun` to an admitted sandbox only through a new exact spec revision,
-AssuranceSpec rebind, lifecycle/lease composition, and fault proof. SBX issue
+Full Auto cross-machine admission.
+A later owner direction may bind a `FullAutoRun` to an admitted sandbox.
+That change requires an exact spec revision, AssuranceSpec rebind,
+lifecycle/lease composition, and fault proof. SBX issue
 bodies must not work around this boundary by renaming a remote Full Auto run.
 
 ## Verification and release gates
@@ -183,9 +187,11 @@ Phase 1 requires:
   and independent review; and
 - exact release/promise gating before any public availability or parity claim.
 
-Fake mode, configured job IDs, SDK terminal state, screenshots, Cloud resource
-existence, or a successful guest command cannot substitute for live isolation,
-runtime, cleanup, or owner acceptance evidence.
+Fake mode, configured job IDs, and SDK terminal state cannot prove live
+acceptance.
+Screenshots, Cloud resource existence, and successful guest commands also
+cannot prove it.
+Live isolation, runtime, cleanup, and owner acceptance require direct evidence.
 
 ## Hot contracts
 
@@ -201,15 +207,41 @@ runtime, cleanup, or owner acceptance evidence.
 
 Each hot contract has one integration owner before parallel mutation.
 
+### Integration ownership freeze
+
+| Hot contract | Integration owner | Package or path |
+| --- | --- | --- |
+| native identity, command, event, receipt, lifecycle model | SBX-00 | `packages/managed-sandbox-contract/**` |
+| root and Sarah action authority | SBX-00 for policy and SBX-07 for runtime | `AUTHORITY.md`, `docs/authority/SARAH_AUTHORITY.md`, `packages/authority/**` |
+| durable command/event/idempotency store | SBX-01 | `packages/khala-sync-server/**` and its Cloud SQL migrations |
+| GCP target, image, provisioner, and reconciliation | SBX-02 | `crates/oa-codex-control/**`, `crates/oa-node/**`, `crates/oa-workroomd/**` |
+| Box-v1 HTTP/SDK compatibility adapter | SBX-03 | `packages/ai-sdk-sandbox-openagents/**` and `apps/openagents.com/workers/api/**`. Native types stay in `packages/managed-sandbox-contract/**` |
+| runtime turn/event/interrupt semantics | SBX-04 | `crates/oa-workroomd/**`, Cloud control adapter, native event ingest |
+| file/command/artifact policy and quota | SBX-05 | `crates/oa-workroomd/**`, shared artifact/receipt contracts |
+| IDE placement and agent-graph consumer | SBX-06 | `apps/openagents-desktop/src/ide/**`, shared IDE schemas |
+| Sarah tool schema and ordered activity | SBX-07 | `apps/openagents.com/workers/api/**`, Sarah mobile projection |
+| bounded mobile/web controller | SBX-08 | `apps/openagents-mobile/**`, authenticated `openagents.com` projections |
+| live rollout/evidence and cleanup oracle | SBX-09 | `scripts/cloud/**`, `docs/sol/evidence/**`, GCP deployment config |
+| checkpoint/fork/private-ingress Phase 2 | SBX-10 | native contract plus exact Cloud/guest paths selected by its later claim |
+
+Writers may add adapters in their row.
+They must not move another row's domain identity or relax its invariants.
+Such a change must update this ledger, the relevant `INVARIANTS.md`, the
+AssuranceSpec, and deterministic tests.
+
 ## Definition of done
 
-The owner can create one managed sandbox from Desktop and one through Sarah,
-run and observe real long-running Codex and Claude work, reconnect to ordered
-events, interrupt or settle an exact turn, use bounded files/commands/artifacts,
-stop and resume the sandbox, delete it, and verify zero residue. The unmodified
-Box SDK completes the same admitted lifecycle against the OpenAgents service.
+The owner can create one managed sandbox from Desktop and one through Sarah.
+The owner can run and observe long-running Codex and Claude work.
+The owner can reconnect to ordered events and interrupt or settle an exact turn.
+The owner can use bounded files, commands, and artifacts.
+The owner can stop, resume, and delete the sandbox, then verify zero residue.
+The unmodified Box SDK completes the same admitted lifecycle against the
+OpenAgents service.
+
 Mobile and authenticated web supervise without gaining runtime authority.
-Every action has exact receipts, every unsupported Box method refuses
-explicitly, spend remains within the standing cap, rollback is proven, and no
-public claim outruns the promise gate. Phase 2 then closes only after
+Every action has exact receipts.
+Every unsupported Box method refuses explicitly.
+Spend remains within the standing cap, rollback is proven, and no public claim
+outruns the promise gate. Phase 2 then closes only after
 checkpoint, fork, and private desktop have their own live fault evidence.

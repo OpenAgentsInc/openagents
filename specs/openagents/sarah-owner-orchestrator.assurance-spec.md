@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.sarah.owner.orchestrator"
-assurance_revision: 2
+assurance_revision: 3
 title: "Sarah Owner Orchestrator Assurance Spec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -10,7 +10,10 @@ author: "OpenAgents"
 
 ## Assurance Objective
 
-This proposed AssuranceSpec creates exact criterion-to-obligation coverage without claiming that proof design, execution, evidence, admission, or release is complete.
+Revision 3 rebinds the unchanged revision-4 Sarah intent to the exact authority
+metadata bytes admitted by SBX-00 and designs SARAH-AC-21 through SARAH-AC-23.
+The earlier Sarah obligations remain honestly `needs_design`. This proposal
+claims neither execution, independent verification, admission, nor release.
 
 ## Subject
 
@@ -44,7 +47,7 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "SARAH-AC-22",
       "SARAH-AC-23"
     ],
-    "document_digest": "sha256:becfed39f5b0fc1c59f3a38b0acdfa2e3facd7d89de4240610635a5e2b79c3a7",
+    "document_digest": "sha256:040b813b20d24870c24e67490c6de35cd278a3389e2aea6ea5a89d5c8467a89b",
     "path": "specs/openagents/sarah-owner-orchestrator.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
@@ -71,11 +74,18 @@ Every executable ProductSpec criterion is in assurance scope. No criterion is si
 
 ## Environments
 
-Repository facts are proposal context only. No Environment Profile, adapter, capability, or permission is selected by inventory.
+The managed-sandbox obligations use the same proposed cross-surface live rung
+as the managed-sandbox AssuranceSpec. It is an environment design, not a claim
+that the broker or live journey exists.
 
 ```assurancespec-environments
 {
-  "profiles": [],
+  "profiles": [
+    {
+      "id": "ENV-SARAH-MANAGED-SANDBOX-LIVE",
+      "status": "proposed"
+    }
+  ],
   "repository_inventory": {
     "candidate_artifact_refs": [],
     "declared_scripts": [],
@@ -326,7 +336,25 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "id": "AO-SARAH-AC-21-01",
     "source_claim_digest": "sha256:4a971e60504c371777941fecbeb54a8db0de1bc869209b947d250f5db3f917a1",
     "source_claim_snapshot": "After SBX-00 admits the exact Sarah authority and managed-\nsandbox broker, Sarah can create, list, inspect, stop, resume, and delete\nonly the authenticated owner's OpenAgents-managed sandboxes. Every request\nbinds exact program/work-unit/target/image-profile/TTL/budget/capability and\nidempotency refs, and every actual outcome is supported by both an authority\nreceipt and the sandbox lifecycle receipt.",
-    "title": "Assure SARAH-AC-21"
+    "title": "Assure SARAH-AC-21",
+    "activation_gate": "GATE-SARAH-MANAGED-SANDBOX",
+    "domains": ["authority", "consumer_contract", "lifecycle"],
+    "environment_refs": ["ENV-SARAH-MANAGED-SANDBOX-LIVE"],
+    "evidence": {
+      "proof_rung": "owner_gated_live",
+      "required_kinds": ["authority_decision_trace", "sandbox_lifecycle_receipt", "negative_control_trace"]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "cross_owner_or_unscoped_sandbox_action",
+      "ref": "packages/authority/src/managed-sandbox-authority.test.ts"
+    },
+    "independence": { "producer_may_verify": false },
+    "oracle": {
+      "evaluator_ref": "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "statement": "Each of Sarah's six lifecycle/list/inspect actions binds exact owner, program, work unit, target, image, profile, TTL, budget, capabilities, idempotency, and generation and returns both authority and native target receipts."
+    },
+    "technique": "authority_and_live_consumer_journey"
   },
   {
     "candidate_artifact_refs": [],
@@ -337,7 +365,25 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "id": "AO-SARAH-AC-22-01",
     "source_claim_digest": "sha256:078fb2dc873cde005c665a1894136314edcb8a2b969d88eb66bc88f4dea9f01d",
     "source_claim_snapshot": "Sarah can dispatch one bounded long-running work unit into\nan exact ready owner sandbox, follow ordered structural runtime activity,\nand interrupt that exact turn. Quiet output is never called idle or\ncompleted, and a model response, SDK status, pending operation, or sandbox\nstate cannot substitute for the native terminal and cleanup receipts.",
-    "title": "Assure SARAH-AC-22"
+    "title": "Assure SARAH-AC-22",
+    "activation_gate": "GATE-SARAH-MANAGED-SANDBOX",
+    "domains": ["liveness", "ordering", "consumer_journey"],
+    "environment_refs": ["ENV-SARAH-MANAGED-SANDBOX-LIVE"],
+    "evidence": {
+      "proof_rung": "owner_gated_live",
+      "required_kinds": ["runtime_turn_trace", "ordered_activity_trace", "interrupt_replay_trace", "cleanup_receipt"]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "quiet_or_compatibility_status_claimed_terminal",
+      "ref": "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts"
+    },
+    "independence": { "producer_may_verify": false },
+    "oracle": {
+      "evaluator_ref": "scripts/cloud/managed-sandbox-sarah-live-acceptance.ts",
+      "statement": "Sarah dispatches one exact long-running turn, follows ascending structural activity, interrupts idempotently, and never substitutes silence, model output, SDK status, or pending state for native terminal and cleanup receipts."
+    },
+    "technique": "independent_live_liveness_journey"
   },
   {
     "candidate_artifact_refs": [],
@@ -348,17 +394,42 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "id": "AO-SARAH-AC-23-01",
     "source_claim_digest": "sha256:6088dfa5de266331975eb898fcfd4e5f97082a80d908f476403f6f3983272935",
     "source_claim_snapshot": "Sarah receives no raw `gcloud`, shell, database, topology,\nguest-address, service-account, provider-credential, filesystem-path, or\ngeneric container-admin tool. Budget, capacity, authority, broker, guest,\nrevoke, and cleanup failures remain explicit; a failed or recovery-required\nteardown is never described as successful. This capability does not grant\nremote Full Auto start or cross-machine `FullAutoRun` admission.",
-    "title": "Assure SARAH-AC-23"
+    "title": "Assure SARAH-AC-23",
+    "activation_gate": "GATE-SARAH-MANAGED-SANDBOX",
+    "domains": ["negative_capability", "security", "failure_truth"],
+    "environment_refs": ["ENV-SARAH-MANAGED-SANDBOX-LIVE"],
+    "evidence": {
+      "proof_rung": "authority_inventory_and_live_faults",
+      "required_kinds": ["negative_tool_inventory", "typed_failure_matrix", "recovery_required_trace"]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "generic_admin_or_false_cleanup_success",
+      "ref": "packages/authority/src/managed-sandbox-authority.test.ts"
+    },
+    "independence": { "producer_may_verify": false },
+    "oracle": {
+      "evaluator_ref": "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "statement": "Sarah's tool inventory excludes raw cloud, shell, database, topology, guest, credentials, paths, generic container administration, and remote Full Auto start; every named failure remains explicit and teardown uncertainty stays recovery_required."
+    },
+    "technique": "negative_capability_and_fault_matrix"
   }
 ]
 ```
 
 ## Gates
 
-No execution or release gates are inferred. Gate design remains blocked pending review.
+The managed-sandbox Sarah gate is strictly downstream of the managed-sandbox
+live gate and requires the three Sarah-specific obligations. It cannot use
+contract, fake, fixture, producer-only, stale, or partial evidence.
 
 ```assurancespec-gates
-[]
+[
+  {
+    "expression": "The managed-sandbox GATE-SBX-LIVE is independently green and AO-SARAH-AC-21-01 through AO-SARAH-AC-23-01 are independently reproduced in ENV-SARAH-MANAGED-SANDBOX-LIVE with exact authority, native lifecycle, liveness, failure, and cleanup receipts.",
+    "id": "GATE-SARAH-MANAGED-SANDBOX"
+  }
+]
 ```
 
 ## Evidence Policy

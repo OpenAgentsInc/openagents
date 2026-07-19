@@ -1983,6 +1983,19 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/managed-sandbox-contract:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      '@asciidev/box-sdk':
+        specifier: 0.0.24
+        version: 0.0.24
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/mcp-contract:
     dependencies:
       effect:
@@ -2463,6 +2476,9 @@ packages:
     peerDependenciesMeta:
       zod:
         optional: true
+
+  '@asciidev/box-sdk@0.0.24':
+    resolution: {integrity: sha512-w77vTWA+yrJ5O+FmchCkurjux1UZkQ5yeurnzX/FJTlQulEtj1xp0g/2cSh/GZWLXrgCV0exU99E+NyiilBeHA==}
 
   '@babel/code-frame@7.27.1':
     resolution: {integrity: sha512-cjQ7ZlQ0Mv3b47hABuTevyTuYN4i+loJKGeV9flcCgIK37cCXRh+L1bd3iBHlynerhQ7BhCkn2BPbQUL+rGqFg==}
@@ -11028,6 +11044,8 @@ snapshots:
       standardwebhooks: 1.0.0
     optionalDependencies:
       zod: 4.4.3
+
+  '@asciidev/box-sdk@0.0.24': {}
 
   '@babel/code-frame@7.27.1':
     dependencies:

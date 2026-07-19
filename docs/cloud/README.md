@@ -31,8 +31,10 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
   and [ProductSpec](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
   — active #9023 program for one owner-scoped GCP `SandboxResource`, a
   development-only Box SDK conformance facade, IDE/Sarah consumers, and live
-  isolation/cleanup proof; planned contract and runtime work, not current
-  production availability
+  isolation/cleanup proof; the
+  [`openagents.managed_sandbox.v1`](./contracts/openagents.managed_sandbox.v1.md)
+  contract and Box-v1 corpus are admitted by SBX-00, while runtime and
+  production availability remain gated by SBX-01 through SBX-10
 - [Remote-first portable session pathway](../sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md)
   — planned product/roadmap additions for owner-managed and managed-provider
   targets, cross-host checkpoints, general brokered capabilities, and mobile

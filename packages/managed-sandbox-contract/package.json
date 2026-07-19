@@ -1,0 +1,32 @@
+{
+  "name": "@openagentsinc/managed-sandbox-contract",
+  "version": "0.1.0",
+  "private": false,
+  "files": [
+    "src",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./box-v1": "./src/box-v1.ts",
+    "./lifecycle": "./src/lifecycle.ts",
+    "./provenance": "./src/provenance.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --run packages/managed-sandbox-contract/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@asciidev/box-sdk": "0.0.24",
+    "typescript": "catalog:"
+  }
+}

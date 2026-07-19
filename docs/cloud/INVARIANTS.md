@@ -40,9 +40,9 @@ design context only.
   the no-wallet workroom boundary below remains permanent.
 - Contributor-wallet mode is not the default for managed cloud nodes.
 - Workrooms do not receive wallet authority by default.
-- Workrooms may receive settlement metadata through scoped local gateways, but
-  must not receive wallet seeds, node entropy, private keys, preimages, bearer
-  tokens, or raw accounting credentials.
+- Workrooms may receive settlement metadata through scoped local gateways.
+  They must not receive wallet seeds, node entropy, private keys, preimages,
+  bearer tokens, or raw accounting credentials.
 
 ## Capability And Secret Handling
 
@@ -61,14 +61,15 @@ design context only.
   the injected vault-to-adapter callback. A destination generation receives a
   freshly authorized source-grant ref only after source revocation and target
   wipe. Replay, expiry, broker outage, target denial, or cleanup failure cannot
-  mint or reactivate destination authority. The enforcing fault oracle is
+  mint or reactivate destination authority.
+- The enforcing fault oracle is
   `packages/portable-session-contract/src/capability-broker.test.ts`.
-- GitHub write tokens may enter a bounded Codex workroom only through a
-  short-lived run-scoped grant (resolved from `github_write_grant_ref`) or a
-  statically-configured operator fallback (`OA_CODEX_GITHUB_TOKEN`), supplied to
-  the run only through process environment variables. They must not be embedded
-  in commits, git config, git remote URLs, artifacts, callbacks, traces, tracked
-  files, D1, or normal logs.
+- GitHub write tokens may enter a bounded Codex workroom through a short-lived
+  run-scoped grant from `github_write_grant_ref`.
+  A statically configured operator fallback may use `OA_CODEX_GITHUB_TOKEN`.
+  Both paths supply the token only through process environment variables.
+  Tokens must not enter commits, git configuration, remote URLs, artifacts,
+  callbacks, traces, tracked files, D1, or normal logs.
 - A Codex coding run may commit and push its workspace changes back to the
   target repo/branch (`repository_clone_url` / `repository_ref`) before
   workspace teardown (cloud#96 git writeback). Writeback is gated on a write
@@ -77,9 +78,11 @@ design context only.
   and process environment. The emitted writeback event and `git-writeback.json`
   receipt are refs-only (commit sha + branch ref) and must never carry the
   token.
-- Codex workrooms persist every non-streaming-delta Codex event payload and
-  every detected tool call to the Khala Sync / Worker event ingest path by default after
-  forbidden-secret marker checks. Streamed text/tool-output deltas are omitted
+- Codex workrooms persist every non-streaming-delta Codex event payload by
+  default after forbidden-secret marker checks.
+  They also persist every detected tool call to the Khala Sync or Worker event
+  ingest path.
+  Streamed text/tool-output deltas are omitted
   from durable persistence unless a future policy explicitly promotes them.
 
 ## Node Lifecycle
@@ -97,6 +100,37 @@ design context only.
 - Ingress, token minting, public exposure, custom-domain binding, capability
   attachment, artifact upload, and closeout are receipt-bearing events.
 
+## Managed Agent Sandbox Contract (SBX-00, #9029)
+
+- `openagents.managed_sandbox.v1` is the sole managed-sandbox domain identity.
+  GCE, Firecracker, Box-v1, IDE, mobile, and Sarah records are projections or
+  consumers and may not mint, replace, or reinterpret that identity.
+- Owner, tenant, program, work unit, attachment generation, and resource
+  generation are fixed before a provider effect.
+  Target, immutable image digest, profile, lease, budget, capability, and
+  idempotency scope are also fixed before that effect. A
+  model response, provider object, SDK status, or quiet process is never
+  authority or lifecycle truth.
+- Lifecycle, lease, guest, filesystem, ingress, runtime, work-admission, and
+  cleanup facts remain distinct. Stop requires a durable filesystem
+  checkpoint. Delete requires observed cleanup. Uncertainty becomes failed or
+  `recovery_required`, never an invented success.
+- Box-v1 is a development/conformance projection that uses exact
+  `@asciidev/box-sdk@0.0.24` bytes. Unsupported SDK operations return a typed
+  `501 capability_not_implemented`. Projection cursor/omission metadata is
+  preserved. The SDK is not a production domain dependency and conveys no OCI,
+  Docker, Kubernetes, generic GCP, or generic container-admin claim.
+- Sarah's closed managed-sandbox action vocabulary grants no raw `gcloud`,
+  shell, database, topology, guest address, service-account, credential,
+  filesystem-path, or generic container administration. Runtime mutation must
+  continue to refuse until the exact broker and GCP target are deployed,
+  healthy, within budget, and receipt-capable.
+- Deterministic enforcement lives in
+  `packages/managed-sandbox-contract/src/{schemas,lifecycle,box-v1}.test.ts`
+  and `packages/authority/src/managed-sandbox-authority.test.ts`. Live target
+  evidence is separately required by SBX-09 and must not be inferred from
+  these contract tests.
+
 ## Cross-OS Cloud-VM Provisioner
 
 - The cross-OS Cloud-VM provisioner (`openagents.cloud_vm_provisioner.v1`,
@@ -112,20 +146,23 @@ design context only.
   no host pool, `provision` must refuse honestly. It must never fall back to a
   local browser and never fake a green (mirroring the qa-runner container
   backend's `ContainerEngineUnavailableError` posture).
-- The provisioned handle and the provision/cleanup receipts are refs-and-limits
-  only: no raw KVM socket paths, tap devices, guest IPs, SSH keys, kernel/rootfs
-  absolute paths, credentials, wallet material, bearer tokens, or private
-  topology markers.
-- A provisioned VM carries no wallet authority. A failed acquire or unhealthy
-  boot must tear down any partial jail before refusing, and teardown must be
-  idempotent and always run (even on exec/copy_out failure) so a VM is never
-  leaked.
+- The provisioned handle and the provision and cleanup receipts expose only
+  references and limits.
+  They expose no raw KVM socket paths, tap devices, guest IPs, or SSH keys.
+  They also expose no absolute kernel or rootfs paths, credentials, wallet
+  material, bearer tokens, or private topology markers.
+- A provisioned VM carries no wallet authority.
+  A failed acquire or unhealthy boot must tear down any partial jail before
+  refusal.
+  Teardown must be idempotent and must run after `exec` or `copy_out` failure.
+  A VM must never leak.
 - PORT-03 managed movement uses the separate authenticated retained route
   `POST /v1/portable-agent-computers/operations`. One exact operation ref is
-  byte-idempotent through the durable host journal; a staged Firecracker guest
-  remains non-accepting and alive until activation, and abort/reclaim destroy
-  the VM and its disposable scratch. Conflicting bytes or attachment
-  generations refuse before guest effects. The control bearer stays in the
+  byte-idempotent through the durable host journal.
+  A staged Firecracker guest remains non-accepting and alive until activation.
+  Abort or reclaim destroys the VM and its disposable scratch. Conflicting bytes or attachment
+  generations refuse before guest effects.
+- The control bearer stays in the
   HTTP Authorization header and may never enter an operation body, journal, or
   receipt. If the daemon is armed for live Firecracker but KVM/images are not
   ready, retained movement refuses and must not substitute the fake lane.
@@ -147,8 +184,9 @@ design context only.
   thread. Server dispatch issues its owner-scoped Codex grant after the
   durable start claim succeeds, then sends a real `codexTurn` plus broker refs
   to the guest. It never sends both the Codex block and the old hosted
-  inference block, never issues grants for a losing queue reader, and never
-  silently substitutes another execution target.
+  inference block.
+  It never issues grants for a losing queue reader.
+  It never silently substitutes another execution target.
 
 - The in-VM Codex turn (`apps/pylon/deploy/agent-computer/turn-runner.ts`,
   work-context `codexTurn` block) executes ONLY under a broker-redeemed,
@@ -157,51 +195,59 @@ design context only.
   no materialized grant fails closed (`codex.provider_auth_required`); a
   reclaimed grant is never replayable
   (`canReplayCodexProviderGrantAfterReclaim` returns `false`).
-- The in-VM codex execution is fail-closed at every stage with typed reasons:
-  missing baked binary (`codex.binary_missing`), failed exec
-  (`codex.exec_failed`), a failed provider turn (`codex.turn_failed`), missing
-  exact usage (`codex.no_exact_usage` — usage is never fabricated), and a
-  failed receipt ingest (`codex.usage_receipt_failed` — a turn without an
-  ingested exact usage row is a FAILED turn).
+- The in-VM Codex execution fails closed at every stage with typed reasons.
+  Missing baked binaries use `codex.binary_missing`, and failed execution uses
+  `codex.exec_failed`.
+  A failed provider turn uses `codex.turn_failed`.
+  Missing exact usage uses `codex.no_exact_usage`, and usage is never fabricated.
+  Failed receipt ingest uses `codex.usage_receipt_failed`.
+  A turn without an ingested exact usage row is a failed turn.
 - The codex child process receives a minimal constructed environment (PATH,
   HOME, plus the materialization's `CODEX_HOME`/auth content), never the
   ambient process environment. Agent bearers and auth material never appear in
   emitted events, result bundles, or logs.
-- Owner-subscription-capacity usage receipts (lane `codex_app_server` with
-  provider `pylon-codex-org-capacity`; lane `claude_pylon` with provider
-  `pylon-claude-org-capacity`) are exact token TRUTH rows and are NEVER
-  card/credit-metered only after server-held grant authority proves a used
-  provider-account grant matching the owner, provider account, and provider
-  kind. Caller-supplied lane/provider labels and grant refs alone grant no
+- Owner-subscription-capacity usage receipts cover two exact lane and provider
+  pairs.
+  The pairs are `codex_app_server` with `pylon-codex-org-capacity` and
+  `claude_pylon` with `pylon-claude-org-capacity`.
+  These receipts are exact token truth rows.
+- Owner-subscription-capacity receipts avoid card or credit metering only after
+  server-held grant authority proves a used provider-account grant.
+  That grant must match the owner, provider account, and provider kind.
+  Caller-supplied lane/provider labels and grant refs alone grant no
   exemption. The Worker then skips the metering hook and answers
   `tokenChargeMetered: false` with
   `tokenChargeSkippedReason: owner_subscription_capacity`
   (`isOwnerSubscriptionCapacityReceipt` in
   `apps/openagents.com/workers/api/src/khala-cloud-runtime-usage-routes.ts`).
-  Any other lane/provider combination — including a codex-lane row that does
-  not carry the org-capacity provider — meters normally (the skip can never
-  widen into a metering bypass). Missing, unredeemed, revoked, cross-owner,
+- Every other lane/provider combination meters normally.
+  This includes a Codex-lane row without the org-capacity provider.
+  The skip can never widen into a metering bypass. Missing, unredeemed, revoked, cross-owner,
   wrong-account, or wrong-provider grant evidence is denied before token
-  insertion; authority-store failure is a typed 503. Grant/account refs never
+  insertion; authority-store failure is a typed 503.
+  Grant/account refs never
   enter the public token event. Compute lifecycle stays separately billed
   through `openagents.resource_usage_receipt.v1`.
 - Agent Computer receipt consumers independently require that same exact
-  no-charge disposition for owner-subscription capacity. A `200` response that
-  reports metering, omits the skip reason, or names another reason fails the
-  turn as `codex.owner_capacity_charge_disposition_invalid`; it cannot reach
-  accepted closeout merely because token truth was recorded.
+  no-charge disposition for owner-subscription capacity.
+  A `200` response fails the turn if it reports metering, omits the skip reason,
+  or names another reason.
+  The failure code is `codex.owner_capacity_charge_disposition_invalid`.
+  Recorded token truth alone cannot produce accepted closeout.
 - Agent Computer usage retry identity is server-derived from the immutable
-  owner/thread/turn/lane/provider/model tuple. Executor-supplied `usageRef` is
-  metadata, never idempotency authority: a lost-response retry with a fresh
-  client ref returns the same token event, inserts no second row, publishes no
-  second public-counter delta, and reports `tokensServedDelta: 0`.
+  owner/thread/turn/lane/provider/model tuple.
+  Executor-supplied `usageRef` is metadata, never idempotency authority.
+  A lost-response retry with a fresh client ref returns the same token event.
+  It inserts no second row, publishes no second public-counter delta, and reports
+  `tokensServedDelta: 0`.
 - Subscription capacity is never resold (`subscriptionCapacityResale: false`);
   these lanes serve only the owner the grant is scoped to.
 
 ## Portable Session Attachment To Agent Computer (PORT-03, #8748)
 
 - An Agent Computer is a destination runtime beneath the canonical portable
-  session; it never mints or rewrites session, thread, run, agent, parent-edge,
+  session.
+  It never mints or rewrites session, thread, run, agent, parent-edge,
   transcript, or per-thread cursor identity.
 - Movement requires migration `0067`'s durable owner/session execution binding;
   the target must preserve its exact run, repository, and pinned-base refs.
@@ -214,10 +260,12 @@ design context only.
   the destination attachment generation. A source auth home, token cache,
   environment, process, socket, or credential-bearing workspace is never a
   checkpoint component and is never copied into the guest.
-- PORT-01 Cloud SQL authority advances to the new sole live attachment only
-  after graph-wide source quiescence, source grant revoke/wipe, destination
-  redemption, exact target staging, and complete source process/scratch/port
-  cleanup. Only after that durable commit may the Agent Computer accept work.
+- PORT-01 Cloud SQL authority advances only after graph-wide source quiescence
+  and source grant revoke and wipe.
+  It also requires destination redemption, exact target staging, and complete
+  source process, scratch, and port cleanup.
+  The result is the new sole live attachment.
+  The Agent Computer may accept work only after that durable commit.
 - A destination rejection or any pre-commit failure leaves no destination
   attachment authoritative, releases any newly issued destination grants,
   retains the source graph fenced, and records `recovery_required`. A lost
@@ -229,63 +277,71 @@ design context only.
   attachment, generation, checkpoint, resource, or result. Stage remains
   non-accepting; activation independently reads PORT-01 and refuses until the
   exact destination attachment is the current active generation.
-- Failback from a managed target uses the same adapter in source mode. Only its
-  exact active generation may quiesce; checkpoint construction requires that
-  durable non-accepting state; reclaim must prove all canonical agents plus
-  process, scratch, and port release. Abort is limited to a staged target and
+- Failback from a managed target uses the same adapter in source mode.
+  Only its exact active generation may quiesce.
+  Checkpoint construction requires that durable non-accepting state.
+  Reclaim must prove all canonical agents plus process, scratch, and port
+  release. Abort is limited to a staged target and
   both abort and reclaim are safe to replay after a process restart.
 - Deterministic enforcement lives in
   `packages/khala-sync-server/src/portable-session-move.test.ts` and the
   real-Postgres
   `packages/khala-sync-server/src/portable-managed-agent-computer-target.test.ts`.
-  These are not the real-host acceptance receipt. #8748 stays open until #8636
-  is complete and a direct owner-local Pylon → accepted Agent Computer →
-  owner-local journey proves exact identity/digest/grant/cleanup behavior on
-  live infrastructure.
+  These are not the real-host acceptance receipt.
+  #8748 stays open until #8636 is complete.
+  A direct owner-local Pylon to accepted Agent Computer to owner-local journey
+  must prove live identity, digest, grant, and cleanup behavior.
 
 ## Compute Versus Labor
 
 - Bounded sandbox execution is compute only when the runtime profile, inputs,
   policies, expected outputs, resource limits, and receipt semantics are
   declared before execution.
-- For bounded Codex workrooms with declared required artifacts, a stable,
-  complete required-artifact set is sufficient for artifact closeout even if
-  the Codex process would otherwise continue producing a final message. The
+- For bounded Codex workrooms, a stable and complete required-artifact set is
+  sufficient for artifact closeout.
+  The workroom must declare those required artifacts before execution.
+  Closeout may occur even if Codex would otherwise continue with a final message. The
   runner must still emit receipt-bearing artifact evidence and must not treat
   missing artifacts as success.
-- `danger_full_access` is allowed only as an explicit externally isolated
-  VM/container workroom profile with no wallet authority, no broad host/cloud
-  credentials, session-scoped provider auth, and cleanup receipts.
+- `danger_full_access` requires an explicit, externally isolated VM or container
+  workroom profile.
+  The profile has no wallet authority or broad host and cloud credentials.
+  It requires session-scoped provider authorization and cleanup receipts.
 - Open-ended planning, tool choice, and semantic outcome delivery belong in
   Forge/Probe and current OpenAgents product paths, not in a hidden cloud-node
   path.
 
 ## Placement And Quota Routing
 
-- Lane-agnostic placement is cost-driven (CND-042). For a non-caller-pinned
-  `Auto` assignment with both lanes eligible (GCE available), placement compares
-  lanes on the measured cost-plus-10% per-VM-second estimate from the CND-042
-  report (`docs/benchmarks/2026-06-14-cnd-042-gce-shc-receipt-comparison.md`)
-  and records `cost_driven = true` with a refs-only `cost_basis` on the binding.
-  Per owner direction, Google GCE wins ties and near-ties and is the preferred
-  lane; SHC (`oa-shc-katy-01`) is chosen only when it is BOTH materially cheaper
-  than GCE AND the SHC pilot recommendation is "expand". The report currently
-  recommends HOLD, so cost-driven placement resolves to GCE today. Caller pins,
+- Lane-agnostic placement is cost-driven (CND-042).
+  A non-caller-pinned `Auto` assignment compares eligible lanes when GCE is
+  available.
+  It uses the measured cost-plus-10% per-VM-second estimate from the CND-042
+  report (`docs/benchmarks/2026-06-14-cnd-042-gce-shc-receipt-comparison.md`).
+  The binding records `cost_driven = true` with a refs-only `cost_basis`.
+- Per owner direction, Google GCE wins ties and near-ties.
+  GCE is the preferred lane.
+  SHC (`oa-shc-katy-01`) is selected only when it is materially cheaper than GCE.
+  The SHC pilot recommendation must also be "expand". The report currently
+  recommends HOLD, so cost-driven placement resolves to GCE today.
+- Caller pins,
   the GCE-unavailable fallback, and the disabled-cost-driven path
   (`OA_CODEX_PLACEMENT_COST_DRIVEN=false`, policy-driven Google-first) record
   `cost_driven = false` with no `cost_basis`. The cost model rates live in one
   place (`openagents_cloud_contract` `*_RAW_PER_VM_SEC_NANOUSD` constants) and
   carry no raw customer cost.
-- A placement assignment must not request wallet authority. A placed run
-  inherits the no-wallet VM/workroom boundary; `danger_full_access` is the
-  explicit default sandbox inside that boundary, never an implicit escalation
-  with broad host/cloud credentials.
+- A placement assignment must not request wallet authority.
+  A placed run inherits the no-wallet VM or workroom boundary.
+  `danger_full_access` is the explicit default sandbox inside that boundary.
+  It is never an implicit escalation with broad host or cloud credentials.
 - Placement bindings and quota/metering records are refs-and-limits only. They
   must not carry raw owner identity, raw customer cost, GCP project ids, instance
   names, IP addresses, credentials, wallet material, bearer tokens, or private
-  topology markers. The one permitted cost figure is the contract's modeled infra
-  billing input (`cost_input_microusd`, the cost-plus-10% figure on a
-  `compute_usage` sub-record), which is never a customer's billed/settled amount.
+  topology markers.
+  The one permitted cost figure is the contract's modeled infrastructure
+  billing input, `cost_input_microusd`.
+  It is the cost-plus-10% figure on a `compute_usage` sub-record.
+  It is never a customer's billed or settled amount.
 - Session/lease/TTL/idle caps come from
   `openagents.compute_quota_routing.v1` defaults unless fleet policy overrides
   them; placement must honor those caps rather than minting unbounded leases.
@@ -294,19 +350,21 @@ design context only.
   (acquire -> ready -> in_use -> release): provision a per-session VM, run the
   Codex runner for the assignment, emit a refs-only
   `openagents.resource_usage_receipt.v1`, then idempotently release the lease
-  and mint a cleanup receipt. That GCE resource-usage receipt must carry a
+  and mint a cleanup receipt.
+- That GCE resource-usage receipt must carry a
   `compute_usage` sub-record whose `vm_seconds` is the genuinely measured lease
   wall-time (`release_at − acquire_at`, whole seconds, saturating at 0,
   `metering_source = node_measured`) and whose `cost_input_microusd` is
   `floor(vm_seconds × cost-plus-10% rate)` using the shared
   `LaneCostModel`/`GCE_RAW_PER_VM_SEC_NANOUSD` markup (not a re-derived 1.10).
-  Because that rate is the GCP published list-price catalog rate rather than a
+- Because that rate is the GCP published list-price catalog rate rather than a
   live GCP Billing export, `cost_input_basis` must be
   `cost_plus_10pct_gcp_catalog`, never `cost_plus_10pct_gcp` (reserved for a live
   metered Billing export) and never a fabricated "metered from billing API"
   basis; `unavailable` requires a `null` cost. Failed acquire/readiness must
   degrade or refuse,
-  never advertise a healthy VM. Real GCP calls are gated behind config/ADC; a
+  never advertise a healthy VM.
+- Real GCP calls are gated behind config/ADC; a
   fake/dry-run provisioner backs unit tests and any no-cloud environment. The
   live provisioner drives real Compute Engine calls (via `gcloud`) only when
   Application Default Credentials and a configured raw project id are both
@@ -315,10 +373,14 @@ design context only.
   resources (VM and firewall) before refusing — it must never leak a running
   instance. Release must be idempotent, tolerate already-missing resources, and
   verify via a label/name-filtered `instances list` that zero session VMs
-  remain (degrading loudly otherwise). The live lane is opt-in via env and ADC;
+  remain (degrading loudly otherwise).
+- The live lane is opt-in via env and ADC;
   the default provisioner is fake so no-cloud envs and unit tests never bill.
   Raw GCP project id / zone / instance name may be used only transiently at
-  provisioning time and must never be retained. Lease projections, provision
-  receipts, and cleanup receipts are refs-and-limits only and must reject raw
-  GCP project ids, instance names, self-links, IP addresses, SSH keys,
-  credentials, wallet material, bearer tokens, and private topology markers.
+  provisioning time and must never be retained.
+  Lease projections and provision and cleanup receipts contain only references
+  and limits.
+  They reject raw GCP project ids, instance names, self-links, IP addresses, and
+  SSH keys.
+  They also reject credentials, wallet material, bearer tokens, and private
+  topology markers.

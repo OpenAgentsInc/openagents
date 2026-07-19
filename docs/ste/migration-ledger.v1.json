@@ -13135,6 +13135,19 @@
       "replacement": null
     },
     {
+      "path": "docs/cloud/contracts/openagents.managed_sandbox.v1.md",
+      "ste_issue": 9,
+      "ste_mode": "descriptive",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "migration",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "legacy",
+      "source": null,
+      "replacement": null
+    },
+    {
       "path": "docs/cloud/contracts/openagents.probe_worker_attachment.v1.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
@@ -34364,6 +34377,32 @@
       "replacement": null
     },
     {
+      "path": "packages/managed-sandbox-contract/README.md",
+      "ste_issue": 9,
+      "ste_mode": "descriptive",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "migration",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "legacy",
+      "source": null,
+      "replacement": null
+    },
+    {
+      "path": "packages/managed-sandbox-contract/THIRD_PARTY_NOTICES.md",
+      "ste_issue": 9,
+      "ste_mode": "descriptive",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "migration",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "legacy",
+      "source": null,
+      "replacement": null
+    },
+    {
       "path": "packages/mcp-contract/README.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
@@ -35730,6 +35769,19 @@
     },
     {
       "path": "specs/openagents/fast-follow.product-spec.md",
+      "ste_issue": 9,
+      "ste_mode": "descriptive",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "migration",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "legacy",
+      "source": null,
+      "replacement": null
+    },
+    {
+      "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
