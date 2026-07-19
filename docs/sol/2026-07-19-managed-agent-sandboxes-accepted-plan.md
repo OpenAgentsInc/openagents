@@ -95,8 +95,8 @@ or cleanup truth.
 | SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store                         | SBX-00                                                      | complete                                               |
 | SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission                            | SBX-00/01                                                   | complete; default-off live component accepted          |
 | SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof                       | SBX-00/01                                                   | complete, default-off facade accepted                  |
-| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | next                                                   |
-| SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | not started                                            |
+| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | complete, default-off driver component accepted        |
+| SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | next                                                   |
 | SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration                                   | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | not started                                            |
 | SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker                                   | SBX-00/04/05                                                | not started                                            |
 | SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision                                    | SBX-06/07                                                   | not started                                            |
@@ -198,8 +198,14 @@ loopback HTTP service using the production route handler. The facade is wired
 at `/v1`, remains default-off, and uses programmatic bearer authentication plus
 the native Postgres owner/tenant/generation authority. This is staged HTTP
 conformance, not the SBX-09 owner-gated public deployment or live-GCP SDK
-acceptance claim. Runtime turns and bounded guest I/O remain typed unavailable
-until SBX-04 and SBX-05 connect their native services.
+acceptance claim. SBX-04 connects prompt/status/events/interrupt to the native
+turn authority and a private, default-off Codex/Claude SDK-driver protocol.
+
+Its deterministic component proof covers provider identity, dense replay,
+exact usage, terminal settlement, and visible idempotent interrupt. It does
+not claim that the driver is deployed in the admitted GCP image or that a live
+provider account ran there. SBX-09 remains the only live acceptance and
+rollout gate. Bounded guest I/O remains typed unavailable until SBX-05.
 
 ## Hot contracts
 

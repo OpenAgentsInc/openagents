@@ -10,12 +10,18 @@ import {
   ManagedSandboxEventSchema,
   ManagedSandboxReceiptSchema,
   ManagedSandboxResourceSchema,
+  ManagedSandboxRuntimeEventInputSchema,
+  ManagedSandboxTurnReceiptSchema,
+  ManagedSandboxTurnSchema,
   SandboxRef,
   type BoxProjectionCursor,
   type ManagedSandboxCommand,
   type ManagedSandboxEvent,
   type ManagedSandboxReceipt,
   type ManagedSandboxResource,
+  type ManagedSandboxRuntimeEventInput,
+  type ManagedSandboxTurn,
+  type ManagedSandboxTurnReceipt,
   type SandboxModelState,
 } from "@openagentsinc/managed-sandbox-contract";
 import { Schema as S } from "effect";
@@ -26,6 +32,9 @@ const decodeCommand = S.decodeUnknownSync(ManagedSandboxCommandSchema);
 const decodeEvent = S.decodeUnknownSync(ManagedSandboxEventSchema);
 const decodeReceipt = S.decodeUnknownSync(ManagedSandboxReceiptSchema);
 const decodeResource = S.decodeUnknownSync(ManagedSandboxResourceSchema);
+const decodeRuntimeEventInput = S.decodeUnknownSync(ManagedSandboxRuntimeEventInputSchema);
+const decodeTurn = S.decodeUnknownSync(ManagedSandboxTurnSchema);
+const decodeTurnReceipt = S.decodeUnknownSync(ManagedSandboxTurnReceiptSchema);
 const decodeProjectionCursor = S.decodeUnknownSync(BoxProjectionCursorSchema);
 const decodeRef = S.decodeUnknownSync(SandboxRef);
 
@@ -91,6 +100,15 @@ type TurnRow = Readonly<{
   turn_ref: string;
   status: string;
 }>;
+type RuntimeTurnRow = TurnRow &
+  Readonly<{
+    resource_generation: string | number;
+    last_event_sequence: string | number;
+    command_ref: string;
+    interrupt_command_ref: string | null;
+    turn_json: unknown;
+    turn_receipt_json: unknown | null;
+  }>;
 type ProjectionRow = Readonly<{
   projection_version: string | number;
   native_event_sequence: string | number;
@@ -124,7 +142,31 @@ export type ManagedSandboxPendingCommand = Readonly<{
 export type ManagedSandboxTurnOrder = Readonly<{
   turnSequence: number;
   turnRef: string;
-  status: "pending" | "running" | "settled" | "failed" | "interrupted";
+  status: "pending" | "running" | "interrupting" | "settled" | "failed" | "interrupted";
+}>;
+
+export type ManagedSandboxRuntimeEventPage = Readonly<{
+  turn: ManagedSandboxTurn;
+  events: ReadonlyArray<ManagedSandboxEvent>;
+  afterTurnSequence: number;
+  nextTurnSequence: number;
+  terminalTurnSequence: number;
+}>;
+
+export type RecordManagedSandboxRuntimeEventsInput = Readonly<{
+  ownerRef: string;
+  tenantRef: string;
+  sandboxRef: string;
+  turnRef: string;
+  expectedResourceGeneration: number;
+  events: ReadonlyArray<unknown>;
+  evidenceRefs?: ReadonlyArray<string> | undefined;
+}>;
+
+export type RecordManagedSandboxRuntimeEventsResult = Readonly<{
+  turn: ManagedSandboxTurn;
+  receipt?: ManagedSandboxTurnReceipt | undefined;
+  events: ReadonlyArray<ManagedSandboxEvent>;
 }>;
 
 export type ManagedSandboxProjectionState = Readonly<{
@@ -242,6 +284,258 @@ const receiptFromRow = (row: ReceiptRow): ManagedSandboxReceipt =>
 
 const eventFromRow = (row: EventRow): ManagedSandboxEvent =>
   publicSafe(decodeEvent(parseJson(row.event_json)));
+
+const turnFromRow = (row: RuntimeTurnRow): ManagedSandboxTurn => {
+  const turn = publicSafe(decodeTurn(parseJson(row.turn_json)));
+  if (
+    turn.turnRef !== row.turn_ref ||
+    turn.turnSequence !== integer(row.turn_sequence, "turn sequence") ||
+    turn.resourceGeneration !== integer(row.resource_generation, "turn generation") ||
+    turn.lastEventSequence !== integer(row.last_event_sequence, "turn event sequence") ||
+    turn.commandRef !== row.command_ref ||
+    turn.status !== row.status
+  ) {
+    throw new ManagedSandboxStoreError(
+      "corrupt_store",
+      "managed sandbox turn columns disagree with canonical turn state",
+    );
+  }
+  return turn;
+};
+
+const turnReceiptFromRow = (row: RuntimeTurnRow): ManagedSandboxTurnReceipt | undefined =>
+  row.turn_receipt_json === null
+    ? undefined
+    : publicSafe(decodeTurnReceipt(parseJson(row.turn_receipt_json)));
+
+const runtimeEventForTurn = (
+  event: ManagedSandboxEvent,
+  turnRef: string,
+): event is Extract<ManagedSandboxEvent, { readonly turnRef: string }> =>
+  "turnRef" in event && event.turnRef === turnRef && "turnEventSequence" in event;
+
+const runtimeInputFromEvent = (event: ManagedSandboxEvent): ManagedSandboxRuntimeEventInput => {
+  if (!("turnRef" in event) || !("turnEventSequence" in event)) {
+    throw new ManagedSandboxStoreError("corrupt_store", "event is not bound to a runtime turn");
+  }
+  const base = {
+    _tag: event._tag,
+    turnRef: event.turnRef,
+    resourceGeneration: event.resourceGeneration,
+    turnEventSequence: event.turnEventSequence,
+    observedAt: event.observedAt,
+  };
+  switch (event._tag) {
+    case "RuntimeStarted":
+      return decodeRuntimeEventInput(base);
+    case "RuntimeTextDelta":
+      return decodeRuntimeEventInput({ ...base, content: event.content });
+    case "RuntimeToolStarted":
+      return decodeRuntimeEventInput({
+        ...base,
+        toolCallRef: event.toolCallRef,
+        toolName: event.toolName,
+      });
+    case "RuntimeToolCompleted":
+      return decodeRuntimeEventInput({
+        ...base,
+        toolCallRef: event.toolCallRef,
+        toolName: event.toolName,
+        outcome: event.outcome,
+        evidenceRefs: event.evidenceRefs,
+      });
+    case "RuntimeUsageRecorded":
+      return decodeRuntimeEventInput({ ...base, usage: event.usage });
+    case "RuntimeInterruptRequested":
+    case "RuntimeInterrupted":
+      return decodeRuntimeEventInput({ ...base, reasonRef: event.reasonRef });
+    case "RuntimeSettled":
+      return decodeRuntimeEventInput({
+        ...base,
+        finishReason: event.finishReason,
+        ...(event.usage === undefined ? {} : { usage: event.usage }),
+      });
+    case "RuntimeFailed":
+      return decodeRuntimeEventInput({
+        ...base,
+        errorRef: event.errorRef,
+        retryable: event.retryable,
+      });
+    default:
+      throw new ManagedSandboxStoreError("corrupt_store", "event is not a runtime event");
+  }
+};
+
+const materializeRuntimeEvent = (
+  input: ManagedSandboxRuntimeEventInput,
+  sandboxRef: string,
+  globalSequence: number,
+): ManagedSandboxEvent =>
+  publicSafe(
+    decodeEvent({
+      ...input,
+      schema: "openagents.managed_sandbox_event.v1",
+      eventRef: deterministicRef("event", input.turnRef, String(input.turnEventSequence)),
+      sandboxRef,
+      sequence: globalSequence,
+    }),
+  );
+
+const advanceTurn = (
+  current: ManagedSandboxTurn,
+  events: ReadonlyArray<ManagedSandboxEvent>,
+): ManagedSandboxTurn => {
+  let turn = current;
+  for (const event of events) {
+    if (!runtimeEventForTurn(event, turn.turnRef)) continue;
+    if (event.resourceGeneration !== turn.resourceGeneration) {
+      throw new ManagedSandboxStoreError(
+        "stale_generation",
+        "runtime event generation does not match the exact turn",
+      );
+    }
+    if (event.turnEventSequence !== turn.lastEventSequence + 1) {
+      throw new ManagedSandboxStoreError("event_conflict", "runtime event sequence is not dense");
+    }
+    const active = ["running", "interrupting"] as const;
+    switch (event._tag) {
+      case "RuntimeStarted":
+        if (turn.status !== "pending") {
+          throw new ManagedSandboxStoreError(
+            "invalid_transition",
+            "runtime start requires a pending turn",
+          );
+        }
+        turn = decodeTurn({
+          ...turn,
+          status: "running",
+          startedAt: event.observedAt,
+          lastEventSequence: event.turnEventSequence,
+        });
+        break;
+      case "RuntimeTextDelta":
+      case "RuntimeToolStarted":
+      case "RuntimeToolCompleted":
+        if (!active.includes(turn.status as (typeof active)[number])) {
+          throw new ManagedSandboxStoreError(
+            "invalid_transition",
+            `${event._tag} requires an active turn`,
+          );
+        }
+        turn = decodeTurn({ ...turn, lastEventSequence: event.turnEventSequence });
+        break;
+      case "RuntimeUsageRecorded":
+        if (!active.includes(turn.status as (typeof active)[number])) {
+          throw new ManagedSandboxStoreError(
+            "invalid_transition",
+            "runtime usage requires an active turn",
+          );
+        }
+        turn = decodeTurn({
+          ...turn,
+          usage: event.usage,
+          lastEventSequence: event.turnEventSequence,
+        });
+        break;
+      case "RuntimeInterruptRequested":
+        if (turn.status !== "running") {
+          throw new ManagedSandboxStoreError(
+            "invalid_transition",
+            "runtime interrupt requires a running turn",
+          );
+        }
+        turn = decodeTurn({
+          ...turn,
+          status: "interrupting",
+          lastEventSequence: event.turnEventSequence,
+        });
+        break;
+      case "RuntimeSettled":
+        if (!active.includes(turn.status as (typeof active)[number])) {
+          throw new ManagedSandboxStoreError(
+            "invalid_transition",
+            "runtime settlement requires an active turn",
+          );
+        }
+        turn = decodeTurn({
+          ...turn,
+          status: "settled",
+          settledAt: event.observedAt,
+          terminalReason: event.finishReason,
+          ...(event.usage === undefined ? {} : { usage: event.usage }),
+          lastEventSequence: event.turnEventSequence,
+        });
+        break;
+      case "RuntimeFailed":
+        if (!active.includes(turn.status as (typeof active)[number])) {
+          throw new ManagedSandboxStoreError(
+            "invalid_transition",
+            "runtime failure requires an active turn",
+          );
+        }
+        turn = decodeTurn({
+          ...turn,
+          status: "failed",
+          settledAt: event.observedAt,
+          terminalReason: "provider_failure",
+          lastEventSequence: event.turnEventSequence,
+        });
+        break;
+      case "RuntimeInterrupted":
+        if (!active.includes(turn.status as (typeof active)[number])) {
+          throw new ManagedSandboxStoreError(
+            "invalid_transition",
+            "runtime interruption requires an active turn",
+          );
+        }
+        turn = decodeTurn({
+          ...turn,
+          status: "interrupted",
+          settledAt: event.observedAt,
+          terminalReason: "explicit_stop",
+          lastEventSequence: event.turnEventSequence,
+        });
+        break;
+      default:
+        break;
+    }
+  }
+  return turn;
+};
+
+const makeTurnReceipt = (
+  turn: ManagedSandboxTurn,
+  terminalEventSequence: number,
+  evidenceRefs: ReadonlyArray<string>,
+): ManagedSandboxTurnReceipt | undefined => {
+  if (
+    turn.settledAt === undefined ||
+    turn.terminalReason === undefined ||
+    !["settled", "failed", "interrupted"].includes(turn.status)
+  ) {
+    return undefined;
+  }
+  return publicSafe(
+    decodeTurnReceipt({
+      schema: "openagents.managed_sandbox_turn_receipt.v1",
+      receiptRef: deterministicRef("receipt", turn.turnRef, String(terminalEventSequence)),
+      turnRef: turn.turnRef,
+      sandboxRef: turn.sandboxRef,
+      ownerRef: turn.ownerRef,
+      tenantRef: turn.tenantRef,
+      workUnitRef: turn.workUnitRef,
+      resourceGeneration: turn.resourceGeneration,
+      turnSequence: turn.turnSequence,
+      terminalEventSequence,
+      runtime: turn.runtime,
+      outcome: turn.status,
+      terminalReason: turn.terminalReason,
+      ...(turn.usage === undefined ? {} : { usage: turn.usage }),
+      evidenceRefs: evidenceRefs.map((value) => decodeRef(value)),
+      observedAt: turn.settledAt,
+    }),
+  );
+};
 
 const modelFromResource = (resource: ManagedSandboxResource): SandboxModelState => ({
   lifecycle: resource.facts.lifecycle,
@@ -390,6 +684,31 @@ const turnForCommand = async (
     WHERE command_ref = ${commandRef}
   `;
   return rows[0] === undefined ? undefined : integer(rows[0].turn_sequence, "turn sequence");
+};
+
+const selectRuntimeTurn = async (
+  sql: SyncSql | SyncTransactionSql,
+  sandboxRef: string,
+  turnRef: string,
+  lock = false,
+): Promise<RuntimeTurnRow | undefined> => {
+  const rows: ReadonlyArray<RuntimeTurnRow> = lock
+    ? await sql`
+        SELECT turn_sequence, turn_ref, status, resource_generation,
+               last_event_sequence, command_ref, interrupt_command_ref,
+               turn_json, turn_receipt_json
+        FROM khala_sync_managed_sandbox_turns
+        WHERE sandbox_ref = ${sandboxRef} AND turn_ref = ${turnRef}
+        FOR UPDATE
+      `
+    : await sql`
+        SELECT turn_sequence, turn_ref, status, resource_generation,
+               last_event_sequence, command_ref, interrupt_command_ref,
+               turn_json, turn_receipt_json
+        FROM khala_sync_managed_sandbox_turns
+        WHERE sandbox_ref = ${sandboxRef} AND turn_ref = ${turnRef}
+      `;
+  return rows[0];
 };
 
 const assertScope = (row: ResourceRow, ownerRef: string, tenantRef: string): void => {
@@ -809,14 +1128,36 @@ export class PostgresManagedSandboxStore {
           FOR UPDATE
         `;
         turnSequence = integer(sequenceRows[0]!.next_turn_sequence, "next turn sequence");
+        const turn = decodeTurn({
+          schema: "openagents.managed_sandbox_turn.v1",
+          turnRef: command.turnRef,
+          sandboxRef,
+          ownerRef: resource.ownerRef,
+          tenantRef: resource.tenantRef,
+          workUnitRef: resource.workUnitRef,
+          attachmentRef: resource.attachmentRef,
+          attachmentGeneration: resource.attachmentGeneration,
+          resourceGeneration: resource.resourceGeneration,
+          turnSequence,
+          lastEventSequence: 0,
+          commandRef: command.commandRef,
+          capabilityRef: command.capabilityRef,
+          promptDigest: command.promptDigest,
+          runtime: command.runtime,
+          status: "pending",
+          createdAt: command.requestedAt,
+        });
         await tx`
           INSERT INTO khala_sync_managed_sandbox_turns
             (sandbox_ref, turn_sequence, turn_ref, command_ref, resource_generation,
-             status, created_at, updated_at)
+             status, provider, model_ref, harness_ref, reasoning_effort,
+             prompt_digest, last_event_sequence, turn_json, created_at, updated_at)
           VALUES
             (${sandboxRef}, ${turnSequence}, ${command.turnRef}, ${command.commandRef},
-             ${resource.resourceGeneration}, 'pending', ${command.requestedAt},
-             ${command.requestedAt})
+             ${resource.resourceGeneration}, 'pending', ${command.runtime.provider},
+             ${command.runtime.modelRef}, ${command.runtime.harnessRef},
+             ${command.runtime.reasoningEffort ?? null}, ${command.promptDigest}, 0,
+             ${turn}::jsonb, ${command.requestedAt}, ${command.requestedAt})
         `;
         await tx`
           UPDATE khala_sync_managed_sandboxes
@@ -941,14 +1282,16 @@ export class PostgresManagedSandboxStore {
       }
 
       for (const event of events) {
+        const eventTurnRef = "turnRef" in event ? event.turnRef : null;
+        const turnEventSequence = "turnEventSequence" in event ? event.turnEventSequence : null;
         await tx`
           INSERT INTO khala_sync_managed_sandbox_events
             (sandbox_ref, sequence, event_ref, command_ref, resource_generation,
-             event_kind, event_json, observed_at)
+             event_kind, event_json, observed_at, turn_ref, turn_event_sequence)
           VALUES
             (${sandboxRef}, ${event.sequence}, ${event.eventRef}, ${commandRef},
              ${event.resourceGeneration}, ${event._tag}, ${event}::jsonb,
-             ${event.observedAt})
+             ${event.observedAt}, ${eventTurnRef}, ${turnEventSequence})
         `;
       }
 
@@ -989,22 +1332,34 @@ export class PostgresManagedSandboxStore {
         WHERE command_ref = ${commandRef}
       `;
       if (command._tag === "Dispatch") {
-        const turnStatus =
-          nextResource.facts.lifecycle === "failed"
-            ? "failed"
-            : nextResource.facts.runtimeState === "settled"
-              ? "settled"
-              : "running";
+        const row = await selectRuntimeTurn(tx, sandboxRef, command.turnRef, true);
+        if (row === undefined) {
+          throw new ManagedSandboxStoreError("corrupt_store", "dispatch lost its runtime turn");
+        }
+        const turn = advanceTurn(turnFromRow(row), events);
+        const turnReceipt = makeTurnReceipt(turn, turn.lastEventSequence, artifactRefs);
         await tx`
           UPDATE khala_sync_managed_sandbox_turns
-          SET status = ${turnStatus}, updated_at = ${observedAt}
+          SET status = ${turn.status}, last_event_sequence = ${turn.lastEventSequence},
+              turn_json = ${turn}::jsonb,
+              turn_receipt_json = ${turnReceipt ?? null}::jsonb,
+              updated_at = ${observedAt}
           WHERE command_ref = ${commandRef}
         `;
       }
       if (command._tag === "Interrupt") {
+        const row = await selectRuntimeTurn(tx, sandboxRef, command.turnRef, true);
+        if (row === undefined) {
+          throw new ManagedSandboxStoreError("not_found", "interrupt target turn does not exist");
+        }
+        const turn = advanceTurn(turnFromRow(row), events);
+        const turnReceipt = makeTurnReceipt(turn, turn.lastEventSequence, artifactRefs);
         await tx`
           UPDATE khala_sync_managed_sandbox_turns
-          SET status = 'interrupted', updated_at = ${observedAt}
+          SET status = ${turn.status}, last_event_sequence = ${turn.lastEventSequence},
+              interrupt_command_ref = ${commandRef}, turn_json = ${turn}::jsonb,
+              turn_receipt_json = ${turnReceipt ?? null}::jsonb,
+              updated_at = ${observedAt}
           WHERE sandbox_ref = ${sandboxRef} AND turn_ref = ${command.turnRef}
         `;
       }
@@ -1083,6 +1438,240 @@ export class PostgresManagedSandboxStore {
       terminalSequence: resource.lastEventSequence,
       events,
     };
+  }
+
+  async inspectTurn(
+    input: Readonly<{
+      ownerRef: string;
+      tenantRef: string;
+      sandboxRef: string;
+      turnRef: string;
+    }>,
+  ): Promise<Readonly<{ turn: ManagedSandboxTurn; receipt?: ManagedSandboxTurnReceipt }>> {
+    const ownerRef = decodeRef(input.ownerRef);
+    const tenantRef = decodeRef(input.tenantRef);
+    const sandboxRef = decodeRef(input.sandboxRef);
+    const turnRef = decodeRef(input.turnRef);
+    const resource = await this.inspect({ ownerRef, tenantRef, sandboxRef });
+    const row = await selectRuntimeTurn(this.sql, resource.sandboxRef, turnRef);
+    if (row === undefined) {
+      throw new ManagedSandboxStoreError(
+        "not_found",
+        "managed sandbox runtime turn does not exist",
+      );
+    }
+    const turn = turnFromRow(row);
+    if (turn.ownerRef !== ownerRef || turn.tenantRef !== tenantRef) {
+      throw new ManagedSandboxStoreError("permission_denied", "runtime turn scope does not match");
+    }
+    const receipt = turnReceiptFromRow(row);
+    return receipt === undefined ? { turn } : { turn, receipt };
+  }
+
+  async readTurnEvents(
+    input: Readonly<{
+      ownerRef: string;
+      tenantRef: string;
+      sandboxRef: string;
+      turnRef: string;
+      afterTurnSequence: number;
+      limit: number;
+    }>,
+  ): Promise<ManagedSandboxRuntimeEventPage> {
+    const { turn } = await this.inspectTurn(input);
+    if (
+      !Number.isSafeInteger(input.afterTurnSequence) ||
+      input.afterTurnSequence < 0 ||
+      input.afterTurnSequence > turn.lastEventSequence ||
+      !Number.isSafeInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > 1_000
+    ) {
+      throw new ManagedSandboxStoreError("cursor_conflict", "runtime turn cursor is invalid");
+    }
+    const rows: ReadonlyArray<EventRow> = await this.sql`
+      SELECT event_json
+      FROM khala_sync_managed_sandbox_events
+      WHERE sandbox_ref = ${turn.sandboxRef}
+        AND turn_ref = ${turn.turnRef}
+        AND turn_event_sequence > ${input.afterTurnSequence}
+      ORDER BY turn_event_sequence ASC
+      LIMIT ${input.limit}
+    `;
+    const events = rows.map(eventFromRow);
+    return {
+      turn,
+      events,
+      afterTurnSequence: input.afterTurnSequence,
+      nextTurnSequence:
+        events.length === 0
+          ? input.afterTurnSequence
+          : (events.at(-1)! as ManagedSandboxEvent & { readonly turnEventSequence: number })
+              .turnEventSequence,
+      terminalTurnSequence: turn.lastEventSequence,
+    };
+  }
+
+  async recordRuntimeEvents(
+    raw: RecordManagedSandboxRuntimeEventsInput,
+  ): Promise<RecordManagedSandboxRuntimeEventsResult> {
+    const ownerRef = decodeRef(raw.ownerRef);
+    const tenantRef = decodeRef(raw.tenantRef);
+    const sandboxRef = decodeRef(raw.sandboxRef);
+    const turnRef = decodeRef(raw.turnRef);
+    const events = raw.events.map((item) => publicSafe(decodeRuntimeEventInput(item)));
+    const evidenceRefs = (raw.evidenceRefs ?? []).map((value) => decodeRef(value));
+    if (
+      !Number.isSafeInteger(raw.expectedResourceGeneration) ||
+      raw.expectedResourceGeneration < 0
+    ) {
+      throw new ManagedSandboxStoreError("invalid", "runtime event generation is invalid");
+    }
+    if (
+      events.some(
+        (event) =>
+          event.turnRef !== turnRef || event.resourceGeneration !== raw.expectedResourceGeneration,
+      )
+    ) {
+      throw new ManagedSandboxStoreError(
+        "stale_generation",
+        "runtime events do not bind the exact turn and resource generation",
+      );
+    }
+    for (let index = 1; index < events.length; index += 1) {
+      if (events[index]!.turnEventSequence !== events[index - 1]!.turnEventSequence + 1) {
+        throw new ManagedSandboxStoreError("event_conflict", "runtime event page is not dense");
+      }
+    }
+
+    return this.sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${sandboxRef}, 0))`;
+      const resourceRow = await selectResource(tx, sandboxRef, true);
+      if (resourceRow === undefined) {
+        throw new ManagedSandboxStoreError("not_found", "managed sandbox does not exist");
+      }
+      assertScope(resourceRow, ownerRef, tenantRef);
+      let resource = resourceFromRow(resourceRow);
+      if (resource.resourceGeneration !== raw.expectedResourceGeneration) {
+        throw new ManagedSandboxStoreError(
+          "stale_generation",
+          `expected generation ${resource.resourceGeneration}, received ${raw.expectedResourceGeneration}`,
+        );
+      }
+      const turnRow = await selectRuntimeTurn(tx, sandboxRef, turnRef, true);
+      if (turnRow === undefined) {
+        throw new ManagedSandboxStoreError(
+          "not_found",
+          "managed sandbox runtime turn does not exist",
+        );
+      }
+      let turn = turnFromRow(turnRow);
+      if (turn.ownerRef !== ownerRef || turn.tenantRef !== tenantRef) {
+        throw new ManagedSandboxStoreError(
+          "permission_denied",
+          "runtime turn scope does not match",
+        );
+      }
+      if (turn.resourceGeneration !== raw.expectedResourceGeneration) {
+        throw new ManagedSandboxStoreError(
+          "stale_generation",
+          "runtime turn belongs to another resource generation",
+        );
+      }
+      const commandRows: ReadonlyArray<CommandRow> = await tx`
+        SELECT command_ref, sandbox_ref, owner_user_id, tenant_ref,
+               idempotency_ref, command_fingerprint, settlement_fingerprint, command_json,
+               resource_generation, claimed_version, status, receipt_ref
+        FROM khala_sync_managed_sandbox_commands
+        WHERE command_ref = ${turn.commandRef}
+        FOR UPDATE
+      `;
+      const commandRow = commandRows[0];
+      if (commandRow === undefined) {
+        throw new ManagedSandboxStoreError(
+          "corrupt_store",
+          "runtime turn lost its dispatch command",
+        );
+      }
+      const command = commandFromRow(commandRow);
+      if (command._tag !== "Dispatch") {
+        throw new ManagedSandboxStoreError("corrupt_store", "runtime turn command is not dispatch");
+      }
+
+      const appended: Array<ManagedSandboxEvent> = [];
+      const initialResourceVersion = resource.version;
+      for (const input of events) {
+        if (input.turnEventSequence <= turn.lastEventSequence) {
+          const rows: ReadonlyArray<EventRow> = await tx`
+            SELECT event_json
+            FROM khala_sync_managed_sandbox_events
+            WHERE sandbox_ref = ${sandboxRef}
+              AND turn_ref = ${turnRef}
+              AND turn_event_sequence = ${input.turnEventSequence}
+            FOR UPDATE
+          `;
+          const existing = rows[0];
+          if (
+            existing === undefined ||
+            !same(runtimeInputFromEvent(eventFromRow(existing)), input)
+          ) {
+            throw new ManagedSandboxStoreError(
+              "event_conflict",
+              "runtime event sequence is bound to different provider bytes",
+            );
+          }
+          continue;
+        }
+        if (input.turnEventSequence !== turn.lastEventSequence + 1) {
+          throw new ManagedSandboxStoreError("event_conflict", "runtime event sequence has a gap");
+        }
+        const event = materializeRuntimeEvent(input, sandboxRef, resource.lastEventSequence + 1);
+        const model = applyEvents(resource, command, [event]);
+        resource = withModel(resource, model, resource.version, event.observedAt);
+        turn = advanceTurn(turn, [event]);
+        const causalCommandRef =
+          event._tag === "RuntimeInterrupted" && turnRow.interrupt_command_ref !== null
+            ? turnRow.interrupt_command_ref
+            : turn.commandRef;
+        await tx`
+          INSERT INTO khala_sync_managed_sandbox_events
+            (sandbox_ref, sequence, event_ref, command_ref, resource_generation,
+             event_kind, event_json, observed_at, turn_ref, turn_event_sequence)
+          VALUES
+            (${sandboxRef}, ${event.sequence}, ${event.eventRef}, ${causalCommandRef},
+             ${event.resourceGeneration}, ${event._tag}, ${event}::jsonb,
+             ${event.observedAt}, ${turnRef}, ${input.turnEventSequence})
+        `;
+        appended.push(event);
+      }
+
+      let receipt = turnReceiptFromRow(turnRow);
+      if (appended.length > 0) {
+        resource = decodeResource({ ...resource, version: initialResourceVersion + 1 });
+        receipt = makeTurnReceipt(turn, turn.lastEventSequence, evidenceRefs);
+        await updateResource(tx, resource, resourceRow.active_command_ref);
+        await tx`
+          UPDATE khala_sync_managed_sandbox_generations
+          SET lifecycle = ${resource.facts.lifecycle},
+              accepting_work = ${resource.facts.acceptingWork},
+              fenced_at = CASE
+                WHEN ${resource.facts.acceptingWork} THEN NULL
+                ELSE ${resource.updatedAt}::timestamptz
+              END
+          WHERE sandbox_ref = ${sandboxRef}
+            AND resource_generation = ${resource.resourceGeneration}
+        `;
+        await tx`
+          UPDATE khala_sync_managed_sandbox_turns
+          SET status = ${turn.status}, last_event_sequence = ${turn.lastEventSequence},
+              turn_json = ${turn}::jsonb,
+              turn_receipt_json = ${receipt ?? null}::jsonb,
+              updated_at = ${resource.updatedAt}
+          WHERE sandbox_ref = ${sandboxRef} AND turn_ref = ${turnRef}
+        `;
+      }
+      return { turn, receipt, events: appended };
+    });
   }
 
   async pending(

@@ -1,7 +1,13 @@
 import { Schema as S } from "effect";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ManagedSandboxCommandSchema, ManagedSandboxResourceSchema } from "./schemas.ts";
+import {
+  ManagedSandboxCommandSchema,
+  ManagedSandboxResourceSchema,
+  ManagedSandboxRuntimeEventInputSchema,
+  ManagedSandboxTurnReceiptSchema,
+  ManagedSandboxTurnSchema,
+} from "./schemas.ts";
 
 const target = {
   targetRef: "target.gcp.sbx.dev",
@@ -143,5 +149,74 @@ describe("managed sandbox boundary schemas", () => {
         requestedCapabilities: [],
       }),
     ).toThrowError(/exact positive TTL/);
+  });
+
+  it("binds runtime identity, dense turn coordinates, usage, and terminal receipt bytes", () => {
+    const runtime = {
+      provider: "claude" as const,
+      modelRef: "model.claude.sonnet",
+      harnessRef: "harness.anthropic.claude-agent-sdk.v1",
+    };
+    const turn = S.decodeUnknownSync(ManagedSandboxTurnSchema)({
+      schema: "openagents.managed_sandbox_turn.v1",
+      turnRef: "turn.test.1",
+      sandboxRef: "sandbox.test.1",
+      ownerRef: "owner.test",
+      tenantRef: "tenant.test",
+      workUnitRef: "work.test.1",
+      attachmentRef: "attachment.test.1",
+      attachmentGeneration: 1,
+      resourceGeneration: 2,
+      turnSequence: 1,
+      lastEventSequence: 3,
+      commandRef: "command.test.dispatch.1",
+      capabilityRef: "capability.test.turn",
+      promptDigest: `sha256:${"d".repeat(64)}`,
+      runtime,
+      status: "settled",
+      createdAt: "2026-07-19T12:00:00.000Z",
+      startedAt: "2026-07-19T12:00:01.000Z",
+      settledAt: "2026-07-19T12:00:03.000Z",
+      terminalReason: "structural_completion",
+      usage: {
+        inputTokens: 12,
+        outputTokens: 4,
+        providerUsageRef: "usage.test.turn.1",
+        exact: true,
+      },
+    });
+    const event = S.decodeUnknownSync(ManagedSandboxRuntimeEventInputSchema)({
+      _tag: "RuntimeSettled",
+      turnRef: turn.turnRef,
+      resourceGeneration: turn.resourceGeneration,
+      turnEventSequence: turn.lastEventSequence,
+      finishReason: "structural_completion",
+      usage: turn.usage,
+      observedAt: turn.settledAt,
+    });
+    const receipt = S.decodeUnknownSync(ManagedSandboxTurnReceiptSchema)({
+      schema: "openagents.managed_sandbox_turn_receipt.v1",
+      receiptRef: "receipt.test.turn.1",
+      turnRef: turn.turnRef,
+      sandboxRef: turn.sandboxRef,
+      ownerRef: turn.ownerRef,
+      tenantRef: turn.tenantRef,
+      workUnitRef: turn.workUnitRef,
+      resourceGeneration: turn.resourceGeneration,
+      turnSequence: turn.turnSequence,
+      terminalEventSequence: turn.lastEventSequence,
+      runtime,
+      outcome: "settled",
+      terminalReason: turn.terminalReason,
+      usage: turn.usage,
+      evidenceRefs: ["evidence.test.turn.1"],
+      observedAt: turn.settledAt,
+    });
+
+    expect(event).toMatchObject({ _tag: "RuntimeSettled", turnEventSequence: 3 });
+    expect(receipt).toMatchObject({
+      outcome: "settled",
+      runtime: { provider: "claude" },
+    });
   });
 });

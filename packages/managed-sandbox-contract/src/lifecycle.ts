@@ -27,8 +27,14 @@ export type SandboxModelEvent = Readonly<{
     | "ProvisionRequested"
     | "GuestReady"
     | "RuntimeStarted"
+    | "RuntimeTextDelta"
+    | "RuntimeToolStarted"
+    | "RuntimeToolCompleted"
+    | "RuntimeUsageRecorded"
+    | "RuntimeInterruptRequested"
     | "RuntimeSettled"
     | "RuntimeFailed"
+    | "RuntimeInterrupted"
     | "StopRequested"
     | "FilesystemCheckpointed"
     | "FilesystemCheckpointFailed"
@@ -179,6 +185,21 @@ export const applySandboxModelEvent = (
       }
       next = { ...nextBase, lifecycle: "running", runtimeState: "running" };
       break;
+    case "RuntimeTextDelta":
+    case "RuntimeToolStarted":
+    case "RuntimeToolCompleted":
+    case "RuntimeUsageRecorded":
+      if (state.lifecycle !== "running") {
+        return refuse("invalid_transition", `${event.kind} requires running`);
+      }
+      next = nextBase;
+      break;
+    case "RuntimeInterruptRequested":
+      if (state.lifecycle !== "running" || state.runtimeState !== "running") {
+        return refuse("invalid_transition", "RuntimeInterruptRequested requires running");
+      }
+      next = { ...nextBase, runtimeState: "interrupting" };
+      break;
     case "RuntimeSettled":
       if (state.lifecycle !== "running") {
         return refuse("invalid_transition", "RuntimeSettled requires running");
@@ -195,6 +216,12 @@ export const applySandboxModelEvent = (
         acceptingWork: false,
         runtimeState: "failed",
       };
+      break;
+    case "RuntimeInterrupted":
+      if (state.lifecycle !== "running") {
+        return refuse("invalid_transition", "RuntimeInterrupted requires running");
+      }
+      next = { ...nextBase, lifecycle: "idle", runtimeState: "settled" };
       break;
     case "StopRequested":
       if (!["ready", "idle"].includes(state.lifecycle)) {
@@ -345,8 +372,14 @@ export const enumerateSandboxModel = (depth: number): ReadonlyArray<SandboxModel
     "ProvisionRequested",
     "GuestReady",
     "RuntimeStarted",
+    "RuntimeTextDelta",
+    "RuntimeToolStarted",
+    "RuntimeToolCompleted",
+    "RuntimeUsageRecorded",
+    "RuntimeInterruptRequested",
     "RuntimeSettled",
     "RuntimeFailed",
+    "RuntimeInterrupted",
     "StopRequested",
     "FilesystemCheckpointed",
     "FilesystemCheckpointFailed",

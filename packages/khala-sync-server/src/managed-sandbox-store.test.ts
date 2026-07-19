@@ -11,6 +11,12 @@ const tenantRef = "tenant.sbx01";
 const observed = (offset: number): string =>
   new Date(Date.UTC(2026, 6, 19, 16, offset, 0)).toISOString();
 const sha = (value: string): `sha256:${string}` => `sha256:${value.repeat(64)}`;
+const runtime = {
+  provider: "codex" as const,
+  modelRef: "model.gpt-5.6",
+  harnessRef: "harness.codex.app-server.v1",
+  reasoningEffort: "high",
+};
 
 const target = {
   targetRef: "target.sbx01.gcp",
@@ -490,6 +496,7 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
       turnRef: "turn.sbx01.events.1",
       capabilityRef: "capability.sbx01.events.turn",
       promptDigest: sha("d"),
+      runtime,
     };
     expect(await store.reserve({ command: firstDispatch })).toMatchObject({ turnSequence: 1 });
 
@@ -510,8 +517,15 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
       commandRef: firstDispatch.commandRef,
       expectedResourceGeneration: 1,
       events: [
-        event(suffix, "RuntimeStarted", 1, 3, { turnRef: firstDispatch.turnRef }),
-        event(suffix, "RuntimeSettled", 1, 4, { turnRef: firstDispatch.turnRef }),
+        event(suffix, "RuntimeStarted", 1, 3, {
+          turnRef: firstDispatch.turnRef,
+          turnEventSequence: 1,
+        }),
+        event(suffix, "RuntimeSettled", 1, 4, {
+          turnRef: firstDispatch.turnRef,
+          turnEventSequence: 2,
+          finishReason: "structural_completion",
+        }),
       ],
       outcome: "succeeded",
       observedAt: observed(5),
@@ -522,6 +536,7 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
       turnRef: "turn.sbx01.events.2",
       capabilityRef: "capability.sbx01.events.turn",
       promptDigest: sha("e"),
+      runtime: { ...runtime, provider: "claude", modelRef: "model.claude.sonnet" },
     };
     expect(await store.reserve({ command: secondDispatch })).toMatchObject({ turnSequence: 2 });
     await store.settle({
@@ -531,8 +546,15 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
       commandRef: secondDispatch.commandRef,
       expectedResourceGeneration: 1,
       events: [
-        event(suffix, "RuntimeStarted", 1, 5, { turnRef: secondDispatch.turnRef }),
-        event(suffix, "RuntimeSettled", 1, 6, { turnRef: secondDispatch.turnRef }),
+        event(suffix, "RuntimeStarted", 1, 5, {
+          turnRef: secondDispatch.turnRef,
+          turnEventSequence: 1,
+        }),
+        event(suffix, "RuntimeSettled", 1, 6, {
+          turnRef: secondDispatch.turnRef,
+          turnEventSequence: 2,
+          finishReason: "structural_completion",
+        }),
       ],
       outcome: "succeeded",
       observedAt: observed(7),
@@ -602,6 +624,187 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
         observedAt: observed(9),
       }),
     ).rejects.toMatchObject({ code: "cursor_conflict" });
+  });
+
+  test("replays ordered provider events and interrupts only the exact generation-fenced turn", async () => {
+    const suffix = "runtime";
+    const sandboxRef = `sandbox.sbx01.${suffix}`;
+    const turnRef = "turn.sbx04.runtime.1";
+    await ready(suffix);
+    const dispatch = {
+      ...commandBase(suffix, "Dispatch", 2),
+      _tag: "Dispatch" as const,
+      turnRef,
+      capabilityRef: `capability.sbx01.${suffix}.turn`,
+      promptDigest: sha("f"),
+      runtime: { ...runtime, provider: "claude" as const, modelRef: "model.claude.sonnet" },
+    };
+    await store.reserve({ command: dispatch });
+    await store.settle({
+      ownerRef,
+      tenantRef,
+      sandboxRef,
+      commandRef: dispatch.commandRef,
+      expectedResourceGeneration: 1,
+      events: [event(suffix, "RuntimeStarted", 1, 3, { turnRef, turnEventSequence: 1 })],
+      outcome: "succeeded",
+      observedAt: observed(20),
+    });
+
+    const providerEvents = [
+      {
+        _tag: "RuntimeTextDelta",
+        turnRef,
+        resourceGeneration: 1,
+        turnEventSequence: 2,
+        content: "working",
+        observedAt: observed(21),
+      },
+      {
+        _tag: "RuntimeToolStarted",
+        turnRef,
+        resourceGeneration: 1,
+        turnEventSequence: 3,
+        toolCallRef: "tool.sbx04.runtime.1",
+        toolName: "shell",
+        observedAt: observed(22),
+      },
+      {
+        _tag: "RuntimeToolCompleted",
+        turnRef,
+        resourceGeneration: 1,
+        turnEventSequence: 4,
+        toolCallRef: "tool.sbx04.runtime.1",
+        toolName: "shell",
+        outcome: "succeeded",
+        evidenceRefs: ["evidence.sbx04.runtime.tool.1"],
+        observedAt: observed(23),
+      },
+      {
+        _tag: "RuntimeUsageRecorded",
+        turnRef,
+        resourceGeneration: 1,
+        turnEventSequence: 5,
+        usage: {
+          inputTokens: 12,
+          outputTokens: 7,
+          cachedInputTokens: 4,
+          providerUsageRef: "usage.sbx04.runtime.1",
+          exact: true,
+        },
+        observedAt: observed(24),
+      },
+    ];
+    const recorded = await store.recordRuntimeEvents({
+      ownerRef,
+      tenantRef,
+      sandboxRef,
+      turnRef,
+      expectedResourceGeneration: 1,
+      events: providerEvents,
+    });
+    expect(recorded.events.map((item) => item.sequence)).toEqual([4, 5, 6, 7]);
+    expect(recorded.turn).toMatchObject({ status: "running", lastEventSequence: 5 });
+
+    const replay = await store.recordRuntimeEvents({
+      ownerRef,
+      tenantRef,
+      sandboxRef,
+      turnRef,
+      expectedResourceGeneration: 1,
+      events: providerEvents,
+    });
+    expect(replay.events).toEqual([]);
+    await expect(
+      store.recordRuntimeEvents({
+        ownerRef,
+        tenantRef,
+        sandboxRef,
+        turnRef,
+        expectedResourceGeneration: 1,
+        events: [{ ...providerEvents[0], content: "changed bytes" }],
+      }),
+    ).rejects.toMatchObject({ code: "event_conflict" });
+
+    const reconnect = await store.readTurnEvents({
+      ownerRef,
+      tenantRef,
+      sandboxRef,
+      turnRef,
+      afterTurnSequence: 2,
+      limit: 10,
+    });
+    expect(
+      reconnect.events.map((item) =>
+        "turnEventSequence" in item ? item.turnEventSequence : undefined,
+      ),
+    ).toEqual([3, 4, 5]);
+
+    const interrupt = {
+      ...commandBase(suffix, "Interrupt", 5),
+      _tag: "Interrupt" as const,
+      turnRef,
+      reasonRef: "reason.sbx04.operator.stop",
+    };
+    await store.reserve({ command: interrupt });
+    await store.settle({
+      ownerRef,
+      tenantRef,
+      sandboxRef,
+      commandRef: interrupt.commandRef,
+      expectedResourceGeneration: 1,
+      events: [
+        event(suffix, "RuntimeInterruptRequested", 1, 8, {
+          turnRef,
+          turnEventSequence: 6,
+          reasonRef: interrupt.reasonRef,
+        }),
+      ],
+      outcome: "succeeded",
+      observedAt: observed(25),
+    });
+    expect(
+      (await store.inspectTurn({ ownerRef, tenantRef, sandboxRef, turnRef })).turn,
+    ).toMatchObject({ status: "interrupting", lastEventSequence: 6 });
+
+    const terminal = await store.recordRuntimeEvents({
+      ownerRef,
+      tenantRef,
+      sandboxRef,
+      turnRef,
+      expectedResourceGeneration: 1,
+      events: [
+        {
+          _tag: "RuntimeInterrupted",
+          turnRef,
+          resourceGeneration: 1,
+          turnEventSequence: 7,
+          reasonRef: interrupt.reasonRef,
+          observedAt: observed(26),
+        },
+      ],
+      evidenceRefs: ["evidence.sbx04.runtime.interrupt.1"],
+    });
+    expect(terminal.turn).toMatchObject({ status: "interrupted", terminalReason: "explicit_stop" });
+    expect(terminal.receipt).toMatchObject({
+      outcome: "interrupted",
+      terminalEventSequence: 7,
+      runtime: { provider: "claude", modelRef: "model.claude.sonnet" },
+    });
+    expect((await store.inspect({ ownerRef, tenantRef, sandboxRef })).facts).toMatchObject({
+      lifecycle: "idle",
+      runtimeState: "settled",
+    });
+    await expect(
+      store.recordRuntimeEvents({
+        ownerRef,
+        tenantRef,
+        sandboxRef,
+        turnRef,
+        expectedResourceGeneration: 2,
+        events: [],
+      }),
+    ).rejects.toMatchObject({ code: "stale_generation" });
   });
 
   test("persists bounded lease and budget updates and refuses cross-owner reads", async () => {

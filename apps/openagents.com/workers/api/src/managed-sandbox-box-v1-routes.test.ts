@@ -532,4 +532,106 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
       'upstream_unavailable',
     )
   })
+
+  test('streams Codex and Claude turn events through the unmodified SDK cursor helpers', async () => {
+    const base = makeBoxV1MemoryRuntime()
+    const runtime: ReturnType<typeof makeBoxV1MemoryRuntime> = {
+      ...base,
+      sync: input => {
+        if (input.afterTurnSequence !== 1) return Effect.succeed([])
+        return Effect.succeed([
+          {
+            _tag: 'RuntimeTextDelta' as const,
+            turnRef: input.turn.turnRef,
+            resourceGeneration: input.turn.resourceGeneration,
+            turnEventSequence: 2,
+            content: `${input.turn.runtime.provider} working`,
+            observedAt: '2026-07-19T18:30:01.000Z',
+          },
+          {
+            _tag: 'RuntimeToolStarted' as const,
+            turnRef: input.turn.turnRef,
+            resourceGeneration: input.turn.resourceGeneration,
+            turnEventSequence: 3,
+            toolCallRef: `tool.${input.turn.runtime.provider}.1`,
+            toolName: 'shell',
+            observedAt: '2026-07-19T18:30:02.000Z',
+          },
+          {
+            _tag: 'RuntimeToolCompleted' as const,
+            turnRef: input.turn.turnRef,
+            resourceGeneration: input.turn.resourceGeneration,
+            turnEventSequence: 4,
+            toolCallRef: `tool.${input.turn.runtime.provider}.1`,
+            toolName: 'shell',
+            outcome: 'succeeded' as const,
+            evidenceRefs: [`evidence.${input.turn.runtime.provider}.tool.1`],
+            observedAt: '2026-07-19T18:30:03.000Z',
+          },
+          {
+            _tag: 'RuntimeUsageRecorded' as const,
+            turnRef: input.turn.turnRef,
+            resourceGeneration: input.turn.resourceGeneration,
+            turnEventSequence: 5,
+            usage: {
+              inputTokens: 9,
+              outputTokens: 4,
+              providerUsageRef: `usage.${input.turn.runtime.provider}.1`,
+              exact: true,
+            },
+            observedAt: '2026-07-19T18:30:04.000Z',
+          },
+          {
+            _tag: 'RuntimeSettled' as const,
+            turnRef: input.turn.turnRef,
+            resourceGeneration: input.turn.resourceGeneration,
+            turnEventSequence: 6,
+            finishReason: 'structural_completion' as const,
+            observedAt: '2026-07-19T18:30:05.000Z',
+          },
+        ])
+      },
+    }
+    const harness = makeHandler({ runtime })
+    const api = apiFor(
+      'https://local-box.test/v1',
+      'test-token',
+      fetchFor(harness.handle),
+    )
+    const boxId = (
+      await api.create(
+        { createBoxRequest: { noEnv: true } },
+        retryHeaders('runtime-events-create'),
+      )
+    ).box.id
+
+    for (const provider of ['codex', 'claude'] as const) {
+      const prompted = await api.prompt(
+        {
+          boxId,
+          promptRequest: {
+            provider,
+            model: provider === 'codex' ? 'gpt-5.6' : 'claude-sonnet-4-5',
+            prompt: `Run the ${provider} component proof.`,
+          },
+        },
+        retryHeaders(`runtime-events-${provider}`),
+      )
+      const status = await api.promptRunStatus({
+        boxId,
+        promptId: prompted.promptId,
+      })
+      expect(status.promptRun).toMatchObject({ status: 'finished', done: true })
+    }
+
+    const page = await api.events({ boxId, limit: 100, sort: 'asc' })
+    const runtimeTypes = page.events.map(event => event.type)
+    expect(
+      runtimeTypes.filter(type => type === 'prompt.response'),
+    ).toHaveLength(2)
+    expect(runtimeTypes.filter(type => type === 'prompt.usage')).toHaveLength(2)
+    expect(
+      runtimeTypes.filter(type => type === 'prompt.finished'),
+    ).toHaveLength(2)
+  })
 })

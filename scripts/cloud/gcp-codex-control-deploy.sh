@@ -31,7 +31,8 @@ Usage:
       --managed-sandbox-image-name IMAGE \
       --managed-sandbox-image-id IMMUTABLE_ID \
       --managed-sandbox-image-digest sha256:HEX \
-      --managed-sandbox-profile-digest sha256:HEX] \
+      --managed-sandbox-profile-digest sha256:HEX \
+      [--managed-sandbox-turn-driver /absolute/path]] \
     [--apply]
 
 Required:
@@ -62,6 +63,7 @@ managed_sandbox_image_name=""
 managed_sandbox_image_id=""
 managed_sandbox_image_digest=""
 managed_sandbox_profile_digest=""
+managed_sandbox_turn_driver=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -80,6 +82,7 @@ while [[ $# -gt 0 ]]; do
     --managed-sandbox-image-id) managed_sandbox_image_id="${2:-}"; shift 2 ;;
     --managed-sandbox-image-digest) managed_sandbox_image_digest="${2:-}"; shift 2 ;;
     --managed-sandbox-profile-digest) managed_sandbox_profile_digest="${2:-}"; shift 2 ;;
+    --managed-sandbox-turn-driver) managed_sandbox_turn_driver="${2:-}"; shift 2 ;;
     --apply) apply="true"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -89,6 +92,15 @@ done
 if [[ -z "$project_id" || -z "$control_token" || -z "$instance" || -z "$firewall_rule" || -z "$network_tag" ]]; then
   echo "project, control token, instance, firewall rule, and network tag are required" >&2
   usage >&2
+  exit 2
+fi
+
+if [[ -n "$managed_sandbox_turn_driver" && "$managed_sandbox_turn_driver" != /* ]]; then
+  echo "managed-sandbox turn driver must be an absolute container path" >&2
+  exit 2
+fi
+if [[ -n "$managed_sandbox_turn_driver" && "$enable_managed_sandbox" != "true" ]]; then
+  echo "managed-sandbox turn driver requires --enable-managed-sandbox" >&2
   exit 2
 fi
 
@@ -143,6 +155,14 @@ OA_CODEX_GCE_USE_METADATA_ADC=true"
 container_decl="$(mktemp)"
 trap 'rm -f "$container_decl"' EXIT
 managed_sandbox_env_yaml=""
+managed_sandbox_turn_driver_env_yaml=""
+if [[ -n "$managed_sandbox_turn_driver" ]]; then
+  managed_sandbox_turn_driver_env_yaml="$(cat <<ENVYAML
+        - name: OA_MANAGED_SANDBOX_TURN_DRIVER
+          value: "${managed_sandbox_turn_driver}"
+ENVYAML
+)"
+fi
 if [[ "$enable_managed_sandbox" == "true" ]]; then
   managed_sandbox_env_yaml="$(cat <<ENVYAML
         - name: OA_MANAGED_SANDBOX_PROVISIONER
@@ -175,6 +195,7 @@ if [[ "$enable_managed_sandbox" == "true" ]]; then
           value: "network-policy-ref://openagents/managed-sandbox/deny-all-v1"
         - name: OA_MANAGED_SANDBOX_CONTROL_IDENTITY_REF
           value: "identity-ref://openagents/managed-sandbox/control"
+${managed_sandbox_turn_driver_env_yaml}
 ENVYAML
 )"
 fi

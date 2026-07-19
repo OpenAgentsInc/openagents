@@ -308,7 +308,9 @@ or observations exist today.
     "technique": "exhaustive_api_partition"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "docs/sol/evidence/2026-07-19-sbx04-managed-sandbox-turns.json"
+    ],
     "criterion_refs": [
       "MSB-AC-06"
     ],
@@ -327,17 +329,19 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "duplicate_or_misordered_turn",
-      "ref": "crates/oa-workroomd/tests/managed_sandbox_turn.rs"
+      "ref": "packages/khala-sync-server/src/managed-sandbox-store.test.ts"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "crates/oa-workroomd/tests/managed_sandbox_turn.rs",
+      "evaluator_ref": "packages/khala-sync-server/src/managed-sandbox-store.test.ts",
       "statement": "One prompt binds one effective turn; ascending reconnect pages preserve native order and repeated interrupt settles the same exact turn."
     },
     "technique": "deterministic_component_fault_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "docs/sol/evidence/2026-07-19-sbx04-managed-sandbox-turns.json"
+    ],
     "criterion_refs": [
       "MSB-AC-07"
     ],
@@ -356,11 +360,11 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "silence_based_completion",
-      "ref": "crates/oa-workroomd/tests/managed_sandbox_liveness.rs"
+      "ref": "packages/managed-sandbox-contract/src/lifecycle.test.ts"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "crates/oa-workroomd/tests/managed_sandbox_liveness.rs",
+      "evaluator_ref": "packages/managed-sandbox-contract/src/lifecycle.test.ts",
       "statement": "Hold a quiet but active turn open and prove only structural settlement, explicit stop, declared guardrail, or typed failure can arm idle stop."
     },
     "technique": "liveness_fault_test"

@@ -5,17 +5,21 @@ import {
 import {
   BOX_V1_TRANSLATOR_REF,
   ManagedSandboxResourceSchema,
+  ManagedSandboxRuntimeEventInputSchema,
 } from '@openagentsinc/managed-sandbox-contract'
 import { Effect, Schema as S } from 'effect'
 
 import type { OpenAgentsWorkerEnv } from './bindings'
+import { parseJsonUnknown } from './json-boundary'
 import { defaultMakeKhalaSyncSqlClient } from './khala-sync-push-routes'
 import {
   BoxV1FacadeError,
   type BoxV1NativeStore,
   type BoxV1Policy,
   type BoxV1Principal,
+  type BoxV1Runtime,
   unavailableBoxV1Runtime,
+  upstreamUnavailable,
 } from './managed-sandbox-box-v1-routes'
 
 export const isManagedSandboxBoxV1Enabled = (
@@ -125,10 +129,17 @@ export const managedSandboxBoxV1StoreForEnv = (
   reservation: input =>
     withPostgresStore(env, store => store.reservation(input)),
   reserve: input => withPostgresStore(env, store => store.reserve(input)),
+  settle: input => withPostgresStore(env, store => store.settle(input)),
   inspect: input => withPostgresStore(env, store => store.inspect(input)),
   list: input => withPostgresStore(env, store => store.list(input)),
   readEvents: input => withPostgresStore(env, store => store.readEvents(input)),
   turns: input => withPostgresStore(env, store => store.turns(input)),
+  inspectTurn: input =>
+    withPostgresStore(env, store => store.inspectTurn(input)),
+  readTurnEvents: input =>
+    withPostgresStore(env, store => store.readTurnEvents(input)),
+  recordRuntimeEvents: input =>
+    withPostgresStore(env, store => store.recordRuntimeEvents(input)),
   readProjection: input =>
     withPostgresStore(env, store => store.readProjection(input)),
   advanceProjection: input =>
@@ -267,5 +278,122 @@ export const makeBoxV1Principal = (input: {
   )
 }
 
-export const managedSandboxBoxV1RuntimeForEnv = () =>
-  Effect.succeed(unavailableBoxV1Runtime)
+const managedSandboxTurnResponseSchema = S.Struct({
+  schemaVersion: S.Literal('openagents.managed_sandbox_turn_runtime.v1'),
+  turnRef: S.String,
+  resourceGeneration: S.Number,
+  events: S.Array(ManagedSandboxRuntimeEventInputSchema),
+})
+
+const managedSandboxRuntimeRequest = (
+  env: OpenAgentsWorkerEnv,
+  body: Readonly<Record<string, unknown>>,
+) =>
+  Effect.gen(function* () {
+    const baseUrl = env.OA_CLOUD_CONTROL_URL?.trim()
+    const bearerToken = env.OA_CLOUD_CONTROL_TOKEN?.trim()
+    if (!baseUrl || !bearerToken) {
+      return yield* upstreamUnavailable('agent_turn')
+    }
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(
+          `${baseUrl.replace(/\/$/, '')}/v1/managed-sandbox/runtime/turns`,
+          {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${bearerToken}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              schemaVersion: 'openagents.managed_sandbox_turn_runtime.v1',
+              ...body,
+            }),
+          },
+        ),
+      catch: () =>
+        new BoxV1FacadeError({
+          code: 'upstream_unavailable',
+          status: 503,
+          message: 'managed-sandbox turn control is unavailable',
+          retryable: true,
+        }),
+    })
+    const text = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: () =>
+        new BoxV1FacadeError({
+          code: 'upstream_unavailable',
+          status: 503,
+          message: 'managed-sandbox turn response is unavailable',
+          retryable: true,
+        }),
+    })
+    if (!response.ok) {
+      return yield* new BoxV1FacadeError({
+        code: response.status === 409 ? 'conflict' : 'upstream_unavailable',
+        status: response.status === 409 ? 409 : 503,
+        message: 'managed-sandbox turn control refused the operation',
+        retryable: response.status >= 500,
+      })
+    }
+    return yield* Effect.try({
+      try: () =>
+        S.decodeUnknownSync(managedSandboxTurnResponseSchema)(
+          parseJsonUnknown(text),
+        ),
+      catch: () =>
+        new BoxV1FacadeError({
+          code: 'upstream_unavailable',
+          status: 503,
+          message: 'managed-sandbox turn response failed contract validation',
+          retryable: true,
+        }),
+    })
+  })
+
+const runtimeScope = (
+  input: Readonly<{
+    principal: Parameters<BoxV1Runtime['sync']>[0]['principal']
+    resource: Parameters<BoxV1Runtime['sync']>[0]['resource']
+    turn: Parameters<BoxV1Runtime['sync']>[0]['turn']
+  }>,
+): Readonly<Record<string, unknown>> => ({
+  actorRef: input.principal.actorRef,
+  ownerRef: input.principal.ownerRef,
+  tenantRef: input.principal.tenantRef,
+  programRef: input.resource.programRef,
+  workUnitRef: input.resource.workUnitRef,
+  sandboxRef: input.resource.sandboxRef,
+  turnRef: input.turn.turnRef,
+  expectedResourceGeneration: input.resource.resourceGeneration,
+  promptDigest: input.turn.promptDigest,
+  runtime: input.turn.runtime,
+})
+
+export const managedSandboxBoxV1RuntimeForEnv = (
+  env: OpenAgentsWorkerEnv,
+): Effect.Effect<BoxV1Runtime, BoxV1FacadeError> =>
+  Effect.succeed({
+    ...unavailableBoxV1Runtime,
+    dispatch: input =>
+      managedSandboxRuntimeRequest(env, {
+        action: 'dispatch',
+        ...runtimeScope(input),
+        prompt: input.prompt,
+      }).pipe(Effect.map(response => response.events)),
+    sync: input =>
+      managedSandboxRuntimeRequest(env, {
+        action: 'sync',
+        ...runtimeScope(input),
+        afterTurnSequence: input.afterTurnSequence,
+      }).pipe(Effect.map(response => response.events)),
+    interrupt: input =>
+      managedSandboxRuntimeRequest(env, {
+        action: 'interrupt',
+        ...runtimeScope(input),
+        afterTurnSequence: input.turn.lastEventSequence,
+        reasonRef: input.reasonRef,
+        idempotencyRef: input.idempotencyRef,
+      }).pipe(Effect.map(response => response.events)),
+  })

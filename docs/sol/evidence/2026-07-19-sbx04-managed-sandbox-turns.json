@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx04_turn_component.v1",
+  "capturedAt": "2026-07-19T19:45:00Z",
+  "passed": true,
+  "issueRef": "https://github.com/OpenAgentsInc/openagents/issues/9024",
+  "proofRung": "deterministic_component_fault_test",
+  "contract": {
+    "turnSchema": "openagents.managed_sandbox_turn.v1",
+    "turnReceiptSchema": "openagents.managed_sandbox_turn_receipt.v1",
+    "privateDriverSchema": "openagents.managed_sandbox_turn_runtime.v1",
+    "providers": ["codex", "claude"],
+    "completionFromSilence": false,
+    "arbitraryTurnWallTimeout": false,
+    "defaultEnabled": false
+  },
+  "authority": {
+    "store": "PostgresManagedSandboxStore",
+    "globalNativeEventSequence": true,
+    "denseTurnEventSequence": true,
+    "identicalByteReplayIsNoOp": true,
+    "changedByteReplayConflicts": true,
+    "ownerTenantWorkUnitBound": true,
+    "resourceGenerationFenced": true,
+    "exactTurnInterrupt": true,
+    "terminalReceipt": true,
+    "exactUsageWhenAvailable": true
+  },
+  "proof": {
+    "managedSandboxContractTestsPassed": 13,
+    "postgresStoreTestsPassed": 7,
+    "boxSdkRouteTestsPassed": 5,
+    "rustTurnDriverTestsPassed": 2,
+    "boxSdkUnmodified": true,
+    "codexComponentStream": true,
+    "claudeComponentStream": true,
+    "cursorReconnect": true,
+    "interruptReplay": true,
+    "staleGenerationDenied": true,
+    "privateDriverAbsolutePathRequired": true,
+    "privateDriverShellInvocation": false,
+    "privateDriverStderrPublished": false
+  },
+  "resumeTruth": {
+    "durableFilesystemMayResume": true,
+    "servicesMayRestart": true,
+    "memorySnapshotClaimed": false,
+    "processSnapshotClaimed": false,
+    "providerHiddenStateSnapshotClaimed": false
+  },
+  "limitations": [
+    "The Codex and Claude route streams are deterministic component fixtures, not live provider-account runs.",
+    "The guest SDK helper is a configured deployment dependency and was not installed into the SBX-02 GCP image by this packet.",
+    "No public Worker flag was enabled and no production deployment was changed.",
+    "SBX-09 remains the only independent live GCP, provider, isolation, cleanup, cost, rollback, and rollout gate."
+  ]
+}

@@ -1,8 +1,9 @@
 # `openagents.managed_sandbox.v1`
 
-Status: **admitted contract, durable lifecycle store, and default-off GCE
-runtime component; facade, consumers, independent live gate, and production
-availability remain gated by SBX-03 through SBX-10**.
+Status: **the contract, lifecycle store, turn store, default-off GCE runtime,
+Box facade, and private turn driver are admitted. Guest I/O, consumers, the
+independent live gate, and production availability remain gated by SBX-05
+through SBX-10**.
 
 Owning package: `packages/managed-sandbox-contract`
 
@@ -52,6 +53,8 @@ idempotency ref, and request time. An existing-resource mutation additionally
 requires its exact sandbox ref and expected version. Create binds the target,
 digest-pinned image, profile, lease, budget, and requested capabilities before
 the first provider effect.
+Dispatch additionally binds an exact runtime provider, model, harness, and
+optional reasoning effort beside its prompt digest and turn ref.
 
 ## Event and receipt boundary
 
@@ -70,6 +73,10 @@ rounds an unknown provider result up to success.
 Migration `0080_managed_sandbox_authority.sql` creates the canonical Cloud SQL
 aggregate, command, generation, event, receipt, turn-order, and projection
 cursor tables.
+Migration `0081_managed_sandbox_runtime_turns.sql` adds canonical turn JSON,
+runtime identity, prompt digest, per-turn sequence, terminal receipt, and
+interrupt-command coordinates while preserving the one global native event
+sequence.
 
 `PostgresManagedSandboxStore` takes a sandbox-scoped advisory lock and row lock.
 It records the decoded command and its SHA-256 fingerprint before provider
@@ -92,6 +99,47 @@ Unknown cleanup becomes `recovery_required`; it never becomes deletion.
 Native reconnect pages read the append-only event sequence.
 Each compatibility translator has a separate optimistic projection version.
 A projection cursor cannot advance beyond native authority or move backward.
+
+## Runtime turn authority
+
+`ManagedSandboxTurnSchema` is the canonical prompt-run identity. It binds the
+sandbox scope, resource versions, dispatch command, capability, and prompt
+digest. It also binds exact provider, model, and harness truth. The turn
+status vocabulary distinguishes
+`pending`, `running`, `interrupting`, `settled`, `failed`, and `interrupted`.
+
+Runtime events have two coordinates: one dense sandbox-global native sequence
+and one dense turn-local sequence. `RuntimeTextDelta`, tool start/completion,
+usage, interrupt request, failure, interruption, and structural settlement
+remain native lossless events. An identical provider-byte replay is a no-op.
+Changed bytes at a present turn sequence or a sequence gap conflicts.
+Reconnect reads turn-local pages without making the Box cursor authoritative.
+
+Dispatch reservation settles when the target accepts `RuntimeStarted`, not
+when the long-running turn finishes. This releases the one-command lock so an
+exact `Interrupt` command can be admitted while the turn remains active.
+Interrupt first records `RuntimeInterruptRequested`. It becomes terminal only
+after `RuntimeInterrupted` arrives from the same turn and generation.
+
+No timer, output silence, polling gap, or Box status settles a turn. Only
+structural provider completion, explicit interruption, a lease/budget
+guardrail, or typed runtime failure may do so. Terminal events create
+`ManagedSandboxTurnReceiptSchema` with exact runtime and usage when the
+provider exposes it.
+
+The private control endpoint is
+`POST /v1/managed-sandbox/runtime/turns`. `oa-codex-control` forwards the
+short `dispatch`, `sync`, or `interrupt` operation to the absolute executable
+configured by `OA_MANAGED_SANDBOX_TURN_DRIVER`. It never invokes a shell or
+returns driver stderr. The helper uses the ordinary Codex or Claude SDK inside
+the isolated guest and keeps provider-private process/session handles outside
+the public event plane. Missing configuration, an invalid response, scope or
+generation drift, non-dense order, or invisible interrupt fails closed.
+
+The helper may restart after sandbox resume, but memory, process handles, and
+hidden provider session state are not checkpoint claims. Durable filesystem
+and OpenAgents turn/event state are the only resumable facts until a later
+provider-specific continuation is independently proven.
 
 ## Lifecycle invariants
 
@@ -231,6 +279,12 @@ The exact profile, deployment inputs, live component harness, and rollback are
 in
 `docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md`.
 
+SBX-04 adds the private turn adapter described in
+`docs/cloud/bootstrap/SBX-04-managed-sandbox-turn-runtime.md`. Both it and the
+Box facade remain default-off. The component tests do not prove a live GCP
+SDK helper, provider account, or target image. SBX-09 owns that independent
+proof and rollout decision.
+
 ## Verification
 
 ```bash
@@ -240,6 +294,7 @@ pnpm --filter @openagentsinc/authority test
 pnpm --filter @openagentsinc/khala-sync-server typecheck
 pnpm exec vp test --run packages/khala-sync-server/src/managed-sandbox-store.test.ts
 cargo test -p oa-codex-control managed_sandbox_runtime --no-fail-fast
+cargo test -p oa-codex-control managed_sandbox_turn_runtime --no-fail-fast
 cargo test -p oa-codex-control --no-fail-fast
 bash -n scripts/cloud/gcp-codex-control-deploy.sh
 ```
@@ -250,6 +305,9 @@ SBX-01 proves deterministic database reconciliation and cleanup truth.
 SBX-02 proves the default-off GCE provider component and its bounded live
 component harness. The accepted refs-only component receipt is
 `docs/sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json`.
+SBX-04 proves the default-off turn-driver protocol and durable event authority
+at the deterministic component rung. Its bounded receipt is
+`docs/sol/evidence/2026-07-19-sbx04-managed-sandbox-turns.json`.
 The independent live release gate, IDE, mobile, and Sarah dogfood receipts
 belong to later SBX work.
 This contract does not claim them early.

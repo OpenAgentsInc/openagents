@@ -25,6 +25,7 @@ POST /v1/training-runs/start
 POST /v1/artanis/bootstrap
 POST /v1/artanis/bootstrap/start
 POST /v1/managed-sandbox/runtime/operations
+POST /v1/managed-sandbox/runtime/turns
 GET /v1/codex-runs/{runId}
 GET /v1/codex-runs/{runId}/events?cursor=0
 GET /v1/codex-runs/{runId}/stream?cursor=0
@@ -143,6 +144,29 @@ See
 `docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md` for the admitted
 profile, deployment inputs, isolation policy, cleanup oracle, live component
 harness, and rollback.
+
+## Managed-sandbox turn operations
+
+`POST /v1/managed-sandbox/runtime/turns` is the SBX-04 private adapter for
+`dispatch`, `sync`, and `interrupt`.
+It validates exact owner, tenant, work unit, sandbox, turn, generation,
+provider, model, harness, and prompt-digest identity.
+
+The route invokes only the absolute executable configured by
+`OA_MANAGED_SANDBOX_TURN_DRIVER`.
+It sends request JSON on stdin without a shell and accepts only dense
+public-safe events from the same exact turn and generation.
+Driver stderr, provider credentials, auth homes, paths, PIDs, and private
+session handles are never returned.
+Absent configuration or an invalid response fails closed with a typed error.
+There is no local, fake, alternate-provider, or weaker-isolation fallback.
+
+Each endpoint request is a short control operation.
+Turn completion is not the HTTP request lifetime: callers reconnect with
+`sync`, and only structural terminal events settle the durable turn.
+See
+`docs/cloud/bootstrap/SBX-04-managed-sandbox-turn-runtime.md` for the driver
+contract, event model, verification, and live-proof boundary.
 
 ## Durable Unattended Queue (`/v1/queue`, cloud#97)
 

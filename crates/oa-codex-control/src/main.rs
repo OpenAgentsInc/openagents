@@ -32,6 +32,7 @@ use gce_capacity::{provisioner_for, CapacityRequest, GceLease, ProvisionerKind, 
 
 mod cloud_vm;
 mod managed_sandbox_runtime;
+mod managed_sandbox_turn_runtime;
 mod portable_agent_computer;
 
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
@@ -708,6 +709,25 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
                 .lock()
                 .map_err(|_| "managed-sandbox runtime operation lock was poisoned".to_string())?;
             match managed_sandbox_runtime::execute(&config.state_root, operation) {
+                Ok(response) => write_response(
+                    &mut stream,
+                    200,
+                    &serde_json::to_value(response).map_err(|error| error.to_string())?,
+                ),
+                Err(error) => write_response(&mut stream, error.status(), &error.response()),
+            }
+        }
+        "/v1/managed-sandbox/runtime/turns" => {
+            let operation = match serde_json::from_slice::<
+                managed_sandbox_turn_runtime::ManagedSandboxTurnRuntimeRequest,
+            >(&request.body)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    return write_invalid_request(&mut stream, format!("invalid_request: {error}"))
+                }
+            };
+            match managed_sandbox_turn_runtime::execute(operation) {
                 Ok(response) => write_response(
                     &mut stream,
                     200,

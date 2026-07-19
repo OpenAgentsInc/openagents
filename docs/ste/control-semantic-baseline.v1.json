@@ -2879,7 +2879,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "e69a17567d7c3252daed6d5030a05fb934dc983b59eeee6b20940a84df64a879",
+      "sourceSha256": "c36300a80a67bdadeaf2fc34e7001fbd30b95d86b7a7b91994dd985fe44cfcfc",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -3196,7 +3196,9 @@
         "MustRefetch",
         "Node/pnpm/Vite Plus conversion",
         "OA_CLOUD_CONTROL_URL",
+        "OA_CLOUD_CONTROL_URL",
         "OA_CODEX_GCE_PROVISIONER=live",
+        "OA_MANAGED_SANDBOX_TURN_DRIVER",
         "OFFERED_DISPATCH_SLOT_CLAIM_WINDOW_MS",
         "OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED",
         "OPENAGENTS_OWNER_AGENT_OPENAUTH_USER_IDS",
@@ -3237,6 +3239,9 @@
         "PaymentsLedgerDb",
         "PayoutTargetKind",
         "PublicCounterEntity",
+        "RuntimeInterruptRequested",
+        "RuntimeInterrupted",
+        "RuntimeStarted",
         "SARAH_OPENAGENTS_BASE_URL",
         "SELF_SERVE_FANOUT_ENABLED",
         "SIGNATURE_USAGE_METERING_ENABLED",
@@ -4803,6 +4808,7 @@
         "#8519",
         "#8522",
         "#8600",
+        "#9024",
         "#9025"
       ],
       "numericValues": [
@@ -4839,6 +4845,7 @@
         "03",
         "0304",
         "0306",
+        "04",
         "05",
         "05",
         "06",
@@ -5161,6 +5168,7 @@
         "9",
         "9",
         "9.3",
+        "9024",
         "9025"
       ]
     },
@@ -5282,7 +5290,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "40c424a7ad1421b0476c98ca20bccf42ef566a29f4676e062e0362fcff648c55",
+      "sourceSha256": "db75ee3c214bc417b0f3a0c1f0788f785085eea9af3a3b518c6f0f6aeebb80e8",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -5313,6 +5321,10 @@
         "PortableCapabilityBroker",
         "PortableCapabilityLease",
         "PostgresManagedSandboxStore",
+        "RuntimeFailed",
+        "RuntimeInterruptRequested",
+        "RuntimeInterrupted",
+        "RuntimeSettled",
         "apps/openagents.com",
         "apps/openagents.com/workers/api/src/khala-cloud-runtime-usage-routes.ts",
         "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
@@ -8955,7 +8967,7 @@
       ]
     },
     "specs/openagents/managed-agent-sandboxes.assurance-spec.md": {
-      "sourceSha256": "673670006fd1e192ed3b16d71784e11158769f10a48dfe0ac3872cc0a9d1a465",
+      "sourceSha256": "9f5eb2952c067cf324804d2cfbc4e0d75717c610927b0649f51c3bbf70e7638f",
       "normativeKeywords": [],
       "inlineCode": [
         "501\\ncapability_not_implemented",
@@ -9064,7 +9076,11 @@
         "19",
         "19",
         "19",
+        "19",
+        "19",
         "2",
+        "2026-07",
+        "2026-07",
         "2026-07",
         "2026-07",
         "2026-07",

@@ -6,6 +6,9 @@ export const MANAGED_SANDBOX_COMMAND_SCHEMA_VERSION =
 export const MANAGED_SANDBOX_EVENT_SCHEMA_VERSION = "openagents.managed_sandbox_event.v1" as const;
 export const MANAGED_SANDBOX_RECEIPT_SCHEMA_VERSION =
   "openagents.managed_sandbox_receipt.v1" as const;
+export const MANAGED_SANDBOX_TURN_SCHEMA_VERSION = "openagents.managed_sandbox_turn.v1" as const;
+export const MANAGED_SANDBOX_TURN_RECEIPT_SCHEMA_VERSION =
+  "openagents.managed_sandbox_turn_receipt.v1" as const;
 
 export const SandboxRef = S.String.check(
   S.isMinLength(3),
@@ -148,6 +151,70 @@ export const SandboxStateFactsSchema = S.Struct({
 });
 export type SandboxStateFacts = typeof SandboxStateFactsSchema.Type;
 
+export const ManagedSandboxRuntimeProviderSchema = S.Literals(["codex", "claude"]);
+export type ManagedSandboxRuntimeProvider = typeof ManagedSandboxRuntimeProviderSchema.Type;
+
+export const ManagedSandboxRuntimeIdentitySchema = S.Struct({
+  provider: ManagedSandboxRuntimeProviderSchema,
+  modelRef: SandboxRef,
+  harnessRef: SandboxRef,
+  reasoningEffort: S.optionalKey(SandboxRef),
+});
+export type ManagedSandboxRuntimeIdentity = typeof ManagedSandboxRuntimeIdentitySchema.Type;
+
+export const ManagedSandboxTurnUsageSchema = S.Struct({
+  inputTokens: NonNegativeInt,
+  outputTokens: NonNegativeInt,
+  cachedInputTokens: S.optionalKey(NonNegativeInt),
+  providerUsageRef: SandboxRef,
+  exact: S.Boolean,
+});
+export type ManagedSandboxTurnUsage = typeof ManagedSandboxTurnUsageSchema.Type;
+
+export const ManagedSandboxTurnStatusSchema = S.Literals([
+  "pending",
+  "running",
+  "interrupting",
+  "settled",
+  "failed",
+  "interrupted",
+]);
+export type ManagedSandboxTurnStatus = typeof ManagedSandboxTurnStatusSchema.Type;
+
+export const ManagedSandboxTurnSchema = S.Struct({
+  schema: S.Literal(MANAGED_SANDBOX_TURN_SCHEMA_VERSION),
+  turnRef: SandboxRef,
+  sandboxRef: SandboxRef,
+  ownerRef: SandboxRef,
+  tenantRef: SandboxRef,
+  workUnitRef: SandboxRef,
+  attachmentRef: SandboxRef,
+  attachmentGeneration: NonNegativeInt,
+  resourceGeneration: NonNegativeInt,
+  turnSequence: PositiveInt,
+  lastEventSequence: NonNegativeInt,
+  commandRef: SandboxRef,
+  capabilityRef: SandboxRef,
+  promptDigest: Sha256Digest,
+  runtime: ManagedSandboxRuntimeIdentitySchema,
+  status: ManagedSandboxTurnStatusSchema,
+  createdAt: SandboxTimestamp,
+  startedAt: S.optionalKey(SandboxTimestamp),
+  settledAt: S.optionalKey(SandboxTimestamp),
+  terminalReason: S.optionalKey(
+    S.Literals([
+      "structural_completion",
+      "explicit_stop",
+      "lease_guardrail",
+      "budget_guardrail",
+      "provider_failure",
+      "guest_failure",
+    ]),
+  ),
+  usage: S.optionalKey(ManagedSandboxTurnUsageSchema),
+});
+export type ManagedSandboxTurn = typeof ManagedSandboxTurnSchema.Type;
+
 export const ManagedSandboxResourceSchema = S.Struct({
   schema: S.Literal(MANAGED_SANDBOX_SCHEMA_VERSION),
   sandboxRef: SandboxRef,
@@ -229,6 +296,7 @@ export const ManagedSandboxCommandSchema = S.TaggedUnion({
     turnRef: SandboxRef,
     capabilityRef: SandboxRef,
     promptDigest: Sha256Digest,
+    runtime: ManagedSandboxRuntimeIdentitySchema,
   },
   Interrupt: {
     ...CommandBase,
@@ -259,15 +327,61 @@ export const ManagedSandboxEventSchema = S.TaggedUnion({
   RuntimeStarted: {
     ...EventBase,
     turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
+  },
+  RuntimeTextDelta: {
+    ...EventBase,
+    turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
+    content: S.String.check(S.isMaxLength(65_536)),
+  },
+  RuntimeToolStarted: {
+    ...EventBase,
+    turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
+    toolCallRef: SandboxRef,
+    toolName: SandboxRef,
+  },
+  RuntimeToolCompleted: {
+    ...EventBase,
+    turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
+    toolCallRef: SandboxRef,
+    toolName: SandboxRef,
+    outcome: S.Literals(["succeeded", "failed", "refused"]),
+    evidenceRefs: S.Array(SandboxRef),
+  },
+  RuntimeUsageRecorded: {
+    ...EventBase,
+    turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
+    usage: ManagedSandboxTurnUsageSchema,
+  },
+  RuntimeInterruptRequested: {
+    ...EventBase,
+    turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
+    reasonRef: SandboxRef,
   },
   RuntimeSettled: {
     ...EventBase,
     turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
+    finishReason: S.Literals(["structural_completion", "lease_guardrail", "budget_guardrail"]),
+    usage: S.optionalKey(ManagedSandboxTurnUsageSchema),
   },
   RuntimeFailed: {
     ...EventBase,
     turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
     errorRef: SandboxRef,
+    retryable: S.Boolean,
+  },
+  RuntimeInterrupted: {
+    ...EventBase,
+    turnRef: SandboxRef,
+    turnEventSequence: PositiveInt,
+    reasonRef: SandboxRef,
   },
   StopRequested: {
     ...EventBase,
@@ -304,6 +418,56 @@ export const ManagedSandboxEventSchema = S.TaggedUnion({
 });
 export type ManagedSandboxEvent = typeof ManagedSandboxEventSchema.Type;
 
+const RuntimeEventInputBase = {
+  turnRef: SandboxRef,
+  resourceGeneration: NonNegativeInt,
+  turnEventSequence: PositiveInt,
+  observedAt: SandboxTimestamp,
+};
+
+export const ManagedSandboxRuntimeEventInputSchema = S.TaggedUnion({
+  RuntimeStarted: RuntimeEventInputBase,
+  RuntimeTextDelta: {
+    ...RuntimeEventInputBase,
+    content: S.String.check(S.isMaxLength(65_536)),
+  },
+  RuntimeToolStarted: {
+    ...RuntimeEventInputBase,
+    toolCallRef: SandboxRef,
+    toolName: SandboxRef,
+  },
+  RuntimeToolCompleted: {
+    ...RuntimeEventInputBase,
+    toolCallRef: SandboxRef,
+    toolName: SandboxRef,
+    outcome: S.Literals(["succeeded", "failed", "refused"]),
+    evidenceRefs: S.Array(SandboxRef),
+  },
+  RuntimeUsageRecorded: {
+    ...RuntimeEventInputBase,
+    usage: ManagedSandboxTurnUsageSchema,
+  },
+  RuntimeInterruptRequested: {
+    ...RuntimeEventInputBase,
+    reasonRef: SandboxRef,
+  },
+  RuntimeSettled: {
+    ...RuntimeEventInputBase,
+    finishReason: S.Literals(["structural_completion", "lease_guardrail", "budget_guardrail"]),
+    usage: S.optionalKey(ManagedSandboxTurnUsageSchema),
+  },
+  RuntimeFailed: {
+    ...RuntimeEventInputBase,
+    errorRef: SandboxRef,
+    retryable: S.Boolean,
+  },
+  RuntimeInterrupted: {
+    ...RuntimeEventInputBase,
+    reasonRef: SandboxRef,
+  },
+});
+export type ManagedSandboxRuntimeEventInput = typeof ManagedSandboxRuntimeEventInputSchema.Type;
+
 export const ManagedSandboxReceiptSchema = S.Struct({
   schema: S.Literal(MANAGED_SANDBOX_RECEIPT_SCHEMA_VERSION),
   receiptRef: SandboxRef,
@@ -321,6 +485,33 @@ export const ManagedSandboxReceiptSchema = S.Struct({
   observedAt: SandboxTimestamp,
 });
 export type ManagedSandboxReceipt = typeof ManagedSandboxReceiptSchema.Type;
+
+export const ManagedSandboxTurnReceiptSchema = S.Struct({
+  schema: S.Literal(MANAGED_SANDBOX_TURN_RECEIPT_SCHEMA_VERSION),
+  receiptRef: SandboxRef,
+  turnRef: SandboxRef,
+  sandboxRef: SandboxRef,
+  ownerRef: SandboxRef,
+  tenantRef: SandboxRef,
+  workUnitRef: SandboxRef,
+  resourceGeneration: NonNegativeInt,
+  turnSequence: PositiveInt,
+  terminalEventSequence: PositiveInt,
+  runtime: ManagedSandboxRuntimeIdentitySchema,
+  outcome: S.Literals(["settled", "failed", "interrupted"]),
+  terminalReason: S.Literals([
+    "structural_completion",
+    "explicit_stop",
+    "lease_guardrail",
+    "budget_guardrail",
+    "provider_failure",
+    "guest_failure",
+  ]),
+  usage: S.optionalKey(ManagedSandboxTurnUsageSchema),
+  evidenceRefs: S.Array(SandboxRef),
+  observedAt: SandboxTimestamp,
+});
+export type ManagedSandboxTurnReceipt = typeof ManagedSandboxTurnReceiptSchema.Type;
 
 const ErrorBase = {
   message: S.String,

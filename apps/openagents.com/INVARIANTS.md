@@ -4277,3 +4277,29 @@ scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
   mapper. It introduces no production `Effect.runPromise` bridge or Promise
   dependency adapter. Deterministic coverage is
   `workers/api/src/managed-sandbox-box-v1-routes.test.ts`.
+
+## Managed Sandbox Runtime Turns (SBX-04, #9024)
+
+- Prompt admission binds the canonical owner, tenant, sandbox, work unit,
+  attachment generation, resource generation, capability, prompt digest,
+  provider, model, SDK harness, and optional reasoning effort before the
+  private runtime effect.
+- Dispatch command settlement means the target durably accepted
+  `RuntimeStarted`. It does not mean the long turn completed. Only a native
+  structural completion, explicit interruption, lease/budget guardrail, or
+  typed failure can create the terminal turn receipt. Output silence and Box
+  polling state have no completion authority.
+- Provider events preserve one dense turn-local sequence beside the dense
+  sandbox-global sequence. Identical replay is a no-op. Changed bytes, gaps,
+  cross-turn scope, and stale generations conflict before append.
+- Interrupt is a separate idempotent command against one exact active turn.
+  `RuntimeInterruptRequested` is durable and visible before terminal
+  `RuntimeInterrupted`. A replay cannot retarget a later turn.
+- Worker runtime calls use only `OA_CLOUD_CONTROL_URL` and the private bearer.
+  The control service then requires an absolute
+  `OA_MANAGED_SANDBOX_TURN_DRIVER` executable. Missing configuration or an
+  invalid driver response fails closed. There is no Worker-host, fixture,
+  alternate-provider, or weaker-isolation fallback.
+- Box runtime events are bounded projections. Native events and terminal
+  receipts remain canonical, and provider-private sessions, handles, auth
+  homes, diagnostics, and paths never enter them.

@@ -96,6 +96,25 @@ describe("managed sandbox lifecycle model", () => {
     });
   });
 
+  it("keeps a turn running through ordered provider events until structural stop", () => {
+    let state = initialSandboxModelState();
+    state = applySandboxModelEvent(state, event("GuestReady", 1));
+    state = applySandboxModelEvent(state, event("RuntimeStarted", 2));
+    state = applySandboxModelEvent(state, event("RuntimeTextDelta", 3));
+    state = applySandboxModelEvent(state, event("RuntimeToolStarted", 4));
+    state = applySandboxModelEvent(state, event("RuntimeToolCompleted", 5));
+    state = applySandboxModelEvent(state, event("RuntimeUsageRecorded", 6));
+    state = applySandboxModelEvent(state, event("RuntimeInterruptRequested", 7));
+
+    expect(state).toMatchObject({
+      lifecycle: "running",
+      runtimeState: "interrupting",
+      acceptingWork: true,
+    });
+    state = applySandboxModelEvent(state, event("RuntimeInterrupted", 8));
+    expect(state).toMatchObject({ lifecycle: "idle", runtimeState: "settled" });
+  });
+
   it("keeps every reachable state valid in the bounded graph", () => {
     const states = enumerateSandboxModel(10);
     expect(states.length).toBeGreaterThan(10);

@@ -145,9 +145,20 @@ design context only.
   cursor from an old generation refuses.
 - The compatibility response never publishes provider URLs, IP addresses,
   desktop endpoints, snapshot availability, subdomains, raw topology, or
-  credentials. Until SBX-04 and SBX-05 connect native runtime and guest-I/O
-  services, those admitted calls return typed `503 upstream_unavailable` in
-  production rather than fixture success.
+  credentials. SBX-04 runtime calls use the private control URL and an
+  explicitly configured absolute SDK-driver path. Without either dependency,
+  prompt/status/events/interrupt fail typed and closed. File, command, and
+  artifact calls remain typed `503 upstream_unavailable` until SBX-05.
+- A runtime turn binds the exact scope, command, capability, prompt digest,
+  provider, model, harness, and optional reasoning effort before provider
+  dispatch. A provider event page must use the same turn and generation with
+  a dense per-turn sequence. Replayed bytes are no-ops. Changed bytes and gaps
+  conflict.
+- Silence is never a runtime event. Only `RuntimeSettled`,
+  `RuntimeInterrupted`, or `RuntimeFailed` creates a terminal turn receipt.
+  `RuntimeInterruptRequested` remains visible and interrupting until the
+  provider emits its terminal event. Service restart may restart the helper.
+  no receipt claims provider-private process or session state was snapshotted.
 - Sarah's closed managed-sandbox action vocabulary grants no raw `gcloud`,
   shell, database, topology, guest address, service-account, credential,
   filesystem-path, or generic container administration. Runtime mutation must

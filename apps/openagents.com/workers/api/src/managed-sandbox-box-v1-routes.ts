@@ -2,7 +2,9 @@ import type {
   ManagedSandboxCommandReservation,
   ManagedSandboxEventPage,
   ManagedSandboxProjectionState,
+  ManagedSandboxRuntimeEventPage,
   ManagedSandboxTurnOrder,
+  RecordManagedSandboxRuntimeEventsResult,
 } from '@openagentsinc/khala-sync-server'
 import {
   BOX_V1_TRANSLATOR_REF,
@@ -23,8 +25,14 @@ import {
   BoxV1PromptRunResponseSchema,
   type ManagedSandboxCommand,
   ManagedSandboxCommandSchema,
+  type ManagedSandboxEvent,
+  ManagedSandboxEventSchema,
+  type ManagedSandboxReceipt,
   type ManagedSandboxResource,
   ManagedSandboxResourceSchema,
+  type ManagedSandboxRuntimeEventInput,
+  type ManagedSandboxTurn,
+  type ManagedSandboxTurnReceipt,
   SandboxRef,
   capabilityNotImplemented,
   projectManagedSandboxToBoxV1,
@@ -90,6 +98,18 @@ export type BoxV1NativeStore = Readonly<{
       initialResource?: ManagedSandboxResource
     }>,
   ) => Effect.Effect<ManagedSandboxCommandReservation, BoxV1FacadeError>
+  settle: (input: {
+    ownerRef: string
+    tenantRef: string
+    sandboxRef: string
+    commandRef: string
+    expectedResourceGeneration: number
+    events: ReadonlyArray<ManagedSandboxEvent>
+    outcome: 'succeeded' | 'failed' | 'refused'
+    artifactRefs?: ReadonlyArray<string>
+    errorCode?: string
+    observedAt: string
+  }) => Effect.Effect<ManagedSandboxReceipt, BoxV1FacadeError>
   inspect: (input: {
     ownerRef: string
     tenantRef: string
@@ -112,6 +132,32 @@ export type BoxV1NativeStore = Readonly<{
     tenantRef: string
     sandboxRef: string
   }) => Effect.Effect<ReadonlyArray<ManagedSandboxTurnOrder>, BoxV1FacadeError>
+  inspectTurn: (input: {
+    ownerRef: string
+    tenantRef: string
+    sandboxRef: string
+    turnRef: string
+  }) => Effect.Effect<
+    { turn: ManagedSandboxTurn; receipt?: ManagedSandboxTurnReceipt },
+    BoxV1FacadeError
+  >
+  readTurnEvents: (input: {
+    ownerRef: string
+    tenantRef: string
+    sandboxRef: string
+    turnRef: string
+    afterTurnSequence: number
+    limit: number
+  }) => Effect.Effect<ManagedSandboxRuntimeEventPage, BoxV1FacadeError>
+  recordRuntimeEvents: (input: {
+    ownerRef: string
+    tenantRef: string
+    sandboxRef: string
+    turnRef: string
+    expectedResourceGeneration: number
+    events: ReadonlyArray<ManagedSandboxRuntimeEventInput>
+    evidenceRefs?: ReadonlyArray<string>
+  }) => Effect.Effect<RecordManagedSandboxRuntimeEventsResult, BoxV1FacadeError>
   readProjection: (input: {
     ownerRef: string
     tenantRef: string
@@ -132,9 +178,34 @@ export type BoxV1NativeStore = Readonly<{
 }>
 
 export type BoxV1Runtime = Readonly<{
-  admit: (
-    capability: 'agent_turn' | 'interrupt',
-  ) => Effect.Effect<void, BoxV1FacadeError>
+  dispatch: (input: {
+    principal: BoxV1Principal
+    resource: ManagedSandboxResource
+    turn: ManagedSandboxTurn
+    prompt: string
+  }) => Effect.Effect<
+    ReadonlyArray<ManagedSandboxRuntimeEventInput>,
+    BoxV1FacadeError
+  >
+  sync: (input: {
+    principal: BoxV1Principal
+    resource: ManagedSandboxResource
+    turn: ManagedSandboxTurn
+    afterTurnSequence: number
+  }) => Effect.Effect<
+    ReadonlyArray<ManagedSandboxRuntimeEventInput>,
+    BoxV1FacadeError
+  >
+  interrupt: (input: {
+    principal: BoxV1Principal
+    resource: ManagedSandboxResource
+    turn: ManagedSandboxTurn
+    reasonRef: string
+    idempotencyRef: string
+  }) => Effect.Effect<
+    ReadonlyArray<ManagedSandboxRuntimeEventInput>,
+    BoxV1FacadeError
+  >
   readFile: (input: {
     principal: BoxV1Principal
     resource: ManagedSandboxResource
@@ -222,7 +293,9 @@ export const upstreamUnavailable = (capability: string) =>
   })
 
 export const unavailableBoxV1Runtime: BoxV1Runtime = {
-  admit: capability => Effect.fail(upstreamUnavailable(capability)),
+  dispatch: () => Effect.fail(upstreamUnavailable('agent_turn')),
+  sync: () => Effect.fail(upstreamUnavailable('agent_turn')),
+  interrupt: () => Effect.fail(upstreamUnavailable('interrupt')),
   readFile: () => Effect.fail(upstreamUnavailable('file_read')),
   writeFile: () => Effect.fail(upstreamUnavailable('file_write')),
   command: () => Effect.fail(upstreamUnavailable('command')),
@@ -353,6 +426,7 @@ const promptStatus = (status: ManagedSandboxTurnOrder['status']) => {
     case 'pending':
       return { status: 'queued' as const, done: false }
     case 'running':
+    case 'interrupting':
       return { status: 'running' as const, done: false }
     case 'settled':
       return { status: 'finished' as const, done: true }
@@ -367,8 +441,14 @@ const eventType = (tag: string): string =>
     ProvisionRequested: 'box.provisioning',
     GuestReady: 'box.ready',
     RuntimeStarted: 'prompt.started',
+    RuntimeTextDelta: 'prompt.response',
+    RuntimeToolStarted: 'prompt.tool.started',
+    RuntimeToolCompleted: 'prompt.tool.completed',
+    RuntimeUsageRecorded: 'prompt.usage',
+    RuntimeInterruptRequested: 'prompt.interrupting',
     RuntimeSettled: 'prompt.finished',
     RuntimeFailed: 'prompt.failed',
+    RuntimeInterrupted: 'prompt.interrupted',
     StopRequested: 'box.stopping',
     FilesystemCheckpointed: 'filesystem.checkpointed',
     FilesystemCheckpointFailed: 'filesystem.checkpoint_failed',
@@ -379,6 +459,41 @@ const eventType = (tag: string): string =>
     OperationFailed: 'box.operation_failed',
     RecoveryMarked: 'box.recovery_required',
   })[tag] ?? 'box.unknown'
+
+const runtimeEventProjectionData = (
+  event: ManagedSandboxEvent,
+): Readonly<Record<string, unknown>> => {
+  switch (event._tag) {
+    case 'RuntimeTextDelta':
+      return {
+        content: event.content,
+        turnEventSequence: event.turnEventSequence,
+      }
+    case 'RuntimeToolStarted':
+      return {
+        toolCallRef: event.toolCallRef,
+        toolName: event.toolName,
+        turnEventSequence: event.turnEventSequence,
+      }
+    case 'RuntimeToolCompleted':
+      return {
+        toolCallRef: event.toolCallRef,
+        toolName: event.toolName,
+        outcome: event.outcome,
+        turnEventSequence: event.turnEventSequence,
+      }
+    case 'RuntimeUsageRecorded':
+      return { usage: event.usage, turnEventSequence: event.turnEventSequence }
+    case 'RuntimeStarted':
+    case 'RuntimeInterruptRequested':
+    case 'RuntimeSettled':
+    case 'RuntimeFailed':
+    case 'RuntimeInterrupted':
+      return { turnEventSequence: event.turnEventSequence }
+    default:
+      return {}
+  }
+}
 
 const cursorFor = (resourceGeneration: number, sequence: number): string =>
   `boxc.${resourceGeneration}.${sequence}`
@@ -471,6 +586,153 @@ const makeBoxCompatibilityService = (input: {
 
   const inspect = (sandboxRef: string) =>
     input.store.inspect({ ...scope, sandboxRef })
+
+  const materializeRuntimeEvents = (
+    resource: ManagedSandboxResource,
+    events: ReadonlyArray<ManagedSandboxRuntimeEventInput>,
+  ): Effect.Effect<ReadonlyArray<ManagedSandboxEvent>, BoxV1FacadeError> =>
+    Effect.gen(function* () {
+      const materialized: Array<ManagedSandboxEvent> = []
+      for (const [offset, event] of events.entries()) {
+        const eventDigest = yield* digest(
+          `${event.turnRef}\n${event.turnEventSequence}`,
+        )
+        materialized.push(
+          yield* decode(ManagedSandboxEventSchema, {
+            ...event,
+            schema: 'openagents.managed_sandbox_event.v1',
+            eventRef: `event.box.runtime.${eventDigest.slice(0, 32)}`,
+            sandboxRef: resource.sandboxRef,
+            sequence: resource.lastEventSequence + offset + 1,
+          }),
+        )
+      }
+      return materialized
+    })
+
+  const syncTurn = (
+    resource: ManagedSandboxResource,
+    turn: ManagedSandboxTurn,
+  ): Effect.Effect<ManagedSandboxTurn, BoxV1FacadeError> =>
+    Effect.gen(function* () {
+      if (['settled', 'failed', 'interrupted'].includes(turn.status))
+        return turn
+      const events = yield* input.runtime.sync({
+        principal: input.principal,
+        resource,
+        turn,
+        afterTurnSequence: turn.lastEventSequence,
+      })
+      if (events.length === 0) return turn
+      return (yield* input.store.recordRuntimeEvents({
+        ...scope,
+        sandboxRef: resource.sandboxRef,
+        turnRef: turn.turnRef,
+        expectedResourceGeneration: resource.resourceGeneration,
+        events,
+      })).turn
+    })
+
+  const admitDispatch = (
+    reservation: ManagedSandboxCommandReservation,
+    prompt: string,
+  ): Effect.Effect<ManagedSandboxTurn, BoxV1FacadeError> =>
+    Effect.gen(function* () {
+      if (reservation.command._tag !== 'Dispatch') {
+        return yield* conflictError(
+          'runtime admission requires a dispatch command',
+        )
+      }
+      const inspected = yield* input.store.inspectTurn({
+        ...scope,
+        sandboxRef: reservation.resource.sandboxRef,
+        turnRef: reservation.command.turnRef,
+      })
+      if (reservation.status !== 'pending') {
+        return yield* syncTurn(reservation.resource, inspected.turn)
+      }
+      const providerEvents = yield* input.runtime.dispatch({
+        principal: input.principal,
+        resource: reservation.resource,
+        turn: inspected.turn,
+        prompt,
+      })
+      if (providerEvents[0]?._tag !== 'RuntimeStarted') {
+        return yield* upstreamUnavailable('agent_turn_start')
+      }
+      const events = yield* materializeRuntimeEvents(
+        reservation.resource,
+        providerEvents,
+      )
+      const observedAt = events.at(-1)?.observedAt
+      if (observedAt === undefined) {
+        return yield* upstreamUnavailable('agent_turn_start')
+      }
+      yield* input.store.settle({
+        ...scope,
+        sandboxRef: reservation.resource.sandboxRef,
+        commandRef: reservation.command.commandRef,
+        expectedResourceGeneration: reservation.resource.resourceGeneration,
+        events,
+        outcome: 'succeeded',
+        observedAt,
+      })
+      return (yield* input.store.inspectTurn({
+        ...scope,
+        sandboxRef: reservation.resource.sandboxRef,
+        turnRef: reservation.command.turnRef,
+      })).turn
+    })
+
+  const admitInterrupt = (
+    reservation: ManagedSandboxCommandReservation,
+  ): Effect.Effect<ManagedSandboxTurn, BoxV1FacadeError> =>
+    Effect.gen(function* () {
+      if (reservation.command._tag !== 'Interrupt') {
+        return yield* conflictError(
+          'runtime interrupt requires an interrupt command',
+        )
+      }
+      const inspected = yield* input.store.inspectTurn({
+        ...scope,
+        sandboxRef: reservation.resource.sandboxRef,
+        turnRef: reservation.command.turnRef,
+      })
+      if (reservation.status !== 'pending') {
+        return yield* syncTurn(reservation.resource, inspected.turn)
+      }
+      const providerEvents = yield* input.runtime.interrupt({
+        principal: input.principal,
+        resource: reservation.resource,
+        turn: inspected.turn,
+        reasonRef: reservation.command.reasonRef,
+        idempotencyRef: reservation.command.idempotencyRef,
+      })
+      if (providerEvents[0]?._tag !== 'RuntimeInterruptRequested') {
+        return yield* upstreamUnavailable('interrupt')
+      }
+      const events = yield* materializeRuntimeEvents(
+        reservation.resource,
+        providerEvents,
+      )
+      const observedAt = events.at(-1)?.observedAt
+      if (observedAt === undefined)
+        return yield* upstreamUnavailable('interrupt')
+      yield* input.store.settle({
+        ...scope,
+        sandboxRef: reservation.resource.sandboxRef,
+        commandRef: reservation.command.commandRef,
+        expectedResourceGeneration: reservation.resource.resourceGeneration,
+        events,
+        outcome: 'succeeded',
+        observedAt,
+      })
+      return (yield* input.store.inspectTurn({
+        ...scope,
+        sandboxRef: reservation.resource.sandboxRef,
+        turnRef: reservation.command.turnRef,
+      })).turn
+    })
 
   const action = (
     tag: 'Stop' | 'Resume' | 'Delete',
@@ -842,13 +1104,31 @@ const makeBoxCompatibilityService = (input: {
         if (body.prompt.trim().length === 0 || body.prompt.length > 100_000) {
           return yield* validationError('prompt must be non-empty and bounded')
         }
-        yield* input.runtime.admit('agent_turn')
         const identity = yield* makeCommandIdentity(
           input.principal,
           'prompt',
           key,
         )
         const promptDigest = yield* digest(body.prompt)
+        const runtime = {
+          provider:
+            body.provider === 'codex'
+              ? ('codex' as const)
+              : ('claude' as const),
+          modelRef:
+            body.model ??
+            (body.provider === 'codex'
+              ? 'model.codex.default'
+              : 'model.claude.default'),
+          harnessRef:
+            body.provider === 'codex'
+              ? 'harness.openai.codex-sdk.v1'
+              : 'harness.anthropic.claude-agent-sdk.v1',
+          ...(body.reasoningEffort === undefined ||
+          body.reasoningEffort === null
+            ? {}
+            : { reasoningEffort: body.reasoningEffort }),
+        }
         const existing = yield* input.store.reservation({
           ...scope,
           commandRef: identity.commandRef,
@@ -857,13 +1137,19 @@ const makeBoxCompatibilityService = (input: {
           if (
             existing.command._tag !== 'Dispatch' ||
             existing.command.sandboxRef !== sandboxRef ||
-            existing.command.promptDigest !== `sha256:${promptDigest}`
+            existing.command.promptDigest !== `sha256:${promptDigest}` ||
+            existing.command.runtime.provider !== runtime.provider ||
+            existing.command.runtime.modelRef !== runtime.modelRef ||
+            existing.command.runtime.harnessRef !== runtime.harnessRef ||
+            existing.command.runtime.reasoningEffort !== runtime.reasoningEffort
           ) {
             return yield* conflictError(
               'prompt idempotency key is bound to different request bytes',
             )
           }
           const replayTurnRef = existing.command.turnRef
+          const replayTurn = yield* admitDispatch(existing, body.prompt)
+          const replayStatus = promptStatus(replayTurn.status)
           return yield* decode(BoxV1PromptResponseSchema, {
             ok: true,
             type: 'prompt.queued',
@@ -873,8 +1159,7 @@ const makeBoxCompatibilityService = (input: {
               id: replayTurnRef,
               promptId: replayTurnRef,
               boxId: sandboxRef,
-              status: 'queued',
-              done: false,
+              ...replayStatus,
               createdAt: existing.command.requestedAt,
               model: body.model ?? null,
               reasoningEffort: body.reasoningEffort ?? null,
@@ -913,14 +1198,16 @@ const makeBoxCompatibilityService = (input: {
           turnRef,
           capabilityRef: capability.capabilityRef,
           promptDigest: `sha256:${promptDigest}`,
+          runtime,
         })
-        yield* input.store.reserve({ command })
+        const reserved = yield* input.store.reserve({ command })
+        const admittedTurn = yield* admitDispatch(reserved, body.prompt)
+        const admittedStatus = promptStatus(admittedTurn.status)
         const promptRun = {
           id: turnRef,
           promptId: turnRef,
           boxId: sandboxRef,
-          status: 'queued',
-          done: false,
+          ...admittedStatus,
           createdAt: requestedAt,
           model: body.model ?? null,
           reasoningEffort: body.reasoningEffort ?? null,
@@ -940,16 +1227,12 @@ const makeBoxCompatibilityService = (input: {
     promptStatus: (sandboxRef: string, promptId: string) =>
       Effect.gen(function* () {
         const resource = yield* inspect(sandboxRef)
-        const turns = yield* input.store.turns({ ...scope, sandboxRef })
-        const turn = turns.find(candidate => candidate.turnRef === promptId)
-        if (turn === undefined) {
-          return yield* new BoxV1FacadeError({
-            code: 'resource_not_found',
-            status: 404,
-            message: 'prompt run does not exist in this sandbox scope',
-            retryable: false,
-          })
-        }
+        const inspected = yield* input.store.inspectTurn({
+          ...scope,
+          sandboxRef,
+          turnRef: promptId,
+        })
+        const turn = yield* syncTurn(resource, inspected.turn)
         const projected = promptStatus(turn.status)
         return yield* decode(BoxV1PromptRunResponseSchema, {
           ok: true,
@@ -960,15 +1243,14 @@ const makeBoxCompatibilityService = (input: {
             promptId: turn.turnRef,
             boxId: sandboxRef,
             ...projected,
-            createdAt: resource.createdAt,
-            model: null,
-            reasoningEffort: null,
+            createdAt: turn.createdAt,
+            model: turn.runtime.modelRef,
+            reasoningEffort: turn.runtime.reasoningEffort ?? null,
           },
         })
       }),
     interrupt: (sandboxRef: string, key: string) =>
       Effect.gen(function* () {
-        yield* input.runtime.admit('interrupt')
         const identity = yield* makeCommandIdentity(
           input.principal,
           'interrupt',
@@ -987,22 +1269,24 @@ const makeBoxCompatibilityService = (input: {
               'interrupt idempotency key is bound to another action',
             )
           }
+          const turn = yield* admitInterrupt(existing)
+          const resource = yield* inspect(sandboxRef)
           return yield* decode(BoxV1ActionResponseSchema, {
             ok: true,
             type: 'prompt.interrupting',
             id: sandboxRef,
-            status: existing.resource.facts.runtimeState,
-            box: projectManagedSandboxToBoxV1(existing.resource),
+            status:
+              turn.status === 'interrupted'
+                ? 'settled'
+                : resource.facts.runtimeState,
+            box: projectManagedSandboxToBoxV1(resource),
           })
         }
         const resource = yield* inspect(sandboxRef)
         const turns = yield* input.store.turns({ ...scope, sandboxRef })
         const turn = [...turns]
           .reverse()
-          .find(
-            candidate =>
-              candidate.status === 'pending' || candidate.status === 'running',
-          )
+          .find(candidate => candidate.status === 'running')
         if (turn === undefined) {
           return yield* new BoxV1FacadeError({
             code: 'conflict',
@@ -1025,12 +1309,17 @@ const makeBoxCompatibilityService = (input: {
           reasonRef: 'reason.box_v1.interrupt',
         })
         const reserved = yield* input.store.reserve({ command })
+        const interruptedTurn = yield* admitInterrupt(reserved)
+        const interruptedResource = yield* inspect(sandboxRef)
         return yield* decode(BoxV1ActionResponseSchema, {
           ok: true,
           type: 'prompt.interrupting',
           id: sandboxRef,
-          status: reserved.resource.facts.runtimeState,
-          box: projectManagedSandboxToBoxV1(reserved.resource),
+          status:
+            interruptedTurn.status === 'interrupted'
+              ? 'settled'
+              : interruptedResource.facts.runtimeState,
+          box: projectManagedSandboxToBoxV1(interruptedResource),
         })
       }),
     events: (
@@ -1043,7 +1332,19 @@ const makeBoxCompatibilityService = (input: {
             'OpenAgents Box-v1 events require sort=asc for stable replay',
           )
         }
-        const resource = yield* inspect(sandboxRef)
+        let resource = yield* inspect(sandboxRef)
+        const turns = yield* input.store.turns({ ...scope, sandboxRef })
+        for (const candidate of turns.filter(turn =>
+          ['pending', 'running', 'interrupting'].includes(turn.status),
+        )) {
+          const inspected = yield* input.store.inspectTurn({
+            ...scope,
+            sandboxRef,
+            turnRef: candidate.turnRef,
+          })
+          yield* syncTurn(resource, inspected.turn)
+          resource = yield* inspect(sandboxRef)
+        }
         const afterSequence = yield* parseCursor(options.cursor, resource)
         const page = yield* input.store.readEvents({
           ...scope,
@@ -1063,6 +1364,7 @@ const makeBoxCompatibilityService = (input: {
             nativeEventSequence: event.sequence,
             resourceGeneration: event.resourceGeneration,
             translatorRef: BOX_V1_TRANSLATOR_REF,
+            ...runtimeEventProjectionData(event),
           },
         }))
         const nextCursor = cursorFor(
