@@ -22,7 +22,7 @@ actually proves.
 | AR-0   | [#9056](https://github.com/OpenAgentsInc/openagents/issues/9056) | delivered | Typed surface inventory with loss accounting    |
 | AR-1   | [#9057](https://github.com/OpenAgentsInc/openagents/issues/9057) | delivered | Assurance obligations graded over the inventory |
 | AR-2   | [#9058](https://github.com/OpenAgentsInc/openagents/issues/9058) | delivered | False-green audit + mutation evidence           |
-| AR-3   | [#9059](https://github.com/OpenAgentsInc/openagents/issues/9059) | planned   | Standing verification sweep (Full Auto lane)    |
+| AR-3   | [#9059](https://github.com/OpenAgentsInc/openagents/issues/9059) | delivered | Standing verification sweep (Full Auto lane)    |
 | AR-4   | [#9060](https://github.com/OpenAgentsInc/openagents/issues/9060) | delivered | Drift oracles for the repository's own claims   |
 
 ## The surface inventory (AR-0)
@@ -81,6 +81,27 @@ command is executed, no production is probed). Findings are typed `ok` /
 **open** broken claim; a genuinely stale claim in a doc this packet does not
 own can be acknowledged via `driftDispositions` in the policy (still reported).
 Governed-document surfaces in the inventory are bound to this oracle.
+
+### Standing verification sweep (AR-3)
+
+`sweep.ts` re-derives the inventory and re-runs the ASSURE-REPO oracles
+(inventory freshness, false-green report freshness, documentation drift)
+against the current tree and emits a typed `SweepReceipt` — commit, timestamp,
+per-oracle outcomes, obligation summary, drift summary, and an honest
+**evidence class**. Before IDE-10 host-observed tests and the SBX sandbox land
+it runs **degraded** and labels itself `degraded_terminal_observed`; it is
+read-only over source, so it cannot alter Full Auto guardrails. `diffSweeps`
+turns two receipts into typed regression findings (an oracle regressing, a drop
+in `designed` surfaces, an overall regression) so drift is visible, not silent.
+
+`readiness.ts` is the consuming surface: `renderReadiness` reports repo
+verification readiness **only from a decoded, fresh receipt**. An absent or
+stale receipt renders `unknown`, never `green` — the repo-scale form of "no
+receipt means no light" (enforced by test). Run `pnpm run sweep:assure-repo`
+(optionally `--out <receipt.json>`) and `assure-repo readiness --receipt
+<receipt.json>`. Receipts are runtime evidence, not committed source; wiring
+the sweep into the actual Full Auto run loop with host-observed test evidence
+is the post-IDE-10/SBX fidelity step.
 
 ### Determinism and the freshness guard
 

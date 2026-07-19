@@ -32,6 +32,10 @@ for the program overview and the generated artifact.
 - `drift.ts` — AR-4 drift oracles over the repository's own governing
   documents: side-effect-free path and command checks with typed
   ok/broken/unverifiable verdicts and policy-driven dispositions.
+- `sweep.ts` — AR-3 standing sweep: re-runs the oracles into a typed
+  `SweepReceipt`, plus `diffSweeps` for regression findings.
+- `readiness.ts` — AR-3 consuming surface: `renderReadiness` with the
+  no-receipt-no-light rule (absent/stale receipt renders `unknown`).
 - `inventory.ts` — the generator (`buildInventory`, which also grades) and the
   surface policy loader.
 - `cli.ts` — `generate` / `check` / `summary` / `coverage` / `audit*` /

@@ -11,6 +11,8 @@ import { runDriftOracles } from "./drift.ts";
 import { coverageByArea } from "./grade.ts";
 import { buildInventory, loadPolicy } from "./inventory.ts";
 import { runMutation } from "./mutation-runner.ts";
+import { renderReadiness } from "./readiness.ts";
+import { decodeSweepReceipt, runSweep, serializeSweepReceipt } from "./sweep.ts";
 import {
   serializeSurfaceInventory,
   SURFACE_INVENTORY_PATH,
@@ -33,11 +35,14 @@ import { repositoryRoot } from "./workspace.ts";
  *                   kill (exit 0) or a surviving weak oracle (exit 1).
  *   drift           Print AR-4 drift-oracle findings over governed documents.
  *   drift-check     Fail (exit 1) on any open (un-dispositioned) broken claim.
+ *   sweep           AR-3: re-run the oracles and emit a receipt (--out <path>).
+ *   readiness       AR-3: render repo-verification readiness from a receipt
+ *                   (--receipt <path>); no/stale receipt renders unknown.
  */
 
 const usage = (): never => {
   process.stderr.write(
-    "usage: assure-repo <generate|check|summary|coverage|audit|audit-generate|audit-check|demonstrate|drift|drift-check> [...]\n",
+    "usage: assure-repo <generate|check|summary|coverage|audit|audit-generate|audit-check|demonstrate|drift|drift-check|sweep|readiness> [...]\n",
   );
   process.exit(2);
 };
@@ -255,6 +260,57 @@ const main = (): void => {
       );
       process.exit(1);
     }
+    return;
+  }
+
+  if (command === "sweep") {
+    const outIdx = argv.indexOf("--out");
+    const receipt = runSweep(root, new Date().toISOString());
+    const serialized = serializeSweepReceipt(receipt);
+    if (outIdx >= 0 && argv[outIdx + 1]) {
+      writeFileSync(resolve(argv[outIdx + 1]!), serialized);
+      process.stdout.write(
+        `wrote sweep receipt to ${argv[outIdx + 1]} (overall=${receipt.overall}, evidence=${receipt.evidenceClass})\n`,
+      );
+    } else if (json) {
+      process.stdout.write(serialized);
+    } else {
+      process.stdout.write(
+        `Sweep overall=${receipt.overall} (evidence: ${receipt.evidenceClass}, commit ${receipt.commit.slice(0, 10)})\n`,
+      );
+      for (const outcome of receipt.oracleOutcomes) {
+        process.stdout.write(
+          `  ${outcome.outcome.toUpperCase().padEnd(5)} ${outcome.oracle} — ${outcome.detail}\n`,
+        );
+      }
+    }
+    process.exit(receipt.overall === "red" ? 1 : 0);
+  }
+
+  if (command === "readiness") {
+    const receiptIdx = argv.indexOf("--receipt");
+    let receipt;
+    if (receiptIdx >= 0 && argv[receiptIdx + 1]) {
+      const receiptPath = resolve(argv[receiptIdx + 1]!);
+      if (existsSync(receiptPath)) {
+        try {
+          receipt = decodeSweepReceipt(JSON.parse(readFileSync(receiptPath, "utf8")));
+        } catch (error) {
+          process.stderr.write(
+            `invalid sweep receipt: ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+          process.exit(1);
+        }
+      }
+    }
+    const readiness = renderReadiness(receipt, Date.now());
+    if (json) {
+      process.stdout.write(`${JSON.stringify(readiness, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(
+      `Repo verification readiness: ${readiness.state.toUpperCase()} — ${readiness.reason}\n`,
+    );
     return;
   }
 

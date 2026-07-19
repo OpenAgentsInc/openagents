@@ -176,7 +176,9 @@
     "audit:assure-repo": "node --import tsx packages/assure-repo/src/cli.ts audit-generate",
     "check:assure-repo-audit": "node --import tsx packages/assure-repo/src/cli.ts audit-check",
     "test:product-spec": "vp test --run packages/product-spec",
-    "check:assure-repo-drift": "node --import tsx packages/assure-repo/src/cli.ts drift-check"
+    "check:assure-repo-drift": "node --import tsx packages/assure-repo/src/cli.ts drift-check",
+    "sweep:assure-repo": "node --import tsx packages/assure-repo/src/cli.ts sweep",
+    "readiness:assure-repo": "node --import tsx packages/assure-repo/src/cli.ts readiness"
   },
   "devDependencies": {
     "@effect/language-service": "^0.86.2",
