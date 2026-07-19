@@ -282,6 +282,91 @@ describe(`contract ${contractId}`, () => {
     expect(view).not.toContain("Close turn");
   });
 
+  test("streams confirmed Sarah tool activity as conversational evidence", () => {
+    const host: MobileConversationHost = {
+      listThreads: async () => [thread],
+      newThread: async () => ({ ok: true, thread }),
+      openThread: async () => thread,
+      sendMessage: async () => ({ ok: true, thread }),
+    };
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [thread],
+        archivedThreads: [],
+        activeThread: thread,
+      },
+    });
+    const activity = {
+      key: "runtime-tool-evidence",
+      role: "tool" as const,
+      text: "sarah_harness_status",
+      status: "done" as const,
+      work: {
+        groupRef: "work.runtime-tool-evidence",
+        runRef: "run.runtime-tool-evidence",
+        summary: "Working",
+        status: "running" as const,
+        identityLabel: "Gemma 4 31B · Google AI Studio",
+        elapsedLabel: "1s",
+        createdAt: now,
+        totalItemCount: 1,
+        omittedItemCount: 0,
+        items: [{
+          itemRef: "tool:call.sarah.private.123",
+          kind: "tool" as const,
+          summary: "sarah_harness_status",
+          detail: "Running",
+          fullDetail: null,
+          status: "running" as const,
+          createdAt: now,
+        }],
+      },
+    };
+    const runningState = {
+      ...program.initialState,
+      khala: {
+        ...program.initialState.khala,
+        runtimeTurn: {
+          runRef: "run.runtime-tool-evidence",
+          status: "running" as const,
+        },
+        entries: [activity],
+        transcriptVisibleCount: 1,
+      },
+    };
+    const running = JSON.stringify(renderContentView(runningState));
+
+    expect(running).toContain("Inspecting Sarah's harness…");
+    expect(running).toContain("Using an OpenAgents tool");
+    expect(running).not.toContain("sarah_harness_status");
+    expect(running).not.toContain("Gemma 4 31B · Google AI Studio");
+    expect(running).not.toContain("Thinking…");
+
+    const completed = JSON.stringify(renderContentView({
+      ...runningState,
+      khala: {
+        ...runningState.khala,
+        entries: [{
+          ...activity,
+          work: {
+            ...activity.work,
+            items: [{
+              ...activity.work.items[0]!,
+              detail: "Completed",
+              status: "success" as const,
+            }],
+          },
+        }],
+      },
+    }));
+    expect(completed).toContain("Sarah's harness inspected");
+    expect(completed).toContain("Tool result received");
+    expect(completed).not.toContain("sarah_harness_status");
+  });
+
   test("withholds Sarah voice outside the admitted owner thread", () => {
     const ordinaryState = buildHomeProgram().initialState;
     const ordinary = JSON.stringify(renderContentView({

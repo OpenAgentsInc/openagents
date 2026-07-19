@@ -45,6 +45,128 @@ export interface MobileWorkGroup {
   readonly items: ReadonlyArray<MobileWorkItem>
 }
 
+type OwnerConversationToolCopy = Readonly<{
+  running: string
+  success: string
+  failure: string
+}>
+
+/**
+ * Closed, user-facing names for Sarah's admitted tool brokers. The runtime
+ * event remains the source of truth; this table only keeps internal broker
+ * names and receipt refs out of the conversation UI.
+ */
+const ownerConversationToolCopy: Readonly<Record<string, OwnerConversationToolCopy>> = {
+  codex_workers_capacity: {
+    running: "Checking Codex capacity…",
+    success: "Codex capacity checked",
+    failure: "Couldn't check Codex capacity",
+  },
+  codex_workers_start: {
+    running: "Starting Codex workers…",
+    success: "Codex worker request completed",
+    failure: "Couldn't start Codex workers",
+  },
+  codex_workers_status: {
+    running: "Checking Codex workers…",
+    success: "Codex worker status loaded",
+    failure: "Couldn't check Codex workers",
+  },
+  full_auto_status: {
+    running: "Checking Full Auto…",
+    success: "Full Auto status loaded",
+    failure: "Couldn't check Full Auto",
+  },
+  full_auto_control: {
+    running: "Sending the Full Auto command…",
+    success: "Full Auto command sent",
+    failure: "The Full Auto command failed",
+  },
+  sarah_harness_status: {
+    running: "Inspecting Sarah's harness…",
+    success: "Sarah's harness inspected",
+    failure: "Couldn't inspect Sarah's harness",
+  },
+  sarah_harness_review_history: {
+    running: "Reviewing Sarah's conversation history…",
+    success: "Sarah's conversation history reviewed",
+    failure: "Couldn't review Sarah's conversation history",
+  },
+}
+
+const ownerConversationActivityItems = (
+  group: MobileWorkGroup,
+): ReadonlyArray<MobileWorkItem> =>
+  group.items.filter(item => item.kind === "tool" || item.kind === "error")
+
+/** True when a work group contains something Sarah should disclose in chat. */
+export const hasOwnerConversationActivity = (group: MobileWorkGroup): boolean =>
+  ownerConversationActivityItems(group).length > 0
+
+const ownerConversationActivityCopy = (item: MobileWorkItem): Readonly<{
+  label: string
+  evidence: string
+}> => {
+  if (item.kind === "error") {
+    return {
+      label: "Sarah hit a problem while working",
+      evidence: "Runtime error received",
+    }
+  }
+  const copy = ownerConversationToolCopy[item.summary]
+  if (copy === undefined) {
+    return {
+      label: item.status === "running"
+        ? "Sarah is using a tool…"
+        : item.status === "success"
+          ? "Sarah finished using a tool"
+          : "Sarah's tool call failed",
+      evidence: item.status === "running" ? "Tool call in progress" : "Tool result received",
+    }
+  }
+  return {
+    label: item.status === "running"
+      ? copy.running
+      : item.status === "success"
+        ? copy.success
+        : copy.failure,
+    evidence: item.status === "running" ? "Using an OpenAgents tool" : "Tool result received",
+  }
+}
+
+/**
+ * Sarah's work appears as terse conversation activity, not the coding work-log
+ * card. Each row is backed by a confirmed tool.call/tool.result/tool.error
+ * event and updates in place when the matching tool call settles.
+ */
+export const renderOwnerConversationActivity = (
+  group: MobileWorkGroup,
+): ReadonlyArray<View> => ownerConversationActivityItems(group).slice(-6).map(item => {
+  const copy = ownerConversationActivityCopy(item)
+  const failed = item.status === "failure"
+  return Stack({
+    key: `${group.groupRef}-${item.itemRef}-owner-activity`,
+    direction: "column",
+    gap: "0",
+    style: { width: "full" },
+    a11y: { role: "region", label: `${copy.label}. ${copy.evidence}.` },
+  }, [
+    Text({
+      key: `${group.groupRef}-${item.itemRef}-owner-activity-label`,
+      content: copy.label,
+      variant: "body",
+      color: failed ? "danger" : item.status === "running" ? "accent" : "textPrimary",
+      weight: "medium",
+    }),
+    Text({
+      key: `${group.groupRef}-${item.itemRef}-owner-activity-evidence`,
+      content: copy.evidence,
+      variant: "caption",
+      color: failed ? "danger" : "textMuted",
+    }),
+  ])
+})
+
 const runtimeLabels: Readonly<Record<NonNullable<ConfirmedAgentRun["runtime"]>, string>> = {
   opencode_codex: "OpenCode Codex",
   codex: "Codex",

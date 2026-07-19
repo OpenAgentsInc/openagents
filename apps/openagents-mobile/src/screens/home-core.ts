@@ -468,7 +468,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-18.sarah-openai-voice-09"
+export const BUNDLE_TAG = "2026-07-19.sarah-live-tool-activity-10"
 
 const EmptyPayload = Schema.Struct({})
 

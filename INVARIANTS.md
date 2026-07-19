@@ -266,6 +266,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   neither mutate a target nor report success. Short conversational input must
   receive a short conversational answer; Sarah may produce an operations brief,
   audit, or recommended-action list only when the owner asks for that detail.
+  Confirmed Sarah tool calls, results, and failures remain visible in the
+  conversation as compact human-readable activity while they happen; the UI
+  may hide internal refs and runtime plumbing but must never hide whether a
+  tool was actually used or whether it succeeded.
 - Sarah has one deterministic opaque owner-private Khala Sync thread. That
   thread and its confirmed history are durable memory; fresh business context
   is projected from bounded owner-scoped/public-safe adapters. Raw credentials,

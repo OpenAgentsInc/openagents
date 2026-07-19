@@ -14,7 +14,9 @@ import type {
 import {
   MOBILE_WORK_LOG_COLLAPSED_ITEMS,
   MOBILE_WORK_LOG_MAX_ITEMS,
+  hasOwnerConversationActivity,
   projectMobileWorkGroup,
+  renderOwnerConversationActivity,
   renderMobileWorkLog,
 } from "../src/screens/mobile-work-log"
 import {
@@ -118,6 +120,51 @@ describe("T3M-A2 mobile grouped work log", () => {
       runtime: "openagents_native",
       backend: "hosted",
     }, [started])?.identityLabel).toBe("Gemma 4 31B · Google AI Studio")
+  })
+
+  test("presents confirmed Sarah tool evidence conversationally without internal refs", () => {
+    const runningGroup = projectMobileWorkGroup({
+      ...run("running"),
+      runtime: "openagents_native",
+      backend: "hosted",
+    }, [event(1, {
+      kind: "tool",
+      toolCallRef: "call.sarah.private.123",
+      toolName: "sarah_harness_status",
+      status: "called",
+    })])
+    if (runningGroup === null) throw new Error("expected Sarah activity")
+
+    expect(hasOwnerConversationActivity(runningGroup)).toBe(true)
+    const running = JSON.stringify(renderOwnerConversationActivity(runningGroup))
+    expect(running).toContain("Inspecting Sarah's harness…")
+    expect(running).toContain("Using an OpenAgents tool")
+    expect(running).not.toContain("sarah_harness_status")
+    expect(running).not.toContain("hosted runtime")
+
+    const completedGroup = projectMobileWorkGroup({
+      ...run("running"),
+      runtime: "openagents_native",
+      backend: "hosted",
+    }, [
+      event(1, {
+        kind: "tool",
+        toolCallRef: "call.sarah.private.123",
+        toolName: "sarah_harness_status",
+        status: "called",
+      }),
+      event(2, {
+        kind: "tool",
+        toolCallRef: "call.sarah.private.123",
+        toolName: "sarah_harness_status",
+        status: "completed",
+      }),
+    ])
+    if (completedGroup === null) throw new Error("expected completed Sarah activity")
+    const completed = JSON.stringify(renderOwnerConversationActivity(completedGroup))
+    expect(completed).toContain("Sarah's harness inspected")
+    expect(completed).toContain("Tool result received")
+    expect(completed).not.toContain("sarah_harness_status")
   })
 
   test("names collapsed and safety-bound remainders exactly", () => {

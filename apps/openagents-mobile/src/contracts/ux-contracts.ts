@@ -5,8 +5,39 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-18.1",
+    version: "2026-07-19.1",
     contracts: [
+      {
+        contractId: "openagents_mobile.sarah.live_tool_activity.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "Sarah owner conversation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-session", statedBy: "owner", statedOn: "2026-07-19" },
+        statement:
+          "When Sarah uses a tool, the mobile conversation shows compact human-readable call, result, and failure activity as it happens so the owner can verify that her answer is grounded instead of trusting model prose.",
+        authorityBoundary:
+          "Only confirmed runtime tool events create activity. Presentation maps the closed admitted Sarah broker names to conversational labels, hides internal refs, arguments, raw results, tokens, and generic runtime plumbing, and never infers a tool call from assistant text.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/screens/mobile-work-log.ts",
+          "apps/openagents-mobile/src/screens/khala-core.ts",
+          "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+          "apps/openagents-mobile/tests/mobile-work-log.test.ts",
+        ],
+        oracles: [
+          {
+            id: "sarah_live_tool_activity_conversation",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+            description:
+              "Proves confirmed Sarah tool activity is visible and updates conversationally while generic runtime plumbing, raw broker names, and internal refs stay hidden.",
+          },
+        ],
+        verification:
+          "Sarah owner-orchestrator, mobile work-log, behavior-contract, mobile typecheck, OTA export, and signed manifest checks.",
+      },
       {
         contractId: "openagents_mobile.settings_connections_native_finish.v1",
         state: "enforced",

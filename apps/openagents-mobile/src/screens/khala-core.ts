@@ -55,6 +55,8 @@ import {
   visibleMobileTranscriptEntries,
 } from "./mobile-transcript-history"
 import {
+  hasOwnerConversationActivity,
+  renderOwnerConversationActivity,
   renderMobileWorkLog,
   type MobileWorkGroup,
 } from "./mobile-work-log"
@@ -290,9 +292,10 @@ const interactionBody = (
   state: KhalaState,
   entry: KhalaEntry,
   accessibility: MobileAccessibilityProfile,
-  showProvenance: boolean,
+  ownerConversation: boolean,
 ): ReadonlyArray<View> => {
   if (entry.work !== undefined) {
+    if (ownerConversation) return renderOwnerConversationActivity(entry.work)
     return [renderMobileWorkLog(
       entry.work,
       state.expandedWorkGroups[entry.work.groupRef] === true,
@@ -306,7 +309,7 @@ const interactionBody = (
       ? mobileAssistantContentViews(
           entry.key,
           entry.text,
-          showProvenance ? entry.provenanceLabel : undefined,
+          ownerConversation ? entry.provenanceLabel : undefined,
         )
       : [Text({
           key: `${entry.key}-text`,
@@ -417,6 +420,9 @@ const runtimeControlViews = (
 const compactRuntimeStatusViews = (state: KhalaState): ReadonlyArray<View> => {
   const turn = state.runtimeTurn
   if (turn === null || turn.status === "completed" || turn.status === "canceled") return []
+  const toolActivityIsVisible = state.entries.some(entry =>
+    entry.work?.runRef === turn.runRef && hasOwnerConversationActivity(entry.work))
+  if (toolActivityIsVisible) return []
   const status = state.runtimeControlSubmittingAction === "cancel"
     ? "Stopping…"
     : turn.status === "waiting_for_input"
@@ -955,13 +961,17 @@ export const renderKhalaSurface = (
   const compactRuntime = typeof runtimeDetails === "object"
     ? runtimeDetails
     : null
-  const presentedEntries = runtimeDetails !== "visible"
-    ? state.entries
-        .filter(entry => entry.work === undefined)
-        .map(entry => entry.role === "assistant"
-          ? { ...entry, text: sanitizeOwnerConversationResponse(entry.text) }
-          : entry)
-    : state.entries
+  const conversationalEntries = runtimeDetails === "hidden"
+    ? state.entries.filter(entry => entry.work === undefined)
+    : compactRuntime !== null
+      ? state.entries
+        .filter(entry => entry.work === undefined || hasOwnerConversationActivity(entry.work))
+      : state.entries
+  const presentedEntries = runtimeDetails === "visible"
+    ? conversationalEntries
+    : conversationalEntries.map(entry => entry.role === "assistant"
+      ? { ...entry, text: sanitizeOwnerConversationResponse(entry.text) }
+      : entry)
   const visibleEntries = visibleMobileTranscriptEntries(
     presentedEntries,
     state.transcriptVisibleCount,
