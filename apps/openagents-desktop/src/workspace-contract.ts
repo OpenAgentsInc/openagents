@@ -13,6 +13,9 @@ export const DesktopWorkspaceSearchChannel = "openagents-desktop/workspace-searc
 export const DesktopWorkspaceSearchCancelChannel = "openagents-desktop/workspace-search-cancel" as const
 export const DesktopWorkspaceCreateChannel = "openagents-desktop/workspace-create" as const
 export const DesktopWorkspaceRenameChannel = "openagents-desktop/workspace-rename" as const
+export const DesktopWorkspaceMoveChannel = "openagents-desktop/workspace-move" as const
+export const DesktopWorkspaceCopyChannel = "openagents-desktop/workspace-copy" as const
+export const DesktopWorkspaceDuplicateChannel = "openagents-desktop/workspace-duplicate" as const
 export const DesktopWorkspaceDeleteChannel = "openagents-desktop/workspace-delete" as const
 export const DesktopWorkspaceRevealChannel = "openagents-desktop/workspace-reveal" as const
 export const DesktopWorkspaceDocumentOpenChannel = "openagents-desktop/workspace-document-open" as const
@@ -91,6 +94,23 @@ export const DesktopWorkspaceRenameRequestSchema = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
 }).annotate({ identifier: "DesktopWorkspaceRenameRequest" })
+
+export const DesktopWorkspaceMoveRequestSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+  destinationParentRef: DesktopWorkspacePathRefSchema,
+  expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+}).annotate({ identifier: "DesktopWorkspaceMoveRequest" })
+
+export const DesktopWorkspaceCopyRequestSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+  destinationParentRef: DesktopWorkspacePathRefSchema,
+  expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+}).annotate({ identifier: "DesktopWorkspaceCopyRequest" })
+
+export const DesktopWorkspaceDuplicateRequestSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+  expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+}).annotate({ identifier: "DesktopWorkspaceDuplicateRequest" })
 
 export const DesktopWorkspaceDeleteRequestSchema = Schema.Struct({
   pathRef: DesktopWorkspacePathRefSchema,
@@ -341,6 +361,9 @@ export type DesktopWorkspaceSearchCancelRequest = typeof DesktopWorkspaceSearchC
 export type DesktopWorkspaceWatchRequest = typeof DesktopWorkspaceWatchRequestSchema.Type
 export type DesktopWorkspaceCreateRequest = typeof DesktopWorkspaceCreateRequestSchema.Type
 export type DesktopWorkspaceRenameRequest = typeof DesktopWorkspaceRenameRequestSchema.Type
+export type DesktopWorkspaceMoveRequest = typeof DesktopWorkspaceMoveRequestSchema.Type
+export type DesktopWorkspaceCopyRequest = typeof DesktopWorkspaceCopyRequestSchema.Type
+export type DesktopWorkspaceDuplicateRequest = typeof DesktopWorkspaceDuplicateRequestSchema.Type
 export type DesktopWorkspaceDeleteRequest = typeof DesktopWorkspaceDeleteRequestSchema.Type
 export type DesktopWorkspaceRevealRequest = typeof DesktopWorkspaceRevealRequestSchema.Type
 export type DesktopWorkspaceDocumentRequest = typeof DesktopWorkspaceDocumentRequestSchema.Type
@@ -422,6 +445,27 @@ export const decodeWorkspaceRenameRequest = (
   value: unknown,
 ): DesktopWorkspaceRenameRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceRenameRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceMoveRequest = (
+  value: unknown,
+): DesktopWorkspaceMoveRequest | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceMoveRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceCopyRequest = (
+  value: unknown,
+): DesktopWorkspaceCopyRequest | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceCopyRequestSchema)(value)
+  return Exit.isSuccess(result) ? result.value : null
+}
+
+export const decodeWorkspaceDuplicateRequest = (
+  value: unknown,
+): DesktopWorkspaceDuplicateRequest | null => {
+  const result = Schema.decodeUnknownExit(DesktopWorkspaceDuplicateRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 

@@ -142,7 +142,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(36)
+    expect(decoded.contracts).toHaveLength(37)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,
@@ -162,6 +162,13 @@ describe("behavior contract registry", () => {
     expect(idePackageAdmission?.enforcementTier).toBe("test-sweep")
     expect(idePackageAdmission?.oracles).toHaveLength(4)
     expect(idePackageAdmission?.statement).toContain("first-party contract")
+    const ideCompletePathIndex = decoded.contracts.find(
+      contract => contract.contractId === "openagents_desktop.ide_complete_path_index.v1",
+    )
+    expect(ideCompletePathIndex?.state).toBe("enforced")
+    expect(ideCompletePathIndex?.enforcementTier).toBe("test-sweep")
+    expect(ideCompletePathIndex?.oracles).toHaveLength(4)
+    expect(ideCompletePathIndex?.statement).toContain("complete Effect-owned generation-fenced path index")
     expect(
       decoded.contracts.find(
         contract =>

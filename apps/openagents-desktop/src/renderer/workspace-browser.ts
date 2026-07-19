@@ -28,6 +28,34 @@ import {
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 
 import {
+  IdeAttachmentGenerationSchema,
+  IdeAttachmentRefSchema,
+  IdePathIndexGenerationSchema,
+  IdeProjectRefSchema,
+  IdeRootRefSchema,
+  IdeWorktreeRefSchema,
+} from "./ide-path-index.ts"
+import {
+  IdeExplorerCommandSchema,
+  IdePathIndexIdentitySchema,
+  IdePathOperationRefSchema,
+  IdePathScanRefSchema,
+  type IdeExplorerCommand,
+  type IdePathIndexIdentity,
+  type IdePathIndexInteractionUpdate,
+  type IdePathIndexOperationUpdate,
+  type IdePathIndexReconcileRequest,
+  type IdePathIndexScanRequest,
+  type IdePathIndexSnapshot,
+  type IdePierreTreeProjection,
+} from "./ide-path-index.ts"
+import {
+  IdePathIndexService,
+  emptyIdePathIndexSnapshot,
+  makeIdePathIndexLayer,
+  type IdePathIndexSource,
+} from "./ide-path-index.ts"
+import {
   DesktopWorkspaceChangeSchema,
   DesktopWorkspacePathRefSchema,
   decodeWorkspaceOperationResult,
@@ -63,6 +91,8 @@ export type WorkspaceBrowserState = Readonly<{
   editor: WorkspaceBrowserEditor | null
   deleteConfirmRef: string | null
   operation: DesktopWorkspaceOperationResult | null
+  pathIndexSnapshot: IdePathIndexSnapshot | null
+  pathIndexProjection: IdePierreTreeProjection | null
 }>
 
 export const emptyWorkspaceBrowserState = (): WorkspaceBrowserState => ({
@@ -80,6 +110,8 @@ export const emptyWorkspaceBrowserState = (): WorkspaceBrowserState => ({
   editor: null,
   deleteConfirmRef: null,
   operation: null,
+  pathIndexSnapshot: null,
+  pathIndexProjection: null,
 })
 
 const unique = (values: ReadonlyArray<string>): ReadonlyArray<string> => [...new Set(values)]
@@ -113,6 +145,8 @@ export const withWorkspaceBrowserRoot = (
       editor: null,
       deleteConfirmRef: null,
       operation: null,
+      pathIndexSnapshot: null,
+      pathIndexProjection: null,
     }
 
 export const withWorkspaceBrowserPage = (
@@ -269,6 +303,7 @@ export const WorkspaceBrowserDeleteConfirmed = defineIntent("WorkspaceBrowserDel
 export const WorkspaceBrowserDeleteCancelled = defineIntent("WorkspaceBrowserDeleteCancelled", Schema.Null)
 export const WorkspaceBrowserRevealRequested = defineIntent("WorkspaceBrowserRevealRequested", DesktopWorkspacePathRefSchema)
 export const WorkspaceBrowserChangeReceived = defineIntent("WorkspaceBrowserChangeReceived", DesktopWorkspaceChangeSchema)
+export const WorkspaceBrowserExplorerCommandRequested = defineIntent("WorkspaceBrowserExplorerCommandRequested", IdeExplorerCommandSchema)
 
 export const workspaceBrowserIntents = [
   WorkspaceBrowserRefreshRequested,
@@ -291,6 +326,7 @@ export const workspaceBrowserIntents = [
   WorkspaceBrowserDeleteCancelled,
   WorkspaceBrowserRevealRequested,
   WorkspaceBrowserChangeReceived,
+  WorkspaceBrowserExplorerCommandRequested,
 ] as const
 
 export type WorkspaceBrowserCapableState = Readonly<{
@@ -298,12 +334,59 @@ export type WorkspaceBrowserCapableState = Readonly<{
   workspace?: string
 }>
 
+export type WorkspaceBrowserIndexScope = Readonly<{
+  projectRef: string
+  rootRef: string
+  worktreeRef: string
+  attachmentRef: string
+  attachmentGeneration: number
+  pathIndexGeneration: number
+}>
+
+const opaqueSuffix = (value: string): string => {
+  const normalized = value.replaceAll(/[^A-Za-z0-9._-]/gu, "-").replaceAll(/-+/gu, "-")
+  return (normalized.slice(0, 120) || "unavailable").replace(/^[^A-Za-z0-9]/u, "x")
+}
+
+export const workspaceBrowserIndexIdentity = (
+  scope: WorkspaceBrowserIndexScope,
+): IdePathIndexIdentity => IdePathIndexIdentitySchema.make({
+  projectRef: IdeProjectRefSchema.make(`ide.project.${opaqueSuffix(scope.projectRef)}`),
+  rootRef: IdeRootRefSchema.make(`ide.root.${opaqueSuffix(scope.rootRef)}`),
+  worktreeRef: IdeWorktreeRefSchema.make(`ide.worktree.${opaqueSuffix(scope.worktreeRef)}`),
+  attachmentRef: IdeAttachmentRefSchema.make(`ide.attachment.${opaqueSuffix(scope.attachmentRef)}`),
+  attachmentGeneration: IdeAttachmentGenerationSchema.make(Math.max(1, scope.attachmentGeneration)),
+  pathIndexGeneration: IdePathIndexGenerationSchema.make(Math.max(1, scope.pathIndexGeneration)),
+})
+
+export type WorkspaceBrowserIndexIdentityResolver<S extends WorkspaceBrowserCapableState> = (
+  state: S,
+  grantRef: string,
+  pathIndexGeneration: number,
+) => IdePathIndexIdentity
+
+const defaultWorkspaceBrowserIndexIdentity = <S extends WorkspaceBrowserCapableState>(
+  _state: S,
+  grantRef: string,
+  pathIndexGeneration: number,
+): IdePathIndexIdentity => workspaceBrowserIndexIdentity({
+  projectRef: grantRef,
+  rootRef: grantRef,
+  worktreeRef: grantRef,
+  attachmentRef: grantRef,
+  attachmentGeneration: pathIndexGeneration,
+  pathIndexGeneration,
+})
+
 export type WorkspaceBrowserBridge = Readonly<{
   workspaceTree: (value: unknown) => Promise<unknown>
   workspaceSearch: (value: unknown) => Promise<unknown>
   cancelWorkspaceSearch: (value: unknown) => Promise<unknown>
   createWorkspaceEntry: (value: unknown) => Promise<unknown>
   renameWorkspaceEntry: (value: unknown) => Promise<unknown>
+  moveWorkspaceEntry: (value: unknown) => Promise<unknown>
+  copyWorkspaceEntry: (value: unknown) => Promise<unknown>
+  duplicateWorkspaceEntry: (value: unknown) => Promise<unknown>
   deleteWorkspaceEntry: (value: unknown) => Promise<unknown>
   revealWorkspaceEntry: (value: unknown) => Promise<unknown>
   refreshWorkspace: () => Promise<unknown>
@@ -325,6 +408,9 @@ export const unavailableWorkspaceBrowserBridge: WorkspaceBrowserBridge = {
   }),
   createWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
   renameWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
+  moveWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
+  copyWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
+  duplicateWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
   deleteWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace changes are unavailable." }),
   revealWorkspaceEntry: async () => ({ state: "unavailable", message: "Workspace reveal is unavailable." }),
   refreshWorkspace: async () => false,
@@ -337,9 +423,63 @@ const treePageFrom = async (
   bridge: WorkspaceBrowserBridge,
   directoryRef: string,
   offset = 0,
+  limit = 200,
 ): Promise<DesktopWorkspaceTreePage> => decodeWorkspaceTreePage(
-  await bridge.workspaceTree({ directoryRef, offset, limit: 200 }).catch(() => null),
+  await bridge.workspaceTree({ directoryRef, offset, limit }).catch(() => null),
 ) ?? unavailablePage("The workspace tree response could not be read.")
+
+const workspacePathIndexSource = (
+  bridge: WorkspaceBrowserBridge,
+  grantRef: string,
+): IdePathIndexSource => ({
+  grantRef,
+  readPage: ({ directoryRef, offset, limit }) =>
+    Effect.promise(() => treePageFrom(bridge, directoryRef, offset, limit)),
+})
+
+const scanWorkspacePathIndex = (
+  seed: IdePathIndexSnapshot,
+  source: IdePathIndexSource,
+  request: IdePathIndexScanRequest,
+) => Effect.gen(function* () {
+  const index = yield* IdePathIndexService
+  const snapshot = yield* index.scan(request)
+  const projection = yield* index.projectPierre()
+  return { snapshot, projection }
+}).pipe(Effect.provide(makeIdePathIndexLayer(seed, source)))
+
+const reconcileWorkspacePathIndex = (
+  seed: IdePathIndexSnapshot,
+  source: IdePathIndexSource,
+  request: IdePathIndexReconcileRequest,
+) => Effect.gen(function* () {
+  const index = yield* IdePathIndexService
+  const snapshot = yield* index.reconcile(request)
+  const projection = yield* index.projectPierre()
+  return { snapshot, projection }
+}).pipe(Effect.provide(makeIdePathIndexLayer(seed, source)))
+
+const interactWorkspacePathIndex = (
+  seed: IdePathIndexSnapshot,
+  source: IdePathIndexSource,
+  update: IdePathIndexInteractionUpdate,
+) => Effect.gen(function* () {
+  const index = yield* IdePathIndexService
+  const snapshot = yield* index.interact(update)
+  const projection = yield* index.projectPierre()
+  return { snapshot, projection }
+}).pipe(Effect.provide(makeIdePathIndexLayer(seed, source)))
+
+const updateWorkspacePathIndexOperation = (
+  seed: IdePathIndexSnapshot,
+  source: IdePathIndexSource,
+  update: IdePathIndexOperationUpdate,
+) => Effect.gen(function* () {
+  const index = yield* IdePathIndexService
+  const snapshot = yield* index.updateOperation(update)
+  const projection = yield* index.projectPierre()
+  return { snapshot, projection }
+}).pipe(Effect.provide(makeIdePathIndexLayer(seed, source)))
 
 const operationFrom = async (
   call: () => Promise<unknown>,
@@ -355,16 +495,31 @@ const entryForRef = (
     const found = page.entries.find(entry => entry.pathRef === pathRef)
     if (found !== undefined) return found
   }
+  const indexed = state.pathIndexSnapshot?.nodes.find(node => node.pathRef === pathRef)
+  if (indexed !== undefined) {
+    return {
+      name: indexed.name,
+      pathRef: indexed.pathRef,
+      kind: indexed.kind,
+      expandable: indexed.expandable,
+      sizeBytes: indexed.sizeBytes,
+      revisionRef: indexed.revisionRef,
+    }
+  }
   return null
 }
 
 export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: WorkspaceBrowserBridge = unavailableWorkspaceBrowserBridge,
+  resolveIndexIdentity: WorkspaceBrowserIndexIdentityResolver<S> = defaultWorkspaceBrowserIndexIdentity,
 ) => {
   let searchSequence = 0
   let activeSearchRef: string | null = null
   let changeSequence = 0
+  let pathIndexSequence = 0
+  let pathIndexGeneration = 0
+  let operationSequence = 0
 
   const setBrowser = (mutate: (browser: WorkspaceBrowserState) => WorkspaceBrowserState) =>
     SubscriptionRef.update(state, next => ({ ...next, workspaceBrowser: mutate(next.workspaceBrowser) }))
@@ -377,10 +532,76 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
     yield* Effect.promise(() => bridge.cancelWorkspaceSearch({ requestRef }).catch(() => null))
   })
 
-  const loadRoot = (operation: DesktopWorkspaceOperationResult | null = null) =>
+  const loadRoot = (
+    operation: DesktopWorkspaceOperationResult | null = null,
+    reason: "initial" | "explicit_rescan" | "root_refresh" = "initial",
+    advanceGeneration = false,
+  ) =>
     Effect.gen(function* () {
       const page = yield* Effect.promise(() => treePageFrom(bridge, ""))
-      yield* setBrowser(browser => ({ ...withWorkspaceBrowserRoot(browser, page), operation }))
+      if (page.state === "unavailable") {
+        pathIndexSequence += 1
+        yield* setBrowser(browser => ({ ...withWorkspaceBrowserRoot(browser, page), operation }))
+        return
+      }
+      if (pathIndexGeneration === 0) pathIndexGeneration = 1
+      else if (advanceGeneration) pathIndexGeneration += 1
+      const sequence = ++pathIndexSequence
+      const current = yield* SubscriptionRef.get(state)
+      const identity = resolveIndexIdentity(current, page.grantRef, pathIndexGeneration)
+      const prior = current.workspaceBrowser.pathIndexSnapshot
+      const sameIdentity = prior !== null &&
+        prior.identity.projectRef === identity.projectRef &&
+        prior.identity.rootRef === identity.rootRef &&
+        prior.identity.worktreeRef === identity.worktreeRef &&
+        prior.identity.attachmentRef === identity.attachmentRef &&
+        prior.identity.attachmentGeneration === identity.attachmentGeneration &&
+        prior.identity.pathIndexGeneration === identity.pathIndexGeneration
+      const seed = sameIdentity ? prior : emptyIdePathIndexSnapshot(identity)
+      const source = workspacePathIndexSource(bridge, page.grantRef)
+      const partial = yield* scanWorkspacePathIndex(seed, source, {
+        identity,
+        scanRef: IdePathScanRefSchema.make(`ide.path-scan.browser-${sequence}-root`),
+        reason,
+        mode: "root_and_expanded",
+        chunkSize: 200,
+        maximumNodes: 250_000,
+      }).pipe(Effect.result)
+      if (sequence !== pathIndexSequence) return
+      if (partial._tag === "Failure") {
+        yield* setBrowser(browser => ({
+          ...withWorkspaceBrowserRoot(browser, page),
+          operation: { state: "unavailable", message: "The complete workspace index could not be started." },
+        }))
+        return
+      }
+      yield* setBrowser(browser => ({
+        ...withWorkspaceBrowserRoot(browser, page),
+        operation,
+        pathIndexSnapshot: partial.success.snapshot,
+        pathIndexProjection: partial.success.projection,
+      }))
+      const complete = yield* scanWorkspacePathIndex(partial.success.snapshot, source, {
+        identity,
+        scanRef: IdePathScanRefSchema.make(`ide.path-scan.browser-${sequence}-complete`),
+        reason,
+        mode: "complete",
+        chunkSize: 200,
+        maximumNodes: 250_000,
+      }).pipe(Effect.result)
+      if (sequence !== pathIndexSequence) return
+      if (complete._tag === "Failure") {
+        yield* setBrowser(browser => ({
+          ...browser,
+          operation: { state: "unavailable", message: "Workspace indexing is partial. Retry or rescan to continue." },
+        }))
+        return
+      }
+      yield* setBrowser(browser => ({
+        ...browser,
+        pathIndexSnapshot: complete.success.snapshot,
+        pathIndexProjection: complete.success.projection,
+      }))
     })
 
   const refresh = Effect.gen(function* () {
@@ -391,7 +612,7 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
       yield* setBrowser(browser => withWorkspaceBrowserRoot(browser, unavailablePage("The selected workspace could not be refreshed.")))
       return
     }
-    yield* loadRoot()
+    yield* loadRoot(null, "explicit_rescan", true)
   })
 
   const reloadFromChange = (change: DesktopWorkspaceChange) => Effect.gen(function* () {
@@ -406,9 +627,34 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
         const parentRef = slash < 0 ? "" : pathRef.slice(0, slash)
         return directoryRef === parentRef || directoryRef === pathRef
       }))
-    if (affectedRefs.length === 0) return
     const sequence = ++changeSequence
     yield* cancelActiveSearch
+    const indexed = current.workspaceBrowser.pathIndexSnapshot
+    if (indexed !== null && current.workspaceBrowser.grantRef !== null) {
+      const reconciled = yield* reconcileWorkspacePathIndex(
+        indexed,
+        workspacePathIndexSource(bridge, current.workspaceBrowser.grantRef),
+        {
+          identity: indexed.identity,
+          change,
+          scanRef: IdePathScanRefSchema.make(`ide.path-scan.watch-${sequence}`),
+        },
+      ).pipe(Effect.result)
+      if (sequence !== changeSequence) return
+      if (reconciled._tag === "Success") {
+        yield* setBrowser(browser => ({
+          ...browser,
+          pathIndexSnapshot: reconciled.success.snapshot,
+          pathIndexProjection: reconciled.success.projection,
+        }))
+      } else {
+        yield* setBrowser(browser => ({
+          ...browser,
+          operation: { state: "unavailable", message: "Workspace changes require an explicit index rescan." },
+        }))
+      }
+    }
+    if (affectedRefs.length === 0) return
     const pages = yield* Effect.promise(() => Promise.all(affectedRefs.map(directoryRef => treePageFrom(bridge, directoryRef))))
     if (sequence !== changeSequence) return
     const latest = yield* SubscriptionRef.get(state)
@@ -453,8 +699,104 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
 
   const reloadAfterOperation = (result: DesktopWorkspaceOperationResult) =>
     result.state === "created" || result.state === "renamed" || result.state === "deleted"
-      ? loadRoot(result)
+      ? loadRoot(result, "root_refresh")
       : setBrowser(browser => withWorkspaceBrowserOperation(browser, result))
+
+  const runExplorerMutation = (command: IdeExplorerCommand) => Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const indexed = current.workspaceBrowser.pathIndexSnapshot
+    const grantRef = current.workspaceBrowser.grantRef
+    if (indexed === null || grantRef === null) return
+    const operationRef = IdePathOperationRefSchema.make(`ide.path-operation.browser-${++operationSequence}`)
+    const source = workspacePathIndexSource(bridge, grantRef)
+    const pending = yield* updateWorkspacePathIndexOperation(indexed, source, {
+      _tag: "Pending",
+      identity: indexed.identity,
+      operationRef,
+      command,
+    }).pipe(Effect.result)
+    if (pending._tag === "Failure") return
+    yield* setBrowser(browser => ({
+      ...browser,
+      pathIndexSnapshot: pending.success.snapshot,
+      pathIndexProjection: pending.success.projection,
+    }))
+    const result = command._tag === "Rename"
+      ? yield* Effect.promise(() => operationFrom(() => bridge.renameWorkspaceEntry({
+          pathRef: command.pathRef,
+          name: command.name,
+          expectedRevisionRef: command.expectedRevisionRef,
+        })))
+      : command._tag === "Delete"
+        ? yield* Effect.promise(() => operationFrom(() => bridge.deleteWorkspaceEntry({
+            pathRef: command.pathRef,
+            expectedRevisionRef: command.expectedRevisionRef,
+          })))
+        : command._tag === "Move"
+          ? yield* Effect.promise(() => operationFrom(() => bridge.moveWorkspaceEntry({
+              pathRef: command.pathRef,
+              destinationParentRef: command.destinationParentPathRef,
+              expectedRevisionRef: command.expectedRevisionRef,
+            })))
+          : command._tag === "Copy"
+            ? yield* Effect.promise(() => operationFrom(() => bridge.copyWorkspaceEntry({
+                pathRef: command.pathRef,
+                destinationParentRef: command.destinationParentPathRef,
+                expectedRevisionRef: command.expectedRevisionRef,
+              })))
+            : command._tag === "Duplicate"
+              ? yield* Effect.promise(() => operationFrom(() => bridge.duplicateWorkspaceEntry({
+                  pathRef: command.pathRef,
+                  expectedRevisionRef: command.expectedRevisionRef,
+                })))
+              : command._tag === "CreateFile" || command._tag === "CreateFolder"
+          ? yield* Effect.promise(() => operationFrom(() => bridge.createWorkspaceEntry({
+              parentRef: command.parentPathRef,
+              name: command.name,
+              kind: command._tag === "CreateFile" ? "file" : "directory",
+            })))
+          : unavailableOperation("This expected-version operation is typed but not admitted by the current workspace host.")
+    const latest = yield* SubscriptionRef.get(state)
+    const latestIndex = latest.workspaceBrowser.pathIndexSnapshot
+    if (latestIndex === null || latestIndex.identity.pathIndexGeneration !== indexed.identity.pathIndexGeneration) return
+    const sourceNodeRef = "nodeRef" in command ? command.nodeRef : null
+    const update = result.state === "created" || result.state === "renamed"
+      ? {
+          _tag: "Confirmed" as const,
+          identity: latestIndex.identity,
+          operationRef,
+          sourceNodeRef,
+          entry: result.entry,
+        }
+      : result.state === "deleted"
+        ? {
+            _tag: "Confirmed" as const,
+            identity: latestIndex.identity,
+            operationRef,
+            sourceNodeRef,
+            entry: null,
+          }
+        : {
+            _tag: "Refused" as const,
+            identity: latestIndex.identity,
+            operationRef,
+            reason: result.state === "conflict"
+              ? "stale_revision" as const
+              : result.state === "permission_denied"
+                ? "permission_denied" as const
+                : "unavailable" as const,
+            message: "message" in result ? result.message : "The expected-version operation was not admitted.",
+          }
+    const settled = yield* updateWorkspacePathIndexOperation(latestIndex, source, update).pipe(Effect.result)
+    if (settled._tag === "Success") {
+      yield* setBrowser(browser => ({
+        ...browser,
+        pathIndexSnapshot: settled.success.snapshot,
+        pathIndexProjection: settled.success.projection,
+      }))
+    }
+    yield* reloadAfterOperation(result)
+  })
 
   return {
     WorkspaceBrowserOpened: () => loadRoot(),
@@ -468,6 +810,22 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
         const expanding = !current.workspaceBrowser.expandedRefs.includes(directoryRef)
         const needsPage = expanding && current.workspaceBrowser.pages[directoryRef] === undefined
         yield* setBrowser(browser => withWorkspaceBrowserToggled(browser, directoryRef))
+        const indexed = current.workspaceBrowser.pathIndexSnapshot
+        const indexedNode = indexed?.nodes.find(node => node.pathRef === directoryRef)
+        if (indexed !== null && indexed !== undefined && indexedNode !== undefined && current.workspaceBrowser.grantRef !== null) {
+          const interaction = yield* interactWorkspacePathIndex(
+            indexed,
+            workspacePathIndexSource(bridge, current.workspaceBrowser.grantRef),
+            { _tag: expanding ? "Expand" : "Collapse", nodeRef: indexedNode.nodeRef },
+          ).pipe(Effect.result)
+          if (interaction._tag === "Success") {
+            yield* setBrowser(browser => ({
+              ...browser,
+              pathIndexSnapshot: interaction.success.snapshot,
+              pathIndexProjection: interaction.success.projection,
+            }))
+          }
+        }
         if (!needsPage) return
         const page = yield* Effect.promise(() => treePageFrom(bridge, directoryRef))
         yield* setBrowser(browser => withWorkspaceBrowserPage(browser, page))
@@ -483,9 +841,32 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
       }),
 
     WorkspaceBrowserEntrySelected: (pathRef: string) =>
-      setBrowser(browser => entryForRef(browser, pathRef) === null
-        ? browser
-        : { ...browser, selectedRef: pathRef, editor: null, deleteConfirmRef: null, operation: null }),
+      Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(state)
+        if (entryForRef(current.workspaceBrowser, pathRef) === null) return
+        yield* setBrowser(browser => ({
+          ...browser,
+          selectedRef: pathRef,
+          editor: null,
+          deleteConfirmRef: null,
+          operation: null,
+        }))
+        const indexed = current.workspaceBrowser.pathIndexSnapshot
+        const indexedNode = indexed?.nodes.find(node => node.pathRef === pathRef)
+        if (indexed === null || indexed === undefined || indexedNode === undefined || current.workspaceBrowser.grantRef === null) return
+        const interaction = yield* interactWorkspacePathIndex(
+          indexed,
+          workspacePathIndexSource(bridge, current.workspaceBrowser.grantRef),
+          { _tag: "Reveal", nodeRef: indexedNode.nodeRef },
+        ).pipe(Effect.result)
+        if (interaction._tag === "Success") {
+          yield* setBrowser(browser => ({
+            ...browser,
+            pathIndexSnapshot: interaction.success.snapshot,
+            pathIndexProjection: interaction.success.projection,
+          }))
+        }
+      }),
 
     WorkspaceBrowserQueryChanged: (query: string) =>
       setBrowser(browser => ({ ...browser, query: query.slice(0, 200) })),
@@ -577,6 +958,33 @@ export const makeWorkspaceBrowserHandlers = <S extends WorkspaceBrowserCapableSt
       }),
 
     WorkspaceBrowserChangeReceived: (change: DesktopWorkspaceChange) => reloadFromChange(change),
+
+    WorkspaceBrowserExplorerCommandRequested: (command: IdeExplorerCommand) => {
+      switch (command._tag) {
+        case "Open": return Effect.gen(function* () {
+          yield* setBrowser(browser => entryForRef(browser, command.pathRef) === null
+            ? browser
+            : { ...browser, selectedRef: command.pathRef })
+        })
+        case "Reveal": return Effect.gen(function* () {
+          const result = yield* Effect.promise(() => operationFrom(() =>
+            bridge.revealWorkspaceEntry({ pathRef: command.pathRef })))
+          yield* setBrowser(browser => withWorkspaceBrowserOperation(browser, result))
+        })
+        case "Rename":
+        case "Delete":
+        case "CreateFile":
+        case "CreateFolder":
+        case "Move":
+        case "Copy":
+        case "Duplicate": return runExplorerMutation(command)
+        case "Refresh":
+        case "Retry":
+        case "Rescan": return refresh
+        case "OpenTerminal":
+        case "Compare": return setBrowser(browser => ({ ...browser, selectedRef: command.pathRef }))
+      }
+    },
   }
 }
 

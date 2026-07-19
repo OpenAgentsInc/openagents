@@ -446,6 +446,9 @@ move or adapter replacement cannot silently remove a supported workflow.
 
 - Canonical IDE roadmap, packet definitions, release rungs, Vim contract, and
   Tokyo Night contract: `docs/ide/ROADMAP.md`
+- IDE-02 complete Explorer implementation and evidence (a CP-AC-19
+  prerequisite, not parity closure):
+  `docs/ide/2026-07-19-ide-02-complete-pierre-explorer.md`
 - Roadmap-to-ProductSpec/AssuranceSpec traceability:
   `specs/IDE_ROADMAP_CROSSWALK.md`
 - Proposed proof-design companion bound to this exact revision:

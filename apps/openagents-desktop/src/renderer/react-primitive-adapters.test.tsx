@@ -8,6 +8,8 @@ import { Effect } from "@effect-native/core/effect"
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts"
 import { WorkbenchShell, projectReactSessionRows, projectSidebarMeter } from "./react-primitive-adapters.tsx"
 import { RedactedSensitiveText, redactedSensitivePlaceholder } from "./react-sensitive-text.tsx"
+import { IdePathIndexGenerationSchema } from "../ide/project-contract.ts"
+import { IdePathNodeRefSchema, IdePathScanRefSchema, IdePierreTreeProjectionSchema } from "../ide/path-index-contract.ts"
 
 const restores: Array<() => void> = []
 const roots = new Set<Root>()
@@ -922,6 +924,16 @@ describe("React workbench shell", () => {
           { name: "src", pathRef: "src", kind: "directory", expandable: true, sizeBytes: null, revisionRef: "revision-src" },
           { name: "README.md", pathRef: "README.md", kind: "file", expandable: false, sizeBytes: 32, revisionRef: "revision-readme" },
         ], nextOffset: null, cache: { key: "cache-1", epoch: 1, freshness: "current" } } },
+        pathIndexProjection: IdePierreTreeProjectionSchema.make({
+          schemaVersion: "openagents.desktop.pierre-tree-projection.v1",
+          indexGeneration: IdePathIndexGenerationSchema.make(1),
+          state: { _tag: "Partial", scanRef: IdePathScanRefSchema.make("ide.path-scan.react-fixture"), progress: { discoveredDirectories: 1, scannedDirectories: 0, discoveredNodes: 2, admittedNodes: 2, pendingDirectories: 1, sourceEpoch: 1 }, reason: "lazy_directories" },
+          nodes: [
+            { nodeRef: IdePathNodeRefSchema.make("ide.path-node.1"), pathRef: "src", kind: "directory", revisionRef: "revision-src", badgeLabels: [], pendingLabel: null },
+            { nodeRef: IdePathNodeRefSchema.make("ide.path-node.2"), pathRef: "README.md", kind: "file", revisionRef: "revision-readme", badgeLabels: [], pendingLabel: null },
+          ],
+          expandedNodeRefs: [], selectedNodeRef: null, focusedNodeRef: null, scrollAnchorNodeRef: null, stickyAncestorNodeRefs: [], truncated: false,
+        }),
       },
       workspaceEditor: { ...base.workspaceEditor, activePathRef: "src/app.ts", tabs: [{ pathRef: "src/app.ts", phase: "ready", document, externalDocument: null, draft: document.content, selection: { start: 0, end: 0 }, selectionVersion: 0, undo: [], redo: [], saveState: "idle", reason: null, findQuery: "", findMatches: [], findIndex: 0 }] },
     }
@@ -940,6 +952,15 @@ describe("React workbench shell", () => {
       workspaceBrowser: {
         ...filesState.workspaceBrowser,
         expandedRefs: ["src"],
+        pathIndexProjection: IdePierreTreeProjectionSchema.make({
+          ...filesState.workspaceBrowser.pathIndexProjection!,
+          state: { _tag: "Ready", sourceEpoch: 1, nodeCount: 3 },
+          nodes: [
+            ...filesState.workspaceBrowser.pathIndexProjection!.nodes,
+            { nodeRef: IdePathNodeRefSchema.make("ide.path-node.3"), pathRef: "src/index.ts", kind: "file", revisionRef: "revision-index", badgeLabels: [], pendingLabel: null },
+          ],
+          expandedNodeRefs: [IdePathNodeRefSchema.make("ide.path-node.1")],
+        }),
         pages: {
           ...filesState.workspaceBrowser.pages,
           src: {

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import { lstatSync, mkdirSync, realpathSync, readdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync } from "node:fs"
+import { copyFileSync, lstatSync, mkdirSync, realpathSync, readdirSync, readFileSync, renameSync, rmdirSync, statSync, unlinkSync, watch, writeFileSync } from "node:fs"
 import path from "node:path"
 import { execFileSync, spawnSync } from "node:child_process"
 
@@ -226,6 +226,7 @@ export type WorkspaceMutationIo = Readonly<{
   createFile: (absolutePath: string) => void
   createDirectory: (absolutePath: string) => void
   rename: (source: string, target: string) => void
+  copyFile: (source: string, target: string) => void
   deleteFile: (absolutePath: string) => void
   deleteDirectory: (absolutePath: string) => void
 }>
@@ -234,6 +235,7 @@ const defaultWorkspaceMutationIo: WorkspaceMutationIo = {
   createFile: absolutePath => writeFileSync(absolutePath, "", { encoding: "utf8", flag: "wx" }),
   createDirectory: absolutePath => mkdirSync(absolutePath),
   rename: (source, target) => renameSync(source, target),
+  copyFile: (source, target) => copyFileSync(source, target, 1),
   deleteFile: absolutePath => unlinkSync(absolutePath),
   deleteDirectory: absolutePath => rmdirSync(absolutePath),
 }
@@ -328,6 +330,121 @@ export const deleteWorkspaceEntry = (
     return { state: "deleted", pathRef: entry.pathRef }
   } catch (error) {
     return mutationFailure(error, "Only empty directories can be deleted.", "The workspace entry could not be deleted.")
+  }
+}
+
+export const moveWorkspaceEntry = (
+  root: string,
+  input: Readonly<{ pathRef: string; destinationParentRef: string; expectedRevisionRef: string }>,
+  io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+): DesktopWorkspaceOperationResult => {
+  let source: SafeWorkspaceEntry | null
+  let destinationParent: string | null
+  const destinationParentRef = workspacePathRef(input.destinationParentRef)
+  try {
+    source = safeWorkspaceEntry(root, input.pathRef)
+    destinationParent = destinationParentRef === null ? null : canonicalDirectoryForRef(root, destinationParentRef, true)
+  } catch (error) {
+    return mutationFailure(error, "That workspace location is not available.", "That workspace location is not available.")
+  }
+  if (source === null || destinationParent === null || destinationParentRef === null) {
+    return { state: "unavailable", message: "That workspace location is not available." }
+  }
+  if (source.revisionRef !== input.expectedRevisionRef) {
+    return { state: "conflict", message: "That workspace entry changed before it could be moved." }
+  }
+  const targetRef = destinationParentRef === "" ? source.name : `${destinationParentRef}/${source.name}`
+  if (targetRef === source.pathRef || targetRef.startsWith(`${source.pathRef}/`)) {
+    return { state: "conflict", message: "A workspace entry cannot be moved into itself." }
+  }
+  if (gitIgnoredPathRefs(root, [targetRef]).has(targetRef)) {
+    return { state: "unavailable", message: "Ignored workspace destinations are unavailable." }
+  }
+  const target = path.join(destinationParent, source.name)
+  try {
+    if (!missingPath(target)) return { state: "conflict", message: "An entry with that name already exists." }
+    io.rename(source.absolutePath, target)
+    const entry = safeWorkspaceEntry(root, targetRef)
+    return entry === null
+      ? { state: "unavailable", message: "The moved entry could not be projected safely." }
+      : { state: "renamed", entry: publicWorkspaceEntry(entry) }
+  } catch (error) {
+    return mutationFailure(error, "An entry with that name already exists.", "The workspace entry could not be moved.")
+  }
+}
+
+export const copyWorkspaceEntry = (
+  root: string,
+  input: Readonly<{ pathRef: string; destinationParentRef: string; expectedRevisionRef: string }>,
+  io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+): DesktopWorkspaceOperationResult => {
+  let source: SafeWorkspaceEntry | null
+  let destinationParent: string | null
+  const destinationParentRef = workspacePathRef(input.destinationParentRef)
+  try {
+    source = safeWorkspaceEntry(root, input.pathRef)
+    destinationParent = destinationParentRef === null ? null : canonicalDirectoryForRef(root, destinationParentRef, true)
+  } catch (error) {
+    return mutationFailure(error, "That workspace location is not available.", "That workspace location is not available.")
+  }
+  if (source === null || destinationParent === null || destinationParentRef === null || source.kind !== "file") {
+    return { state: "unavailable", message: "Only admitted workspace files can be copied." }
+  }
+  if (source.revisionRef !== input.expectedRevisionRef) {
+    return { state: "conflict", message: "That workspace file changed before it could be copied." }
+  }
+  const targetRef = destinationParentRef === "" ? source.name : `${destinationParentRef}/${source.name}`
+  if (gitIgnoredPathRefs(root, [targetRef]).has(targetRef)) {
+    return { state: "unavailable", message: "Ignored workspace destinations are unavailable." }
+  }
+  const target = path.join(destinationParent, source.name)
+  try {
+    if (!missingPath(target)) return { state: "conflict", message: "An entry with that name already exists." }
+    io.copyFile(source.absolutePath, target)
+    const entry = safeWorkspaceEntry(root, targetRef)
+    return entry === null
+      ? { state: "unavailable", message: "The copied entry could not be projected safely." }
+      : { state: "created", entry: publicWorkspaceEntry(entry) }
+  } catch (error) {
+    return mutationFailure(error, "An entry with that name already exists.", "The workspace file could not be copied.")
+  }
+}
+
+export const duplicateWorkspaceEntry = (
+  root: string,
+  input: Readonly<{ pathRef: string; expectedRevisionRef: string }>,
+  io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+): DesktopWorkspaceOperationResult => {
+  let source: SafeWorkspaceEntry | null
+  try {
+    source = safeWorkspaceEntry(root, input.pathRef)
+  } catch (error) {
+    return mutationFailure(error, "That workspace entry is not available.", "That workspace entry is not available.")
+  }
+  if (source === null || source.kind !== "file") {
+    return { state: "unavailable", message: "Only admitted workspace files can be duplicated." }
+  }
+  if (source.revisionRef !== input.expectedRevisionRef) {
+    return { state: "conflict", message: "That workspace file changed before it could be duplicated." }
+  }
+  const extension = path.posix.extname(source.name)
+  const stem = extension === "" ? source.name : source.name.slice(0, -extension.length)
+  const name = `${stem} copy${extension}`
+  const parentRef = path.posix.dirname(source.pathRef) === "." ? "" : path.posix.dirname(source.pathRef)
+  const targetRef = parentRef === "" ? name : `${parentRef}/${name}`
+  if (gitIgnoredPathRefs(root, [targetRef]).has(targetRef)) {
+    return { state: "unavailable", message: "Ignored workspace destinations are unavailable." }
+  }
+  const target = path.join(path.dirname(source.absolutePath), name)
+  try {
+    if (!missingPath(target)) return { state: "conflict", message: "The duplicate name already exists." }
+    io.copyFile(source.absolutePath, target)
+    const entry = safeWorkspaceEntry(root, targetRef)
+    return entry === null
+      ? { state: "unavailable", message: "The duplicate could not be projected safely." }
+      : { state: "created", entry: publicWorkspaceEntry(entry) }
+  } catch (error) {
+    return mutationFailure(error, "The duplicate name already exists.", "The workspace file could not be duplicated.")
   }
 }
 
@@ -1010,6 +1127,9 @@ export type DesktopWorkspaceService = Readonly<{
   search: (input: Readonly<{ query: string; mode: "path" | "content"; offset?: number; limit?: number }>) => WorkspaceSearchTask
   createEntry: (input: Readonly<{ parentRef: string; name: string; kind: "file" | "directory" }>) => DesktopWorkspaceOperationResult
   renameEntry: (input: Readonly<{ pathRef: string; name: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
+  moveEntry: (input: Readonly<{ pathRef: string; destinationParentRef: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
+  copyEntry: (input: Readonly<{ pathRef: string; destinationParentRef: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
+  duplicateEntry: (input: Readonly<{ pathRef: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
   deleteEntry: (input: Readonly<{ pathRef: string; expectedRevisionRef: string }>) => DesktopWorkspaceOperationResult
   revealEntry: (input: Readonly<{ pathRef: string }>) => Promise<DesktopWorkspaceOperationResult>
   openDocument: (input: Readonly<{ grantRef: string; pathRef: string }>) => DesktopWorkspaceDocumentResult
@@ -1190,6 +1310,24 @@ export const openWorkspaceService = (
       if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
       const result = renameWorkspaceEntry(root, request, options.mutationIo)
       if (result.state === "renamed") notify("changed", result.entry.pathRef)
+      return result
+    },
+    moveEntry: request => {
+      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      const result = moveWorkspaceEntry(root, request, options.mutationIo)
+      if (result.state === "renamed") notify("changed", result.entry.pathRef)
+      return result
+    },
+    copyEntry: request => {
+      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      const result = copyWorkspaceEntry(root, request, options.mutationIo)
+      if (result.state === "created") notify("changed", result.entry.pathRef)
+      return result
+    },
+    duplicateEntry: request => {
+      if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
+      const result = duplicateWorkspaceEntry(root, request, options.mutationIo)
+      if (result.state === "created") notify("changed", result.entry.pathRef)
       return result
     },
     deleteEntry: request => {

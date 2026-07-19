@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 
+import { IdeExplorerCommandSchema } from "./ide/path-index-contract.ts"
 import { DesktopWorkspacePathRefSchema } from "./workspace-contract.ts"
 
 export const DesktopCommandId = Schema.Literals([
@@ -24,6 +25,9 @@ export const DesktopCommandId = Schema.Literals([
   "workspace.files",
   "workspace.open_file",
   "workspace.review",
+  "workspace.explorer.refresh",
+  "workspace.explorer.retry",
+  "workspace.explorer.rescan",
   "full-auto.launch",
 ])
 export type DesktopCommandId = typeof DesktopCommandId.Type
@@ -39,6 +43,7 @@ export const DesktopCommandArguments = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("none") }),
   Schema.Struct({ kind: Schema.Literal("workspace"), workspace: Schema.Literals(["chat", "files", "home", "review"]) }),
   Schema.Struct({ kind: Schema.Literal("path"), pathRef: DesktopWorkspacePathRefSchema }),
+  Schema.Struct({ kind: Schema.Literal("explorer"), command: IdeExplorerCommandSchema }),
 ])
 export type DesktopCommandArguments = typeof DesktopCommandArguments.Type
 
@@ -83,6 +88,9 @@ export const desktopCanonicalCommandRegistry: ReadonlyArray<DesktopCommandDefini
   // default is never registered as a menu, palette, restore, or deep-link action.
   { id: "workspace.open_file", label: "Open system file", intentName: "DesktopSystemDocumentOpened", arguments: "path", defaultArguments: { kind: "path", pathRef: "README.md" }, result: "workspace_selected", scope: "workspace", availability: "always", authorization: "local_user", defaultBindings: [], palette: false },
   { id: "workspace.review", label: "Review changes", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "review" }, result: "workspace_selected", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: false },
+  { id: "workspace.explorer.refresh", label: "Refresh Explorer", intentName: "WorkspaceBrowserExplorerCommandRequested", arguments: "explorer", defaultArguments: { kind: "explorer", command: { _tag: "Refresh" } }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "workspace.explorer.retry", label: "Retry Explorer", intentName: "WorkspaceBrowserExplorerCommandRequested", arguments: "explorer", defaultArguments: { kind: "explorer", command: { _tag: "Retry" } }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "workspace.explorer.rescan", label: "Rescan Explorer", intentName: "WorkspaceBrowserExplorerCommandRequested", arguments: "explorer", defaultArguments: { kind: "explorer", command: { _tag: "Rescan" } }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "workspace.choose", label: "Choose workspace folder", intentName: "DesktopWorkspacePickerRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "workspace_picker_requested", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+O", "Control+O"], palette: true },
   { id: "settings.open", label: "Open Settings", intentName: "DesktopSettingsToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+,", "Control+,"], palette: true },
   // FA-AC-54 (#8974): the dedicated left-rail Full Auto launcher entry,

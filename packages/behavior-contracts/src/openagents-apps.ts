@@ -140,6 +140,70 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This freezes the complete Explorer index, reconciliation, interaction, and typed operation path. The workspace/project services remain the only root, grant, filesystem, watcher, mutation, and persistence authority; Pierre receives bounded relative nodes and emits typed intent only. It does not claim Monaco, LSP, a remote index, recursive delete, arbitrary symlink traversal, or a Rust project database.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_complete_path_index.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/path-index-contract.ts",
+        "apps/openagents-desktop/src/ide/path-index-service.ts",
+        "apps/openagents-desktop/src/ide/path-index-service.test.ts",
+        "apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-browser.ts",
+        "apps/openagents-desktop/tests/workspace-service.test.ts",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-path-index.json",
+        "docs/ide/2026-07-19-ide-02-complete-explorer.md",
+        "github:OpenAgentsInc/openagents#9017",
+      ],
+      oracles: [
+        {
+          description:
+            "Proves chunked complete/lazy scans, explicit partial/ready states, exact multi-root/worktree isolation, stable identity through expected-version rename, stale badge rejection, truthful filtering, incremental watcher reconciliation, overflow rescan, cancellation fencing, and scoped zero-resource teardown.",
+          id: "openagents_desktop.ide_complete_path_index.service",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/path-index-service.test.ts",
+        },
+        {
+          description:
+            "Proves the production Files driver builds Pierre input from the complete index, preserves the legacy tree/search/editor loop, reconciles watchers outside mounted pages, and dispatches mutations only through typed expected-version bridge requests.",
+          id: "openagents_desktop.ide_complete_path_index.files_driver",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/renderer/workspace-browser.test.ts",
+        },
+        {
+          description:
+            "Proves move/copy/duplicate/create/rename/delete/reveal enforce relative-root, revision, ignore, collision, non-recursive delete, permission, symlink, and revocation policy without leaking the selected absolute root.",
+          id: "openagents_desktop.ide_complete_path_index.workspace_authority",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/tests/workspace-service.test.ts",
+        },
+        {
+          description:
+            "Measures large-index initial and cached projection traversal plus incremental update latency at p50/p95/p99, node/byte/handle budgets, deterministic disposal, and TypeScript-versus-Rust placement evidence.",
+          id: "openagents_desktop.ide_complete_path_index.scale",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-path-index-benchmark.ts",
+        },
+      ],
+      productArea: "Desktop IDE Explorer",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "The Desktop Explorer is fed by one complete Effect-owned generation-fenced path index rather than mounted pages; large and equal-path worktrees stay isolated, incomplete/degraded states are explicit, pointer/keyboard focus and reveal survive reconciliation, badges reject stale generations, every file action is an expected-version typed command, and Pierre has zero filesystem or mutation authority.",
+      surface: "openagents-desktop",
+      verification:
+        "The normal Desktop and behavior-contract sweeps run the index/service, Files driver, Pierre adapter, workspace authority, command, shell, accessibility, and teardown regressions; ide:path-index-benchmark regenerates the public-safe scale receipt, and check:ide-boundaries enforces schema-first Effect authority and widget isolation.",
+    },
+    {
+      authorityBoundary:
         "This binds the visible activity indicator to the renderer's existing working phase and valid browser animation state. It does not redefine turn, queue, retry, or completion authority, and reduced-motion preference intentionally replaces motion with a stable visible indicator.",
       blockerRefs: [],
       contractId: "openagents_desktop.working_indicator_continuous_motion.v1",

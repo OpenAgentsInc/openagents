@@ -57,6 +57,7 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
   );
   const contracts = [
     path.join(ideRoot, "project-contract.ts"),
+    path.join(ideRoot, "path-index-contract.ts"),
     path.join(appRoot, "src", "workspace-contract.ts"),
   ];
   const widgetProjectionFiles = new Set([
@@ -124,6 +125,25 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
         line: 1,
         rule,
         detail: `Required Effect service primitive is missing: ${needle}.`,
+      });
+    }
+  }
+
+  const pathIndexService = readFileSync(path.join(ideRoot, "path-index-service.ts"), "utf8");
+  for (const [needle, rule] of [
+    ["Context.Service", "path-index-context-service"],
+    ["Layer.effect", "path-index-layer-effect"],
+    ["Effect.fn", "path-index-named-effect-functions"],
+    ["Schema.TaggedErrorClass", "path-index-typed-expected-errors"],
+    ["Effect.addFinalizer", "path-index-scoped-teardown"],
+    ["Schema.decodeUnknownEffect", "path-index-boundary-decode"],
+  ] as const) {
+    if (!pathIndexService.includes(needle)) {
+      violations.push({
+        file: relative(path.join(ideRoot, "path-index-service.ts")),
+        line: 1,
+        rule,
+        detail: `Required path-index Effect service primitive is missing: ${needle}.`,
       });
     }
   }

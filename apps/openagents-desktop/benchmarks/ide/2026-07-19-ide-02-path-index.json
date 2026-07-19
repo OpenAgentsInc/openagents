@@ -1,0 +1,120 @@
+{
+  "schemaVersion": "openagents.desktop.ide-path-index-benchmark.v1",
+  "capturedAt": "2026-07-19T07:50:06.731Z",
+  "commitSha": "ff1718593901019f4be9e33ced0e863ea12b1d64",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "nodeVersion": "24.13.1",
+  "fixtureFiles": 10000,
+  "fixtureDirectories": 100,
+  "metrics": [
+    {
+      "metric": "path-index.complete-10k-scan",
+      "unit": "milliseconds",
+      "repetitions": 7,
+      "p50": 112.035,
+      "p95": 126.366,
+      "p99": 127.347,
+      "minimum": 103.502,
+      "maximum": 127.592,
+      "thresholdP95": 1500,
+      "passed": true
+    },
+    {
+      "metric": "path-index.cached-pierre-projection",
+      "unit": "milliseconds",
+      "repetitions": 101,
+      "p50": 9.272,
+      "p95": 9.896,
+      "p99": 13.128,
+      "minimum": 8.605,
+      "maximum": 13.858,
+      "thresholdP95": 40,
+      "passed": true
+    },
+    {
+      "metric": "path-index.keyboard-target-traversal",
+      "unit": "milliseconds",
+      "repetitions": 101,
+      "p50": 9.221,
+      "p95": 9.524,
+      "p99": 9.746,
+      "minimum": 8.431,
+      "maximum": 9.871,
+      "thresholdP95": 40,
+      "passed": true
+    },
+    {
+      "metric": "path-index.incremental-watcher-update",
+      "unit": "milliseconds",
+      "repetitions": 31,
+      "p50": 25.924,
+      "p95": 32.271,
+      "p99": 33.319,
+      "minimum": 24.47,
+      "maximum": 33.419,
+      "thresholdP95": 150,
+      "passed": true
+    }
+  ],
+  "resources": {
+    "indexedNodes": 10100,
+    "estimatedBytes": 2966000,
+    "heapDeltaBytes": 7028904,
+    "activeResourcesBefore": 6,
+    "activeResourcesAfter": 2,
+    "activeResourceDelta": -4,
+    "sourceSubscriptionCountAfter": 0,
+    "stoppedAccessRefused": true
+  },
+  "journeys": [
+    {
+      "mode": "pointer",
+      "passed": true,
+      "traceRef": "apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.test.ts#complete-bounded-index"
+    },
+    {
+      "mode": "keyboard",
+      "passed": true,
+      "traceRef": "apps/openagents-desktop/tests/ide-explorer-accessibility.test.tsx#keyboard"
+    },
+    {
+      "mode": "screen_reader",
+      "passed": true,
+      "traceRef": "apps/openagents-desktop/tests/ide-explorer-accessibility.test.tsx#screen-reader"
+    },
+    {
+      "mode": "reduced_motion",
+      "passed": true,
+      "traceRef": "apps/openagents-desktop/tests/ide-explorer-accessibility.test.tsx#reduced-motion"
+    },
+    {
+      "mode": "zoom_200",
+      "passed": true,
+      "traceRef": "apps/openagents-desktop/tests/ide-explorer-accessibility.test.tsx#zoom-200"
+    }
+  ],
+  "placement": [
+    {
+      "_tag": "Select",
+      "runtime": "typescript",
+      "scope": "IDE-02 project index",
+      "rationale": "The production Effect service meets complete-scan, cached projection, keyboard traversal, incremental update, resource, and teardown budgets while keeping one typed in-process authority graph.",
+      "replacementGate": "Replace only a measured bounded hot path after representative production repositories repeatedly breach the written p95 or memory budget and a native prototype wins end-to-end after serialization, cancellation, packaging, observability, and teardown."
+    },
+    {
+      "_tag": "Reject",
+      "runtime": "rust",
+      "scope": "IDE-02 project index",
+      "rationale": "The complete production TypeScript path is within budget; a Rust database would currently add a second schema/process/lifecycle boundary without a user-visible latency or resource win.",
+      "reconsiderationGate": "Reconsider after TypeScript batching, worker placement, projection bounds, and cache improvements fail on a recorded production corpus and Rust demonstrates a material p95/p99 and memory improvement."
+    }
+  ],
+  "assertions": [
+    "The complete fixture contains 10,000 files across 100 directories and projects every admitted node.",
+    "Initial scan, cached Pierre projection, keyboard target traversal, and incremental watcher update pass explicit p95 budgets with p99 recorded.",
+    "The index reports estimated bytes and zero owned source subscriptions after the scoped benchmark path.",
+    "Explicit stop refuses subsequent access; repeated Layer scopes leave no path-index service attached to an old generation.",
+    "TypeScript remains selected and Rust remains rejected until a measured end-to-end gate is crossed."
+  ]
+}

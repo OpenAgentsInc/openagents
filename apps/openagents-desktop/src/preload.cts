@@ -69,6 +69,9 @@ import {
   DesktopWorkspaceSearchCancelChannel,
   DesktopWorkspaceCreateChannel,
   DesktopWorkspaceRenameChannel,
+  DesktopWorkspaceMoveChannel,
+  DesktopWorkspaceCopyChannel,
+  DesktopWorkspaceDuplicateChannel,
   DesktopWorkspaceDeleteChannel,
   DesktopWorkspaceRevealChannel,
   DesktopWorkspaceDocumentOpenChannel,
@@ -85,6 +88,9 @@ import {
   decodeWorkspaceSearchResponse,
   decodeWorkspaceCreateRequest,
   decodeWorkspaceRenameRequest,
+  decodeWorkspaceMoveRequest,
+  decodeWorkspaceCopyRequest,
+  decodeWorkspaceDuplicateRequest,
   decodeWorkspaceDeleteRequest,
   decodeWorkspaceRevealRequest,
   decodeWorkspaceDocumentRequest,
@@ -642,6 +648,24 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     if (request === null) return { state: "unavailable", message: "The rename request is invalid." }
     const response = await ipcRenderer.invoke(DesktopWorkspaceRenameChannel, request)
     return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The rename response is invalid." }
+  },
+  moveWorkspaceEntry: async (value: unknown) => {
+    const request = decodeWorkspaceMoveRequest(value)
+    if (request === null) return { state: "unavailable", message: "The move request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceMoveChannel, request)
+    return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The move response is invalid." }
+  },
+  copyWorkspaceEntry: async (value: unknown) => {
+    const request = decodeWorkspaceCopyRequest(value)
+    if (request === null) return { state: "unavailable", message: "The copy request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceCopyChannel, request)
+    return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The copy response is invalid." }
+  },
+  duplicateWorkspaceEntry: async (value: unknown) => {
+    const request = decodeWorkspaceDuplicateRequest(value)
+    if (request === null) return { state: "unavailable", message: "The duplicate request is invalid." }
+    const response = await ipcRenderer.invoke(DesktopWorkspaceDuplicateChannel, request)
+    return decodeWorkspaceOperationResult(response) ?? { state: "unavailable", message: "The duplicate response is invalid." }
   },
   deleteWorkspaceEntry: async (value: unknown) => {
     const request = decodeWorkspaceDeleteRequest(value)

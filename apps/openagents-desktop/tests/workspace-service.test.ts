@@ -7,6 +7,9 @@ import {
   decodeWorkspaceChange,
   decodeWorkspaceCreateRequest,
   decodeWorkspaceDeleteRequest,
+  decodeWorkspaceMoveRequest,
+  decodeWorkspaceCopyRequest,
+  decodeWorkspaceDuplicateRequest,
   decodeWorkspaceDocumentRequest,
   decodeWorkspaceDocumentResult,
   decodeWorkspaceDocumentSaveRequest,
@@ -27,6 +30,9 @@ import {
   openWorkspaceDocument,
   createWorkspaceEntry,
   deleteWorkspaceEntry,
+  moveWorkspaceEntry,
+  copyWorkspaceEntry,
+  duplicateWorkspaceEntry,
   readWorkspaceFile,
   saveWorkspaceFile,
   saveWorkspaceDocument,
@@ -688,18 +694,68 @@ describe("Desktop bounded workspace service", () => {
     workspace.dispose()
   })
 
+  test("moves, copies, and duplicates files only through expected revisions and admitted destinations", () => {
+    const root = makeRoot()
+    mkdirSync(path.join(root, "src"))
+    mkdirSync(path.join(root, "archive"))
+    writeFileSync(path.join(root, "src", "index.ts"), "export const value = 1\n")
+    const sourcePage = workspaceTreePage({ root, grantRef: "workspace.grant.operations", directoryRef: "src" })
+    if (sourcePage.state !== "available") throw new Error("expected source page")
+    const source = sourcePage.entries.find(entry => entry.pathRef === "src/index.ts")!
+    expect(moveWorkspaceEntry(root, {
+      pathRef: source.pathRef,
+      destinationParentRef: "archive",
+      expectedRevisionRef: "revision.stale",
+    }).state).toBe("conflict")
+    const moved = moveWorkspaceEntry(root, {
+      pathRef: source.pathRef,
+      destinationParentRef: "archive",
+      expectedRevisionRef: source.revisionRef,
+    })
+    expect(moved.state).toBe("renamed")
+    if (moved.state !== "renamed") throw new Error("expected move")
+    const copied = copyWorkspaceEntry(root, {
+      pathRef: moved.entry.pathRef,
+      destinationParentRef: "src",
+      expectedRevisionRef: moved.entry.revisionRef,
+    })
+    expect(copied.state).toBe("created")
+    if (copied.state !== "created") throw new Error("expected copy")
+    const duplicated = duplicateWorkspaceEntry(root, {
+      pathRef: copied.entry.pathRef,
+      expectedRevisionRef: copied.entry.revisionRef,
+    })
+    expect(duplicated.state).toBe("created")
+    if (duplicated.state !== "created") throw new Error("expected duplicate")
+    expect(duplicated.entry.pathRef).toBe("src/index copy.ts")
+    expect(readFileSync(path.join(root, "src", "index copy.ts"), "utf8")).toContain("value = 1")
+    const rootPage = workspaceTreePage({ root, grantRef: "workspace.grant.operations", directoryRef: "" })
+    if (rootPage.state !== "available") throw new Error("expected root page")
+    const archive = rootPage.entries.find(entry => entry.pathRef === "archive")!
+    expect(moveWorkspaceEntry(root, {
+      pathRef: "archive",
+      destinationParentRef: "archive",
+      expectedRevisionRef: archive.revisionRef,
+    }).state).toBe("conflict")
+    expect(decodeWorkspaceMoveRequest({ pathRef: "src/index.ts", destinationParentRef: "archive", expectedRevisionRef: "revision" })).not.toBeNull()
+    expect(decodeWorkspaceCopyRequest({ pathRef: "src/index.ts", destinationParentRef: "archive", expectedRevisionRef: "revision" })).not.toBeNull()
+    expect(decodeWorkspaceDuplicateRequest({ pathRef: "src/index.ts", expectedRevisionRef: "revision" })).not.toBeNull()
+  })
+
   test("classifies permission loss for every mutation and reveal without leaking the root", async () => {
     const root = makeRoot()
     writeFileSync(path.join(root, "source.txt"), "safe")
     const page = workspaceTreePage({ root, grantRef: "workspace.grant.permission", directoryRef: "" })
     if (page.state !== "available") throw new Error("expected root tree")
     const source = page.entries.find(entry => entry.pathRef === "source.txt")!
+    mkdirSync(path.join(root, "destination"))
     const denied = Object.assign(new Error("private operating-system detail"), { code: "EACCES" })
     const deny = (): never => { throw denied }
     const deniedIo: WorkspaceMutationIo = {
       createFile: deny,
       createDirectory: deny,
       rename: deny,
+      copyFile: deny,
       deleteFile: deny,
       deleteDirectory: deny,
     }
@@ -710,6 +766,20 @@ describe("Desktop bounded workspace service", () => {
         name: "renamed.txt",
         expectedRevisionRef: source.revisionRef,
       }, deniedIo),
+      moveWorkspaceEntry(root, {
+        pathRef: "source.txt",
+        destinationParentRef: "destination",
+        expectedRevisionRef: source.revisionRef,
+      }, deniedIo),
+      copyWorkspaceEntry(root, {
+        pathRef: "source.txt",
+        destinationParentRef: "destination",
+        expectedRevisionRef: source.revisionRef,
+      }, deniedIo),
+      duplicateWorkspaceEntry(root, {
+        pathRef: "source.txt",
+        expectedRevisionRef: source.revisionRef,
+      }, deniedIo),
       deleteWorkspaceEntry(root, {
         pathRef: "source.txt",
         expectedRevisionRef: source.revisionRef,
@@ -717,6 +787,9 @@ describe("Desktop bounded workspace service", () => {
       await revealWorkspaceEntry(root, { pathRef: "source.txt" }, deny),
     ]
     expect(results.map(result => result.state)).toEqual([
+      "permission_denied",
+      "permission_denied",
+      "permission_denied",
       "permission_denied",
       "permission_denied",
       "permission_denied",

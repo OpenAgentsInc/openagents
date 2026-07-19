@@ -1052,6 +1052,27 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-files-mode-search-kinds button[aria-pressed="true"] { color: var(--en-color-textPrimary); background: var(--en-color-stateSelected); }
 .oa-react-files-mode-actions > button { flex: 0 0 auto; }
 
+.oa-react-files-tree-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-1\.5) var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+#oa-workspace-index-status {
+  min-width: 0;
+  margin: 0;
+  padding: var(--en-spacing-1) var(--en-spacing-2);
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .oa-react-files-tree-scroll { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 4px; }
 .oa-react-files-tree-scroll--pierre { overflow: hidden; padding: 0; }
 .oa-react-pierre-tree {
@@ -1078,6 +1099,26 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   --trees-level-gap-override: 12px;
   --trees-file-icon-color-default: var(--en-color-textMuted);
 }
+.oa-react-pierre-tree:focus-visible { outline: 2px solid var(--en-color-focus); outline-offset: -2px; }
+.oa-react-pierre-context-menu {
+  display: grid;
+  min-width: 12rem;
+  padding: var(--en-spacing-1);
+  border: 1px solid var(--en-color-borderStrong);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceOverlay);
+  box-shadow: var(--en-elevation-overlay-shadow);
+}
+.oa-react-pierre-context-menu button {
+  min-height: 2rem;
+  padding: var(--en-spacing-1) var(--en-spacing-2);
+  border: 0;
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+  color: var(--en-color-textPrimary);
+  text-align: left;
+}
+.oa-react-pierre-context-menu button:is(:hover, :focus-visible) { outline: none; background: var(--en-color-surfaceRaised); }
 .oa-react-files-tree-scroll > p,
 .oa-react-changed-files > p { margin: var(--en-spacing-3); color: var(--en-color-textMuted); font-size: 11px; }
 .oa-react-file-search-result,

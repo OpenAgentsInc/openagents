@@ -3,6 +3,7 @@ import {
   desktopCommandIsAvailable,
   type DesktopDeferredCommand,
 } from "../desktop-command-contract.ts"
+import type { IdeExplorerCommand } from "./ide-path-index.ts"
 
 /**
  * Closed Desktop command registry. Entries name existing typed intents only;
@@ -19,7 +20,9 @@ export const desktopCommandRegistry = desktopCanonicalCommandRegistry
       ? null
       : command.defaultArguments.kind === "workspace"
         ? command.defaultArguments.workspace
-        : command.defaultArguments.pathRef,
+        : command.defaultArguments.kind === "path"
+          ? command.defaultArguments.pathRef
+          : command.defaultArguments.command,
     /** Canonical chords, for the palette's keybinding caption (⌘N). */
     chords: command.defaultBindings,
   }))
@@ -50,7 +53,7 @@ export const formatCommandChord = (
 export type DesktopCommand = (typeof desktopCommandRegistry)[number]
 
 export type DesktopDeferredCommandIntent =
-  | Readonly<{ state: "ready"; intentName: string; payload: null | string }>
+  | Readonly<{ state: "ready"; intentName: string; payload: null | string | IdeExplorerCommand }>
   | Readonly<{ state: "rejected"; reason: "argument_mismatch" | "duplicate" | "unavailable" | "unknown_command" }>
 
 export const resolveDesktopDeferredCommandIntent = (
@@ -73,6 +76,8 @@ export const resolveDesktopDeferredCommandIntent = (
       ? null
       : command.arguments.kind === "workspace"
         ? command.arguments.workspace
-        : command.arguments.pathRef,
+        : command.arguments.kind === "path"
+          ? command.arguments.pathRef
+          : command.arguments.command,
   }
 }

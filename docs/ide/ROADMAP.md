@@ -97,7 +97,7 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
 | source editor               | ordinary React surface renders a controlled `<textarea>`                                                                      | IDE-03                                     |
 | Effect Native editor seam   | compatibility renderer installs `makeStubCodeEditorDriver()`                                                                  | IDE-03                                     |
-| repository tree             | Pierre is shipped, but it projects only currently loaded pages rather than a complete generation-fenced path index            | IDE-02                                     |
+| repository tree             | IDE-02 ships a complete Effect-owned, generation-fenced, watched Pierre projection with typed operations and honest incomplete states | IDE-02 delivered; IDE-04 deepens navigation |
 | review                      | `@pierre/diffs@1.2.12` and a projection-only virtualized adapter are admitted; production still uses the custom hunk renderer | IDE-05                                     |
 | themes                      | one owned Tokyo Night projection is admitted; production workbench still renders the fixed Khala theme                        | IDE-03 mounts Tokyo Night from first paint |
 | Vim                         | the complete first-party public-Monaco fallback contract is selected; no runtime key controller or setting is mounted         | IDE-03                                     |
@@ -462,6 +462,16 @@ contracts; Pierre receives no root, grant, bridge, or mutation authority.
 
 Exit: a large real repository can be navigated entirely by mouse or keyboard,
 and every incomplete state is visible rather than looking like an empty tree.
+
+Delivered 2026-07-19 in `#9017`. The production Files rail now uses the
+complete path-index projection rather than mounted pages. Schema-first Effect
+contracts, worktree/index generation fences, chunked complete/lazy scans,
+watcher reconcile/overflow rescan, cancellation, stable interaction, current-
+generation badges, typed expected-version operations, accessibility journeys,
+scope teardown, a 10,000-file percentile/resource receipt, and a packaged
+large-repository pointer/keyboard journey are recorded in
+`docs/ide/2026-07-19-ide-02-complete-pierre-explorer.md`. This delivery closes
+the Explorer packet only; IDE-03 remains the next release-rung blocker.
 
 ### IDE-03 — Replace the textarea with Monaco and ship Tokyo Night/Vim
 
@@ -829,8 +839,8 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Immediate next work
 
-After IDE-00 and IDE-01's exact issue receipts, the next admitted implementation
-work is IDE-02, followed by IDE-03 over the now-fixed package, project,
+After IDE-00 through IDE-02's exact issue receipts, the next admitted
+implementation work is IDE-03 over the now-fixed package, project, path-index,
 document, theme, and Vim contracts. The first visible destination remains
 deliberately narrow:
 

@@ -6,6 +6,7 @@ import { Effect } from "@effect-native/core/effect"
 
 import { Button } from "#components/ui/button"
 import { Input } from "#components/ui/input"
+import type { IdeExplorerCommand } from "./ide-path-index.ts"
 import { PierreWorkspaceTree, pierreWorkspacePaths } from "./ide/pierre-tree-adapter.tsx"
 import type { DesktopShellState } from "./shell.ts"
 import { workspaceEditorTabDirty } from "./workspace-editor.ts"
@@ -35,7 +36,8 @@ const tablistKey = (
 
 export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const browser = state.workspaceBrowser
-  const pierrePaths = pierreWorkspacePaths(browser)
+  const projection = browser.pathIndexProjection
+  const pierrePaths = pierreWorkspacePaths(projection)
   const searchMatches = browser.searchPage?.state === "available" ? browser.searchPage.matches : []
   const openEntry = (pathRef: string, kind: "file" | "directory"): void => {
     dispatch(report, "WorkspaceBrowserEntrySelected", pathRef)
@@ -45,7 +47,34 @@ export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopSh
       dispatch(report, "WorkspaceBrowserTreeToggled", pathRef)
     }
   }
+  const onExplorerIntent = (intent: IdeExplorerCommand): void => {
+    dispatch(report, "WorkspaceBrowserExplorerCommandRequested", intent)
+    if (intent._tag !== "Open") return
+    const node = projection?.nodes.find(candidate => candidate.nodeRef === intent.nodeRef)
+    if (node?.kind === "file" && browser.grantRef !== null) {
+      dispatch(report, "WorkspaceEditorOpenRequested", { grantRef: browser.grantRef, pathRef: node.pathRef })
+    } else if (node?.kind === "directory") {
+      dispatch(report, "WorkspaceBrowserTreeToggled", node.pathRef)
+    }
+  }
+  const indexStatus = projection?.state
   return <section className="oa-react-files-tree" aria-label="Workspace files">
+    <header className="oa-react-files-tree-toolbar">
+      <strong>Explorer</strong>
+      <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceBrowserExplorerCommandRequested", { _tag: "Rescan" })}>Rescan</Button>
+    </header>
+    <p id="oa-workspace-index-status" role="status">
+      {indexStatus === undefined ? "Path index unavailable."
+        : indexStatus._tag === "Scanning" ? `Indexing ${indexStatus.progress.admittedNodes} files; ${indexStatus.progress.pendingDirectories} folders remain.`
+        : indexStatus._tag === "Partial" ? `Partial index: ${indexStatus.progress.admittedNodes} paths are ready; ${indexStatus.progress.pendingDirectories} folders remain.`
+        : indexStatus._tag === "Truncated" ? `Index limited to ${indexStatus.limit} paths. Narrow the root or search.`
+        : indexStatus._tag === "Degraded" ? `Index degraded: ${indexStatus.reason}`
+        : indexStatus._tag === "Unavailable" ? `Index unavailable: ${indexStatus.message}`
+        : indexStatus._tag === "Error" ? `Index error: ${indexStatus.message}`
+        : indexStatus._tag === "Empty" ? "The indexed workspace has no admitted files."
+        : indexStatus._tag === "Stopped" ? `Index stopped: ${indexStatus.reason}`
+        : `${indexStatus.nodeCount} indexed paths ready.`}
+    </p>
     <div className={`oa-react-files-tree-scroll${browser.phase === "ready" && browser.query.trim() === "" && pierrePaths.length > 0 ? " oa-react-files-tree-scroll--pierre" : ""}`}>
       {browser.phase === "idle" ? <p role="status">Preparing workspace files…</p>
         : browser.phase === "loading" ? <p role="status">Loading workspace files…</p>
@@ -55,8 +84,9 @@ export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopSh
           ? searchMatches.length === 0 ? <p>No matches.</p> : searchMatches.map(match => <button className="oa-react-file-search-result" key={`${match.pathRef}:${match.line ?? ""}`} onClick={() => openEntry(match.pathRef, "file")} type="button">
               <File aria-hidden="true" /><span><strong>{match.pathRef}</strong>{match.preview === null ? null : <small>{match.line === null ? "" : `Line ${match.line} · `}{match.preview}</small>}</span>
             </button>)
-          : pierrePaths.length === 0 ? <p>No workspace files.</p>
-            : <PierreWorkspaceTree browser={browser} onActivate={({ pathRef, kind }) => openEntry(pathRef, kind)} />}
+          : pierrePaths.length === 0 ? <p>No indexed workspace files.</p>
+            : projection === null ? <p role="alert">The path index projection is unavailable.</p>
+              : <PierreWorkspaceTree projection={projection} onIntent={onExplorerIntent} />}
     </div>
   </section>
 }

@@ -153,6 +153,7 @@ import {
   emptyWorkspaceBrowserState,
   makeWorkspaceBrowserHandlers,
   unavailableWorkspaceBrowserBridge,
+  workspaceBrowserIndexIdentity,
   workspaceBrowserIntents,
   workspaceBrowserView,
   type WorkspaceBrowserBridge,
@@ -2184,6 +2185,20 @@ export const makeDesktopShellHandlers = (
   const workspaceBrowserHandlers = makeWorkspaceBrowserHandlers(
     state,
     workspaceHost.browser ?? unavailableWorkspaceBrowserBridge,
+    (current, grantRef, pathIndexGeneration) => {
+      const session = current.codingCatalog.sessions.find(candidate =>
+        candidate.sessionRef === current.codingCatalog.selectedSessionRef) ??
+        current.codingCatalog.sessions.find(candidate => candidate.state === "active") ??
+        current.codingCatalog.sessions[0]
+      return workspaceBrowserIndexIdentity({
+        projectRef: session?.projectRef ?? grantRef,
+        rootRef: session?.repositoryRef ?? grantRef,
+        worktreeRef: session?.worktreeRef ?? grantRef,
+        attachmentRef: `${session?.sessionRef ?? "workspace"}.${grantRef}`,
+        attachmentGeneration: 1,
+        pathIndexGeneration,
+      })
+    },
   )
   const persistWorkspaceRecovery = (current: DesktopShellState): void => {
     const workspaceSessionRef = current.codingCatalog.selectedSessionRef ??

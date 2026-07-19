@@ -44,7 +44,10 @@
     "ide:package-spike": "OPENAGENTS_DESKTOP_IDE_PACKAGE_SPIKE_BUILD=1 OA_DESKTOP_SKIP_DEV_VOICE_HELPER=1 node --import tsx scripts/build.ts && node --import tsx scripts/ide-package-spike-smoke.ts",
     "ide:package-audit": "node --import tsx scripts/ide-package-audit.ts",
     "ide:typescript-index-benchmark": "node --import tsx scripts/ide-typescript-index-benchmark.ts",
+    "ide:path-index-benchmark": "node --expose-gc --import tsx scripts/ide-path-index-benchmark.ts",
+    "ide:path-index-packaged-journey": "node --import tsx scripts/ide-path-index-packaged-journey.ts",
     "verify:ide-01": "pnpm run ide:package-spike && pnpm run ide:package-audit && pnpm run ide:typescript-index-benchmark && pnpm run typecheck && vp test --run --root ../.. src/ide/package-admission.test.ts && pnpm run check:ide-boundaries",
+    "verify:ide-02": "pnpm run ide:path-index-benchmark && pnpm run typecheck && vp test --run --root ../.. src/ide/path-index-service.test.ts src/ide/path-index-benchmark-contract.test.ts src/renderer/ide/pierre-tree-adapter.test.ts src/renderer/workspace-browser.test.ts tests/workspace-service.test.ts tests/ide-explorer-accessibility.test.tsx && pnpm run check:ide-boundaries",
     "test": "vp test --run --max-concurrency 1 --root ../.. apps/openagents-desktop",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run build && OPENAGENTS_DESKTOP_SMOKE=1 pnpm run smoke && pnpm run smoke:react"

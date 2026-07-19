@@ -284,6 +284,9 @@ const makeFakeBridge = (
     })),
     createWorkspaceEntry: wrap("create", async () => ({ state: "created", entry: entry("notes.md") })),
     renameWorkspaceEntry: wrap("rename", async () => ({ state: "renamed", entry: entry("GUIDE.md") })),
+    moveWorkspaceEntry: wrap("move", async () => ({ state: "renamed", entry: entry("src/GUIDE.md") })),
+    copyWorkspaceEntry: wrap("copy", async () => ({ state: "created", entry: entry("src/README.md") })),
+    duplicateWorkspaceEntry: wrap("duplicate", async () => ({ state: "created", entry: entry("README copy.md") })),
     deleteWorkspaceEntry: wrap("delete", async (value) => ({ state: "deleted", pathRef: (value as { pathRef: string }).pathRef })),
     revealWorkspaceEntry: wrap("reveal", async (value) => ({ state: "revealed", pathRef: (value as { pathRef: string }).pathRef })),
     refreshWorkspace: wrap("refresh", async () => true) as () => Promise<unknown>,
@@ -312,7 +315,9 @@ describe("workspace browser typed intent loop", () => {
       const browser = (yield* SubscriptionRef.get(state)).workspaceBrowser
       expect(browser.phase).toBe("ready")
       expect(browser.pages[""]?.entries.map(item => item.pathRef)).toEqual(["src", "README.md"])
-      expect(calls.map(call => call.op)).toEqual(["refresh", "tree"])
+      expect(browser.pathIndexSnapshot?.state._tag).toBe("Ready")
+      expect(browser.pathIndexProjection?.nodes.map(node => node.pathRef)).toEqual(["README.md", "src"])
+      expect(calls.map(call => call.op)).toEqual(["refresh", "tree", "tree", "tree", "tree"])
     }))
   })
 
@@ -321,8 +326,94 @@ describe("workspace browser typed intent loop", () => {
       const { bridge, calls } = makeFakeBridge()
       const { state, handlers } = yield* handlerHarness(bridge)
       yield* handlers.WorkspaceBrowserOpened()
-      expect((yield* SubscriptionRef.get(state)).workspaceBrowser.phase).toBe("ready")
-      expect(calls.map(call => call.op)).toEqual(["tree"])
+      const browser = (yield* SubscriptionRef.get(state)).workspaceBrowser
+      expect(browser.phase).toBe("ready")
+      expect(browser.pathIndexSnapshot?.state._tag).toBe("Ready")
+      expect(calls.map(call => call.op)).toEqual(["tree", "tree", "tree", "tree"])
+    }))
+  })
+
+  test("the production Files index discovers unloaded descendants and reconciles them without mounting legacy pages", async () => {
+    const calls: Array<{ directoryRef: string; epoch: number }> = []
+    let epoch = 1
+    const directories: Record<string, ReadonlyArray<DesktopWorkspaceTreeEntry>> = {
+      "": [entry("src", "directory"), entry("README.md")],
+      src: [entry("src/deep", "directory"), entry("src/index.ts")],
+      "src/deep": [entry("src/deep/old.ts")],
+    }
+    const { bridge } = makeFakeBridge({
+      workspaceTree: async (value) => {
+        const directoryRef = (value as { directoryRef: string }).directoryRef
+        calls.push({ directoryRef, epoch })
+        return treePage(directoryRef, directories[directoryRef] ?? [], {
+          cache: { key: `tree:${directoryRef}`, epoch, freshness: "current" },
+        })
+      },
+    })
+    await Effect.runPromise(Effect.gen(function* () {
+      const { state, handlers } = yield* handlerHarness(bridge, emptyWorkspaceBrowserState(), "files")
+      yield* handlers.WorkspaceBrowserOpened()
+      let browser = (yield* SubscriptionRef.get(state)).workspaceBrowser
+      expect(browser.pages.src).toBeUndefined()
+      expect(browser.pages["src/deep"]).toBeUndefined()
+      expect(browser.pathIndexProjection?.state._tag).toBe("Ready")
+      expect(browser.pathIndexProjection?.nodes.map(node => node.pathRef)).toContain("src/deep/old.ts")
+
+      epoch = 2
+      directories["src/deep"] = [entry("src/deep/new.ts")]
+      yield* handlers.WorkspaceBrowserChangeReceived({
+        kind: "changed", pathRef: "src/deep/new.ts", pathRefs: ["src/deep/new.ts"], epoch,
+      })
+      browser = (yield* SubscriptionRef.get(state)).workspaceBrowser
+      expect(browser.pathIndexProjection?.nodes.map(node => node.pathRef)).toContain("src/deep/new.ts")
+      expect(browser.pathIndexProjection?.nodes.map(node => node.pathRef)).not.toContain("src/deep/old.ts")
+      expect(browser.pages["src/deep"]).toBeUndefined()
+
+      epoch = 4
+      yield* handlers.WorkspaceBrowserChangeReceived({ kind: "overflow", pathRef: null, epoch })
+      browser = (yield* SubscriptionRef.get(state)).workspaceBrowser
+      expect(browser.pathIndexProjection?.state._tag).toBe("Ready")
+      expect(browser.pathIndexProjection?.nodes.map(node => node.pathRef)).toContain("src/deep/new.ts")
+      expect(calls.filter(call => call.directoryRef === "src/deep").length).toBeGreaterThanOrEqual(3)
+    }))
+  })
+
+  test("typed move, copy, and duplicate intents preserve expected-version authority at the bridge", async () => {
+    const { bridge, calls } = makeFakeBridge()
+    await Effect.runPromise(Effect.gen(function* () {
+      const { state, handlers } = yield* handlerHarness(bridge)
+      yield* handlers.WorkspaceBrowserOpened()
+      const commandNode = () => {
+        const browser = state.pipe(SubscriptionRef.get)
+        return Effect.map(browser, current => current.workspaceBrowser.pathIndexSnapshot?.nodes.find(node => node.pathRef === "README.md"))
+      }
+
+      let node = yield* commandNode()
+      expect(node).toBeDefined()
+      yield* handlers.WorkspaceBrowserExplorerCommandRequested({
+        _tag: "Move", nodeRef: node!.nodeRef, pathRef: node!.pathRef,
+        expectedRevisionRef: node!.revisionRef, destinationParentPathRef: "src",
+      })
+      node = yield* commandNode()
+      yield* handlers.WorkspaceBrowserExplorerCommandRequested({
+        _tag: "Copy", nodeRef: node!.nodeRef, pathRef: node!.pathRef,
+        expectedRevisionRef: node!.revisionRef, destinationParentPathRef: "src",
+      })
+      node = yield* commandNode()
+      yield* handlers.WorkspaceBrowserExplorerCommandRequested({
+        _tag: "Duplicate", nodeRef: node!.nodeRef, pathRef: node!.pathRef,
+        expectedRevisionRef: node!.revisionRef,
+      })
+
+      expect(calls.find(call => call.op === "move")?.value).toMatchObject({
+        pathRef: "README.md", destinationParentRef: "src", expectedRevisionRef: "revision-README.md",
+      })
+      expect(calls.find(call => call.op === "copy")?.value).toMatchObject({
+        pathRef: "README.md", destinationParentRef: "src", expectedRevisionRef: "revision-README.md",
+      })
+      expect(calls.find(call => call.op === "duplicate")?.value).toMatchObject({
+        pathRef: "README.md", expectedRevisionRef: "revision-README.md",
+      })
     }))
   })
 

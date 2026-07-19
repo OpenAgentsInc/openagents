@@ -409,6 +409,9 @@ import {
   DesktopWorkspaceSearchCancelChannel,
   DesktopWorkspaceCreateChannel,
   DesktopWorkspaceRenameChannel,
+  DesktopWorkspaceMoveChannel,
+  DesktopWorkspaceCopyChannel,
+  DesktopWorkspaceDuplicateChannel,
   DesktopWorkspaceDeleteChannel,
   DesktopWorkspaceRevealChannel,
   DesktopWorkspaceDocumentOpenChannel,
@@ -424,6 +427,9 @@ import {
   decodeWorkspaceSearchCancelRequest,
   decodeWorkspaceCreateRequest,
   decodeWorkspaceRenameRequest,
+  decodeWorkspaceMoveRequest,
+  decodeWorkspaceCopyRequest,
+  decodeWorkspaceDuplicateRequest,
   decodeWorkspaceDeleteRequest,
   decodeWorkspaceRevealRequest,
   decodeWorkspaceDocumentRequest,
@@ -1950,6 +1956,30 @@ ipcMain.handle(DesktopWorkspaceRenameChannel, (event, value: unknown) => {
   return request === null || workspace === null
     ? { state: "unavailable", message: "Choose a workspace folder before renaming entries." }
     : workspace.renameEntry(request)
+})
+ipcMain.handle(DesktopWorkspaceMoveChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { state: "unavailable", message: "Workspace move is unavailable." }
+  const request = decodeWorkspaceMoveRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", message: "Choose a workspace folder before moving entries." }
+    : workspace.moveEntry(request)
+})
+ipcMain.handle(DesktopWorkspaceCopyChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { state: "unavailable", message: "Workspace copy is unavailable." }
+  const request = decodeWorkspaceCopyRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", message: "Choose a workspace folder before copying entries." }
+    : workspace.copyEntry(request)
+})
+ipcMain.handle(DesktopWorkspaceDuplicateChannel, (event, value: unknown) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return { state: "unavailable", message: "Workspace duplicate is unavailable." }
+  const request = decodeWorkspaceDuplicateRequest(value)
+  const workspace = hostLifecycle.workspace()
+  return request === null || workspace === null
+    ? { state: "unavailable", message: "Choose a workspace folder before duplicating entries." }
+    : workspace.duplicateEntry(request)
 })
 ipcMain.handle(DesktopWorkspaceDeleteChannel, (event, value: unknown) => {
   if (!isTrustedRuntimeGatewaySender(event)) return { state: "unavailable", message: "Workspace delete is unavailable." }

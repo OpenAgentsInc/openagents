@@ -571,6 +571,8 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
 
 - Canonical IDE implementation roadmap, packet definitions, release rungs,
   Vim contract, and Tokyo Night contract: `docs/ide/ROADMAP.md`
+- IDE-02 complete Explorer implementation and evidence:
+  `docs/ide/2026-07-19-ide-02-complete-pierre-explorer.md`
 - Roadmap-to-ProductSpec/AssuranceSpec traceability:
   `specs/IDE_ROADMAP_CROSSWALK.md`
 - Proposed proof-design companion bound to this exact revision:

@@ -2643,6 +2643,9 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           state: "renamed",
           entry: { name: "GUIDE.md", pathRef: "GUIDE.md", kind: "file", expandable: false, sizeBytes: 10, revisionRef: "revision-guide" },
         }),
+        moveWorkspaceEntry: async () => null,
+        copyWorkspaceEntry: async () => null,
+        duplicateWorkspaceEntry: async () => null,
         deleteWorkspaceEntry: async () => null,
         revealWorkspaceEntry: async () => null,
         refreshWorkspace: async () => true,
@@ -2681,7 +2684,11 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
       expect(systemOpened.workspace).toBe("files")
       expect(systemOpened.workspaceBrowser.grantRef).toBe("workspace.grant.test")
       expect(systemOpened.workspaceEditor.activePathRef).toBe("README.md")
-      expect(treeCalls).toEqual([{ directoryRef: "", offset: 0, limit: 200 }])
+      expect(treeCalls).toEqual([
+        { directoryRef: "", offset: 0, limit: 200 },
+        { directoryRef: "", offset: 0, limit: 200 },
+        { directoryRef: "", offset: 0, limit: 200 },
+      ])
       expect(documentCalls).toEqual([{ grantRef: "workspace.grant.test", pathRef: "README.md" }])
 
       yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserEntrySelected", StaticPayload("README.md"))))
@@ -2703,7 +2710,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
 
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspacePickerRequested", StaticPayload(null))))
       expect(chooseCalls).toBe(1)
-      expect(treeCalls).toHaveLength(3)
+      expect(treeCalls).toHaveLength(9)
       expect((yield* SubscriptionRef.get(state)).workspaceEditor.tabs).toEqual([])
     }))
   })
@@ -2753,6 +2760,9 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         cancelWorkspaceSearch: async () => null,
         createWorkspaceEntry: async () => null,
         renameWorkspaceEntry: async () => null,
+        moveWorkspaceEntry: async () => null,
+        copyWorkspaceEntry: async () => null,
+        duplicateWorkspaceEntry: async () => null,
         deleteWorkspaceEntry: async () => null,
         revealWorkspaceEntry: async () => null,
         refreshWorkspace: async () => true,
