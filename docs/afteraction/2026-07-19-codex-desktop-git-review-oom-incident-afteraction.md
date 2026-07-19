@@ -1036,3 +1036,387 @@ worker failure outside the main desktop process.
 
 Until that fix exists, child-repository scope and root-work-tree hygiene provide
 the safest immediate containment.
+
+## Addendum: OpenAgents IDE category prevention
+
+### Addendum control
+
+| Field | Value |
+| --- | --- |
+| Addendum date | 2026-07-19 |
+| Subject | OpenAgents IDE prevention of repository-review OOM crashes |
+| Scope | OpenAgents Desktop IDE project, Git, review, and agent-code paths |
+| Claim type | Conditional architecture and release-gate conclusion |
+| External product effect | None |
+
+### Purpose
+
+This addendum relates the crash cause to the canonical OpenAgents IDE plan and
+product contracts. It explains how the OpenAgents IDE can prevent the complete
+failure class.
+
+The relevant failure class has two parts. Repository discovery or review first
+creates work without an effective bound. A fatal worker resource error then
+terminates the main desktop process.
+
+Definitive prevention requires two independent barriers. The first barrier
+keeps repository work within fixed limits. The second barrier keeps a worker
+failure outside the main app process.
+
+The current IDE work supplies much of the first barrier. It also supplies the
+typed lifecycle model for the second barrier. The final Git and review path
+must close the explicit gaps in this addendum before it can claim complete
+prevention.
+
+### Authority and sources reviewed
+
+The IDE directory index states that its documents complement the product
+contracts. The documents do not replace those contracts or grant authority.
+
+This review used these canonical sources:
+
+| Source | Role | Current statement used here |
+| --- | --- | --- |
+| [IDE directory index](../ide/README.md) | Document map | The ProductSpecs retain intent authority. |
+| [IDE roadmap](../ide/ROADMAP.md) | Canonical sequence | IDE-00 through IDE-19 define packet order and release rungs. |
+| [IDE crosswalk](../../specs/IDE_ROADMAP_CROSSWALK.md) | Traceability | It maps each packet to exact criteria, evidence, and gaps. |
+| [Desktop ProductSpec](../../specs/desktop/desktop-trust-complete-workbench.product-spec.md) | Product intent | Revision 7 owns Desktop AC-39 through AC-52. |
+| [Cursor parity ProductSpec](../../specs/openagents/cursor-capability-parity.product-spec.md) | Parity intent | Revision 3 owns the integrated IDE and lifecycle criteria. |
+| [Desktop AssuranceSpec](../../specs/desktop/desktop-trust-complete-workbench.assurance-spec.md) | Proposed proof design | All obligations remain incomplete and `needs_design`. |
+| [Cursor AssuranceSpec](../../specs/openagents/cursor-capability-parity.assurance-spec.md) | Proposed parity proof | It does not claim proof, admission, release, or parity. |
+| [IDE-02 delivery](../ide/2026-07-19-ide-02-complete-pierre-explorer.md) | Implemented path index | It supplies bounded pages, sequence fences, policy, and resource evidence. |
+| [IDE-05 delivery](../ide/2026-07-19-ide-05-versioned-pierre-review.md) | Implemented review plane | It supplies exact sources, bounded patches, stale refusal, and disposal evidence. |
+| [IDE-06 delivery](../ide/2026-07-19-ide-06-generation-safe-language.md) | Implemented worker model | It supplies cancel, restart, stale refusal, and teardown with no queued work. |
+| [IDE-07 acceptance](../ide/2026-07-19-ide-07-basic-ide-acceptance.md) | Basic IDE gate | It freezes resource budgets and rejects budget drift. |
+| [IDE-08 delivery](../ide/2026-07-19-ide-08-agent-native-code-graph.md) | Implemented agent-code graph | It supplies exact attachment, fixed context ceilings, and scoped teardown. |
+
+### Current implementation and claim boundary
+
+The roadmap and crosswalk record IDE-00 through IDE-08 as delivered packets.
+IDE-07 accepted one exact macOS arm64 candidate as `OpenAgents basic IDE`.
+IDE-08 then added the exact agent attachment, proposal, review, apply, evidence,
+backlink, and undo graph.
+
+IDE-09 through IDE-19 remain separate work. IDE-12 owns complete Git,
+worktrees, and delivery. IDE-17 owns the larger agent platform. IDE-19 owns the
+maintained parity gate.
+
+The Desktop and Cursor AssuranceSpecs remain proposed. Their obligations have
+the state `needs_design`. The delivered packets do not admit those proposals
+or establish full IDE parity.
+
+Therefore, this report does not claim that the complete prevention contract is
+already released. It defines the exact incident gate that the final IDE path
+must pass.
+
+### External-product boundary
+
+The OpenAgents IDE cannot change the memory behavior of an independent Codex
+Desktop installation. It cannot stop that external app when it scans an
+umbrella repository.
+
+This addendum applies only when the OpenAgents project, Git, review, and agent
+services own the path. The original containment advice remains necessary for
+the external Codex Desktop product.
+
+### Failure-class decomposition
+
+The incident required this causal chain:
+
+1. The app selected an umbrella repository with a very large visible state.
+2. Discovery exposed 121,277 untracked files.
+3. Review work expanded into thousands of diff and hash records.
+4. Cancellation did not stop excess work creation.
+5. Command records did not show a finite output byte limit.
+6. The Git worker reached a fatal Node and V8 memory path.
+7. The worker shared the app process, so `abort()` ended the whole app.
+
+The OpenAgents IDE must break every link. A limit on only one renderer widget
+is not sufficient. A restart after an OOM is also not prevention.
+
+### Current IDE controls that break the chain
+
+| Incident mechanism | IDE control | Evidence state | Prevention effect |
+| --- | --- | --- | --- |
+| Ambient umbrella scope | Exact project, root, worktree, attachment, and generation refs | IDE-00 and IDE-08 delivered | Work cannot silently move to a broader root. |
+| Equal relative paths | Separate project and worktree service scopes | IDE-02 and Desktop AC-40 | Two worktrees cannot merge state or scan authority. |
+| Full tree expansion | Bounded page reads with partial and truncated lifecycle states | IDE-02 delivered | A large tree cannot create one eager object graph. |
+| Hidden incomplete scan | Explicit progress, partial, truncated, degraded, and unavailable states | IDE-02 delivered | The UI cannot present a cutoff as an empty or complete tree. |
+| Late scan result | Per-scan sequence checks before and after each asynchronous read | IDE-02 delivered | An old scan cannot publish after cancel or replacement. |
+| Broad path access | Ignore, hidden, secret, binary, symlink, grant, and root policy | IDE-02 delivered | The index cannot reopen a path that policy withheld. |
+| Unversioned diff | Exact Git snapshot, repository ref, status ref, and generation | IDE-05 delivered | A moved snapshot refuses before review projection. |
+| Unlimited review payload | Bounded host diff and bounded Pierre projection | IDE-05 delivered | The renderer receives a finite decoded payload. |
+| Per-widget Git authority | Pierre has no root, process, Git callback, or mutation field | IDE-05 delivered | A UI package cannot start a repository-wide scan. |
+| Unbounded agent context | 200,000-byte, 50,000-token, and 64,000-character ceilings | IDE-08 delivered | Context size cannot grow with total repository size. |
+| Stale agent proposal | Exact attachment, base digest, and generation checks | IDE-08 delivered | A changed base refuses or enters an explicit rebase path. |
+| Retained resource growth | Scoped services, finalizers, and zero-resource teardown checks | IDE-02 through IDE-08 | A closed project releases owned subscriptions and workers. |
+| Silent helper failure | Typed degraded or unavailable lifecycle | Desktop AC-42 and AC-51 | The UI must show failure truth instead of false success. |
+| Budget drift | Frozen p95, p99, RSS, and descriptor envelopes | IDE-07 delivered | A candidate cannot enlarge a budget to make itself pass. |
+
+### Measured evidence already present
+
+IDE-02 tests the production path-index service on 10,000 files. Its final
+snapshot contains 10,100 nodes. The receipt records a 7,028,232-byte retained
+heap delta after forced garbage collection.
+
+The IDE-02 stop path reports zero owned source subscriptions. Access after stop
+refuses. Its packaged repository contains 10,868 file-system entries and
+10,703 admitted nodes.
+
+IDE-05 tests a 500-file, 1,647,282-byte aggregate review. It also tests 100
+generation updates. Only the newest result commits, and 99 old completions
+refuse.
+
+Two hundred IDE-05 projection cycles end with zero active workers and zero
+listener delta. The receipt reports no positive retained-heap delta after
+garbage collection.
+
+IDE-06 injects a language-provider crash. The service advances its generation,
+reports degraded truth, and starts a supervised replacement on the next valid
+request. The test ends with zero workers and no queued requests.
+
+IDE-07 accepts all 27 frozen resource rows for its exact candidate. A threshold
+breach causes receipt refusal. The candidate cannot change a threshold during
+evaluation.
+
+IDE-08 bounds one context manifest to 200,000 bytes and 50,000 tokens. Each
+excerpt has a 64,000-character limit. Content that does not fit receives an
+explicit `over_budget` disposition.
+
+IDE-08 also tests a 25-file aggregate proposal, cancel behavior, restart,
+scope disposal, and resource deltas. Twenty teardown cycles retain no active
+handles, listeners, proposal streams, or temporary preimages.
+
+### Why these controls change the workload shape
+
+The crashed review path scaled with visible repository state. Its work was
+approximately proportional to the number of untracked files and their content.
+
+The admitted IDE path must scale with configured limits instead. Repository
+size can change result completeness, but it cannot increase active work after
+a limit applies.
+
+This local notation defines the required relation. The names are model terms,
+not current code identifiers.
+
+```text
+admitted_files <= file_limit
+review_bytes <= review_byte_limit
+command_output_bytes <= command_output_limit
+queued_git_operations <= queue_limit
+active_git_operations <= concurrency_limit
+context_bytes <= context_byte_limit
+retained_completed_results <= retention_limit
+```
+
+Each limit must be finite and positive. The product must apply the limits
+before content expansion. A null diagnostic value cannot represent a required
+limit.
+
+If a repository has one million files, the service still holds at most the
+admitted bounded page, queue, review, and context state. The other files
+produce a visible truncation or aggregate directory summary.
+
+### Incident-specific definitive prevention contract
+
+These controls are release requirements for this incident class. This
+report treats each control as mandatory.
+
+| ID | Required control | Acceptance condition |
+| --- | --- | --- |
+| OA-IDE-OOM-001 | Exact attachment | Every scan binds one project, root, worktree, grant, and generation. |
+| OA-IDE-OOM-002 | Root preflight | The service measures visible entry risk before per-file diff or hash work. |
+| OA-IDE-OOM-003 | File limit | The service stops file expansion at a finite configured count. |
+| OA-IDE-OOM-004 | Review byte limit | The service stops patch materialization at a finite byte count. |
+| OA-IDE-OOM-005 | Output limit | Every Git command has a finite output byte limit. |
+| OA-IDE-OOM-006 | Queue limit | Queued Git work cannot exceed a finite queue depth. |
+| OA-IDE-OOM-007 | Concurrency limit | Active Git commands cannot exceed a finite process count. |
+| OA-IDE-OOM-008 | Time limit | A timed-out operation cannot start an automatic endless retry cycle. |
+| OA-IDE-OOM-009 | Cancel fence | A canceled generation cannot create or publish more work. |
+| OA-IDE-OOM-010 | Aggregate fallback | Excess paths become directory counts and explicit omission facts. |
+| OA-IDE-OOM-011 | Circuit breaker | Repeat timeout, abort, or memory pressure stops the review revision. |
+| OA-IDE-OOM-012 | Memory pressure gate | The worker stops before its specified memory cap. |
+| OA-IDE-OOM-013 | Process isolation | A Git or review worker OOM cannot terminate the trusted shell. |
+| OA-IDE-OOM-014 | Typed degradation | The app stays open and shows the exact stopped limit and recovery action. |
+| OA-IDE-OOM-015 | Scope teardown | Project close interrupts commands, queues, streams, and subscriptions. |
+| OA-IDE-OOM-016 | Durable session state | Worker replacement cannot erase the active user task or document state. |
+
+### Required process-isolation refinement
+
+Desktop AC-42 requires cancel, bounds, stale refusal, and visible degraded
+states for project capabilities. Desktop AC-51 requires scoped interruption
+for processes, subscriptions, streams, and watchers.
+
+Those criteria define lifecycle truth. They do not explicitly state that a
+Git review OOM has a different process-fate boundary from the main Electron
+shell.
+
+The final implementation must make that boundary explicit. Git and review work
+can use an Effect-supervised child process, utility process, or equivalent
+isolated worker. Effect remains the authority owner.
+
+The helper receives only a decoded bounded request. It receives no session,
+credential, policy, database, approval, or receipt authority. Its output uses
+a finite byte frame and schema decode.
+
+If the helper reaches OOM, the OS can terminate the helper. The main app must
+remain available. The supervisor must publish a typed failure, open the circuit
+breaker, and require a new admitted generation before another attempt.
+
+This refinement does not require a Rust application core. It is compatible
+with the roadmap rule that Rust or native code remains an authority-free rind.
+
+### Two-barrier proof
+
+The first barrier prevents resource exhaustion:
+
+1. Exact attachment prevents silent root expansion.
+2. Preflight classifies the repository before content work.
+3. File, byte, command, queue, concurrency, and time limits cap active work.
+4. Page and aggregate results avoid one in-memory object per repository path.
+5. Cancel fences stop old work at each asynchronous boundary.
+6. The circuit breaker stops repeat pressure from one review revision.
+
+The second barrier contains an implementation defect:
+
+1. The Git or review helper has a separate process-fate boundary.
+2. The helper has no main-shell or project authority.
+3. The supervisor converts helper exit into a typed result.
+4. Canonical project and document state survives outside the helper.
+5. The app remains open and offers bounded retry or skip actions.
+
+Either barrier blocks the observed whole-app crash chain. Both barriers are
+required because a defect can bypass a logical limit.
+
+### Incident-scale regression corpus
+
+The permanent gate must include the observed workload shape. A small fixture
+cannot prove this category closed.
+
+| Test | Fixture or fault | Required result |
+| --- | --- | --- |
+| OA-OOM-T1 | 125,000 small untracked files in two dominant trees | The scan truncates before per-file work reaches the full set. |
+| OA-OOM-T2 | One untracked file larger than the review byte limit | No full file materialization or unbounded output occurs. |
+| OA-OOM-T3 | Rapid file changes during a root scan | Old generations stop and cannot publish. |
+| OA-OOM-T4 | Repeated Git command timeout | The circuit breaker opens after the configured threshold. |
+| OA-OOM-T5 | Queue pressure above the configured depth | Admission refuses new work with a typed reason. |
+| OA-OOM-T6 | Worker OOM fault injection | The worker exits and the main app remains available. |
+| OA-OOM-T7 | Worker malformed or oversized output | Frame and schema checks refuse the result. |
+| OA-OOM-T8 | Project close during scan | Commands, queues, handles, and subscriptions reach zero. |
+| OA-OOM-T9 | Two worktrees with equal relative paths | Results remain in their exact project scopes. |
+| OA-OOM-T10 | Ignored, secret, binary, symlink, and revoked paths | Policy withholds content before review materialization. |
+| OA-OOM-T11 | App restart after isolated worker failure | Project, task, and document recovery remain correct. |
+| OA-OOM-T12 | Seven repeated incident-scale sessions | No positive unbounded heap, handle, worker, or queue trend occurs. |
+
+The 125,000-file fixture intentionally exceeds the 121,277-file incident
+snapshot. Its top two trees must contain at least 99 percent of the paths. This
+shape tests the directory-summary path and the hard expansion limit.
+
+### Required measurements
+
+Each incident-scale test must record these values:
+
+- visible and admitted file counts.
+- truncated file and directory counts.
+- Git command count by command type.
+- command output bytes before and after truncation.
+- maximum queue depth.
+- maximum active command count.
+- cancellation latency.
+- circuit-breaker state and reason.
+- worker heap, external memory, and resident memory.
+- main-process resident memory.
+- active handles, processes, streams, and subscriptions after stop.
+- project and document recovery result.
+- user-visible degraded-state code.
+- exact candidate and app-tree digests.
+
+The receipt must keep the configured limits with the measurements. A test may
+not infer a limit from observed use after completion.
+
+### Failure assertions
+
+The incident gate fails if any of these facts occurs:
+
+- The main process receives `SIGABRT` from a Git or review worker failure.
+- `node::OOMErrorHandler` appears in the main-process crash path.
+- The service records `outputLimitMaxBytes=null` for a command that needs the limit.
+- The queue exceeds its configured maximum.
+- A canceled generation creates a new Git command.
+- A stale generation publishes a tree, diff, context, or proposal result.
+- Repository size increases active work after all limits apply.
+- The renderer or Pierre adapter receives root or process authority.
+- A worker exits without a typed degraded result.
+- The app loses the active task or canonical document state.
+- Teardown leaves an owned worker, command, handle, stream, or subscription.
+- The UI hides truncation, omission, timeout, memory pressure, or circuit state.
+
+### Packet and release relationship
+
+IDE-02, IDE-05, IDE-07, and IDE-08 already supply important evidence. They do
+not prove the new 125,000-file corpus or the Git-worker process-fate boundary.
+
+IDE-12 is the planned owner for complete Git, worktrees, and delivery. The
+incident controls should bind to IDE-12 or to an earlier dedicated safety
+packet. This report does not choose dispatch order or grant packet authority.
+
+The safety gate does not need to wait for full Cursor parity. It must pass
+before any OpenAgents IDE claim includes safe large-repository Git review or
+unattended repository review.
+
+Desktop AC-52 also prevents an early promotional claim. A delivered component,
+screenshot, package, or architecture document cannot promote a broader IDE
+rung without its exact acceptance and assurance evidence.
+
+### Relation to the original corrective actions
+
+The incident contract gives an OpenAgents IDE implementation path for the
+original product actions:
+
+| Original action group | OpenAgents IDE closure |
+| --- | --- |
+| File and byte limits | OA-IDE-OOM-002 through OA-IDE-OOM-005 |
+| Queue and concurrency limits | OA-IDE-OOM-006 and OA-IDE-OOM-007 |
+| Cancel backpressure | OA-IDE-OOM-009 |
+| Circuit breaker | OA-IDE-OOM-008 and OA-IDE-OOM-011 |
+| Worker isolation | OA-IDE-OOM-013 |
+| Memory telemetry | OA-IDE-OOM-012 and required measurements |
+| Large-repository notice | OA-IDE-OOM-010 and OA-IDE-OOM-014 |
+| Directory summary | OA-IDE-OOM-010 |
+| Durable active-turn state | OA-IDE-OOM-016 |
+
+Workspace hygiene remains useful, but it is not a product safety boundary. A
+valid repository can contain very many files. The IDE must remain safe. The
+user does not need to know an internal memory limit.
+
+### Addendum closure criteria
+
+This addendum can support a definitive prevention claim only after all these
+conditions hold:
+
+1. The authoritative ProductSpec or admitted packet binds OA-IDE-OOM-001
+   through OA-IDE-OOM-016.
+2. The Git and review implementation uses finite limits before file expansion.
+3. The helper has a separate process-fate boundary from the main app.
+4. The complete incident-scale corpus passes on every supported Desktop target.
+5. The receipts contain all required measurements and exact artifact digests.
+6. A distinct reviewer reproduces the OOM fault and confirms main-app survival.
+7. The normal IDE and chat regression corpora remain green.
+8. The release claim names its exact IDE rung and open gaps.
+
+### Addendum determination
+
+The new OpenAgents IDE architecture can prevent this entire error category by
+construction. Exact scope and fixed resource limits ensure that repository size
+cannot cause unlimited active work.
+
+Process isolation then protects the app from a worker OOM. Typed
+degradation and durable project state preserve the user task after failure.
+
+The current IDE plan already implements several required controls and their
+resource tests. The last definitive claim remains conditional on the explicit
+Git limits, worker isolation, and incident-scale evidence in this addendum.
+
+After those gates pass, the observed 121,277-file repository state can cause
+only a bounded, visible, recoverable review result. It cannot cause this
+OpenAgents IDE failure class to terminate the desktop application.
