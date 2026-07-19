@@ -392,7 +392,9 @@ describe("installed package Codex custody", () => {
         }),
       })
       expect(service.start()).toEqual({ state: "starting" })
-      await new Promise(resolve => setTimeout(resolve, 20))
+      for (let attempt = 0; attempt < 100 && service.status().state !== "failed"; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
       expect(service.status()).toMatchObject({ state: "failed" })
       expect(JSON.stringify(service.status())).not.toContain("apps/pylon")
       service.dispose()

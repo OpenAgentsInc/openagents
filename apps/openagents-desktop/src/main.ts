@@ -29,6 +29,7 @@ import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.t
 import { openDesktopUpdateStagingHost, updateRecoveryRequiresStartupExit } from "./update-staging-host.ts"
 import { resolveDesktopUpdateFeedConfig } from "./update-feed-config.ts"
 import { openMacOSUpdateApplier } from "./macos-update-applier.ts"
+import { openLinuxAppImageUpdateApplier } from "./linux-update-applier.ts"
 import { resolveMacOSDocumentOpenTarget } from "./macos-document-open.ts"
 import { drainChildRuntimes } from "./update-runtime-drain.ts"
 import { evaluateNoMigrationInvariant } from "./update-migration-evidence.ts"
@@ -1406,16 +1407,34 @@ const desktopHostVersion = (): string => {
   }
   return osRelease()
 }
-const desktopUpdateApplier = openMacOSUpdateApplier({
-  root: desktopUpdateRoot,
-  installedAppPath: path.resolve(path.dirname(app.getPath("exe")), "../.."),
-  installedVersion: app.getVersion(),
-  channel: desktopUpdateChannel,
-  packaged: app.isPackaged,
-  targetArchitecture: process.platform === "darwin" && app.runningUnderARM64Translation
-    ? "arm64"
-    : process.arch === "arm64" || process.arch === "x64" ? process.arch : undefined,
-})
+const desktopUpdateApplier = process.platform === "linux"
+  ? openLinuxAppImageUpdateApplier({
+    root: desktopUpdateRoot,
+    currentImagePath: typeof process.env.APPIMAGE === "string" && path.isAbsolute(process.env.APPIMAGE)
+      ? process.env.APPIMAGE
+      : null,
+    installedVersion: app.getVersion(),
+    channel: desktopUpdateChannel,
+    packaged: app.isPackaged,
+    targetArchitecture: process.arch === "arm64" || process.arch === "x64" ? process.arch : undefined,
+  })
+  : openMacOSUpdateApplier({
+    root: desktopUpdateRoot,
+    installedAppPath: path.resolve(path.dirname(app.getPath("exe")), "../.."),
+    installedVersion: app.getVersion(),
+    channel: desktopUpdateChannel,
+    packaged: app.isPackaged,
+    targetArchitecture: process.platform === "darwin" && app.runningUnderARM64Translation
+      ? "arm64"
+      : process.arch === "arm64" || process.arch === "x64" ? process.arch : undefined,
+  })
+const relaunchDesktopUpdateApp = (): void => {
+  if (process.platform === "linux" && "selectedImagePath" in desktopUpdateApplier) {
+    app.relaunch({ execPath: desktopUpdateApplier.selectedImagePath })
+  } else {
+    app.relaunch()
+  }
+}
 let desktopUpdateDrainActive = false
 const drainDesktopUpdateRuntimes = async () => {
   desktopUpdateDrainActive = true
@@ -1476,7 +1495,7 @@ const desktopUpdateHost = openDesktopUpdateStagingHost({
     },
   }),
   restart: () => setTimeout(() => {
-    app.relaunch()
+    relaunchDesktopUpdateApp()
     app.quit()
   }, 350),
 })
@@ -8104,7 +8123,7 @@ void app.whenReady().then(async () => {
       app.exit(1)
       return
     }
-    app.relaunch()
+    relaunchDesktopUpdateApp()
     app.exit(0)
     return
   }

@@ -11,6 +11,9 @@ describe("Desktop signed update staging integration", () => {
     expect(main).toContain("decodeDesktopUpdateStagingAction(raw)")
     expect(main).toContain("openDesktopUpdateStagingHost")
     expect(main).toContain("openMacOSUpdateApplier")
+    expect(main).toContain("openLinuxAppImageUpdateApplier")
+    expect(main).toContain("process.env.APPIMAGE")
+    expect(main).toContain("app.relaunch({ execPath: desktopUpdateApplier.selectedImagePath })")
     // REL-FEED-01 (#8993): the feed host/pin come only from the typed resolver,
     // and a rejected configuration disables checks instead of falling back.
     expect(main).toContain("resolveDesktopUpdateFeedConfig(process.env, desktopUpdateChannel)")
@@ -23,7 +26,7 @@ describe("Desktop signed update staging integration", () => {
     expect(main.indexOf("runSmoke(window)")).toBeLessThan(main.indexOf("const rendererReady ="))
     expect(main).toContain("desktopUpdateHost.recordCleanShutdown(drain)")
     expect(main.indexOf("desktopUpdateHost.recordCleanShutdown(drain)")).toBeGreaterThan(main.indexOf("await drainDesktopUpdateRuntimes()"))
-    expect(main.indexOf("app.relaunch()", main.indexOf("const launchHealth"))).toBeGreaterThan(main.indexOf("desktopUpdateHost.recordCleanShutdown(drain)"))
+    expect(main.indexOf("relaunchDesktopUpdateApp()", main.indexOf("const launchHealth"))).toBeGreaterThan(main.indexOf("desktopUpdateHost.recordCleanShutdown(drain)"))
     expect(main).not.toContain('app.on("before-quit", () => {\n  desktopUpdateHost.recordCleanShutdown')
     expect(main).toContain("updateRecoveryRequiresStartupExit(updateRecovery)")
     expect(main).toContain("drainChildRuntimes")
