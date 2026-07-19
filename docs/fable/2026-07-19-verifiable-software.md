@@ -544,7 +544,7 @@ Bitcoin wallet and a Nostr client, on the argument that "our AI agents…
 are going to pay each other in Bitcoin." Autopilot (episodes 207–215) moved
 it to the desktop and made it structural: "there will be a key pair
 generated automatically for you when you open the app for the first time,"
-with one BIP-39 seed phrase deriving *both* the Lightning wallet and the
+with one BIP-39 seed phrase deriving _both_ the Lightning wallet and the
 Nostr keypair — money and identity from the same root, stored locally,
 self-custodied. Pylon (episodes 235–237) made it a property of every node:
 "Every Pylon also ships a free, self-custodial Bitcoin Lightning wallet via
@@ -560,7 +560,7 @@ data processing AIs in the world"), NIP-DS dataset listings with canonical
 content digests, a Skills NIP whose trust signal is paid-workflow history,
 a Sovereign Agents draft using Frostr key-splitting so an agent can hold
 keys its owner cannot exfiltrate, and NIP-LBR — the labor rail — whose
-lifecycle runs request → quote → acceptance → result with provider *bonds*
+lifecycle runs request → quote → acceptance → result with provider _bonds_
 and a content-addressed closeout receipt. Five markets were named and two
 were launched on camera: compute, data, labor, liquidity, risk. Episode
 213's Economy Kernel ported Catalini's cost curves directly into the
@@ -575,16 +575,16 @@ keystroke.
 
 ### 2. What the keypair does: claims get an author
 
-Everything in this essay's first half is about making claims *checkable*.
-A keypair makes them *attributable* — and attribution is what lets a claim
+Everything in this essay's first half is about making claims _checkable_.
+A keypair makes them _attributable_ — and attribution is what lets a claim
 travel beyond the machine that produced it.
 
 Concretely: every object the IDE already mints — proposal admissions,
 apply receipts, host-observed evidence, behavior-contract oracle results,
 acceptance-oracle decodes, CodeShareBundle manifests — is a typed,
 digest-bound record. Signed with the editor's Nostr key, each becomes a
-portable attestation: *this* editor, under *this* identity, observed *this*
-fact at *this* generation. A second editor can verify the signature and the
+portable attestation: _this_ editor, under _this_ identity, observed _this_
+fact at _this_ generation. A second editor can verify the signature and the
 digest without trusting the transport, the platform, or the author's prose.
 The deep dive's provenance premium — P(π=1) > P(π=0) — becomes a concrete
 product feature: a diff that arrives with a signed evidence chain is worth
@@ -592,7 +592,7 @@ more than an identical diff without one, and the difference is the
 verification labor a stranger no longer has to repeat.
 
 Identity also accumulates. A keypair that has signed a thousand receipts
-that later survived independent falsification *is* a verification track
+that later survived independent falsification _is_ a verification track
 record — the "cryptographically verifiable career track record" Catalini's
 playbook prescribes for individuals, except it works identically for
 agents. Reputation stops being a platform database row and becomes a
@@ -616,7 +616,7 @@ Four flows, all denominated in the objects the IDE already produces:
 verifier correlation — AI checking AI shares blind spots (κ_corr ≫ 1). A
 market is the cleanest decorrelator we know of. An editor that wants
 independent proof posts a NIP-90-style job — "falsify this claim. Here is
-the signed evidence bundle and the oracle" — and *strangers'* editors,
+the signed evidence bundle and the oracle" — and _strangers'_ editors,
 running different models, different toolchains, different priors, compete
 to break it for sats. Paid independent falsification is not a nice-to-have
 on top of the assurance pipeline. It is the only scalable source of the
@@ -648,7 +648,7 @@ libraries, adjudicated false greens — verification-grade ground truth, the
 K_IP^ver the paper says makes risk insurable — become sellable as NIP-DS
 bundles with canonical digests: pay, receive, verify the digest, reuse the
 proof. Verification amortizes across the network instead of being re-run
-inside every editor. Money in, *checked* data out.
+inside every editor. Money in, _checked_ data out.
 
 Settlement and provenance ride the same rails — the deep dive's
 observation that "the same rails that settle payments can also carry the
@@ -671,7 +671,7 @@ editor inherits it the moment the IDE binds to Pylon identity.
 **Protocol-complete, settlement-free:** `packages/nip90` implements the
 market grammar — job kinds, the labor lifecycle, provider bonds,
 content-addressed closeout receipts, dataset kinds — with tests and proof
-scripts, and *by explicit design* "moves no sats, opens no escrow, grants
+scripts, and _by explicit design_ "moves no sats, opens no escrow, grants
 no settlement authority." The receipts are real. The money is not.
 
 **Deliberately retired or inert:** Pylon's wallet actions return
@@ -684,9 +684,9 @@ current product focus. The network described in §1 was built, ran, paid
 real sats on camera — and its money paths are currently, intentionally,
 off.
 
-So the honest statement is symmetric with Addendum I: the *identity* half
-is live, the *market grammar* is implemented and tested, and the
-*settlement* half is a deliberate zero awaiting a product decision, not a
+So the honest statement is symmetric with Addendum I: the _identity_ half
+is live, the _market grammar_ is implemented and tested, and the
+_settlement_ half is a deliberate zero awaiting a product decision, not a
 technical unknown. Re-activation is a bounded list — bind IDE identity to
 the existing Pylon keypair. Sign the evidence objects the IDE already
 mints. Re-enable a wallet path on the MDK stack that episode 235 proved
@@ -698,7 +698,7 @@ switches. It argues they are worth flipping.
 ### 5. Why this completes the argument
 
 The essay's core claim was that verification must be structural, not
-voluntary. The deep dive added that it must also be *economic*: markets
+voluntary. The deep dive added that it must also be _economic_: markets
 under-supply verification unless it is priced, and "durable advantage
 belongs not to those who generate output but to those who can certify it,
 insure it, and absorb the liability when it fails." A keypair and a wallet
@@ -711,8 +711,8 @@ Reed's Law then does the rest. Editors that can pay each other for proof
 form verification coalitions at machine speed — micro-markets around a
 single falsifier, standing guilds around a test suite, bonded underwriters
 around a release. The group-forming network the transcripts describe was
-always, at bottom, a network of parties who can *check each other's work
-and settle on it*. The editor is simply the right terminal for it: the
+always, at bottom, a network of parties who can _check each other's work
+and settle on it_. The editor is simply the right terminal for it: the
 place where the claims are born is the place where they should be signed,
 priced, verified, and paid for.
 
@@ -742,7 +742,7 @@ by-construction controls. IDE-07's acceptance oracle decoded a real
 packaged artifact, and that accepted build is the daily driver. The Full
 Auto core's proof class is literally "owner-real development" — the
 feature that builds the product was proven by building the product. The
-loop exists. What follows is making each rung of it *evidence* instead of
+loop exists. What follows is making each rung of it _evidence_ instead of
 practice.
 
 ### 2. The dogfood ladder
@@ -796,13 +796,13 @@ Here is the honest gap the open-issue review exposes. The repository has
 roughly eighty workspace projects — the web app and its Cloud Run
 monolith, Pylon, the desktop app, mobile, the Cloud crates, dozens of
 packages — plus routes, IPC boundaries, public APIs, and release
-pipelines. Against that surface it has real but *uneven* verification
+pipelines. Against that surface it has real but _uneven_ verification
 assets: one completion gate (`pnpm run check`), the behavior-contract
 registry with oracle enforcement, ProductSpec/AssuranceSpec validators
 with one fully-CONFIRMED precedent (the MVP's 18 obligations, including
 real mutation receipts under `openagents.mutation.v1`), the promise
 registry, Electron smoke and QA harness suites, and STE document checks.
-What does not exist — in the codebase or in any open issue — is the *map*:
+What does not exist — in the codebase or in any open issue — is the _map_:
 a typed inventory that binds every surface to its oracle, or to an honest
 `unverified` tag. IDE-10 through IDE-19, SBX, Full Auto closure, and the
 DIST chain each verify their own slice. Nothing owns the whole.
@@ -849,6 +849,18 @@ repository's own rules, ASSURE-REPO needs admission through the Sol
 roadmap and owner acceptance — feature issues are not self-service, and
 this essay, per its standing header, dispatches nothing. It is the
 argument for the packet, not the packet.
+
+**Update (2026-07-19):** ASSURE-REPO was owner-admitted (epic
+[#9055](https://github.com/OpenAgentsInc/openagents/issues/9055),
+ProductSpec `specs/openagents/assure-repo-codebase-verification.product-spec.md`)
+and all five packets AR-0 through AR-4 (#9056–#9060) are **delivered** and on
+`main` as `@openagentsinc/assure-repo`. The map now exists: a deterministic
+surface inventory with loss accounting (154 surfaces, zero silent), obligation
+grading that never fabricates `observed`/`accepted`, a demonstrated-by-mutation
+false-green audit, a standing sweep with receipts, and drift oracles that
+already caught real stale claims in the governing docs. Program overview:
+[`docs/assure-repo/README.md`](../assure-repo/README.md). The paragraphs above
+are retained as the original argument for the packet; the packet now ships.
 
 ### 4. Why the bootstrap is the proof
 
