@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os"
 import path from "node:path"
 
+import { extractFile } from "@electron/asar"
 import { Schema } from "effect"
 import { chromium, type Browser, type Page } from "playwright"
 
@@ -260,14 +261,15 @@ const main = async (): Promise<void> => {
       disclosureText.includes("claude-pylon-3") &&
       disclosureText.includes("ide.placement.desktop-local")
     const noRemoteIndexDependencyDisclosed = disclosureText.includes("No remote index dependency")
-    const tokyoNightBundled = await page.evaluate(async () => {
-      const resource = performance.getEntriesByType("resource")
-        .map(entry => entry.name)
-        .find(name => name.includes("/ide-editor/") && name.endsWith(".js"))
-      if (resource === undefined) return false
-      return (await fetch(resource).then(response => response.text())).includes("openagents-tokyo-night")
-    })
-    const vimAndTokyoNightPresent = await vimControl.isVisible() && tokyoNightBundled
+    // Chromium intentionally exposes no Resource Timing entries for the
+    // privileged custom scheme. Inspect the exact packaged ASAR bytes instead
+    // of weakening the assertion or relying on the mutable source checkout.
+    const editorBundle = extractFile(
+      path.join(packagedAppPath, "Contents", "Resources", "app.asar"),
+      "dist/renderer/ide-editor/editor.js",
+    ).toString("utf8")
+    const vimAndTokyoNightPresent = await vimControl.isVisible() &&
+      editorBundle.includes("openagents-tokyo-night")
     const keyboardOperable = await page.evaluate(() => document.activeElement !== null) &&
       accepted.receipts.length > 0 && undone.receipts.length > accepted.receipts.length
     const focusAndEscape = cancelled.receipts.some((receipt: any) => receipt.decision?._tag === "Cancel")

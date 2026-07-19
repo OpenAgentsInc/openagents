@@ -168,9 +168,13 @@ const hostOperation = async (
     const input = inputFor(`host-${intent._tag}-${decide ?? "start"}`, intent)
     const started = await host.command({ _tag: "Start", input })
     if (started._tag !== "Succeeded") throw new Error(started.message)
-    await new Promise(resolve => setTimeout(resolve, 0))
     if (decide === undefined) return
-    const snapshot = await host.snapshot()
+    let snapshot = await host.snapshot()
+    const deadline = performance.now() + 1_000
+    while (decide !== "cancel" && snapshot.candidates.length === 0 && performance.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 1))
+      snapshot = await host.snapshot()
+    }
     const candidate = snapshot.candidates.at(-1)
     const common = {
       decisionRef: IdeCursorDecisionRefSchema.make(`ide.cursor-decision.benchmark.${intent._tag}.${decide}`),

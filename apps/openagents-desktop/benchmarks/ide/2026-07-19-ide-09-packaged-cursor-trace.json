@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "openagents.ide-cursor-packaged-trace.v1",
+  "candidateCommitSha": "8993f2bfaf41c11fd02b1ee693e317cb39db7913",
+  "fixtureCohort": "deterministic_claude_query",
+  "steps": [
+    "fable_turn",
+    "manifest",
+    "completion",
+    "partial_accept",
+    "undo",
+    "next_edit",
+    "compare",
+    "retry",
+    "ask",
+    "escape",
+    "proposal",
+    "disclosure"
+  ],
+  "sequences": {
+    "completion": 1,
+    "nextEdit": 2,
+    "retry": 3,
+    "ask": 4,
+    "proposal": 5
+  },
+  "provider": "fable-local",
+  "account": "claude-pylon-3",
+  "proposalRef": "ide.proposal.cursor-smoke.4b7126fa049bba7c2090387b",
+  "finalReceiptCount": 6
+}

@@ -1,0 +1,166 @@
+{
+  "schemaVersion": "openagents.ide-cursor-acceptance.v1",
+  "issue": "IDE-09",
+  "generatedAt": "2026-07-19T19:56:22.188Z",
+  "candidateCommitSha": "8993f2bfaf41c11fd02b1ee693e317cb39db7913",
+  "mainEvaluationSha": "8993f2bfaf41c11fd02b1ee693e317cb39db7913",
+  "artifactTreeSha256": "sha256:53a1f69dfc5dc2fa2c4980a898eb7079193ef47092ac9bc389dc10e920568ab9",
+  "evidenceRefs": [
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-cursor.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor.png",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor-trace.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-acceptance.json",
+    "apps/openagents-desktop/src/ide/cursor-contract.test.ts",
+    "apps/openagents-desktop/src/ide/cursor-service.test.ts",
+    "apps/openagents-desktop/src/ide/cursor-host.test.ts",
+    "apps/openagents-desktop/src/ide/cursor-workspace-authority.test.ts",
+    "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts",
+    "apps/openagents-desktop/src/ide/cursor-quality-corpus.test.ts",
+    "apps/openagents-desktop/src/renderer/ide/cursor.test.ts",
+    "apps/openagents-desktop/src/renderer/ide/react-cursor.test.tsx",
+    "apps/openagents-desktop/src/renderer/workspace-editor.test.ts",
+    "apps/openagents-desktop/tests/electron-boundary.test.ts",
+    "apps/openagents-desktop/tests/accessibility.test.ts",
+    "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+    "apps/openagents-desktop/scripts/check-ide-boundaries.ts"
+  ],
+  "faultMatrix": [
+    {
+      "fault": "typing, selection, content, and Monaco version churn invalidates the exact request",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/renderer/ide/cursor.test.ts + apps/openagents-desktop/src/renderer/ide/react-cursor.test.tsx"
+    },
+    {
+      "fault": "Escape cancellation interrupts only the active request",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/renderer/ide/cursor.test.ts + apps/openagents-desktop/src/renderer/ide/react-cursor.test.tsx + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor-trace.json"
+    },
+    {
+      "fault": "IME-composing Escape is ignored until composition has ended",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/renderer/ide/react-cursor.test.tsx"
+    },
+    {
+      "fault": "superseded and late provider chunks cannot publish",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-service.test.ts + apps/openagents-desktop/src/ide/cursor-host.test.ts"
+    },
+    {
+      "fault": "stale anchor and changed canonical bytes refuse mutation",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-service.test.ts + apps/openagents-desktop/src/ide/cursor-host.test.ts + apps/openagents-desktop/src/ide/cursor-workspace-authority.test.ts"
+    },
+    {
+      "fault": "wrong sequence, attempt, candidate, or result digest refuses",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-contract.test.ts + apps/openagents-desktop/src/ide/cursor-service.test.ts + apps/openagents-desktop/src/ide/cursor-host.test.ts"
+    },
+    {
+      "fault": "partial accept uses exact word or line prefix and remains undoable",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-workspace-authority.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor-trace.json"
+    },
+    {
+      "fault": "undo restores the exact canonical preimage",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-workspace-authority.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor-trace.json"
+    },
+    {
+      "fault": "multi-file edits submit to IDE-08 and never directly mutate",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-service.test.ts + apps/openagents-desktop/src/ide/cursor-host.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor-trace.json"
+    },
+    {
+      "fault": "provider timeout and SDK failure become typed failures",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts"
+    },
+    {
+      "fault": "malformed structured output becomes invalid_output",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts"
+    },
+    {
+      "fault": "provider tool, MCP, skills, plugins, and session persistence remain disabled",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts"
+    },
+    {
+      "fault": "identity substitution or model mismatch refuses before candidate publication",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts + apps/openagents-desktop/src/ide/cursor-service.test.ts + apps/openagents-desktop/src/ide/cursor-host.test.ts"
+    },
+    {
+      "fault": "semantic retrieval disabled does not require remote embeddings",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-quality-corpus.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-cursor.json"
+    },
+    {
+      "fault": "secret, private, ignored, binary, and too-large context is withheld",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-quality-corpus.test.ts"
+    },
+    {
+      "fault": "malicious instructions and hallucinated paths produce no unsafe publication",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-quality-corpus.test.ts"
+    },
+    {
+      "fault": "offline posture refuses when the selected provider lacks offline capability",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-service.test.ts + apps/openagents-desktop/src/ide/cursor-host.test.ts"
+    },
+    {
+      "fault": "compare and retry retain typed receipts and advance exact sequence",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-service.test.ts + apps/openagents-desktop/src/ide/cursor-host.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor-trace.json"
+    },
+    {
+      "fault": "renderer/provider/Monaco cannot bypass main document authority",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/tests/electron-boundary.test.ts + apps/openagents-desktop/scripts/check-ide-boundaries.ts"
+    },
+    {
+      "fault": "shutdown disposes active requests, fibers, subscriptions, and candidate state",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/cursor-service.test.ts + apps/openagents-desktop/src/ide/cursor-host.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-cursor.json"
+    }
+  ],
+  "architecture": {
+    "oneSchemaGraph": true,
+    "effectServices": true,
+    "rendererAuthority": false,
+    "providerAuthority": false,
+    "harnessAuthority": false,
+    "monacoAuthority": false,
+    "embeddingsRequired": false,
+    "silentFallback": false
+  },
+  "accessibility": {
+    "keyboard": true,
+    "screenReaderLabels": true,
+    "focusEscape": true,
+    "vimOnOff": true,
+    "imeComposition": true,
+    "reducedMotion": true,
+    "zoomAndMinimumWindow": true,
+    "tokyoNightNonColorCues": true
+  },
+  "assuranceLifecycle": "proposed",
+  "ownerDisposition": "unreviewed",
+  "realProviderCohort": {
+    "disposition": "not_run",
+    "reason": "The repeatable acceptance cohort uses the explicit packaged deterministic Claude-query fixture; no owner-authorized provider spend or live credential lane was used."
+  },
+  "rollbackTargetSha": "2704d5904879fb5fe929f31445493249f5859f0f",
+  "claimedTargets": [
+    "darwin-arm64"
+  ],
+  "laterGaps": [
+    "Real-provider quality and latency remain a separately armed cohort; deterministic fixture scores are not represented as model quality.",
+    "IDE-10 through IDE-19 terminal, SCM, extension, remote, browser, parity, and closure packets remain open.",
+    "Independent owner acceptance for Desktop AC-17/AC-43 and Cursor CP-AC-20 remains proposed and unreviewed."
+  ],
+  "passed": true
+}

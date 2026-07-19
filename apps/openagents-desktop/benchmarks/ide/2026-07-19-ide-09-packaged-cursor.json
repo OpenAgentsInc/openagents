@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "openagents.ide-cursor-packaged-journey.v1",
+  "issue": "IDE-09",
+  "capturedAt": "2026-07-19T19:56:16.137Z",
+  "candidateCommitSha": "8993f2bfaf41c11fd02b1ee693e317cb39db7913",
+  "artifactTreeSha256": "sha256:53a1f69dfc5dc2fa2c4980a898eb7079193ef47092ac9bc389dc10e920568ab9",
+  "target": "darwin-arm64",
+  "journey": {
+    "completionRendered": true,
+    "partialAcceptApplied": true,
+    "undoRestored": true,
+    "nextEditRendered": true,
+    "askRendered": true,
+    "proposalSubmittedToIde08": true,
+    "compareAndRetryReceipted": true,
+    "identityDisclosed": true,
+    "noRemoteIndexDependencyDisclosed": true,
+    "keyboardOperable": true,
+    "focusAndEscape": true,
+    "vimAndTokyoNightPresent": true
+  },
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor.png",
+  "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-09-packaged-cursor-trace.json",
+  "passed": true
+}
