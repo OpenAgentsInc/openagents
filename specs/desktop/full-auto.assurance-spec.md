@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.full.auto.codex.composer.loop"
-assurance_revision: 4
+assurance_revision: 5
 title: "Full Auto Autonomous-Run Assurance Spec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -12,13 +12,13 @@ author: "OpenAgents"
 
 This revision reconciles the Full Auto AssuranceSpec to ProductSpec rev 14, including MemoHarness's released bundle identity, frozen pre-run adaptation, terminal-only experience compilation, independent Blueprint release gate, and Effect/Rust ownership boundary. It preserves rev 3's complete FA-AC-01..68 subject set and adds one explicit obligation for each new FA-AC-69..76 criterion. It establishes what confidence this document is designed to support and what it explicitly does not yet establish.
 
-**What this revision DOES establish:** a real risk model (Risk Model section), extended with MemoHarness privacy, evaluation-leakage, self-promotion, authority-expansion, and provenance-drift risks; explicit local/dev/packaged/owner-real environment profiles with honest capability gaps (Environments section); a criterion-to-obligation map covering every one of the 76 FA-AC-* criteria with no criterion silently dropped from the subject binding (Obligations section, `uncovered_acceptance_criterion` is structurally impossible here); and retention of the 31 previously DESIGNED obligations with their exact existing evidence tier -- not a fabricated claim that old Full Auto tests prove new learning behavior.
+**What this revision DOES establish:** a real risk model (Risk Model section), extended with MemoHarness privacy, evaluation-leakage, self-promotion, authority-expansion, and provenance-drift risks; explicit local/dev/packaged/owner-real environment profiles with honest capability gaps (Environments section); a criterion-to-obligation map covering every one of the 76 FA-AC-\* criteria with no criterion silently dropped from the subject binding (Obligations section, `uncovered_acceptance_criterion` is structurally impossible here); and retention of the 76 DESIGNED obligations with their exact existing evidence tier -- not a fabricated claim that old Full Auto tests prove new learning behavior.
 
-**What this revision explicitly does NOT establish:** (1) Admission. `lifecycle_state` stays `proposed`; no agent may self-admit (Law 10, and #8978's own text: "the implementation/analyzer cannot self-admit"). (2) Full FA-AC-66 closure -- of 76 criteria, 31 have a fully designed obligation in this revision; the remaining 45 stay honestly `needs_design`, including every new FA-AC-69..76 obligation because no MemoHarness production implementation or evidence suite exists yet (see the `custom-criterion-coverage-ledger`). This is a deliberate, disclosed partial pass, not a silent gap. (3) Release or public-claim authority for any obligation, regardless of design completeness -- design readiness is a proof-PLAN property, never an observation; no receipt-ingestion pass has run against this revision, so every obligation's Observation axis is honestly `not_run` per `check_completion_claim` semantics (ASSURANCE_SPEC.md Law 7) even where design is complete. (4) Real-provider (owner-armed Codex/Claude account) evidence for FA-AC-62..65 -- those obligations are designed to the fixture/headless proof rung only; the real-sidebar rung stays an explicit residual pending #8976's own still-open real-provider run. (5) A signed/notarized packaged-build proof for restart/resume (FA-AC-07/08/29 -- FA-AC-09 itself stays needs_design in this pass, see the coverage ledger) -- the only two-OS-process evidence available is `pnpm run smoke:full-auto-restart`, which conditionally falls back to unsigned dev-mode Electron when no Forge package exists locally; this revision cites that evidence at its real tier and does not upgrade it to a release-artifact claim. (6) Any MemoHarness optimizer, experience bank, adapted run, held-out evaluation, Blueprint promotion, privacy deletion, or authority-immunity observation -- those remain future implementation and independent review work.
+**What this revision explicitly does NOT establish:** (1) Admission. `lifecycle_state` stays `proposed`; no producer may self-admit (Law 10, and #8978's own text: "the implementation/analyzer cannot self-admit"). (2) Execution completeness. All 76 criteria now have complete proof designs, but a designed oracle is not a passing observation. The Observation axis remains unmet wherever no source-bound receipt is named. (3) Release or public-claim authority. Design readiness and the owner-real development receipt do not authorize a release or public claim. (4) A signed/notarized packaged-build proof for restart/resume (FA-AC-07/08/29). The two-OS-process smoke can fall back to unsigned dev-mode Electron; this revision does not upgrade that evidence to release-artifact proof. (5) Any MemoHarness optimizer, experience bank, adapted run, held-out evaluation, Blueprint promotion, privacy deletion, or authority-immunity observation. FA-AC-69..76 now have explicit proof plans, but their referenced production/evidence seam does not yet exist and their observations remain `INCONCLUSIVE`. (6) Independent admission of the owner-real receipt. `docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json` proves the six named rows and same-pass rotation at source `3123d926a3` in an owner-real development profile; it is neither independently admitted by this producer nor evidence for a signed package.
 
 ## Subject
 
-This revision binds the subject to the exact ProductSpec rev-14 bytes at `specs/desktop/full-auto.product-spec.md`. All 76 `FA-AC-01` through `FA-AC-76` criterion refs are bound below. The eight MemoHarness criteria are new and therefore receive new base obligations with exact source snapshots/digests; they remain `needs_design` rather than borrowing evidence from the pre-MemoHarness run loop.
+This revision binds the subject to the exact ProductSpec rev-14 bytes at `specs/desktop/full-auto.product-spec.md`. All 76 `FA-AC-01` through `FA-AC-76` criterion refs are bound below. The eight MemoHarness criteria receive exact, separately gated contract/model obligations and do not borrow evidence from the pre-MemoHarness run loop.
 
 A future rebind to ProductSpec rev 15+ must repeat this same digest/criterion-set update; per ASSURANCE_SPEC.md Law/§13, any ProductSpec revision or intent change stales this AssuranceSpec until explicit reconciliation.
 
@@ -114,7 +114,7 @@ A future rebind to ProductSpec rev 15+ must repeat this same digest/criterion-se
 
 ## Risk Model
 
-The bound ProductSpec has no `## Risks` section (confirmed by the mechanical proposal's `source_snapshot`), so no risk is inferred from ProductSpec prose (ASSURANCE_SPEC.md §1: an AssuranceSpec risk model is reviewer-authored, never auto-derived from product intent text). The 14 risks below are authored directly from (a) the nine highest-risk clusters #8978 itself names, (b) the concrete 2026-07-17 six-hour-stall incident (`docs/fable/2026-07-17-full-auto-implementation-audit.md`) that motivated ProductSpec rev 10, and (c) root `INVARIANTS.md`'s Full Auto Authority Boundaries entry. Each risk below is referenced by at least one designed obligation's (implicit) motivation; the `custom-evidence-tier-ledger` section maps risks to the obligations that address them where that mapping is not already obvious from the risk statement.
+The bound ProductSpec has no `## Risks` section (confirmed by the mechanical proposal's `source_snapshot`), so no risk is inferred from ProductSpec prose (ASSURANCE_SPEC.md §1: an AssuranceSpec risk model is reviewer-authored, never auto-derived from product intent text). The 19 risks below are authored directly from (a) the nine highest-risk clusters #8978 itself names, (b) the concrete 2026-07-17 six-hour-stall incident (`docs/fable/2026-07-17-full-auto-implementation-audit.md`) that motivated ProductSpec rev 10, (c) root `INVARIANTS.md`'s Full Auto Authority Boundaries entry, and (d) ProductSpec rev 14's MemoHarness privacy, evaluation, promotion, authority, and provenance boundaries. Each risk below is referenced by at least one designed obligation's motivation; the `custom-evidence-tier-ledger` section maps risks to the obligations that address them where that mapping is not already obvious from the risk statement.
 
 ```assurancespec-risks
 {
@@ -203,11 +203,11 @@ The bound ProductSpec has no `## Risks` section (confirmed by the mechanical pro
 
 ## Assurance Scope
 
-Every one of the 76 executable FA-AC-* criteria from ProductSpec rev 14 is in assurance scope (see Subject). No criterion carries a `not_applicable` disposition in this revision -- rev 10's own Criterion Disposition Map already resolved FA-AC-01..37 (`changed-superseded`, `retained`, or `deferred`) and none of those dispositions map to "does not need assurance"; a superseded criterion's assurance obligation is superseded by its replacement criterion's obligation, not dropped. In scope: local unit/module proof (Vite Plus `vp test`), in-process HTTP control-server contract proof, two-OS-process dev-mode Electron smoke proof, the still-outstanding real-provider owner-sidebar proof tier (#8976), and future MemoHarness unit/contract/privacy/evaluation/release/architecture evidence explicitly required by FA-AC-69..76. Out of scope for THIS revision (named explicitly rather than silently omitted): a genuinely signed/notarized packaged-build resume proof (no signing runbook was executed in this pass); a new TLA+ formal model (the repository has none for Full Auto -- see Formal-model note below and the `custom-evidence-tier-ledger`); independent re-verification of claimed commit SHAs in the FullAutoRunReport against live git state; and any execution claim for the not-yet-implemented MemoHarness experience, retrieval, adaptation, optimization, deletion, or Blueprint release seams.
+Every one of the 76 executable FA-AC-\* criteria from ProductSpec rev 14 is in assurance scope (see Subject). No criterion carries a `not_applicable` disposition in this revision -- rev 10's own Criterion Disposition Map already resolved FA-AC-01..37 (`changed-superseded`, `retained`, or `deferred`) and none of those dispositions map to "does not need assurance"; a superseded criterion's assurance obligation is superseded by its replacement criterion's obligation, not dropped. In scope: local unit/module proof (Vite Plus `vp test`), in-process HTTP control-server contract proof, two-OS-process dev-mode Electron smoke proof, the landed owner-real development receipt for #8976's six rows, and future MemoHarness unit/contract/privacy/evaluation/release/architecture evidence explicitly required by FA-AC-69..76. Out of scope for THIS revision (named explicitly rather than silently omitted): a genuinely signed/notarized packaged-build resume proof (no signing runbook was executed in this pass); a new TLA+ formal model (the repository has none for Full Auto -- see Formal-model note below and the `custom-evidence-tier-ledger`); independent re-verification of claimed commit SHAs in the FullAutoRunReport against live git state; independent admission of the owner-real receipt; and any execution claim for the not-yet-implemented MemoHarness experience, retrieval, adaptation, optimization, deletion, or Blueprint release seams.
 
 ## Environments
 
-Four Environment Profiles are declared below, matching the real evidence tiers this codebase actually produces today (no profile claims a capability the repository does not demonstrate). `ENV-FA-LOCAL-UNIT-1` covers the overwhelming majority of cited evidence: real production module composition (real `full-auto-registry.ts`, `full-auto-run-registry.ts`, `full-auto-reconcile.ts`, `thread-store.ts`, `local-turn-journal.ts`, and real in-process Effect HTTP control servers), in-process, with no live Electron process and no live provider. `ENV-FA-DEV-TWO-PROCESS-1` covers `pnpm run smoke:full-auto-restart` / `smoke:full-auto-control`: two REAL OS processes launching a real Electron app, but conditionally falling back to unsigned dev-mode `electron .` when no local Forge package exists -- this profile's capability list says so explicitly rather than implying a packaged build. `ENV-FA-PACKAGED-UNSIGNED-1` names the conditional Forge-packaged path the smoke script prefers when `out/OpenAgents-darwin-arm64/OpenAgents.app` exists locally; it is marked `signing_unverified` because no invocation of `apps/oa-updates/docs/release-signing-runbook.md` occurred in this pass -- treat any resume claim under this profile as unsigned-local, not release-grade, until that runbook runs. `ENV-FA-OWNER-REAL-SIDEBAR-1` is the real linked-Codex/Claude-account, real-Desktop-sidebar tier #8976's own six named tests require; it is currently UNAVAILABLE in this pass (no `owner_real`-classed receipt exists anywhere in the repository as of this authoring commit -- confirmed by grep) and stays `status: "proposed"` pending an explicit owner-armed run, never silently treated as satisfied by `ENV-FA-LOCAL-UNIT-1`'s fixture/headless machinery evidence for the same six tests.
+Four Environment Profiles are declared below, matching the real evidence tiers this codebase actually produces today (no profile claims a capability the repository does not demonstrate). `ENV-FA-LOCAL-UNIT-1` covers the overwhelming majority of cited evidence: real production module composition (real `full-auto-registry.ts`, `full-auto-run-registry.ts`, `full-auto-reconcile.ts`, `thread-store.ts`, `local-turn-journal.ts`, and real in-process Effect HTTP control servers), in-process, with no live Electron process and no live provider. `ENV-FA-DEV-TWO-PROCESS-1` covers `pnpm run smoke:full-auto-restart` / `smoke:full-auto-control`: two real OS processes launching a real Electron app, but conditionally falling back to unsigned dev-mode `electron .` when no local Forge package exists. `ENV-FA-PACKAGED-UNSIGNED-1` names the conditional Forge-packaged path the smoke script prefers when `out/OpenAgents-darwin-arm64/OpenAgents.app` exists locally; it is marked `signing_unverified`, so it is not release-grade. `ENV-FA-OWNER-REAL-SIDEBAR-1` now has exact development-tier evidence in `docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json`: source `3123d926a3`, owner-real macOS arm64 development build, real Codex app-server and Claude Agent SDK lanes, all six named rows PASS, and one same-pass rotation PASS. The profile remains `status: "proposed"` because this AssuranceSpec has not been independently admitted; proposed status no longer means the evidence is absent.
 
 ```assurancespec-environments
 {
@@ -230,6 +230,11 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     }
   ],
   "repository_inventory": {
+    "state": "clean",
+    "repository_label": "work",
+    "head": "78f2230e2c1578cc70b36ee426e5287b4b2b105c",
+    "tree": "0f1f86880586f6eca17c34d9cc292582691b800f",
+    "tracked_file_count": 9814,
     "candidate_artifact_refs": [
       "apps/acceptance-runner/src/daemon.test.ts",
       "apps/acceptance-runner/src/e2e-local-proof.test.ts",
@@ -274,6 +279,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/oa-updates/src/openagents-desktop-seed.test.ts",
       "apps/oa-updates/src/production-entrypoint.test.ts",
       "apps/oa-updates/src/publish-builder.test.ts",
+      "apps/oa-updates/src/publish-ota-contract.test.ts",
       "apps/oa-updates/src/publish.test.ts",
       "apps/oa-updates/src/pylon-release.test.ts",
       "apps/oa-updates/src/pylon-seed.test.ts",
@@ -292,6 +298,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-audio/test/live-script-contracts.test.ts",
       "apps/openagents-audio/test/privacy.test.ts",
       "apps/openagents-audio/test/retention.test.ts",
+      "apps/openagents-desktop/scripts/check-ide-boundaries.test.ts",
       "apps/openagents-desktop/src/acp-provider-host.test.ts",
       "apps/openagents-desktop/src/acp-provider-path-store.test.ts",
       "apps/openagents-desktop/src/assurance-receipt-bridge.test.ts",
@@ -319,6 +326,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/src/codex-history.test.ts",
       "apps/openagents-desktop/src/codex-host-contract.test.ts",
       "apps/openagents-desktop/src/codex-host-services.test.ts",
+      "apps/openagents-desktop/src/codex-local-contract.test.ts",
       "apps/openagents-desktop/src/codex-local-runtime.test.ts",
       "apps/openagents-desktop/src/codex-native-event-plane.test.ts",
       "apps/openagents-desktop/src/codex-preflight.test.ts",
@@ -330,6 +338,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/src/desktop-codex-usage-outbox.test.ts",
       "apps/openagents-desktop/src/desktop-codex-usage-reporter.test.ts",
       "apps/openagents-desktop/src/desktop-host-lifecycle.test.ts",
+      "apps/openagents-desktop/src/desktop-launch-context.test.ts",
       "apps/openagents-desktop/src/desktop-launch-workspace.test.ts",
       "apps/openagents-desktop/src/desktop-operation-context.test.ts",
       "apps/openagents-desktop/src/desktop-renderer-location.test.ts",
@@ -344,7 +353,10 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/src/full-auto-followup.test.ts",
       "apps/openagents-desktop/src/full-auto-hydration.integration.test.ts",
       "apps/openagents-desktop/src/full-auto-lane.test.ts",
+      "apps/openagents-desktop/src/full-auto-liveness.test.ts",
+      "apps/openagents-desktop/src/full-auto-mission.test.ts",
       "apps/openagents-desktop/src/full-auto-provider-handoff.test.ts",
+      "apps/openagents-desktop/src/full-auto-retry-rotation-model.test.ts",
       "apps/openagents-desktop/src/full-auto-routing.test.ts",
       "apps/openagents-desktop/src/full-auto-run-analyzer.test.ts",
       "apps/openagents-desktop/src/full-auto-run-control-server.test.ts",
@@ -356,6 +368,10 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/src/git-github-host.test.ts",
       "apps/openagents-desktop/src/git-review-corpus.node.test.ts",
       "apps/openagents-desktop/src/history-thread-actions.test.ts",
+      "apps/openagents-desktop/src/ide/baseline-contract.test.ts",
+      "apps/openagents-desktop/src/ide/project-contract.test.ts",
+      "apps/openagents-desktop/src/ide/project-service.test.ts",
+      "apps/openagents-desktop/src/isolated-app-proof.test.ts",
       "apps/openagents-desktop/src/live-agent-graph-host.test.ts",
       "apps/openagents-desktop/src/live-agent-graph-local.test.ts",
       "apps/openagents-desktop/src/live-proof.test.ts",
@@ -363,6 +379,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/src/local-turn-journal.test.ts",
       "apps/openagents-desktop/src/local-turn-recovery.test.ts",
       "apps/openagents-desktop/src/local-turn-text-persistence.test.ts",
+      "apps/openagents-desktop/src/macos-document-open.test.ts",
       "apps/openagents-desktop/src/macos-update-applier.test.ts",
       "apps/openagents-desktop/src/mcp-config-host.test.ts",
       "apps/openagents-desktop/src/mvp-assurance-bridge.test.ts",
@@ -382,6 +399,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/src/renderer/assurance-spec-workspace.test.ts",
       "apps/openagents-desktop/src/renderer/branding.test.ts",
       "apps/openagents-desktop/src/renderer/command-notice.test.ts",
+      "apps/openagents-desktop/src/renderer/command-shortcuts.test.ts",
       "apps/openagents-desktop/src/renderer/composer-focus.test.ts",
       "apps/openagents-desktop/src/renderer/composer-image-acquisition.test.ts",
       "apps/openagents-desktop/src/renderer/composer-images.test.ts",
@@ -393,6 +411,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/src/renderer/git-panel.test.ts",
       "apps/openagents-desktop/src/renderer/history-restore.test.ts",
       "apps/openagents-desktop/src/renderer/history-workspace.test.ts",
+      "apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.test.ts",
       "apps/openagents-desktop/src/renderer/latest-only-queue.test.ts",
       "apps/openagents-desktop/src/renderer/local-harness.test.ts",
       "apps/openagents-desktop/src/renderer/markdown.test.ts",
@@ -533,6 +552,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/tests/oa-dev-supervisor.test.ts",
       "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
       "apps/openagents-desktop/tests/package-macos.test.ts",
+      "apps/openagents-desktop/tests/pierre-tree-package.test.ts",
       "apps/openagents-desktop/tests/plugin-config.test.ts",
       "apps/openagents-desktop/tests/provider-accounts.test.ts",
       "apps/openagents-desktop/tests/publish-release.test.ts",
@@ -605,6 +625,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-mobile/tests/native-session-recovery.test.ts",
       "apps/openagents-mobile/tests/native-session-vault.test.ts",
       "apps/openagents-mobile/tests/ota-polling.test.ts",
+      "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+      "apps/openagents-mobile/tests/sarah-speech-client.test.ts",
       "apps/openagents-mobile/tests/t3-mobile-component-census.test.ts",
       "apps/openagents.com/apps/start/src/desktop-download-resolver.server.test.ts",
       "apps/openagents.com/apps/start/src/docs/docs-content.test.ts",
@@ -613,2841 +635,2876 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents.com/apps/start/src/khala-sync-proxy.test.ts",
       "apps/openagents.com/apps/start/src/qa-board-projection.server.test.ts",
       "apps/openagents.com/apps/start/src/routes/-activity.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-artanis-accounts.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-artanis-console.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-artanis-traces.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-business-kpi.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-changelog.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-chat-sync-web-core.test.ts",
-      "apps/openagents.com/apps/start/src/routes/-chat-sync.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-clients-preview.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-code.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-components-workbench-page.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-components.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-download.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-forum-khala-motion.test.ts",
-      "apps/openagents.com/apps/start/src/routes/-forum-markdown.test.ts",
-      "apps/openagents.com/apps/start/src/routes/-forum.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-funnel.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-gym.test.tsx",
-      "apps/openagents.com/apps/start/src/routes/-khala-effect-native.test.tsx"
+      "apps/openagents.com/apps/start/src/routes/-artanis-accounts.test.tsx"
     ],
     "declared_scripts": [
       {
-        "command": "playwright install --with-deps chromium",
         "manifest_path": "apps/acceptance-runner/package.json",
-        "name": "playwright:install"
+        "name": "playwright:install",
+        "command": "playwright install --with-deps chromium"
       },
       {
-        "command": "node --import tsx src/run-once.ts",
         "manifest_path": "apps/acceptance-runner/package.json",
-        "name": "run-once"
+        "name": "run-once",
+        "command": "node --import tsx src/run-once.ts"
       },
       {
-        "command": "node --import tsx src/service.ts",
         "manifest_path": "apps/acceptance-runner/package.json",
-        "name": "serve"
+        "name": "serve",
+        "command": "node --import tsx src/service.ts"
       },
       {
-        "command": "vp test --run src/daemon.test.ts",
         "manifest_path": "apps/acceptance-runner/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src/daemon.test.ts"
       },
       {
-        "command": "node --import tsx src/server.ts",
         "manifest_path": "apps/ai-sdk-harness-poc/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "node --import tsx src/server.ts"
       },
       {
-        "command": "node --import tsx src/server.ts",
         "manifest_path": "apps/ai-sdk-harness-poc/package.json",
-        "name": "start"
+        "name": "start",
+        "command": "node --import tsx src/server.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/ai-sdk-harness-poc/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "pnpm run build:cloudrun",
         "manifest_path": "apps/aiur/package.json",
-        "name": "build"
+        "name": "build",
+        "command": "pnpm run build:cloudrun"
       },
       {
-        "command": "vp build --config vite.config.cloudrun.ts --logLevel warn && vp pack src/cloudrun/server.ts --format esm --platform node --out-dir dist/cloudrun",
         "manifest_path": "apps/aiur/package.json",
-        "name": "build:cloudrun"
+        "name": "build:cloudrun",
+        "command": "vp build --config vite.config.cloudrun.ts --logLevel warn && vp pack src/cloudrun/server.ts --format esm --platform node --out-dir dist/cloudrun"
       },
       {
-        "command": "pnpm run deploy:cloudrun",
         "manifest_path": "apps/aiur/package.json",
-        "name": "deploy"
+        "name": "deploy",
+        "command": "pnpm run deploy:cloudrun"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh",
         "manifest_path": "apps/aiur/package.json",
-        "name": "deploy:cloudrun"
+        "name": "deploy:cloudrun",
+        "command": "bash scripts/deploy-cloudrun.sh"
       },
       {
-        "command": "vp dev --config vite.config.cloudrun.ts",
         "manifest_path": "apps/aiur/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "vp dev --config vite.config.cloudrun.ts"
       },
       {
-        "command": "vp preview --config vite.config.cloudrun.ts",
         "manifest_path": "apps/aiur/package.json",
-        "name": "preview"
+        "name": "preview",
+        "command": "vp preview --config vite.config.cloudrun.ts"
       },
       {
-        "command": "vitest run",
         "manifest_path": "apps/aiur/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vitest run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/aiur/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "electron-forge start",
         "manifest_path": "apps/electron-ai-sdk-test/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "electron-forge start"
       },
       {
-        "command": "electron-forge make",
         "manifest_path": "apps/electron-ai-sdk-test/package.json",
-        "name": "make"
+        "name": "make",
+        "command": "electron-forge make"
       },
       {
-        "command": "electron-forge package",
         "manifest_path": "apps/electron-ai-sdk-test/package.json",
-        "name": "package"
+        "name": "package",
+        "command": "electron-forge package"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/electron-ai-sdk-test/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx src/index.ts",
         "manifest_path": "apps/forum/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "node --import tsx src/index.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "apps/forum/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/forum/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp pack src/server.ts --format esm --platform node --out-dir dist",
         "manifest_path": "apps/khala-capture/package.json",
-        "name": "build:cloudrun"
+        "name": "build:cloudrun",
+        "command": "vp pack src/server.ts --format esm --platform node --out-dir dist"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh",
         "manifest_path": "apps/khala-capture/package.json",
-        "name": "deploy:cloudrun"
+        "name": "deploy:cloudrun",
+        "command": "bash scripts/deploy-cloudrun.sh"
       },
       {
-        "command": "node --watch --import tsx src/server.ts",
         "manifest_path": "apps/khala-capture/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "node --watch --import tsx src/server.ts"
       },
       {
-        "command": "node --import tsx src/server.ts",
         "manifest_path": "apps/khala-capture/package.json",
-        "name": "start"
+        "name": "start",
+        "command": "node --import tsx src/server.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "apps/khala-capture/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/khala-capture/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp pack src/server.ts --format esm --platform node --out-dir dist",
         "manifest_path": "apps/khala-live-hub/package.json",
-        "name": "build:cloudrun"
+        "name": "build:cloudrun",
+        "command": "vp pack src/server.ts --format esm --platform node --out-dir dist"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh",
         "manifest_path": "apps/khala-live-hub/package.json",
-        "name": "deploy:cloudrun"
+        "name": "deploy:cloudrun",
+        "command": "bash scripts/deploy-cloudrun.sh"
       },
       {
-        "command": "node --watch --import tsx src/server.ts",
         "manifest_path": "apps/khala-live-hub/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "node --watch --import tsx src/server.ts"
       },
       {
-        "command": "node --import tsx src/server.ts",
         "manifest_path": "apps/khala-live-hub/package.json",
-        "name": "start"
+        "name": "start",
+        "command": "node --import tsx src/server.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "apps/khala-live-hub/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/khala-live-hub/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp pack src/main.ts --format esm --platform node --out-dir dist",
         "manifest_path": "apps/oa-queue-worker/package.json",
-        "name": "build"
+        "name": "build",
+        "command": "vp pack src/main.ts --format esm --platform node --out-dir dist"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh",
         "manifest_path": "apps/oa-queue-worker/package.json",
-        "name": "deploy"
+        "name": "deploy",
+        "command": "bash scripts/deploy-cloudrun.sh"
       },
       {
-        "command": "node --import tsx src/main.ts",
         "manifest_path": "apps/oa-queue-worker/package.json",
-        "name": "serve"
+        "name": "serve",
+        "command": "node --import tsx src/main.ts"
       },
       {
-        "command": "vp test --run src",
         "manifest_path": "apps/oa-queue-worker/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/oa-queue-worker/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp pack src/serve.ts --out-dir dist-server --format esm --platform node --target node24 --minify",
         "manifest_path": "apps/oa-updates/package.json",
-        "name": "build:server"
+        "name": "build:server",
+        "command": "vp pack src/serve.ts --out-dir dist-server --format esm --platform node --target node24 --minify"
       },
       {
-        "command": "node --import tsx scripts/publish-desktop-release.ts",
         "manifest_path": "apps/oa-updates/package.json",
-        "name": "desktop:publish"
+        "name": "desktop:publish",
+        "command": "node --import tsx scripts/publish-desktop-release.ts"
       },
       {
-        "command": "node --import tsx src/serve.ts",
         "manifest_path": "apps/oa-updates/package.json",
-        "name": "serve"
+        "name": "serve",
+        "command": "node --import tsx src/serve.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "apps/oa-updates/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "node scripts/verify-test-typecheck.mjs",
         "manifest_path": "apps/oa-updates/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "node scripts/verify-test-typecheck.mjs"
       },
       {
-        "command": "vp pack src/cloudrun.ts --format esm --platform node --out-dir dist",
         "manifest_path": "apps/openagents-audio-edge/package.json",
-        "name": "build"
+        "name": "build",
+        "command": "vp pack src/cloudrun.ts --format esm --platform node --out-dir dist"
       },
       {
-        "command": "bash deploy-cloudrun.sh",
         "manifest_path": "apps/openagents-audio-edge/package.json",
-        "name": "deploy"
+        "name": "deploy",
+        "command": "bash deploy-cloudrun.sh"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents-audio-edge/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp pack src/main.ts --format esm --platform node --out-dir dist",
         "manifest_path": "apps/openagents-audio/package.json",
-        "name": "build:cloudrun"
+        "name": "build:cloudrun",
+        "command": "vp pack src/main.ts --format esm --platform node --out-dir dist"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh",
         "manifest_path": "apps/openagents-audio/package.json",
-        "name": "deploy:cloudrun"
+        "name": "deploy:cloudrun",
+        "command": "bash scripts/deploy-cloudrun.sh"
       },
       {
-        "command": "node --import tsx scripts/live-barge-smoke.ts",
         "manifest_path": "apps/openagents-audio/package.json",
-        "name": "smoke:barge:live"
+        "name": "smoke:barge:live",
+        "command": "node --import tsx scripts/live-barge-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/live-retention-smoke.ts",
         "manifest_path": "apps/openagents-audio/package.json",
-        "name": "smoke:live"
+        "name": "smoke:live",
+        "command": "node --import tsx scripts/live-retention-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/live-tts-smoke.ts",
         "manifest_path": "apps/openagents-audio/package.json",
-        "name": "smoke:tts:live"
+        "name": "smoke:tts:live",
+        "command": "node --import tsx scripts/live-tts-smoke.ts"
       },
       {
-        "command": "node --import tsx src/main.ts",
         "manifest_path": "apps/openagents-audio/package.json",
-        "name": "start"
+        "name": "start",
+        "command": "node --import tsx src/main.ts"
       },
       {
-        "command": "vp test --run src test",
         "manifest_path": "apps/openagents-audio/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src test"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents-audio/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/build.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "build"
+        "name": "build",
+        "command": "node --import tsx scripts/build.ts"
       },
       {
-        "command": "node --import tsx scripts/dev.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "dev"
+        "name": "check:ide-boundaries",
+        "command": "node --import tsx scripts/check-ide-boundaries.ts"
       },
       {
-        "command": "node --import tsx scripts/dev.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "dev:preview"
+        "name": "dev",
+        "command": "node --import tsx scripts/dev.ts"
       },
       {
-        "command": "node --import tsx scripts/full-auto-cli.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "full-auto"
+        "name": "dev:preview",
+        "command": "node --import tsx scripts/dev.ts"
       },
       {
-        "command": "node --import tsx scripts/generate-codex-conformance-report.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "generate:codex-conformance"
+        "name": "full-auto",
+        "command": "node --import tsx scripts/full-auto-cli.ts"
       },
       {
-        "command": "node --import tsx scripts/build.ts && node --import tsx scripts/run-live-proof.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "live-proof"
+        "name": "generate:codex-conformance",
+        "command": "node --import tsx scripts/generate-codex-conformance-report.ts"
       },
       {
-        "command": "node --import tsx scripts/prepare-macos-maker.ts && node --import tsx scripts/stage-and-package.ts --target darwin-arm64 --mode make",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "make:mac"
+        "name": "ide-baseline",
+        "command": "node --import tsx scripts/ide-baseline.ts"
       },
       {
-        "command": "node --import tsx scripts/build.ts && node --import tsx scripts/run-mvp-proof.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "mvp-proof"
+        "name": "live-proof",
+        "command": "node --import tsx scripts/build.ts && node --import tsx scripts/run-live-proof.ts"
       },
       {
-        "command": "node --import tsx scripts/stage-and-package.ts --target darwin-arm64 --mode package",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "package:mac"
+        "name": "make:mac",
+        "command": "node --import tsx scripts/prepare-macos-maker.ts && node --import tsx scripts/stage-and-package.ts --target darwin-arm64 --mode make"
       },
       {
-        "command": "node --import tsx scripts/build.ts && node --import tsx scripts/visual-baseline-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "qa:visual"
+        "name": "mvp-proof",
+        "command": "node --import tsx scripts/build.ts && node --import tsx scripts/run-mvp-proof.ts"
       },
       {
-        "command": "node --import tsx scripts/run-release-acceptance.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "release-acceptance"
+        "name": "package:mac",
+        "command": "node --import tsx scripts/stage-and-package.ts --target darwin-arm64 --mode package"
       },
       {
-        "command": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron .",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke"
+        "name": "qa:visual",
+        "command": "node --import tsx scripts/build.ts && node --import tsx scripts/visual-baseline-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/acp-packaged-release-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:acp-release"
+        "name": "release-acceptance",
+        "command": "node --import tsx scripts/run-release-acceptance.ts"
       },
       {
-        "command": "node --import tsx scripts/codex-control-plane-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:codex-control-plane"
+        "name": "smoke",
+        "command": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 electron ."
       },
       {
-        "command": "node --import tsx scripts/codex-ecosystem-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:codex-ecosystem"
+        "name": "smoke:acp-release",
+        "command": "node --import tsx scripts/acp-packaged-release-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/codex-experimental-runtime-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:codex-experimental"
+        "name": "smoke:codex-control-plane",
+        "command": "node --import tsx scripts/codex-control-plane-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/codex-host-services-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:codex-host-services"
+        "name": "smoke:codex-ecosystem",
+        "command": "node --import tsx scripts/codex-ecosystem-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/codex-app-server-supervisor-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:codex-supervisor"
+        "name": "smoke:codex-experimental",
+        "command": "node --import tsx scripts/codex-experimental-runtime-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/codex-thread-lifecycle-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:codex-thread-lifecycle"
+        "name": "smoke:codex-host-services",
+        "command": "node --import tsx scripts/codex-host-services-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/codex-turn-control-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:codex-turn-control"
+        "name": "smoke:codex-supervisor",
+        "command": "node --import tsx scripts/codex-app-server-supervisor-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/full-auto-control-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:full-auto-control"
+        "name": "smoke:codex-thread-lifecycle",
+        "command": "node --import tsx scripts/codex-thread-lifecycle-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/full-auto-restart-smoke.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:full-auto-restart"
+        "name": "smoke:codex-turn-control",
+        "command": "node --import tsx scripts/codex-turn-control-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_HEADED=1 electron .",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:headed"
+        "name": "smoke:full-auto-control",
+        "command": "node --import tsx scripts/full-auto-control-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_SMOKE_REACT=1 electron .",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "smoke:react"
+        "name": "smoke:full-auto-restart",
+        "command": "node --import tsx scripts/full-auto-restart-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/full-auto-soak.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "soak:full-auto"
+        "name": "smoke:headed",
+        "command": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_HEADED=1 electron ."
       },
       {
-        "command": "node --import tsx scripts/stage-target.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "stage:target"
+        "name": "smoke:react",
+        "command": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_SMOKE_REACT=1 electron ."
       },
       {
-        "command": "node --import tsx scripts/startup-bench.ts",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "startup-bench"
+        "name": "soak:full-auto",
+        "command": "node --import tsx scripts/full-auto-soak.ts"
       },
       {
-        "command": "vp test --run --max-concurrency 1 --root ../.. apps/openagents-desktop",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "test"
+        "name": "stage:target",
+        "command": "node --import tsx scripts/stage-target.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "typecheck"
+        "name": "startup-bench",
+        "command": "node --import tsx scripts/startup-bench.ts"
       },
       {
-        "command": "pnpm run typecheck && pnpm run test && pnpm run build && OPENAGENTS_DESKTOP_SMOKE=1 pnpm run smoke && pnpm run smoke:react",
         "manifest_path": "apps/openagents-desktop/package.json",
-        "name": "verify"
+        "name": "test",
+        "command": "vp test --run --max-concurrency 1 --root ../.. apps/openagents-desktop"
       },
       {
-        "command": "expo start",
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
+      },
+      {
+        "manifest_path": "apps/openagents-desktop/package.json",
+        "name": "verify",
+        "command": "pnpm run typecheck && pnpm run test && pnpm run build && OPENAGENTS_DESKTOP_SMOKE=1 pnpm run smoke && pnpm run smoke:react"
+      },
+      {
         "manifest_path": "apps/openagents-mobile/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "expo start"
       },
       {
-        "command": "expo prebuild",
         "manifest_path": "apps/openagents-mobile/package.json",
-        "name": "prebuild"
+        "name": "prebuild",
+        "command": "expo prebuild"
       },
       {
-        "command": "expo prebuild --platform android",
         "manifest_path": "apps/openagents-mobile/package.json",
-        "name": "prebuild:android"
+        "name": "prebuild:android",
+        "command": "expo prebuild --platform android"
       },
       {
-        "command": "expo prebuild --platform ios",
         "manifest_path": "apps/openagents-mobile/package.json",
-        "name": "prebuild:ios"
+        "name": "prebuild:ios",
+        "command": "expo prebuild --platform ios"
       },
       {
-        "command": "bash ../../apps/oa-updates/scripts/publish-ota.sh",
         "manifest_path": "apps/openagents-mobile/package.json",
-        "name": "publish:ota"
+        "name": "publish:ota",
+        "command": "bash ../../apps/oa-updates/scripts/publish-ota.sh"
       },
       {
-        "command": "vp test --run --root ../.. apps/openagents-mobile",
         "manifest_path": "apps/openagents-mobile/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run --root ../.. apps/openagents-mobile"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents-mobile/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "pnpm run build && node --import tsx src/routes/-funnel-budget.ts",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "budget"
+        "name": "budget",
+        "command": "pnpm run build && node --import tsx src/routes/-funnel-budget.ts"
       },
       {
-        "command": "pnpm run generate:docs && vp build --logLevel warn && vp pack cloudrun/server.mjs --out-dir dist/cloudrun --format esm --platform node --target node24 --minify",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "build"
+        "name": "build",
+        "command": "pnpm run generate:docs && vp build --logLevel warn && vp pack cloudrun/server.mjs --out-dir dist/cloudrun --format esm --platform node --target node24 --minify"
       },
       {
-        "command": "node --import tsx scripts/generate-docs.ts --check",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "check:docs"
+        "name": "check:docs",
+        "command": "node --import tsx scripts/generate-docs.ts --check"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh stage1",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "deploy"
+        "name": "deploy",
+        "command": "bash scripts/deploy-cloudrun.sh stage1"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "deploy:cloudrun"
+        "name": "deploy:cloudrun",
+        "command": "bash scripts/deploy-cloudrun.sh"
       },
       {
-        "command": "pnpm run generate:docs && vp dev",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "pnpm run generate:docs && vp dev"
       },
       {
-        "command": "node --import tsx scripts/generate-docs.ts",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "generate:docs"
+        "name": "generate:docs",
+        "command": "node --import tsx scripts/generate-docs.ts"
       },
       {
-        "command": "vp preview",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "preview"
+        "name": "preview",
+        "command": "vp preview"
       },
       {
-        "command": "pnpm run generate:docs && vp test --root ../../../.. --run --project @openagentsinc/openagents-com-start",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "pnpm run generate:docs && vp test --root ../../../.. --run --project @openagentsinc/openagents-com-start"
       },
       {
-        "command": "pnpm run generate:docs && tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/apps/start/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "pnpm run generate:docs && tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node scripts/artanis-production-readiness.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "artanis:readiness"
+        "name": "artanis:readiness",
+        "command": "node scripts/artanis-production-readiness.mjs"
       },
       {
-        "command": "pnpm run build:start && pnpm run build:api",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "build"
+        "name": "build",
+        "command": "pnpm run build:start && pnpm run build:api"
       },
       {
-        "command": "pnpm --dir workers/api run build",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "build:api"
+        "name": "build:api",
+        "command": "pnpm --dir workers/api run build"
       },
       {
-        "command": "node scripts/sync-live-agent-doc.mjs && pnpm --dir apps/start run build",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "build:start"
+        "name": "build:start",
+        "command": "node scripts/sync-live-agent-doc.mjs && pnpm --dir apps/start run build"
       },
       {
-        "command": "node --import tsx scripts/check-live-agent-doc-links.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:agent-doc-links"
+        "name": "check:agent-doc-links",
+        "command": "node --import tsx scripts/check-live-agent-doc-links.mjs"
       },
       {
-        "command": "node --import tsx scripts/check-zero-debt-architecture.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:architecture"
+        "name": "check:architecture",
+        "command": "node --import tsx scripts/check-zero-debt-architecture.mjs"
       },
       {
-        "command": "node --import tsx scripts/check-conflict-markers.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:conflict-markers"
+        "name": "check:conflict-markers",
+        "command": "node --import tsx scripts/check-conflict-markers.mjs"
       },
       {
-        "command": "node --import tsx scripts/check-contract-drift.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:contract-drift"
+        "name": "check:contract-drift",
+        "command": "node --import tsx scripts/check-contract-drift.mjs"
       },
       {
-        "command": "pnpm run check:conflict-markers && pnpm run check:no-github-actions && pnpm run check:effect-topology && pnpm run check:agent-doc-links && pnpm run check:architecture && pnpm run check:contract-drift && pnpm run check:public-projection-freshness && pnpm --dir ../../packages/agent-readiness run test && pnpm --dir ../../packages/agent-readiness run typecheck && pnpm --dir ../../packages/autopilot-control-protocol run typecheck && pnpm --dir ../../apps/pylon run typecheck && pnpm run typecheck:api-pylon-integration && pnpm --dir ../../apps/pylon run test tests/security-adversarial-harness.test.ts && pnpm --dir ../../packages/khala-sync-server run test:pending-migrations-guard && pnpm --dir ../../packages/khala-sync-client run test && pnpm run typecheck:start && pnpm run typecheck:api && pnpm run test:conflict-markers-guard && pnpm run test:effect-native-vendor-guard && pnpm run test:contract-drift-guard && pnpm --dir apps/start run test && pnpm --dir workers/api run test src/lander-css-policy.test.ts src/worker-routes.test.ts src/redirect-policy.test.ts src/client-server-route-agreement.test.ts src/mullet/routes.test.ts src/product-promises.test.ts src/model-custody-lead-gen.test.ts src/reactor-need-to-know-access.test.ts src/reactor-data-liberation.test.ts src/reactor-improvement-ladder.test.ts src/wasm-plugin-marketplace.test.ts src/qualified-contributor-methodology.test.ts src/public-forum-activity-routes.test.ts src/inference/inference-privacy-receipt-routes.test.ts src/inference/gym/terminal-bench-khala-orchestration.test.ts src/tassadar-settled-feed-sync.test.ts src/khala-sync-public-settled-feed.test.ts src/public-settled-feed-routes.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:deploy"
+        "name": "check:deploy",
+        "command": "pnpm run check:conflict-markers && pnpm run check:no-github-actions && pnpm run check:effect-topology && pnpm run check:agent-doc-links && pnpm run check:architecture && pnpm run check:contract-drift && pnpm run check:public-projection-freshness && pnpm --dir ../../packages/agent-readiness run test && pnpm --dir ../../packages/agent-readiness run typecheck && pnpm --dir ../../packages/autopilot-control-protocol run typecheck && pnpm --dir ../../apps/pylon run typecheck && pnpm run typecheck:api-pylon-integration && pnpm --dir ../../apps/pylon run test tests/security-adversarial-harness.test.ts && pnpm --dir ../../packages/khala-sync-server run test:pending-migrations-guard && pnpm --dir ../../packages/khala-sync-client run test && pnpm run typecheck:start && pnpm run typecheck:api && pnpm run test:conflict-markers-guard && pnpm run test:effect-native-vendor-guard && pnpm run test:contract-drift-guard && pnpm --dir apps/start run test && pnpm --dir workers/api run test src/lander-css-policy.test.ts src/worker-routes.test.ts src/redirect-policy.test.ts src/client-server-route-agreement.test.ts src/mullet/routes.test.ts src/product-promises.test.ts src/model-custody-lead-gen.test.ts src/reactor-need-to-know-access.test.ts src/reactor-data-liberation.test.ts src/reactor-improvement-ladder.test.ts src/wasm-plugin-marketplace.test.ts src/qualified-contributor-methodology.test.ts src/public-forum-activity-routes.test.ts src/inference/inference-privacy-receipt-routes.test.ts src/inference/gym/terminal-bench-khala-orchestration.test.ts src/tassadar-settled-feed-sync.test.ts src/khala-sync-public-settled-feed.test.ts src/public-settled-feed-routes.test.ts"
       },
       {
-        "command": "node --import tsx scripts/check-deploy-from-main.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:deploy-from-main"
+        "name": "check:deploy-from-main",
+        "command": "node --import tsx scripts/check-deploy-from-main.mjs"
       },
       {
-        "command": "node --import tsx scripts/check-effect-native-vendor-freshness.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:effect-native-vendor"
+        "name": "check:effect-native-vendor",
+        "command": "node --import tsx scripts/check-effect-native-vendor-freshness.ts"
       },
       {
-        "command": "node --import tsx scripts/check-effect-topology.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:effect-topology"
+        "name": "check:effect-topology",
+        "command": "node --import tsx scripts/check-effect-topology.mjs"
       },
       {
-        "command": "node --import tsx scripts/check-effect-upgrade-metadata.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:effect-upgrade-metadata"
+        "name": "check:effect-upgrade-metadata",
+        "command": "node --import tsx scripts/check-effect-upgrade-metadata.mjs"
       },
       {
-        "command": "node --import tsx scripts/check-no-github-actions.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:no-github-actions"
+        "name": "check:no-github-actions",
+        "command": "node --import tsx scripts/check-no-github-actions.mjs"
       },
       {
-        "command": "node --import tsx scripts/check-public-projection-freshness.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "check:public-projection-freshness"
+        "name": "check:public-projection-freshness",
+        "command": "node --import tsx scripts/check-public-projection-freshness.mjs"
       },
       {
-        "command": "pnpm run dev:start",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "pnpm run dev:start"
       },
       {
-        "command": "pnpm --dir workers/api run dev",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "dev:api"
+        "name": "dev:api",
+        "command": "pnpm --dir workers/api run dev"
       },
       {
-        "command": "pnpm --dir apps/start run dev",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "dev:start"
+        "name": "dev:start",
+        "command": "pnpm --dir apps/start run dev"
       },
       {
-        "command": "prettier -w .",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "format"
+        "name": "format",
+        "command": "prettier -w ."
       },
       {
-        "command": "node scripts/forum.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "forum"
+        "name": "forum",
+        "command": "node scripts/forum.mjs"
       },
       {
-        "command": "node --import tsx scripts/gym-harbor-full-trace-archive.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "gym:harbor-full-trace-archive"
+        "name": "gym:harbor-full-trace-archive",
+        "command": "node --import tsx scripts/gym-harbor-full-trace-archive.ts"
       },
       {
-        "command": "node --import tsx scripts/gym-harbor-progress-push.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "gym:harbor-progress-push"
+        "name": "gym:harbor-progress-push",
+        "command": "node --import tsx scripts/gym-harbor-progress-push.ts"
       },
       {
-        "command": "node --import tsx scripts/khala-code-headless-harness.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "khala-code:verify"
+        "name": "khala-code:verify",
+        "command": "node --import tsx scripts/khala-code-headless-harness.mjs"
       },
       {
-        "command": "eslint .",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "lint"
+        "name": "lint",
+        "command": "eslint ."
       },
       {
-        "command": "node scripts/khala-production-readiness-monitor.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "monitor:khala:production-readiness"
+        "name": "monitor:khala:production-readiness",
+        "command": "node scripts/khala-production-readiness-monitor.mjs"
       },
       {
-        "command": "node scripts/predeploy-khala-sync-live-seam-smoke.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "predeploy:khala-sync-live-seam-smoke"
+        "name": "predeploy:khala-sync-live-seam-smoke",
+        "command": "node scripts/predeploy-khala-sync-live-seam-smoke.mjs"
       },
       {
-        "command": "node scripts/predeploy-parallel-dispatch-smoke.mjs --approve-staging-mutation",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "predeploy:parallel-dispatch-smoke"
+        "name": "predeploy:parallel-dispatch-smoke",
+        "command": "node scripts/predeploy-parallel-dispatch-smoke.mjs --approve-staging-mutation"
       },
       {
-        "command": "node scripts/patch-effect-language-service.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "prepare"
+        "name": "prepare",
+        "command": "node scripts/patch-effect-language-service.mjs"
       },
       {
-        "command": "pnpm --dir apps/start run preview",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "preview"
+        "name": "preview",
+        "command": "pnpm --dir apps/start run preview"
       },
       {
-        "command": "node scripts/public-activity-proof-links-smoke.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "smoke:activity:proof-links"
+        "name": "smoke:activity:proof-links",
+        "command": "node scripts/public-activity-proof-links-smoke.mjs"
       },
       {
-        "command": "node scripts/forum-void-smoke.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "smoke:forum:void"
+        "name": "smoke:forum:void",
+        "command": "node scripts/forum-void-smoke.mjs"
       },
       {
-        "command": "node scripts/gpt-oss20b-production-smoke.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "smoke:gpt-oss20b-production"
+        "name": "smoke:gpt-oss20b-production",
+        "command": "node scripts/gpt-oss20b-production-smoke.mjs"
       },
       {
-        "command": "node scripts/khala-gateway-readiness-smoke.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "smoke:khala:gateway-readiness"
+        "name": "smoke:khala:gateway-readiness",
+        "command": "node scripts/khala-gateway-readiness-smoke.mjs"
       },
       {
-        "command": "node scripts/khala-glm-reap-production-smoke.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "smoke:khala:glm-reap"
+        "name": "smoke:khala:glm-reap",
+        "command": "node scripts/khala-glm-reap-production-smoke.mjs"
       },
       {
-        "command": "node scripts/khala-production-smoke.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "smoke:khala:production"
+        "name": "smoke:khala:production",
+        "command": "node scripts/khala-production-smoke.mjs"
       },
       {
-        "command": "node scripts/visibility-browser-smoke.mjs",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "smoke:visibility:browser"
+        "name": "smoke:visibility:browser",
+        "command": "node scripts/visibility-browser-smoke.mjs"
       },
       {
-        "command": "pnpm run test:packages && pnpm run test:start && pnpm run test:api",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "pnpm run test:packages && pnpm run test:start && pnpm run test:api"
       },
       {
-        "command": "pnpm --dir workers/api run test",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:api"
+        "name": "test:api",
+        "command": "pnpm --dir workers/api run test"
       },
       {
-        "command": "vitest run scripts/check-command-composer-privacy-fixtures.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:command-composer-privacy-guard"
+        "name": "test:command-composer-privacy-guard",
+        "command": "vitest run scripts/check-command-composer-privacy-fixtures.test.ts"
       },
       {
-        "command": "vitest run scripts/check-conflict-markers.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:conflict-markers-guard"
+        "name": "test:conflict-markers-guard",
+        "command": "vitest run scripts/check-conflict-markers.test.ts"
       },
       {
-        "command": "vitest run scripts/check-contract-drift.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:contract-drift-guard"
+        "name": "test:contract-drift-guard",
+        "command": "vitest run scripts/check-contract-drift.test.ts"
       },
       {
-        "command": "vitest run scripts/check-effect-native-vendor.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:effect-native-vendor-guard"
+        "name": "test:effect-native-vendor-guard",
+        "command": "vitest run scripts/check-effect-native-vendor.test.ts"
       },
       {
-        "command": "pnpm --dir packages/email-templates run test && pnpm --dir packages/mullet-schema run test && pnpm --dir packages/mullet-sim run test && pnpm --dir packages/sync-schema run test && pnpm --dir packages/sync-client run test && pnpm --dir packages/sync-worker run test",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:packages"
+        "name": "test:packages",
+        "command": "pnpm --dir packages/email-templates run test && pnpm --dir packages/mullet-schema run test && pnpm --dir packages/mullet-sim run test && pnpm --dir packages/sync-schema run test && pnpm --dir packages/sync-client run test && pnpm --dir packages/sync-worker run test"
       },
       {
-        "command": "vitest run scripts/predeploy-khala-sync-live-seam-smoke.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:predeploy-khala-sync-live-seam-smoke"
+        "name": "test:predeploy-khala-sync-live-seam-smoke",
+        "command": "vitest run scripts/predeploy-khala-sync-live-seam-smoke.test.ts"
       },
       {
-        "command": "vitest run scripts/predeploy-parallel-dispatch-smoke.test.ts",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:predeploy-parallel-dispatch-smoke"
+        "name": "test:predeploy-parallel-dispatch-smoke",
+        "command": "vitest run scripts/predeploy-parallel-dispatch-smoke.test.ts"
       },
       {
-        "command": "pnpm --dir apps/start run test",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "test:start"
+        "name": "test:start",
+        "command": "pnpm --dir apps/start run test"
       },
       {
-        "command": "pnpm run typecheck:packages && pnpm run typecheck:start && pnpm run typecheck:api",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "pnpm run typecheck:packages && pnpm run typecheck:start && pnpm run typecheck:api"
       },
       {
-        "command": "pnpm --dir workers/api run typecheck",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "typecheck:api"
+        "name": "typecheck:api",
+        "command": "pnpm --dir workers/api run typecheck"
       },
       {
-        "command": "tsc -p workers/api/tsconfig.pylon-api-routes.test.json --noEmit",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "typecheck:api-pylon-integration"
+        "name": "typecheck:api-pylon-integration",
+        "command": "tsc -p workers/api/tsconfig.pylon-api-routes.test.json --noEmit"
       },
       {
-        "command": "pnpm --dir packages/email-templates run typecheck && pnpm --dir packages/mullet-schema run typecheck && pnpm --dir packages/mullet-sim run typecheck && pnpm --dir packages/sync-schema run typecheck && pnpm --dir packages/sync-client run typecheck && pnpm --dir packages/sync-worker run typecheck",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "typecheck:packages"
+        "name": "typecheck:packages",
+        "command": "pnpm --dir packages/email-templates run typecheck && pnpm --dir packages/mullet-schema run typecheck && pnpm --dir packages/mullet-sim run typecheck && pnpm --dir packages/sync-schema run typecheck && pnpm --dir packages/sync-client run typecheck && pnpm --dir packages/sync-worker run typecheck"
       },
       {
-        "command": "pnpm --dir apps/start run typecheck",
         "manifest_path": "apps/openagents.com/package.json",
-        "name": "typecheck:start"
+        "name": "typecheck:start",
+        "command": "pnpm --dir apps/start run typecheck"
       },
       {
-        "command": "tsc -b",
         "manifest_path": "apps/openagents.com/packages/effect-native-core/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -b"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/effect-native-gallery/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/effect-native-khala-ui/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/effect-native-render-canvas/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "tsc -b",
         "manifest_path": "apps/openagents.com/packages/effect-native-render-dom/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -b"
       },
       {
-        "command": "tsc -b",
         "manifest_path": "apps/openagents.com/packages/effect-native-render-rn/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -b"
       },
       {
-        "command": "tsc -b",
         "manifest_path": "apps/openagents.com/packages/effect-native-tokens/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -b"
       },
       {
-        "command": "node --import tsx src/preview.ts",
         "manifest_path": "apps/openagents.com/packages/email-templates/package.json",
-        "name": "preview"
+        "name": "preview",
+        "command": "node --import tsx src/preview.ts"
       },
       {
-        "command": "vitest run",
         "manifest_path": "apps/openagents.com/packages/email-templates/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vitest run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/email-templates/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vitest run",
         "manifest_path": "apps/openagents.com/packages/mullet-schema/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vitest run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/mullet-schema/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vitest run",
         "manifest_path": "apps/openagents.com/packages/mullet-sim/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vitest run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/mullet-sim/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vitest run",
         "manifest_path": "apps/openagents.com/packages/sync-client/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vitest run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/sync-client/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vitest run",
         "manifest_path": "apps/openagents.com/packages/sync-schema/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vitest run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/sync-schema/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vitest run",
         "manifest_path": "apps/openagents.com/packages/sync-worker/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vitest run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/packages/sync-worker/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/agent-readiness-fleet-report-run.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "agent-readiness:fleet-run"
+        "name": "agent-readiness:fleet-run",
+        "command": "node --import tsx scripts/agent-readiness-fleet-report-run.ts"
       },
       {
-        "command": "node --experimental-strip-types scripts/apollo-wave-runner.ts dry-run",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "apollo-wave:dry-run"
+        "name": "apollo-wave:dry-run",
+        "command": "node --experimental-strip-types scripts/apollo-wave-runner.ts dry-run"
       },
       {
-        "command": "node --experimental-strip-types scripts/apollo-wave-runner.ts live",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "apollo-wave:live"
+        "name": "apollo-wave:live",
+        "command": "node --experimental-strip-types scripts/apollo-wave-runner.ts live"
       },
       {
-        "command": "node --experimental-strip-types scripts/apollo-wave-runner.ts print-fixture",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "apollo-wave:print-fixture"
+        "name": "apollo-wave:print-fixture",
+        "command": "node --experimental-strip-types scripts/apollo-wave-runner.ts print-fixture"
       },
       {
-        "command": "pnpm --dir ../../apps/start run build && vp pack src/cloudrun/server.ts --out-dir dist-cloudrun --format esm --platform node --target node24",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "build"
+        "name": "build",
+        "command": "pnpm --dir ../../apps/start run build && vp pack src/cloudrun/server.ts --out-dir dist-cloudrun --format esm --platform node --target node24"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh production",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "deploy"
+        "name": "deploy",
+        "command": "bash scripts/deploy-cloudrun.sh production"
       },
       {
-        "command": "bash scripts/deploy-cloudrun.sh staging",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "deploy:staging"
+        "name": "deploy:staging",
+        "command": "bash scripts/deploy-cloudrun.sh staging"
       },
       {
-        "command": "node --import tsx src/cloudrun/server.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "dev"
+        "name": "dev",
+        "command": "node --import tsx src/cloudrun/server.ts"
       },
       {
-        "command": "node --import tsx scripts/khala-glm-fleet-durability.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "glm-fleet:durability"
+        "name": "glm-fleet:durability",
+        "command": "node --import tsx scripts/khala-glm-fleet-durability.ts"
       },
       {
-        "command": "node --import tsx scripts/marching-orders-agent.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "marching-orders"
+        "name": "marching-orders",
+        "command": "node --import tsx scripts/marching-orders-agent.ts"
       },
       {
-        "command": "node --import tsx scripts/khala-glm-nvfp4-pilot.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "pilot:glm-nvfp4"
+        "name": "pilot:glm-nvfp4",
+        "command": "node --import tsx scripts/khala-glm-nvfp4-pilot.ts"
       },
       {
-        "command": "vitest run src/autopilot-work-routes.test.ts -t \"claude_agent_task git_checkout\"",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:autopilot-coder:claude-agent-git-checkout"
+        "name": "smoke:autopilot-coder:claude-agent-git-checkout",
+        "command": "vitest run src/autopilot-work-routes.test.ts -t \"claude_agent_task git_checkout\""
       },
       {
-        "command": "vitest run src/autopilot-work-routes.test.ts -t \"no-spend Autopilot Coder end-to-end smoke\"",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:autopilot-coder:no-spend"
+        "name": "smoke:autopilot-coder:no-spend",
+        "command": "vitest run src/autopilot-work-routes.test.ts -t \"no-spend Autopilot Coder end-to-end smoke\""
       },
       {
-        "command": "vitest run src/autopilot-work-routes.test.ts -t \"paid Autopilot Coder end-to-end smoke\"",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:autopilot-coder:paid"
+        "name": "smoke:autopilot-coder:paid",
+        "command": "vitest run src/autopilot-work-routes.test.ts -t \"paid Autopilot Coder end-to-end smoke\""
       },
       {
-        "command": "vitest run src/autopilot-rate-limit-rotation-smoke.test.ts src/provider-account-lease-policy.test.ts src/provider-account-failover-policy.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:autopilot-coder:rate-limit-rotation"
+        "name": "smoke:autopilot-coder:rate-limit-rotation",
+        "command": "vitest run src/autopilot-rate-limit-rotation-smoke.test.ts src/provider-account-lease-policy.test.ts src/provider-account-failover-policy.test.ts"
       },
       {
-        "command": "vitest run src/cs336-a1-homework.test.ts src/cs336-a1-homework-workload.test.ts src/cs336-a1-real-gradient-workload.test.ts src/training-real-gradient-evidence.test.ts src/training-verification.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:cs336-a1:no-spend"
+        "name": "smoke:cs336-a1:no-spend",
+        "command": "vitest run src/cs336-a1-homework.test.ts src/cs336-a1-homework-workload.test.ts src/cs336-a1-real-gradient-workload.test.ts src/training-real-gradient-evidence.test.ts src/training-verification.test.ts"
       },
       {
-        "command": "vitest run src/training-device-capability.test.ts src/training-device-admission-gates.test.ts src/training-run-window-routes.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:cs336-a2:device-capability"
+        "name": "smoke:cs336-a2:device-capability",
+        "command": "vitest run src/training-device-capability.test.ts src/training-device-admission-gates.test.ts src/training-run-window-routes.test.ts"
       },
       {
-        "command": "vitest run src/training-scaling-sweep.test.ts src/training-run-window-routes.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:cs336-a3:isoflop"
+        "name": "smoke:cs336-a3:isoflop",
+        "command": "vitest run src/training-scaling-sweep.test.ts src/training-run-window-routes.test.ts"
       },
       {
-        "command": "vitest run src/cs336-a4-data-refinery.test.ts src/cs336-a4-refinery-workload.test.ts src/training-data-refinery.test.ts src/training-run-window-routes.test.ts src/training-leaderboards.test.ts src/training-verification.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:cs336-a4:data-refinery"
+        "name": "smoke:cs336-a4:data-refinery",
+        "command": "vitest run src/cs336-a4-data-refinery.test.ts src/cs336-a4-refinery-workload.test.ts src/training-data-refinery.test.ts src/training-run-window-routes.test.ts src/training-leaderboards.test.ts src/training-verification.test.ts"
       },
       {
-        "command": "vitest run src/cs336-a5-alignment-homework.test.ts src/cs336-a5-rollout-workload.test.ts src/training-alignment-evals.test.ts src/training-run-window-routes.test.ts src/training-leaderboards.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:cs336-a5:alignment"
+        "name": "smoke:cs336-a5:alignment",
+        "command": "vitest run src/cs336-a5-alignment-homework.test.ts src/cs336-a5-rollout-workload.test.ts src/training-alignment-evals.test.ts src/training-run-window-routes.test.ts src/training-leaderboards.test.ts"
       },
       {
-        "command": "node --import tsx scripts/probe-gepa-stage0-no-spend-campaign.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:probe-gepa-stage0"
+        "name": "smoke:probe-gepa-stage0",
+        "command": "node --import tsx scripts/probe-gepa-stage0-no-spend-campaign.ts"
       },
       {
-        "command": "node --import tsx scripts/qwen-remote-pylon-live-training.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:qwen-remote-training"
+        "name": "smoke:qwen-remote-training",
+        "command": "node --import tsx scripts/qwen-remote-pylon-live-training.ts"
       },
       {
-        "command": "vitest run src/tassadar-executor-trace-homework.test.ts src/training-verification.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:tassadar:executor-trace"
+        "name": "smoke:tassadar:executor-trace",
+        "command": "vitest run src/tassadar-executor-trace-homework.test.ts src/training-verification.test.ts"
       },
       {
-        "command": "vitest run src/training-leaderboards.test.ts src/training-run-window-routes.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:training-leaderboards"
+        "name": "smoke:training-leaderboards",
+        "command": "vitest run src/training-leaderboards.test.ts src/training-run-window-routes.test.ts"
       },
       {
-        "command": "vitest run src/training-run-window-routes.test.ts src/training-run-window-authority.test.ts src/training-run-public-copy-gate.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:training-runs:public"
+        "name": "smoke:training-runs:public",
+        "command": "vitest run src/training-run-window-routes.test.ts src/training-run-window-authority.test.ts src/training-run-public-copy-gate.test.ts"
       },
       {
-        "command": "vitest run src/training-validator-assignments.test.ts src/training-verification.test.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "smoke:training-validator:no-spend"
+        "name": "smoke:training-validator:no-spend",
+        "command": "vitest run src/training-validator-assignments.test.ts src/training-verification.test.ts"
       },
       {
-        "command": "node --import tsx ./src/cloudrun/server.ts",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "start:cloudrun"
+        "name": "start:cloudrun",
+        "command": "node --import tsx ./src/cloudrun/server.ts"
       },
       {
-        "command": "vp test --root ../../../.. --run --project @openagentsinc/api-worker",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --root ../../../.. --run --project @openagentsinc/api-worker"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "tsc -p tsconfig.cloudrun.json --noEmit",
         "manifest_path": "apps/openagents.com/workers/api/package.json",
-        "name": "typecheck:cloudrun"
+        "name": "typecheck:cloudrun",
+        "command": "tsc -p tsconfig.cloudrun.json --noEmit"
       },
       {
-        "command": "bash swift/foundation-bridge/build.sh",
         "manifest_path": "apps/pylon/package.json",
-        "name": "build:apple-fm-bridge"
+        "name": "build:apple-fm-bridge",
+        "command": "bash swift/foundation-bridge/build.sh"
       },
       {
-        "command": "bash scripts/build-rc-binaries.sh",
         "manifest_path": "apps/pylon/package.json",
-        "name": "build:rc-binaries"
+        "name": "build:rc-binaries",
+        "command": "bash scripts/build-rc-binaries.sh"
       },
       {
-        "command": "node --import tsx scripts/check-supervisor-store-bypass.mjs",
         "manifest_path": "apps/pylon/package.json",
-        "name": "check:supervisor-store"
+        "name": "check:supervisor-store",
+        "command": "node --import tsx scripts/check-supervisor-store-bypass.mjs"
       },
       {
-        "command": "bash scripts/release-gate.sh",
         "manifest_path": "apps/pylon/package.json",
-        "name": "release:gate"
+        "name": "release:gate",
+        "command": "bash scripts/release-gate.sh"
       },
       {
-        "command": "node --import tsx packages/runtime/src/cli.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "runtime"
+        "name": "runtime",
+        "command": "node --import tsx packages/runtime/src/cli.ts"
       },
       {
-        "command": "pnpm --dir packages/runtime run test",
         "manifest_path": "apps/pylon/package.json",
-        "name": "runtime:test"
+        "name": "runtime:test",
+        "command": "pnpm --dir packages/runtime run test"
       },
       {
-        "command": "node --import tsx scripts/claude-agent-task-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:claude-agent-task"
+        "name": "smoke:claude-agent-task",
+        "command": "node --import tsx scripts/claude-agent-task-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/claude-owner-local-permission-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:claude-owner-local-permission"
+        "name": "smoke:claude-owner-local-permission",
+        "command": "node --import tsx scripts/claude-owner-local-permission-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/codex-agent-task-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:codex-agent-task"
+        "name": "smoke:codex-agent-task",
+        "command": "node --import tsx scripts/codex-agent-task-smoke.ts"
       },
       {
-        "command": "rm -f /tmp/pylon-default-start.log; perl -e 'alarm 3; $ENV{PYLON_DISABLE_OPENCODE_STARTUP}=1; exec @ARGV' node --import tsx src/index.ts > /tmp/pylon-default-start.log 2>&1; code=$?; if [ \"$code\" -ne 142 ] && [ \"$code\" -ne 0 ]; then cat /tmp/pylon-default-start.log; exit \"$code\"; fi; if rg -n 'TypeError|Effect\\.(fork|catchAll)|is not a function|\\[ERROR\\]' /tmp/pylon-default-start.log; then exit 1; fi; printf 'default startup reached persistent mode without startup API errors\\n'",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:default-start"
+        "name": "smoke:default-start",
+        "command": "rm -f /tmp/pylon-default-start.log; perl -e 'alarm 3; $ENV{PYLON_DISABLE_OPENCODE_STARTUP}=1; exec @ARGV' node --import tsx src/index.ts > /tmp/pylon-default-start.log 2>&1; code=$?; if [ \"$code\" -ne 142 ] && [ \"$code\" -ne 0 ]; then cat /tmp/pylon-default-start.log; exit \"$code\"; fi; if rg -n 'TypeError|Effect\\.(fork|catchAll)|is not a function|\\[ERROR\\]' /tmp/pylon-default-start.log; then exit 1; fi; printf 'default startup reached persistent mode without startup API errors\\n'"
       },
       {
-        "command": "node --import tsx scripts/fleet-run-live-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:fleet-run-live"
+        "name": "smoke:fleet-run-live",
+        "command": "node --import tsx scripts/fleet-run-live-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/fleet-run-sustained-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:fleet-run-sustained"
+        "name": "smoke:fleet-run-sustained",
+        "command": "node --import tsx scripts/fleet-run-sustained-smoke.ts"
       },
       {
-        "command": "bash scripts/smoke-local-package-install.sh",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:install:local"
+        "name": "smoke:install:local",
+        "command": "bash scripts/smoke-local-package-install.sh"
       },
       {
-        "command": "node --import tsx scripts/live-worker-loop-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:live-worker-loop"
+        "name": "smoke:live-worker-loop",
+        "command": "node --import tsx scripts/live-worker-loop-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/mixed-harness-fleet-run-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:mixed-harness-fleet-run"
+        "name": "smoke:mixed-harness-fleet-run",
+        "command": "node --import tsx scripts/mixed-harness-fleet-run-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/packaged-live-network-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:packaged-network"
+        "name": "smoke:packaged-network",
+        "command": "node --import tsx scripts/packaged-live-network-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/packaged-runtime-task-smoke.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "smoke:packaged-runtime-task"
+        "name": "smoke:packaged-runtime-task",
+        "command": "node --import tsx scripts/packaged-runtime-task-smoke.ts"
       },
       {
-        "command": "node --import tsx src/index.ts",
         "manifest_path": "apps/pylon/package.json",
-        "name": "start"
+        "name": "start",
+        "command": "node --import tsx src/index.ts"
       },
       {
-        "command": "vp test --run --root ../.. apps/pylon/scripts/typecheck-tests.test.mjs && pnpm run check:supervisor-store && vp test --run --max-concurrency=1 --root ../.. apps/pylon",
         "manifest_path": "apps/pylon/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run --root ../.. apps/pylon/scripts/typecheck-tests.test.mjs && pnpm run check:supervisor-store && vp test --run --max-concurrency=1 --root ../.. apps/pylon"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "apps/pylon/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node scripts/typecheck-tests.mjs",
         "manifest_path": "apps/pylon/package.json",
-        "name": "typecheck:tests:baseline"
+        "name": "typecheck:tests:baseline",
+        "command": "node scripts/typecheck-tests.mjs"
       },
       {
-        "command": "node scripts/typecheck-tests.mjs --update-baseline",
         "manifest_path": "apps/pylon/package.json",
-        "name": "typecheck:tests:update-baseline"
+        "name": "typecheck:tests:update-baseline",
+        "command": "node scripts/typecheck-tests.mjs --update-baseline"
       },
       {
-        "command": "node --import tsx src/cli.ts",
         "manifest_path": "apps/pylon/packages/runtime/package.json",
-        "name": "runtime"
+        "name": "runtime",
+        "command": "node --import tsx src/cli.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "apps/pylon/packages/runtime/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "node --import tsx src/daemon.ts --api",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "api"
+        "name": "api",
+        "command": "node --import tsx src/daemon.ts --api"
       },
       {
-        "command": "node --import tsx src/atif-emit.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "atif:emit"
+        "name": "atif:emit",
+        "command": "node --import tsx src/atif-emit.ts"
       },
       {
-        "command": "node --import tsx scripts/build.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "build"
+        "name": "build",
+        "command": "node --import tsx scripts/build.ts"
       },
       {
-        "command": "node --import tsx src/codex-to-atif.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "codex:to-atif"
+        "name": "codex:to-atif",
+        "command": "node --import tsx src/codex-to-atif.ts"
       },
       {
-        "command": "node --import tsx src/compose/cli.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "compose"
+        "name": "compose",
+        "command": "node --import tsx src/compose/cli.ts"
       },
       {
-        "command": "node --import tsx src/byo.ts run --fake-model --url https://example.test --out ./runs/byo-fake",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "demo:byo"
+        "name": "demo:byo",
+        "command": "node --import tsx src/byo.ts run --fake-model --url https://example.test --out ./runs/byo-fake"
       },
       {
-        "command": "node --import tsx src/demo-khala.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "demo:khala"
+        "name": "demo:khala",
+        "command": "node --import tsx src/demo-khala.ts"
       },
       {
-        "command": "node --import tsx src/demo-login.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "demo:login"
+        "name": "demo:login",
+        "command": "node --import tsx src/demo-login.ts"
       },
       {
-        "command": "node --import tsx src/evals-run.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "evals"
+        "name": "evals",
+        "command": "node --import tsx src/evals-run.ts"
       },
       {
-        "command": "node --import tsx src/khala-sync-once.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "khala-sync-once"
+        "name": "khala-sync-once",
+        "command": "node --import tsx src/khala-sync-once.ts"
       },
       {
-        "command": "playwright install --with-deps chromium",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "playwright:install"
+        "name": "playwright:install",
+        "command": "playwright install --with-deps chromium"
       },
       {
-        "command": "node --import tsx src/pr-comment-run.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "pr-comment"
+        "name": "pr-comment",
+        "command": "node --import tsx src/pr-comment-run.ts"
       },
       {
-        "command": "node --import tsx scripts/build.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "prepack"
+        "name": "prepack",
+        "command": "node --import tsx scripts/build.ts"
       },
       {
-        "command": "node --import tsx src/byo.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "qa"
+        "name": "qa",
+        "command": "node --import tsx src/byo.ts"
       },
       {
-        "command": "node dist/qa.js",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "qa:dist"
+        "name": "qa:dist",
+        "command": "node dist/qa.js"
       },
       {
-        "command": "node --import tsx src/run-once.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "run-once"
+        "name": "run-once",
+        "command": "node --import tsx src/run-once.ts"
       },
       {
-        "command": "node --import tsx src/run-targets.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "run-targets"
+        "name": "run-targets",
+        "command": "node --import tsx src/run-targets.ts"
       },
       {
-        "command": "node --import tsx src/daemon.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "serve"
+        "name": "serve",
+        "command": "node --import tsx src/daemon.ts"
       },
       {
-        "command": "node --import tsx src/terminal-once.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "terminal-once"
+        "name": "terminal-once",
+        "command": "node --import tsx src/terminal-once.ts"
       },
       {
-        "command": "vp test --run src/assurance-swarm.test.ts src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-sync-transport-backend.test.ts src/container-backend.test.ts src/native-desktop-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/discovery-regression-lifecycle.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts src/target-adapter.test.ts src/qs7-rhys-sales-motion.test.ts src/atif.test.ts src/atif-html.test.ts src/codex-to-atif.test.ts src/redaction.test.ts src/claude-code-to-atif.test.ts src/publish-trace.test.ts src/trace-fixture.test.ts src/publish-trace-e2e.verify.test.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src/assurance-swarm.test.ts src/byo-model.test.ts src/byo.test.ts src/runner.test.ts src/runner-hardening.test.ts src/timeouts.test.ts src/shard.test.ts src/public-safety.test.ts src/brain.test.ts src/backend.test.ts src/terminal-backend.test.ts src/khala-sync-transport-backend.test.ts src/container-backend.test.ts src/native-desktop-backend.test.ts src/khala-action.test.ts src/khala-driver.test.ts src/khala-config.test.ts src/khala-openrouter.test.ts src/session-trace.test.ts src/distiller.test.ts src/discovery-regression-lifecycle.test.ts src/skill-candidate.test.ts src/receipt.test.ts src/run-settlement.test.ts src/khala-session.test.ts src/compose/build-plan.test.ts src/compose/ffmpeg.test.ts src/evals.test.ts src/pr-comment.test.ts src/control-auth.test.ts src/artifacts.test.ts src/control.test.ts src/api-server.test.ts src/failure-learning.test.ts src/failure-learning-gepa.test.ts src/target-registry.test.ts src/target-registry-run.test.ts src/target-adapter.test.ts src/qs7-rhys-sales-motion.test.ts src/atif.test.ts src/atif-html.test.ts src/codex-to-atif.test.ts src/redaction.test.ts src/claude-code-to-atif.test.ts src/publish-trace.test.ts src/trace-fixture.test.ts src/publish-trace-e2e.verify.test.ts"
       },
       {
-        "command": "node --import tsx src/trace-fixture.ts",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "trace:fixture"
+        "name": "trace:fixture",
+        "command": "node --import tsx src/trace-fixture.ts"
       },
       {
-        "command": "tsc --noEmit -p tsconfig.json",
         "manifest_path": "apps/qa-runner/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc --noEmit -p tsconfig.json"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "docs/khala/fixtures/artanis-as-a-service-smoke-repo/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "vp run --concurrency-limit 1 -r build",
         "manifest_path": "package.json",
-        "name": "build"
+        "name": "build",
+        "command": "vp run --concurrency-limit 1 -r build"
       },
       {
-        "command": "node --import tsx scripts/changelog.ts",
         "manifest_path": "package.json",
-        "name": "changelog"
+        "name": "changelog",
+        "command": "node --import tsx scripts/changelog.ts"
       },
       {
-        "command": "pnpm run fmt:check && vp lint --quiet",
         "manifest_path": "package.json",
-        "name": "check"
+        "name": "check",
+        "command": "pnpm run fmt:check && vp lint --quiet"
       },
       {
-        "command": "pnpm --dir packages/agent-client-protocol run check:generated",
         "manifest_path": "package.json",
-        "name": "check:agent-client-protocol"
+        "name": "check:agent-client-protocol",
+        "command": "pnpm --dir packages/agent-client-protocol run check:generated"
       },
       {
-        "command": "pnpm --dir packages/agent-client-protocol-conformance run check:artifacts && pnpm --dir packages/agent-client-protocol-conformance run check:release",
         "manifest_path": "package.json",
-        "name": "check:agent-client-protocol-conformance"
+        "name": "check:agent-client-protocol-conformance",
+        "command": "pnpm --dir packages/agent-client-protocol-conformance run check:artifacts && pnpm --dir packages/agent-client-protocol-conformance run check:release"
       },
       {
-        "command": "pnpm --dir packages/codex-app-server-protocol run check:generated",
         "manifest_path": "package.json",
-        "name": "check:codex-app-server-protocol"
+        "name": "check:codex-app-server-protocol",
+        "command": "pnpm --dir packages/codex-app-server-protocol run check:generated"
       },
       {
-        "command": "pnpm run check:google-cloud-authority && pnpm run check:sol-docs && pnpm run test:sol-docs && pnpm --dir apps/openagents.com run check:deploy",
         "manifest_path": "package.json",
-        "name": "check:deploy"
+        "name": "check:deploy",
+        "command": "pnpm run check:google-cloud-authority && pnpm run check:sol-docs && pnpm run test:sol-docs && pnpm --dir apps/openagents.com run check:deploy"
       },
       {
-        "command": "vp lint --quiet && pnpm run check:agent-client-protocol && pnpm run check:agent-client-protocol-conformance && pnpm run check:codex-app-server-protocol && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/google-cloud-authority-guard.mjs",
         "manifest_path": "package.json",
-        "name": "check:fast"
+        "name": "check:fast",
+        "command": "vp lint --quiet && pnpm run check:agent-client-protocol && pnpm run check:agent-client-protocol-conformance && pnpm run check:codex-app-server-protocol && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/google-cloud-authority-guard.mjs"
       },
       {
-        "command": "pnpm --dir packages/fast-follow-spec run typecheck && pnpm --dir packages/fast-follow-spec run test && pnpm --dir packages/fast-follow-spec run verify:distribution",
         "manifest_path": "package.json",
-        "name": "check:fast-follow-spec"
+        "name": "check:fast-follow-spec",
+        "command": "pnpm --dir packages/fast-follow-spec run typecheck && pnpm --dir packages/fast-follow-spec run test && pnpm --dir packages/fast-follow-spec run verify:distribution"
       },
       {
-        "command": "node scripts/google-cloud-authority-guard.mjs",
         "manifest_path": "package.json",
-        "name": "check:google-cloud-authority"
+        "name": "check:google-cloud-authority",
+        "command": "node scripts/google-cloud-authority-guard.mjs"
       },
       {
-        "command": "node scripts/node-vp-cutover-inventory.mjs --check",
         "manifest_path": "package.json",
-        "name": "check:node-vp-freeze"
+        "name": "check:node-vp-freeze",
+        "command": "node scripts/node-vp-cutover-inventory.mjs --check"
       },
       {
-        "command": "node --import tsx scripts/generate-sol-doc-manifest.ts --check",
         "manifest_path": "package.json",
-        "name": "check:sol-doc-manifest"
+        "name": "check:sol-doc-manifest",
+        "command": "node --import tsx scripts/generate-sol-doc-manifest.ts --check"
       },
       {
-        "command": "node --import tsx scripts/check-sol-docs.ts",
         "manifest_path": "package.json",
-        "name": "check:sol-docs"
+        "name": "check:sol-docs",
+        "command": "node --import tsx scripts/check-sol-docs.ts"
       },
       {
-        "command": "node scripts/vp1-retired-money-surface-guard.mjs .",
         "manifest_path": "package.json",
-        "name": "check:vp1-retirement"
+        "name": "check:vp1-retirement",
+        "command": "node scripts/vp1-retired-money-surface-guard.mjs ."
       },
       {
-        "command": "node scripts/vp2-node-runtime-guard.mjs",
         "manifest_path": "package.json",
-        "name": "check:vp2-node-runtime"
+        "name": "check:vp2-node-runtime",
+        "command": "node scripts/vp2-node-runtime-guard.mjs"
       },
       {
-        "command": "node scripts/zero-supported-bun-guard.mjs .",
         "manifest_path": "package.json",
-        "name": "check:zero-supported-bun"
+        "name": "check:zero-supported-bun",
+        "command": "node scripts/zero-supported-bun-guard.mjs ."
       },
       {
-        "command": "pnpm --dir apps/aiur run deploy",
         "manifest_path": "package.json",
-        "name": "deploy:aiur"
+        "name": "deploy:aiur",
+        "command": "pnpm --dir apps/aiur run deploy"
       },
       {
-        "command": "pnpm --dir apps/aiur run dev",
         "manifest_path": "package.json",
-        "name": "dev:aiur"
+        "name": "dev:aiur",
+        "command": "pnpm --dir apps/aiur run dev"
       },
       {
-        "command": "pnpm --dir apps/forum run dev",
         "manifest_path": "package.json",
-        "name": "dev:forum"
+        "name": "dev:forum",
+        "command": "pnpm --dir apps/forum run dev"
       },
       {
-        "command": "pnpm --dir apps/openagents-desktop run dev",
         "manifest_path": "package.json",
-        "name": "dev:openagents-desktop"
+        "name": "dev:openagents-desktop",
+        "command": "pnpm --dir apps/openagents-desktop run dev"
       },
       {
-        "command": "pnpm --dir apps/openagents-mobile run dev",
         "manifest_path": "package.json",
-        "name": "dev:openagents-mobile"
+        "name": "dev:openagents-mobile",
+        "command": "pnpm --dir apps/openagents-mobile run dev"
       },
       {
-        "command": "pnpm --dir apps/openagents.com run dev",
         "manifest_path": "package.json",
-        "name": "dev:openagents.com"
+        "name": "dev:openagents.com",
+        "command": "pnpm --dir apps/openagents.com run dev"
       },
       {
-        "command": "pnpm --dir apps/pylon run start",
         "manifest_path": "package.json",
-        "name": "dev:pylon"
+        "name": "dev:pylon",
+        "command": "pnpm --dir apps/pylon run start"
       },
       {
-        "command": "vp fmt",
         "manifest_path": "package.json",
-        "name": "fmt"
+        "name": "fmt",
+        "command": "vp fmt"
       },
       {
-        "command": "vp fmt --check package.json pnpm-workspace.yaml vite.config.ts '**/package.json' packages/oxlint-plugin-openagents/src",
         "manifest_path": "package.json",
-        "name": "fmt:check"
+        "name": "fmt:check",
+        "command": "vp fmt --check package.json pnpm-workspace.yaml vite.config.ts '**/package.json' packages/oxlint-plugin-openagents/src"
       },
       {
-        "command": "node --import tsx scripts/generate-sol-doc-manifest.ts",
         "manifest_path": "package.json",
-        "name": "generate:sol-doc-manifest"
+        "name": "generate:sol-doc-manifest",
+        "command": "node --import tsx scripts/generate-sol-doc-manifest.ts"
       },
       {
-        "command": "vp lint --report-unused-disable-directives",
         "manifest_path": "package.json",
-        "name": "lint"
+        "name": "lint",
+        "command": "vp lint --report-unused-disable-directives"
       },
       {
-        "command": "node --max-old-space-size=8192 scripts/build-public-cli-artifacts.mjs",
         "manifest_path": "package.json",
-        "name": "pack"
+        "name": "pack",
+        "command": "node --max-old-space-size=8192 scripts/build-public-cli-artifacts.mjs"
       },
       {
-        "command": "node --import tsx scripts/ui-velocity-receipt.ts",
         "manifest_path": "package.json",
-        "name": "perf:ui-velocity"
+        "name": "perf:ui-velocity",
+        "command": "node --import tsx scripts/ui-velocity-receipt.ts"
       },
       {
-        "command": "effect-language-service patch && vp config --no-agent --no-hooks && bash scripts/enable-git-hooks.sh",
         "manifest_path": "package.json",
-        "name": "prepare"
+        "name": "prepare",
+        "command": "effect-language-service patch && vp config --no-agent --no-hooks && bash scripts/enable-git-hooks.sh"
       },
       {
-        "command": "node --import tsx scripts/qa-nightly-matrix.ts",
         "manifest_path": "package.json",
-        "name": "qa:nightly"
+        "name": "qa:nightly",
+        "command": "node --import tsx scripts/qa-nightly-matrix.ts"
       },
       {
-        "command": "node --import tsx scripts/qa-observer.ts",
         "manifest_path": "package.json",
-        "name": "qa:observer"
+        "name": "qa:observer",
+        "command": "node --import tsx scripts/qa-observer.ts"
       },
       {
-        "command": "pnpm --dir apps/openagents-desktop run qa:visual",
         "manifest_path": "package.json",
-        "name": "qa:swarm:desktop"
+        "name": "qa:swarm:desktop",
+        "command": "pnpm --dir apps/openagents-desktop run qa:visual"
       },
       {
-        "command": "node --import tsx scripts/qa-verify.ts",
         "manifest_path": "package.json",
-        "name": "qa:verify"
+        "name": "qa:verify",
+        "command": "node --import tsx scripts/qa-verify.ts"
       },
       {
-        "command": "node --import tsx scripts/release.ts",
         "manifest_path": "package.json",
-        "name": "release"
+        "name": "release",
+        "command": "node --import tsx scripts/release.ts"
       },
       {
-        "command": "node --import tsx scripts/effect-authority-boundary-scan.ts",
         "manifest_path": "package.json",
-        "name": "scan:effect-authority-boundaries"
+        "name": "release:communicate",
+        "command": "node --import tsx scripts/release-communications.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "package.json",
-        "name": "test"
+        "name": "release:feedback",
+        "command": "node --import tsx scripts/release-feedback.ts"
       },
       {
-        "command": "pnpm --dir packages/agent-client-protocol run test",
         "manifest_path": "package.json",
-        "name": "test:agent-client-protocol"
+        "name": "release:github",
+        "command": "node --import tsx scripts/github-release.ts"
       },
       {
-        "command": "pnpm --dir packages/agent-client-protocol-conformance run test",
         "manifest_path": "package.json",
-        "name": "test:agent-client-protocol-conformance"
+        "name": "release:impact",
+        "command": "node --import tsx scripts/release-impact.ts"
       },
       {
-        "command": "pnpm --dir packages/agent-readiness run test",
         "manifest_path": "package.json",
-        "name": "test:agent-readiness"
+        "name": "scan:effect-authority-boundaries",
+        "command": "node --import tsx scripts/effect-authority-boundary-scan.ts"
       },
       {
-        "command": "pnpm --dir packages/agent-runtime-schema run test",
         "manifest_path": "package.json",
-        "name": "test:agent-runtime-schema"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "pnpm --dir packages/agent-stdio-transport run test",
         "manifest_path": "package.json",
-        "name": "test:agent-stdio-transport"
+        "name": "test:agent-client-protocol",
+        "command": "pnpm --dir packages/agent-client-protocol run test"
       },
       {
-        "command": "pnpm --dir packages/ai-sdk-sandbox-local run test",
         "manifest_path": "package.json",
-        "name": "test:ai-sdk-sandbox-local"
+        "name": "test:agent-client-protocol-conformance",
+        "command": "pnpm --dir packages/agent-client-protocol-conformance run test"
       },
       {
-        "command": "pnpm --dir packages/ai-sdk-sandbox-openagents run test",
         "manifest_path": "package.json",
-        "name": "test:ai-sdk-sandbox-openagents"
+        "name": "test:agent-readiness",
+        "command": "pnpm --dir packages/agent-readiness run test"
       },
       {
-        "command": "pnpm --dir apps/aiur run test",
         "manifest_path": "package.json",
-        "name": "test:aiur"
+        "name": "test:agent-runtime-schema",
+        "command": "pnpm --dir packages/agent-runtime-schema run test"
       },
       {
-        "command": "pnpm --dir packages/arbiter-effect run test",
         "manifest_path": "package.json",
-        "name": "test:arbiter-effect"
+        "name": "test:agent-stdio-transport",
+        "command": "pnpm --dir packages/agent-stdio-transport run test"
       },
       {
-        "command": "pnpm --dir packages/assurance-spec run test",
         "manifest_path": "package.json",
-        "name": "test:assurance-spec"
+        "name": "test:ai-sdk-sandbox-local",
+        "command": "pnpm --dir packages/ai-sdk-sandbox-local run test"
       },
       {
-        "command": "pnpm --dir packages/audio-contract run test",
         "manifest_path": "package.json",
-        "name": "test:audio-contract"
+        "name": "test:ai-sdk-sandbox-openagents",
+        "command": "pnpm --dir packages/ai-sdk-sandbox-openagents run test"
       },
       {
-        "command": "pnpm --dir packages/behavior-contracts run test",
         "manifest_path": "package.json",
-        "name": "test:behavior-contracts"
+        "name": "test:aiur",
+        "command": "pnpm --dir apps/aiur run test"
       },
       {
-        "command": "pnpm --dir packages/blueprint-contracts run test",
         "manifest_path": "package.json",
-        "name": "test:blueprint-contracts"
+        "name": "test:arbiter-effect",
+        "command": "pnpm --dir packages/arbiter-effect run test"
       },
       {
-        "command": "pnpm --dir packages/cloud-contract run test",
         "manifest_path": "package.json",
-        "name": "test:cloud-contract"
+        "name": "test:assurance-spec",
+        "command": "pnpm --dir packages/assurance-spec run test"
       },
       {
-        "command": "cargo test --workspace",
         "manifest_path": "package.json",
-        "name": "test:cloud-crates"
+        "name": "test:audio-contract",
+        "command": "pnpm --dir packages/audio-contract run test"
       },
       {
-        "command": "pnpm --dir packages/codex-app-server-protocol run test",
         "manifest_path": "package.json",
-        "name": "test:codex-app-server-protocol"
+        "name": "test:authority-delegation",
+        "command": "vp test --run scripts/check-authority-delegation.test.ts"
       },
       {
-        "command": "pnpm --dir packages/composer-state run test",
         "manifest_path": "package.json",
-        "name": "test:composer-state"
+        "name": "test:behavior-contracts",
+        "command": "pnpm --dir packages/behavior-contracts run test"
       },
       {
-        "command": "pnpm --dir packages/connector-sidecar run test",
         "manifest_path": "package.json",
-        "name": "test:connector-sidecar"
+        "name": "test:blueprint-contracts",
+        "command": "pnpm --dir packages/blueprint-contracts run test"
       },
       {
-        "command": "pnpm --dir packages/durable-stream run test",
         "manifest_path": "package.json",
-        "name": "test:durable-stream"
+        "name": "test:cloud-contract",
+        "command": "pnpm --dir packages/cloud-contract run test"
       },
       {
-        "command": "pnpm --dir packages/effect-boundary run test",
         "manifest_path": "package.json",
-        "name": "test:effect-boundary"
+        "name": "test:cloud-crates",
+        "command": "cargo test --workspace"
       },
       {
-        "command": "pnpm --dir packages/effect-start run test",
         "manifest_path": "package.json",
-        "name": "test:effect-start"
+        "name": "test:codex-app-server-protocol",
+        "command": "pnpm --dir packages/codex-app-server-protocol run test"
       },
       {
-        "command": "pnpm --dir packages/environment-auth run test",
         "manifest_path": "package.json",
-        "name": "test:environment-auth"
+        "name": "test:composer-state",
+        "command": "pnpm --dir packages/composer-state run test"
       },
       {
-        "command": "vp test --run scripts/check-fast-follow.test.ts && pnpm --dir packages/fast-follow-spec run test",
         "manifest_path": "package.json",
-        "name": "test:fast-follow"
+        "name": "test:connector-sidecar",
+        "command": "pnpm --dir packages/connector-sidecar run test"
       },
       {
-        "command": "pnpm --dir packages/forge-protocol run test",
         "manifest_path": "package.json",
-        "name": "test:forge-protocol"
+        "name": "test:durable-stream",
+        "command": "pnpm --dir packages/durable-stream run test"
       },
       {
-        "command": "pnpm --dir apps/forum run test",
         "manifest_path": "package.json",
-        "name": "test:forum"
+        "name": "test:effect-boundary",
+        "command": "pnpm --dir packages/effect-boundary run test"
       },
       {
-        "command": "vp test --run scripts/github-issue-triage.test.ts",
         "manifest_path": "package.json",
-        "name": "test:github-issue-triage"
+        "name": "test:effect-start",
+        "command": "pnpm --dir packages/effect-start run test"
       },
       {
-        "command": "pnpm --dir packages/grok-harness run test",
         "manifest_path": "package.json",
-        "name": "test:grok-harness"
+        "name": "test:environment-auth",
+        "command": "pnpm --dir packages/environment-auth run test"
       },
       {
-        "command": "pnpm --dir packages/harness-conformance run test",
         "manifest_path": "package.json",
-        "name": "test:harness-conformance"
+        "name": "test:fast-follow",
+        "command": "vp test --run scripts/check-fast-follow.test.ts && pnpm --dir packages/fast-follow-spec run test"
       },
       {
-        "command": "pnpm --dir packages/input-bindings run test",
         "manifest_path": "package.json",
-        "name": "test:input-bindings"
+        "name": "test:forge-protocol",
+        "command": "pnpm --dir packages/forge-protocol run test"
       },
       {
-        "command": "pnpm --dir packages/khala-ai-sdk-core run test",
         "manifest_path": "package.json",
-        "name": "test:khala-ai-sdk-core"
+        "name": "test:forum",
+        "command": "pnpm --dir apps/forum run test"
       },
       {
-        "command": "pnpm --dir apps/khala-capture run test",
         "manifest_path": "package.json",
-        "name": "test:khala-capture"
+        "name": "test:github-issue-triage",
+        "command": "vp test --run scripts/github-issue-triage.test.ts"
       },
       {
-        "command": "pnpm --dir packages/khala-fleet-intents run test",
         "manifest_path": "package.json",
-        "name": "test:khala-fleet-intents"
+        "name": "test:grok-harness",
+        "command": "pnpm --dir packages/grok-harness run test"
       },
       {
-        "command": "pnpm --dir apps/khala-live-hub run test",
         "manifest_path": "package.json",
-        "name": "test:khala-live-hub"
+        "name": "test:harness-conformance",
+        "command": "pnpm --dir packages/harness-conformance run test"
       },
       {
-        "command": "pnpm --dir packages/khala-qa-harness run test",
         "manifest_path": "package.json",
-        "name": "test:khala-qa-harness"
+        "name": "test:input-bindings",
+        "command": "pnpm --dir packages/input-bindings run test"
       },
       {
-        "command": "pnpm --dir packages/khala-sync-db-collection run test",
         "manifest_path": "package.json",
-        "name": "test:khala-sync-db-collection"
+        "name": "test:khala-ai-sdk-core",
+        "command": "pnpm --dir packages/khala-ai-sdk-core run test"
       },
       {
-        "command": "vp test --run scripts/validate-khala-sync-runtime-dogfood-evidence.test.ts",
         "manifest_path": "package.json",
-        "name": "test:khala-sync-runtime-dogfood-evidence"
+        "name": "test:khala-capture",
+        "command": "pnpm --dir apps/khala-capture run test"
       },
       {
-        "command": "pnpm --dir packages/khala-tools run test",
         "manifest_path": "package.json",
-        "name": "test:khala-tools"
+        "name": "test:khala-fleet-intents",
+        "command": "pnpm --dir packages/khala-fleet-intents run test"
       },
       {
-        "command": "pnpm --dir packages/mcp-contract run test",
         "manifest_path": "package.json",
-        "name": "test:mcp-contract"
+        "name": "test:khala-live-hub",
+        "command": "pnpm --dir apps/khala-live-hub run test"
       },
       {
-        "command": "pnpm --dir packages/nip90 run test",
         "manifest_path": "package.json",
-        "name": "test:nip90"
+        "name": "test:khala-qa-harness",
+        "command": "pnpm --dir packages/khala-qa-harness run test"
       },
       {
-        "command": "node --test scripts/node-vp-cutover-inventory.test.mjs",
         "manifest_path": "package.json",
-        "name": "test:node-vp-inventory"
+        "name": "test:khala-sync-db-collection",
+        "command": "pnpm --dir packages/khala-sync-db-collection run test"
       },
       {
-        "command": "pnpm --dir packages/oa-infra run test",
         "manifest_path": "package.json",
-        "name": "test:oa-infra"
+        "name": "test:khala-sync-runtime-dogfood-evidence",
+        "command": "vp test --run scripts/validate-khala-sync-runtime-dogfood-evidence.test.ts"
       },
       {
-        "command": "pnpm --dir apps/oa-queue-worker run test",
         "manifest_path": "package.json",
-        "name": "test:oa-queue-worker"
+        "name": "test:khala-tools",
+        "command": "pnpm --dir packages/khala-tools run test"
       },
       {
-        "command": "pnpm --dir apps/oa-updates run test",
         "manifest_path": "package.json",
-        "name": "test:oa-updates"
+        "name": "test:mcp-contract",
+        "command": "pnpm --dir packages/mcp-contract run test"
       },
       {
-        "command": "pnpm --dir apps/openagents-audio run test",
         "manifest_path": "package.json",
-        "name": "test:openagents-audio"
+        "name": "test:nip90",
+        "command": "pnpm --dir packages/nip90 run test"
       },
       {
-        "command": "pnpm --dir apps/openagents-desktop run verify",
         "manifest_path": "package.json",
-        "name": "test:openagents-desktop"
+        "name": "test:node-vp-inventory",
+        "command": "node --test scripts/node-vp-cutover-inventory.test.mjs"
       },
       {
-        "command": "pnpm --dir apps/openagents-mobile run test",
         "manifest_path": "package.json",
-        "name": "test:openagents-mobile"
+        "name": "test:oa-infra",
+        "command": "pnpm --dir packages/oa-infra run test"
       },
       {
-        "command": "pnpm --dir apps/openagents.com run test",
         "manifest_path": "package.json",
-        "name": "test:openagents.com"
+        "name": "test:oa-queue-worker",
+        "command": "pnpm --dir apps/oa-queue-worker run test"
       },
       {
-        "command": "pnpm --dir packages/pipeline-signals run test",
         "manifest_path": "package.json",
-        "name": "test:pipeline-signals"
+        "name": "test:oa-updates",
+        "command": "pnpm --dir apps/oa-updates run test"
       },
       {
-        "command": "pnpm --dir packages/portable-session-contract run test",
         "manifest_path": "package.json",
-        "name": "test:portable-session-contract"
+        "name": "test:openagents-audio",
+        "command": "pnpm --dir apps/openagents-audio run test"
       },
       {
-        "command": "pnpm --dir packages/probe run test",
         "manifest_path": "package.json",
-        "name": "test:probe"
+        "name": "test:openagents-desktop",
+        "command": "pnpm --dir apps/openagents-desktop run verify"
       },
       {
-        "command": "pnpm --dir packages/provider-account-schema run test",
         "manifest_path": "package.json",
-        "name": "test:provider-account-schema"
+        "name": "test:openagents-mobile",
+        "command": "pnpm --dir apps/openagents-mobile run test"
       },
       {
-        "command": "pnpm --dir packages/public-activity-timeline run test",
         "manifest_path": "package.json",
-        "name": "test:public-activity-timeline"
+        "name": "test:openagents.com",
+        "command": "pnpm --dir apps/openagents.com run test"
       },
       {
-        "command": "pnpm --dir apps/pylon run test",
         "manifest_path": "package.json",
-        "name": "test:pylon"
+        "name": "test:pipeline-signals",
+        "command": "pnpm --dir packages/pipeline-signals run test"
       },
       {
-        "command": "pnpm --dir packages/pylon-core run test",
         "manifest_path": "package.json",
-        "name": "test:pylon-core"
+        "name": "test:portable-session-contract",
+        "command": "pnpm --dir packages/portable-session-contract run test"
       },
       {
-        "command": "vp test --run scripts/qa-async-gce-trigger.test.ts",
         "manifest_path": "package.json",
-        "name": "test:qa-async-gce-trigger"
+        "name": "test:probe",
+        "command": "pnpm --dir packages/probe run test"
       },
       {
-        "command": "vp test --run scripts/qa-nightly-matrix.test.ts",
         "manifest_path": "package.json",
-        "name": "test:qa-nightly-matrix"
+        "name": "test:provider-account-schema",
+        "command": "pnpm --dir packages/provider-account-schema run test"
       },
       {
-        "command": "vp test --run scripts/qa-pre-push-smoke.test.ts",
         "manifest_path": "package.json",
-        "name": "test:qa-pre-push-smoke"
+        "name": "test:public-activity-timeline",
+        "command": "pnpm --dir packages/public-activity-timeline run test"
       },
       {
-        "command": "pnpm --dir apps/qa-runner run test",
         "manifest_path": "package.json",
-        "name": "test:qa-runner"
+        "name": "test:pylon",
+        "command": "pnpm --dir apps/pylon run test"
       },
       {
-        "command": "vp test --run scripts/qa-visual-smoke-gate.test.ts",
         "manifest_path": "package.json",
-        "name": "test:qa-visual-smoke-gate"
+        "name": "test:pylon-core",
+        "command": "pnpm --dir packages/pylon-core run test"
       },
       {
-        "command": "pnpm --dir packages/reactor-contracts run test",
         "manifest_path": "package.json",
-        "name": "test:reactor-contracts"
+        "name": "test:qa-async-gce-trigger",
+        "command": "vp test --run scripts/qa-async-gce-trigger.test.ts"
       },
       {
-        "command": "vp test --run scripts/retired-clients-removal.test.ts",
         "manifest_path": "package.json",
-        "name": "test:retired-clients"
+        "name": "test:qa-nightly-matrix",
+        "command": "vp test --run scripts/qa-nightly-matrix.test.ts"
       },
       {
-        "command": "vp test --run scripts/check-sol-docs.test.ts",
         "manifest_path": "package.json",
-        "name": "test:sol-docs"
+        "name": "test:qa-pre-push-smoke",
+        "command": "vp test --run scripts/qa-pre-push-smoke.test.ts"
       },
       {
-        "command": "pnpm --dir packages/sqlite-runtime run test",
         "manifest_path": "package.json",
-        "name": "test:sqlite-runtime"
+        "name": "test:qa-runner",
+        "command": "pnpm --dir apps/qa-runner run test"
       },
       {
-        "command": "vp test --run scripts/ui-velocity-receipt.test.ts",
         "manifest_path": "package.json",
-        "name": "test:ui-velocity-receipt"
+        "name": "test:qa-visual-smoke-gate",
+        "command": "vp test --run scripts/qa-visual-smoke-gate.test.ts"
       },
       {
-        "command": "node --test packages/runtime-platform/src/runtime-platform.node-suite.ts packages/sqlite-runtime/src/node-database.node-suite.ts scripts/public-cli-artifacts.node.test.mjs scripts/vp2-node-runtime-guard.test.mjs scripts/vp2-retained-service.node.test.mjs",
         "manifest_path": "package.json",
-        "name": "test:vp2-node"
+        "name": "test:reactor-contracts",
+        "command": "pnpm --dir packages/reactor-contracts run test"
       },
       {
-        "command": "pnpm --dir packages/world-client run test",
         "manifest_path": "package.json",
-        "name": "test:world-client"
+        "name": "test:retired-clients",
+        "command": "vp test --run scripts/retired-clients-removal.test.ts"
       },
       {
-        "command": "pnpm --dir packages/world-contract run test",
         "manifest_path": "package.json",
-        "name": "test:world-contract"
+        "name": "test:sol-docs",
+        "command": "vp test --run scripts/check-sol-docs.test.ts"
       },
       {
-        "command": "node --import tsx scripts/github-issue-triage.ts",
         "manifest_path": "package.json",
-        "name": "triage:issues"
+        "name": "test:sqlite-runtime",
+        "command": "pnpm --dir packages/sqlite-runtime run test"
       },
       {
-        "command": "vp run --concurrency-limit 2 --filter './**' --filter '!./packages/probe' --filter '!./packages/probe/**' typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck"
+        "name": "test:ui-velocity-receipt",
+        "command": "vp test --run scripts/ui-velocity-receipt.test.ts"
       },
       {
-        "command": "pnpm --dir packages/agent-client-protocol run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:agent-client-protocol"
+        "name": "test:vp2-node",
+        "command": "node --test packages/runtime-platform/src/runtime-platform.node-suite.ts packages/sqlite-runtime/src/node-database.node-suite.ts scripts/public-cli-artifacts.node.test.mjs scripts/vp2-node-runtime-guard.test.mjs scripts/vp2-retained-service.node.test.mjs"
       },
       {
-        "command": "pnpm --dir packages/agent-client-protocol-conformance run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:agent-client-protocol-conformance"
+        "name": "test:world-client",
+        "command": "pnpm --dir packages/world-client run test"
       },
       {
-        "command": "pnpm --dir packages/agent-readiness run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:agent-readiness"
+        "name": "test:world-contract",
+        "command": "pnpm --dir packages/world-contract run test"
       },
       {
-        "command": "pnpm --dir packages/agent-runtime-schema run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:agent-runtime-schema"
+        "name": "triage:issues",
+        "command": "node --import tsx scripts/github-issue-triage.ts"
       },
       {
-        "command": "pnpm --dir packages/agent-stdio-transport run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:agent-stdio-transport"
+        "name": "typecheck",
+        "command": "vp run --concurrency-limit 2 --filter './**' --filter '!./packages/probe' --filter '!./packages/probe/**' typecheck"
       },
       {
-        "command": "pnpm --dir packages/ai-sdk-sandbox-local run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:ai-sdk-sandbox-local"
+        "name": "typecheck:agent-client-protocol",
+        "command": "pnpm --dir packages/agent-client-protocol run typecheck"
       },
       {
-        "command": "pnpm --dir packages/ai-sdk-sandbox-openagents run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:ai-sdk-sandbox-openagents"
+        "name": "typecheck:agent-client-protocol-conformance",
+        "command": "pnpm --dir packages/agent-client-protocol-conformance run typecheck"
       },
       {
-        "command": "pnpm --dir packages/arbiter-effect run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:arbiter-effect"
+        "name": "typecheck:agent-readiness",
+        "command": "pnpm --dir packages/agent-readiness run typecheck"
       },
       {
-        "command": "pnpm --dir packages/assurance-spec run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:assurance-spec"
+        "name": "typecheck:agent-runtime-schema",
+        "command": "pnpm --dir packages/agent-runtime-schema run typecheck"
       },
       {
-        "command": "pnpm --dir packages/audio-contract run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:audio-contract"
+        "name": "typecheck:agent-stdio-transport",
+        "command": "pnpm --dir packages/agent-stdio-transport run typecheck"
       },
       {
-        "command": "pnpm --dir packages/behavior-contracts run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:behavior-contracts"
+        "name": "typecheck:ai-sdk-sandbox-local",
+        "command": "pnpm --dir packages/ai-sdk-sandbox-local run typecheck"
       },
       {
-        "command": "pnpm --dir packages/blueprint-contracts run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:blueprint-contracts"
+        "name": "typecheck:ai-sdk-sandbox-openagents",
+        "command": "pnpm --dir packages/ai-sdk-sandbox-openagents run typecheck"
       },
       {
-        "command": "pnpm --dir packages/codex-app-server-protocol run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:codex-app-server-protocol"
+        "name": "typecheck:arbiter-effect",
+        "command": "pnpm --dir packages/arbiter-effect run typecheck"
       },
       {
-        "command": "pnpm --dir packages/composer-state run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:composer-state"
+        "name": "typecheck:assurance-spec",
+        "command": "pnpm --dir packages/assurance-spec run typecheck"
       },
       {
-        "command": "pnpm --dir packages/connector-sidecar run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:connector-sidecar"
+        "name": "typecheck:audio-contract",
+        "command": "pnpm --dir packages/audio-contract run typecheck"
       },
       {
-        "command": "pnpm --dir packages/durable-stream run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:durable-stream"
+        "name": "typecheck:behavior-contracts",
+        "command": "pnpm --dir packages/behavior-contracts run typecheck"
       },
       {
-        "command": "pnpm --dir packages/effect-boundary run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:effect-boundary"
+        "name": "typecheck:blueprint-contracts",
+        "command": "pnpm --dir packages/blueprint-contracts run typecheck"
       },
       {
-        "command": "pnpm --dir packages/effect-start run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:effect-start"
+        "name": "typecheck:codex-app-server-protocol",
+        "command": "pnpm --dir packages/codex-app-server-protocol run typecheck"
       },
       {
-        "command": "pnpm --dir packages/environment-auth run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:environment-auth"
+        "name": "typecheck:composer-state",
+        "command": "pnpm --dir packages/composer-state run typecheck"
       },
       {
-        "command": "pnpm --dir packages/forge-protocol run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:forge-protocol"
+        "name": "typecheck:connector-sidecar",
+        "command": "pnpm --dir packages/connector-sidecar run typecheck"
       },
       {
-        "command": "pnpm --dir apps/forum run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:forum"
+        "name": "typecheck:durable-stream",
+        "command": "pnpm --dir packages/durable-stream run typecheck"
       },
       {
-        "command": "pnpm --dir packages/grok-harness run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:grok-harness"
+        "name": "typecheck:effect-boundary",
+        "command": "pnpm --dir packages/effect-boundary run typecheck"
       },
       {
-        "command": "pnpm --dir packages/harness-conformance run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:harness-conformance"
+        "name": "typecheck:effect-start",
+        "command": "pnpm --dir packages/effect-start run typecheck"
       },
       {
-        "command": "pnpm --dir packages/input-bindings run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:input-bindings"
+        "name": "typecheck:environment-auth",
+        "command": "pnpm --dir packages/environment-auth run typecheck"
       },
       {
-        "command": "pnpm --dir packages/khala-ai-sdk-core run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:khala-ai-sdk-core"
+        "name": "typecheck:forge-protocol",
+        "command": "pnpm --dir packages/forge-protocol run typecheck"
       },
       {
-        "command": "pnpm --dir packages/khala-fleet-intents run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:khala-fleet-intents"
+        "name": "typecheck:forum",
+        "command": "pnpm --dir apps/forum run typecheck"
       },
       {
-        "command": "pnpm --dir packages/khala-qa-harness run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:khala-qa-harness"
+        "name": "typecheck:grok-harness",
+        "command": "pnpm --dir packages/grok-harness run typecheck"
       },
       {
-        "command": "pnpm --dir packages/khala-sync-db-collection run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:khala-sync-db-collection"
+        "name": "typecheck:harness-conformance",
+        "command": "pnpm --dir packages/harness-conformance run typecheck"
       },
       {
-        "command": "pnpm --dir packages/khala-tools run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:khala-tools"
+        "name": "typecheck:input-bindings",
+        "command": "pnpm --dir packages/input-bindings run typecheck"
       },
       {
-        "command": "pnpm --dir packages/mcp-contract run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:mcp-contract"
+        "name": "typecheck:khala-ai-sdk-core",
+        "command": "pnpm --dir packages/khala-ai-sdk-core run typecheck"
       },
       {
-        "command": "pnpm --dir packages/nip90 run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:nip90"
+        "name": "typecheck:khala-fleet-intents",
+        "command": "pnpm --dir packages/khala-fleet-intents run typecheck"
       },
       {
-        "command": "pnpm --dir packages/oa-infra run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:oa-infra"
+        "name": "typecheck:khala-qa-harness",
+        "command": "pnpm --dir packages/khala-qa-harness run typecheck"
       },
       {
-        "command": "pnpm --dir apps/oa-queue-worker run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:oa-queue-worker"
+        "name": "typecheck:khala-sync-db-collection",
+        "command": "pnpm --dir packages/khala-sync-db-collection run typecheck"
       },
       {
-        "command": "pnpm --dir apps/oa-updates run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:oa-updates"
+        "name": "typecheck:khala-tools",
+        "command": "pnpm --dir packages/khala-tools run typecheck"
       },
       {
-        "command": "pnpm --dir apps/openagents-audio run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:openagents-audio"
+        "name": "typecheck:mcp-contract",
+        "command": "pnpm --dir packages/mcp-contract run typecheck"
       },
       {
-        "command": "pnpm --dir packages/pipeline-signals run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:pipeline-signals"
+        "name": "typecheck:nip90",
+        "command": "pnpm --dir packages/nip90 run typecheck"
       },
       {
-        "command": "pnpm --dir packages/portable-session-contract run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:portable-session-contract"
+        "name": "typecheck:oa-infra",
+        "command": "pnpm --dir packages/oa-infra run typecheck"
       },
       {
-        "command": "pnpm --dir packages/provider-account-schema run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:provider-account-schema"
+        "name": "typecheck:oa-queue-worker",
+        "command": "pnpm --dir apps/oa-queue-worker run typecheck"
       },
       {
-        "command": "pnpm --dir packages/public-activity-timeline run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:public-activity-timeline"
+        "name": "typecheck:oa-updates",
+        "command": "pnpm --dir apps/oa-updates run typecheck"
       },
       {
-        "command": "pnpm --dir packages/reactor-contracts run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:reactor-contracts"
+        "name": "typecheck:openagents-audio",
+        "command": "pnpm --dir apps/openagents-audio run typecheck"
       },
       {
-        "command": "pnpm --dir packages/sqlite-runtime run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:sqlite-runtime"
+        "name": "typecheck:pipeline-signals",
+        "command": "pnpm --dir packages/pipeline-signals run typecheck"
       },
       {
-        "command": "pnpm --dir packages/world-client run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:world-client"
+        "name": "typecheck:portable-session-contract",
+        "command": "pnpm --dir packages/portable-session-contract run typecheck"
       },
       {
-        "command": "pnpm --dir packages/world-contract run typecheck",
         "manifest_path": "package.json",
-        "name": "typecheck:world-contract"
+        "name": "typecheck:provider-account-schema",
+        "command": "pnpm --dir packages/provider-account-schema run typecheck"
       },
       {
-        "command": "specs/run-tlc.sh",
         "manifest_path": "package.json",
-        "name": "verify:tla"
+        "name": "typecheck:public-activity-timeline",
+        "command": "pnpm --dir packages/public-activity-timeline run typecheck"
       },
       {
-        "command": "node --import tsx scripts/generate-artifacts.ts --check",
+        "manifest_path": "package.json",
+        "name": "typecheck:reactor-contracts",
+        "command": "pnpm --dir packages/reactor-contracts run typecheck"
+      },
+      {
+        "manifest_path": "package.json",
+        "name": "typecheck:sqlite-runtime",
+        "command": "pnpm --dir packages/sqlite-runtime run typecheck"
+      },
+      {
+        "manifest_path": "package.json",
+        "name": "typecheck:world-client",
+        "command": "pnpm --dir packages/world-client run typecheck"
+      },
+      {
+        "manifest_path": "package.json",
+        "name": "typecheck:world-contract",
+        "command": "pnpm --dir packages/world-contract run typecheck"
+      },
+      {
+        "manifest_path": "package.json",
+        "name": "verify:tla",
+        "command": "specs/run-tlc.sh"
+      },
+      {
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "check:artifacts"
+        "name": "check:artifacts",
+        "command": "node --import tsx scripts/generate-artifacts.ts --check"
       },
       {
-        "command": "node --import tsx scripts/check-release-matrix.ts",
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "check:release"
+        "name": "check:release",
+        "command": "node --import tsx scripts/check-release-matrix.ts"
       },
       {
-        "command": "node --import tsx scripts/generate-artifacts.ts",
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "generate"
+        "name": "generate",
+        "command": "node --import tsx scripts/generate-artifacts.ts"
       },
       {
-        "command": "node --import tsx scripts/live-probe.ts cursor",
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "live:cursor"
+        "name": "live:cursor",
+        "command": "node --import tsx scripts/live-probe.ts cursor"
       },
       {
-        "command": "node --import tsx scripts/live-probe.ts grok",
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "live:grok"
+        "name": "live:grok",
+        "command": "node --import tsx scripts/live-probe.ts grok"
       },
       {
-        "command": "node --import tsx scripts/live-release-suite.ts",
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "live:release"
+        "name": "live:release",
+        "command": "node --import tsx scripts/live-release-suite.ts"
       },
       {
-        "command": "node --import tsx scripts/run-conformance-report.ts",
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "report"
+        "name": "report",
+        "command": "node --import tsx scripts/run-conformance-report.ts"
       },
       {
-        "command": "vp test --run packages/agent-client-protocol-conformance/src/conformance.test.ts packages/agent-client-protocol-conformance/src/release-evidence.test.ts",
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run packages/agent-client-protocol-conformance/src/conformance.test.ts packages/agent-client-protocol-conformance/src/release-evidence.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/agent-client-protocol-conformance/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node scripts/check-generated.ts",
         "manifest_path": "packages/agent-client-protocol/package.json",
-        "name": "check:generated"
+        "name": "check:generated",
+        "command": "node scripts/check-generated.ts"
       },
       {
-        "command": "node scripts/generate.ts",
         "manifest_path": "packages/agent-client-protocol/package.json",
-        "name": "generate"
+        "name": "generate",
+        "command": "node scripts/generate.ts"
       },
       {
-        "command": "vp test --run packages/agent-client-protocol/src/protocol.test.ts packages/agent-client-protocol/src/profiles/profiles.test.ts",
         "manifest_path": "packages/agent-client-protocol/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run packages/agent-client-protocol/src/protocol.test.ts packages/agent-client-protocol/src/profiles/profiles.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/agent-client-protocol/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node scripts/update-upstream.ts",
         "manifest_path": "packages/agent-client-protocol/package.json",
-        "name": "update:upstream"
+        "name": "update:upstream",
+        "command": "node scripts/update-upstream.ts"
       },
       {
-        "command": "vp test --run packages/agent-client-runtime-bridge/src",
         "manifest_path": "packages/agent-client-runtime-bridge/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run packages/agent-client-runtime-bridge/src"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/agent-client-runtime-bridge/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --root ../.. --run --project node packages/agent-readiness/src/index.test.ts",
         "manifest_path": "packages/agent-readiness/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --root ../.. --run --project node packages/agent-readiness/src/index.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/agent-readiness/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/agent-runtime-schema/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/agent-runtime-schema/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run packages/agent-stdio-transport/src/transport.test.ts",
         "manifest_path": "packages/agent-stdio-transport/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run packages/agent-stdio-transport/src/transport.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/agent-stdio-transport/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/ai-sdk-sandbox-local/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/ai-sdk-sandbox-local/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/ai-sdk-sandbox-openagents/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/ai-sdk-sandbox-openagents/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/arbiter-effect/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/arbiter-effect/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/run-mvp-assurance.ts",
         "manifest_path": "packages/assurance-spec/package.json",
-        "name": "assure:mvp"
+        "name": "assure:mvp",
+        "command": "node --import tsx scripts/run-mvp-assurance.ts"
       },
       {
-        "command": "node --import tsx scripts/pack-public.ts",
         "manifest_path": "packages/assurance-spec/package.json",
-        "name": "pack:public"
+        "name": "pack:public",
+        "command": "node --import tsx scripts/pack-public.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/assurance-spec/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/assurance-spec/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/verify-distribution.ts",
         "manifest_path": "packages/assurance-spec/package.json",
-        "name": "verify:distribution"
+        "name": "verify:distribution",
+        "command": "node --import tsx scripts/verify-distribution.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/atif/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/atif/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/audio-contract/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/audio-contract/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
+        "manifest_path": "packages/authority/package.json",
+        "name": "test",
+        "command": "vp test --run src/*.test.ts"
+      },
+      {
+        "manifest_path": "packages/authority/package.json",
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
+      },
+      {
         "manifest_path": "packages/autopilot-control-protocol/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/autopilot-control-protocol/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run src/*.test.ts",
         "manifest_path": "packages/behavior-contracts/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src/*.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/behavior-contracts/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/blueprint-contracts/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/blueprint-contracts/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/cloud-contract/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/cloud-contract/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node scripts/check-generated.ts",
         "manifest_path": "packages/codex-app-server-protocol/package.json",
-        "name": "check:generated"
+        "name": "check:generated",
+        "command": "node scripts/check-generated.ts"
       },
       {
-        "command": "node scripts/generate-notification-fixtures.ts",
         "manifest_path": "packages/codex-app-server-protocol/package.json",
-        "name": "fixtures:generate"
+        "name": "fixtures:generate",
+        "command": "node scripts/generate-notification-fixtures.ts"
       },
       {
-        "command": "node scripts/generate-all.ts",
         "manifest_path": "packages/codex-app-server-protocol/package.json",
-        "name": "generate"
+        "name": "generate",
+        "command": "node scripts/generate-all.ts"
       },
       {
-        "command": "node scripts/real-binary-smoke.ts",
         "manifest_path": "packages/codex-app-server-protocol/package.json",
-        "name": "smoke:binary"
+        "name": "smoke:binary",
+        "command": "node scripts/real-binary-smoke.ts"
       },
       {
-        "command": "vp test --run packages/codex-app-server-protocol/src/protocol.test.ts",
         "manifest_path": "packages/codex-app-server-protocol/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run packages/codex-app-server-protocol/src/protocol.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/codex-app-server-protocol/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/composer-state/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/composer-state/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/connector-sidecar/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/connector-sidecar/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/live-smoke.ts",
         "manifest_path": "packages/cursor-agent-runtime/package.json",
-        "name": "live-smoke"
+        "name": "live-smoke",
+        "command": "node --import tsx scripts/live-smoke.ts"
       },
       {
-        "command": "vp test --run packages/cursor-agent-runtime/src",
         "manifest_path": "packages/cursor-agent-runtime/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run packages/cursor-agent-runtime/src"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/cursor-agent-runtime/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/durable-stream/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/durable-stream/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/effect-boundary/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/effect-boundary/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/effect-start/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/effect-start/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/environment-auth/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/environment-auth/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run packages/fast-follow-spec/test/fast-follow-spec.test.ts packages/fast-follow-spec/test/manifest.test.ts",
         "manifest_path": "packages/fast-follow-spec/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run packages/fast-follow-spec/test/fast-follow-spec.test.ts packages/fast-follow-spec/test/manifest.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/fast-follow-spec/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/verify-distribution.ts",
         "manifest_path": "packages/fast-follow-spec/package.json",
-        "name": "verify:distribution"
+        "name": "verify:distribution",
+        "command": "node --import tsx scripts/verify-distribution.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/forge-protocol/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/forge-protocol/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/live-acp-smoke.ts",
         "manifest_path": "packages/grok-harness/package.json",
-        "name": "live-acp-smoke"
+        "name": "live-acp-smoke",
+        "command": "node --import tsx scripts/live-acp-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/mock-acp-stdio.ts",
         "manifest_path": "packages/grok-harness/package.json",
-        "name": "mock-acp"
+        "name": "mock-acp",
+        "command": "node --import tsx scripts/mock-acp-stdio.ts"
       },
       {
-        "command": "node --import tsx scripts/rl-probe.ts",
         "manifest_path": "packages/grok-harness/package.json",
-        "name": "rl-probe"
+        "name": "rl-probe",
+        "command": "node --import tsx scripts/rl-probe.ts"
       },
       {
-        "command": "node --import tsx scripts/rl4-worktree-probe.ts",
         "manifest_path": "packages/grok-harness/package.json",
-        "name": "rl4-worktree-probe"
+        "name": "rl4-worktree-probe",
+        "command": "node --import tsx scripts/rl4-worktree-probe.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/grok-harness/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/grok-harness/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run src/*.test.ts",
         "manifest_path": "packages/harness-conformance/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src/*.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/harness-conformance/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/input-bindings/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/input-bindings/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/khala-ai-sdk-core/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/khala-ai-sdk-core/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run src/*.test.ts",
         "manifest_path": "packages/khala-fleet-intents/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src/*.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/khala-fleet-intents/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx src/lag-profiling-sweep.ts",
         "manifest_path": "packages/khala-qa-harness/package.json",
-        "name": "lag:sweep"
+        "name": "lag:sweep",
+        "command": "node --import tsx src/lag-profiling-sweep.ts"
       },
       {
-        "command": "node --import tsx src/monkey-night.ts --runs 100 --steps 64",
         "manifest_path": "packages/khala-qa-harness/package.json",
-        "name": "monkey:night"
+        "name": "monkey:night",
+        "command": "node --import tsx src/monkey-night.ts --runs 100 --steps 64"
       },
       {
-        "command": "vp test --run src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'",
         "manifest_path": "packages/khala-qa-harness/package.json",
-        "name": "monkey:smoke"
+        "name": "monkey:smoke",
+        "command": "vp test --run src/monkey-explorer.test.ts --test-name-pattern 'bounded fixture smoke'"
       },
       {
-        "command": "node --import tsx src/architect-coder-judge-live-smoke.ts",
         "manifest_path": "packages/khala-qa-harness/package.json",
-        "name": "smoke:architect-coder-judge-live"
+        "name": "smoke:architect-coder-judge-live",
+        "command": "node --import tsx src/architect-coder-judge-live-smoke.ts"
       },
       {
-        "command": "vp test --run src/*.test.ts",
         "manifest_path": "packages/khala-qa-harness/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src/*.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/khala-qa-harness/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node scripts/check-test-import-coverage.mjs",
         "manifest_path": "packages/khala-sync-client/package.json",
-        "name": "check:test-import-coverage"
+        "name": "check:test-import-coverage",
+        "command": "node scripts/check-test-import-coverage.mjs"
       },
       {
-        "command": "vp test --root ../.. --run --project node packages/khala-sync-client/src && node scripts/check-test-import-coverage.mjs",
         "manifest_path": "packages/khala-sync-client/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --root ../.. --run --project node packages/khala-sync-client/src && node scripts/check-test-import-coverage.mjs"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/khala-sync-client/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/khala-sync-db-collection/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/khala-sync-db-collection/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/capture.ts",
         "manifest_path": "packages/khala-sync-server/package.json",
-        "name": "capture"
+        "name": "capture",
+        "command": "node --import tsx scripts/capture.ts"
       },
       {
-        "command": "node --import tsx scripts/check-pending-migrations.ts",
         "manifest_path": "packages/khala-sync-server/package.json",
-        "name": "check:pending-migrations"
+        "name": "check:pending-migrations",
+        "command": "node --import tsx scripts/check-pending-migrations.ts"
       },
       {
-        "command": "node --import tsx scripts/compact.ts",
         "manifest_path": "packages/khala-sync-server/package.json",
-        "name": "compact"
+        "name": "compact",
+        "command": "node --import tsx scripts/compact.ts"
       },
       {
-        "command": "node --import tsx scripts/load-test.ts",
         "manifest_path": "packages/khala-sync-server/package.json",
-        "name": "load-test"
+        "name": "load-test",
+        "command": "node --import tsx scripts/load-test.ts"
       },
       {
-        "command": "node --import tsx scripts/migrate.ts",
         "manifest_path": "packages/khala-sync-server/package.json",
-        "name": "migrate"
+        "name": "migrate",
+        "command": "node --import tsx scripts/migrate.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/khala-sync-server/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "vp test --run scripts/check-pending-migrations.test.ts",
         "manifest_path": "packages/khala-sync-server/package.json",
-        "name": "test:pending-migrations-guard"
+        "name": "test:pending-migrations-guard",
+        "command": "vp test --run scripts/check-pending-migrations.test.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.port03-production-driver.json --noEmit",
         "manifest_path": "packages/khala-sync-server/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.port03-production-driver.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/khala-sync/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/khala-sync/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/khala-tools/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/khala-tools/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "tsgo -p tsconfig.json --noEmit",
         "manifest_path": "packages/khala-tools/package.json",
-        "name": "typecheck:tsgo"
+        "name": "typecheck:tsgo",
+        "command": "tsgo -p tsconfig.json --noEmit"
       },
       {
-        "command": "effect-tsgo patch",
         "manifest_path": "packages/khala-tools/package.json",
-        "name": "typecheck:tsgo:patch"
+        "name": "typecheck:tsgo:patch",
+        "command": "effect-tsgo patch"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/mcp-contract/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/mcp-contract/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/nip90/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/nip90/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/migrate.ts",
         "manifest_path": "packages/oa-infra/package.json",
-        "name": "migrate"
+        "name": "migrate",
+        "command": "node --import tsx scripts/migrate.ts"
       },
       {
-        "command": "vp test --run src",
         "manifest_path": "packages/oa-infra/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run src"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/oa-infra/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/oxlint-plugin-openagents/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/oxlint-plugin-openagents/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/pipeline-signals/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/pipeline-signals/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/portable-session-contract/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/portable-session-contract/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/postgres-runtime/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "pnpm --dir packages/runtime run test",
         "manifest_path": "packages/probe/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "pnpm --dir packages/runtime run test"
       },
       {
-        "command": "npm --prefix packages/runtime run typecheck",
         "manifest_path": "packages/probe/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "npm --prefix packages/runtime run typecheck"
       },
       {
-        "command": "node --import tsx src/cli.ts",
         "manifest_path": "packages/probe/packages/runtime/package.json",
-        "name": "probe"
+        "name": "probe",
+        "command": "node --import tsx src/cli.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/probe/packages/runtime/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "node scripts/verify-test-typecheck.mjs",
         "manifest_path": "packages/probe/packages/runtime/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "node scripts/verify-test-typecheck.mjs"
       },
       {
-        "command": "node scripts/verify-test-typecheck.mjs --update-baseline",
         "manifest_path": "packages/probe/packages/runtime/package.json",
-        "name": "typecheck:baseline:update"
+        "name": "typecheck:baseline:update",
+        "command": "node scripts/verify-test-typecheck.mjs --update-baseline"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/product-spec/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/product-spec/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/provider-account-schema/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/provider-account-schema/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/public-activity-timeline/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/public-activity-timeline/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/pylon-core/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/pylon-core/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/qa-swarm-contract/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/qa-swarm-contract/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx scripts/dogfood-smoke.ts",
         "manifest_path": "packages/reactor-contracts/package.json",
-        "name": "smoke:dogfood"
+        "name": "smoke:dogfood",
+        "command": "node --import tsx scripts/dogfood-smoke.ts"
       },
       {
-        "command": "node --import tsx scripts/install-smoke.ts",
         "manifest_path": "packages/reactor-contracts/package.json",
-        "name": "smoke:install"
+        "name": "smoke:install",
+        "command": "node --import tsx scripts/install-smoke.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/reactor-contracts/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/reactor-contracts/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --test src/runtime-platform.node-suite.ts",
         "manifest_path": "packages/runtime-platform/package.json",
-        "name": "test:node"
+        "name": "test:node",
+        "command": "node --test src/runtime-platform.node-suite.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/runtime-platform/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run && pnpm run test:node",
+        "manifest_path": "packages/sarah/package.json",
+        "name": "test",
+        "command": "vp test --run src/*.test.ts"
+      },
+      {
+        "manifest_path": "packages/sarah/package.json",
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
+      },
+      {
         "manifest_path": "packages/sqlite-runtime/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run && pnpm run test:node"
       },
       {
-        "command": "node --test src/node-database.node-suite.ts",
         "manifest_path": "packages/sqlite-runtime/package.json",
-        "name": "test:node"
+        "name": "test:node",
+        "command": "node --test src/node-database.node-suite.ts"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/sqlite-runtime/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "node --import tsx src/replay-cli.ts",
         "manifest_path": "packages/tassadar-executor/package.json",
-        "name": "replay"
+        "name": "replay",
+        "command": "node --import tsx src/replay-cli.ts"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/tassadar-executor/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/tassadar-executor/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/ui/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/ui/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/world-client/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/world-client/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       },
       {
-        "command": "vp test --run",
         "manifest_path": "packages/world-contract/package.json",
-        "name": "test"
+        "name": "test",
+        "command": "vp test --run"
       },
       {
-        "command": "tsc -p tsconfig.json --noEmit",
         "manifest_path": "packages/world-contract/package.json",
-        "name": "typecheck"
+        "name": "typecheck",
+        "command": "tsc -p tsconfig.json --noEmit"
       }
     ],
+    "truncated": true,
     "diagnostics": [
       "candidate_artifact_inventory_truncated",
-      "repository_candidates_unmapped",
-      "repository_dirty"
+      "repository_candidates_unmapped"
     ],
-    "head": "73c19ea3ee9db967deb65dbdf94d93098fa94318",
-    "inventory_digest": "sha256:d2bda0dd411067f058622dbb32aea76018b9d94c6a87cf553ed3671095e919a5",
-    "repository_label": "openagents-wt-fa-assurance-8978",
-    "state": "dirty",
-    "tracked_file_count": 9662,
-    "tree": "8b05a31fe9364eef12d15334f84bb746825f3655",
-    "truncated": true
+    "inventory_digest": "sha256:c8b2d01ec6d7b363f7326244a0cfec32d44cb75049e315d28cbd60cd78dfddbd",
+    "candidates_not_proof": true
   }
 }
 ```
 
 ## Obligations
 
-31 of 76 criteria carry a fully DESIGNED obligation in this revision (domains, technique, environment_refs, oracle, falsifier, evidence, independence, and activation_gate all present) -- retained exactly from rev 3 to cover FA-AS-01's nine named highest-risk clusters plus the FullAutoRun lifecycle/migration core they depend on. The remaining 45 stay `needs_design`: their base binding (criterion ref, source claim snapshot, source digest) is present so subject coverage is complete, but no proof plan has been authored for them in this pass. FA-AC-69..76 are deliberately in that set because no MemoHarness implementation, independent verifier, or executable evidence seam exists yet; pre-MemoHarness tests cannot prove them by association. This is a disclosed, bounded partial pass -- see `custom-criterion-coverage-ledger` for the exact per-criterion split and `custom-owner-gates` for what closing the remainder needs. No designed obligation in this revision claims the `seam` domain: every cited evidence file is in-process (real production modules composed together, or a real in-process Effect HTTP server) rather than a genuine two-real-process wire connection with independently qualifying evidence on both sides, so claiming `domains: ["seam"]` here would trip `false_green_mocked_seam` honestly -- it would BE a mocked/one-sided seam claim. The two-OS-process `smoke:full-auto-restart` harness is real cross-process evidence but is modeled under the `resilience` technique / `ENV-FA-DEV-TWO-PROCESS-1` environment rather than `seam`, because its own in-app `PROBE=phase` special-casing (see the harness's own env var) makes it a smoke fixture, not two independently-authored real sides meeting at an ordinary production boundary.
+All 76 criteria carry a fully DESIGNED obligation in this revision (domains, technique, environment_refs, oracle, falsifier, evidence, independence, and activation_gate all present). Rev 3's 31 designed obligations are preserved and the former 45-item backlog is now reconciled against ProductSpec rev 14. No criterion remains in a silent `needs_design` bucket. Design readiness remains separate from execution and admission: MemoHarness obligations name executable local contract/model oracles but remain unobserved until their candidate suite runs, and release-grade obligations remain gated at their exact environment rung. No designed obligation in this revision claims the `seam` domain: every cited evidence file is in-process (real production modules composed together, or a real in-process Effect HTTP server) rather than a genuine two-real-process wire connection with independently qualifying evidence on both sides, so claiming `domains: ["seam"]` here would trip `false_green_mocked_seam` honestly. The two-OS-process `smoke:full-auto-restart` harness is real cross-process evidence but is modeled under the `resilience` technique / `ENV-FA-DEV-TWO-PROCESS-1` environment rather than `seam`, because its in-app probe mode makes it a smoke fixture, not two independently-authored real sides meeting at an ordinary production boundary.
 
 ```assurancespec-obligations
 [
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/react-composer.test.tsx"
+    ],
     "criterion_refs": [
       "FA-AC-01"
     ],
@@ -3455,10 +3512,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-01-01",
     "source_claim_digest": "sha256:5249b07e544314383070e43f5b8552b924fa4715fe5e32ca7c294ae802e59a1b",
     "source_claim_snapshot": "The composer renders exactly one `Full Auto` toggle\n(`shell-full-auto-toggle`), off by default, with `aria-pressed` reflecting\nstate. No other new screen or review surface ships with this spec.\nProof: `react-composer.test.tsx` \"Full Auto (#8852): renders as an\noff-by-default composer toggle and reports DesktopFullAutoToggled\".",
-    "title": "Assure FA-AC-01"
+    "title": "Assure FA-AC-01",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_01_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/react-composer.test.tsx"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+      "statement": "The exact FA-AC-01 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/codex-local-runtime.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-02"
     ],
@@ -3466,10 +3553,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-02-01",
     "source_claim_digest": "sha256:cb9866496df8854341bd1f37fd970b32ec998cc714b87d18f1b75b433531c4dd",
     "source_claim_snapshot": "A Codex-lane turn started with Full Auto on sends\n`approvalPolicy: \"never\"` on both `thread/start` and `turn/start`, and its\nprompt is prefixed with the Full Auto instruction; an ordinary turn keeps\n`approvalPolicy: \"on-request\"` and an unprefixed prompt.\nProof: `codex-local-runtime.test.ts` \"Full Auto (#8852) forces\napprovalPolicy never and prefixes the turn prompt...\" and \"an ordinary\n(non-Full-Auto) app-server turn keeps approvalPolicy on-request...\".",
-    "title": "Assure FA-AC-02"
+    "title": "Assure FA-AC-02",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_02_negative_control",
+      "ref": "apps/openagents-desktop/src/codex-local-runtime.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/codex-local-runtime.test.ts",
+      "statement": "The exact FA-AC-02 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/shell.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-03"
     ],
@@ -3477,10 +3594,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-03-01",
     "source_claim_digest": "sha256:13add3dccc6a5307434b19ee3920e3e6bc545427e15b5f7178a6f1a743af136d",
     "source_claim_snapshot": "A completed Full-Auto turn sends `fullAuto: true`\nexactly once from the renderer; the renderer never loops. Continuation is\ndecided in main by `reconcileFullAutoThreads`, called both right after that\nturn completes and once at app startup.\nProof: `shell.test.ts` \"a flagged turn sends fullAuto:true exactly once --\nmain, not the renderer, decides whether to continue\"; `main.ts`'s\n`dispatchCodexLocalTurn` calling `runFullAutoReconciliation()` after a\nsuccessful Full-Auto turn (code-reviewed; main.ts has no direct unit-test\nharness, see Receipts for the isolated-module proof used instead).",
-    "title": "Assure FA-AC-03"
+    "title": "Assure FA-AC-03",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_03_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/shell.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "statement": "The exact FA-AC-03 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-04"
     ],
@@ -3488,10 +3635,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-04-01",
     "source_claim_digest": "sha256:c629cf55289ec3cb3f95bc3dab1527f5d37c1c83cc140663d7786463bed06f90",
     "source_claim_snapshot": "Toggling Full Auto off persists to main immediately\n(`CodexLocalFullAutoSetChannel`), independent of whether a turn is in\nflight, so a toggle-off durably stops the loop even if the app quits before\nthe next turn would have started.\nProof: `shell.test.ts` \"DesktopFullAutoToggled flips the flag and persists\nit to main immediately\"; `full-auto-restart.e2e.test.ts` \"toggling off\nbefore restart durably stops it -- Runtime B never dispatches\".",
-    "title": "Assure FA-AC-04"
+    "title": "Assure FA-AC-04",
+    "activation_gate": "GATE-DEV-TWO-PROCESS",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-DEV-TWO-PROCESS-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_dev_two_process_unsigned",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_04_negative_control",
+      "ref": "apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts",
+      "statement": "The exact FA-AC-04 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_e2e"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/shell.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-05"
     ],
@@ -3499,7 +3676,35 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-05-01",
     "source_claim_digest": "sha256:da1b0266659d27ba0851e38614447a6334690794861843f6068c51b2fc57c224",
     "source_claim_snapshot": "When Full Auto is off, an ordinary turn sends `fullAuto`\nundefined (not `false`) and never resubmits automatically.\nProof: `shell.test.ts` \"toggled off, an ordinary Codex turn sends fullAuto\nundefined and never resubmits\".",
-    "title": "Assure FA-AC-05"
+    "title": "Assure FA-AC-05",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_05_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/shell.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "statement": "The exact FA-AC-05 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
     "activation_gate": "GATE-LOCAL-UNIT",
@@ -3627,7 +3832,9 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "title": "Assure FA-AC-08"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/shell.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-09"
     ],
@@ -3635,10 +3842,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-09-01",
     "source_claim_digest": "sha256:e0928b54f48543be4384febe0697ca5995463691bab1060e1537e2bf3b7406d2",
     "source_claim_snapshot": "A brand new thread (no id yet when the user\ntoggles Full Auto on) persists its enabled state to main once it actually\ngets a real thread id, rather than silently dropping the toggle's intent.\nProof: `shell.test.ts` \"a brand new thread persists its enabled state to\nmain once it has a real id\".",
-    "title": "Assure FA-AC-09"
+    "title": "Assure FA-AC-09",
+    "activation_gate": "GATE-DEV-TWO-PROCESS",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-DEV-TWO-PROCESS-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_dev_two_process_unsigned",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_09_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/shell.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "statement": "The exact FA-AC-09 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_e2e"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-lane.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-10"
     ],
@@ -3646,10 +3883,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-10-01",
     "source_claim_digest": "sha256:d1daf49b0dffa4a3db43527a9d08ceac7b8c450c367d16f34c3d54fa6b5b66f7",
     "source_claim_snapshot": "No Full Auto packet performs a direct commit, merge, or push;\nCodex proposes changes exactly as every other Desktop Codex turn already\ndoes. (Unchanged existing boundary; no new authority was added.)",
-    "title": "Assure FA-AC-10"
+    "title": "Assure FA-AC-10",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_10_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-lane.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-lane.test.ts",
+      "statement": "The exact FA-AC-10 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/tests/full-auto-registry.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-11"
     ],
@@ -3657,10 +3924,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-11-01",
     "source_claim_digest": "sha256:c4801546b6e401d8e1f127f2d3bb0c94521df237aab304b8f0f84f9b5c17e6ca",
     "source_claim_snapshot": "A corrupt or schema-invalid registry file never\nblocks Desktop main initialization. Opening it fails closed for the feature\nand open for the app: the bad file is quarantined beside the registry\n(best-effort rename to `registry.json.quarantined-<ISO timestamp>` with an\nowner-visible console diagnostic naming the quarantine path), the registry\nstarts empty (Full Auto disabled for all threads), and subsequent writes\npersist normally.\nProof: `full-auto-registry.test.ts` \"a corrupt registry file is quarantined\nand the registry opens empty instead of throwing\" and \"a schema-invalid (but\nvalid JSON) registry file is also quarantined rather than thrown\".",
-    "title": "Assure FA-AC-11"
+    "title": "Assure FA-AC-11",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_11_negative_control",
+      "ref": "apps/openagents-desktop/tests/full-auto-registry.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/tests/full-auto-registry.test.ts",
+      "statement": "The exact FA-AC-11 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/tests/full-auto-registry.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-12"
     ],
@@ -3668,7 +3965,35 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-12-01",
     "source_claim_digest": "sha256:27450f70ca5382f43098d7df09b20a74f7ecd2370302593d44cce1f89f8a9564",
     "source_claim_snapshot": "Registry record eviction never drops an\n`enabled: true` record. All enabled records are kept; only the disabled tail\nis bounded, filling remaining capacity (up to 128 total) with the\nmost-recently-updated disabled records. An owner-enabled thread therefore\nalways survives to the next restart, no matter how many other records were\ntouched more recently.\nProof: `full-auto-registry.test.ts` \"eviction never drops an enabled record:\nthe oldest enabled thread survives while old disabled records are evicted\".",
-    "title": "Assure FA-AC-12"
+    "title": "Assure FA-AC-12",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_12_negative_control",
+      "ref": "apps/openagents-desktop/tests/full-auto-registry.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/tests/full-auto-registry.test.ts",
+      "statement": "The exact FA-AC-12 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
     "activation_gate": "GATE-LOCAL-UNIT",
@@ -3875,7 +4200,9 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "title": "Assure FA-AC-17"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/tests/full-auto-registry.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-18"
     ],
@@ -3883,10 +4210,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-18-01",
     "source_claim_digest": "sha256:1a81b9e9b1821120f34aa3c4ddcbf11bbc2992e916e3718b2f4e9898a9d05ed8",
     "source_claim_snapshot": "The wave-2 registry schema upgrade is strictly additive: every\nnew record field (workspace binding, profile, lease, failure state) is\noptional, and an existing v1 registry file decodes without quarantine so no\nuser's enabled state is lost by upgrading.\nProof: `full-auto-registry.test.ts` \"an existing v1 registry file (no\nwave-2 fields) still decodes -- the schema upgrade never quarantines a\nuser's state\".",
-    "title": "Assure FA-AC-18"
+    "title": "Assure FA-AC-18",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_18_negative_control",
+      "ref": "apps/openagents-desktop/tests/full-auto-registry.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/tests/full-auto-registry.test.ts",
+      "statement": "The exact FA-AC-18 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    ],
     "criterion_refs": [
       "FA-AC-19"
     ],
@@ -3894,10 +4251,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-19-01",
     "source_claim_digest": "sha256:9fe946aaddb3c1c7217a2d42784eaefaaaba48f6230ff55ebf32135fc4fd7d37",
     "source_claim_snapshot": "A background (main-initiated) continuation is rendered as a\ncoarse, typed, per-thread in-flight state, not silence until completion.\nMain owns an in-memory live-state map (idle | turn_running |\nturn_completed | turn_failed | cap_reached | blocked; blocked carries the\ntyped blockedReason as bounded detail) and broadcasts every transition to\nall windows over `CodexLocalFullAutoStateChannel`: turn_running with the\nlease turn ref at dispatch start, turn_completed on success, turn_failed\nwith the typed reason on an ordinary failure, cap_reached at the cap, and\nblocked on a workspace or failure-limit disable. Terminal states persist\nuntil the next transition. The extended get channel additively returns\n`{ state, turnRef }` beside `enabled`, and while the active thread's state\nis turn_running the composer renders a \"Full Auto running…\" status badge.\nToken-by-token streaming remains deliberately out of scope.\nProof: `shell.test.ts` \"FA-H4 (#8877): withFullAutoLiveState projects a\nlive-state event per thread and activeFullAutoTurnRunning reads only the\nACTIVE thread\"; `react-composer.test.tsx` \"FA-H4 (#8877): a running\nbackground Full Auto turn renders the status badge and the Stop\naffordance; idle renders neither\"; `main.ts` wires the transitions around\nthe existing `runFullAutoReconciliation` dispatch adapter and callbacks\n(code-reviewed; main.ts has no direct unit-test harness).",
-    "title": "Assure FA-AC-19"
+    "title": "Assure FA-AC-19",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_19_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+      "statement": "The exact FA-AC-19 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/shell.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-20"
     ],
@@ -3905,10 +4292,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-20-01",
     "source_claim_digest": "sha256:e5bb0ecede90a05283555057a9d8d8b5197ce004bdbb0836e6294e1d87bf2887",
     "source_claim_snapshot": "A working stop targets the ACTUAL background turn. While the\nactive thread's live state is turn_running (renderer non-pending), the\ncomposer's Stop control dispatches the same interrupt intent, whose\nhandler calls the thread-scoped `CodexLocalFullAutoInterruptChannel` with\nonly `{ threadRef }`; main resolves the live running turn ref itself and\nsignals the exact same `codexLocal.interrupt` runtime path the existing\nturn-interrupt channel uses, answering `{ ok: boolean }`. While the\nrenderer's OWN turn is pending, Stop keeps signalling the active streaming\nturn unchanged. The interrupted background turn terminates through the\nexisting FA-H5 typed-failure path; the toggle remains the durable\nloop-level stop.\nProof: `shell.test.ts` \"FA-H4 (#8877): DesktopTurnInterrupted with a\nrunning BACKGROUND turn (not pending) calls fullAutoHost.interrupt with\nthe active threadRef\" and \"FA-H4 (#8877): while renderer-pending, Stop\nkeeps signalling the ACTIVE streaming turn (chat.interruptActive), not the\nbackground channel\"; `react-composer.test.tsx` (Stop affordance case\nabove); `main.ts` interrupt handler (code-reviewed).",
-    "title": "Assure FA-AC-20"
+    "title": "Assure FA-AC-20",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_20_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/shell.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "statement": "The exact FA-AC-20 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/react-composer.test.tsx"
+    ],
     "criterion_refs": [
       "FA-AC-21"
     ],
@@ -3916,10 +4333,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-21-01",
     "source_claim_digest": "sha256:96242f50d322c4619643e0da9d9d5496f93d97bcdc52f85239c3bef7b0b8e743",
     "source_claim_snapshot": "A manual send while a background Full Auto turn owns the\nthread is excluded, never run silently concurrently. When the active\nthread's live state is turn_running, `runNoteSubmission` refuses to start\na manual turn: it sets the transient notice \"Full Auto is running a turn\non this thread. Stop it first or wait for it to finish.\" and keeps the\ncomposer draft. Once the live state is terminal, the same submit goes\nthrough normally.\nProof: `shell.test.ts` \"FA-H4 (#8877): a manual send while a background\nFull Auto turn runs is FENCED -- sendMessage is never called, a notice\nsays why, and the draft is kept\".",
-    "title": "Assure FA-AC-21"
+    "title": "Assure FA-AC-21",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_21_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/react-composer.test.tsx"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
+      "statement": "The exact FA-AC-21 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-22"
     ],
@@ -3927,10 +4374,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-22-01",
     "source_claim_digest": "sha256:0f0f2018b26d60b1402371861ad8755b89b17097b98bf7eff2e9d9387997b89a",
     "source_claim_snapshot": "The programmatic control surface is opt-in and off by\ndefault, loopback-only, and bearer-gated. Desktop main constructs the\ncontrol server ONLY when `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1`; the\nlistener binds 127.0.0.1 exclusively (ephemeral or env-pinned port); every\nrequest -- the OpenAPI document included -- requires the per-process scoped\nbearer credential (scopes drawn from `@openagentsinc/environment-auth`'s\nnarrowing-only exchange, verified with a constant-time comparison) or is\nrefused 401. Connection info is written mode-0600 to\n`full-auto/control.json` under userData and removed on stop.\nProof: `full-auto-control-server.test.ts` \"off by default: main's guard\nrequires OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1 exactly\", \"credential mint\nuses the environment-auth narrowing-only exchange...\", \"auth: no bearer and\na wrong bearer are 401 on every route...\", and \"the connection file is\nwritten mode 0600...\"; `main.ts` wraps the entire server wiring in\n`isFullAutoControlEnabled(process.env)` (code-reviewed; main.ts has no\ndirect unit-test harness -- the guard function itself is the tested unit).",
-    "title": "Assure FA-AC-22"
+    "title": "Assure FA-AC-22",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_22_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "statement": "The exact FA-AC-22 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-23"
     ],
@@ -3938,10 +4415,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-23-01",
     "source_claim_digest": "sha256:8e0ec08187c8ca2db29385a7622cd9af60cc26aa5313af4173bcfd6568a1f62c",
     "source_claim_snapshot": "Programmatic enable NAMES the workspace the caller expects\nand enforces it: the request body requires `workspaceRef`, the server\nresolves the current workspace itself via the same\n`resolveDesktopLocalWorkspaceRoot` codex-local turns execute against, and\nany difference is a 409 `workspace_mismatch` refusal with the registry left\nuntouched -- never a silent redirect. Programmatic enable can never grant a\nnew, previously-ungranted workspace; on success it binds exactly the\nresolved workspace, the same path as the IPC set handler.\nProof: `full-auto-control-server.test.ts` \"enable with a mismatched\nworkspaceRef is a 409 typed refusal and the registry is untouched\" and\n\"enable with the matching workspaceRef enables + binds the record...\".",
-    "title": "Assure FA-AC-23"
+    "title": "Assure FA-AC-23",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_23_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "statement": "The exact FA-AC-23 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-24"
     ],
@@ -3949,10 +4456,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-24-01",
     "source_claim_digest": "sha256:30a72566ec674ecb4397f6f1088a73fad8e68d8e024065fccc28cc46a485442b",
     "source_claim_snapshot": "Every mutating control-API call (enable, disable,\ncontinue-now) appends a durable, distinctly-attributed system note to the\nthread through the existing `appendFullAutoSystemNote` (naming the\nprogrammatic path and caller `control-api`), plus a public-safe console\naudit line, so the owner can always tell a programmatic action from their\nown click.\nProof: `full-auto-control-server.test.ts` attribution assertions inside the\nenable, disable, and continue-now cases (note text contains \"programmatically\"\nand \"control-api\").",
-    "title": "Assure FA-AC-24"
+    "title": "Assure FA-AC-24",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_24_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "statement": "The exact FA-AC-24 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-25"
     ],
@@ -3960,10 +4497,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-25-01",
     "source_claim_digest": "sha256:7abfea21c68f5feefe7da620209c18ddc291b890cb51b133c2a8843d2f7340a8",
     "source_claim_snapshot": "continue-now is a new TRIGGER into the shared serialized\nreconciliation path, never a new dispatch mechanism: the handler invokes\nthe exact injected reconciliation trigger (main passes\n`runFullAutoReconciliation`, the same FA-H3 promise-chain mutex + durable\nlease every other trigger point uses) exactly once and returns\n`{ scheduled: true }` immediately; dispatch remains subject to lease,\nworkspace binding, backoff, and cap policy. An unknown threadRef is 404 and\nnever touches the trigger.\nProof: `full-auto-control-server.test.ts` \"continue-now invokes the\ninjected reconcile trigger exactly once and returns { scheduled: true }\"\n(spy on the injected trigger) and \"continue-now on an unknown threadRef is\na 404 and never touches the trigger\"; `main.ts` passes\n`() => runFullAutoReconciliation()` as that capability (code-reviewed).",
-    "title": "Assure FA-AC-25"
+    "title": "Assure FA-AC-25",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_25_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "statement": "The exact FA-AC-25 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-26"
     ],
@@ -3971,10 +4538,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-26-01",
     "source_claim_digest": "sha256:d841490075cc6fc71f4f7368ad6244f539f0f77f395e28cd13cf4a013f46e0af",
     "source_claim_snapshot": "The served surface and the published OpenAPI 3.1 document\ncannot drift: `GET /v1/openapi.json` serves the hand-authored document, and\na structural parity test asserts every route in the shared\n`FULL_AUTO_CONTROL_ROUTES` table appears in the document (path, method,\noperationId) AND every operation in the document is a served route.\nResponse bodies decode against the Effect Schemas in\n`full-auto-control-contract.ts`, whose bounds mirror the IPC contract.\nProjections stay public-safe: records expose only\nthreadRef/enabled/continuationCount/updatedAt/workspaceRef/blockedReason/\nlive state plus accountRef (never model/effort/raw profile material), and\nturns expose identity/phase/disposition/timestamps for at most the last 20\nFull Auto turns -- never transcript text.\nProof: `full-auto-control-server.test.ts` \"GET /v1/openapi.json serves the\ndocument, and the document <-> served routes agree in both directions\",\n\"list and status match the contract schemas... expose no profile material\nbeyond accountRef\", and \"turns returns a bounded, most-recent-first Full\nAuto projection with no transcript text\".",
-    "title": "Assure FA-AC-26"
+    "title": "Assure FA-AC-26",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_26_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "statement": "The exact FA-AC-26 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-27"
     ],
@@ -3982,10 +4579,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-27-01",
     "source_claim_digest": "sha256:a379ac228a58d621c4498bc9f579070a44fe338d59d598b45551ef863bac629c",
     "source_claim_snapshot": "The MCP server and CLI are thin pass-through clients of the\none control surface: both discover the server from `full-auto/control.json`\n(with `--user-data` / `OPENAGENTS_DESKTOP_USER_DATA` overrides), attach the\nbearer, call the HTTP API, and return the server's JSON verbatim -- no\nclient-side policy and no second schema vocabulary. Both fail with a clear\n\"server not enabled\" message when the connection file is missing. The MCP\nserver exposes `full_auto_list` / `full_auto_status` / `full_auto_enable` /\n`full_auto_disable` / `full_auto_continue_now` / `full_auto_turns` over the\nrepo's public MCP protocol revision (2025-06-18).\nProof: `scripts/full-auto-cli.ts` and `scripts/full-auto-mcp.ts`\n(pass-through by construction over the shared\n`scripts/full-auto-control-client.ts`); live end-to-end receipt in the\nrev 6 entry under Receipts (`pnpm run smoke:full-auto-control` exercises\nthe real CLI as a second OS process against the real running Electron\nmain).",
-    "title": "Assure FA-AC-27"
+    "title": "Assure FA-AC-27",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_27_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "statement": "The exact FA-AC-27 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-28"
     ],
@@ -3993,7 +4620,35 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-28-01",
     "source_claim_digest": "sha256:bfadbd7c3bc0f39bdda56240e27fd763503abb7e944c2e60d6ade253ef6efa6a",
     "source_claim_snapshot": "The control surface can BOOTSTRAP Full Auto with no existing\nthread: `POST /v1/full-auto/start` (OpenAPI `startFullAuto`, MCP\n`full_auto_start`, CLI `start --workspace <path> [--title <t>]`) mints a\nbrand-new local thread in main's own thread store (main names the ref --\nthe caller never supplies one), binds the resolved workspace, enables the\nrecord through the same `registry.set` path as the composer toggle,\nappends the distinctly-attributed `(caller: control-api)` system note, and\nschedules the shared serialized reconcile pass so the first continuation\ndispatches without a separate continue-now call -- the reconcile\ndispatcher then opens a brand-new provider conversation because the\nminted thread has no session continuity. start obeys the exact enable\nauthority rule: the caller MUST name the workspace it expects, and on any\ndifference from the currently resolved workspace the call refuses with\n409 `workspace_mismatch` with NO thread minted, NO record written, and NO\nnote appended -- never a redirect, never a new grant.\nProof: `src/full-auto-control-server.test.ts` (\"start with the matching\nworkspaceRef mints a thread...\", \"start with a mismatched workspaceRef is\na 409 typed refusal: NO thread minted...\", \"start discipline: bodyless\nstart is 400...\", plus the doc <-> route parity test covering\n`startFullAuto`).",
-    "title": "Assure FA-AC-28"
+    "title": "Assure FA-AC-28",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_28_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "statement": "The exact FA-AC-28 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
     "activation_gate": "GATE-DEV-TWO-PROCESS",
@@ -4039,7 +4694,9 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "title": "Assure FA-AC-29"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/provider-lane.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-30"
     ],
@@ -4047,10 +4704,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-30-01",
     "source_claim_digest": "sha256:a9b55a40165284d3dce1b35a96082a6a59d8fd6ad9f9ce15c77b73050a65fdcd",
     "source_claim_snapshot": "Reconciliation dispatches through the L1 ProviderLane SPI and\nfails closed for any lane that is unknown, L2-quarantined, does not advertise\nFull Auto, or lacks safe background-question settlement. Workspace binding,\nexactly-once lease, backoff, cap, and attribution behavior are unchanged.\nProof: `main.ts` lane selection + `projectProviderLaneCapabilities` gate;\nfocused Full Auto regression suites.",
-    "title": "Assure FA-AC-30"
+    "title": "Assure FA-AC-30",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_30_negative_control",
+      "ref": "apps/openagents-desktop/src/provider-lane.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/provider-lane.test.ts",
+      "statement": "The exact FA-AC-30 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-lane.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-31"
     ],
@@ -4058,10 +4745,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-31-01",
     "source_claim_digest": "sha256:4c079b7e3e08a8adad86a2918fff6937a69a26010d2306c4e3bcf404bf155219",
     "source_claim_snapshot": "Codex and Claude Full Auto turns use the single lane-keyed\ninstruction policy. A background Claude `AskUserQuestion` never parks: it is\ndenied immediately with guidance to make a reasonable judgment and proceed,\nwhile an interactive ordinary Claude turn retains the existing real question\nUI flow.\nProof: `fable-local-runtime.test.ts` \"background Full Auto denies\nAskUserQuestion immediately...\" and the retained interactive question tests.",
-    "title": "Assure FA-AC-31"
+    "title": "Assure FA-AC-31",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_31_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-lane.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-lane.test.ts",
+      "statement": "The exact FA-AC-31 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-32"
     ],
@@ -4069,10 +4786,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-32-01",
     "source_claim_digest": "sha256:4f022a210eada46d961d2fb53d39763565d354d6465328d5cda3bb511253e1cd",
     "source_claim_snapshot": "`start` and `enable` accept an optional lane ref (default\n`codex-local`) through the shared control contract, served OpenAPI document,\nMCP tools, and CLI `--lane`; status/list expose the public-safe selected lane.\nAn ineligible lane returns typed 409 `lane_not_eligible` without mutating the\nregistry.\nProof: `full-auto-control-server.test.ts` \"enable accepts an admitted lane\nselector...\" plus document/route/schema parity.",
-    "title": "Assure FA-AC-32"
+    "title": "Assure FA-AC-32",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_32_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "statement": "The exact FA-AC-32 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json"
+    ],
     "criterion_refs": [
       "FA-AC-33"
     ],
@@ -4080,10 +4827,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-33-01",
     "source_claim_digest": "sha256:d13b2fc55b4284f1e5b47327c615a43b87c98d3c71736701129b26fdd82c9b96",
     "source_claim_snapshot": "A real bounded Claude Code Full Auto run must be retained as a\nrelease receipt. ACP peer proof remains conditional on #8893/#8894 admission\nand must not be inferred from fixture coverage.\nProof: owner/dogfood receipt linked from #8901; until captured this criterion\nremains an explicit residual, not a release claim.",
-    "title": "Assure FA-AC-33"
+    "title": "Assure FA-AC-33",
+    "activation_gate": "GATE-OWNER-REAL-PROVIDER",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-OWNER-REAL-SIDEBAR-1"
+    ],
+    "evidence": {
+      "proof_rung": "owner_real",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_33_negative_control",
+      "ref": "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json",
+      "statement": "The exact FA-AC-33 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "owner_real_replay"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/spec-lane-workflow.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-34"
     ],
@@ -4091,10 +4868,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-34-01",
     "source_claim_digest": "sha256:8050c77a9576607875b9d2a9af869a0ea159297be5f349a1d0697810424c6247",
     "source_claim_snapshot": "Every ProviderLane dispatch receives the same main-owned spec\nprojection when the granted workspace contains `specs/**`. The projection is\nbounded to 32 files, 512,000 bytes per file, 64 snapshot criteria per\nProductSpec, 128 snapshot obligations, 12 prompt criteria per ProductSpec,\n12 prompt obligations, and 8,000 prompt characters; truncation is explicit.\nProof: `spec-lane-workflow.test.ts` projection-bound case plus the shared\n`makeProviderLaneDispatcher` seam.",
-    "title": "Assure FA-AC-34"
+    "title": "Assure FA-AC-34",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_34_negative_control",
+      "ref": "apps/openagents-desktop/src/spec-lane-workflow.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/spec-lane-workflow.test.ts",
+      "statement": "The exact FA-AC-34 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-lane.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-35"
     ],
@@ -4102,10 +4909,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-35-01",
     "source_claim_digest": "sha256:b8635e7309d8465621d38435efe0e9ec02511e2af8fbc92820c7605f70463776",
     "source_claim_snapshot": "Full Auto's shared lane instruction explicitly names unmet\nProductSpec/AssuranceSpec obligations as candidate work while preserving the\none-concrete-step contract and denying provider-owned verdict authority.\nProof: `full-auto-lane.ts` shared instruction and focused Full Auto tests.",
-    "title": "Assure FA-AC-35"
+    "title": "Assure FA-AC-35",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_35_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-lane.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-lane.test.ts",
+      "statement": "The exact FA-AC-35 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/spec-lane-workflow.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-36"
     ],
@@ -4113,10 +4950,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-36-01",
     "source_claim_digest": "sha256:482ee08b1bc9704f87e430c5c664700af0859e5a8bee1a4726d55abe1360688a",
     "source_claim_snapshot": "After a dispatched turn, main re-reads the workspace through\nthe ProductSpec/AssuranceSpec packages and appends a bounded system note with\nchanged and remaining unmet obligation state. Missing, malformed, stale,\nflaky, inconclusive, unreviewed, or excepted evidence never rounds green.\nProof: `spec-lane-workflow.test.ts` malformed-index and axis-revalidation\ncases.",
-    "title": "Assure FA-AC-36"
+    "title": "Assure FA-AC-36",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_36_negative_control",
+      "ref": "apps/openagents-desktop/src/spec-lane-workflow.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/spec-lane-workflow.test.ts",
+      "statement": "The exact FA-AC-36 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/spec-lane-workflow.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-37"
     ],
@@ -4124,7 +4991,35 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-37-01",
     "source_claim_digest": "sha256:9f6f83a0851f2e17620d86e15f1a71ff32e081b69c846d09f2022ddd79a287c5",
     "source_claim_snapshot": "The identical bounded projection and revalidation path works\nthrough at least two distinct ProviderLane refs without importing a provider\ninto the spec module or moving admission, verification, release, or\npublic-claim authority into a lane.\nProof: the two-lane dispatcher fixture in `provider-lane.test.ts` and the\nCodex/Claude note assertions in `spec-lane-workflow.test.ts`.",
-    "title": "Assure FA-AC-37"
+    "title": "Assure FA-AC-37",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_37_negative_control",
+      "ref": "apps/openagents-desktop/src/spec-lane-workflow.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/spec-lane-workflow.test.ts",
+      "statement": "The exact FA-AC-37 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
     "activation_gate": "GATE-LOCAL-UNIT",
@@ -4575,7 +5470,9 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "title": "Assure FA-AC-48"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/tests/full-auto-run-registry.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-49"
     ],
@@ -4583,10 +5480,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-49-01",
     "source_claim_digest": "sha256:0c24d8e40c4c3e3267aa1ae5c25a8e0cbe11a0296963c2d345f0a6e0a135f97f",
     "source_claim_snapshot": "Objective and done-condition text are durable fields on the\n`FullAutoRun` record itself, never dependent solely on provider-native\nsession continuity or the bounded transcript-note window; a provider\nswitch or a bounded-history truncation cannot cause the objective to be\nlost from Desktop's own state.\nProof: planned, owned by FA-RUN-01 (#8969); handoff-path proof owned by\nFA-HO-01 (#8975).",
-    "title": "Assure FA-AC-49"
+    "title": "Assure FA-AC-49",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_49_negative_control",
+      "ref": "apps/openagents-desktop/tests/full-auto-run-registry.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/tests/full-auto-run-registry.test.ts",
+      "statement": "The exact FA-AC-49 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/tests/full-auto-run-registry.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-50"
     ],
@@ -4594,7 +5521,35 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-50-01",
     "source_claim_digest": "sha256:012eaead2d43da7ded04b3439ea531732a4ad7e124fb6bec29a9fd7486195ced",
     "source_claim_snapshot": "Registry eviction never drops a non-terminal (Running,\nPausing, Paused, Retrying, Stalled) run record, extending the existing\nenabled-record eviction protection (FA-AC-12, retained with stronger proof)\nto the full FullAutoRun state set.\nProof: planned, owned by FA-RUN-01 (#8969).",
-    "title": "Assure FA-AC-50"
+    "title": "Assure FA-AC-50",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_50_negative_control",
+      "ref": "apps/openagents-desktop/tests/full-auto-run-registry.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/tests/full-auto-run-registry.test.ts",
+      "statement": "The exact FA-AC-50 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
     "activation_gate": "GATE-LOCAL-UNIT",
@@ -4678,7 +5633,9 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "title": "Assure FA-AC-52"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-run-analyzer.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-53"
     ],
@@ -4686,10 +5643,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-53-01",
     "source_claim_digest": "sha256:07f60230698e3f0598ebdd35fab637962cc0ff3a9685bdd18cf975f493700300",
     "source_claim_snapshot": "An offline/private transcript-analysis pass runs against a\ncompleted run's report and evidence pointer, reusing #8911's default-off\nDesktop usage/telemetry consent boundary rather than a parallel collection\npath, and produces measurable, comparable findings (duplicated setup,\ndrift, stalls, unclear UI state, false completion claims) across at least\ntwo runs of the same named test.\nProof: planned, owned by FA-RUN-05 (#8973).",
-    "title": "Assure FA-AC-53"
+    "title": "Assure FA-AC-53",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_53_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-run-analyzer.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-run-analyzer.test.ts",
+      "statement": "The exact FA-AC-53 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    ],
     "criterion_refs": [
       "FA-AC-54"
     ],
@@ -4697,10 +5684,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-54-01",
     "source_claim_digest": "sha256:ee1cccbf29975d95ae29de67376f4841375283a56074368a89efd62c4b29b595",
     "source_claim_snapshot": "A dedicated **Full Auto** launcher action appears beside/\nunder **New session** in the left rail and collects title (auto-suggested\nfrom the objective, editable), objective, explicit done condition,\nworkspace, provider/lane, and a bounded turn cap (default 20, clearly\nshown) before Start is enabled; Start applies the same workspace-authority\nrefusal rule as the existing control-API `start` (FA-AC-28, retained with\nstronger proof).\nProof: planned, owned by FA-UX-01 (#8974).",
-    "title": "Assure FA-AC-54"
+    "title": "Assure FA-AC-54",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_54_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+      "statement": "The exact FA-AC-54 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    ],
     "criterion_refs": [
       "FA-AC-55"
     ],
@@ -4708,10 +5725,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-55-01",
     "source_claim_digest": "sha256:98f144ef0a2f0da51baab539b19a2608b04a3a5ebebb0835a6cbbaee6931e39b",
     "source_claim_snapshot": "After Start, the main canvas renders a dedicated read-only run\nview for v1: objective and workspace remain pinned at the top; current\nstate is one of Running, Pausing, Paused, Retrying, Stalled, Completed,\nFailed, Stopped, or Cap-reached, rendered explicitly (not inferred from a\ngeneric banner); Pause/Resume is the primary control depending on state;\nStop is a distinct, always-available terminal control while non-terminal;\nthe per-turn transcript (provider, duration, outcome, artifacts) is\ninspectable; and the ordinary chat composer is absent from this view while\nthe run is active.\nProof: planned, owned by FA-UX-01 (#8974).",
-    "title": "Assure FA-AC-55"
+    "title": "Assure FA-AC-55",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_55_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+      "statement": "The exact FA-AC-55 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    ],
     "criterion_refs": [
       "FA-AC-56"
     ],
@@ -4719,10 +5766,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-56-01",
     "source_claim_digest": "sha256:c7a1f7b04852fb39e8c05e99072b3f0056e0570f9c746e7451683c36f05ecc33",
     "source_claim_snapshot": "The composer-embedded Full Auto toggle, badge, and\nmanual-send fencing (FA-AC-01, FA-AC-19, FA-AC-21) are removed from the\nordinary chat composer once the dedicated launcher and run view ship; an\nordinary chat thread never exposes Full Auto controls inline again.\nProof: planned, owned by FA-UX-01 (#8974).",
-    "title": "Assure FA-AC-56"
+    "title": "Assure FA-AC-56",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_56_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+      "statement": "The exact FA-AC-56 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    ],
     "criterion_refs": [
       "FA-AC-57"
     ],
@@ -4730,7 +5807,35 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-57-01",
     "source_claim_digest": "sha256:fad1f7faefa66f7654341795cb8774ef69c3b1aeca5ec4951eb9c27302cea100",
     "source_claim_snapshot": "The left-rail sidebar entry for an active or recently-terminal\nrun displays its objective-derived title (never a raw first-message title)\nand a live-state-derived status indicator, and remains reachable via the\nsame search/navigation affordances as an ordinary thread.\nProof: planned, owned by FA-UX-01 (#8974); reuses generic-title work\ntracked at #8940.",
-    "title": "Assure FA-AC-57"
+    "title": "Assure FA-AC-57",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_57_negative_control",
+      "ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx",
+      "statement": "The exact FA-AC-57 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
     "activation_gate": "GATE-LOCAL-UNIT",
@@ -4898,7 +6003,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
   {
     "activation_gate": "GATE-OWNER-REAL-PROVIDER",
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts"
+      "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts",
+      "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json"
     ],
     "criterion_refs": [
       "FA-AC-62"
@@ -4913,7 +6019,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "ENV-FA-OWNER-REAL-SIDEBAR-1"
     ],
     "evidence": {
-      "proof_rung": "fixture_headless",
+      "proof_rung": "owner_real_development",
       "required_kinds": [
         "fixture_execution_trace",
         "owner_real_dogfood_receipt"
@@ -4929,8 +6035,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts",
-      "statement": "TEST 01/02 (Codex<->Claude marker handoff) has real, negative-control-verified headless fixture machinery proof: the marker-retention rule genuinely bites (a broken handoff fixture FAILS). No owner_real-classed receipt exists in-repo as of this pass (RISK-FA-11) -- the real-sidebar rung stays outstanding pending #8976."
+      "evaluator_ref": "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json",
+      "statement": "The source-bound owner-real development receipt records PASS for TEST 01 and TEST 02 with real Codex and Claude lanes, explicit bidirectional transitions, non-null report/analysis digests, and null terminal failure classifications. The headless driver's broken-marker falsifier remains the independent oracle-sensitivity requirement; this producer does not self-admit either artifact."
     },
     "source_claim_digest": "sha256:8d83c9b227a3ed7376281cfe80448af2a02b9d1d217cd89d399f08338a818b40",
     "source_claim_snapshot": "Real-provider execution of `TEST 01` and `TEST 02` from the\n2026-07-17 audit's sidebar test batch (Codex establishes a marker and a\ntwo-step task, switches the same thread to Claude, Claude states the\nmarker and performs step two; and the reverse) is captured as a named,\nretained receipt in the owner's real Desktop sidebar, not inferred from\nfixture coverage.\nProof: planned, owned by FA-QA-01 (#8976).",
@@ -4941,7 +6047,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "activation_gate": "GATE-OWNER-REAL-PROVIDER",
     "candidate_artifact_refs": [
       "apps/openagents-desktop/src/full-auto-acceptance.ts",
-      "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts"
+      "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts",
+      "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json"
     ],
     "criterion_refs": [
       "FA-AC-63"
@@ -4956,7 +6063,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "ENV-FA-OWNER-REAL-SIDEBAR-1"
     ],
     "evidence": {
-      "proof_rung": "fixture_headless",
+      "proof_rung": "owner_real_development",
       "required_kinds": [
         "fixture_execution_trace",
         "owner_real_dogfood_receipt"
@@ -4972,8 +6079,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-acceptance.ts",
-      "statement": "TEST 03 (objective retention under pressure) has headless fixture machinery proof only; the FullAutoAcceptanceProfileClassSchema's own fixture/owner_real distinction records that mock/fixture results support diagnosis but cannot replace the visible real-provider pass this criterion requires."
+      "evaluator_ref": "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json",
+      "statement": "The source-bound owner-real development receipt records PASS for TEST 03 with a real Codex-to-Claude transition, objective-retention artifact digests, non-null report/analysis digests, and a null terminal failure classification. The fixture negative control remains required to demonstrate oracle sensitivity; the receipt remains development-tier and unadmitted by this producer."
     },
     "source_claim_digest": "sha256:e3a8b7580a13d0884b5cddf1a12c554546bb5d8b2ad16c4ecc526c225a65ddae",
     "source_claim_snapshot": "Real-provider execution of `TEST 03` (objective retention\nunder context/notes pressure -- either the target provider states the\noriginal objective and acceptance rule correctly, or the product visibly\nreports truncation and requires confirmation rather than silently\nfabricating continuity) is captured as a named, retained receipt.\nProof: planned, owned by FA-QA-01 (#8976).",
@@ -4983,7 +6090,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
   {
     "activation_gate": "GATE-OWNER-REAL-PROVIDER",
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts"
+      "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts",
+      "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json"
     ],
     "criterion_refs": [
       "FA-AC-64"
@@ -4997,7 +6105,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "ENV-FA-OWNER-REAL-SIDEBAR-1"
     ],
     "evidence": {
-      "proof_rung": "fixture_headless",
+      "proof_rung": "owner_real_development",
       "required_kinds": [
         "fixture_execution_trace",
         "owner_real_dogfood_receipt"
@@ -5013,8 +6121,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts",
-      "statement": "TEST 04 (3-turn unattended Codex run) and TEST 05 (Claude restart survival) have headless fixture machinery proof only; the real-provider receipt these criteria require is not yet present anywhere in the repository."
+      "evaluator_ref": "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json",
+      "statement": "The source-bound owner-real development receipt records PASS for TEST 04 (three-turn unattended Codex) and TEST 05 (Claude restart), each with three artifact digests, non-null report/analysis digests, and null terminal failure classifications. This is not signed-package restart proof and is not self-admitted by this producer."
     },
     "source_claim_digest": "sha256:4b958dfe66f7ac9c2074aa7f6d8d2e19e3e116eeec506502db5d93ae321b1135",
     "source_claim_snapshot": "Real-provider execution of `TEST 04` (a three-turn unattended\nCodex run with no manual message between turns, visible progress, and an\nexplicit stop reason) and `TEST 05` (a Claude run surviving a Desktop\nrestart with the same objective/lane and no duplicate turn) are captured as\nnamed, retained receipts.\nProof: planned, owned by FA-QA-01 (#8976); reuses FA-RUN-02 (#8970) restart\ninfrastructure.",
@@ -5025,7 +6133,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "activation_gate": "GATE-OWNER-REAL-PROVIDER",
     "candidate_artifact_refs": [
       "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts",
-      "apps/openagents-desktop/tests/full-auto-thread-pressure.e2e.test.ts"
+      "apps/openagents-desktop/tests/full-auto-thread-pressure.e2e.test.ts",
+      "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json"
     ],
     "criterion_refs": [
       "FA-AC-65"
@@ -5040,7 +6149,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "ENV-FA-OWNER-REAL-SIDEBAR-1"
     ],
     "evidence": {
-      "proof_rung": "fixture_headless",
+      "proof_rung": "owner_real_development",
       "required_kinds": [
         "fixture_execution_trace",
         "oracle_bite_verified_trace",
@@ -5057,8 +6166,8 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts",
-      "statement": "TEST 06 (real replay of the >5-other-chats incident) passes as an automated regression at the fixture tier (see FA-AC-42's PRESSURE_E2E oracle-bite-verified evidence) but the additional real-provider dogfood receipt this criterion also requires is not yet present."
+      "evaluator_ref": "docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json",
+      "statement": "The source-bound owner-real development receipt records PASS for TEST 06 after greater-than-five-chat pressure, with three artifact digests, non-null report/analysis digests, and a null terminal failure classification. The deterministic pressure regression remains the falsifier/oracle-sensitivity evidence; this producer does not independently admit the owner-real result."
     },
     "source_claim_digest": "sha256:65fa6e7fe479a8388a5a0a26f50e545f6892dd2497df2ff0c3c1900f4764c3fe",
     "source_claim_snapshot": "`TEST 06` -- the real replay of the 2026-07-17 incident\n(launch Full Auto, then create/open more than five other chats while its\nturn runs) -- passes with the autonomous thread remaining addressable and\nthe next continuation starting, both as an automated deterministic\nregression and as a real-provider dogfood receipt.\nProof: planned, owned by FA-RUN-02 (#8970) (automated regression) and\nFA-QA-01 (#8976) (real-provider receipt).",
@@ -5066,7 +6175,9 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "title": "Assure FA-AC-65"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "packages/assurance-spec/test/assurance-spec.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-66"
     ],
@@ -5074,7 +6185,35 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-66-01",
     "source_claim_digest": "sha256:374fcf720d23b8182c1460e8f333c559eba287a9c5e75956a448fb956dd58453",
     "source_claim_snapshot": "The Full Auto AssuranceSpec is reconciled to this revision:\nevery FA-AC-01..37 obligation carries its Criterion Disposition Map\noutcome (retired obligations marked accordingly, changed obligations\nrebound to their rev-10 criterion text) and every FA-AC-38..65 obligation\nhas a designed proof rung -- no obligation may round green by omission or\nsilent carry-forward of the rev-9 needs_design set.\nProof: planned, owned by FA-AS-01 (#8978).",
-    "title": "Assure FA-AC-66"
+    "title": "Assure FA-AC-66",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_66_negative_control",
+      "ref": "packages/assurance-spec/test/assurance-spec.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "packages/assurance-spec/test/assurance-spec.test.ts",
+      "statement": "The exact FA-AC-66 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
     "activation_gate": "GATE-LOCAL-UNIT",
@@ -5120,7 +6259,9 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "title": "Assure FA-AC-67"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/tests/full-auto-guardrails.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-68"
     ],
@@ -5128,10 +6269,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-68-01",
     "source_claim_digest": "sha256:42198d0dc4dd0e1dc88785133fb9636e22677ee468114b2ae42a6105dc057af4",
     "source_claim_snapshot": "Owner-configurable guardrails and the confidence gate bound\nevery unattended run. Each configured guardrail class provably halts a\nsynthetic run with its typed reason and durable attribution: maxWallClockMs\n(against the durable `enabledAt` anchor, failing CLOSED when a\nguardrail-bearing record lacks the anchor) and maxTurns terminate with\n`guardrail_max_wall_clock`/`guardrail_max_turns` and\n`disabledBy: \"guardrail\"`; maxPerTurnFailures tightens the FA-H5 budget\nwhile keeping its `dispatch_failure_limit` attribution; tokenBudgetRef is\ncarried durably as an owner-visible ref and never fabricated into\nenforcement. Absent guardrails preserve the existing 20-cap and 5-failure\nsemantics byte-for-byte. Every between-turn decision persists as a typed,\nbounded, oldest-evicted decision record (continue / rotate /\npause_low_confidence / stop_guardrail with reason and remaining budget)\nthat survives restart and disable/enable, with a public-safe explicit\nfield-by-field projection. A deterministic no-progress detector (three\nconsecutive settled failed/interrupted_by_restart turns after the\nlastResumedAt ?? enabledAt anchor) transitions the record to a durable\n`pausedReason`-carrying paused state instead of continuing blind; the\npause survives restart, only an explicit attributed resume\n(`resumeFullAuto`) clears it, and pre-resume evidence can never\nimmediately re-pause the resumed loop. The non-overridable core set --\nworkspace binding, own-capacity-only admission, no rate-limit-reset\ntriggering -- is enforced in code with no config/env surface: unknown\nguardrail keys are dropped at decode, and no environment variable or\nhand-edited durable field relaxes any of the three (proven by the\nimmunity test). Guardrail terminations flow into the FA-RUN-04 report's\nthreadFailureHistory and settle the bound FullAutoRun to Stopped with the\ntyped `guardrail` actor. Legacy registry files without the new optional\nfields decode unquarantined and behave exactly as before.\nProof: FA-GD-01 (#8991); `tests/full-auto-guardrails.test.ts` (guardrail\nschema/legacy decode, decision records, per-class typed halts, durable\npause + restart survival + explicit resume, non-overridable immunity, run\nreport pickup); control-server/OpenAPI/UI wiring for bind-guardrails,\nresume, and the decision-history projection is an explicit named\nfollow-up seam, not claimed by this revision.",
-    "title": "Assure FA-AC-68"
+    "title": "Assure FA-AC-68",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "contract",
+      "regression"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_unit",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_68_negative_control",
+      "ref": "apps/openagents-desktop/tests/full-auto-guardrails.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/tests/full-auto-guardrails.test.ts",
+      "statement": "The exact FA-AC-68 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "deterministic_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-69"
     ],
@@ -5139,10 +6310,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-69-01",
     "source_claim_digest": "sha256:cd15ea0f2c2a7bdd8c9a58b880a7fe6935997e511b0028c24bfbeea45492c233",
     "source_claim_snapshot": "Before a Full Auto run is admitted, the host resolves exactly\none released `HarnessPolicyBundle` and persists its immutable digest plus\nthe six independently versioned dimension-policy refs (context assembly,\ntool interaction, generation control, orchestration, memory management,\noutput processing). Compatibility is checked against the\nexact engine protocol, provider/model/toolset, execution profile,\nevaluator, and environment; an unknown, candidate-only, revoked, or\nincompatible bundle fails closed before a thread or first turn dispatch.\nProof: planned; new MemoHarness/Blueprint implementation authority is\nrequired before dispatch.",
-    "title": "Assure FA-AC-69"
+    "title": "Assure FA-AC-69",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "memo_harness",
+      "authority_preservation"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_contract_model",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_69_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts",
+      "statement": "The exact FA-AC-69 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "bounded_contract_model"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-70"
     ],
@@ -5150,10 +6351,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-70-01",
     "source_claim_digest": "sha256:07bf96fb6a114bfe4ef69473312c4a9542d831d451b9fc274b9fdfa00fffcb7b",
     "source_claim_snapshot": "When adaptation is enabled, run admission freezes an eligible\nexperience-bank snapshot before the first dispatch. Retrieval is semantic\nthrough the central typed selector and is filtered by tenant, workspace,\nvisibility, retention, consent, evaluator compatibility, deletion, and\ntombstone state; it never uses ad hoc keyword intent routing and never\nretrieves raw cross-tenant or ineligible evidence. The snapshot identity,\nsafe experience/pattern refs, scores, filters, and cache/cost facts are\nrecorded in the adaptation receipt, while raw prompts, transcripts, tool\noutput, embeddings, secrets, credentials, and filesystem paths remain\nprivate.\nProof: planned; the retrieval, privacy, and deletion-aware snapshot suites\ndo not yet exist.",
-    "title": "Assure FA-AC-70"
+    "title": "Assure FA-AC-70",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "memo_harness",
+      "authority_preservation"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_contract_model",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_70_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts",
+      "statement": "The exact FA-AC-70 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "bounded_contract_model"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-71"
     ],
@@ -5161,10 +6392,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-71-01",
     "source_claim_digest": "sha256:8e56e60b71e97c71a5cb015289d48230cdc544575cfa3a585a142d4d29481bde",
     "source_claim_snapshot": "Per-case adaptation happens at most once, after the snapshot\nfreezes and before the first provider turn. It applies only released,\ncompatible, bounded module patches and emits a `HarnessAdaptationReceipt`\ncontaining base/result bundle digests, snapshot, selected patch refs,\ncompatibility and risk decisions, and explicit no-current-run-label and\nno-current-run-feedback facts. The effective digest is immutable through\nevery continuation, restart, Pause/Resume, retry, and provider handoff;\nan incompatible result fails closed rather than silently falling back or\nchanging policy mid-run.\nProof: planned; run-start adaptation and restart/handoff invariance tests do\nnot yet exist.",
-    "title": "Assure FA-AC-71"
+    "title": "Assure FA-AC-71",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "memo_harness",
+      "authority_preservation"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_contract_model",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_71_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts",
+      "statement": "The exact FA-AC-71 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "bounded_contract_model"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-72"
     ],
@@ -5172,10 +6433,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-72-01",
     "source_claim_digest": "sha256:6b3028616af9475e8941d26e70b77442926d93d106735aaa53546abbc06b5db2",
     "source_claim_snapshot": "The authority manifest before and after adaptation is\nidentical for objective/done condition, workspace grant, execution\nplacement/profile, provider/account candidate set and order, tool scopes,\napproval policy, guardrails, budgets, release authority, action authority,\nand external effects. The adapter schema cannot express those fields, and\na malformed or hand-edited delta that attempts to change one refuses before\ndispatch with a typed reason.\nProof: planned; a bounded authority-immunity model and regression suite do\nnot yet exist.",
-    "title": "Assure FA-AC-72"
+    "title": "Assure FA-AC-72",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "memo_harness",
+      "authority_preservation"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_contract_model",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_72_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts",
+      "statement": "The exact FA-AC-72 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "bounded_contract_model"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-73"
     ],
@@ -5183,10 +6474,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-73-01",
     "source_claim_digest": "sha256:b665295b430e6b5690fe058f4832ba3533f0bd5e22029b88998d5b5b01427f55",
     "source_claim_snapshot": "Every `FullAutoRunReport`, private control record, and\npublic-safe projection records the effective execution tuple of provider,\nmodel, harness bundle digest, toolset, evaluator, and environment, plus the\nadaptation policy/receipt refs and static/global/adapted classification.\nPublic-safe projections are explicit-field allowlists and never include raw\nexperience content, retrieval queries, embeddings, private scores, prompts,\ntranscripts, tool output, secrets, credentials, or filesystem paths.\nProof: planned; report and cross-surface projection schemas require an\nadditive implementation revision.",
-    "title": "Assure FA-AC-73"
+    "title": "Assure FA-AC-73",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "memo_harness",
+      "authority_preservation"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_contract_model",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_73_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts",
+      "statement": "The exact FA-AC-73 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "bounded_contract_model"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-74"
     ],
@@ -5194,10 +6515,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-74-01",
     "source_claim_digest": "sha256:64d472a8991b10c07decb6948452d157710cf7dbcaa9ab3f872b7e69755dd412",
     "source_claim_snapshot": "A run can become a `HarnessExecutionExperience` only through a\nseparate Effect-owned compiler after the run is terminal and its report is\nimmutable. The experience records source run/report/evaluator/provenance,\noutcome and quality facts, visibility, retention, and retrieval/training\neligibility; it cannot alter the source run, its effective bundle, or the\nfrozen snapshot that source run used. Export, deletion, and tombstone flows\nprevent deleted evidence from re-entering later snapshots or candidates.\nProof: planned; no terminal-run experience compiler or deletion receipt\nsuite is claimed by this revision.",
-    "title": "Assure FA-AC-74"
+    "title": "Assure FA-AC-74",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "memo_harness",
+      "authority_preservation"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_contract_model",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_74_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts",
+      "statement": "The exact FA-AC-74 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "bounded_contract_model"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-75"
     ],
@@ -5205,10 +6556,40 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-75-01",
     "source_claim_digest": "sha256:91ced3de6e86519d789498743b436deaff1d70113f49318ddd1b60e34d174831",
     "source_claim_snapshot": "Offline global optimization and pattern extraction consume\nonly admitted immutable experience/evaluation snapshots and produce\ncontent-addressed candidate module versions with complete lineage. A\ncandidate cannot become production by optimizer, executor, or run action:\nit must pass held-out quality, regression, compatibility, privacy, and\nsafety evidence, then cross an independent Blueprint release gate. Shadow/\ndogfood execution is explicit; production Full Auto resolves only released\ncompatible versions and records promotion or rollback receipts.\nProof: planned; the optimizer, evidence packet, and Blueprint BP-MH release\ngate are not implemented or admitted by this document.",
-    "title": "Assure FA-AC-75"
+    "title": "Assure FA-AC-75",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "memo_harness",
+      "authority_preservation"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_contract_model",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_75_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts",
+      "statement": "The exact FA-AC-75 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "bounded_contract_model"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    ],
     "criterion_refs": [
       "FA-AC-76"
     ],
@@ -5216,14 +6597,42 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
     "id": "AO-FA-AC-76-01",
     "source_claim_digest": "sha256:b0f9b83855ae085ad89e1032193d087c33b68b1e64a2137f185782e8745555ec",
     "source_claim_snapshot": "MemoHarness application and control-plane code is TypeScript\non Effect: Effect Schema contracts, services/layers, structured errors,\nsemantic retrieval, storage policy, optimization orchestration, adaptation,\nretention/deletion, and release resolution. Any Rust is an isolated native\nhelper for containment, PTY/process primitives, or local inference behind a\ngenerated Effect-owned contract; no Rust MemoHarness daemon, policy engine,\nrelease authority, metadata database, or second source of truth is admitted.\nProof: planned; architecture conformance tests must reject ownership drift\nwhen implementation begins.",
-    "title": "Assure FA-AC-76"
+    "title": "Assure FA-AC-76",
+    "activation_gate": "GATE-LOCAL-UNIT",
+    "domains": [
+      "memo_harness",
+      "authority_preservation"
+    ],
+    "environment_refs": [
+      "ENV-FA-LOCAL-UNIT-1"
+    ],
+    "evidence": {
+      "proof_rung": "local_contract_model",
+      "required_kinds": [
+        "execution_trace",
+        "negative_control_trace"
+      ]
+    },
+    "falsifier": {
+      "expected_verdict": "REFUTED",
+      "kind": "fa_ac_76_negative_control",
+      "ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts"
+    },
+    "independence": {
+      "producer_may_verify": false
+    },
+    "oracle": {
+      "evaluator_ref": "apps/openagents-desktop/src/full-auto-harness-policy.test.ts",
+      "statement": "The exact FA-AC-76 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
+    },
+    "technique": "bounded_contract_model"
   }
 ]
 ```
 
 ## Gates
 
-Four gates, one per Environment Profile, express exactly when each evidence tier is genuinely armed -- never a blended "some evidence exists" signal (ASSURANCE_SPEC.md Law 7). `GATE-LOCAL-UNIT` is armed by default under the owned runner (never GitHub-hosted CI, per root `INVARIANTS.md` and this repo's CLAUDE.md). `GATE-DEV-TWO-PROCESS` requires an explicit local invocation of the named smoke script on owned infrastructure. `GATE-PACKAGED-RELEASE` stays BLOCKED until a signed/notarized build and its runbook receipt both exist -- it is not armed by this revision. `GATE-OWNER-REAL-PROVIDER` stays BLOCKED until the owner explicitly runs #8976's six named tests in the real Desktop sidebar with linked accounts -- no agent, including this one, may arm it.
+Four gates, one per Environment Profile, express exactly when each evidence tier is genuinely armed -- never a blended "some evidence exists" signal (ASSURANCE_SPEC.md Law 7). `GATE-LOCAL-UNIT` is armed by default under the owned runner (never GitHub-hosted CI, per root `INVARIANTS.md` and this repo's CLAUDE.md). `GATE-DEV-TWO-PROCESS` requires an explicit local invocation of the named smoke script on owned infrastructure. `GATE-PACKAGED-RELEASE` stays BLOCKED until a signed/notarized build and its runbook receipt both exist -- it is not armed by this revision. `GATE-OWNER-REAL-PROVIDER` is evidence-armed only for the exact owner-real development candidate in the retained receipt; it does not arm any newer source revision, packaged build, release, or admission decision.
 
 ```assurancespec-gates
 [
@@ -5240,7 +6649,7 @@ Four gates, one per Environment Profile, express exactly when each evidence tier
     "id": "GATE-PACKAGED-RELEASE"
   },
   {
-    "expression": "BLOCKED by default. Arms only by explicit owner action: linking real Codex/Claude accounts and running #8976's six named tests in the real Desktop sidebar. No automated agent may arm this gate.",
+    "expression": "Armed only for source revision 3123d926a3, build main-3123d926a3, test definition 77ab05baed3c3ab4974787b4c37d66720eae3eadfd90bcf5f5fea3e4935f8c78, and the owner_real development receipt at docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json. It is not armed for another revision, a packaged build, release admission, or a public claim.",
     "id": "GATE-OWNER-REAL-PROVIDER"
   }
 ]
@@ -5248,7 +6657,7 @@ Four gates, one per Environment Profile, express exactly when each evidence tier
 
 ## Evidence Policy
 
-Links are pointers, never verdicts (Law 13): a `candidate_artifact_refs` entry or an `oracle.evaluator_ref` names where evidence WOULD be found, not that it was observed passing in this authoring pass. Missing, stale, or unexecuted evidence stays `INCONCLUSIVE` (schema-enforced: `missing_evidence_verdict` is a literal `"INCONCLUSIVE"`). `required_for_ready_obligation` below names the four axes every obligation's design must resolve before it can be considered execution-ready: an oracle observation, a falsifier observation demonstrating sensitivity, an environment binding, and independent (non-producer) review. This revision resolves the DESIGN of those four axes for 31 obligations; it does not itself constitute an observation receipt for any of them -- no receipt-ingestion tool ran against this revision as part of authoring it. Evidence tier must never round up: fixture/headless evidence (FA-AC-62..65) stays labeled `fixture_headless` and is never presented as `owner_real_dogfood`; unsigned dev-mode two-process evidence (FA-AC-07/08/09/29) stays labeled `local_dev_two_process_unsigned` and is never presented as a signed packaged-release proof; existing Full Auto lifecycle/report tests provide zero MemoHarness observation for FA-AC-69..76 until new oracles, falsifiers, environments, and independent review are designed and run.
+Links are pointers, never verdicts (Law 13): a `candidate_artifact_refs` entry or an `oracle.evaluator_ref` identifies the artifact a verifier must inspect; its mere presence is not admission. Missing, stale, or unexecuted evidence stays `INCONCLUSIVE` (schema-enforced: `missing_evidence_verdict` is a literal `"INCONCLUSIVE"`). `required_for_ready_obligation` below names the four axes every obligation's design must resolve before it can be considered execution-ready: an oracle observation, a falsifier observation demonstrating sensitivity, an environment binding, and independent (non-producer) review. This revision resolves the DESIGN of those four axes for 76 obligations. It additionally binds FA-AC-62..65 to the exact owner-real development receipt, but does not independently admit that receipt. Evidence tier must never round up: the owner-real development receipt is not signed packaged evidence; unsigned dev-mode two-process evidence (FA-AC-07/08/09/29) is not a signed packaged-release proof; and existing Full Auto lifecycle/report tests provide zero MemoHarness observation for FA-AC-69..76 until the designed oracles, falsifiers, environments, and independent review are actually run.
 
 ```assurancespec-evidence-policy
 {
@@ -5291,115 +6700,115 @@ This document cannot admit itself (`proposal_may_self_admit: false`), execute (`
 
 ## custom-criterion-coverage-ledger
 
-Per-criterion disposition for this revision. "designed (ready)" means the obligation's oracle/falsifier/technique/environment/evidence/independence/activation_gate are all present (mechanically verified by `assurance-spec coverage` -- see the CLAUDE.md-mandated `pnpm run check` / CLI verification run cited in the accompanying issue status comment). "needs_design" means only the base criterion binding exists; no proof plan has been authored for it in this pass. 31/76 designed, 45/76 needs_design. (FA-AC-09 -- a rev-9-era criterion now largely mooted by the new launcher minting run+thread together, per rev 10's own disposition note -- was deliberately left needs_design rather than force-designed in this pass; it belongs with the FA-AC-54/55/56 launcher-UI cluster, not the restart-resume cluster it was originally grouped under.)
+Per-criterion disposition for this revision. "designed (ready)" means the obligation's oracle/falsifier/technique/environment/evidence/independence/activation_gate are all present, mechanically verified by `assurance-spec coverage`. It does not mean the oracle has passed, the evidence is fresh for a later source revision, or an independent reviewer has admitted it. All 76 criteria are designed; zero remain `needs_design`.
 
 | Criterion | Disposition (this revision) |
-| --- | --- |
-| FA-AC-01 | needs_design |
-| FA-AC-02 | needs_design |
-| FA-AC-03 | needs_design |
-| FA-AC-04 | needs_design |
-| FA-AC-05 | needs_design |
-| FA-AC-06 | designed (ready) |
-| FA-AC-07 | designed (ready) |
-| FA-AC-08 | designed (ready) |
-| FA-AC-09 | needs_design |
-| FA-AC-10 | needs_design |
-| FA-AC-11 | needs_design |
-| FA-AC-12 | needs_design |
-| FA-AC-13 | designed (ready) |
-| FA-AC-14 | designed (ready) |
-| FA-AC-15 | designed (ready) |
-| FA-AC-16 | designed (ready) |
-| FA-AC-17 | designed (ready) |
-| FA-AC-18 | needs_design |
-| FA-AC-19 | needs_design |
-| FA-AC-20 | needs_design |
-| FA-AC-21 | needs_design |
-| FA-AC-22 | needs_design |
-| FA-AC-23 | needs_design |
-| FA-AC-24 | needs_design |
-| FA-AC-25 | needs_design |
-| FA-AC-26 | needs_design |
-| FA-AC-27 | needs_design |
-| FA-AC-28 | needs_design |
-| FA-AC-29 | designed (ready) |
-| FA-AC-30 | needs_design |
-| FA-AC-31 | needs_design |
-| FA-AC-32 | needs_design |
-| FA-AC-33 | needs_design |
-| FA-AC-34 | needs_design |
-| FA-AC-35 | needs_design |
-| FA-AC-36 | needs_design |
-| FA-AC-37 | needs_design |
-| FA-AC-38 | designed (ready) |
-| FA-AC-39 | designed (ready) |
-| FA-AC-40 | designed (ready) |
-| FA-AC-41 | designed (ready) |
-| FA-AC-42 | designed (ready) |
-| FA-AC-43 | designed (ready) |
-| FA-AC-44 | designed (ready) |
-| FA-AC-45 | designed (ready) |
-| FA-AC-46 | designed (ready) |
-| FA-AC-47 | designed (ready) |
-| FA-AC-48 | designed (ready) |
-| FA-AC-49 | needs_design |
-| FA-AC-50 | needs_design |
-| FA-AC-51 | designed (ready) |
-| FA-AC-52 | designed (ready) |
-| FA-AC-53 | needs_design |
-| FA-AC-54 | needs_design |
-| FA-AC-55 | needs_design |
-| FA-AC-56 | needs_design |
-| FA-AC-57 | needs_design |
-| FA-AC-58 | designed (ready) |
-| FA-AC-59 | designed (ready) |
-| FA-AC-60 | designed (ready) |
-| FA-AC-61 | designed (ready) |
-| FA-AC-62 | designed (ready) |
-| FA-AC-63 | designed (ready) |
-| FA-AC-64 | designed (ready) |
-| FA-AC-65 | designed (ready) |
-| FA-AC-66 | needs_design |
-| FA-AC-67 | designed (ready) |
-| FA-AC-68 | needs_design |
-| FA-AC-69 | needs_design |
-| FA-AC-70 | needs_design |
-| FA-AC-71 | needs_design |
-| FA-AC-72 | needs_design |
-| FA-AC-73 | needs_design |
-| FA-AC-74 | needs_design |
-| FA-AC-75 | needs_design |
-| FA-AC-76 | needs_design |
+| --------- | --------------------------- |
+| FA-AC-01  | designed (ready)            |
+| FA-AC-02  | designed (ready)            |
+| FA-AC-03  | designed (ready)            |
+| FA-AC-04  | designed (ready)            |
+| FA-AC-05  | designed (ready)            |
+| FA-AC-06  | designed (ready)            |
+| FA-AC-07  | designed (ready)            |
+| FA-AC-08  | designed (ready)            |
+| FA-AC-09  | designed (ready)            |
+| FA-AC-10  | designed (ready)            |
+| FA-AC-11  | designed (ready)            |
+| FA-AC-12  | designed (ready)            |
+| FA-AC-13  | designed (ready)            |
+| FA-AC-14  | designed (ready)            |
+| FA-AC-15  | designed (ready)            |
+| FA-AC-16  | designed (ready)            |
+| FA-AC-17  | designed (ready)            |
+| FA-AC-18  | designed (ready)            |
+| FA-AC-19  | designed (ready)            |
+| FA-AC-20  | designed (ready)            |
+| FA-AC-21  | designed (ready)            |
+| FA-AC-22  | designed (ready)            |
+| FA-AC-23  | designed (ready)            |
+| FA-AC-24  | designed (ready)            |
+| FA-AC-25  | designed (ready)            |
+| FA-AC-26  | designed (ready)            |
+| FA-AC-27  | designed (ready)            |
+| FA-AC-28  | designed (ready)            |
+| FA-AC-29  | designed (ready)            |
+| FA-AC-30  | designed (ready)            |
+| FA-AC-31  | designed (ready)            |
+| FA-AC-32  | designed (ready)            |
+| FA-AC-33  | designed (ready)            |
+| FA-AC-34  | designed (ready)            |
+| FA-AC-35  | designed (ready)            |
+| FA-AC-36  | designed (ready)            |
+| FA-AC-37  | designed (ready)            |
+| FA-AC-38  | designed (ready)            |
+| FA-AC-39  | designed (ready)            |
+| FA-AC-40  | designed (ready)            |
+| FA-AC-41  | designed (ready)            |
+| FA-AC-42  | designed (ready)            |
+| FA-AC-43  | designed (ready)            |
+| FA-AC-44  | designed (ready)            |
+| FA-AC-45  | designed (ready)            |
+| FA-AC-46  | designed (ready)            |
+| FA-AC-47  | designed (ready)            |
+| FA-AC-48  | designed (ready)            |
+| FA-AC-49  | designed (ready)            |
+| FA-AC-50  | designed (ready)            |
+| FA-AC-51  | designed (ready)            |
+| FA-AC-52  | designed (ready)            |
+| FA-AC-53  | designed (ready)            |
+| FA-AC-54  | designed (ready)            |
+| FA-AC-55  | designed (ready)            |
+| FA-AC-56  | designed (ready)            |
+| FA-AC-57  | designed (ready)            |
+| FA-AC-58  | designed (ready)            |
+| FA-AC-59  | designed (ready)            |
+| FA-AC-60  | designed (ready)            |
+| FA-AC-61  | designed (ready)            |
+| FA-AC-62  | designed (ready)            |
+| FA-AC-63  | designed (ready)            |
+| FA-AC-64  | designed (ready)            |
+| FA-AC-65  | designed (ready)            |
+| FA-AC-66  | designed (ready)            |
+| FA-AC-67  | designed (ready)            |
+| FA-AC-68  | designed (ready)            |
+| FA-AC-69  | designed (ready)            |
+| FA-AC-70  | designed (ready)            |
+| FA-AC-71  | designed (ready)            |
+| FA-AC-72  | designed (ready)            |
+| FA-AC-73  | designed (ready)            |
+| FA-AC-74  | designed (ready)            |
+| FA-AC-75  | designed (ready)            |
+| FA-AC-76  | designed (ready)            |
 
-Undesigned criteria fall into four honest buckets, not one silent pile: (a) FA-AC-01..05/10-12/18-28/30-37 -- rev-9-era criteria retained unchanged or with stronger proof per rev 10's own Criterion Disposition Map; real historical evidence likely exists for several of these (the same suites cited above cover some incidentally) but this pass did not re-verify and re-cite each one individually, so they stay honestly `needs_design` rather than claimed by association. (b) FA-AC-49/50/53-57/68 -- newer rev-10/11/12 criteria (durable objective field, report retention bound, Success Metric transcript-analysis criterion, launcher/run-view UI criteria, sidebar entry, guardrails) that this pass did not reach. (c) FA-AC-69..76 -- new MemoHarness criteria requiring fresh privacy, evaluation-leakage, authority-immunity, provenance, deletion, optimizer, Blueprint-release, and architecture-boundary proof designs after an implementation seam exists. (d) FA-AC-66 -- this AssuranceSpec's OWN completeness criterion; by definition it cannot be marked `designed (ready)` while (a), (b), and (c) remain open, and it must never be self-marked complete by the same pass that left work outstanding.
+The former 45-item design backlog is resolved at the proof-plan layer. The old rev-9 criteria now point to exact existing contract or component suites; launcher, report-retention, transcript-analysis, sidebar, and guardrail criteria have explicit oracles and negative controls; FA-AC-66 checks the exact rev-14 binding and complete coverage mechanically; and FA-AC-69..76 name the bounded MemoHarness contract/model suite that must exist before execution can pass. The last group is deliberately design-complete but observation-incomplete: a future file path is an executable implementation target, not evidence that the target already exists.
 
 ## custom-evidence-tier-ledger
 
 Evidence-tier honesty table for every DESIGNED obligation, so no reader has to infer tier from the environment_refs alone.
 
-| Criterion | Real cited evidence | Tier | Oracle-bite verified in this pass? |
-| --- | --- | --- | --- |
-| FA-AC-06 | apps/openagents-desktop/tests/full-auto-registry.test.ts | local_unit | Not independently re-run in this authoring pass; cited from prior landed suite. |
-| FA-AC-15 | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts | local_unit (real module composition, no live Electron/provider) | Not independently re-run in this authoring pass. |
-| FA-AC-16 | apps/openagents-desktop/src/full-auto-retry-rotation-model.test.ts (NEW, added by this pass) | local_unit (bounded exhaustive enumeration over real exported pure functions) | YES -- run directly against a standalone import of the real functions during authoring; see this pass's status comment for the observed values. |
-| FA-AC-17 | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts | local_unit | Not independently re-run in this authoring pass. |
-| FA-AC-39/40 | apps/openagents-desktop/tests/full-auto-run-registry.test.ts | local_unit | Not independently re-run in this authoring pass. |
-| FA-AC-67 | apps/openagents-desktop/src/full-auto-retry-rotation-model.test.ts (NEW) | local_unit (bounded exhaustive enumeration) | YES -- same standalone run as FA-AC-16. |
-| FA-AC-13/14 | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts | local_unit | Not independently re-run in this authoring pass. |
-| FA-AC-38/41 | apps/openagents-desktop/tests/full-auto-run-registry.test.ts | local_unit | Not independently re-run in this authoring pass. |
-| FA-AC-42 | apps/openagents-desktop/tests/full-auto-thread-pressure.e2e.test.ts | local_unit (real thread-store/registry/journal composition) | Per the suite's own docstring: YES, reverting thread-store.ts's write() sort to compareDesktopThreadsByCreatedAt makes the retention tests fail -- oracle-bite recorded in the suite's own documentation, not independently re-verified by this pass. |
-| FA-AC-43 | apps/openagents-desktop/tests/full-auto-run-registry.test.ts | local_unit (exhaustive 10x10 enumeration) | Not independently re-run in this authoring pass. |
-| FA-AC-44/45 | apps/openagents-desktop/src/full-auto-run-control-server.test.ts | local_contract_http (real Effect HTTP server in-process) | Not independently re-run in this authoring pass. |
-| FA-AC-59 | apps/openagents-desktop/src/full-auto-run-handoff-control-server.test.ts | local_contract_http | Not independently re-run in this authoring pass. |
-| FA-AC-47 | apps/openagents-desktop/tests/full-auto-liveness.test.ts | local_unit | Not independently re-run in this authoring pass. |
-| FA-AC-48 | apps/openagents-desktop/src/full-auto-run-liveness-control-server.test.ts | local_contract_http | Not independently re-run in this authoring pass. |
-| FA-AC-46/51/52 | apps/openagents-desktop/src/full-auto-run-report.test.ts | local_unit (52's redaction test is adversarial) | Not independently re-run in this authoring pass. |
-| FA-AC-58/60 | apps/openagents-desktop/src/full-auto-provider-handoff.test.ts | local_unit | Not independently re-run in this authoring pass. |
-| FA-AC-07/29 | apps/openagents-desktop/scripts/full-auto-restart-smoke.ts + apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts | local_dev_two_process_unsigned (conditionally falls back to unsigned dev-mode electron .; NOT proven signed/notarized) | Not executed in this authoring pass (would require a live two-process Electron launch on owned infrastructure). |
-| FA-AC-08 | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts | local_unit | Not independently re-run in this authoring pass. |
-| FA-AC-61 | apps/openagents-desktop/src/renderer/react-composer.test.tsx | local_unit (React Testing Library component tier) | Not independently re-run in this authoring pass. |
-| FA-AC-62-65 | apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts + apps/openagents-desktop/src/full-auto-acceptance.ts | fixture_headless ONLY -- profileClass explicitly "fixture", never "owner_real" | The driver suite's own titles document negative controls that genuinely bite (e.g. a broken marker-retention handoff FAILS); zero owner_real receipts exist in-repo. |
+| Criterion      | Real cited evidence                                                                                                      | Tier                                                                                                                   | Oracle-bite verified in this pass?                                                                                                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FA-AC-06       | apps/openagents-desktop/tests/full-auto-registry.test.ts                                                                 | local_unit                                                                                                             | Not independently re-run in this authoring pass; cited from prior landed suite.                                                                                                                                                                       |
+| FA-AC-15       | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts                                                              | local_unit (real module composition, no live Electron/provider)                                                        | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-16       | apps/openagents-desktop/src/full-auto-retry-rotation-model.test.ts (NEW, added by this pass)                             | local_unit (bounded exhaustive enumeration over real exported pure functions)                                          | YES -- run directly against a standalone import of the real functions during authoring; see this pass's status comment for the observed values.                                                                                                       |
+| FA-AC-17       | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts                                                              | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-39/40    | apps/openagents-desktop/tests/full-auto-run-registry.test.ts                                                             | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-67       | apps/openagents-desktop/src/full-auto-retry-rotation-model.test.ts (NEW)                                                 | local_unit (bounded exhaustive enumeration)                                                                            | YES -- same standalone run as FA-AC-16.                                                                                                                                                                                                               |
+| FA-AC-13/14    | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts                                                              | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-38/41    | apps/openagents-desktop/tests/full-auto-run-registry.test.ts                                                             | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-42       | apps/openagents-desktop/tests/full-auto-thread-pressure.e2e.test.ts                                                      | local_unit (real thread-store/registry/journal composition)                                                            | Per the suite's own docstring: YES, reverting thread-store.ts's write() sort to compareDesktopThreadsByCreatedAt makes the retention tests fail -- oracle-bite recorded in the suite's own documentation, not independently re-verified by this pass. |
+| FA-AC-43       | apps/openagents-desktop/tests/full-auto-run-registry.test.ts                                                             | local_unit (exhaustive 10x10 enumeration)                                                                              | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-44/45    | apps/openagents-desktop/src/full-auto-run-control-server.test.ts                                                         | local_contract_http (real Effect HTTP server in-process)                                                               | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-59       | apps/openagents-desktop/src/full-auto-run-handoff-control-server.test.ts                                                 | local_contract_http                                                                                                    | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-47       | apps/openagents-desktop/tests/full-auto-liveness.test.ts                                                                 | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-48       | apps/openagents-desktop/src/full-auto-run-liveness-control-server.test.ts                                                | local_contract_http                                                                                                    | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-46/51/52 | apps/openagents-desktop/src/full-auto-run-report.test.ts                                                                 | local_unit (52's redaction test is adversarial)                                                                        | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-58/60    | apps/openagents-desktop/src/full-auto-provider-handoff.test.ts                                                           | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-07/29    | apps/openagents-desktop/scripts/full-auto-restart-smoke.ts + apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts | local_dev_two_process_unsigned (conditionally falls back to unsigned dev-mode electron .; NOT proven signed/notarized) | Not executed in this authoring pass (would require a live two-process Electron launch on owned infrastructure).                                                                                                                                       |
+| FA-AC-08       | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts                                                              | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-61       | apps/openagents-desktop/src/renderer/react-composer.test.tsx                                                             | local_unit (React Testing Library component tier)                                                                      | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-62-65    | docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json + acceptance driver negative controls                  | owner_real development, exact source `3123d926a3`; not signed/package/release evidence                                 | Six named rows and same-pass rotation are retained with public-safe digests; independent admission remains outstanding.                                                                                                                               |
 
 "Not independently re-run in this authoring pass" means: the cited file was located, read, and its described behavior matches the claim above (dossier-verified), but this authoring pass did not itself execute `vp test` against the full suite as part of writing this document -- that execution is `pnpm run check`, reported separately in the issue status comment, not fabricated here as a receipt. FA-AC-16/67's new retry-rotation model test WAS run standalone during authoring (see above) precisely because it is new and unverified evidence, not carried-forward evidence from a previously-landed suite.
 
@@ -5426,8 +6835,8 @@ model boundary but does not claim a model or implementation exists.
 What this AssuranceSpec cannot self-provide and needs an explicit owner (or owner-designated independent reviewer) action:
 
 1. **Admission.** This document must stay `lifecycle_state: "proposed"` until the owner or an owner-designated independent reviewer distinct from its producer reviews and admits it. No agent, including the one that authored this revision, may flip that field.
-2. **Real-provider dogfood receipts (#8976, gates FA-AC-62..65).** Requires linking real Codex/Claude accounts and running the six named tests in the real OpenAgents Desktop sidebar -- not a headless fixture profile. #8976 itself is still open.
+2. **Independent review of the owner-real development receipt (FA-AC-62..65).** The six rows and same-pass rotation exist at `docs/sol/evidence/2026-07-18-full-auto-real-owner-acceptance.json`; a reviewer distinct from this design producer must verify the candidate/test-definition binding, privacy properties, and dispositions. A newer source or packaged candidate needs a new receipt.
 3. **Signed/notarized packaged-build resume proof (gates FA-AC-07/29 at release tier).** Requires running `apps/oa-updates/docs/release-signing-runbook.md` against a real packaged build, then re-running `pnpm run smoke:full-auto-restart` against that signed artifact specifically.
-4. **The remaining 45 `needs_design` criteria.** Closing FA-AC-66 (this document's own completeness criterion) requires continuing this reconciliation in a follow-up pass or an explicit owner decision to narrow FA-AC-66's bar for a partial-but-admitted first admission. FA-AC-69..76 specifically require implementation-shaped proof plans and independent privacy/release review; old run-loop evidence cannot close them.
+4. **Execution of design-complete but unobserved obligations.** No `needs_design` criterion remains. FA-AC-69..76 specifically require the named MemoHarness production seam and bounded contract/model suite, followed by independent privacy/release review; old run-loop evidence cannot close them.
 5. **A future composed formal model (optional, not blocking).** See `custom-formal-model-status` above.
 6. **MemoHarness policy and release decisions.** The owner or an explicitly designated independent reviewer must admit default experience retention/retrieval/training policy, any cross-workspace aggregate sharing, production adaptation policy, and candidate promotion beyond shadow/dogfood. The optimizer, executor, and source run are never eligible to supply their own release acceptance.
