@@ -139,8 +139,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   the exact requested ref. Missing, rejected, unavailable, or substituted
   resolution cannot light the edge. Enforced by
   `packages/qa-swarm-contract/src/index.test.ts`, the QA Runner cross-package
-  assertions in `apps/qa-runner/src/control.test.ts`, and the web false-green
-  tests in `apps/openagents.com/apps/web/src/page/qa-swarm.test.ts`.
+  assertions in `apps/qa-runner/src/control.test.ts`, and the web projection
+  fail-closed tests in
+  `apps/openagents.com/workers/api/src/qa-swarm-projection-routes.test.ts`.
 - Generated public boards are published only through the authenticated
   `PUT /api/operator/qa-swarm/runs/{runRef}` boundary. The Worker decodes the
   shared contract, requires the path and document `runRef` to match exactly,

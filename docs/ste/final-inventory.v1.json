@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "3c0ef8b0d67bb049df93ad2925986b4953add8ec8c8869e46e30fa04732ae38c",
+      "sha256": "bc4ac703368b188a94c9d5c5a8645879bbb7571486bb9272f2fb9ca4be980d4e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
