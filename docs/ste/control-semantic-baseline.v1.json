@@ -602,7 +602,7 @@
       ]
     },
     "INVARIANTS.md": {
-      "sourceSha256": "23a8bd1ff73002f76ed7196c4da5365ed4528363f370e950afee472edc9d32c5",
+      "sourceSha256": "bc4ac703368b188a94c9d5c5a8645879bbb7571486bb9272f2fb9ca4be980d4e",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -782,7 +782,6 @@
         "apps/openagents.com/INVARIANTS.md",
         "apps/openagents.com/INVARIANTS.md",
         "apps/openagents.com/apps/start/src/desktop-download-resolver.server.ts",
-        "apps/openagents.com/apps/web/src/page/qa-swarm.test.ts",
         "apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts",
         "apps/openagents.com/scripts/check-zero-debt-architecture.mjs",
         "apps/openagents.com/workers/api/src/agent-definition-event-ledger-routes.test.ts",
@@ -793,6 +792,7 @@
         "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
         "apps/openagents.com/workers/api/src/event-ledger.test.ts",
         "apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts",
+        "apps/openagents.com/workers/api/src/qa-swarm-projection-routes.test.ts",
         "apps/pylon/",
         "apps/pylon/src/portable-session-destination.ts",
         "apps/pylon/tests/claude-agent-executor.test.ts",
