@@ -86,6 +86,7 @@ const loadedAccounts = withSettingsAccounts(initialSettingsState(), {
 })
 
 describe("settingsView (state -> component tree)", () => {
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope local plugin controls", () => {
     const ref = "plugin.local.0123456789abcdef01234567" as const
     const view = settingsView({
@@ -109,6 +110,7 @@ describe("settingsView (state -> component tree)", () => {
       .toBe("DesktopPluginChooseRequested")
     expect(JSON.stringify(view)).not.toContain("/Users/")
   })
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope extension lifecycle UI", () => {
     const ref = "plugin.local.0123456789abcdef01234567" as const
     const view = settingsView({
@@ -154,6 +156,7 @@ describe("settingsView (state -> component tree)", () => {
     // The audit never leaks secret-bearing fields or absolute paths.
     expect(JSON.stringify(view)).not.toContain("/Users/")
   })
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope extension lifecycle placeholder", () => {
     const view = settingsView(initialSettingsState())
     expect(nodeByKey(view, "settings-lifecycle-partial")?.content).toBe(
@@ -164,6 +167,7 @@ describe("settingsView (state -> component tree)", () => {
     expect(audit.partial).toBe(true)
     expect(audit.entries).toEqual([])
   })
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope OpenAgents account controls", () => {
     const signedOut = settingsView({
       ...initialSettingsState(),
@@ -231,6 +235,7 @@ describe("settingsView (state -> component tree)", () => {
     })
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired Pylon account placeholders", () => {
     const loading = settingsView(initialSettingsState())
     expect(nodeByKey(loading, "settings-accounts-loading")?.content).toBe(
@@ -253,6 +258,7 @@ describe("settingsView (state -> component tree)", () => {
     )
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired Pylon Claude account rows", () => {
     const view = settingsView(
       withSettingsClaudeAccounts(initialSettingsState(), {
@@ -273,6 +279,7 @@ describe("settingsView (state -> component tree)", () => {
     expect(collectNodes(view).filter(node => node._tag === "Button" && typeof node.key === "string" && node.key.startsWith("settings-claude"))).toEqual([])
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired Pylon Claude placeholder states", () => {
     const empty = settingsView(
       withSettingsClaudeAccounts(initialSettingsState(), { state: "loaded", accounts: [] }),
@@ -294,6 +301,7 @@ describe("settingsView (state -> component tree)", () => {
     )
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired isolated device-auth presentation", () => {
     const awaiting = settingsView(
       withSettingsConnectStatus(loadedAccounts, {
@@ -317,6 +325,7 @@ describe("settingsView (state -> component tree)", () => {
     expect(nodeByKey(awaiting, "settings-connect-codex")?.label).toBe("Connecting…")
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired isolated connect status badges", () => {
     const connected = settingsView(
       withSettingsConnectStatus(loadedAccounts, { state: "connected", ref: "codex-4" }),
@@ -499,6 +508,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     },
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired Pylon connect flow", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -554,6 +564,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired Pylon Claude account listing", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -598,6 +609,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired Pylon Claude unavailable state", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -628,6 +640,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired isolated verification link", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -656,6 +669,7 @@ describe("typed intent loop end-to-end (settings)", () => {
     )
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired isolated connect failure", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -690,6 +704,7 @@ describe("typed intent loop end-to-end (settings)", () => {
   })
 
   // Oracle for openagents_desktop.session.effect_native_controls.v1.
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope OpenAgents sign-in and sign-out controls", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -764,6 +779,7 @@ describe("typed intent loop end-to-end (settings)", () => {
 // copy anywhere on the screen.
 // ---------------------------------------------------------------------------
 
+// tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
 describe.skip("retired per-account Pylon reconnect surface", () => {
   test("credential-failed rows render a working Reconnect button; ready rows render none", () => {
     const view = settingsView(loadedAccounts)
@@ -843,6 +859,7 @@ describe.skip("retired per-account Pylon reconnect surface", () => {
   })
 })
 
+// tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
 describe.skip("retired Pylon reconnect intent loop", () => {
   test("Reconnect dispatch calls the ref-targeted bridge, polls to connected, and re-lists accounts so readiness flips without restart", async () => {
     await Effect.runPromise(
@@ -1099,6 +1116,7 @@ describe("MCP servers — pure client-side validation", () => {
   })
 })
 
+// tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
 describe.skip("retired out-of-scope MCP server view rendering", () => {
   test("loaded servers render name, transport badge, enabled toggle, and a Remove button", () => {
     const view = settingsView(loadedMcp([

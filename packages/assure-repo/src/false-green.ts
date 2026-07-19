@@ -35,6 +35,21 @@ const MOCK = /\b(vi|vitest)\.mock\s*\(|\bmock\s*\(\s*[`'"]/g;
 
 const lineOf = (text: string, index: number): number => text.slice(0, index).split("\n").length;
 
+const ISSUE_REF = /#\d{3,6}\b/;
+
+/**
+ * Text around a skip: from ~3 lines before to the end of the skip's own line.
+ * A tracking ref in that window (a comment or the test title) marks the skip
+ * as an intentional, tracked deferral rather than a silent one.
+ */
+const skipContext = (source: string, index: number): string => {
+  const lineStart = source.lastIndexOf("\n", index) + 1;
+  let start = lineStart;
+  for (let i = 0; i < 3 && start > 0; i += 1) start = source.lastIndexOf("\n", start - 2) + 1;
+  const lineEnd = source.indexOf("\n", index);
+  return source.slice(start, lineEnd < 0 ? source.length : lineEnd);
+};
+
 /**
  * Find the index of the callback body's opening `{` for a test block, skipping
  * string literals and comments. Prefers an arrow-function opener (`=> {`) so a
@@ -172,13 +187,29 @@ export const classifyTestSource = (
     }
   }
 
-  // Round-up: skipped / todo / only hides results from the summary.
+  // Round-up: skipped / todo / only hides results from the summary. A `.only`
+  // is always flagged (it silently disables every other test in the file). A
+  // `.skip`/`.todo` is flagged only when it is SILENT — an intentional deferral
+  // that carries a tracking ref (a `#NNNN` issue) within 3 lines is tracked,
+  // not a false green, and is not reported.
   for (const match of source.matchAll(SKIP)) {
+    const modifier = match[2];
+    const line = lineOf(source, match.index);
+    if (modifier === "only") {
+      candidates.push({
+        file,
+        line,
+        mode: "false_green_round_up",
+        evidence: `uses ${match[0].trim()} which silently disables every other test in the file`,
+      });
+      continue;
+    }
+    if (ISSUE_REF.test(skipContext(source, match.index))) continue;
     candidates.push({
       file,
-      line: lineOf(source, match.index),
+      line,
       mode: "false_green_round_up",
-      evidence: `uses ${match[0].trim()} which is silently excluded from a green summary`,
+      evidence: `uses ${match[0].trim()} with no tracking ref; silently excluded from a green summary`,
     });
   }
 

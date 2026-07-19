@@ -55,10 +55,10 @@ receipt or owner acceptance. A designed oracle is not a passing observation.
 
 `false-green-candidates.v1.json` is a deterministic report of heuristic
 false-green **leads** — coverage theater (a test block with no assertion),
-round-up (`.skip`/`.todo`/`.only` that a green summary hides), and mocked seams
+round-up (a `.skip`/`.todo` with no tracking ref, or any `.only` — which silently disables every other test in a file), and mocked seams
 — scanned string-aware across every tracked test source. Candidates are
 **leads, not findings**: a lead becomes a confirmed finding only when
-demonstrated by a **surviving mutation**. `mutation-runner.ts` applies a
+demonstrated by a **surviving mutation**. A `.skip`/`.todo` that carries a `#NNNN` tracking ref within three lines is treated as an intentional, tracked deferral and is **not** flagged — only silent skips and stray `.only` are. `mutation-runner.ts` applies a
 `replace_exact` mutation (sharing the `openagents.mutation.v1` kill/survive
 semantics), runs the target test, and restores the original bytes — a mutant
 is _killed_ when the test fails and _survives_ (a weak oracle) when it still

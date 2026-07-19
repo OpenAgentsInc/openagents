@@ -53,10 +53,30 @@ describe("classifyTestSource — coverage theater", () => {
 });
 
 describe("classifyTestSource — round-up and mocked-seam", () => {
-  test("flags skip/todo/only", () => {
+  // These fixtures intentionally contain skip/only tokens as classifier input;
+  // the ref keeps the audit that scans THIS file from flagging them. see #9066
+  test("flags an untracked skip and any .only", () => {
     const source = `test.skip("later", () => { expect(1).toBe(1) })\nit.only("x", () => { expect(2).toBe(2) })\n`;
     const modes = classifyTestSource("a.test.ts", source).map((c) => c.mode);
     expect(modes.filter((m) => m === "false_green_round_up").length).toBe(2);
+  });
+
+  test("does NOT flag a skip that carries a tracking ref within 3 lines", () => {
+    // tracked skip: the classifier should treat it as intentional. see #9066
+    const source = `// deferred, tracked in #1234\ntest.skip("retired surface", () => { expect(1).toBe(1) })\n`;
+    const rollups = classifyTestSource("a.test.ts", source).filter(
+      (c) => c.mode === "false_green_round_up",
+    );
+    expect(rollups.length).toBe(0);
+  });
+
+  test("always flags .only even with a nearby ref (it disables other tests)", () => {
+    const source = `// see #1234\nit.only("focused", () => { expect(1).toBe(1) })\n`;
+    const rollups = classifyTestSource("a.test.ts", source).filter(
+      (c) => c.mode === "false_green_round_up",
+    );
+    expect(rollups.length).toBe(1);
+    expect(rollups[0]!.evidence).toContain("disables every other test");
   });
 
   test("flags a mocked module", () => {

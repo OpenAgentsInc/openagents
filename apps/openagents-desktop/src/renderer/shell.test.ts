@@ -302,6 +302,7 @@ test("thread catalog hydration never auto-selects its newest conversation", () =
   expect(hydrated.notes).toEqual([])
 })
 
+// tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
 test.skip("retired out-of-scope Claude/Pylon composer target control", () => {
   const fleet = {
     ...baseState.fleet,
@@ -332,6 +333,7 @@ test.skip("retired out-of-scope Claude/Pylon composer target control", () => {
   })
 })
 
+// tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
 test.skip("retired out-of-scope Fable permission control", () => {
   const fable = desktopShellView({ ...baseState, selectedHarness: "fable" })
   expect(nodeByKey(fable, "shell-permission-mode")?.label).toBe("Full tools")
@@ -569,6 +571,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(navItemById(view, "shell-command-palette-toggle")).toBeUndefined()
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope sidebar provider accounts box", () => {
     // Owner contract verbatim: "in the left sidebar, in a bottom box, like
     // letting the chats flex up but show up to 5 connected accounts with a
@@ -607,6 +610,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(nodeByKey(view, "sidebar-account-claude-1")).toBeDefined()
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope sidebar accounts disclosure", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const initial: DesktopShellState = {
@@ -865,6 +869,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(stop?.style).toMatchObject({ borderRadius: "full" })
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope persistent voice UI", async () => {
     const idle = desktopShellView(baseState)
     const mic = nodeByKey(idle, "shell-voice-toggle") as {
@@ -1367,6 +1372,7 @@ describe("composer image input (capability I1)", () => {
     id, mediaType: "image/png", data: "aGVsbG8=", name: `${id}.png`, sizeBytes: 5,
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope image attach affordance", () => {
     const attach = nodeByKey(desktopShellView(baseState), "shell-attach-image") as {
       _tag?: string; icon?: string; size?: string; onPress?: { name?: string }; accessibilityLabel?: string; disabled?: boolean
@@ -1384,6 +1390,7 @@ describe("composer image input (capability I1)", () => {
     expect(nodeByKey(view, "shell-composer-image-notice")).toBeUndefined()
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope attachment thumbnail UI", () => {
     const state = withComposerImageAdded(baseState, png("a1"))
     const view = desktopShellView(state)
@@ -1397,6 +1404,7 @@ describe("composer image input (capability I1)", () => {
     expect(remove?.onPress?.name).toBe("DesktopComposerImageRemoved")
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope attachment rejection UI", () => {
     const state = withComposerImageNotice(baseState, "That image is larger than the 10 MB limit.")
     const notice = nodeByKey(desktopShellView(state), "shell-composer-image-notice") as { _tag?: string; content?: string; color?: string }
@@ -1405,6 +1413,7 @@ describe("composer image input (capability I1)", () => {
     expect(notice?.color).toBe("danger")
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope image attach limit UI", () => {
     let state = baseState
     for (let i = 0; i < 8; i += 1) state = withComposerImageAdded(state, png(`a${i}`))
@@ -3140,6 +3149,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     expect(settled.notes).toEqual(otherThread.notes)
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope provider/model selection controls", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
@@ -3632,6 +3642,7 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
     expect(withHarnessLanes(baseState, noLanes).selectedHarness).toBe("codex")
   })
 
+  // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired out-of-scope provider lane selector presentation", () => {
     // Owner statement (verbatim): "I have no idea why the bottom says Codex
     // requires Open Agent session. Don't put that shit in the UI ever.
