@@ -23,6 +23,12 @@
       "ste_reviewed_at": "2026-07-19T18:07:51Z",
       "ste_accepted_screening_rules": ["STE-2.4"]
     },
+    "docs/sol/OPERATING_MODEL.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:10:08Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
     "docs/cloud/INVARIANTS.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "c8bff4cd8c7882484fdfc01bfe154480115cbd3557cc8a2f6707ff198954771b",
+  "sourceTreeSha256": "64a5be56d75cc1a8948f256c670818ef1a638f7eb9d48e906f82568432c4e4ee",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2562,7 +2562,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-contract",
       "dispatch": false,
-      "sha256": "f609584a8ca75097e21202921deb8069cbfa759972ab5f0413c5f6184d9b432a",
+      "sha256": "98e639ca39d425d764f9817cd23ffe0c21421e1414bdf804d6820fc8bbcab8b1",
       "status": "active, revision-independent working contract",
       "snapshot": "2026-07-12",
       "reviewedAt": "2026-07-12",
