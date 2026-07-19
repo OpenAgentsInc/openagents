@@ -443,6 +443,23 @@ const localWorkerFailureMessage = (cause: unknown): string => {
   return rendered === "[object Object]" ? "The document-local worker failed to start." : rendered.slice(0, 500)
 }
 
+const waitForRegisteredWorker = async <WorkerFactory>(
+  acquire: () => Promise<WorkerFactory>,
+  language: string,
+): Promise<WorkerFactory> => {
+  const deadline = performance.now() + 5_000
+  while (true) {
+    try {
+      return await acquire()
+    } catch (cause) {
+      const message = localWorkerFailureMessage(cause)
+      if (!message.includes("not registered") || performance.now() >= deadline) throw cause
+      await new Promise(resolve => setTimeout(resolve, 16))
+      if (!supportedLocalLanguages.has(language)) throw new Error(`${language} document-local support was revoked during startup.`)
+    }
+  }
+}
+
 const activateLocalLanguage = (entry: ModelEntry, input: IdeMonacoAttachInput): void => {
   const language = languageFor(input.language)
   entry.localInput = input
@@ -468,13 +485,13 @@ const activateLocalLanguage = (entry: ModelEntry, input: IdeMonacoAttachInput): 
       const contribution: unknown = typeScriptContributionModule
       if (!isTypeScriptContribution(contribution)) throw new Error("The packaged TypeScript contribution is unavailable.")
       const worker = language === "typescript"
-        ? await contribution.getTypeScriptWorker()
-        : await contribution.getJavaScriptWorker()
+        ? await waitForRegisteredWorker(() => contribution.getTypeScriptWorker(), language)
+        : await waitForRegisteredWorker(() => contribution.getJavaScriptWorker(), language)
       await worker(entry.model.uri)
     } else if (language === "json") {
       const contribution: unknown = jsonContributionModule
       if (!isJsonContribution(contribution)) throw new Error("The packaged JSON contribution is unavailable.")
-      await (await contribution.getWorker())(entry.model.uri)
+      await (await waitForRegisteredWorker(() => contribution.getWorker(), language))(entry.model.uri)
     }
     else {
       entry.localManualWorker = createTrackedWorker(workerUrls[language] ?? workerUrls.editor!, language)
