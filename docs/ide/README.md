@@ -12,3 +12,4 @@ Current plan:
 Supporting architecture analysis:
 
 - [What OpenAgents should take from Zed for the agent IDE](./2026-07-18-zed-agent-ide-adaptation-analysis.md) — makes Zed the main integrated agent-IDE architecture reference while retaining Monaco, Pierre, Effect Native, WorkContext, and OpenAgents' stricter authority and receipt boundaries.
+- [VS Code TypeScript reuse analysis for the OpenAgents IDE](./2026-07-18-vscode-typescript-reuse-analysis.md) — turns the current VS Code source into an exact package/adaptation ledger: Monaco plus focused URI/LSP/language-service/xterm/search/DAP candidates, with workbench, Explorer, extension-host, and internal `vs/*` boundaries kept outside the product dependency graph.
