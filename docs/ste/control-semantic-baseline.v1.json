@@ -5338,7 +5338,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "e37bb3bcdca282f2aec2dba35b105558660492ae8152cd73d1d7eb9db3fd4d6c",
+      "sourceSha256": "0722880903dcaaee6a5d0e9beac517c84f5582b8f431b087781472944d779f63",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -5351,6 +5351,7 @@
         "200",
         "501 capability_not_implemented",
         "@asciidev/box-sdk@0.0.24",
+        "Authorization",
         "Auto",
         "CODEX_HOME",
         "CODEX_HOME",
@@ -5460,7 +5461,8 @@
         "unavailable",
         "usageRef",
         "vm_seconds",
-        "workspace"
+        "workspace",
+        "x-openagents-managed-sandbox-token"
       ],
       "urls": [],
       "issueRefs": [

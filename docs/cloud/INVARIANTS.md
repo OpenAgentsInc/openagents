@@ -210,6 +210,15 @@ design context only.
   admission.
 - The dedicated Cloud Run bridge uses Direct VPC egress and a source tag. Its
   control-port firewall does not admit the enclosing subnet.
+- Staging and production have distinct control nodes, private addresses,
+  bridge services, tags, firewall rules, control-token secrets, broker signing
+  keys, and native database authority. Cross-environment reuse is forbidden.
+  Cloud Run IAM does not consume the application authorization exchange. The
+  Worker sends the control secret in
+  `x-openagents-managed-sandbox-token` only on managed-sandbox runtime paths.
+  The bridge accepts that header on no generic route. It compares the secret
+  in constant time and privately synthesizes the control `Authorization`
+  header.
 - Provider credentials remain in the Worker. After native turn admission, the
   Worker mints one HMAC-signed capability. It binds actor, owner, tenant,
   sandbox, generation, turn, and capability ref. It also binds provider,

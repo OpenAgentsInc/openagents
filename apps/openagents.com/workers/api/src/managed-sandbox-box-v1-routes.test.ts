@@ -698,12 +698,14 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
 
     const originalFetch = globalThis.fetch
     let capturedUrl = ''
-    let capturedAuthorization = ''
+    let capturedControlToken = ''
     let capturedBody: Record<string, unknown> = {}
     globalThis.fetch = (async (input, init) => {
       capturedUrl = String(input)
-      capturedAuthorization =
-        new Headers(init?.headers).get('authorization') ?? ''
+      const headers = new Headers(init?.headers)
+      capturedControlToken =
+        headers.get('x-openagents-managed-sandbox-token') ?? ''
+      expect(headers.get('authorization')).toBeNull()
       capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
       return new Response(
         JSON.stringify({
@@ -796,7 +798,7 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
       expect(capturedUrl).toBe(
         'https://control.test/v1/managed-sandbox/runtime/io',
       )
-      expect(capturedAuthorization).toBe('Bearer private-test-bearer')
+      expect(capturedControlToken).toBe('private-test-bearer')
       expect(capturedBody).toMatchObject({
         schemaVersion: 'openagents.managed_sandbox_guest_io.v1',
         action: 'read_artifact',
@@ -828,12 +830,14 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
 
     const originalFetch = globalThis.fetch
     let capturedUrl = ''
-    let capturedAuthorization = ''
+    let capturedControlToken = ''
     let capturedBody: Record<string, unknown> = {}
     globalThis.fetch = (async (input, init) => {
       capturedUrl = String(input)
-      capturedAuthorization =
-        new Headers(init?.headers).get('authorization') ?? ''
+      const headers = new Headers(init?.headers)
+      capturedControlToken =
+        headers.get('x-openagents-managed-sandbox-token') ?? ''
+      expect(headers.get('authorization')).toBeNull()
       capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
       return new Response(
         JSON.stringify({
@@ -916,7 +920,7 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
       expect(capturedUrl).toBe(
         'https://sandbox-control.test/v1/managed-sandbox/runtime/operations',
       )
-      expect(capturedAuthorization).toBe('Bearer sandbox-private-bearer')
+      expect(capturedControlToken).toBe('sandbox-private-bearer')
       expect(capturedBody).toMatchObject({
         operationRef: 'command.sbx09.lifecycle.create',
         expectedGeneration: 0,

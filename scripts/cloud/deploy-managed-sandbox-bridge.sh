@@ -123,6 +123,9 @@ else
     --target-tags "$control_tag"
 fi
 
+# Application authentication uses the managed-sandbox control secret. Cloud
+# Run IAM must not consume Authorization before the bridge can authenticate
+# and forward the request.
 run gcloud run deploy "$service" \
   --project "$project" \
   --region "$region" \
@@ -130,6 +133,7 @@ run gcloud run deploy "$service" \
   --image "$image" \
   --service-account "$service_account" \
   --allow-unauthenticated \
+  --no-invoker-iam-check \
   --clear-vpc-connector \
   --network "$network" \
   --subnet "$subnet" \

@@ -93,6 +93,20 @@ Persistent priority-900 rules admit only the managed-sandbox guest tag to TCP
 TCP 8787. Priority-1000 rules deny every other source on those ports,
 including traffic otherwise admitted by a default-VPC internal rule.
 
+Staging and production use distinct control nodes, private addresses, network
+tags, firewall rules, Cloud Run bridge services, control-token secrets, broker
+signing-key secrets, and native database authority. The deployment scripts
+never reuse a staging secret for production or a production secret for
+staging. The Cloud Run service has its platform invoker check disabled because
+the public Worker-to-bridge hop is authenticated by the dedicated application
+secret. The Worker presents that secret only as
+`x-openagents-managed-sandbox-token` on the managed-sandbox runtime paths.
+The bridge accepts that header on no generic control-plane path, compares it in
+constant time, removes it, and synthesizes the private control
+`Authorization` header. This prevents Cloud Run IAM from consuming the
+application credential and keeps the control bearer out of request bodies,
+URLs, metadata, and evidence.
+
 ## Isolation controls
 
 The live provider applies these controls before it reports `ready`:
@@ -175,6 +189,13 @@ Do not put a control token or a credential in a tracked file.
 Do not set `GOOGLE_APPLICATION_CREDENTIALS` in the control container.
 The control VM service account needs only the GCE operations for the admitted
 resource and network policy.
+
+Use `scripts/cloud/provision-managed-sandbox-runtime.sh --environment staging`
+for the independent gate and `--environment production` only after staging
+acceptance. Cloud Build submissions are asynchronous and the scripts poll the
+authoritative build status. They do not depend on permission to stream the
+default logs bucket. Re-running the immutable guest image build verifies and
+reuses an exact `READY` image only when its recorded source revision matches.
 
 ## Owner-gated live component acceptance
 

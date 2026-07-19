@@ -396,8 +396,8 @@ const managedSandboxLifecycleRequest = (
           {
             method: 'POST',
             headers: {
-              authorization: `Bearer ${bearerToken}`,
               'content-type': 'application/json',
+              'x-openagents-managed-sandbox-token': bearerToken,
             },
             body: JSON.stringify({
               operationRef: input.command.commandRef,
@@ -599,8 +599,8 @@ const managedSandboxGuestIoRequest = (
         fetch(`${baseUrl.replace(/\/$/, '')}/v1/managed-sandbox/runtime/io`, {
           method: 'POST',
           headers: {
-            authorization: `Bearer ${bearerToken}`,
             'content-type': 'application/json',
+            'x-openagents-managed-sandbox-token': bearerToken,
           },
           body: JSON.stringify({
             schemaVersion: 'openagents.managed_sandbox_guest_io.v1',
@@ -695,8 +695,8 @@ const managedSandboxRuntimeRequest = (
           {
             method: 'POST',
             headers: {
-              authorization: `Bearer ${bearerToken}`,
               'content-type': 'application/json',
+              'x-openagents-managed-sandbox-token': bearerToken,
             },
             body: JSON.stringify({
               schemaVersion: 'openagents.managed_sandbox_turn_runtime.v1',

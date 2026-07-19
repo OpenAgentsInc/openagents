@@ -24,6 +24,8 @@ const MAX_BODY_BYTES: usize = 512 * 1024;
 const DEFAULT_PORT: &str = "8080";
 const DEFAULT_ALLOWED_PATH_PREFIXES: &str = "/v1/placement,/v1/codex-runs,/healthz";
 const DEFAULT_UPSTREAM_TIMEOUT_SECS: u64 = 60;
+const MANAGED_SANDBOX_PATH_PREFIX: &str = "/v1/managed-sandbox/runtime";
+const MANAGED_SANDBOX_TOKEN_HEADER: &str = "x-openagents-managed-sandbox-token";
 
 #[derive(Debug, Clone)]
 struct Config {
@@ -286,7 +288,12 @@ fn route(request: &ParsedRequest, config: &Config) -> HttpResponse {
         }
     };
 
-    let presented = extract_bearer_token(header_value(&request.headers, "authorization"));
+    let presented = if is_path_allowed(&request.path, &[MANAGED_SANDBOX_PATH_PREFIX.to_string()]) {
+        header_value(&request.headers, MANAGED_SANDBOX_TOKEN_HEADER)
+            .or_else(|| extract_bearer_token(header_value(&request.headers, "authorization")))
+    } else {
+        extract_bearer_token(header_value(&request.headers, "authorization"))
+    };
     let authorized = match presented {
         Some(token) => constant_time_eq(token, control_token),
         None => false,
@@ -550,6 +557,40 @@ mod tests {
         };
         let response = route(&request, &config);
         assert_eq!(response.status, 401);
+    }
+
+    #[test]
+    fn managed_sandbox_route_accepts_the_dedicated_secret_header_only_on_its_path() {
+        let config = Config {
+            bind: "127.0.0.1:0".to_string(),
+            control_token: Some("secret-token".to_string()),
+            control_url: Some("http://127.0.0.1:1".to_string()),
+            allowed_path_prefixes: vec![
+                MANAGED_SANDBOX_PATH_PREFIX.to_string(),
+                "/v1/codex-runs".to_string(),
+            ],
+            upstream_timeout: Duration::from_millis(50),
+        };
+        let sandbox = ParsedRequest {
+            method: "POST".to_string(),
+            path: "/v1/managed-sandbox/runtime/operations".to_string(),
+            headers: vec![(
+                MANAGED_SANDBOX_TOKEN_HEADER.to_string(),
+                "secret-token".to_string(),
+            )],
+            body: b"{}".to_vec(),
+        };
+        let generic = ParsedRequest {
+            method: "POST".to_string(),
+            path: "/v1/codex-runs".to_string(),
+            headers: vec![(
+                MANAGED_SANDBOX_TOKEN_HEADER.to_string(),
+                "secret-token".to_string(),
+            )],
+            body: b"{}".to_vec(),
+        };
+        assert_ne!(route(&sandbox, &config).status, 401);
+        assert_eq!(route(&generic, &config).status, 401);
     }
 
     #[test]
