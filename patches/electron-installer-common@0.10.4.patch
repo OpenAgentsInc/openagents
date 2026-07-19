@@ -9,7 +9,7 @@ index d4eb491c48afa6c5f388e89e531bae9f164603b8..23554b13b990a830ad15fce0ccc4885c
 -    return path.join('share', 'pixmaps', `${this.appIdentifier}.png`)
 +    return path.join('share', 'pixmaps', `${this.options.iconName || this.appIdentifier}.png`)
    }
- 
+
    get sourceDir () {
 @@ -88,7 +88,8 @@ class ElectronInstaller {
    async copyHicolorIcons () {
@@ -19,7 +19,7 @@ index d4eb491c48afa6c5f388e89e531bae9f164603b8..23554b13b990a830ad15fce0ccc4885c
 +      const baseIconName = this.options.iconName || this.appIdentifier
 +      const iconName = resolution === 'symbolic' ? `${baseIconName}-symbolic` : baseIconName
        const iconFile = path.join(this.stagingDir, this.baseAppDir, 'share', 'icons', 'hicolor', resolution, 'apps', `${iconName}.${iconExt}`)
- 
+
        return error.wrapError('creating hicolor icon file', async () => this.copyIcon(iconSrc, iconFile))
 @@ -144,7 +145,12 @@ class ElectronInstaller {
     */
@@ -33,7 +33,7 @@ index d4eb491c48afa6c5f388e89e531bae9f164603b8..23554b13b990a830ad15fce0ccc4885c
 +      this.options.binaryName || this.appIdentifier
 +    )
      debug(`Symlinking binary from ${binSrc} to ${binDest}`)
- 
+
      const bundledBin = path.join(this.sourceDir, this.options.bin)
 @@ -190,7 +196,12 @@ class ElectronInstaller {
    async createDesktopFile () {
@@ -47,5 +47,5 @@ index d4eb491c48afa6c5f388e89e531bae9f164603b8..23554b13b990a830ad15fce0ccc4885c
 +      this.options
 +    )
    }
- 
+
    /**
