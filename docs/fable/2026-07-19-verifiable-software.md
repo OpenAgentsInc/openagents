@@ -9,6 +9,10 @@ receipts.
 **Sources:** episode transcripts 248–258 (`docs/transcripts/`), the IDE
 program (`docs/ide/`), the surface specs (`specs/desktop/`, `specs/mobile/`,
 `specs/web/`), and the Sol master roadmap.
+**Companion:** [`2026-07-19-some-simple-economics-of-agi-deepdive.md`](./2026-07-19-some-simple-economics-of-agi-deepdive.md)
+— a standalone deep dive on Catalini, Hui & Wu's *Some Simple Economics of
+AGI* (arXiv:2602.20946), the macroeconomic theory behind the verification-gap
+argument this essay builds on.
 
 ---
 
@@ -26,9 +30,15 @@ expensive possible location: a human's attention.
 That small failure is the whole problem in miniature. The cost of producing
 software is collapsing — agents generate plausible code, plausible
 instructions, and plausible summaries at near-zero marginal cost. The cost of
-*verifying* those outputs remains stubbornly linear. Someone still has to read
-`package.json`. Someone still has to check whether the tests tested the mock.
-Someone still has to ask, of every green checkmark, **"according to whom?"**
+*verifying* those outputs remains stubbornly linear. This is the asymmetry
+Catalini, Hui, and Wu formalize in *Some Simple Economics of AGI* as the
+**Measurability Gap**: an exponentially falling cost to automate racing a
+biologically bottlenecked cost to verify, with hidden risk accumulating in
+the widening space between them (see the
+[companion deep dive](./2026-07-19-some-simple-economics-of-agi-deepdive.md)).
+Someone still has to read `package.json`. Someone still has to check whether
+the tests tested the mock. Someone still has to ask, of every green
+checkmark, **"according to whom?"**
 
 When the vendor ships the capability and the user inherits the verification,
 the user becomes the integration test. That is the degraded state most
@@ -284,7 +294,17 @@ engineering problem — it is the market.
 Generation cost is collapsing; verification cost is not. The gap between them
 is where value concentrates. When anyone can generate a plausible pull
 request, a plausible benchmark, or a plausible "all tests green," the scarce
-good is the ability to know which claims are true. The atomic unit of the
+good is the ability to know which claims are true. The macro theory behind
+this is worked out in Catalini, Hui & Wu's *Some Simple Economics of AGI*:
+only the *verifiable share* of agentic output creates real economic capacity,
+while the unverified remainder circulates as "counterfeit utility" — output
+that passes every measurable proxy while silently violating unmeasured intent
+— and the market pays a measurable *provenance premium* for output whose
+process can be cheaply checked. Their policy levers — observability tooling
+(they name AI-powered IDEs explicitly), cryptographic provenance, and priced
+liability — map one-for-one onto the mechanisms described in this essay; the
+[companion deep dive](./2026-07-19-some-simple-economics-of-agi-deepdive.md)
+draws the full correspondence. The atomic unit of the
 agent economy is not generated output. It is an accepted outcome with a
 receipt trail — scoped in advance, executed wherever cheapest, graded against
 a rubric, recorded in a receipt. The real product is not the wiring. It is the
