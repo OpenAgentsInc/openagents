@@ -10602,10 +10602,6 @@
       "STE-2.4": 10,
       "STE-8.1": 10
     },
-    "packages/assurance-spec/starter-kit/AGENTS.md": {
-      "STE-8.1": 1,
-      "STE-2.4": 3
-    },
     "packages/assurance-spec/starter-kit/README.md": {
       "STE-8.1": 1
     },
@@ -11056,11 +11052,6 @@
     },
     "scripts/qa-demo/README.md": {
       "STE-5.1": 1
-    },
-    "specs/CONVENTIONS.md": {
-      "STE-5.1": 5,
-      "STE-2.4": 13,
-      "STE-8.1": 20
     },
     "specs/IDE_ROADMAP_CROSSWALK.md": {
       "STE-8.1": 63,
