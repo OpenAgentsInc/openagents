@@ -1,0 +1,317 @@
+{
+  "schemaVersion": "1",
+  "repository": "OpenAgentsInc/openagents",
+  "note": "Heuristic false-green LEADS, not findings. A finding requires a demonstrated reproduction (surviving mutation via mutation-runner). Do not treat a candidate as a confirmed false green. Coverage-theater leads may include tests that delegate their assertion to a custom helper the classifier does not recognise; verify before acting.",
+  "sourceDigest": "sha256:571db584a6b9c9f2fac7da36e2b4727cb99c848ece46bc174143f4d6e5f54846",
+  "summary": {
+    "filesScanned": 2328,
+    "candidateCount": 50,
+    "byMode": {
+      "false_green_coverage_theater": 18,
+      "false_green_mocked_seam": 1,
+      "false_green_round_up": 31
+    }
+  },
+  "candidates": [
+    {
+      "file": "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+      "line": 102,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+      "line": 337,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 89,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 112,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 157,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 167,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 234,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 256,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 276,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 297,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 320,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 502,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 557,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 601,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 631,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 659,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 693,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 767,
+      "mode": "false_green_round_up",
+      "evidence": "uses describe.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 846,
+      "mode": "false_green_round_up",
+      "evidence": "uses describe.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/settings.test.ts",
+      "line": 1102,
+      "mode": "false_green_round_up",
+      "evidence": "uses describe.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 305,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 335,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 572,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 610,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 868,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 1370,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 1387,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 1400,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 1408,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 3143,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/src/renderer/shell.test.ts",
+      "line": 3635,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents-desktop/tests/capability-evals.test.ts",
+      "line": 496,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "apps/openagents.com/apps/start/src/routes/-forum.test.tsx",
+      "line": 385,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/scripts/d1-zero-reference-sweep.test.ts",
+      "line": 94,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/artanis-domain-store.test.ts",
+      "line": 132,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/inference/pricing.test.ts",
+      "line": 65,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/inference/pricing.test.ts",
+      "line": 74,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/inference/pricing.test.ts",
+      "line": 165,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/inference/pricing.test.ts",
+      "line": 178,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/inference/pricing.test.ts",
+      "line": 238,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/inference/pricing.test.ts",
+      "line": 262,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/inference/pricing.test.ts",
+      "line": 280,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/inference/pricing.test.ts",
+      "line": 299,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
+      "line": 479,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "packages/assure-repo/test/false-green.test.ts",
+      "line": 7,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "packages/assure-repo/test/false-green.test.ts",
+      "line": 57,
+      "mode": "false_green_round_up",
+      "evidence": "uses test.skip( which is silently excluded from a green summary"
+    },
+    {
+      "file": "packages/assure-repo/test/false-green.test.ts",
+      "line": 63,
+      "mode": "false_green_mocked_seam",
+      "evidence": "mocks a module (vi.mock(); verify the real seam is still exercised"
+    },
+    {
+      "file": "packages/audio-contract/src/audio-contract.test.ts",
+      "line": 6,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "packages/khala-sync-client/src/overlay.property.test.ts",
+      "line": 533,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    },
+    {
+      "file": "packages/oxlint-plugin-openagents/test/plugin.test.ts",
+      "line": 49,
+      "mode": "false_green_coverage_theater",
+      "evidence": "test block contains no expect/assert call"
+    }
+  ]
+}

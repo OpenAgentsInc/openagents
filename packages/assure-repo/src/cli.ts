@@ -2,8 +2,14 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import {
+  buildFalseGreenReport,
+  FALSE_GREEN_REPORT_PATH,
+  serializeFalseGreenReport,
+} from "./audit.ts";
 import { coverageByArea } from "./grade.ts";
 import { buildInventory } from "./inventory.ts";
+import { runMutation } from "./mutation-runner.ts";
 import {
   serializeSurfaceInventory,
   SURFACE_INVENTORY_PATH,
@@ -12,19 +18,23 @@ import {
 import { repositoryRoot } from "./workspace.ts";
 
 /**
- * assure-repo CLI (AR-0 #9056, AR-1 #9057).
+ * assure-repo CLI (AR-0 #9056, AR-1 #9057, AR-2 #9058).
  *
- *   generate   Regenerate docs/assure-repo/surface-inventory.v1.json.
- *   check      Regenerate in memory and byte-compare against the committed
- *              artifact; validate the no-silent-surface invariant. Exit 1 on
- *              staleness or any validation issue.
- *   summary    Print the coverage summary for the committed artifact.
- *   coverage   Print the AR-1 program-area obligation grading report.
+ *   generate        Regenerate docs/assure-repo/surface-inventory.v1.json.
+ *   check           Regenerate in memory and byte-compare against the committed
+ *                   artifact; validate the no-silent-surface invariant.
+ *   summary         Print the inventory coverage summary.
+ *   coverage        Print the AR-1 program-area obligation grading report.
+ *   audit-generate  Regenerate the AR-2 false-green candidate report.
+ *   audit-check     Byte-compare the committed candidate report.
+ *   audit           Print the false-green candidate summary.
+ *   demonstrate     Run one mutation against a subject/test to prove a
+ *                   kill (exit 0) or a surviving weak oracle (exit 1).
  */
 
 const usage = (): never => {
   process.stderr.write(
-    "usage: assure-repo <generate|check|summary|coverage> [--root <dir>] [--json]\n",
+    "usage: assure-repo <generate|check|summary|coverage|audit|audit-generate|audit-check|demonstrate> [...]\n",
   );
   process.exit(2);
 };
@@ -144,6 +154,75 @@ const main = (): void => {
       "\nNote: `designed` means an executable oracle is authored, not observed. `observed`/`accepted` require an AR-3 sweep receipt or owner acceptance and are never set by grading.\n",
     );
     return;
+  }
+
+  if (command === "audit-generate") {
+    const report = buildFalseGreenReport(root);
+    writeFileSync(resolve(root, FALSE_GREEN_REPORT_PATH), serializeFalseGreenReport(report));
+    process.stdout.write(
+      `wrote ${FALSE_GREEN_REPORT_PATH} (${report.summary.filesScanned} test files, ${report.summary.candidateCount} candidate leads)\n`,
+    );
+    return;
+  }
+
+  if (command === "audit-check") {
+    const expected = serializeFalseGreenReport(buildFalseGreenReport(root));
+    const target = resolve(root, FALSE_GREEN_REPORT_PATH);
+    if (!existsSync(target)) {
+      process.stderr.write(
+        `${FALSE_GREEN_REPORT_PATH} is missing; run pnpm run audit:assure-repo\n`,
+      );
+      process.exit(1);
+    }
+    if (readFileSync(target, "utf8") !== expected) {
+      process.stderr.write(`${FALSE_GREEN_REPORT_PATH} is stale; run pnpm run audit:assure-repo\n`);
+      process.exit(1);
+    }
+    const report = JSON.parse(expected) as {
+      summary: { filesScanned: number; candidateCount: number };
+    };
+    process.stdout.write(
+      `false-green candidate report OK (${report.summary.filesScanned} files, ${report.summary.candidateCount} leads)\n`,
+    );
+    return;
+  }
+
+  if (command === "audit") {
+    const report = buildFalseGreenReport(root);
+    if (json) {
+      process.stdout.write(`${JSON.stringify(report.summary, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(`Scanned ${report.summary.filesScanned} test files.\n`);
+    process.stdout.write(
+      `Candidate false-green LEADS (heuristic, not findings): ${report.summary.candidateCount}\n`,
+    );
+    process.stdout.write(`By mode: ${JSON.stringify(report.summary.byMode)}\n`);
+    process.stdout.write(
+      "\nA lead becomes a finding only when demonstrated by a surviving mutation (`assure-repo demonstrate`).\n",
+    );
+    return;
+  }
+
+  if (command === "demonstrate") {
+    const at = (flag: string): string | undefined => {
+      const idx = argv.indexOf(flag);
+      return idx >= 0 ? argv[idx + 1] : undefined;
+    };
+    const subjectPath = at("--subject");
+    const target = at("--target");
+    const replacement = at("--replacement") ?? "";
+    const testIdx = argv.indexOf("--test");
+    const testCommand = testIdx >= 0 ? argv.slice(testIdx + 1) : [];
+    if (!subjectPath || target === undefined || testCommand.length === 0) {
+      process.stderr.write(
+        "usage: assure-repo demonstrate --subject <path> --target <str> --replacement <str> --test <cmd...>\n",
+      );
+      process.exit(2);
+    }
+    const outcome = runMutation(root, { subjectPath, target, replacement, testCommand });
+    process.stdout.write(`${JSON.stringify(outcome, null, 2)}\n`);
+    process.exit(outcome.result === "survived" ? 1 : 0);
   }
 
   usage();

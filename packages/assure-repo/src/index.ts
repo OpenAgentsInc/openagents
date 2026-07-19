@@ -2,4 +2,7 @@ export * from "./schema.ts";
 export * from "./workspace.ts";
 export * from "./oracles.ts";
 export * from "./grade.ts";
+export * from "./false-green.ts";
+export * from "./mutation-runner.ts";
+export * from "./audit.ts";
 export * from "./inventory.ts";

@@ -17,7 +17,7 @@
     "dev:openagents-mobile": "pnpm --dir apps/openagents-mobile run dev",
     "deploy:aiur": "pnpm --dir apps/aiur run deploy",
     "check": "pnpm run fmt:check && vp lint --quiet",
-    "check:fast": "vp lint --quiet && pnpm run check:agent-client-protocol && pnpm run check:agent-client-protocol-conformance && pnpm run check:codex-app-server-protocol && pnpm run check:ste:all && pnpm run check:ste-control-semantics && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/google-cloud-authority-guard.mjs && pnpm run check:assure-repo",
+    "check:fast": "vp lint --quiet && pnpm run check:agent-client-protocol && pnpm run check:agent-client-protocol-conformance && pnpm run check:codex-app-server-protocol && pnpm run check:ste:all && pnpm run check:ste-control-semantics && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/google-cloud-authority-guard.mjs && pnpm run check:assure-repo && pnpm run check:assure-repo-audit",
     "check:google-cloud-authority": "node scripts/google-cloud-authority-guard.mjs",
     "check:zero-supported-bun": "node scripts/zero-supported-bun-guard.mjs .",
     "test": "vp test --run",
@@ -172,7 +172,9 @@
     "pack": "node --max-old-space-size=8192 scripts/build-public-cli-artifacts.mjs",
     "generate:assure-repo": "node --import tsx packages/assure-repo/src/cli.ts generate",
     "check:assure-repo": "node --import tsx packages/assure-repo/src/cli.ts check",
-    "test:assure-repo": "vp test --run packages/assure-repo/test"
+    "test:assure-repo": "vp test --run packages/assure-repo/test",
+    "audit:assure-repo": "node --import tsx packages/assure-repo/src/cli.ts audit-generate",
+    "check:assure-repo-audit": "node --import tsx packages/assure-repo/src/cli.ts audit-check"
   },
   "devDependencies": {
     "@effect/language-service": "^0.86.2",

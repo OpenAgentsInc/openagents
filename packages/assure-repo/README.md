@@ -21,9 +21,18 @@ for the program overview and the generated artifact.
 - `grade.ts` — AR-1 obligation grading over the inventory (mapped / designed /
   observed / accepted / inconclusive / out-of-scope, kept as independent
   facts; never emits observed/accepted) plus the program-area coverage report.
+- `false-green.ts` — AR-2 heuristic classifier over test sources (coverage
+  theater / round-up / mocked seam) with a string-aware test-block scanner.
+  Emits candidate leads, never findings.
+- `mutation-runner.ts` — AR-2 self-contained mutation runner that demonstrates
+  a false green by reproduction (kill vs surviving weak oracle), restoring the
+  subject in a `finally`. Shares the `openagents.mutation.v1` semantics.
+- `audit.ts` — AR-2 report builder (`buildFalseGreenReport`) over every tracked
+  test source.
 - `inventory.ts` — the generator (`buildInventory`, which also grades) and the
   surface policy loader.
-- `cli.ts` — `generate` / `check` / `summary` / `coverage`.
+- `cli.ts` — `generate` / `check` / `summary` / `coverage` / `audit*` /
+  `demonstrate`.
 
 ## Usage
 
