@@ -102,7 +102,7 @@ design context only.
 - Ingress, token minting, public exposure, custom-domain binding, capability
   attachment, artifact upload, and closeout are receipt-bearing events.
 
-## Managed Agent Sandbox Contract (SBX-00/01, #9029/#9034)
+## Managed Agent Sandbox Contract (SBX-00/01/02, #9029/#9034/#9028)
 
 - `openagents.managed_sandbox.v1` is the sole managed-sandbox domain identity.
   GCE, Firecracker, Box-v1, IDE, mobile, and Sarah records are projections or
@@ -148,6 +148,31 @@ design context only.
   `packages/authority/src/managed-sandbox-authority.test.ts`. Live target
   evidence is separately required by SBX-09 and must not be inferred from
   these contract tests.
+- The managed-sandbox provider route is default-off and fail-closed. Only the
+  exact `live_gce` profile can report ready. Legacy fake GCE and Cloud-VM
+  provisioners cannot satisfy managed-sandbox readiness, and a managed-sandbox
+  failure cannot continue on the control host.
+- The GCE profile pins immutable image and profile digests.
+  It also pins region, machine class, isolation class, provisioner, network
+  policy, component identities, zero prewarm, capacity, TTL, and budgets.
+  Every pin precedes the provider effect.
+  Capacity or quota pressure refuses the request and cannot select a
+  substitute.
+- A GCE managed-sandbox workload has no external IP, guest service account,
+  OAuth scope, ingress rule, ambient provider home, or host path. Its egress is
+  deny-all. Only run-scoped capability refs pass admission. The control
+  component uses a metadata identity and refuses a downloadable service-
+  account key.
+- Provider ownership and cleanup ownership are durable before effects.
+  Readiness requires observed provider, guest-generation, image, address,
+  identity, metadata, and network facts. Cleanup requires observed zero
+  compute, firewall, disk, ingress, and grant residue. Uncertainty reports
+  `recovery_required` and reconciles the same ownership.
+- Deterministic provider enforcement lives in
+  `crates/oa-codex-control/src/managed_sandbox_runtime.rs` and its HTTP
+  contract test. The bounded live component harness is
+  `scripts/cloud/managed-sandbox-live-acceptance.ts`. SBX-09 must reproduce
+  independent cross-surface live evidence before rollout.
 
 ## Cross-OS Cloud-VM Provisioner
 

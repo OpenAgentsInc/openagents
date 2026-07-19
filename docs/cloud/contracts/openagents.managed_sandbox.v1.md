@@ -1,7 +1,8 @@
 # `openagents.managed_sandbox.v1`
 
-Status: **admitted contract and durable lifecycle store; provider runtime and
-production availability remain gated by SBX-02 through SBX-10**.
+Status: **admitted contract, durable lifecycle store, and default-off GCE
+runtime component; facade, consumers, independent live gate, and production
+availability remain gated by SBX-03 through SBX-10**.
 
 Owning package: `packages/managed-sandbox-contract`
 
@@ -189,6 +190,47 @@ deployed and healthy.
 They must remain within the current cloud budget and produce native lifecycle
 and cleanup receipts.
 
+## GCE runtime profile
+
+SBX-02 adds the private native provider route
+`POST /v1/managed-sandbox/runtime/operations` to `oa-codex-control`.
+It supports create, probe, stop, resume, delete, and reconcile operations.
+It does not replace the canonical command, event, receipt, or lifecycle store.
+
+The first admitted isolation class is `gce_vm` on an exact `e2-small` profile
+in `us-central1`.
+The deploy configuration pins an exact GCE image name, immutable image ID,
+image identity digest, and profile digest.
+It also pins the provisioner, network policy, and component identity refs.
+An image family cannot reach the provider effect.
+
+The workload has no external IP address, guest service account, OAuth scope,
+ingress rule, or ambient capability material.
+A sandbox-specific egress rule denies all IPv4 egress.
+The guest readiness marker is bound to the resource and generation and is
+observed through the serial console.
+Provider state alone cannot report ready.
+
+The provider writes cleanup ownership before its first effect.
+It records exact operation and idempotency fingerprints.
+It fences resume with a new provider generation.
+An uncertain create, stop, resume, or delete is reconciled against the same
+ownership.
+It never selects a replacement provider, region, image, or machine class.
+
+Delete verifies zero instance, firewall rule, and disk residue.
+The admitted profile creates no ingress or guest identity grant.
+Any nonzero or unknown cleanup observation reports `recovery_required`.
+
+The live provider is default-off and requires the control VM metadata identity.
+It refuses a downloadable service-account key.
+The legacy fake GCE and fake Cloud-VM lanes remain test tools and cannot return
+managed-sandbox readiness.
+
+The exact profile, deployment inputs, live component harness, and rollback are
+in
+`docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md`.
+
 ## Verification
 
 ```bash
@@ -197,11 +239,17 @@ pnpm --filter @openagentsinc/managed-sandbox-contract test
 pnpm --filter @openagentsinc/authority test
 pnpm --filter @openagentsinc/khala-sync-server typecheck
 pnpm exec vp test --run packages/khala-sync-server/src/managed-sandbox-store.test.ts
+cargo test -p oa-codex-control managed_sandbox_runtime --no-fail-fast
+cargo test -p oa-codex-control --no-fail-fast
+bash -n scripts/cloud/gcp-codex-control-deploy.sh
 ```
 
 The corresponding proof program is
 `specs/openagents/managed-agent-sandboxes.assurance-spec.md`.
 SBX-01 proves deterministic database reconciliation and cleanup truth.
-Live target, cost, IDE, mobile, and Sarah dogfood receipts belong to later SBX
-work.
+SBX-02 proves the default-off GCE provider component and its bounded live
+component harness. The accepted refs-only component receipt is
+`docs/sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json`.
+The independent live release gate, IDE, mobile, and Sarah dogfood receipts
+belong to later SBX work.
 This contract does not claim them early.

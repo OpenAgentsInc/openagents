@@ -33,8 +33,12 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
   development-only Box SDK conformance facade, IDE/Sarah consumers, and live
   isolation/cleanup proof; the
   [`openagents.managed_sandbox.v1`](./contracts/openagents.managed_sandbox.v1.md)
-  contract and Box-v1 corpus are admitted by SBX-00, while runtime and
-  production availability remain gated by SBX-01 through SBX-10
+  contract and Box-v1 corpus are admitted by SBX-00, the durable store is
+  implemented by SBX-01, and the default-off GCE runtime component is
+  implemented by SBX-02. The [SBX-02 runtime runbook](./bootstrap/SBX-02-managed-sandbox-runtime.md)
+  defines its exact profile and live component harness. Facade, consumers,
+  independent live rollout, and production availability remain gated by
+  SBX-03 through SBX-10
 - [Remote-first portable session pathway](../sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md)
   — planned product/roadmap additions for owner-managed and managed-provider
   targets, cross-host checkpoints, general brokered capabilities, and mobile
@@ -50,8 +54,10 @@ cargo run -p oa-node -- --help
 cargo run -p oa-workroomd -- --help
 ```
 
-Fake GCE and fake Cloud-VM provisioners are the default. Live lanes are
-explicit env-gated (`OA_CLOUD_VM_PROVISIONER=live`, GCE live flags).
+Fake GCE and fake Cloud-VM provisioners are the default for their legacy test
+lanes. They cannot report managed-sandbox readiness. The managed-sandbox GCE
+provider is default-off and requires the exact `live_gce` profile plus the
+control VM metadata identity.
 
 ## Local smokes
 

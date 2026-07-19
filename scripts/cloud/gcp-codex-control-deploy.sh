@@ -22,8 +22,16 @@ Usage:
     --control-token TOKEN \
     [--zone us-central1-a] [--machine-type e2-small] \
     [--instance oa-codex-control-1] \
+    [--firewall-rule oa-codex-control-port] \
+    [--network-tag oa-codex-control] \
     [--image-tag cloud95] \
     [--control-source-cidr 1.2.3.4/32] \
+    [--enable-managed-sandbox \
+      --managed-sandbox-image-project PROJECT \
+      --managed-sandbox-image-name IMAGE \
+      --managed-sandbox-image-id IMMUTABLE_ID \
+      --managed-sandbox-image-digest sha256:HEX \
+      --managed-sandbox-profile-digest sha256:HEX] \
     [--apply]
 
 Required:
@@ -42,10 +50,18 @@ project_id=""
 zone="us-central1-a"
 machine_type="e2-small"
 instance="oa-codex-control-1"
+firewall_rule="oa-codex-control-port"
+network_tag="oa-codex-control"
 image_tag="cloud95"
 control_token=""
 control_source_cidr=""
 apply="false"
+enable_managed_sandbox="false"
+managed_sandbox_image_project=""
+managed_sandbox_image_name=""
+managed_sandbox_image_id=""
+managed_sandbox_image_digest=""
+managed_sandbox_profile_digest=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -53,26 +69,52 @@ while [[ $# -gt 0 ]]; do
     --zone) zone="${2:-}"; shift 2 ;;
     --machine-type) machine_type="${2:-}"; shift 2 ;;
     --instance) instance="${2:-}"; shift 2 ;;
+    --firewall-rule) firewall_rule="${2:-}"; shift 2 ;;
+    --network-tag) network_tag="${2:-}"; shift 2 ;;
     --image-tag) image_tag="${2:-}"; shift 2 ;;
     --control-token) control_token="${2:-}"; shift 2 ;;
     --control-source-cidr) control_source_cidr="${2:-}"; shift 2 ;;
+    --enable-managed-sandbox) enable_managed_sandbox="true"; shift ;;
+    --managed-sandbox-image-project) managed_sandbox_image_project="${2:-}"; shift 2 ;;
+    --managed-sandbox-image-name) managed_sandbox_image_name="${2:-}"; shift 2 ;;
+    --managed-sandbox-image-id) managed_sandbox_image_id="${2:-}"; shift 2 ;;
+    --managed-sandbox-image-digest) managed_sandbox_image_digest="${2:-}"; shift 2 ;;
+    --managed-sandbox-profile-digest) managed_sandbox_profile_digest="${2:-}"; shift 2 ;;
     --apply) apply="true"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
-if [[ -z "$project_id" || -z "$control_token" ]]; then
-  echo "--project and --control-token are required" >&2
+if [[ -z "$project_id" || -z "$control_token" || -z "$instance" || -z "$firewall_rule" || -z "$network_tag" ]]; then
+  echo "project, control token, instance, firewall rule, and network tag are required" >&2
   usage >&2
   exit 2
+fi
+
+if [[ "$enable_managed_sandbox" == "true" ]]; then
+  for value in \
+    "$managed_sandbox_image_project" \
+    "$managed_sandbox_image_name" \
+    "$managed_sandbox_image_id" \
+    "$managed_sandbox_image_digest" \
+    "$managed_sandbox_profile_digest"; do
+    if [[ -z "$value" ]]; then
+      echo "managed-sandbox image project/name/id/digest and profile digest are required when enabled" >&2
+      exit 2
+    fi
+  done
+  if [[ ! "$managed_sandbox_image_digest" =~ ^sha256:[0-9a-fA-F]{64}$ ]] || \
+     [[ ! "$managed_sandbox_profile_digest" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
+    echo "managed-sandbox image and profile digests must be sha256 refs" >&2
+    exit 2
+  fi
 fi
 
 region="${zone%-*}"
 control_sa="oa-codex-control@${project_id}.iam.gserviceaccount.com"
 image="${region}-docker.pkg.dev/${project_id}/oa-cloud/oa-codex-control:${image_tag}"
-fw_control="oa-codex-control-port"
-network_tag="oa-codex-control"
+fw_control="$firewall_rule"
 
 run() {
   if [[ "$apply" == "true" ]]; then
@@ -100,6 +142,42 @@ OA_CODEX_GCE_USE_METADATA_ADC=true"
 # runs the image as a managed container with the instance SA's ADC.
 container_decl="$(mktemp)"
 trap 'rm -f "$container_decl"' EXIT
+managed_sandbox_env_yaml=""
+if [[ "$enable_managed_sandbox" == "true" ]]; then
+  managed_sandbox_env_yaml="$(cat <<ENVYAML
+        - name: OA_MANAGED_SANDBOX_PROVISIONER
+          value: "live_gce"
+        - name: OA_MANAGED_SANDBOX_PROJECT_ID
+          value: "${project_id}"
+        - name: OA_MANAGED_SANDBOX_ZONE
+          value: "${zone}"
+        - name: OA_MANAGED_SANDBOX_REGION
+          value: "${region}"
+        - name: OA_MANAGED_SANDBOX_MACHINE_CLASS
+          value: "e2-small"
+        - name: OA_MANAGED_SANDBOX_IMAGE_PROJECT
+          value: "${managed_sandbox_image_project}"
+        - name: OA_MANAGED_SANDBOX_IMAGE_NAME
+          value: "${managed_sandbox_image_name}"
+        - name: OA_MANAGED_SANDBOX_IMAGE_ID
+          value: "${managed_sandbox_image_id}"
+        - name: OA_MANAGED_SANDBOX_IMAGE_DIGEST
+          value: "${managed_sandbox_image_digest}"
+        - name: OA_MANAGED_SANDBOX_NETWORK
+          value: "default"
+        - name: OA_MANAGED_SANDBOX_PROFILE_REF
+          value: "profile-ref://openagents/managed-sandbox/gce-e2-small-v1"
+        - name: OA_MANAGED_SANDBOX_PROFILE_DIGEST
+          value: "${managed_sandbox_profile_digest}"
+        - name: OA_MANAGED_SANDBOX_PROVISIONER_REF
+          value: "provisioner-ref://openagents/oa-codex-control/gce-v1"
+        - name: OA_MANAGED_SANDBOX_NETWORK_POLICY_REF
+          value: "network-policy-ref://openagents/managed-sandbox/deny-all-v1"
+        - name: OA_MANAGED_SANDBOX_CONTROL_IDENTITY_REF
+          value: "identity-ref://openagents/managed-sandbox/control"
+ENVYAML
+)"
+fi
 cat >"$container_decl" <<DECL
 spec:
   containers:
@@ -133,6 +211,7 @@ spec:
           value: "e2-small"
         - name: OA_CODEX_GCE_USE_METADATA_ADC
           value: "true"
+${managed_sandbox_env_yaml}
   restartPolicy: Always
   # Host networking so the control daemon's :8787 listener is reachable on the
   # VM's network interface (the GCE firewall is the access control boundary).
@@ -165,8 +244,16 @@ fi
 # Redeploy-safe: delete an existing instance of the same name before recreate.
 if [[ "$apply" == "true" ]] && gcloud compute instances describe "$instance" \
      --project "$project_id" --zone "$zone" >/dev/null 2>&1; then
-  run gcloud compute instances delete "$instance" \
-    --project "$project_id" --zone "$zone" --quiet
+  if ! gcloud compute instances delete "$instance" \
+    --project "$project_id" --zone "$zone" --quiet; then
+    # A concurrent cleanup can win after describe. Treat that race as clean
+    # only when a second observation confirms the instance is absent.
+    if gcloud compute instances describe "$instance" \
+         --project "$project_id" --zone "$zone" >/dev/null 2>&1; then
+      echo "failed to replace existing control instance" >&2
+      exit 1
+    fi
+  fi
 fi
 
 run gcloud compute instances create "$instance" \
@@ -193,6 +280,7 @@ oa-codex-control persistent node:
   Image:        ${image}
   Control port: 8787 (firewall ${fw_control}; sources ${source_ranges})
   Labels:       openagents-managed=control
+  Managed SBX:  ${enable_managed_sandbox} (live_gce, keyless control identity, guest identity none)
 
 Mode apply=${apply}
 

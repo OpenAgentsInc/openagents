@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx02_live_acceptance.v1",
+  "capturedAt": "2026-07-19T18:06:54.682Z",
+  "passed": true,
+  "sandboxRef": "sandbox-ref://owner-live/sbx02-4b444461e8d4556d624a",
+  "profile": {
+    "profileRef": "profile-ref://openagents/managed-sandbox/gce-e2-small-v1",
+    "profileDigest": "sha256:078db1b226e34dcc2df0738c81f0134b9bcb3d92b2b1242565fa6a5b27e9dedc",
+    "targetRef": "target://openagents/google-cloud/managed-sandbox",
+    "region": "us-central1",
+    "machineClass": "e2-small",
+    "isolationClass": "gce_vm",
+    "imageRef": "gce-image-ref://sha256/6db516ddd2287bf98ae0471f5d2f920748f55777af6167647da86eff7267bec2",
+    "imageDigest": "sha256:6db516ddd2287bf98ae0471f5d2f920748f55777af6167647da86eff7267bec2",
+    "networkPolicyRef": "network-policy-ref://openagents/managed-sandbox/deny-all-v1",
+    "controlIdentityRef": "identity-ref://openagents/managed-sandbox/control",
+    "guestIdentityRef": "identity-ref://openagents/managed-sandbox/guest-none",
+    "capacity": {
+      "minCapacity": 0,
+      "maxCapacity": 2,
+      "prewarmCapacity": 0,
+      "concurrentCapacityCap": 2
+    },
+    "budget": {
+      "sandboxBudgetMicrousd": 10000,
+      "programBudgetMicrousd": 40000,
+      "maxHourlyCostMicrousd": 20000
+    }
+  },
+  "receiptRefs": [
+    "receipt-ref://sha256/b6bf395886ac7a327c9e9164fac2d4c0dce5e5e705137b8a38b537b8a3012f0c",
+    "receipt-ref://sha256/927d5c3522118f16acee01efab28bd5112098cbfee29d08443fbe8fb2354bcef",
+    "receipt-ref://sha256/4ea3b509f72de67b8106d76dd3eec9c151c9dc57af94b90b02c93a9fce72940e",
+    "receipt-ref://sha256/14ee0eb771fab29dbaf353b8d6d4efa89917fbf482ea25e4e83eba476df63938",
+    "receipt-ref://sha256/d3aa63a4d56492aa35bb5a7a77b76c55f9dca9e1e9f9e78af30115156927be3c",
+    "receipt-ref://sha256/650357e7d8b44fec5709fc324ad9344eb402e140f6a350a03696bdedda5a25fa",
+    "receipt-ref://sha256/0ecf77d1b22f315a1cd41a05ab349d9317a4d0acc0991784ca9f56cc9748b120"
+  ],
+  "finalReceipt": {
+    "action": "delete",
+    "cleanupObserved": true,
+    "controlIdentityRef": "identity-ref://openagents/managed-sandbox/control",
+    "diskRef": "gce-disk-ref://sha256/b0cab21dc4d10b358c0970d15e25a7623f15e218ea2c823b22c36013da642747",
+    "emittedAtMs": 1784484387873,
+    "errorCode": null,
+    "firewallRef": "gce-firewall-ref://sha256/a152fb0e3f41fb59d5be620c2d119f090e8cb1923bef6f65ed4aecd1a597892a",
+    "generation": 2,
+    "guestIdentityRef": "identity-ref://openagents/managed-sandbox/guest-none",
+    "imageDigest": "sha256:6db516ddd2287bf98ae0471f5d2f920748f55777af6167647da86eff7267bec2",
+    "imageRef": "gce-image-ref://sha256/6db516ddd2287bf98ae0471f5d2f920748f55777af6167647da86eff7267bec2",
+    "isolationClass": "gce_vm",
+    "measuredCostMicrousd": 942,
+    "measuredRunningMs": 169557,
+    "networkPolicyRef": "network-policy-ref://openagents/managed-sandbox/deny-all-v1",
+    "operationRef": "operation-ref://sbx02-live/ec528f8ab46189813c38f888337644c6",
+    "phase": "deleted",
+    "profileDigest": "sha256:078db1b226e34dcc2df0738c81f0134b9bcb3d92b2b1242565fa6a5b27e9dedc",
+    "profileRef": "profile-ref://openagents/managed-sandbox/gce-e2-small-v1",
+    "programBudgetMicrousd": 40000,
+    "providerKind": "live_gce",
+    "readinessObserved": false,
+    "receiptRef": "receipt-ref://sha256/0ecf77d1b22f315a1cd41a05ab349d9317a4d0acc0991784ca9f56cc9748b120",
+    "resourceRef": "gce-instance-ref://sha256/bbd1aaa2126d747d556fb89c7a68aceb36b6f9466cc45752f5a5f6b9b309cde3",
+    "sandboxBudgetMicrousd": 10000,
+    "sandboxRef": "sandbox-ref://owner-live/sbx02-4b444461e8d4556d624a",
+    "schemaVersion": "openagents.managed_sandbox_runtime.v1",
+    "targetRef": "target://openagents/google-cloud/managed-sandbox"
+  },
+  "residue": {
+    "compute": 0,
+    "firewall": 0,
+    "scratch": 0,
+    "ingress": 0,
+    "grants": 0
+  }
+}

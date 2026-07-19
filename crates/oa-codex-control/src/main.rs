@@ -31,6 +31,7 @@ mod gce_capacity;
 use gce_capacity::{provisioner_for, CapacityRequest, GceLease, ProvisionerKind, ReleaseReason};
 
 mod cloud_vm;
+mod managed_sandbox_runtime;
 mod portable_agent_computer;
 
 const DEFAULT_BIND: &str = "127.0.0.1:8787";
@@ -83,6 +84,9 @@ struct Config {
     /// /dev/kvm or the images the live lane falls back to fake so no-KVM envs
     /// never boot. See cloud_vm::LiveFirecrackerConfig for the full env set.
     cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind,
+    /// Serializes provider-side managed-sandbox lifecycle effects. The durable
+    /// operation journal remains the restart and replay authority.
+    managed_sandbox_runtime_lock: Arc<Mutex<()>>,
     /// Serializes retained Agent Computer effects inside this daemon. The
     /// filesystem operation journal remains the restart/replay authority.
     portable_agent_computer_lock: Arc<Mutex<()>>,
@@ -538,6 +542,7 @@ impl Config {
             cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind::from_env_value(
                 optional_env("OA_CLOUD_VM_PROVISIONER").as_deref(),
             ),
+            managed_sandbox_runtime_lock: Arc::new(Mutex::new(())),
             portable_agent_computer_lock: Arc::new(Mutex::new(())),
             gce_project_ref: optional_env("OA_CODEX_GCE_PROJECT_REF")
                 .unwrap_or_else(|| "gcp-project-ref://openagents/cloud-primary".to_string()),
@@ -687,6 +692,29 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
             };
 
             write_response(&mut stream, status, &response)
+        }
+        "/v1/managed-sandbox/runtime/operations" => {
+            let operation = match serde_json::from_slice::<
+                managed_sandbox_runtime::ManagedSandboxRuntimeRequest,
+            >(&request.body)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    return write_invalid_request(&mut stream, format!("invalid_request: {error}"))
+                }
+            };
+            let _operation_guard = config
+                .managed_sandbox_runtime_lock
+                .lock()
+                .map_err(|_| "managed-sandbox runtime operation lock was poisoned".to_string())?;
+            match managed_sandbox_runtime::execute(&config.state_root, operation) {
+                Ok(response) => write_response(
+                    &mut stream,
+                    200,
+                    &serde_json::to_value(response).map_err(|error| error.to_string())?,
+                ),
+                Err(error) => write_response(&mut stream, error.status(), &error.response()),
+            }
         }
         "/v1/portable-agent-computers/operations" => {
             let operation = match serde_json::from_slice::<
@@ -5654,6 +5682,7 @@ mod tests {
             placement_cost_driven: true,
             gce_provisioner_kind: ProvisionerKind::Fake,
             cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind::Fake,
+            managed_sandbox_runtime_lock: Arc::new(Mutex::new(())),
             portable_agent_computer_lock: Arc::new(Mutex::new(())),
             gce_project_ref: "gcp-project-ref://openagents/cloud-primary".to_string(),
             gce_provisioner_identity_ref: "gce-provisioner://openagents/cloud".to_string(),
@@ -6555,6 +6584,7 @@ echo '{"status":"ok"}'
             placement_cost_driven: true,
             gce_provisioner_kind: ProvisionerKind::Fake,
             cloud_vm_provisioner_kind: cloud_vm::ProvisionerKind::Fake,
+            managed_sandbox_runtime_lock: Arc::new(Mutex::new(())),
             portable_agent_computer_lock: Arc::new(Mutex::new(())),
             gce_project_ref: "gcp-project-ref://openagents/cloud-primary".to_string(),
             gce_provisioner_identity_ref: "gce-provisioner://openagents/cloud".to_string(),

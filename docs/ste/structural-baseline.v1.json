@@ -4794,6 +4794,11 @@
       "STE-2.4": 10,
       "STE-8.2": 1
     },
+    "docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md": {
+      "STE-8.1": 4,
+      "STE-2.4": 6,
+      "STE-5.1": 2
+    },
     "docs/cloud/contracts/openagents.artanis_bootstrap_assignment.v1.md": {
       "STE-2.4": 5,
       "STE-5.1": 1,

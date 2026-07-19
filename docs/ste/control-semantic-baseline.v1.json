@@ -1449,7 +1449,7 @@
       ]
     },
     "docs/sol/README.md": {
-      "sourceSha256": "815fb1a6f8231a58304ab933d9b2493c2225acbef2bdaacc1e22c85c2dae5c6b",
+      "sourceSha256": "d2816331a446ca513c15137ba83c9aa613264af93a4889b35738b1ce5efeefd7",
       "normativeKeywords": [],
       "inlineCode": [
         "../../AUTHORITY.md",
@@ -2452,7 +2452,7 @@
       ]
     },
     "docs/sol/OPERATING_MODEL.md": {
-      "sourceSha256": "f609584a8ca75097e21202921deb8069cbfa759972ab5f0413c5f6184d9b432a",
+      "sourceSha256": "98e639ca39d425d764f9817cd23ffe0c21421e1414bdf804d6820fc8bbcab8b1",
       "normativeKeywords": [],
       "inlineCode": [
         "--no-verify",
@@ -2548,7 +2548,7 @@
       ]
     },
     "specs/CONVENTIONS.md": {
-      "sourceSha256": "c5a7da4b74c04bb98a30dc7152360ff252452c3a37f681274cbc62f51f19923b",
+      "sourceSha256": "ce8205c250d1f08daf6e0f9e50a983d1e944b8748dcdb82a575361a339e6aaec",
       "normativeKeywords": [],
       "inlineCode": [
         ".product-spec.md",
@@ -5268,7 +5268,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "760ad950dc68cdc9a859d33c9cdd73bd296bcdf5c17d76d1509bfea1ce872b14",
+      "sourceSha256": "6c554bed6ec2b184e4881f97088fc33616a08088f069bf29931d24d55f64fc5d",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -5328,6 +5328,7 @@
         "cost_plus_10pct_gcp_catalog",
         "crates/oa-*",
         "crates/oa-codex-control/src/cloud_vm.rs",
+        "crates/oa-codex-control/src/managed_sandbox_runtime.rs",
         "crates/openagents-cloud-contract",
         "danger_full_access",
         "danger_full_access",
@@ -5343,6 +5344,7 @@
         "github_write_grant_ref",
         "instances list",
         "isOwnerSubscriptionCapacityReceipt",
+        "live_gce",
         "managed_cloud",
         "metering_source = node_measured",
         "null",
@@ -5370,9 +5372,11 @@
         "ready:true",
         "recovery_required",
         "recovery_required",
+        "recovery_required",
         "release_at − acquire_at",
         "repository_clone_url",
         "repository_ref",
+        "scripts/cloud/managed-sandbox-live-acceptance.ts",
         "subscriptionCapacityResale: false",
         "tokenChargeMetered: false",
         "tokenChargeSkippedReason: owner_subscription_capacity",
@@ -5387,6 +5391,7 @@
         "#8636",
         "#8748",
         "#8748",
+        "#9028",
         "#9029",
         "#9034"
       ],
@@ -5401,11 +5406,13 @@
         "01",
         "01",
         "02",
+        "02",
         "03",
         "03",
         "042",
         "042",
         "042",
+        "09",
         "09",
         "1",
         "1.10",
@@ -5426,13 +5433,14 @@
         "8636",
         "8748",
         "8748",
+        "9028",
         "9029",
         "9034",
         "96"
       ]
     },
     "packages/assurance-spec/starter-kit/AGENTS.md": {
-      "sourceSha256": "c87d1623c41aadb7d46c23d4afbd2362b303622f25d3e0cf0c0bfeb7b7ec09ca",
+      "sourceSha256": "2a6cb07bee22d34f7d324a9ee6c9c2d8d524335e08d5feb1da5b80d6140ecaa5",
       "normativeKeywords": [],
       "inlineCode": [
         ".assurance-spec.md",

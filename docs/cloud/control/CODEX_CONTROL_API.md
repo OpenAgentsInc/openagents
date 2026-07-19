@@ -24,6 +24,7 @@ POST /v1/training-runs
 POST /v1/training-runs/start
 POST /v1/artanis/bootstrap
 POST /v1/artanis/bootstrap/start
+POST /v1/managed-sandbox/runtime/operations
 GET /v1/codex-runs/{runId}
 GET /v1/codex-runs/{runId}/events?cursor=0
 GET /v1/codex-runs/{runId}/stream?cursor=0
@@ -101,6 +102,47 @@ The async response is the runner acknowledgement shape:
   ]
 }
 ```
+
+## Managed-sandbox provider operations
+
+`POST /v1/managed-sandbox/runtime/operations` is the private native provider
+route for `openagents.managed_sandbox.v1`.
+It is not the Box compatibility API and it is not a generic GCP API.
+
+The route accepts one exact owner, tenant, program, work unit, sandbox,
+generation, operation, and idempotency scope.
+Create also requires the exact admitted target, profile, image, provisioner,
+network, identity, capacity, TTL, budget, and run-scoped capability refs.
+
+The supported provider actions are:
+
+```text
+create
+probe
+stop
+resume
+delete
+reconcile
+```
+
+The route returns
+`openagents.managed_sandbox_runtime.v1` receipts with public-safe refs,
+generation, lifecycle phase, observed readiness or cleanup, measured run time,
+and measured cost.
+It never returns the GCP project ID, resource name, address, service-account
+email, credential, or host path.
+
+The live provider is default-off.
+If the exact live GCE profile and keyless metadata identity are not available,
+the route returns `503 live_provider_unavailable` or a more specific typed
+admission error.
+It does not call a fake provider and it does not continue the work on the
+control host.
+
+See
+`docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md` for the admitted
+profile, deployment inputs, isolation policy, cleanup oracle, live component
+harness, and rollback.
 
 ## Durable Unattended Queue (`/v1/queue`, cloud#97)
 

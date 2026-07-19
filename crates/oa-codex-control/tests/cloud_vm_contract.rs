@@ -167,6 +167,73 @@ fn post_json(daemon: &Daemon, path: &str, value: &Value) -> (u16, Value) {
     (status, parsed)
 }
 
+fn managed_sandbox_create_request() -> Value {
+    serde_json::json!({
+        "operationRef": "operation-ref://contract/create",
+        "idempotencyRef": "idempotency-ref://contract/create",
+        "actorRef": "principal-ref://owner/contract",
+        "ownerRef": "owner-ref://contract",
+        "tenantRef": "tenant-ref://contract",
+        "programRef": "program-ref://managed-agent-sandboxes",
+        "workUnitRef": "work-unit-ref://contract",
+        "sandboxRef": "sandbox-ref://contract",
+        "expectedGeneration": 0,
+        "action": "create",
+        "profile": {
+            "profileRef": "profile-ref://openagents/managed-sandbox/gce-e2-small-v1",
+            "profileDigest": format!("sha256:{}", "b".repeat(64)),
+            "targetRef": "target://openagents/google-cloud/managed-sandbox",
+            "provisionerRef": "provisioner-ref://openagents/oa-codex-control/gce-v1",
+            "region": "us-central1",
+            "machineClass": "e2-small",
+            "isolationClass": "gce_vm",
+            "imageRef": "gce-image-ref://sha256/contract",
+            "imageDigest": format!("sha256:{}", "a".repeat(64)),
+            "networkPolicyRef": "network-policy-ref://openagents/managed-sandbox/deny-all-v1",
+            "controlIdentityRef": "identity-ref://openagents/managed-sandbox/control",
+            "guestIdentityRef": "identity-ref://openagents/managed-sandbox/guest-none",
+            "ttlMs": 60_000,
+            "capacity": {
+                "minCapacity": 0,
+                "maxCapacity": 2,
+                "prewarmCapacity": 0,
+                "concurrentCapacityCap": 2
+            },
+            "budget": {
+                "sandboxBudgetMicrousd": 1_000,
+                "programBudgetMicrousd": 10_000,
+                "maxHourlyCostMicrousd": 36_000
+            },
+            "capabilityRefs": ["capability-ref://run/contract"]
+        }
+    })
+}
+
+#[test]
+fn managed_sandbox_route_is_authenticated_and_default_off_without_fake_readiness() {
+    let daemon = start_daemon("managed-sandbox-default-off");
+    let request = managed_sandbox_create_request();
+    let body = serde_json::to_vec(&request).expect("encode request");
+    let (unauthorized, _) = http_request(
+        &daemon.addr,
+        "POST",
+        "/v1/managed-sandbox/runtime/operations",
+        Some(&body),
+        None,
+    )
+    .expect("unauthorized request");
+    assert_eq!(unauthorized, 401);
+
+    let (status, response) = post_json(&daemon, "/v1/managed-sandbox/runtime/operations", &request);
+    assert_eq!(status, 503, "default-off response: {response}");
+    assert_eq!(
+        response.pointer("/error").and_then(Value::as_str),
+        Some("live_provider_unavailable")
+    );
+    assert!(!response.to_string().contains("ready"));
+    assert!(!daemon.state_dir.join("managed-sandbox-runtime").exists());
+}
+
 /// The headline contract test: the route fulfils the full
 /// provision -> exec -> copyOut -> teardown lifecycle in one call, in the exact
 /// wire shape the qa-runner `CloudVmProvisionerV2` sends.

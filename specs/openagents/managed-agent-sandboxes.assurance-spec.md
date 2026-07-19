@@ -208,7 +208,12 @@ or observations exist today.
     "technique": "bounded_state_model"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "crates/oa-codex-control/src/managed_sandbox_runtime.rs",
+      "crates/oa-codex-control/tests/cloud_vm_contract.rs",
+      "docs/sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json",
+      "scripts/cloud/managed-sandbox-live-acceptance.ts"
+    ],
     "criterion_refs": [
       "MSB-AC-03"
     ],
@@ -227,11 +232,11 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fake_or_unhealthy_target_admitted",
-      "ref": "crates/oa-codex-control/tests/managed_sandbox_target.rs"
+      "ref": "crates/oa-codex-control/src/managed_sandbox_runtime.rs"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "crates/oa-codex-control/tests/managed_sandbox_target.rs",
+      "evaluator_ref": "scripts/cloud/managed-sandbox-live-acceptance.ts",
       "statement": "A live request reaches ready only with observed GCP provisioner and guest health; fake, no-KVM/image, quota, budget, and capacity controls must refuse."
     },
     "technique": "target_readiness_fault_matrix"
@@ -527,7 +532,11 @@ or observations exist today.
     "technique": "consumer_boundary_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "crates/oa-codex-control/src/managed_sandbox_runtime.rs",
+      "docs/sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json",
+      "scripts/cloud/managed-sandbox-live-acceptance.ts"
+    ],
     "criterion_refs": [
       "MSB-AC-14"
     ],
@@ -546,11 +555,11 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "partial_cleanup_reported_complete",
-      "ref": "crates/oa-codex-control/tests/managed_sandbox_reconcile.rs"
+      "ref": "crates/oa-codex-control/src/managed_sandbox_runtime.rs"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "crates/oa-codex-control/tests/managed_sandbox_reconcile.rs",
+      "evaluator_ref": "crates/oa-codex-control/src/managed_sandbox_runtime.rs",
       "statement": "Inject every named lease, budget, quota, broker, guest, cursor, restart, stop/resume, and teardown fault; cleanup is green only after every residual class is observed absent."
     },
     "technique": "reconciliation_fault_matrix"
@@ -614,7 +623,11 @@ or observations exist today.
     "technique": "negative_capability_gate"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "crates/oa-codex-control/src/managed_sandbox_runtime.rs",
+      "crates/oa-codex-control/tests/cloud_vm_contract.rs",
+      "docs/sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json"
+    ],
     "criterion_refs": [
       "MSB-AC-17"
     ],
@@ -633,11 +646,11 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fault_yields_false_green_or_residue",
-      "ref": "crates/oa-codex-control/tests/managed_sandbox_fault_corpus.rs"
+      "ref": "crates/oa-codex-control/src/managed_sandbox_runtime.rs"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "crates/oa-codex-control/tests/managed_sandbox_fault_corpus.rs",
+      "evaluator_ref": "crates/oa-codex-control/src/managed_sandbox_runtime.rs",
       "statement": "Execute the complete named fault/isolation matrix and require no false readiness, duplicate execution, leaked private material, budget escape, or residual resource."
     },
     "technique": "deterministic_fault_matrix"
