@@ -806,13 +806,13 @@ describe("React workbench shell", () => {
       ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Change") as HTMLButtonElement | undefined)?.click()
     })
     expect(received).toEqual(expect.arrayContaining([
-      { name: "DesktopWorkspaceSelected", payload: "files" },
+      { name: "DesktopFilesModeToggled", payload: null },
       { name: "DesktopWorkspaceSelected", payload: "review" },
       { name: "DesktopCodingCatalogChooseRequested", payload: null },
     ]))
   })
 
-  test("keeps the transcript mounted while capability surfaces activate, maximize, close, and persist", async () => {
+  test("keeps the transcript mounted while right-side capability surfaces activate, maximize, close, and persist", async () => {
     const { container, window } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
@@ -825,15 +825,15 @@ describe("React workbench shell", () => {
     }
     const state: DesktopShellState = {
       ...base,
-      workspace: "files",
+      workspace: "review",
       codingCatalog: { ...base.codingCatalog, selectedSessionRef: session.sessionRef, sessions: [session] },
       workspaceBrowser: { ...base.workspaceBrowser, phase: "ready", grantRef: "grant-1" },
     }
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={state} report={report} />)
     expect(container.querySelector('[data-react-workspace="chat"]')).not.toBeNull()
-    expect(container.querySelector('[aria-label="Files surface"]')).not.toBeNull()
-    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Files")
+    expect(container.querySelector('[aria-label="Review surface"]')).not.toBeNull()
+    expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("Review")
 
     const maximize = container.querySelector('[aria-label="Maximize panel"]') as HTMLButtonElement
     await interact(() => maximize.click())
@@ -842,13 +842,13 @@ describe("React workbench shell", () => {
 
     const add = container.querySelector('[aria-label="Add surface"]') as HTMLButtonElement
     await interact(() => add.click())
-    const review = [...container.querySelectorAll('[role="menuitem"]')].find(button => button.textContent === "Review") as HTMLButtonElement
-    await interact(() => review.click())
-    expect(received).toContainEqual({ name: "DesktopWorkspaceSelected", payload: "review" })
+    const terminal = [...container.querySelectorAll('[role="menuitem"]')].find(button => button.textContent === "Terminal") as HTMLButtonElement
+    await interact(() => terminal.click())
+    expect(received).toContainEqual({ name: "TerminalCreateRequested", payload: null })
     expect(container.querySelectorAll('[role="tab"]')).toHaveLength(2)
     const tablist = container.querySelector('[aria-label="Workbench surfaces"]') as HTMLElement
     await interact(() => tablist.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }) as unknown as Event))
-    expect(received.at(-1)).toEqual({ name: "DesktopWorkspaceSelected", payload: "files" })
+    expect(received.at(-1)).toEqual({ name: "DesktopWorkspaceSelected", payload: "review" })
     expect((container.querySelector('[role="tab"][aria-selected="true"] > button') as HTMLButtonElement).tabIndex).toBe(0)
 
     const closePanel = container.querySelector('[aria-label="Close panel"]') as HTMLButtonElement
@@ -857,7 +857,7 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
   })
 
-  test("consumes typed Files-sidebar requests as a binary right-panel toggle", async () => {
+  test("renders typed Files mode in the existing primary rail and top bar with no right panel", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
@@ -876,27 +876,31 @@ describe("React workbench shell", () => {
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={initial} report={report} />)
     expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
+    expect(container.querySelector('aside[aria-label="Sessions"]')).not.toBeNull()
 
     const opened: DesktopShellState = {
       ...initial,
       workspace: "files",
-      presentation: {
-        ...initial.presentation,
-        filesSidebarRequest: { version: 1, open: true },
-      },
     }
     await render(root, <WorkbenchShell state={opened} report={report} />)
-    expect(container.querySelector('[aria-label="Files surface"]')).not.toBeNull()
+    expect(container.querySelector('[data-react-workspace="files"]')).not.toBeNull()
+    expect(container.querySelector('aside[aria-label="Files"] [aria-label="Workspace files"]')).not.toBeNull()
+    expect(container.querySelector('aside[aria-label="Sessions"]')).toBeNull()
+    expect(container.querySelector('.oa-react-conversation-header h1')?.textContent).toBe("Files")
+    expect(container.querySelector('[aria-label="Files controls"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="Search workspace files"]')?.closest(".oa-react-conversation-header")).not.toBeNull()
+    expect(container.querySelector('[aria-label="Files surface"]')).toBeNull()
+    expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
+    await interact(() => container.querySelector<HTMLButtonElement>('[aria-label="Close Files"]')?.click())
+    expect(received.at(-1)).toEqual({ name: "DesktopFilesModeToggled", payload: null })
 
     const closed: DesktopShellState = {
       ...opened,
       workspace: "chat",
-      presentation: {
-        ...opened.presentation,
-        filesSidebarRequest: { version: 2, open: false },
-      },
     }
     await render(root, <WorkbenchShell state={closed} report={report} />)
+    expect(container.querySelector('[data-react-workspace="files"]')).toBeNull()
+    expect(container.querySelector('aside[aria-label="Sessions"]')).not.toBeNull()
     expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
   })
 
@@ -1022,7 +1026,7 @@ describe("React workbench shell", () => {
     const { container } = installDom()
     const root = createTestRoot(container)
     const base = fixtureState()
-    await render(root, <WorkbenchShell state={{ ...base, workspace: "files", codingCatalog: { ...base.codingCatalog, selectedSessionRef: "responsive-session" } }} report={() => Effect.void} />)
+    await render(root, <WorkbenchShell state={{ ...base, workspace: "review", codingCatalog: { ...base.codingCatalog, selectedSessionRef: "responsive-session" } }} report={() => Effect.void} />)
     const tab = container.querySelector<HTMLButtonElement>('[aria-label="Workbench surfaces"] [role="tab"] > button:first-child')
     expect(tab?.tabIndex).toBe(0)
   })
@@ -1050,7 +1054,6 @@ describe("React workbench shell", () => {
       presentation: {
         sidebarCollapsed: true,
         sessionSearchOpen: false,
-        filesSidebarRequest: { version: 0, open: false },
       },
     }} report={report} />)
     const trigger = container.querySelector<HTMLButtonElement>(".oa-react-sidebar-expand")
@@ -1112,7 +1115,6 @@ describe("React workbench shell", () => {
       presentation: {
         sidebarCollapsed: true,
         sessionSearchOpen: false,
-        filesSidebarRequest: { version: 0, open: false },
       },
     }} report={report} />)
     expect(container.querySelector(".oa-react-workbench")?.getAttribute("data-rail-collapsed")).toBe("true")

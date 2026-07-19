@@ -6986,7 +6986,6 @@ const smokeCmdEOpenFiles = `(async () => {
       tree.shadowRoot?.querySelector('[data-item-path="session_index.jsonl"]') !== null) break
     await wait(50)
   }
-  const selected = document.querySelector('[role="tab"][aria-selected="true"]')
   const rootPaths = [...(tree?.shadowRoot?.querySelectorAll('[data-item-path]:not([data-file-tree-sticky-row="true"])') ?? [])]
     .map((row) => row.getAttribute("data-item-path"))
   tree?.shadowRoot?.querySelector('[data-item-path="sessions/"]')?.click()
@@ -6999,16 +6998,24 @@ const smokeCmdEOpenFiles = `(async () => {
     await wait(50)
   }
   const shadowText = tree?.shadowRoot?.textContent ?? ""
+  const filesWorkspace = document.querySelector('[data-react-workspace="files"]')
+  const filesRail = document.querySelector('aside[aria-label="Files"]')
+  const filesHeader = filesWorkspace?.querySelector('.oa-react-conversation-header h1')
   return {
-    ok: document.querySelector('[aria-label="Files surface"]') !== null &&
+    ok: filesWorkspace !== null && filesRail !== null &&
       tree?.tagName === "FILE-TREE-CONTAINER" &&
       rootPaths.includes("sessions/") && rootPaths.includes("session_index.jsonl") &&
       tree.shadowRoot?.querySelector('[data-item-path="sessions/2026/"]') !== null &&
       document.querySelector('[aria-label="Editor for session_index.jsonl"]') !== null &&
       !shadowText.includes(String(workingDirectory ?? "__no_workspace__")) &&
-      (selected?.textContent ?? "").includes("Files") &&
+      filesHeader?.textContent === "Files" &&
+      document.querySelector('aside[aria-label="Sessions"]') === null &&
+      document.querySelector('.oa-react-surface-panel') === null &&
       typeof codingCatalog?.selectedSessionRef === "string",
-    selected: selected?.textContent ?? null,
+    primaryRail: filesRail !== null,
+    existingTopBar: filesHeader?.textContent ?? null,
+    sessionsRailReplaced: document.querySelector('aside[aria-label="Sessions"]') === null,
+    rightPanelAbsent: document.querySelector('.oa-react-surface-panel') === null,
     tree: tree !== null,
     pierre: tree?.tagName === "FILE-TREE-CONTAINER",
     rootPaths,
@@ -7033,10 +7040,23 @@ const smokeCmdECloseFiles = `(async () => {
     cancelable: true,
   }))
   const deadline = Date.now() + 10000
-  while (Date.now() < deadline && document.querySelector('.oa-react-surface-panel') !== null) {
+  while (Date.now() < deadline && (
+    document.querySelector('[data-react-workspace="files"]') !== null ||
+    document.querySelector('aside[aria-label="Sessions"]') === null
+  )) {
     await wait(50)
   }
-  return { ok: document.querySelector('.oa-react-surface-panel') === null }
+  return {
+    ok: document.querySelector('[data-react-workspace="files"]') === null &&
+      document.querySelector('aside[aria-label="Files"]') === null &&
+      document.querySelector('aside[aria-label="Sessions"]') !== null &&
+      document.querySelector('[data-react-workspace="chat"]') !== null &&
+      document.querySelector('.oa-react-surface-panel') === null,
+    filesClosed: document.querySelector('[data-react-workspace="files"]') === null,
+    sessionsRestored: document.querySelector('aside[aria-label="Sessions"]') !== null,
+    chatRestored: document.querySelector('[data-react-workspace="chat"]') !== null,
+    rightPanelAbsent: document.querySelector('.oa-react-surface-panel') === null,
+  }
 })()`
 
 const captureShot = async (window: BrowserWindow, name: string): Promise<void> => {
@@ -7361,8 +7381,8 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await step("workspace-tree-refresh-watch-bridge", smokeWorkspaceTreeBridge)
         // Compatibility smoke retains the canonical command-host route. The
-        // ordinary React product smoke above owns the Command-E right-panel
-        // interaction proof added by #9007.
+        // ordinary React product smoke above owns the Command-E primary-rail
+        // and existing-top-bar mode proof finalized by #9009.
         const filesCommand = desktopCanonicalCommandRegistry.find(command => command.id === "workspace.files")
         if (filesCommand === undefined) throw new Error("canonical workspace.files command missing")
         desktopCommandHost.enqueue(deferredDesktopCommand(

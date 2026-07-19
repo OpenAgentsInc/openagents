@@ -583,6 +583,14 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-session-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
 .oa-react-session-scroll [data-slot="scroll-area-viewport"] { height: 100%; overscroll-behavior: contain; }
 
+.oa-react-rail-mode-content {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0 calc(-1 * var(--en-spacing-2)) calc(-1 * var(--en-spacing-2));
+}
+
 .oa-react-session-list > p {
   padding: var(--en-spacing-2);
   color: var(--en-color-textMuted);
@@ -976,7 +984,6 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-surface-empty h2 { margin: var(--en-spacing-3) 0 var(--en-spacing-1); font-size: 14px; }
 .oa-react-surface-empty p { max-width: 28rem; margin: 0; color: var(--en-color-textMuted); font-size: 12px; }
 
-.oa-react-files-workbench,
 .oa-react-review-workbench {
   display: grid;
   min-width: 0;
@@ -995,19 +1002,45 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: var(--en-color-surfaceRaised);
 }
 
-.oa-react-files-search {
+.oa-react-rail-mode-content > .oa-react-files-tree {
+  flex: 1 1 auto;
+  border-right: 0;
+  background: transparent;
+}
+
+.oa-react-files-mode {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: 52px minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--en-color-background);
+}
+
+.oa-react-files-mode-actions {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 4px;
-  padding: var(--en-spacing-2);
-  border-bottom: 1px solid var(--en-color-borderSubtle);
+  margin-left: auto;
 }
-.oa-react-files-search > svg { width: 14px; height: 14px; flex: 0 0 auto; color: var(--en-color-textMuted); }
-.oa-react-files-search input { min-width: 0; height: 28px; border: 0; background: transparent; }
-.oa-react-files-search button { flex: 0 0 auto; }
 
-.oa-react-files-search-modes { display: flex; gap: 2px; padding: 4px var(--en-spacing-2); border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-files-search-modes button {
+.oa-react-files-mode-search {
+  display: flex;
+  width: clamp(140px, 20vw, 240px);
+  min-width: 0;
+  height: 28px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceRaised);
+}
+.oa-react-files-mode-search > svg { width: 13px; height: 13px; flex: 0 0 auto; color: var(--en-color-textMuted); }
+.oa-react-files-mode-search input { min-width: 0; height: 26px; padding: 0; border: 0; outline: 0; background: transparent; }
+
+.oa-react-files-mode-search-kinds { display: flex; gap: 2px; }
+.oa-react-files-mode-search-kinds button {
   height: 22px;
   padding: 0 6px;
   border: 0;
@@ -1016,7 +1049,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 10px;
   cursor: pointer;
 }
-.oa-react-files-search-modes button[aria-pressed="true"] { color: var(--en-color-textPrimary); background: var(--en-color-stateSelected); }
+.oa-react-files-mode-search-kinds button[aria-pressed="true"] { color: var(--en-color-textPrimary); background: var(--en-color-stateSelected); }
+.oa-react-files-mode-actions > button { flex: 0 0 auto; }
 
 .oa-react-files-tree-scroll { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 4px; }
 .oa-react-files-tree-scroll--pierre { overflow: hidden; padding: 0; }
@@ -1274,8 +1308,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 @media (max-width: 620px) {
-  .oa-react-files-workbench,
   .oa-react-review-workbench { grid-template-columns: minmax(132px, 38%) minmax(0, 1fr); }
+  .oa-react-files-mode-search { width: min(36vw, 180px); }
+  .oa-react-files-mode-search-kinds { display: none; }
 }
 
 .oa-react-conversation-header {
@@ -3357,6 +3392,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 @media (max-width: 560px) {
   .oa-react-workbench { min-height: 420px; }
+  .oa-react-files-mode { grid-template-rows: 46px minmax(0, 1fr); }
   .oa-react-conversation-header { height: 46px; min-height: 46px; padding-right: var(--en-spacing-2); padding-left: 72px; }
   .oa-react-conversation-heading > h1 { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .oa-react-surface-panel { inset: 0; width: 100% !important; min-width: 0; }

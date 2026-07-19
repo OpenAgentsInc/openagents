@@ -30,10 +30,10 @@ authority OpenAgents already owns:
    Monaco owns scoped editing mechanics; Pierre owns scoped tree/diff rendering;
    neither owns the workspace, documents, Git repository, permissions, session,
    recovery, or receipts.
-5. Make the existing maximized `files` workbench surface the first **Editor
-   mode** rather than creating another application shell. The compact right
-   panel remains useful for a quick peek; the Editor command opens the same
-   surface maximized so the file tree and source editor receive the window.
+5. Extend the existing `files` workspace mode into the first **Editor mode**
+   rather than creating another application shell. Files replaces the existing
+   primary rail with Explorer, reuses the existing top bar for mode controls,
+   and reuses the existing main region for source. It is never a right panel.
 
 This is not a VS Code fork. It is VS Code-level basic workflow parity built from
 a stock editor engine, Pierre's focused projection libraries, and OpenAgents'
@@ -43,12 +43,12 @@ typed authority plane.
 
 The first deliverable is deliberately narrower than Editor mode: **Command-E**
 on macOS (**Control-E** elsewhere) toggles the existing Files tree for the
-current selected coding session/worktree in the existing right sidebar. This
-uses the grant-scoped workspace browser and current surface manager already in
-Desktop. It does not wait for Monaco, the new whole-workspace path index, or
-maximized Editor composition. The minimum audited Pierre adapter is pulled
-forward so the quick Files surface is a real navigable tree rather than a
-temporary hand-rendered list.
+current selected coding session/worktree as an existing-shell workspace mode.
+The tree replaces the primary Sessions rail, Files controls reuse the existing
+top bar, and the editor reuses the existing main region. This does not wait for
+Monaco or the new whole-workspace path index. The minimum audited Pierre adapter
+is pulled forward so Files is a real navigable tree rather than a temporary
+hand-rendered list.
 
 The ordered implementation ledger is:
 
@@ -62,11 +62,16 @@ The ordered implementation ledger is:
    literal Git-ignore classification for arbitrary valid filenames, replaces
    the temporary list with the pinned Pierre Trees projection, and proves a
    non-empty root, directory expansion, and document open in packaged Electron.
+4. [#9009](https://github.com/OpenAgentsInc/openagents/issues/9009) supersedes
+   the right-sidebar composition: Files replaces the existing primary rail,
+   reuses the existing top bar and main region, is removed from the right-panel
+   catalog, and restores Sessions plus Chat on exit.
 
 Implementation status: #9006 and #9007 landed the contract, typed toggle, and
 mounted current-worktree surface. #9008 upgrades that surface to the real
 Pierre tree and closes the empty-tree regression exposed by a leading-colon
-filename in the owner's working directory.
+filename in the owner's working directory. #9009 makes the final owner-directed
+shell composition explicit without changing the workspace authority boundary.
 
 This quick-files slice is a prerequisite interaction rung, not a substitute
 for IDE-00 through IDE-07. IDE-02 still owns the complete indexed, watched,
@@ -329,17 +334,17 @@ flowchart LR
 
 ## Editor mode product shape
 
-Use the current surface manager rather than adding another top-level shell:
+Extend the #9009 Files workspace mode rather than adding another top-level
+shell or returning Files to the right-panel manager:
 
-- Rename the user-facing **Files** action/surface to **Editor**.
-- “Editor” from the project header, command palette, or keyboard shortcut opens
-  the existing `files` surface and sets `layout.maximized = true`.
-- Restoring the panel shows the same selected tree item, tabs, document drafts,
-  editor view state, and bottom-panel selection beside the conversation.
+- Rename the user-facing **Files** action/mode to **Editor** when Monaco lands.
+- “Editor” from the project header, command palette, or keyboard shortcut enters
+  the existing `files` workspace mode.
+- The primary rail remains Explorer, the existing top bar carries Editor
+  controls, and the main region carries tabs, source, and the bottom panel.
 - Closing Editor mode returns focus to the invoking control and does not close
   documents or discard drafts.
-- The surface layout remains keyed by selected coding session/worktree, as it
-  is today.
+- Editor view state remains keyed by selected coding session/worktree.
 
 Full Editor-mode layout:
 
@@ -750,7 +755,7 @@ Acceptance:
 
 ### IDE-02 — Workspace path index and Pierre explorer
 
-Outcome: the maximized Editor surface displays the real selected repository in
+Outcome: the Files/Editor primary rail displays the real selected repository in
 Pierre's virtualized explorer.
 
 Work:
@@ -762,7 +767,7 @@ Work:
   the complete indexed and watched repository projection;
 - connect selection/open, reveal, refresh, Git decorations, and safe context
   actions;
-- preserve compact-panel and maximized-Editor layout state.
+- preserve primary-rail selection/expansion and Editor-mode layout state.
 
 Acceptance:
 
@@ -808,7 +813,7 @@ widget embedded in a chat panel.
 
 Work:
 
-- label and command the maximized state as Editor mode;
+- label and command the Files workspace state as Editor mode;
 - add resizable Explorer, editor group, bottom panel, and status bar;
 - add quick open, workspace search results, recent files, open-to-side, tab
   reorder, preview/pin, reopen closed, and split groups;
@@ -956,7 +961,7 @@ completion, but do not call those later gaps complete.
 - undo/redo and programmatic selection do not echo-loop;
 - tree rename only moves after host success;
 - theme switch does not destroy models or scroll;
-- maximize/restore keeps state and focus;
+- enter/exit keeps state and focus;
 - worker/model/tree/diff cleanup is exactly once.
 
 ### Packaged Electron
@@ -973,7 +978,7 @@ completion, but do not call those later gaps complete.
 
 - empty/loading/indexing/truncated/error explorer;
 - no file, loading, normal, dirty, saving, conflict, deleted, revoked editor;
-- compact panel and full Editor mode;
+- primary-rail Explorer and full Editor mode;
 - dark/light/high-contrast themes;
 - short/deep paths, many tabs, split groups, Problems/review open;
 - Monaco/Pierre focus rings and selection states.
@@ -1016,7 +1021,8 @@ completion, but do not call those later gaps complete.
 
 The rung is complete only when all of the following are true:
 
-- Editor is a named, discoverable Desktop mode and opens maximized by default.
+- Editor is a named, discoverable Desktop mode that reuses the primary rail,
+  top bar, and main region by default.
 - The selected real worktree appears in `@pierre/trees` with complete-or-honest
   bounded indexing, keyboard navigation, reveal, and Git decoration.
 - Source files open in editable Monaco models with syntax, tabs, dirty state,

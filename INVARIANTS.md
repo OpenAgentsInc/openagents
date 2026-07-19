@@ -2231,15 +2231,19 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   suppression; the renderer can dispatch only the decoded typed intent. The
   isolated built-host second-process receipt enforces this boundary. Release
   signing and distribution remain CUT-26 work. The canonical `workspace.files`
-  command owns Meta+E on macOS and Control+E elsewhere and toggles only the
-  existing right-side Files projection for the currently selected coding
-  session's admitted WorkContext. The toggle may retain bounded renderer-local
-  surface layout, but it cannot infer an ambient cwd, disclose the selected
-  absolute root, create another workspace grant, or bypass the typed workspace
-  browser/open path. Files renders through `@pierre/trees` only behind the
-  owned renderer adapter, which receives canonical relative refs already
-  admitted by main-owned workspace state; Pierre receives no bridge,
-  filesystem, root, grant, Git/process, rename, or drag-and-drop authority.
+  command owns Meta+E on macOS and Control+E elsewhere and toggles a bounded
+  Files workspace mode for the currently selected coding session's admitted
+  WorkContext. Files must replace the existing primary Sessions rail, reuse
+  the existing conversation header for its controls, and reuse the existing
+  main region for the editor; it is not an admitted right-panel surface and
+  may not add a parallel shell, tab strip, resize rail, or structural chrome.
+  Exiting Files restores the ordinary Sessions rail and Chat workspace. The
+  mode cannot infer an ambient cwd, disclose the selected absolute root,
+  create another workspace grant, or bypass the typed workspace browser/open
+  path. Files renders through `@pierre/trees` only behind the owned renderer
+  adapter, which receives canonical relative refs already admitted by
+  main-owned workspace state; Pierre receives no bridge, filesystem, root,
+  grant, Git/process, rename, or drag-and-drop authority.
   Git ignore classification sends relative refs as NUL-delimited literal
   stdin paths and fails closed on classifier failure, so arbitrary valid names
   cannot be reinterpreted as pathspec magic or erase the admitted tree. The

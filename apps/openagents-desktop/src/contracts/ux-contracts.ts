@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-18.3",
+    version: "2026-07-18.4",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
@@ -4920,26 +4920,27 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "Desktop renderer full-auto workspace/surface suites, behavior-contract validation, and Desktop typecheck in the normal test sweep.",
       },
       {
-        contractId: "openagents_desktop.workspace.files_sidebar_command_toggle.v1",
+        contractId: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.v1",
         state: "enforced",
         surface: "openagents-desktop",
-        productArea: "Desktop current-worktree Files sidebar",
+        productArea: "Desktop current-worktree Files mode",
         enforcementTier: "test-sweep",
         blockerRefs: [],
         source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-18" },
         statement:
-          "In OpenAgents Desktop, Command-E toggles the tree of the current working directory in the right sidebar.",
+          "In OpenAgents Desktop, Command-E replaces the existing left sidebar with the current working directory file tree and reuses the existing top bar; it adds no new page chrome.",
         authorityBoundary:
-          "The canonical workspace.files command owns Meta+E on macOS and Control+E elsewhere. It toggles only the existing right-side Files presentation for the currently selected coding session and its already-admitted WorkContext: closed opens Files, active Files closes, and another active workbench surface yields focus to Files without losing its tab. The shortcut, palette row, and visible controls converge on typed Desktop command and workspace intents. The owned Pierre adapter projects only canonical relative refs already admitted by Desktop state; Pierre receives no bridge, filesystem, absolute root, grant, Git/process authority, rename/drag-and-drop authority, or ambient cwd. This adds no Monaco dependency or new workspace grant.",
+          "The canonical workspace.files command owns Meta+E on macOS and Control+E elsewhere. It enters a bounded Files workspace mode for the currently selected coding session and its already-admitted WorkContext: the existing primary rail replaces sessions/projects with the Pierre tree, the existing conversation header carries Files search/refresh/exit controls, and the existing main region carries the editor. Files is excluded from the renderer-local right-panel catalog, so no right sidebar, parallel tab strip, resize rail, or additional application shell is mounted. Repeating the command exits Files and restores the ordinary session rail and chat workspace. The shortcut, palette row, header control, and workspace state converge on typed Desktop intents. The owned Pierre adapter projects only canonical relative refs already admitted by Desktop state; Pierre receives no bridge, filesystem, absolute root, grant, Git/process authority, rename/drag-and-drop authority, or ambient cwd. This adds no Monaco dependency or new workspace grant.",
         evidenceRefs: [
           "docs/ide/2026-07-18-openagents-desktop-basic-ide-vscode-pierre-plan.md",
           "github:OpenAgentsInc/openagents#9006",
           "github:OpenAgentsInc/openagents#9007",
           "github:OpenAgentsInc/openagents#9008",
+          "github:OpenAgentsInc/openagents#9009",
         ],
         oracles: [
           {
-            id: "openagents_desktop.workspace.files_sidebar_command_toggle.registry",
+            id: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.registry",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
@@ -4947,23 +4948,31 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Proves workspace.files remains the canonical palette command and carries Meta+E/Control+E defaults.",
           },
           {
-            id: "openagents_desktop.workspace.files_sidebar_command_toggle.transition",
+            id: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.transition",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the canonical command enters and exits the Effect-owned Files workspace mode without a renderer-local Files-panel request.",
+          },
+          {
+            id: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.no_right_panel",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/surface-layout.test.ts",
             description:
-              "Proves the bounded presentation reducer opens Files from closed, closes active Files, and activates Files while retaining another surface tab.",
+              "Proves Files is not an admitted right-side surface and legacy persisted Files-panel state is decoded away while Review, Terminal, and Preview remain bounded panel surfaces.",
           },
           {
-            id: "openagents_desktop.workspace.files_sidebar_command_toggle.dom",
+            id: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.dom",
             kind: "bun-test",
             mode: "dom",
             ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
             description:
-              "Proves a typed request opens and closes the mounted Files right sidebar, renders the admitted relative paths through the real Pierre shadow tree, expands a directory, opens its child through typed Desktop intents, and retains the selected coding-session grant projection.",
+              "Proves Files replaces the existing Sessions rail, reuses the existing conversation header for Files controls, mounts no right panel or Files tab strip, renders admitted relative paths through the real Pierre shadow tree, expands/collapses a directory, opens its child through typed Desktop intents, and restores the ordinary shell on exit.",
           },
           {
-            id: "openagents_desktop.workspace.files_sidebar_command_toggle.pierre_boundary",
+            id: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.pierre_boundary",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/tests/pierre-tree-package.test.ts",
@@ -4971,7 +4980,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Pins the audited Pierre Trees beta, confines package imports to the owned adapter, rejects the private path store and unsafe CSS, and proves the installed Apache license/NOTICE remain in the package closure.",
           },
           {
-            id: "openagents_desktop.workspace.files_sidebar_command_toggle.literal_paths",
+            id: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.literal_paths",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/tests/workspace-service.test.ts",
@@ -4979,7 +4988,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Proves Git ignore classification passes arbitrary admitted relative filenames through NUL-delimited stdin as literal paths, so a valid leading-colon name cannot erase the visible workspace tree.",
           },
           {
-            id: "openagents_desktop.workspace.files_sidebar_command_toggle.effective_binding",
+            id: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.effective_binding",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/command-shortcuts.test.ts",
@@ -4987,16 +4996,16 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Proves platform defaults, user overrides, conflicts, editable targets, prevented events, and key repeat are handled without a second shortcut authority.",
           },
           {
-            id: "openagents_desktop.workspace.files_sidebar_command_toggle.electron",
+            id: "openagents_desktop.workspace.files_primary_sidebar_mode_toggle.electron",
             kind: "visual-smoke",
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The built Electron smoke synthesizes the effective Command-E/Control-E chord, proves the real Pierre tree renders non-empty relative root entries, expands a directory, opens a text document, withholds the absolute root, and repeats the chord to close Files.",
+              "The built Electron smoke synthesizes the effective Command-E/Control-E chord, proves the existing primary rail and top bar enter Files mode with no right panel, renders non-empty relative root entries, expands a directory, opens a text document, withholds the absolute root, and repeats the chord to restore Sessions and Chat.",
           },
         ],
         verification:
-          "Issues #9006 through #9008 land the registry, guarded effective-binding matcher, Effect intent/request state, mounted right-sidebar transition, literal-path ignore classification, audited Pierre projection, current-worktree boundary proof, and built Electron expand/open/close smoke in the normal Desktop verification gate.",
+          "Issues #9006 through #9009 land the registry, guarded effective-binding matcher, Effect workspace state, primary-rail/top-bar takeover, right-panel exclusion, literal-path ignore classification, audited Pierre projection, current-worktree boundary proof, and built Electron enter/expand/open/exit-restoration smoke in the normal Desktop verification gate.",
       },
     ],
   };

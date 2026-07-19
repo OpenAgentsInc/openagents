@@ -63,6 +63,7 @@ const railIconNames: Readonly<Record<DesktopRailIcon, string>> = {
 
 export type DesktopSessionRailProps = Readonly<{
   stageLabel?: string
+  mode?: Readonly<{ title: string; content: ReactNode }>
   open: boolean
   canGoBack?: boolean
   canGoForward?: boolean
@@ -100,6 +101,7 @@ const focusAdjacentSession = (event: KeyboardEvent<HTMLElement>): void => {
 
 export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProps>(({
   stageLabel,
+  mode,
   open,
   canGoBack = false,
   canGoForward = false,
@@ -145,7 +147,7 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
     </button>
   }
 
-  return <aside aria-label="Sessions" className="oa-react-session-rail" data-open={open ? "true" : "false"} onKeyDown={focusAdjacentSession} ref={ref}>
+  return <aside aria-label={mode?.title ?? "Sessions"} className="oa-react-session-rail" data-open={open ? "true" : "false"} onKeyDown={focusAdjacentSession} ref={ref}>
     <div aria-label="Sidebar controls" className="oa-react-rail-windowbar">
       <button aria-label="Collapse sidebar" className="oa-react-icon-button oa-react-rail-collapse" onClick={onCollapse} title="Collapse sidebar" type="button">
         <PanelLeft aria-hidden="true" data-icon-name="Menu" />
@@ -160,11 +162,11 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
       </div>
     </div>
     <div className="oa-react-rail-titlebar">
-      <div aria-label={stageLabel === undefined ? "OpenAgents" : `OpenAgents ${stageLabel}`} className="oa-react-rail-brand">
-        <strong>OpenAgents</strong>
-        {stageLabel === undefined ? null : <span className="oa-react-rail-stage" data-app-stage={stageLabel.toLocaleLowerCase()}>{stageLabel}</span>}
+      <div aria-label={mode === undefined ? stageLabel === undefined ? "OpenAgents" : `OpenAgents ${stageLabel}` : mode.title} className="oa-react-rail-brand">
+        <strong>{mode?.title ?? "OpenAgents"}</strong>
+        {mode !== undefined || stageLabel === undefined ? null : <span className="oa-react-rail-stage" data-app-stage={stageLabel.toLocaleLowerCase()}>{stageLabel}</span>}
       </div>
-      {settingsDestination?.icon === "back" ? null : <button
+      {mode !== undefined || settingsDestination?.icon === "back" ? null : <button
         aria-expanded={searchOpen}
         aria-label={searchOpen ? "Close session search" : "Search sessions"}
         className="oa-react-icon-button oa-react-search-trigger"
@@ -175,7 +177,7 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
         {searchOpen ? <X aria-hidden="true" /> : <Search aria-hidden="true" data-icon-name="Search" />}
       </button>}
     </div>
-    {settingsDestination?.icon !== "back" && searchOpen ? <label className="oa-react-search">
+    {mode === undefined && settingsDestination?.icon !== "back" && searchOpen ? <label className="oa-react-search">
       <span className="oa-react-sr-only">Search sessions</span>
       <input
         autoFocus
@@ -190,10 +192,12 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
         value={searchQuery}
       />
     </label> : null}
-    <nav aria-label="Primary" className="oa-react-primary-nav">{destinations.map(renderDestination)}</nav>
-    {settingsDestination?.icon === "back" ? null : workspaceSection}
-    {settingsDestination?.icon === "back" ? null : <p className="oa-react-section-label">Recent</p>}
-    {settingsDestination?.icon === "back" ? <div aria-hidden="true" className="oa-react-session-scroll" /> : <div className="oa-react-session-scroll">
+    {mode === undefined
+      ? <nav aria-label="Primary" className="oa-react-primary-nav">{destinations.map(renderDestination)}</nav>
+      : <div className="oa-react-rail-mode-content">{mode.content}</div>}
+    {mode !== undefined || settingsDestination?.icon === "back" ? null : workspaceSection}
+    {mode !== undefined || settingsDestination?.icon === "back" ? null : <p className="oa-react-section-label">Recent</p>}
+    {mode !== undefined ? null : settingsDestination?.icon === "back" ? <div aria-hidden="true" className="oa-react-session-scroll" /> : <div className="oa-react-session-scroll">
       <nav aria-label="Recent sessions" className="oa-react-session-list">
         {!hydrated && sessions.length === 0
           ? <p role="status">Scanning sessions…</p>
@@ -225,11 +229,11 @@ export const DesktopSessionRail = forwardRef<HTMLElement, DesktopSessionRailProp
         {canLoadMore ? <button className="oa-react-load-more" onClick={onLoadMore} type="button">Load more sessions</button> : null}
       </nav>
     </div>}
-    {settingsDestination === undefined ? null : <nav aria-label="Settings" className="oa-react-sidebar-footer">
+    {mode !== undefined || settingsDestination === undefined ? null : <nav aria-label="Settings" className="oa-react-sidebar-footer">
       {renderDestination(settingsDestination)}
     </nav>}
-    {footer === undefined ? null : <hr className="oa-react-sidebar-divider" />}
-    {footer}
+    {mode !== undefined || footer === undefined ? null : <hr className="oa-react-sidebar-divider" />}
+    {mode === undefined ? footer : null}
   </aside>
 })
 DesktopSessionRail.displayName = "DesktopSessionRail"

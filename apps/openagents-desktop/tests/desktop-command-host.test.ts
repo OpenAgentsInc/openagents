@@ -38,7 +38,7 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
     expect(boot).toContain("bridge?.commands?.onCommand")
     expect(boot).toContain("resolveDesktopDeferredCommandIntent")
     expect(boot).toContain("desktopCommandShortcutMatches")
-    expect(boot).toContain('IntentRef("DesktopFilesSidebarToggled"')
+    expect(boot).toContain('IntentRef("DesktopFilesModeToggled"')
     expect(boot).toContain('source: "restore"')
     // The deferred-command rejection still surfaces a visible notice (CUT-15),
     // now through the transient command-notice controller (self-dismissing

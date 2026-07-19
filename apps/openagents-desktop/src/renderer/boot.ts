@@ -1659,7 +1659,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         registry.dispatch(resolveIntentRef(IntentRef("DesktopFullscreenToggled", StaticPayload(null)))),
       )
     }
-    const onFilesSidebarShortcut = (event: KeyboardEvent): void => {
+    const onFilesModeShortcut = (event: KeyboardEvent): void => {
       const current = Effect.runSync(SubscriptionRef.get(state))
       const target = event.target
       const editable = target instanceof HTMLElement &&
@@ -1677,7 +1677,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       event.preventDefault()
       event.stopPropagation()
       void Effect.runPromise(
-        registry.dispatch(resolveIntentRef(IntentRef("DesktopFilesSidebarToggled", StaticPayload(null)))),
+        registry.dispatch(resolveIntentRef(IntentRef("DesktopFilesModeToggled", StaticPayload(null)))),
       ).catch(() => undefined)
     }
     const onCommandPaletteShortcut = (event: KeyboardEvent): void => {
@@ -1884,7 +1884,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     })
     window.addEventListener("keydown", onNewChatShortcut)
     window.addEventListener("keydown", onFullscreenShortcut)
-    window.addEventListener("keydown", onFilesSidebarShortcut, true)
+    window.addEventListener("keydown", onFilesModeShortcut, true)
     window.addEventListener("keydown", onCommandPaletteShortcut)
     window.addEventListener("keydown", onHistoryModifierDown, true)
     window.addEventListener("keydown", onHistoryConversationShortcut)
@@ -1897,7 +1897,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       removeComposerImageAcquisition()
       window.removeEventListener("keydown", onNewChatShortcut)
       window.removeEventListener("keydown", onFullscreenShortcut)
-      window.removeEventListener("keydown", onFilesSidebarShortcut, true)
+      window.removeEventListener("keydown", onFilesModeShortcut, true)
       window.removeEventListener("keydown", onCommandPaletteShortcut)
       window.removeEventListener("keydown", onHistoryModifierDown, true)
       window.removeEventListener("keydown", onHistoryConversationShortcut)

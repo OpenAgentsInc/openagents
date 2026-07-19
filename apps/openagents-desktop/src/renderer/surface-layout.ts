@@ -1,7 +1,7 @@
 export const desktopSurfaceLayoutStorageKey = "openagents.desktop.surface-layout.v1"
 export const defaultDesktopSurfacePanelWidth = 440
 
-export const desktopSurfaceKinds = ["files", "review", "terminal", "browser"] as const
+export const desktopSurfaceKinds = ["review", "terminal", "browser"] as const
 export type DesktopSurfaceKind = (typeof desktopSurfaceKinds)[number]
 
 export type DesktopSurfaceLayout = Readonly<{

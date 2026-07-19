@@ -35,7 +35,6 @@ import {
   Download,
   FileCode2,
   FileDiff,
-  Files,
   FolderGit2,
   GitBranch,
   Globe2,
@@ -43,7 +42,9 @@ import {
   Maximize2,
   Minimize2,
   Plus,
+  RefreshCw,
   RotateCcw,
+  Search,
   SearchCheck,
   TerminalSquare,
   Trash2,
@@ -84,7 +85,7 @@ import { StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
-import { ReactBrowserPreviewSurface, ReactFilesSurface, ReactReviewSurface, ReactTerminalSurface } from "./react-workspace-surfaces.tsx"
+import { ReactBrowserPreviewSurface, ReactFilesSidebar, ReactReviewSurface, ReactTerminalSurface, ReactWorkspaceEditor } from "./react-workspace-surfaces.tsx"
 import { ReactSettingsSurface, type ReactSettingsSectionId } from "./react-settings-surface.tsx"
 import { ReactFullAutoSurface } from "./react-full-auto-surface.tsx"
 import {
@@ -392,7 +393,7 @@ export const ConversationHeader = ({ state, report }: {
     title={selectedTitle(state)}
     actions={selectedCoding === undefined ? undefined : <div className="oa-react-conversation-actions" aria-label="Project actions">
       <span title="Current branch"><GitBranch aria-hidden="true" />{state.git.status?.branch ?? selectedCoding.worktreeLabel}</span>
-      <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("files")}><FileCode2 aria-hidden="true" />Files</Button>
+      <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopFilesModeToggled")}><FileCode2 aria-hidden="true" />Files</Button>
       <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("review")}><SearchCheck aria-hidden="true" />Review</Button>
       <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("terminal")}><TerminalSquare aria-hidden="true" />Terminal</Button>
       {state.terminal.sessions.some(session => session.previews.length > 0) ? <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("browser")}><Globe2 aria-hidden="true" />Preview</Button> : null}
@@ -401,22 +402,46 @@ export const ConversationHeader = ({ state, report }: {
   />
 }
 
-const surfaceLabel = (surface: DesktopSurfaceKind): string => surface === "files" ? "Files" : surface === "review" ? "Review" : surface === "terminal" ? "Terminal" : "Preview"
-const SurfaceIcon = ({ surface }: { readonly surface: DesktopSurfaceKind }): ReactElement => surface === "files"
-  ? <Files aria-hidden="true" />
-  : surface === "review"
-    ? <FileDiff aria-hidden="true" />
-    : surface === "terminal"
-      ? <TerminalSquare aria-hidden="true" />
-      : <Globe2 aria-hidden="true" />
+const FilesModeHeader = ({ state, report }: {
+  readonly state: DesktopShellState
+  readonly report: IntentReporter
+}): ReactElement => {
+  const browser = state.workspaceBrowser
+  const selectedCoding = state.codingCatalog.sessions.find(
+    session => session.sessionRef === state.codingCatalog.selectedSessionRef,
+  )
+  const lifecycle = browser.phase === "loading" ? "Loading" : browser.phase === "unavailable" ? "Unavailable" : "Ready"
+  return <DesktopConversationHeader
+    lifecycle={lifecycle}
+    secondary={selectedCoding === undefined ? undefined : `${selectedCoding.repositoryLabel} / ${selectedCoding.worktreeLabel}`}
+    title="Files"
+    actions={<form className="oa-react-files-mode-actions" aria-label="Files controls" onSubmit={event => { event.preventDefault(); dispatch(report, "WorkspaceBrowserSearchRequested") }}>
+      <label className="oa-react-files-mode-search">
+        <Search aria-hidden="true" />
+        <Input aria-label="Search workspace files" placeholder="Search files" value={browser.query}
+          onChange={event => dispatch(report, "WorkspaceBrowserQueryChanged", event.currentTarget.value)} />
+      </label>
+      <div className="oa-react-files-mode-search-kinds" aria-label="Search mode">
+        {(["path", "content"] as const).map(mode => <button aria-pressed={browser.searchMode === mode} key={mode} onClick={() => dispatch(report, "WorkspaceBrowserSearchModeSelected", mode)} type="button">{mode === "path" ? "Names" : "Contents"}</button>)}
+      </div>
+      <Button size="icon-sm" variant="ghost" type="button" aria-label="Refresh workspace files" onClick={() => dispatch(report, "WorkspaceBrowserRefreshRequested")}><RefreshCw aria-hidden="true" /></Button>
+      <Button size="icon-sm" variant="ghost" type="button" aria-label="Close Files" onClick={() => dispatch(report, "DesktopFilesModeToggled")}><X aria-hidden="true" /></Button>
+    </form>}
+  />
+}
+
+const surfaceLabel = (surface: DesktopSurfaceKind): string => surface === "review" ? "Review" : surface === "terminal" ? "Terminal" : "Preview"
+const SurfaceIcon = ({ surface }: { readonly surface: DesktopSurfaceKind }): ReactElement => surface === "review"
+  ? <FileDiff aria-hidden="true" />
+  : surface === "terminal"
+    ? <TerminalSquare aria-hidden="true" />
+    : <Globe2 aria-hidden="true" />
 
 const SurfacePanelContent = ({ state, surface, report }: {
   readonly state: DesktopShellState
   readonly surface: DesktopSurfaceKind
   readonly report: IntentReporter
-}): ReactElement => surface === "files"
-  ? <ReactFilesSurface state={state} report={report} />
-  : surface === "review"
+}): ReactElement => surface === "review"
     ? <ReactReviewSurface state={state} report={report} />
     : surface === "terminal"
       ? <ReactTerminalSurface state={state} report={report} />
@@ -439,28 +464,14 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
   }
   const [layout, setLayout] = useState(readLayout)
   const [addOpen, setAddOpen] = useState(false)
-  const consumedFilesRequestVersion = useRef(state.presentation.filesSidebarRequest.version)
   const update = (action: DesktopSurfaceLayoutAction): void => setLayout(current => reduceDesktopSurfaceLayout(current, action))
   useEffect(() => setLayout(readLayout()), [storageKey])
   useEffect(() => {
     try { window.localStorage.setItem(storageKey, JSON.stringify(layout)) } catch { /* renderer storage may be disabled */ }
   }, [layout, storageKey])
   useEffect(() => {
-    if (state.workspace === "files" || state.workspace === "review") update({ type: "open", surface: state.workspace })
+    if (state.workspace === "review") update({ type: "open", surface: "review" })
   }, [state.workspace])
-  useEffect(() => {
-    const request = state.presentation.filesSidebarRequest
-    if (request.version === consumedFilesRequestVersion.current) return
-    consumedFilesRequestVersion.current = request.version
-    const next = reduceDesktopSurfaceLayout(layout, {
-      type: request.open ? "open" : "close",
-      surface: "files",
-    })
-    setLayout(next)
-    if (!request.open && next.active === "review") {
-      dispatch(report, "DesktopWorkspaceSelected", "review")
-    }
-  }, [layout, report, state.presentation.filesSidebarRequest])
   const activate = (surface: DesktopSurfaceKind): void => {
     update({ type: "open", surface })
     if (surface === "terminal") {
@@ -537,7 +548,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
             <button aria-label="Close panel" onClick={closeAll} type="button"><X aria-hidden="true" /></button>
           </div>
           {!addOpen ? null : <div className="oa-react-surface-add" role="menu">
-            {(["files", "review", "terminal", "browser"] as const).filter(surface => surface !== "browser" || state.terminal.sessions.some(session => session.previews.length > 0)).map(surface => <button disabled={layout.surfaces.includes(surface)} key={surface} onClick={() => activate(surface)} role="menuitem" type="button"><SurfaceIcon surface={surface} />{surfaceLabel(surface)}</button>)}
+            {(["review", "terminal", "browser"] as const).filter(surface => surface !== "browser" || state.terminal.sessions.some(session => session.previews.length > 0)).map(surface => <button disabled={layout.surfaces.includes(surface)} key={surface} onClick={() => activate(surface)} role="menuitem" type="button"><SurfaceIcon surface={surface} />{surfaceLabel(surface)}</button>)}
           </div>}
         </header>
         <SurfacePanelContent state={state} surface={active} report={report} />
@@ -668,6 +679,7 @@ export const SessionRail = ({ state, report, open, onCollapse, onDismiss, railRe
       />
     </div>}
     hydrated={state.history.hydrated}
+    mode={state.workspace === "files" ? { title: "Files", content: <ReactFilesSidebar state={state} report={report} /> } : undefined}
     onBack={() => dispatch(report, "DesktopNavigationBackRequested")}
     onCollapse={onCollapse}
     onDestinationSelect={selected => {
@@ -863,7 +875,12 @@ export const WorkbenchShell = ({ state, report }: {
     dispatch(report, "DesktopSidebarCollapsedChanged", true)
     setRailOpen(false)
   }
-  const workspaceSurface = state.workspace === "settings"
+  const workspaceSurface = state.workspace === "files"
+      ? <main className="oa-react-files-mode" data-react-workspace="files" aria-label="Files workspace">
+          <FilesModeHeader state={state} report={report} />
+          <ReactWorkspaceEditor state={state} report={report} />
+        </main>
+      : state.workspace === "settings"
       ? <main className="oa-react-workspace-surface oa-react-settings-khala" data-react-workspace="settings">
           <StaticKhalaDecoration view={settingsFrame} placement="settings-frame" />
           <header className="oa-react-settings-header" id="react-settings-title">

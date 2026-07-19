@@ -516,8 +516,6 @@ export type DesktopShellState = Readonly<{
     sidebarCollapsed: boolean
     /** Deliberately ephemeral; the history query remains history authority. */
     sessionSearchOpen: boolean
-    /** Effect-owned request consumed by the renderer-local workbench layout. */
-    filesSidebarRequest: Readonly<{ version: number; open: boolean }>
   }>
   /** Read-only projection of the Effect-owned ephemeral navigation stack. */
   navigation: DesktopNavigationProjection
@@ -640,7 +638,6 @@ export const initialDesktopShellState = (
   presentation: {
     sidebarCollapsed: false,
     sessionSearchOpen: false,
-    filesSidebarRequest: { version: 0, open: false },
   },
   navigation: emptyDesktopNavigationProjection(),
   workspaceBrowser: emptyWorkspaceBrowserState(),
@@ -898,7 +895,7 @@ export const DesktopWorkspaceSelected = defineIntent(
   "DesktopWorkspaceSelected",
   Schema.Literals(desktopWorkspaceNames),
 )
-export const DesktopFilesSidebarToggled = defineIntent("DesktopFilesSidebarToggled", Schema.Null)
+export const DesktopFilesModeToggled = defineIntent("DesktopFilesModeToggled", Schema.Null)
 export const DesktopWorkspacePickerRequested = defineIntent("DesktopWorkspacePickerRequested", Schema.Null)
 export const DesktopNavigationBackRequested = defineIntent("DesktopNavigationBackRequested", Schema.Null)
 export const DesktopNavigationForwardRequested = defineIntent("DesktopNavigationForwardRequested", Schema.Null)
@@ -995,7 +992,7 @@ export const desktopShellIntents = [
   DesktopUpdateApplied,
   DesktopUpdateRolledBack,
   DesktopWorkspaceSelected,
-  DesktopFilesSidebarToggled,
+  DesktopFilesModeToggled,
   DesktopWorkspacePickerRequested,
   DesktopNavigationBackRequested,
   DesktopNavigationForwardRequested,
@@ -3821,19 +3818,9 @@ export const makeDesktopShellHandlers = (
     yield* recordNavigation({ kind: "codex_history", threadRef, title: result.title || "Codex session" })
   }),
   DesktopWorkspaceSelected: selectSurfaceWorkspace,
-  DesktopFilesSidebarToggled: () => Effect.gen(function* () {
+  DesktopFilesModeToggled: () => Effect.gen(function* () {
     const before = yield* SubscriptionRef.get(state)
     const open = before.workspace !== "files"
-    yield* SubscriptionRef.update(state, current => ({
-      ...current,
-      presentation: {
-        ...current.presentation,
-        filesSidebarRequest: {
-          version: current.presentation.filesSidebarRequest.version + 1,
-          open,
-        },
-      },
-    }))
     yield* selectSurfaceWorkspace(open ? "files" : "chat")
   }),
   DesktopWorkspacePickerRequested: () =>

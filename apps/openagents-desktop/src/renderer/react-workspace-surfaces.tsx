@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type ReactElement } from "react"
-import { ArrowLeft, ArrowRight, Camera, CircleStop, ExternalLink, File, FileDiff, Globe2, Monitor, MousePointer2, Plus, RefreshCw, RotateCcw, Search, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from "react"
+import { ArrowLeft, ArrowRight, Camera, CircleStop, ExternalLink, File, FileDiff, Globe2, Monitor, MousePointer2, Plus, RefreshCw, RotateCcw, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
 import type { IntentError, IntentReporter, JsonPayload } from "@effect-native/core"
 import { ComponentValueBinding, IntentRef } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
@@ -33,7 +33,7 @@ const tablistKey = (
   event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"] > button:first-child')[next]?.focus()
 }
 
-const WorkspaceTree = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
+export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const browser = state.workspaceBrowser
   const pierrePaths = pierreWorkspacePaths(browser)
   const searchMatches = browser.searchPage?.state === "available" ? browser.searchPage.matches : []
@@ -45,16 +45,7 @@ const WorkspaceTree = ({ state, report }: { readonly state: DesktopShellState; r
       dispatch(report, "WorkspaceBrowserTreeToggled", pathRef)
     }
   }
-  return <aside className="oa-react-files-tree" aria-label="Workspace files">
-    <form className="oa-react-files-search" onSubmit={(event: FormEvent) => { event.preventDefault(); dispatch(report, "WorkspaceBrowserSearchRequested") }}>
-      <Search aria-hidden="true" />
-      <Input aria-label="Search workspace files" placeholder="Search files" value={browser.query}
-        onChange={event => dispatch(report, "WorkspaceBrowserQueryChanged", event.currentTarget.value)} />
-      <Button size="icon-sm" variant="ghost" type="button" aria-label="Refresh workspace files" onClick={() => dispatch(report, "WorkspaceBrowserRefreshRequested")}><RefreshCw aria-hidden="true" /></Button>
-    </form>
-    <div className="oa-react-files-search-modes" aria-label="Search mode">
-      {(["path", "content"] as const).map(mode => <button aria-pressed={browser.searchMode === mode} key={mode} onClick={() => dispatch(report, "WorkspaceBrowserSearchModeSelected", mode)} type="button">{mode === "path" ? "Names" : "Contents"}</button>)}
-    </div>
+  return <section className="oa-react-files-tree" aria-label="Workspace files">
     <div className={`oa-react-files-tree-scroll${browser.phase === "ready" && browser.query.trim() === "" && pierrePaths.length > 0 ? " oa-react-files-tree-scroll--pierre" : ""}`}>
       {browser.phase === "idle" ? <p role="status">Preparing workspace files…</p>
         : browser.phase === "loading" ? <p role="status">Loading workspace files…</p>
@@ -67,10 +58,10 @@ const WorkspaceTree = ({ state, report }: { readonly state: DesktopShellState; r
           : pierrePaths.length === 0 ? <p>No workspace files.</p>
             : <PierreWorkspaceTree browser={browser} onActivate={({ pathRef, kind }) => openEntry(pathRef, kind)} />}
     </div>
-  </aside>
+  </section>
 }
 
-const WorkspaceEditor = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
+export const ReactWorkspaceEditor = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const editor = state.workspaceEditor
   const tab = editor.tabs.find(candidate => candidate.pathRef === editor.activePathRef) ?? null
   return <section className="oa-react-file-editor" aria-label="File editor">
@@ -105,9 +96,6 @@ const WorkspaceEditor = ({ state, report }: { readonly state: DesktopShellState;
     </>}
   </section>
 }
-
-export const ReactFilesSurface = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement =>
-  <div className="oa-react-files-workbench" aria-label="Files surface"><WorkspaceTree state={state} report={report} /><WorkspaceEditor state={state} report={report} /></div>
 
 type AnnotationDraft = Readonly<{ key: string; text: string }>
 
