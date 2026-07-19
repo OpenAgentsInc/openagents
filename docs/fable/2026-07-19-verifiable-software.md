@@ -377,3 +377,144 @@ Ten agents running is activity. One accepted criterion with a complete proof
 chain is progress. Verifiable software is the discipline of never confusing
 the two — and the OpenAgents IDE is that discipline, compiled into the place
 where software gets made.
+
+---
+
+## Addendum: Gap Analysis — Full Delivery vs. Current State (2026-07-19)
+
+Section VII stated the honest boundary in one paragraph. This addendum
+expands it into a working gap analysis: what the OpenAgents IDE would need
+for verifiable software to be *fully delivered* — every claim in this essay
+backed by a live, observed, independently admitted mechanism — measured
+against what is implemented, designed, or only spec'd today. Statuses below
+reflect `docs/ide/ROADMAP.md`, the `specs/` corpus, and
+`docs/sol/MASTER_ROADMAP.md` (rev 122) as of this date; those documents, plus
+live issue state, remain the factual authorities.
+
+### 1. Editing and proposal authority — largely delivered
+
+**Have (implemented, receipted):** IDE-00 through IDE-08 are delivered and
+closed with exact issue receipts (#9015–#9022, #9036). That covers the typed
+project graph with generation fencing, admitted packages with no-authority
+audits, the complete Pierre path index, real Monaco lifecycle, the daily
+workbench, versioned review with staleness refusal, generation-safe language
+intelligence, the deterministic basic-IDE acceptance oracle, and the
+agent-native code graph: hash-bound proposals, transactional apply with
+checkpoint rollback, the context-tray disclosure manifest, and host-observed
+evidence. The "agents propose; the project applies" law is running code.
+
+**Gap:** the delivered evidence plane deliberately reports several facts as
+`Unavailable` rather than observed. Tests are unobservable unless an exact
+test command was admitted; commit, push, PR, and delivery are `Unavailable`
+in IDE-08 by design. Full delivery needs IDE-10 (terminal, tasks, tests,
+output), IDE-11 (debug), and IDE-12 (safe SCM mutation, worktrees,
+delivery) so that "tested," "committed," and "pushed" become host-observed
+facts instead of honest absences. IDE-09 (AI editing) through IDE-19 (the
+maintained parity ledger and owner acceptance) remain open; the accepted
+claim today is exactly "OpenAgents basic IDE" plus the agent code graph, and
+no broader rung may be spoken.
+
+### 2. Proof machinery — designed and validated, not yet admitted
+
+**Have:** the ProductSpec and AssuranceSpec formats exist with validators,
+CLIs, and digest binding; the desktop trust workbench spec carries 52
+acceptance criteria with per-criterion obligations, and the MVP precedent
+shows the completed form — 18 obligations mapped, executable, CONFIRMED,
+independently reviewed, and accepted, with no blended score.
+
+**Gap:** both surface-wide AssuranceSpecs
+(`desktop-trust-complete-workbench` and `full-auto`) remain
+`lifecycle_state: proposed`. Their obligations are *designed*, not
+*observed*: gates are empty, environments unselected, every authority flag
+false, and unexecuted evidence decodes as `INCONCLUSIVE`. Full delivery
+requires the whole ladder the formats already name: reviewer-authored risk
+models, executable oracles per obligation, falsifier observations,
+environment bindings to signed packaged builds, and — the scarcest input —
+*independent* review and admission that no producer can self-grant. A
+designed oracle is not a passing observation, and today most of the surface
+corpus sits one rung below observation.
+
+### 3. Full Auto — core proven, closure gates open
+
+**Have:** the durable-run core is landed and proven in real owner
+development: exactly-once dispatch, restart-survivable state, routing
+rotation inside the owner's grant, non-overridable guardrail cores, and
+run reports with replayable failure fixtures.
+
+**Gap:** the flagship's two closure gates are exactly the verification
+story: #8978 (independent AssuranceSpec admission) and #8979 (binding the
+proof to a signed packaged release with owner observation). And by explicit
+cut, automatic done-condition verification is out of scope — "Completed" is
+self-reported, never presented as verified truth. Full delivery of the
+essay's thesis eventually needs that cut restored as a separately admitted
+contract: machine-checked objective completion, not just honest labeling of
+its absence.
+
+### 4. Trust-complete execution — spec'd, not landed
+
+**Gap (the largest):** the authority-manifest/execution-receipt pair at run
+level, named OS-enforced execution profiles that fail closed, hermetic mode
+with a complete admitted-input manifest, delivery and confidence tiers
+(draft / verified / reviewed / bonded) as visible product states, and the
+signed release-set chain with proven rollback are the heart of "authority is
+compiled, not narrated" — and they are currently Wave 2 acceptance criteria
+in the desktop ProductSpec, not shipped behavior. Today's containment story
+is real but narrower than the spec's. Until manifest/receipt pairing exists
+for every run, the essay's claim that "every consequential run leaves a
+pair of records" describes the contract, not yet the product.
+
+### 5. The public trust surface — partial
+
+**Have:** the promise registry with its full state machine, exact-only
+public counters reconciled to receipted rows, the restored `/trace/{uuid}`
+evidence viewer, Forum-first report intake, and signed desktop release
+artifacts.
+
+**Gap:** the dereferenceable trust ledger (release manifests, component
+compatibility, mechanical pass/fail receipt-verification endpoints),
+per-request routing disclosure, the audited data-flow matrix, benchmark
+cohorts bound to full effective tuples, and the public `CodeShareBundle`
+with verifier manifests (IDE-14) are spec'd in the web trust-surface
+ProductSpec (31 ACs) but not served. "The only place where an agent
+vendor's claims can be checked instead of believed" is today a design with
+partial coverage, not a live guarantee.
+
+### 6. The economics of proof — thesis, not product
+
+**Gap:** priced confidence tiers, bonded outcomes, liability underwriting,
+content-addressed study-packet reuse, and provenance-coupled settlement are
+the essay's economic endgame and remain almost entirely forward-looking —
+FastFollow defines the study-packet unit, the specs name the tiers, but no
+customer today buys a "bonded" outcome or pays a provenance premium through
+the product. This is acceptable sequencing (proof machinery must exist
+before proof can be priced), but it is the widest gap between essay and
+inventory.
+
+### 7. Independence — the structural risk to watch
+
+The companion deep dive's sharpest warning is the correlated-verifier trap:
+AI checking AI shares blind spots. Our architecture separates producer from
+verifier *by role*, but most oracles are still authored and executed inside
+the same toolchain and mostly by agents. Full delivery needs standing
+independent verification capacity — distinct reviewers for admission,
+community falsification through the open promise/audit loop, and where
+stakes warrant it, verification diversity that does not share the
+generator's priors. The AssuranceSpec format already refuses
+producer-admission; the gap is filling those reviewer roles with genuinely
+independent capacity at the cadence the pipeline needs.
+
+### Summary
+
+What exists today is the *authority skeleton* of verifiable software — the
+typed graph, the proposal plane, observed evidence, digest-bound specs, one
+fully-proven MVP precedent, and a deterministic acceptance oracle — with the
+discipline to label everything beyond it `Unavailable`, `proposed`, or
+`INCONCLUSIVE` rather than green. What full delivery still requires, in
+rough dependency order: observed execution evidence for tests, delivery, and
+debug (IDE-10/11/12); run-level manifest/receipt pairing and enforced
+profiles (Wave 2); independent admission of the standing AssuranceSpecs
+(#8978 first); the public trust ledger and receipt-verification endpoints;
+restored machine-checked completion for autonomous runs; and finally the
+priced tiers that turn proof into product. The gap is large, but it is
+enumerated, typed, and issue-addressed — which is exactly the state this
+essay argues a verifiable system should be able to report about itself.
