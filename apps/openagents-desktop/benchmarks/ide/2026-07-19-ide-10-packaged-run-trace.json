@@ -1,7 +1,7 @@
 {
   "schemaVersion": "openagents.desktop.ide-run-packaged-trace.v1",
   "issue": "IDE-10",
-  "candidateCommitSha": "5aa1ea199da6e0f406275ae6451ba280e05cf48a",
+  "candidateCommitSha": "f42436cb4d3a945d40ba5b642c2c510c70cf71f7",
   "events": [],
   "privateMaterialIncluded": false
 }
