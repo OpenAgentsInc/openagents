@@ -11,7 +11,7 @@ entries into the next dated release file.
 - commits: 2e4177fe64
 - contracts-specs: Sarah Mobile Speech Delivery in INVARIANTS.md; Effect Native Card long-press projection
 - invariants: no permanent speech bar; one active owner-private clip; only its exact message shows bounded state
-- evidence: apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts; apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts
+- evidence: docs/mobile/2026-07-19-openagents-mobile-sarah-message-voice-ota-receipt.md
 - lane: codex.root.sarah-message-voice
 
 Sarah's permanent “Listen · AI-generated voice” bar is gone. Long-press any
