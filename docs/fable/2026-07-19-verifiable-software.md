@@ -384,11 +384,11 @@ where software gets made.
 
 Section VII stated the honest boundary in one paragraph. This addendum
 expands it into a working gap analysis: what the OpenAgents IDE would need
-for verifiable software to be *fully delivered* — every claim in this essay
+for verifiable software to be _fully delivered_ — every claim in this essay
 backed by a live, observed, independently admitted mechanism — measured
 against what is implemented, designed, or only spec'd today. Statuses below
 reflect `docs/ide/ROADMAP.md`, the `specs/` corpus, and
-`docs/sol/MASTER_ROADMAP.md` (rev 122) as of this date; those documents, plus
+`docs/sol/MASTER_ROADMAP.md` (rev 122) as of this date. Those documents, plus
 live issue state, remain the factual authorities.
 
 ### 1. Editing and proposal authority — largely delivered
@@ -401,36 +401,36 @@ workbench, versioned review with staleness refusal, generation-safe language
 intelligence, the deterministic basic-IDE acceptance oracle, and the
 agent-native code graph: hash-bound proposals, transactional apply with
 checkpoint rollback, the context-tray disclosure manifest, and host-observed
-evidence. The "agents propose; the project applies" law is running code.
+evidence. The "agents propose, and the project applies" law is running code.
 
 **Gap:** the delivered evidence plane deliberately reports several facts as
 `Unavailable` rather than observed. Tests are unobservable unless an exact
-test command was admitted; commit, push, PR, and delivery are `Unavailable`
+test command was admitted. Commit, push, PR, and delivery are `Unavailable`
 in IDE-08 by design. Full delivery needs IDE-10 (terminal, tasks, tests,
 output), IDE-11 (debug), and IDE-12 (safe SCM mutation, worktrees,
 delivery) so that "tested," "committed," and "pushed" become host-observed
 facts instead of honest absences. IDE-09 (AI editing) through IDE-19 (the
-maintained parity ledger and owner acceptance) remain open; the accepted
+maintained parity ledger and owner acceptance) remain open. The accepted
 claim today is exactly "OpenAgents basic IDE" plus the agent code graph, and
 no broader rung may be spoken.
 
 ### 2. Proof machinery — designed and validated, not yet admitted
 
 **Have:** the ProductSpec and AssuranceSpec formats exist with validators,
-CLIs, and digest binding; the desktop trust workbench spec carries 52
+CLIs, and digest binding. The desktop trust workbench spec carries 52
 acceptance criteria with per-criterion obligations, and the MVP precedent
 shows the completed form — 18 obligations mapped, executable, CONFIRMED,
 independently reviewed, and accepted, with no blended score.
 
 **Gap:** both surface-wide AssuranceSpecs
 (`desktop-trust-complete-workbench` and `full-auto`) remain
-`lifecycle_state: proposed`. Their obligations are *designed*, not
-*observed*: gates are empty, environments unselected, every authority flag
+`lifecycle_state: proposed`. Their obligations are _designed_, not
+_observed_: gates are empty, environments unselected, every authority flag
 false, and unexecuted evidence decodes as `INCONCLUSIVE`. Full delivery
 requires the whole ladder the formats already name: reviewer-authored risk
 models, executable oracles per obligation, falsifier observations,
 environment bindings to signed packaged builds, and — the scarcest input —
-*independent* review and admission that no producer can self-grant. A
+_independent_ review and admission that no producer can self-grant. A
 designed oracle is not a passing observation, and today most of the surface
 corpus sits one rung below observation.
 
@@ -494,27 +494,27 @@ inventory.
 
 The companion deep dive's sharpest warning is the correlated-verifier trap:
 AI checking AI shares blind spots. Our architecture separates producer from
-verifier *by role*, but most oracles are still authored and executed inside
+verifier _by role_, but most oracles are still authored and executed inside
 the same toolchain and mostly by agents. Full delivery needs standing
 independent verification capacity — distinct reviewers for admission,
 community falsification through the open promise/audit loop, and where
 stakes warrant it, verification diversity that does not share the
 generator's priors. The AssuranceSpec format already refuses
-producer-admission; the gap is filling those reviewer roles with genuinely
+producer-admission. The gap is filling those reviewer roles with genuinely
 independent capacity at the cadence the pipeline needs.
 
 ### Summary
 
-What exists today is the *authority skeleton* of verifiable software — the
+What exists today is the _authority skeleton_ of verifiable software — the
 typed graph, the proposal plane, observed evidence, digest-bound specs, one
 fully-proven MVP precedent, and a deterministic acceptance oracle — with the
 discipline to label everything beyond it `Unavailable`, `proposed`, or
 `INCONCLUSIVE` rather than green. What full delivery still requires, in
 rough dependency order: observed execution evidence for tests, delivery, and
-debug (IDE-10/11/12); run-level manifest/receipt pairing and enforced
-profiles (Wave 2); independent admission of the standing AssuranceSpecs
-(#8978 first); the public trust ledger and receipt-verification endpoints;
-restored machine-checked completion for autonomous runs; and finally the
+debug (IDE-10/11/12), run-level manifest/receipt pairing and enforced
+profiles (Wave 2), independent admission of the standing AssuranceSpecs
+(#8978 first), the public trust ledger and receipt-verification endpoints,
+restored machine-checked completion for autonomous runs, and finally the
 priced tiers that turn proof into product. The gap is large, but it is
 enumerated, typed, and issue-addressed — which is exactly the state this
 essay argues a verifiable system should be able to report about itself.

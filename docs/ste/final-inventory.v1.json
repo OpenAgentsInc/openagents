@@ -281,6 +281,28 @@
       }
     },
     {
+      "path": ".agents/skills/trace-ingest/SKILL.md",
+      "sha256": "efbbaa89a33cd62b106175358627653c4684873530391953b3044063c67fa761",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "AGENTS.md",
       "sha256": "3d4364065b74f9a174a578397a6724a92b7585f89084f4c8307fcf0fd89ce2d0",
       "reason": "Final review of a converted document",
@@ -23403,7 +23425,7 @@
     },
     {
       "path": "docs/fable/2026-07-19-verifiable-software.md",
-      "sha256": "8df9584469cf6fca47deea541352bfaa44b957d6a46102e970883f03cb63cc93",
+      "sha256": "0e64d2731bc696a9b046abe7a35414d3abbb1558c0ffc30d292e7645581214f9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41963,6 +41985,28 @@
     {
       "path": "docs/tether/2026-06-18-tether-qvac-wdk-roadmap.md",
       "sha256": "d422d5446e74c7fd32e3f81580793a81f23ce610b0552b98f1c64ee20ee76c18",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/traces/2026-07-19-local-conversation-public-trace-ingest.md",
+      "sha256": "6223754da1e91cbe1a1d428b44caf2f8ee3cdabb31153b584ed1643a3cd62e9b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

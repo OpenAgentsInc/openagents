@@ -34,9 +34,9 @@ Trajectory Interchange Format.
 - `@openagentsinc/atif/trace` (`src/trace-schema.ts`) is the strict,
   pinned public-safe schema. `ATIF_PINNED_SCHEMA_VERSION = "ATIF-v1.7"`.
   `AtifTrajectory` = `{ schema_version, trajectory_id, session_id?,
-  visibility?, agent, steps[], final_metrics? }`. A step is
+visibility?, agent, steps[], final_metrics? }`. A step is
   `{ step_id, source: "user"|"agent"|"system", message, reasoning_content?,
-  model_name?, tool_calls?, observation?, metrics? }`.
+model_name?, tool_calls?, observation?, metrics? }`.
 - `validateAtifTrajectory` enforces structural rules: at least one step,
   `step_id` sequential from 1, every observation `source_call_id` references a
   tool_call in the same trajectory, and agent-only fields
@@ -48,7 +48,7 @@ Trajectory Interchange Format.
 - `@openagentsinc/atif/redaction` is the redactor engine (`redactValue` /
   `TraceRedactor`) with 25+ categories (home_path, file_url, email, phone,
   bearer, provider_key, aws/google/slack/github keys, mnemonic, wallet, ip,
-  long_blob, username, and more). It SCRUBS; the tripwire REJECTS. The two form
+  long_blob, username, and more). It SCRUBS. The tripwire REJECTS. The two form
   a belt-and-suspenders safety model.
 
 ### Ingest API
@@ -64,14 +64,14 @@ Trajectory Interchange Format.
   applies a per-owner rate limit (120/hour) and content-digest dedup, and
   returns `{ uuid, url: "/trace/{uuid}", visibility, replay }`.
 - Visibility is `body.visibility ?? trajectory.visibility ?? "unlisted"`. A
-  `public` or `unlisted` trace reads with no auth; `owner_only` requires the
+  `public` or `unlisted` trace reads with no auth. `owner_only` requires the
   owning session, an admin, or the owner's read-scope token.
 - `GET /api/traces/{uuid}` returns the public-safe projection the viewer
   renders. `PATCH` updates visibility. `POST|GET …/blob/{r2Key}` handle media.
 
 ### Storage
 
-`agent_traces` (SQLite/D1 store, `trace-store-d1.ts`; large trajectories offload
+`agent_traces` uses the SQLite/D1 store in `trace-store-d1.ts`. Large trajectories offload
 to R2 with a pointer in the row). Columns include `trace_uuid`, `owner_user_id`,
 `agent_ref`, `schema_version`, `trajectory_id`, `session_id`,
 `visibility ("public"|"unlisted"|"owner_only")`, `step_count`, `trajectory_json`
@@ -97,15 +97,15 @@ same way for delegated coding work.
 
 ## Where local conversations live
 
-| Source | id form | resolution |
-| --- | --- | --- |
-| Claude Code | v4 UUID | `~/.claude/projects/<slug>/<id>.jsonl` (one file per session) |
-| Codex | UUIDv7 | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<id>.jsonl` (one file per session) |
+| Source             | id form         | resolution                                                                                 |
+| ------------------ | --------------- | ------------------------------------------------------------------------------------------ |
+| Claude Code        | v4 UUID         | `~/.claude/projects/<slug>/<id>.jsonl` (one file per session)                              |
+| Codex              | UUIDv7          | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<id>.jsonl` (one file per session)                 |
 | OpenAgents Desktop | upper-case UUID | array element in `~/Library/Application Support/<Profile>/KhalaDesktop/conversations.json` |
 
 Claude and Codex store one transcript file per id, so their converters are
 high-fidelity. OpenAgents Desktop conversations are elements inside a shared
-JSON file; OpenAgents coding sessions themselves execute through Codex/Claude
+JSON file. OpenAgents coding sessions themselves execute through Codex/Claude
 workers, whose per-session logs convert with more detail.
 
 ## What this change adds
@@ -113,10 +113,10 @@ workers, whose per-session logs convert with more detail.
 All new files are in `apps/qa-runner/src`:
 
 - `conversation-source.ts` — resolve an id (optionally a forced `--source`) to
-  its on-disk source. Read-only; walks `~/.claude`, `~/.codex`, and the desktop
-  support dirs; auto-detects claude → codex → openagents.
+  its on-disk source. It is read-only. It walks `~/.claude`, `~/.codex`, and the desktop
+  support dirs, then auto-detects claude → codex → openagents.
 - `openagents-conversation-to-atif.ts` — the one missing converter: a desktop
-  conversation object → a valid ATIF-v1.7 trajectory (defensive; empty
+  conversation object → a valid ATIF-v1.7 trajectory. It is defensive, and empty
   conversations yield one explanatory system step).
 - `ingest-conversation.ts` — orchestrator: resolve → dispatch to the matching
   converter → return the trajectory. Also `capTrajectorySteps` (keep a valid
@@ -157,33 +157,33 @@ survives. The server redacts and tripwires again and rejects unsafe payloads
 (422). Publishes are idempotent (the key is a digest of the redacted
 trajectory). A public trace is evidence only: it grants no accepted-work,
 payout, settlement, or public-claim authority. Never print or commit the agent
-token; prefer `OPENAGENTS_AGENT_TOKEN` in the environment.
+token. Prefer `OPENAGENTS_AGENT_TOKEN` in the environment.
 
 ## Verification
 
 - `pnpm --dir apps/qa-runner exec tsc --noEmit -p tsconfig.json`: the new files
   typecheck clean.
 - `pnpm --dir apps/qa-runner exec vp test --run
-  src/openagents-conversation-to-atif.test.ts src/ingest-conversation.test.ts`:
+src/openagents-conversation-to-atif.test.ts src/ingest-conversation.test.ts`:
   14 tests pass.
 - Real Claude session (2.7 MB, 303 steps): 1070 `/Users/` occurrences in the
-  raw log; the redactor scrubbed 557 items (452 home_path, 13 email, 13 bearer,
-  4 provider_key, 2 mnemonic, and more); the written trajectory has zero
+  raw log. The redactor scrubbed 557 items (452 home_path, 13 email, 13 bearer,
+  4 provider_key, 2 mnemonic, and more). The written trajectory has zero
   `/Users/`, is structurally valid, and passes the tripwire.
 - Real Codex session (2790 steps): capped to the first 2000 steps with a
-  truncation note; dry-run validates and passes the tripwire.
+  truncation note. Dry-run validates and passes the tripwire.
 
 ## Limitations and follow-ups
 
 - Uploads were verified through the dry-run + local-preflight path (redaction,
   validation, tripwire, capping, idempotency). A live `POST /api/traces` needs a
-  valid `OPENAGENTS_AGENT_TOKEN`; the transport is the proven `publish-trace.ts`
+  valid `OPENAGENTS_AGENT_TOKEN`. The transport is the proven `publish-trace.ts`
   path already used by qa-runner.
 - OpenAgents Desktop conversations are best-effort: the desktop `messages` shape
   has varied and can be empty. Prefer the underlying Codex/Claude session id for
   full fidelity.
 - Very large Codex rollouts (hundreds of MB) can exceed the V8 string limit
-  during conversion; use `--max-steps` or skip them.
+  during conversion. Use `--max-steps` or skip them.
 - Truncation keeps a prefix (setup + early work). A future option could keep a
   windowed middle/tail while preserving observation→tool_call references.
 - The CLI lives in `apps/qa-runner` because the converters, redactor, and

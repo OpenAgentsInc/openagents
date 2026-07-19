@@ -41,11 +41,11 @@ published public trace from claude (303 steps):
 
 ## What a "conversation id" is
 
-| Source | id form | where it lives |
-| --- | --- | --- |
-| Claude Code | v4 UUID (the session id) | `~/.claude/projects/<slug>/<id>.jsonl` |
-| Codex | UUIDv7 (trailing in the rollout filename) | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<id>.jsonl` |
-| OpenAgents Desktop | upper-case UUID | array element in `~/Library/Application Support/<Profile>/KhalaDesktop/conversations.json` |
+| Source             | id form                                   | where it lives                                                                             |
+| ------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Claude Code        | v4 UUID (the session id)                  | `~/.claude/projects/<slug>/<id>.jsonl`                                                     |
+| Codex              | UUIDv7 (trailing in the rollout filename) | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<id>.jsonl`                                        |
+| OpenAgents Desktop | upper-case UUID                           | array element in `~/Library/Application Support/<Profile>/KhalaDesktop/conversations.json` |
 
 The source is **auto-detected** (claude → codex → openagents). Force it with
 `--source claude|codex|openagents` when an id could be ambiguous.
@@ -53,12 +53,12 @@ The source is **auto-detected** (claude → codex → openagents). Force it with
 ## Flags
 
 - `-s, --source <kind>` — force the source (default `auto`).
-- `-v, --visibility <public|unlisted|owner_only>` — stored visibility
-  (default `public`; `unlisted` = link-only, no listing; `owner_only` = private).
+- `-v, --visibility <public|unlisted|owner_only>` — stored visibility. The
+  default is `public`. `unlisted` is link-only with no listing. `owner_only` is private.
 - `--dry-run` — build + redact + validate, do **not** upload.
 - `--out <file>` — with `--dry-run`, write the redacted ATIF JSON for inspection.
-- `--max-steps <n>` — cap steps (default and hard max `2000`; keeps a valid
-  prefix and notes the truncation). Big coding sessions exceed the server cap;
+- `--max-steps <n>` — cap steps with a default and hard max of `2000`. It keeps
+  a valid prefix and notes the truncation. Big coding sessions exceed the server cap.
   this keeps them ingestible instead of failing.
 - `--agent-name <name>`, `--model <id>` — trajectory header overrides.
 - `--base-url <url>` — ingest base (default `$OPENAGENTS_BASE_URL` or
@@ -90,12 +90,12 @@ prefer `OPENAGENTS_AGENT_TOKEN` in the environment.
 
 ## Troubleshooting
 
-- `No local … conversation found for id` — wrong id or `--source`; confirm the
+- `No local … conversation found for id` — wrong id or `--source`. Confirm the
   file exists (`ls ~/.claude/projects/**/<id>.jsonl`, `ls ~/.codex/sessions`).
 - `Trajectory has no steps` — an aborted/empty session (common for tiny Codex
   rollouts). Nothing to publish.
 - `still trips the public-safety tripwire after redaction` — inspect with
-  `--dry-run --out` and remove the offending content upstream; do not force it.
+  `--dry-run --out` and remove the offending content upstream. Do not force it.
 - `no agent token` — set `OPENAGENTS_AGENT_TOKEN` (see the repo Khala runbook).
 - `Cannot create a string longer than …` — a pathologically large rollout
   (hundreds of MB). Use `--max-steps` or skip it.
