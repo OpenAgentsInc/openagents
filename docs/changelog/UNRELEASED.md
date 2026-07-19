@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Sarah voice is attached to messages (#9013)
+
+- issues: #9013
+- commits: 2e4177fe64
+- contracts-specs: Sarah Mobile Speech Delivery in INVARIANTS.md; Effect Native Card long-press projection
+- invariants: no permanent speech bar; one active owner-private clip; only its exact message shows bounded state
+- evidence: apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts; apps/openagents.com/packages/effect-native-render-rn/src/index.test.ts
+- lane: codex.root.sarah-message-voice
+
+Sarah's permanent “Listen · AI-generated voice” bar is gone. Long-press any
+completed Sarah response to prepare and play its AI-generated voice; the exact
+message shows a compact preparing, playing, or failed state, and long-pressing
+the active message stops it. Sarah's composer also restores native autocorrect.
+
 ## Desktop restart failures no longer repeat (#9012)
 
 - issues: #9012
