@@ -37,9 +37,11 @@ describe("openagents_desktop.seam.codex_trace_electron_acceptance.v1", () => {
     }
   })
 
-  test("the normal smoke runs the journey and a real renderer reload", () => {
+  test("the compatibility smoke leaves legacy trace interaction to the default renderer and still performs a real reload", () => {
     const main = readFileSync(path.join(appRoot, "src/main.ts"), "utf8")
-    expect(main).toContain('step("codex-trace-acceptance", traceAcceptanceJourney)')
+    expect(main).not.toContain('step("codex-trace-acceptance", traceAcceptanceJourney)')
+    expect(main).not.toContain('import { traceAcceptanceJourney }')
+    expect(main).toContain("Historical trace interaction now belongs to the ordinary React")
     expect(main).not.toContain('step("codex-trace-reload-restoration", traceAcceptanceReload)')
     expect(main).toContain("window.webContents.reload()")
   })

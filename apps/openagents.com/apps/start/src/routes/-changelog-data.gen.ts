@@ -27,6 +27,38 @@ export type ChangelogRelease = Readonly<{
 export const CHANGELOG_RELEASES: ReadonlyArray<ChangelogRelease> =
   [
     {
+      "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-19-desktop-0.1.0-rc.24.md",
+      "blocks": [
+        {
+          "items": [
+            "Open **Files** with Command-E on macOS or Control-E on Windows and Linux. The chat rail is replaced by a workspace explorer while the familiar top bar remains in place.",
+            "Browse the selected workspace through the Pierre file tree. Directory expansion, file selection, keyboard navigation, context menus, bounded indexing, refresh, search, and root-path privacy are wired to the typed Desktop workspace host.",
+            "Open and edit files in Monaco with language workers for TypeScript, JavaScript, JSON, HTML, and CSS. Tokyo Night is the initial editor theme, and Vim mode can be turned on from the editor toolbar.",
+            "Work with preview and pinned tabs, multiple editor groups, split views, quick open, back/forward navigation, and restart recovery for open files and unsaved drafts.",
+            "Review the real Git working tree in the Review workspace through the Pierre diff surface, including staged, unstaged, and untracked state with version-fenced refreshes.",
+            "Full Auto remains available from the left rail and was exercised in the default React renderer during this release run."
+          ],
+          "kind": "bullets"
+        },
+        {
+          "kind": "paragraph",
+          "text": "This is a release candidate, not a stable-channel promotion. The basic IDE does not yet include LSP/Problems integration, an integrated terminal screen, agent proposal/apply workflows, or inline AI editing."
+        }
+      ],
+      "channel": "rc",
+      "date": "2026-07-19",
+      "title": "OpenAgents Desktop 0.1.0-rc.24 — 2026-07-19",
+      "version": "0.1.0-rc.24",
+      "attribution": {
+        "authorityRef": "AUTHORITY.md revision 2; grant.autonomous_rc_release_and_communication",
+        "releaseActor": "OpenAgents release operator",
+        "releaseUrl": "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.24",
+        "sourceFeedback": "owner-directed Codex release task, 2026-07-19",
+        "triggeredBy": "OpenAgents owner request for a tested basic-IDE release candidate",
+        "triggerKind": "owner_direction"
+      }
+    },
+    {
       "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-18-desktop-0.1.0-rc.21.md",
       "blocks": [
         {

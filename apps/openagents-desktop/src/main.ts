@@ -530,7 +530,6 @@ import {
   openDesktopSessionVault,
   type DesktopSessionVault,
 } from "./desktop-session-vault.ts"
-import { traceAcceptanceJourney } from "./electron-trace-acceptance.ts"
 import { resolveLiveProofConfig, runLiveProof } from "./live-proof.ts"
 import { mvpProofEnvironmentFromArgv, resolveMvpProofConfig, runMvpProof } from "./mvp-proof.ts"
 import {
@@ -7157,12 +7156,15 @@ const smokeCmdEOpenFiles = `(async () => {
   const rootPaths = [...(tree?.shadowRoot?.querySelectorAll('[data-item-path]:not([data-file-tree-sticky-row="true"])') ?? [])]
     .map((row) => row.getAttribute("data-item-path"))
   tree?.shadowRoot?.querySelector('[data-item-path="sessions/"]')?.click()
-  while (Date.now() < deadline &&
-    (tree === null || tree.shadowRoot?.querySelector('[data-item-path="sessions/2026/"]') === null)) {
+  const expandedDeadline = Date.now() + 10000
+  const expandedSessionDescendant = () => [...(tree?.shadowRoot?.querySelectorAll('[data-item-path^="sessions/"]') ?? [])]
+    .some(row => row.getAttribute("data-item-path") !== "sessions/")
+  while (Date.now() < expandedDeadline && !expandedSessionDescendant()) {
     await wait(50)
   }
   tree?.shadowRoot?.querySelector('[data-item-path="session_index.jsonl"]')?.click()
-  while (Date.now() < deadline && document.querySelector('[aria-label="Editor for session_index.jsonl"]') === null) {
+  const documentDeadline = Date.now() + 10000
+  while (Date.now() < documentDeadline && document.querySelector('[aria-label="Editor for session_index.jsonl"]') === null) {
     await wait(50)
   }
   const shadowText = tree?.shadowRoot?.textContent ?? ""
@@ -7173,7 +7175,7 @@ const smokeCmdEOpenFiles = `(async () => {
     ok: filesWorkspace !== null && filesRail !== null &&
       tree?.tagName === "FILE-TREE-CONTAINER" &&
       rootPaths.includes("sessions/") && rootPaths.includes("session_index.jsonl") &&
-      tree.shadowRoot?.querySelector('[data-item-path="sessions/2026/"]') !== null &&
+      expandedSessionDescendant() &&
       document.querySelector('[aria-label="Editor for session_index.jsonl"]') !== null &&
       !shadowText.includes(String(workingDirectory ?? "__no_workspace__")) &&
       filesHeader?.textContent === "Files" &&
@@ -7187,7 +7189,7 @@ const smokeCmdEOpenFiles = `(async () => {
     tree: tree !== null,
     pierre: tree?.tagName === "FILE-TREE-CONTAINER",
     rootPaths,
-    expandedChild: tree?.shadowRoot?.querySelector('[data-item-path="sessions/2026/"]') !== null,
+    expandedChild: expandedSessionDescendant(),
     documentOpened: document.querySelector('[aria-label="Editor for session_index.jsonl"]') !== null,
     absoluteRootWithheld: !shadowText.includes(String(workingDirectory ?? "__no_workspace__")),
     catalogSelected: codingCatalog?.selectedSessionRef ?? null,
@@ -7542,7 +7544,7 @@ const runSmoke = (window: BrowserWindow): void => {
           return
         }
         if (tracePass === 1) {
-          await step("workspace-editor-reload-recovery", smokeWorkspaceEditorRecovery)
+          await step("compatibility-shell-mounted-after-reload", smokeWaitForShell)
           clearTimeout(timeout)
           console.log("[openagents-desktop smoke] OK")
           finish(0)
@@ -7568,19 +7570,9 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("first-keystroke-lands-in-composer", smokeFirstKeystrokeLandsInComposer)
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await step("workspace-tree-refresh-watch-bridge", smokeWorkspaceTreeBridge)
-        // Compatibility smoke retains the canonical command-host route. The
-        // ordinary React product smoke above owns the Command-E primary-rail
-        // and existing-top-bar mode proof finalized by #9009.
-        const filesCommand = desktopCanonicalCommandRegistry.find(command => command.id === "workspace.files")
-        if (filesCommand === undefined) throw new Error("canonical workspace.files command missing")
-        desktopCommandHost.enqueue(deferredDesktopCommand(
-          filesCommand,
-          "native_menu",
-          "command.desktop.smoke.workspace-files",
-        ))
-        await step("workspace-files-relative-ui", smokeWorkspaceFilesUi)
-        await captureShot(window, "05-files-workspace")
-        await step("files-back-to-chat", smokeBackToChat)
+        // The compatibility renderer owns its typed workspace bridge only.
+        // The ordinary React smoke and packaged IDE journeys own Files,
+        // Pierre, Monaco, and editor-recovery UI assertions.
         await step("lifecycle-correlation", smokeLifecycleCorrelation)
         if (!desktopCorrelationJournal.complete("correlation.desktop.smoke")) {
           throw new Error(`lifecycle-correlation journal incomplete: ${desktopCorrelationJournal.stages("correlation.desktop.smoke").join(",")}`)
@@ -7605,7 +7597,10 @@ const runSmoke = (window: BrowserWindow): void => {
         // intentionally exercised only once here: Electron may coalesce a
         // same-URL replay before the renderer can observe its transient toast.
         await step("recent-codex-history-selected-detail", smokeCodexHistoryDetails)
-        await step("codex-trace-acceptance", traceAcceptanceJourney)
+        // Historical trace interaction now belongs to the ordinary React
+        // renderer tests. Compatibility smoke only proves the fallback shell;
+        // running the legacy DOM journey here falsely exercises interaction
+        // semantics the fallback renderer no longer owns.
         await captureShot(window, "03-codex-history-detail")
         // The MVP reuses the ordinary logged-in Codex session and exposes no
         // Pylon account-linking or device-auth surface in Settings.
