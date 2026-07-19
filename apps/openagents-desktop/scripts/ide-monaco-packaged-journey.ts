@@ -38,7 +38,10 @@ const packagedExecutable = packagedMacOsDirectory === undefined
 const packagedBinary = packagedMacOsDirectory === undefined || packagedExecutable === undefined
   ? null
   : path.join(packagedMacOsDirectory, packagedExecutable.name)
-const screenshotRef = "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-packaged-editor.png"
+const languageOnly = process.env.OPENAGENTS_DESKTOP_IDE06_LANGUAGE_ONLY === "1"
+const screenshotRef = languageOnly
+  ? "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-packaged-language.png"
+  : "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-packaged-editor.png"
 const screenshotPath = path.join(repositoryRoot, screenshotRef)
 const receiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-03-packaged-journey.json")
 const workbenchReceiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-04-packaged-workbench.json")
@@ -129,6 +132,8 @@ const main = async (): Promise<void> => {
       if (page === undefined) await new Promise(resolve => setTimeout(resolve, 50))
     }
     if (page === undefined) throw new Error("packaged renderer page did not appear")
+    page.on("console", message => process.stderr.write(`[packaged renderer ${message.type()}] ${message.text()}\n`))
+    page.on("pageerror", error => process.stderr.write(`[packaged renderer error] ${error.message}\n`))
     await enterFiles(page)
 
     const tree = page.locator('[data-oa-pierre-tree="true"]')
@@ -141,7 +146,27 @@ const main = async (): Promise<void> => {
     await primary.locator('[data-monaco-phase="ready"]').waitFor({ state: "visible", timeout: 30_000 })
     const localTier = primary.locator('[data-language-tier="document-local"]')
     await localTier.waitFor({ state: "visible", timeout: 30_000 })
-    await page.waitForFunction(() => document.querySelector('[data-language-tier="document-local"]')?.textContent?.includes("worker ready") === true, undefined, { timeout: 30_000 })
+    try {
+      await page.waitForFunction(() => {
+        const tier = document.querySelector('[data-language-tier="document-local"]')
+        return tier?.textContent?.includes("worker ready") === true || tier?.getAttribute("data-language-state") === "Failed"
+      }, undefined, { timeout: 30_000 })
+      const state = await localTier.getAttribute("data-language-state")
+      if (state === "Failed") {
+        throw new Error(await localTier.getAttribute("data-language-message") ?? "document-local worker failed without a message")
+      }
+    } catch (cause) {
+      const debug = await page.evaluate(async () => {
+        const editorRuntimeUrl = "openagents-app://renderer/ide-editor/editor.js"
+        const module = await import(editorRuntimeUrl)
+        return {
+          label: document.querySelector('[data-language-tier="document-local"]')?.textContent ?? null,
+          message: document.querySelector('[data-language-tier="document-local"]')?.getAttribute("data-language-message") ?? null,
+          resources: module.runtime.resources(),
+        }
+      })
+      throw new Error(`document-local worker did not become ready: ${JSON.stringify(debug)}`, { cause })
+    }
     const projectStatus = page.locator('.oa-react-language-status[data-language-service="ready"]')
     await projectStatus.waitFor({ state: "visible", timeout: 30_000 })
     await page.waitForFunction(() => {
@@ -252,7 +277,7 @@ const main = async (): Promise<void> => {
       resourcesAfterClose,
       screenshotRef,
     })
-    writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 })
+    if (!languageOnly) writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 })
     const workbenchReceipt = {
       schemaVersion: "openagents.desktop.ide-workbench-packaged-journey.v1",
       capturedAt: new Date().toISOString(),
@@ -271,7 +296,7 @@ const main = async (): Promise<void> => {
     if (!previewOpened || !previewPinned || !recoveryReloaded || splitViews !== 2 || !rootWithheld) {
       throw new Error(`IDE-04 packaged workbench journey failed: ${JSON.stringify(workbenchReceipt)}`)
     }
-    writeFileSync(workbenchReceiptPath, `${JSON.stringify(workbenchReceipt, null, 2)}\n`, { mode: 0o600 })
+    if (!languageOnly) writeFileSync(workbenchReceiptPath, `${JSON.stringify(workbenchReceipt, null, 2)}\n`, { mode: 0o600 })
     const languageReceipt = Schema.decodeUnknownSync(IdeLanguagePackagedJourneyReceiptSchema)({
       schemaVersion: "openagents.desktop.ide-language-packaged-journey.v1",
       capturedAt: new Date().toISOString(),
@@ -290,8 +315,10 @@ const main = async (): Promise<void> => {
       screenshotRef,
     })
     writeFileSync(languageReceiptPath, `${JSON.stringify(languageReceipt, null, 2)}\n`, { mode: 0o600 })
-    process.stdout.write(`[openagents-desktop] IDE-03 packaged Monaco journey: ${receiptPath}\n`)
-    process.stdout.write(`[openagents-desktop] IDE-04 packaged workbench journey: ${workbenchReceiptPath}\n`)
+    if (!languageOnly) {
+      process.stdout.write(`[openagents-desktop] IDE-03 packaged Monaco journey: ${receiptPath}\n`)
+      process.stdout.write(`[openagents-desktop] IDE-04 packaged workbench journey: ${workbenchReceiptPath}\n`)
+    }
     process.stdout.write(`[openagents-desktop] IDE-06 packaged language journey: ${languageReceiptPath}\n`)
   } finally {
     await browser?.close()

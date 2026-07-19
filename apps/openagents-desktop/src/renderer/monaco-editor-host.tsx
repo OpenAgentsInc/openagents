@@ -120,6 +120,7 @@ export const MonacoEditorHost = (props: MonacoEditorHostProps): ReactElement => 
     : localLanguage._tag === "Loading" ? `Document local · loading ${localLanguage.language}`
     : localLanguage._tag === "Unsupported" ? `Document local · syntax only (${localLanguage.language})`
     : `Document local · failed (${localLanguage.language})`
+  const localMessage = localLanguage?._tag === "Failed" ? localLanguage.message : null
   const projectLabel = props.projectLanguage === null ? "Project language · no current evidence"
     : `Project language · generation ${props.projectLanguage.serviceGeneration}`
 
@@ -134,7 +135,12 @@ export const MonacoEditorHost = (props: MonacoEditorHostProps): ReactElement => 
     <div className="oa-react-monaco-host" ref={hostRef} />
     <footer className="oa-react-monaco-status" aria-live="polite">
       <span data-monaco-phase={phase}>{phase === "ready" ? `${props.tab.document?.languageMode ?? "plaintext"} · ${props.tab.document?.encoding ?? "utf-8"}` : message}</span>
-      <span data-language-tier="document-local">{localLabel}</span>
+      <span
+        data-language-tier="document-local"
+        data-language-state={localLanguage?._tag ?? "Waiting"}
+        data-language-message={localMessage}
+        title={localMessage ?? undefined}
+      >{localLabel}</span>
       <span data-language-tier="project-local">{projectLabel}</span>
       <span>{(props.tab.gapRecoveries ?? 0) === 0 ? "Synced" : `${props.tab.gapRecoveries ?? 0} sequence gap${props.tab.gapRecoveries === 1 ? "" : "s"} recovered`}</span>
       <strong data-vim-mode={vim.mode}>{vim.enabled ? `Vim ${vim.mode.replaceAll("_", " ")}${vim.pending === null ? "" : ` · ${vim.pending}`}${vim.count === null ? "" : ` · ${vim.count}`}` : "Vim off"}</strong>
