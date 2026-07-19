@@ -35,6 +35,8 @@ export type SurfacePolicy = {
   readonly governedDocuments: ReadonlyArray<string>;
   /** Surface id -> disposition note for intentionally out-of-scope surfaces. */
   readonly outOfScope: Record<string, string>;
+  /** AR-4: `<file>:<claim>` -> reason for an acknowledged drift finding. */
+  readonly driftDispositions: Record<string, string>;
 };
 
 export const emptyPolicy: SurfacePolicy = {
@@ -42,6 +44,7 @@ export const emptyPolicy: SurfacePolicy = {
   unverifiedReasonOverrides: {},
   governedDocuments: [],
   outOfScope: {},
+  driftDispositions: {},
 };
 
 export const loadPolicy = (root: string): SurfacePolicy => {
@@ -53,6 +56,7 @@ export const loadPolicy = (root: string): SurfacePolicy => {
     unverifiedReasonOverrides: json.unverifiedReasonOverrides ?? {},
     governedDocuments: (json.governedDocuments ?? []).slice().sort(compareStrings),
     outOfScope: json.outOfScope ?? {},
+    driftDispositions: json.driftDispositions ?? {},
   };
 };
 
@@ -219,7 +223,7 @@ const buildSurfaces = (
     });
   }
 
-  // 6. Curated governed documents (AR-4 drift oracles will bind these).
+  // 6. Curated governed documents, bound to the AR-4 drift oracle.
   for (const docPath of policy.governedDocuments) {
     if (!existsSync(join(root, docPath))) continue;
     const id = `document:${docPath}`;
@@ -230,13 +234,7 @@ const buildSurfaces = (
       owningPath: docPath,
       title: docPath.split("/").pop() ?? docPath,
       derivation: "annotated",
-      oracles: [],
-      unverified: makeUnverified(
-        id,
-        policy,
-        "no-oracle-authored",
-        "governed document; AR-4 drift oracles will bind checkable claims",
-      ),
+      oracles: [{ type: "drift-oracle", ref: "pnpm run check:assure-repo-drift" }],
     });
   }
 

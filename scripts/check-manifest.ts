@@ -96,6 +96,7 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   { name: "sol-doc-tests", command: ["pnpm", "run", "test:sol-docs"] },
   { name: "assure-repo", command: ["pnpm", "run", "check:assure-repo"] },
   { name: "assure-repo-audit", command: ["pnpm", "run", "check:assure-repo-audit"] },
+  { name: "assure-repo-drift", command: ["pnpm", "run", "check:assure-repo-drift"] },
   { name: "ste", command: ["pnpm", "run", "check:ste:all"] },
   { name: "ste-control-semantics", command: ["pnpm", "run", "check:ste-control-semantics"] },
   { name: "ste-tests", command: ["pnpm", "run", "test:ste"] },

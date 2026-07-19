@@ -29,6 +29,9 @@ for the program overview and the generated artifact.
   subject in a `finally`. Shares the `openagents.mutation.v1` semantics.
 - `audit.ts` — AR-2 report builder (`buildFalseGreenReport`) over every tracked
   test source.
+- `drift.ts` — AR-4 drift oracles over the repository's own governing
+  documents: side-effect-free path and command checks with typed
+  ok/broken/unverifiable verdicts and policy-driven dispositions.
 - `inventory.ts` — the generator (`buildInventory`, which also grades) and the
   surface policy loader.
 - `cli.ts` — `generate` / `check` / `summary` / `coverage` / `audit*` /

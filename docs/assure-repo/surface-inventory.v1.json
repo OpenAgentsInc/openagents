@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:1db85e9693b6c17db711dfaf4f571460fcd6168d8e7a4d7de46d0cc3d624973e",
+  "sourceDigest": "sha256:c9eca9704631e8371c0df3d7659f8d50347e75203cc9245002780affe48550bd",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -572,14 +572,15 @@
       "owningPath": "AGENTS.md",
       "title": "AGENTS.md",
       "derivation": "annotated",
-      "oracles": [],
-      "unverified": {
-        "reason": "no-oracle-authored",
-        "note": "governed document; AR-4 drift oracles will bind checkable claims"
-      },
+      "oracles": [
+        {
+          "type": "drift-oracle",
+          "ref": "pnpm run check:assure-repo-drift"
+        }
+      ],
       "obligation": {
-        "state": "inconclusive",
-        "note": "no oracle authored (no-oracle-authored); real coverage gap"
+        "state": "designed",
+        "note": "executable oracle(s) authored: drift-oracle; observation pending AR-3 sweep"
       }
     },
     {
@@ -588,14 +589,15 @@
       "owningPath": "CLAUDE.md",
       "title": "CLAUDE.md",
       "derivation": "annotated",
-      "oracles": [],
-      "unverified": {
-        "reason": "no-oracle-authored",
-        "note": "governed document; AR-4 drift oracles will bind checkable claims"
-      },
+      "oracles": [
+        {
+          "type": "drift-oracle",
+          "ref": "pnpm run check:assure-repo-drift"
+        }
+      ],
       "obligation": {
-        "state": "inconclusive",
-        "note": "no oracle authored (no-oracle-authored); real coverage gap"
+        "state": "designed",
+        "note": "executable oracle(s) authored: drift-oracle; observation pending AR-3 sweep"
       }
     },
     {
@@ -604,14 +606,15 @@
       "owningPath": "INVARIANTS.md",
       "title": "INVARIANTS.md",
       "derivation": "annotated",
-      "oracles": [],
-      "unverified": {
-        "reason": "no-oracle-authored",
-        "note": "governed document; AR-4 drift oracles will bind checkable claims"
-      },
+      "oracles": [
+        {
+          "type": "drift-oracle",
+          "ref": "pnpm run check:assure-repo-drift"
+        }
+      ],
       "obligation": {
-        "state": "inconclusive",
-        "note": "no oracle authored (no-oracle-authored); real coverage gap"
+        "state": "designed",
+        "note": "executable oracle(s) authored: drift-oracle; observation pending AR-3 sweep"
       }
     },
     {
@@ -692,14 +695,15 @@
       "owningPath": "docs/sol/MASTER_ROADMAP.md",
       "title": "MASTER_ROADMAP.md",
       "derivation": "annotated",
-      "oracles": [],
-      "unverified": {
-        "reason": "no-oracle-authored",
-        "note": "governed document; AR-4 drift oracles will bind checkable claims"
-      },
+      "oracles": [
+        {
+          "type": "drift-oracle",
+          "ref": "pnpm run check:assure-repo-drift"
+        }
+      ],
       "obligation": {
-        "state": "inconclusive",
-        "note": "no oracle authored (no-oracle-authored); real coverage gap"
+        "state": "designed",
+        "note": "executable oracle(s) authored: drift-oracle; observation pending AR-3 sweep"
       }
     },
     {
@@ -1609,7 +1613,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/assure-repo (5 tracked test files)"
+          "ref": "packages/assure-repo (6 tracked test files)"
         }
       ],
       "obligation": {
@@ -2973,16 +2977,16 @@
       "release-pipeline": 8,
       "worker": 1
     },
-    "withOracle": 130,
-    "unverified": 24,
+    "withOracle": 134,
+    "unverified": 20,
     "byUnverifiedReason": {
       "config-only": 2,
-      "no-oracle-authored": 20,
+      "no-oracle-authored": 16,
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 98,
-      "inconclusive": 20,
+      "designed": 102,
+      "inconclusive": 16,
       "mapped": 32,
       "out-of-scope": 4
     },

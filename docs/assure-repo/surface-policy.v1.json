@@ -7,5 +7,8 @@
     "app:@openagentsinc/electron-ai-sdk-test": "reference-only"
   },
   "governedDocuments": ["AGENTS.md", "CLAUDE.md", "INVARIANTS.md", "docs/sol/MASTER_ROADMAP.md"],
-  "outOfScope": {}
+  "outOfScope": {},
+  "driftDispositions": {
+    "INVARIANTS.md:apps/openagents.com/apps/web/src/page/qa-swarm.test.ts": "Stale reference surfaced by AR-4: apps/openagents.com/apps/web was removed (only apps/start remains). Real qa-swarm oracles live in apps/openagents.com/workers/api/src/qa-swarm-*.test.ts and packages/qa-swarm-contract/src/index.test.ts. Flagged for owner INVARIANTS.md correction (STE-governed normative text; not rewritten by this packet)."
+  }
 }

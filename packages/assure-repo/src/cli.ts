@@ -7,8 +7,9 @@ import {
   FALSE_GREEN_REPORT_PATH,
   serializeFalseGreenReport,
 } from "./audit.ts";
+import { runDriftOracles } from "./drift.ts";
 import { coverageByArea } from "./grade.ts";
-import { buildInventory } from "./inventory.ts";
+import { buildInventory, loadPolicy } from "./inventory.ts";
 import { runMutation } from "./mutation-runner.ts";
 import {
   serializeSurfaceInventory,
@@ -30,11 +31,13 @@ import { repositoryRoot } from "./workspace.ts";
  *   audit           Print the false-green candidate summary.
  *   demonstrate     Run one mutation against a subject/test to prove a
  *                   kill (exit 0) or a surviving weak oracle (exit 1).
+ *   drift           Print AR-4 drift-oracle findings over governed documents.
+ *   drift-check     Fail (exit 1) on any open (un-dispositioned) broken claim.
  */
 
 const usage = (): never => {
   process.stderr.write(
-    "usage: assure-repo <generate|check|summary|coverage|audit|audit-generate|audit-check|demonstrate> [...]\n",
+    "usage: assure-repo <generate|check|summary|coverage|audit|audit-generate|audit-check|demonstrate|drift|drift-check> [...]\n",
   );
   process.exit(2);
 };
@@ -223,6 +226,36 @@ const main = (): void => {
     const outcome = runMutation(root, { subjectPath, target, replacement, testCommand });
     process.stdout.write(`${JSON.stringify(outcome, null, 2)}\n`);
     process.exit(outcome.result === "survived" ? 1 : 0);
+  }
+
+  if (command === "drift" || command === "drift-check") {
+    const policy = loadPolicy(root);
+    const governed = [
+      ...policy.governedDocuments,
+      "docs/assure-repo/README.md",
+      "packages/assure-repo/README.md",
+    ];
+    const report = runDriftOracles(root, governed, policy.driftDispositions);
+    if (json) {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+      process.stdout.write(
+        `Drift oracles over ${report.summary.documentsChecked} governed documents: ${report.summary.broken} broken (${report.summary.dispositioned} dispositioned, ${report.summary.brokenUndispositioned} open), ${report.summary.unverifiable} unverifiable.\n`,
+      );
+      for (const finding of report.findings.filter((f) => f.verdict === "broken")) {
+        const disp = policy.driftDispositions[`${finding.file}:${finding.claim}`];
+        process.stdout.write(
+          `  ${disp ? "DISPOSITIONED" : "BROKEN"} ${finding.file}:${finding.line} [${finding.kind}] ${finding.claim} — ${disp ?? finding.detail}\n`,
+        );
+      }
+    }
+    if (command === "drift-check" && report.summary.brokenUndispositioned > 0) {
+      process.stderr.write(
+        `\n${report.summary.brokenUndispositioned} open broken documented claim(s); fix the docs, the referenced target, or add a policy disposition.\n`,
+      );
+      process.exit(1);
+    }
+    return;
   }
 
   usage();

@@ -5,4 +5,5 @@ export * from "./grade.ts";
 export * from "./false-green.ts";
 export * from "./mutation-runner.ts";
 export * from "./audit.ts";
+export * from "./drift.ts";
 export * from "./inventory.ts";
