@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Full Auto accepts installed non-default Codex models (#9003)
+
+- issues: #9003
+- commits: 7a01228b7d
+- contracts-specs: installed Codex app-server catalog; durable Full Auto continuation profile
+- invariants: provider identity and exact installed-catalog membership remain mandatory
+- evidence: docs/sol/receipts/2026-07-19-issue-9003-codex-full-auto-model-admission.md
+- lane: codex-open-issue-sweep-20260719
+
+Full Auto no longer relies on the former two-model Codex allowlist. The live
+installed Codex catalog now governs the composer, provider lane, and durable
+continuations, with explicit regression coverage for GPT-5.6-Terra and
+fail-closed coverage for models absent from that catalog.
+
 ## Sarah voice is attached to messages (#9013)
 
 - issues: #9013
