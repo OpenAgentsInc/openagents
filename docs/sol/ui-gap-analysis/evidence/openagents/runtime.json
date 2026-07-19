@@ -1,0 +1,781 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "runtime-capture",
+  "generatedAt": "2026-07-19T22:27:09.025Z",
+  "analysisId": "openagents-ide-vs-zed-ui-2026-07-19",
+  "targetId": "openagents",
+  "runtime": {
+    "accessibility": {
+      "provider": "browser-dom",
+      "trusted": true,
+      "truncated": false,
+      "nodes": [
+        {
+          "path": "dom.0",
+          "depth": 0,
+          "role": "ARIA:main",
+          "subrole": null,
+          "title": "OpenAgents shell",
+          "description": null,
+          "identifier": "openagents-desktop-root",
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 0,
+            "y": 0,
+            "width": 1728,
+            "height": 1084
+          },
+          "actions": [],
+          "children": 1
+        },
+        {
+          "path": "dom.1",
+          "depth": 0,
+          "role": "ARIA:aside",
+          "subrole": null,
+          "title": "Sessions",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 0,
+            "y": 0,
+            "width": 248,
+            "height": 1084
+          },
+          "actions": [],
+          "children": 7
+        },
+        {
+          "path": "dom.2",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Collapse sidebar",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 96,
+            "y": 8,
+            "width": 28,
+            "height": 28
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.3",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Back",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "x": 132,
+            "y": 8,
+            "width": 28,
+            "height": 28
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.4",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Forward",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "x": 162,
+            "y": 8,
+            "width": 28,
+            "height": 28
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.5",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Search sessions",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 203,
+            "y": 42,
+            "width": 28,
+            "height": 28
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.6",
+          "depth": 0,
+          "role": "ARIA:nav",
+          "subrole": null,
+          "title": "Primary",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 8,
+            "y": 76,
+            "width": 231,
+            "height": 62
+          },
+          "actions": [],
+          "children": 2
+        },
+        {
+          "path": "dom.7",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "New session",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 8,
+            "y": 76,
+            "width": 231,
+            "height": 30
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 2
+        },
+        {
+          "path": "dom.8",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Full Auto",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 8,
+            "y": 108,
+            "width": 231,
+            "height": 30
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 2
+        },
+        {
+          "path": "dom.9",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Choose project or worktree",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 220,
+            "y": 152.5,
+            "width": 15,
+            "height": 15
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.10",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Open",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 12,
+            "y": 178,
+            "width": 37.5078125,
+            "height": 24
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 0
+        },
+        {
+          "path": "dom.11",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Recover",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 53.5078125,
+            "y": 178,
+            "width": 50.65625,
+            "height": 24
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 0
+        },
+        {
+          "path": "dom.12",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Archived",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 108.1640625,
+            "y": 178,
+            "width": 53.9296875,
+            "height": 24
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 0
+        },
+        {
+          "path": "dom.13",
+          "depth": 0,
+          "role": "ARIA:combobox",
+          "subrole": null,
+          "title": "Sort projects",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 178,
+            "y": 178,
+            "width": 57,
+            "height": 24
+          },
+          "actions": [
+            "setValue"
+          ],
+          "children": 3
+        },
+        {
+          "path": "dom.14",
+          "depth": 0,
+          "role": "ARIA:nav",
+          "subrole": null,
+          "title": "Recent sessions",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 8,
+            "y": 300.796875,
+            "width": 231,
+            "height": 35.5
+          },
+          "actions": [],
+          "children": 1
+        },
+        {
+          "path": "dom.15",
+          "depth": 0,
+          "role": "ARIA:nav",
+          "subrole": null,
+          "title": "Settings",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 8,
+            "y": 1037,
+            "width": 231,
+            "height": 39
+          },
+          "actions": [],
+          "children": 1
+        },
+        {
+          "path": "dom.16",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Open Settings",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 8,
+            "y": 1046,
+            "width": 231,
+            "height": 30
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 2
+        },
+        {
+          "path": "dom.17",
+          "depth": 0,
+          "role": "ARIA:main",
+          "subrole": null,
+          "title": "New sessionReadyStart a conversation with Codex<TEST_WORKSPACE>Message Codex…CodexGPT-5.6-SolGPT-5.6-TerraGPT-5.6-LunaGPT-5.5GPT",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 248,
+            "y": 0,
+            "width": 1480,
+            "height": 1084
+          },
+          "actions": [],
+          "children": 3
+        },
+        {
+          "path": "dom.18",
+          "depth": 0,
+          "role": "ARIA:heading",
+          "subrole": null,
+          "title": "New session",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 268,
+            "y": 16.5,
+            "width": 84.21875,
+            "height": 17.5
+          },
+          "actions": [],
+          "children": 0
+        },
+        {
+          "path": "dom.19",
+          "depth": 0,
+          "role": "ARIA:section",
+          "subrole": null,
+          "title": "Conversation",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 248,
+            "y": 52,
+            "width": 1480,
+            "height": 848
+          },
+          "actions": [],
+          "children": 1
+        },
+        {
+          "path": "dom.20",
+          "depth": 0,
+          "role": "ARIA:heading",
+          "subrole": null,
+          "title": "Start a conversation with Codex",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 791.421875,
+            "y": 437,
+            "width": 393.1484375,
+            "height": 42
+          },
+          "actions": [],
+          "children": 0
+        },
+        {
+          "path": "dom.21",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Change working directory",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 1146.4140625,
+            "y": 491,
+            "width": 24,
+            "height": 24
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.22",
+          "depth": 0,
+          "role": "ARIA:textbox",
+          "subrole": null,
+          "title": "Message Codex",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": true,
+          "frame": {
+            "x": 621,
+            "y": 927,
+            "width": 734,
+            "height": 70
+          },
+          "actions": [
+            "setValue"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.23",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Add context or command",
+          "description": null,
+          "identifier": "shell-composer-discovery",
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 625,
+            "y": 1001,
+            "width": 24,
+            "height": 24
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.24",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Attach images",
+          "description": null,
+          "identifier": "shell-attach-image",
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 653,
+            "y": 1001,
+            "width": 24,
+            "height": 24
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.25",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Provider: Codex. Switch to Claude",
+          "description": null,
+          "identifier": "shell-provider-select",
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 681,
+            "y": 1001,
+            "width": 58.6875,
+            "height": 24
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 0
+        },
+        {
+          "path": "dom.26",
+          "depth": 0,
+          "role": "ARIA:combobox",
+          "subrole": null,
+          "title": "Model: gpt-5.6-sol",
+          "description": null,
+          "identifier": "shell-model-select",
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 743.6875,
+            "y": 1001,
+            "width": 192,
+            "height": 24
+          },
+          "actions": [
+            "setValue"
+          ],
+          "children": 5
+        },
+        {
+          "path": "dom.27",
+          "depth": 0,
+          "role": "ARIA:combobox",
+          "subrole": null,
+          "title": "Reasoning effort: medium",
+          "description": null,
+          "identifier": "shell-reasoning-select",
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 939.6875,
+            "y": 1001,
+            "width": 89,
+            "height": 24
+          },
+          "actions": [
+            "setValue"
+          ],
+          "children": 6
+        },
+        {
+          "path": "dom.28",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Send",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "x": 1327,
+            "y": 1001,
+            "width": 24,
+            "height": 24
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 2
+        },
+        {
+          "path": "dom.29",
+          "depth": 0,
+          "role": "ARIA:section",
+          "subrole": null,
+          "title": "Agent context disclosure",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 625,
+            "y": 1029,
+            "width": 726,
+            "height": 28
+          },
+          "actions": [],
+          "children": 1
+        },
+        {
+          "path": "dom.30",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "No agent context manifest",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 626,
+            "y": 1030,
+            "width": 690,
+            "height": 26
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        },
+        {
+          "path": "dom.31",
+          "depth": 0,
+          "role": "ARIA:button",
+          "subrole": null,
+          "title": "Refresh agent context state",
+          "description": null,
+          "identifier": null,
+          "value": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "x": 1324,
+            "y": 1030,
+            "width": 26,
+            "height": 26
+          },
+          "actions": [
+            "press"
+          ],
+          "children": 1
+        }
+      ]
+    },
+    "platform": "macOS-Version 26.4 (Build 25E246)",
+    "process": {
+      "bundleIdentifier": "com.github.Electron",
+      "name": "OpenAgents Preview",
+      "pid": 28165
+    },
+    "visual": {
+      "bytes": 828067,
+      "dominantColors": [
+        {
+          "hex": "#101010",
+          "share": 0.821900245075792
+        },
+        {
+          "hex": "#101030",
+          "share": 0.11840791504039212
+        },
+        {
+          "hex": "#103050",
+          "share": 0.05244168103839521
+        },
+        {
+          "hex": "#F0F0F0",
+          "share": 0.0020252791140963964
+        },
+        {
+          "hex": "#5090F0",
+          "share": 0.0017246074248888081
+        },
+        {
+          "hex": "#B0D0D0",
+          "share": 0.0006297086321140057
+        },
+        {
+          "hex": "#9090B0",
+          "share": 0.0003176908414268857
+        },
+        {
+          "hex": "#B0B0D0",
+          "share": 0.00025528728328946175
+        },
+        {
+          "hex": "#707090",
+          "share": 0.00023543160570028138
+        },
+        {
+          "hex": "#505070",
+          "share": 0.00022124897885086685
+        },
+        {
+          "hex": "#303050",
+          "share": 0.00020139330126168648
+        },
+        {
+          "hex": "#305090",
+          "share": 0.00017870109830262323
+        }
+      ],
+      "edgeDensity": 0.00828700632074252,
+      "height": 2392,
+      "lumaP10": 0,
+      "lumaP90": 0.08834824552088977,
+      "lumaStandardDeviation": 0.06852975991794723,
+      "meanLuma": 0.039552716194892826,
+      "path": "window.png",
+      "sha256": "121e8afe26133bc3b301a709107082d9e41943be55b3d46d25472f3a8e96d16d",
+      "width": 3680
+    },
+    "window": {
+      "frame": {
+        "height": 1084,
+        "width": 1728,
+        "x": 0,
+        "y": 33
+      },
+      "id": 6411,
+      "title": "OpenAgents Dev"
+    }
+  },
+  "limitations": [
+    "The accessibility inventory uses the live Electron DOM. It is not a VoiceOver or macOS AX conformance result."
+  ]
+}

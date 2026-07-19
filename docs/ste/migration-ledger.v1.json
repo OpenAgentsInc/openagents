@@ -39421,6 +39421,19 @@
       ]
     },
     {
+      "path": "docs/sol/2026-07-19-openagents-ide-zed-programmatic-ui-gap-analysis.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
@@ -40316,6 +40329,19 @@
     },
     {
       "path": "docs/sol/the-case-against-anthropic.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
+      "path": "docs/sol/ui-gap-analysis/README.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
       "ste_glossary_revision": "openagents-ste-glossary-v1",

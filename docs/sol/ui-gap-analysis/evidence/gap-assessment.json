@@ -1,0 +1,432 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "gap-assessment",
+  "generatedAt": "2026-07-19T22:29:17Z",
+  "analysisId": "openagents-ide-vs-zed-ui-2026-07-19",
+  "assessment": {
+    "leftTargetId": "openagents",
+    "rightTargetId": "zed",
+    "scores": [
+      {
+        "targetId": "openagents",
+        "accessibility": 3,
+        "performance": 2,
+        "responsive": 2,
+        "theming": 2,
+        "antiPatterns": 2,
+        "total": 11,
+        "rating": "acceptable"
+      },
+      {
+        "targetId": "zed",
+        "accessibility": 2,
+        "performance": 3,
+        "responsive": 3,
+        "theming": 4,
+        "antiPatterns": 4,
+        "total": 16,
+        "rating": "good"
+      }
+    ],
+    "findings": [
+      {
+        "id": "UI-GAP-01",
+        "axis": "application-shell",
+        "capability": "Resizable docks, panes, and persistent workbench layout",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/shell.ts", "startLine": 5099, "endLine": 5227 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/workspace/src/dock.rs", "startLine": 1049, "endLine": 1165 },
+          { "kind": "runtime", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "evidence/zed/runtime.json" }
+        ],
+        "runtimeProbe": "Open a project, resize each dock, split the center pane, restart, and compare the restored geometry.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents has the required shell regions. Zed has a deeper direct-manipulation dock and pane model."
+      },
+      {
+        "id": "UI-GAP-02",
+        "axis": "project-explorer",
+        "capability": "Complete contextual file management",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/ide/pierre-tree-adapter.tsx", "startLine": 74, "endLine": 182 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/project_panel/src/project_panel.rs", "startLine": 6867, "endLine": 7059 }
+        ],
+        "runtimeProbe": "Exercise rename, move, duplicate, delete, clipboard, trash restore, ignored-file, and diagnostic navigation actions.",
+        "productScopeDisposition": "close-gap",
+        "notes": "The current OpenAgents Pierre tree has rename, drag move, duplicate, delete, compare, reveal, terminal, and search actions. The remaining gaps are clipboard, trash restore, ignore controls, and richer navigation."
+      },
+      {
+        "id": "UI-GAP-03",
+        "axis": "tabs-and-panes",
+        "capability": "Direct pane splitting and tab-group management",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx", "startLine": 250, "endLine": 299 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/workspace/src/pane.rs", "startLine": 3396, "endLine": 3599 }
+        ],
+        "runtimeProbe": "Drag a tab to each split target and confirm focus, close, reopen, and restoration behavior.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents models tabs, preview state, split state, and groups. Zed gives the user a more complete pane interaction model."
+      },
+      {
+        "id": "UI-GAP-04",
+        "axis": "command-palette",
+        "capability": "Query and fuzzy command search",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P0",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/shell.ts", "startLine": 5929, "endLine": 6000 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/command_palette/src/command_palette.rs", "startLine": 95, "endLine": 157 },
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/command_palette/src/command_palette.rs", "startLine": 460, "endLine": 512 }
+        ],
+        "runtimeProbe": "Open the palette, enter mixed-case fragments, and verify ranked keyboard selection.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents renders a fixed command list and shortcuts, but it has no query field or fuzzy filter."
+      },
+      {
+        "id": "UI-GAP-05",
+        "axis": "project-search",
+        "capability": "Repository search and replace with scope controls",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P0",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/workspace-browser.ts", "startLine": 184, "endLine": 306 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/search/src/project_search.rs", "startLine": 1339, "endLine": 1373 },
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/search/src/project_search.rs", "startLine": 2505, "endLine": 2598 }
+        ],
+        "runtimeProbe": "Run regex search, replace one, replace all, include and exclude globs, open-file scope, and ignored-file scope.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents has bounded path and content search. It does not expose the controls that users need for a repository refactor."
+      },
+      {
+        "id": "UI-GAP-06",
+        "axis": "language-intelligence",
+        "capability": "Project-aware language features across common languages",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P0",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx", "startLine": 200, "endLine": 222 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/editor/src/editor.rs", "startLine": 7685, "endLine": 8182 },
+          { "kind": "runtime", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "evidence/zed/ocr.json" }
+        ],
+        "runtimeProbe": "Open TypeScript, JavaScript, Rust, Python, and Go fixtures and run definition, references, format, rename, and code actions.",
+        "productScopeDisposition": "close-gap",
+        "notes": "The OpenAgents project-aware gate accepts only TypeScript and JavaScript. The source-built Zed fixture showed a Rust editor and Rust status."
+      },
+      {
+        "id": "UI-GAP-07",
+        "axis": "agent-review",
+        "capability": "Review and apply agent changes with evidence lineage",
+        "leftStatus": "implemented",
+        "rightStatus": "implemented",
+        "gapClass": "left-lead",
+        "priority": "none",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-agent-code.tsx", "startLine": 52, "endLine": 134 },
+          { "kind": "visual", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "evidence/openagents/files-rich-diff-current.png" }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/agent_ui/src/agent_diff.rs", "startLine": 696, "endLine": 844 }
+        ],
+        "runtimeProbe": "Create the same two-file agent change and compare hunk review, operation selection, undo, evidence, and backlink behavior.",
+        "productScopeDisposition": "preserve-left-lead",
+        "notes": "Both products have agent diff review. OpenAgents has stronger typed operations, evidence, lineage, checkpoints, and conversation-to-code backlinks."
+      },
+      {
+        "id": "UI-GAP-08",
+        "axis": "git",
+        "capability": "Stage, commit, synchronize, branch, and resolve conflicts",
+        "leftStatus": "absent",
+        "rightStatus": "implemented",
+        "gapClass": "scope-difference",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/git-panel.ts", "startLine": 5, "endLine": 16 },
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/git-panel.ts", "startLine": 495, "endLine": 515 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/git_ui/src/git_panel.rs", "startLine": 2472, "endLine": 3030 }
+        ],
+        "runtimeProbe": "Stage a range, commit, pull, push, stash, and resolve one conflict in a disposable repository.",
+        "productScopeDisposition": "product-decision-required",
+        "notes": "OpenAgents deliberately withholds Git mutation UI. This difference is parity debt only if product authority admits Git delivery actions."
+      },
+      {
+        "id": "UI-GAP-09",
+        "axis": "terminal",
+        "capability": "Terminal-native PTY interaction",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx", "startLine": 454, "endLine": 503 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/terminal_view/src/terminal_view.rs", "startLine": 223, "endLine": 349 }
+        ],
+        "runtimeProbe": "Run an interactive full-screen command, selection, scrollback, copy, paste, resize, interrupt, and restart.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents has sessions, output, input, interrupt, restart, and port previews. It uses a transcript surface instead of a terminal emulator."
+      },
+      {
+        "id": "UI-GAP-10",
+        "axis": "tasks-and-debug",
+        "capability": "Task selection, run history, and debugger controls",
+        "leftStatus": "absent",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P0",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/shell.ts", "startLine": 607, "endLine": 615 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/tasks_ui/src/modal.rs", "startLine": 125, "endLine": 165 },
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/debugger_ui/src/debugger_panel.rs", "startLine": 610, "endLine": 930 }
+        ],
+        "runtimeProbe": "Run a named task, rerun it from history, start a debug session, step, inspect frames and variables, and stop.",
+        "productScopeDisposition": "close-gap",
+        "notes": "No user-visible task runner or debugger was observed in the OpenAgents renderer composition."
+      },
+      {
+        "id": "UI-GAP-11",
+        "axis": "settings-theme-keymap",
+        "capability": "Searchable settings, appearance selection, and keymap discovery",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-settings-surface.tsx", "startLine": 13, "endLine": 62 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/settings_ui/src/settings_ui.rs", "startLine": 433, "endLine": 798 },
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/keymap_editor/src/keymap_editor.rs", "startLine": 1147, "endLine": 1666 }
+        ],
+        "runtimeProbe": "Search one setting, change a theme and icon theme, edit a shortcut, and verify a conflict message.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents exposes account, Codex, usage, Vim, plugin, keybinding, diagnostic, and source-control settings. Zed has a more complete settings and appearance interface."
+      },
+      {
+        "id": "UI-GAP-12",
+        "axis": "extensions",
+        "capability": "Editor extension discovery and lifecycle",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "scope-difference",
+        "priority": "P2",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-settings-surface.tsx", "startLine": 45, "endLine": 48 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/extensions_ui/src/extensions_ui.rs", "startLine": 619, "endLine": 790 }
+        ],
+        "runtimeProbe": "Search, install, update, disable, and uninstall a disposable editor extension.",
+        "productScopeDisposition": "product-decision-required",
+        "notes": "OpenAgents manages MCP and product plugins. It does not expose a Zed-like editor extension marketplace."
+      },
+      {
+        "id": "UI-GAP-13",
+        "axis": "remote-and-collaboration",
+        "capability": "Remote workspace editing and live human collaboration",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "scope-difference",
+        "priority": "P2",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-connect-surface.tsx", "startLine": 15, "endLine": 53 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/remote_connection/src/remote_connection.rs", "startLine": 540, "endLine": 723 },
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/collab_ui/src/collab_panel.rs", "startLine": 1119, "endLine": 1270 }
+        ],
+        "runtimeProbe": "Connect to an SSH fixture and share a project with a second test identity.",
+        "productScopeDisposition": "product-decision-required",
+        "notes": "OpenAgents has differentiated remote agent-session control and mobile pairing. It does not expose remote human editing or shared-project UI."
+      },
+      {
+        "id": "UI-GAP-14",
+        "axis": "restoration",
+        "capability": "Restore the complete workbench state",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "functional-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/workspace-editor.ts", "startLine": 882, "endLine": 976 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/workspace/src/persistence.rs", "startLine": 1468, "endLine": 1640 }
+        ],
+        "runtimeProbe": "Set panes, docks, tabs, selections, scroll, folds, breakpoints, and remote state, then restart and compare.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents restores editors, drafts, selections, tabs, and history. Zed persists more of the full workbench."
+      },
+      {
+        "id": "UI-GAP-15",
+        "axis": "accessibility-proof",
+        "capability": "Runtime semantic access to the complete editor surface",
+        "leftStatus": "partial",
+        "rightStatus": "partial",
+        "gapClass": "quality-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "test", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "69 accessibility and design contract tests passed" },
+          { "kind": "runtime", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "evidence/openagents/runtime.json" }
+        ],
+        "rightEvidence": [
+          { "kind": "runtime", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "evidence/zed/runtime.json" },
+          { "kind": "runtime", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "evidence/zed/ocr.json" }
+        ],
+        "runtimeProbe": "Run keyboard-only and VoiceOver tasks for explorer, editor, review, terminal, tasks, debug, and settings.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents exposed 32 live DOM landmarks and controls. Zed exposed 314 AX nodes, but 279 were menu items and its custom editor contents were absent. OCR confirmed the visible editor but not its semantics."
+      },
+      {
+        "id": "UI-GAP-16",
+        "axis": "responsive-layout",
+        "capability": "Keep navigation available in a narrow desktop window",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "quality-gap",
+        "priority": "P1",
+        "confidence": "medium",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/app.css", "startLine": 403, "endLine": 435 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/workspace/src/dock.rs", "startLine": 1049, "endLine": 1165 }
+        ],
+        "runtimeProbe": "Resize from 1728 pixels to 640 pixels and confirm access to every primary navigation command.",
+        "productScopeDisposition": "close-gap",
+        "notes": "OpenAgents hides the shell sidebar below 760 pixels. The inspected composition did not show a replacement trigger. This is a likely defect that needs a live narrow-window proof."
+      },
+      {
+        "id": "UI-GAP-17",
+        "axis": "visual-conformance",
+        "capability": "A current and green visual regression gate",
+        "leftStatus": "partial",
+        "rightStatus": "not-observed",
+        "gapClass": "quality-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "visual", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "evidence/openagents/visual-baseline-drift-summary.json" },
+          { "kind": "visual", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "evidence/openagents/files-rich-diff-current.png" }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/zed_visual_test_runner" }
+        ],
+        "runtimeProbe": "Run each product visual suite against reviewed baselines from the pinned commit.",
+        "productScopeDisposition": "close-gap",
+        "notes": "All 24 OpenAgents visual states exceeded the 0.001 pixel-ratio threshold. Zed has a deterministic Metal capture runner, but this checkout had no supplied baselines and the run did not complete."
+      },
+      {
+        "id": "UI-GAP-18",
+        "axis": "ai-editing-visuals",
+        "capability": "A styled and scannable AI editing surface",
+        "leftStatus": "partial",
+        "rightStatus": "implemented",
+        "gapClass": "quality-gap",
+        "priority": "P1",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/ide/react-cursor.tsx", "startLine": 68, "endLine": 205 },
+          { "kind": "test", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "No stylesheet selector matched oa-react-ide-cursor or oa-react-ide-cursor-candidates" }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/agent_ui/src/agent_diff.rs", "startLine": 328, "endLine": 435 }
+        ],
+        "runtimeProbe": "Create completion, next-edit, answer, and proposal candidates and inspect density, hierarchy, focus, overflow, and error states.",
+        "productScopeDisposition": "close-gap",
+        "notes": "The OpenAgents React surface declares two cursor class names, but no matching CSS selector exists in the tracked source."
+      },
+      {
+        "id": "UI-GAP-19",
+        "axis": "browser-preview",
+        "capability": "Local preview with viewport presets",
+        "leftStatus": "partial",
+        "rightStatus": "not-observed",
+        "gapClass": "left-lead",
+        "priority": "none",
+        "confidence": "medium",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx", "startLine": 506, "endLine": 546 }
+        ],
+        "rightEvidence": [],
+        "runtimeProbe": "Start a local fixture, switch viewport presets, open the system browser, and verify all unavailable controls are explicit.",
+        "productScopeDisposition": "preserve-left-lead",
+        "notes": "OpenAgents has a useful preview and viewport concept. It must not be described as a complete embedded browser."
+      },
+      {
+        "id": "UI-GAP-20",
+        "axis": "state-feedback",
+        "capability": "Loading, empty, degraded, error, and recovery states",
+        "leftStatus": "implemented",
+        "rightStatus": "implemented",
+        "gapClass": "no-material-gap",
+        "priority": "none",
+        "confidence": "high",
+        "leftEvidence": [
+          { "kind": "source", "revision": "41726ba7068ef89c35d9f749ea9966caab95ef65", "ref": "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx", "startLine": 269, "endLine": 324 }
+        ],
+        "rightEvidence": [
+          { "kind": "source", "revision": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4", "ref": "crates/workspace/src/workspace_error.rs", "startLine": 7, "endLine": 132 }
+        ],
+        "runtimeProbe": "Force loading, empty, partial, unavailable, stale, and permission failures in a disposable fixture.",
+        "productScopeDisposition": "retain-difference",
+        "notes": "Both products have strong source-level feedback and recovery intent. OpenAgents makes partial and degraded evidence states especially explicit."
+      }
+    ]
+  },
+  "limitations": [
+    "Priorities describe the work that is necessary for a broad desktop IDE claim. They do not change the current OpenAgents ProductSpec.",
+    "Zed source is comparison evidence. It is not OpenAgents product authority.",
+    "The OpenAgents live capture shows the isolated signed-out shell. The IDE-specific visual evidence comes from the current visual fixture run.",
+    "The Zed runtime capture uses a disposable Rust fixture and a debug binary.",
+    "No assistive-technology user completed a task-based review in this run."
+  ]
+}

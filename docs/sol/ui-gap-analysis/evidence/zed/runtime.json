@@ -1,0 +1,7594 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "runtime-capture",
+  "generatedAt": "2026-07-19T22:25:48.807Z",
+  "analysisId": "openagents-ide-vs-zed-ui-2026-07-19",
+  "targetId": "zed",
+  "runtime": {
+    "accessibility": {
+      "nodes": [
+        {
+          "actions": [],
+          "children": 2,
+          "depth": 0,
+          "description": null,
+          "enabled": null,
+          "focused": null,
+          "frame": null,
+          "identifier": null,
+          "path": "0",
+          "role": "AXApplication",
+          "subrole": null,
+          "title": "zed",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXRaise"
+          ],
+          "children": 3,
+          "depth": 1,
+          "description": null,
+          "enabled": null,
+          "focused": true,
+          "frame": {
+            "height": 1084,
+            "width": 1536,
+            "x": 96,
+            "y": 33
+          },
+          "identifier": null,
+          "path": "0.0",
+          "role": "AXWindow",
+          "subrole": "AXStandardWindow",
+          "title": "fixture — main.rs",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 10,
+          "depth": 1,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 1728,
+            "x": 0,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1",
+          "role": "AXMenuBar",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 16,
+            "width": 16,
+            "x": 104,
+            "y": 41
+          },
+          "identifier": null,
+          "path": "0.0.0",
+          "role": "AXButton",
+          "subrole": "AXCloseButton",
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXPress",
+            "AXShowMenu",
+            "AXZoomWindow"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 16,
+            "width": 16,
+            "x": 150,
+            "y": 41
+          },
+          "identifier": null,
+          "path": "0.0.1",
+          "role": "AXButton",
+          "subrole": "AXFullScreenButton",
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 16,
+            "width": 16,
+            "x": 127,
+            "y": 41
+          },
+          "identifier": null,
+          "path": "0.0.2",
+          "role": "AXButton",
+          "subrole": "AXMinimizeButton",
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 34,
+            "x": 10,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.0",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "Apple",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 44,
+            "x": 44,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.1",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "zed",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 42,
+            "x": 88,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.2",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "File",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 44,
+            "x": 130,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.3",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "Edit",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 77,
+            "x": 174,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.4",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "Selection",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 50,
+            "x": 251,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.5",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "View",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 38,
+            "x": 301,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.6",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "Go",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 44,
+            "x": 339,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.7",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "Run",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 69,
+            "x": 383,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.8",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "Window",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 2,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 33,
+            "width": 48,
+            "x": 452,
+            "y": 0
+          },
+          "identifier": null,
+          "path": "0.1.9",
+          "role": "AXMenuBarItem",
+          "subrole": null,
+          "title": "Help",
+          "value": null
+        },
+        {
+          "actions": [],
+          "children": 1,
+          "depth": 3,
+          "description": null,
+          "enabled": null,
+          "focused": false,
+          "frame": {
+            "height": 14,
+            "width": 14,
+            "x": 151,
+            "y": 42
+          },
+          "identifier": null,
+          "path": "0.0.1.0",
+          "role": "AXGroup",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 21,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 15,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 16,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.2.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 17,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 15,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.4.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 24,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.5.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 16,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.6.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 14,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.7.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 11,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 13,
+          "depth": 3,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.9.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": null,
+          "focused": false,
+          "frame": {
+            "height": 14,
+            "width": 14,
+            "x": 151,
+            "y": 42
+          },
+          "identifier": null,
+          "path": "0.0.1.0.0",
+          "role": "AXGroup",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_aboutThisMacRequested:",
+          "path": "0.1.0.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "About This Mac",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_systemInformationRequested:",
+          "path": "0.1.0.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "System Information",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_systemSettingsRequested:",
+          "path": "0.1.0.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "System Settings…, 1 update",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_appStoreRequested:",
+          "path": "0.1.0.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "App Store",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentsRequested:",
+          "path": "0.1.0.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Recent Items",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_forceQuitPanelRequested:",
+          "path": "0.1.0.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Force Quit…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_forceQuitRequested:",
+          "path": "0.1.0.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Force Quit zed",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_sleepRequested:",
+          "path": "0.1.0.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Sleep",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_restartRequested:",
+          "path": "0.1.0.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Restart…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_restartNowRequested:",
+          "path": "0.1.0.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Restart",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_shutDownRequested:",
+          "path": "0.1.0.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Shut Down…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_shutDownNowRequested:",
+          "path": "0.1.0.0.15",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Shut Down",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.16",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_lockScreenRequested:",
+          "path": "0.1.0.0.17",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Lock Screen",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_logOutRequested:",
+          "path": "0.1.0.0.18",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Log Out <USER>…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_logOutNowRequested:",
+          "path": "0.1.0.0.19",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Log Out <USER>",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.20",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "About Zed",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Check for Updates",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Settings",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Services",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Extensions",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Install CLI",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Hide Zed",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Hide Others",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show All",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Quit Zed",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "New",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "New Window",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.2.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Recent…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Remote…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.2.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Add Folder to Project…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.2.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Save",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Save As…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Save All",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.2.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Close Editor",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Close Project",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.2.0.15",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Close Window",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.3.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Undo",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.3.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Redo",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "cut:",
+          "path": "0.1.3.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Cut",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "copy:",
+          "path": "0.1.3.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Copy",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.3.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Copy and Trim",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "paste:",
+          "path": "0.1.3.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Paste",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.3.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Find",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.3.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Find in Project",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.3.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Toggle Line Comment",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "__NSTextViewContextSubmenuIdentifierWritingTools",
+          "path": "0.1.3.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Writing Tools",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_NSMenuItemAutoFillIdentifier",
+          "path": "0.1.3.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "AutoFill",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "startDictation:",
+          "path": "0.1.3.0.15",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Start Dictation…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "orderFrontCharacterPalette:",
+          "path": "0.1.3.0.16",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Emoji & Symbols",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "selectAll:",
+          "path": "0.1.4.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Select All",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Expand Selection",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Shrink Selection",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Select Next Sibling",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Select Previous Sibling",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.4.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Add Cursor Above",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Add Cursor Below",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Select Next Occurrence",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Select Previous Occurrence",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Select All Occurrences",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.4.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Move Line Up",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Move Line Down",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.4.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Duplicate Selection",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Zoom In",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Zoom Out",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Reset Zoom",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Reset All Zoom",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.5.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Toggle Left Dock",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Toggle Right Dock",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Toggle Bottom Dock",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Toggle All Docks",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.5.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Editor Layout",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.5.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Project Panel",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Outline Panel",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Collab Panel",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Terminal Panel",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.15",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Debugger Panel",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.16",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Agent Panel",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.17",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Git Panel",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.5.0.18",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.19",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Diagnostics",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.5.0.20",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.21",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Toggle GPUI Inspector",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.5.0.22",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "toggleFullScreen:",
+          "path": "0.1.5.0.23",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Enter Full Screen",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Back",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Forward",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.6.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Command Palette...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.6.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Go to File...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Go to Symbol in Editor...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Go to Line/Column...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.6.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Go to Definition",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Go to Declaration",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Go to Type Definition",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Find All References",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.6.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Next Problem",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.6.0.15",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Previous Problem",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Spawn Task",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Start Debugger",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.7.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Edit tasks.json...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Edit debug.json...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.7.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Continue",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Step Over",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Step Into",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Step Out",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.7.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Toggle Breakpoint",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Edit Breakpoint",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.7.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Clear All Breakpoints",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomFill:",
+          "path": "0.1.8.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Fill",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomCenter:",
+          "path": "0.1.8.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Center",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Move & Resize",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 1,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Full Screen Tile",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_removeWindowFromStageManagerSet:",
+          "path": "0.1.8.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Remove Window from Set",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.8.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Minimize",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.8.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Zoom",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "makeKeyAndOrderFront:",
+          "path": "0.1.8.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "fixture — main.rs",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "View Release Notes Locally",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "View Telemetry",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "View Dependency Licenses",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show Welcome",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.9.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "File Bug Report...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Request Feature...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Email Us...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.9.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Documentation",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Zed Repository",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Zed Twitter",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 4,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.9.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Join the Team",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 48,
+          "depth": 5,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.6.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 12,
+          "depth": 5,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.3.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 9,
+          "depth": 5,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.5.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 15,
+          "depth": 5,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.13.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 3,
+          "depth": 5,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.14.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 4,
+          "depth": 5,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.5.0.9.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 24,
+          "depth": 5,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.3.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel"
+          ],
+          "children": 2,
+          "depth": 5,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.4.0",
+          "role": "AXMenu",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.6.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Applications",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Archive Utility",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “Archive Utility” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ChatGPT",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ChatGPT” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Discord",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “Discord” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Google Chrome",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “Google Chrome” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Loom",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “Loom” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "OpenAgents RC",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “OpenAgents RC” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Preview",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “Preview” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.15",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "QuickTime Player",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.16",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “QuickTime Player” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.17",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Slack",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.18",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “Slack” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.19",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "System Settings",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.20",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “System Settings” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.6.0.21",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.6.0.22",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Documents",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.23",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "fixture",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.24",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “fixture” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.25",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.26",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.27",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.28",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.29",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.30",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.31",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.32",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.33",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.34",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.35",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.36",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.37",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.38",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.39",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.40",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.41",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "ide10.ts",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.42",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show “ide10.ts” in Finder",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.6.0.43",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.6.0.44",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Servers",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_recentItemRequested:",
+          "path": "0.1.0.0.6.0.45",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Macintosh HD",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.0.0.6.0.46",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_clearRecentItemsRequested:",
+          "path": "0.1.0.0.6.0.47",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Clear Menu",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Settings",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Settings File",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Project Settings",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Project Settings File",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Default Settings",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.3.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Keymap",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Keymap File",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Open Default Key Bindings",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.1.0.3.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Select Theme...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.1.0.3.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Select Icon Theme...",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_processRequest:",
+          "path": "0.1.1.0.5.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Activity Monitor",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_processRequest:",
+          "path": "0.1.1.0.5.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Allocations & Leaks",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_processRequest:",
+          "path": "0.1.1.0.5.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "File Activity",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_processRequest:",
+          "path": "0.1.1.0.5.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "System Trace",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_processRequest:",
+          "path": "0.1.1.0.5.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Time Profile Active Application",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_processRequest:",
+          "path": "0.1.1.0.5.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Time Profile App Under Mouse",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_processRequest:",
+          "path": "0.1.1.0.5.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Time Profile Entire System",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_processRequest:",
+          "path": "0.1.1.0.5.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Toggle Instruments Recording",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_configureServicesMenu:",
+          "path": "0.1.1.0.5.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Services Settings…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Show Writing Tools",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.13.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Proofread",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Rewrite",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.13.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Make Friendly",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Make Professional",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Make Concise",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.13.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Summarize",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Create Key Points",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Make List",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Make Table",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.3.0.13.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "showWritingTools:",
+          "path": "0.1.3.0.13.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Compose…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_handleInsertFromContactsCommand:",
+          "path": "0.1.3.0.14.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Contact…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_handleInsertFromPasswordsCommand:",
+          "path": "0.1.3.0.14.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Passwords…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_handleInsertFromCreditCardsCommand:",
+          "path": "0.1.3.0.14.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Credit Card…",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.9.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Split Up",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.9.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Split Down",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.9.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Split Left",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "handleGPUIMenuItem:",
+          "path": "0.1.5.0.9.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Split Right",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.3.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Halves",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomLeft:",
+          "path": "0.1.8.0.3.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Left",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomRight:",
+          "path": "0.1.8.0.3.0.2",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Right",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomTop:",
+          "path": "0.1.8.0.3.0.3",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Top",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomBottom:",
+          "path": "0.1.8.0.3.0.4",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Bottom",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.3.0.5",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.3.0.6",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Quarters",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomTopLeft:",
+          "path": "0.1.8.0.3.0.7",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Top Left",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomTopRight:",
+          "path": "0.1.8.0.3.0.8",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Top Right",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomBottomLeft:",
+          "path": "0.1.8.0.3.0.9",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Bottom Left",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomBottomRight:",
+          "path": "0.1.8.0.3.0.10",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Bottom Right",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.3.0.11",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.3.0.12",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Arrange",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomLeftAndRight:",
+          "path": "0.1.8.0.3.0.13",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Left & Right",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomLeftThreeUp:",
+          "path": "0.1.8.0.3.0.14",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Left & Quarters",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomRightAndLeft:",
+          "path": "0.1.8.0.3.0.15",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Right & Left",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomRightThreeUp:",
+          "path": "0.1.8.0.3.0.16",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Right & Quarters",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomTopAndBottom:",
+          "path": "0.1.8.0.3.0.17",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Top & Bottom",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomTopThreeUp:",
+          "path": "0.1.8.0.3.0.18",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Top & Quarters",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomBottomAndTop:",
+          "path": "0.1.8.0.3.0.19",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Bottom & Top",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomBottomThreeUp:",
+          "path": "0.1.8.0.3.0.20",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Bottom & Quarters",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomQuarters:",
+          "path": "0.1.8.0.3.0.21",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Quarters",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": null,
+          "path": "0.1.8.0.3.0.22",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": null,
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": false,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_zoomUntile:",
+          "path": "0.1.8.0.3.0.23",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Return to Previous Size",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_tileLeft:",
+          "path": "0.1.8.0.4.0.0",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Left of Screen",
+          "value": null
+        },
+        {
+          "actions": [
+            "AXCancel",
+            "AXPick",
+            "AXPress"
+          ],
+          "children": 0,
+          "depth": 6,
+          "description": null,
+          "enabled": true,
+          "focused": false,
+          "frame": {
+            "height": 0,
+            "width": 0,
+            "x": 0,
+            "y": 1117
+          },
+          "identifier": "_tileRight:",
+          "path": "0.1.8.0.4.0.1",
+          "role": "AXMenuItem",
+          "subrole": null,
+          "title": "Right of Screen",
+          "value": null
+        }
+      ],
+      "truncated": false,
+      "trusted": true,
+      "provider": "macos-ax"
+    },
+    "platform": "macOS-Version 26.4 (Build 25E246)",
+    "process": {
+      "bundleIdentifier": null,
+      "name": "zed",
+      "pid": 14519
+    },
+    "visual": {
+      "bytes": 819048,
+      "dominantColors": [
+        {
+          "hex": "#303050",
+          "share": 0.619918390586449
+        },
+        {
+          "hex": "#101010",
+          "share": 0.15911305117985702
+        },
+        {
+          "hex": "#305050",
+          "share": 0.15187891440501045
+        },
+        {
+          "hex": "#505050",
+          "share": 0.051802998671474663
+        },
+        {
+          "hex": "#505070",
+          "share": 0.006788131840323907
+        },
+        {
+          "hex": "#707070",
+          "share": 0.004589738723350415
+        },
+        {
+          "hex": "#90B0F0",
+          "share": 0.0009552729803251723
+        },
+        {
+          "hex": "#B0B0D0",
+          "share": 0.000714873157461884
+        },
+        {
+          "hex": "#B0D090",
+          "share": 0.0005092680458024926
+        },
+        {
+          "hex": "#F0F0F0",
+          "share": 0.0003764155121148858
+        },
+        {
+          "hex": "#507070",
+          "share": 0.00033529448978300753
+        },
+        {
+          "hex": "#D0D0D0",
+          "share": 0.00032264186752704497
+        }
+      ],
+      "edgeDensity": 0.012208048597698454,
+      "height": 2392,
+      "lumaP10": 0,
+      "lumaP90": 0.26482553592324254,
+      "lumaStandardDeviation": 0.09985486433970153,
+      "meanLuma": 0.20571350701946417,
+      "path": "window.png",
+      "sha256": "13c24c05b67399693d6b9e6f2e61538809231911f442e96e99c53d6a6c4167f1",
+      "width": 3296
+    },
+    "window": {
+      "frame": {
+        "height": 1084,
+        "width": 1536,
+        "x": 96,
+        "y": 33
+      },
+      "id": 6385,
+      "title": "fixture — main.rs"
+    }
+  },
+  "limitations": []
+}

@@ -9,6 +9,12 @@
       "disposition": "retain-active-audit",
       "dispatch": false
     },
+    "docs/sol/2026-07-19-openagents-ide-zed-programmatic-ui-gap-analysis.md": {
+      "class": "historical-analysis",
+      "owner": "Sol issue #9035",
+      "disposition": "retain-reference",
+      "dispatch": false
+    },
     "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md": {
       "class": "authority",
       "owner": "OpenAgents managed sandboxes / epic #9023",
@@ -367,6 +373,12 @@
       "class": "index",
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
+      "dispatch": false
+    },
+    "docs/sol/ui-gap-analysis/README.md": {
+      "class": "contract",
+      "owner": "Sol issue #9035",
+      "disposition": "retain-active-contract",
       "dispatch": false
     },
     "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md": {

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-19",
-  "sourceTreeSha256": "7514556c7940921e087b725ee426603a06f0994b12066407ca8616c6050102d4",
+  "sourceTreeSha256": "12609b33b0f7b07f193116d0c60dc9c1c68a7e3989d8b3d306eda6271b7101fe",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2328,6 +2328,23 @@
       ]
     },
     {
+      "path": "docs/sol/2026-07-19-openagents-ide-zed-programmatic-ui-gap-analysis.md",
+      "class": "historical-analysis",
+      "owner": "Sol issue #9035",
+      "disposition": "retain-reference",
+      "dispatch": false,
+      "sha256": "87c56ae5f60f036442b3ffef3652c8b6e6cf8fdfd6745a0899dd2416607abbe1",
+      "status": "complete assessment",
+      "snapshot": "OpenAgents `41726ba7068ef89c35d9f749ea9966caab95ef65`; Zed `f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4`",
+      "reviewedAt": "2026-07-19",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": [
+        9035
+      ]
+    },
+    {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
       "class": "contract",
       "owner": "Sol roadmap",
@@ -4122,6 +4139,25 @@
       ],
       "inboundSourceCount": 1,
       "issueLinks": []
+    },
+    {
+      "path": "docs/sol/ui-gap-analysis/README.md",
+      "class": "contract",
+      "owner": "Sol issue #9035",
+      "disposition": "retain-active-contract",
+      "dispatch": false,
+      "sha256": "f8e1aff835ab6f3fdf68ce958a269ca2733f831408db762cbd482cd4b1139e39",
+      "status": "active",
+      "snapshot": "2026-07-19",
+      "reviewedAt": "2026-07-19",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/sol/2026-07-19-openagents-ide-zed-programmatic-ui-gap-analysis.md"
+      ],
+      "inboundSourceCount": 1,
+      "issueLinks": [
+        9035
+      ]
     }
   ]
 }

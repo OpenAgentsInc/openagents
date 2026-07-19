@@ -1,0 +1,33 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "command-receipt",
+  "generatedAt": "2026-07-19T22:24:45.346Z",
+  "command": {
+    "label": "zed-source-build-cached",
+    "argv": [
+      "env",
+      "RUSTUP_HOME=<TEMP_PATH>",
+      "RUSTUP_TOOLCHAIN=1.95.0",
+      "cargo",
+      "build",
+      "-p",
+      "zed",
+      "--bin",
+      "zed"
+    ],
+    "cwd": "<ZED_ROOT>",
+    "startedAt": "2026-07-19T22:24:43.734Z",
+    "completedAt": "2026-07-19T22:24:45.346Z",
+    "durationMs": 1612,
+    "exitCode": 0,
+    "signal": null,
+    "stdoutTail": "",
+    "stderrTail": "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.04s\n",
+    "artifact": {
+      "path": "<ZED_BUILD>/zed",
+      "sha256": "0fe792082059a28bd6d4922ea1e6100dd8658e71d2cf92045a8639c0cfd0d331",
+      "bytes": 1176800136
+    }
+  },
+  "limitations": []
+}

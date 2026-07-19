@@ -1,0 +1,810 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "source-scan",
+  "generatedAt": "2026-07-19T22:12:52.507Z",
+  "analysisId": "openagents-ide-vs-zed-ui-2026-07-19",
+  "targetId": "zed",
+  "identity": {
+    "root": "<ZED_ROOT>",
+    "commit": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4",
+    "tree": "bc5e231b224529baeb1a3cc2c8ea54eff8ac21ad",
+    "dirty": false,
+    "commitTime": "2026-07-18T22:40:55Z",
+    "subject": "agent_ui: Show controls after every agent message (#61245)"
+  },
+  "source": {
+    "trackedFiles": 4206,
+    "corpusFiles": 752,
+    "corpusBytes": 21173349,
+    "corpusDigest": "448ee8d110a6748e24b57ffd3c49580b54df08b8a8c28ec6db591e6d547c55b0",
+    "probes": [
+      {
+        "id": "semantic-controls",
+        "axis": "accessibility",
+        "matchCount": 1393,
+        "fileCount": 114,
+        "samples": [
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 881,
+            "text": "Button::new(\"open-repository\", \"Open Repository\")",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 887,
+            "text": ".tooltip({",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 898,
+            "text": ".on_click({",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 911,
+            "text": "Button::new(",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 923,
+            "text": ".on_click(",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 928,
+            "text": "Button::new(\"configure-server\", \"Configure Server\")",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 934,
+            "text": ".on_click(cx.listener(|this, _event, _window, cx| {",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 977,
+            "text": "Button::new(\"authenticate-server\", \"Authenticate\")",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          }
+        ]
+      },
+      {
+        "id": "focus-and-keyboard",
+        "axis": "accessibility",
+        "matchCount": 2153,
+        "fileCount": 134,
+        "samples": [
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 8,
+            "text": "AsyncWindowContext, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable, ScrollHandle,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 28,
+            "text": "CommonAnimationExt, KeyBinding, Modal, ModalFooter, ModalHeader, Section, Tooltip,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 781,
+            "text": "fn focus_handle(&self, cx: &App) -> FocusHandle {",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 920,
+            "text": "KeyBinding::for_action_in(&menu::Cancel, &focus_handle, cx)",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 931,
+            "text": "KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 1118,
+            "text": ".key_context(\"ConfigureContextServerModal\")",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 1119,
+            "text": ".on_action(",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 1122,
+            "text": ".on_action(",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          }
+        ]
+      },
+      {
+        "id": "project-navigation",
+        "axis": "project-files",
+        "matchCount": 704,
+        "fileCount": 29,
+        "samples": [
+          {
+            "path": "crates/agent_ui/src/conversation_view/thread_view.rs",
+            "line": 12288,
+            "text": "cx.emit(project::Event::RevealInProjectPanel(entry_id));",
+            "sha256": "592edeaa25ed8d55379276bbae267a047e32e7a93b3bc3021a6e2634374815b8"
+          },
+          {
+            "path": "crates/agent_ui/src/ui/mention_crease.rs",
+            "line": 192,
+            "text": "reveal_in_project_panel(workspace, abs_path, cx);",
+            "sha256": "039014b2642d3958800774bd50491fbe041a9d6ee392e101ad5a823e3575f7fe"
+          },
+          {
+            "path": "crates/agent_ui/src/ui/mention_crease.rs",
+            "line": 342,
+            "text": "fn reveal_in_project_panel(",
+            "sha256": "039014b2642d3958800774bd50491fbe041a9d6ee392e101ad5a823e3575f7fe"
+          },
+          {
+            "path": "crates/agent_ui/src/ui/mention_crease.rs",
+            "line": 356,
+            "text": "cx.emit(project::Event::RevealInProjectPanel(entry_id));",
+            "sha256": "039014b2642d3958800774bd50491fbe041a9d6ee392e101ad5a823e3575f7fe"
+          },
+          {
+            "path": "crates/command_palette/src/command_palette.rs",
+            "line": 851,
+            "text": "normalize_action_query(\"project_panel::ToggleFocus\"),",
+            "sha256": "340071e14a49acfc15a7529eefa1cb272dac9cee007504676640d778db7ed939"
+          },
+          {
+            "path": "crates/editor/src/element/header.rs",
+            "line": 27,
+            "text": "use workspace::{ItemHandle, ItemSettings, OpenInTerminal, OpenTerminal, RevealInProjectPanel};",
+            "sha256": "de006f656bd71be25adb682ed878fd0a27c758310f615eea07704de4f12e2b2c"
+          },
+          {
+            "path": "crates/editor/src/element/header.rs",
+            "line": 1010,
+            "text": "let visible_in_project_panel = relative_path.is_some() && worktree.is_visible();",
+            "sha256": "de006f656bd71be25adb682ed878fd0a27c758310f615eea07704de4f12e2b2c"
+          },
+          {
+            "path": "crates/editor/src/element/header.rs",
+            "line": 1011,
+            "text": "let reveal_in_project_panel = entry_for_path",
+            "sha256": "de006f656bd71be25adb682ed878fd0a27c758310f615eea07704de4f12e2b2c"
+          }
+        ]
+      },
+      {
+        "id": "editor-tabs-splits",
+        "axis": "editor",
+        "matchCount": 23273,
+        "fileCount": 267,
+        "samples": [
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 4,
+            "text": "use editor::{Editor, EditorElement, EditorStyle};",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 91,
+            "text": "let mut editor = Editor::auto_height(4, 16, window, cx);",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 270,
+            "text": "let mut lines = json.split(\"\\n\").collect::<Vec<_>>();",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 563,
+            "text": "let mut editor = Editor::single_line(window, cx);",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 1034,
+            "text": "cx.listener(move |this, _: &editor::actions::Newline, _window, cx| {",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/manage_profiles_modal.rs",
+            "line": 7,
+            "text": "use editor::Editor;",
+            "sha256": "609a6f1666636543812bebe97d71b350b1d5329358d34f6612afde8cdd2cc3ed"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/manage_profiles_modal.rs",
+            "line": 23,
+            "text": "use crate::{AgentPanel, ManageProfiles};",
+            "sha256": "609a6f1666636543812bebe97d71b350b1d5329358d34f6612afde8cdd2cc3ed"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/manage_profiles_modal.rs",
+            "line": 124,
+            "text": "if let Some(panel) = workspace.panel::<AgentPanel>(cx) {",
+            "sha256": "609a6f1666636543812bebe97d71b350b1d5329358d34f6612afde8cdd2cc3ed"
+          }
+        ]
+      },
+      {
+        "id": "search-command-navigation",
+        "axis": "search-command",
+        "matchCount": 690,
+        "fileCount": 61,
+        "samples": [
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 11,
+            "text": "actions::{GoToHunk, GoToPreviousHunk},",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 890,
+            "text": "Tooltip::for_action_in(\"Next Hunk\", &GoToHunk, &focus_handle, cx)",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 923,
+            "text": "&GoToPreviousHunk,",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 1122,
+            "text": "&GoToPreviousHunk,",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 1129,
+            "text": "&GoToPreviousHunk,",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 1141,
+            "text": "&GoToHunk,",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 1148,
+            "text": ".dispatch_action(&GoToHunk, window, cx);",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 88,
+            "text": "use search::{BufferSearchBar, buffer_search::Deploy as DeployBufferSearch};",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          }
+        ]
+      },
+      {
+        "id": "language-diagnostics",
+        "axis": "language",
+        "matchCount": 7820,
+        "fileCount": 212,
+        "samples": [
+          {
+            "path": "crates/agent_ui/LICENSE-GPL",
+            "line": 32,
+            "text": "0. Definitions.",
+            "sha256": "0aa0322ea494da441088e4d9144c6720bf99d9e2e1eefcd29d1f58b19b5c4246"
+          },
+          {
+            "path": "crates/agent_ui/LICENSE-GPL",
+            "line": 55,
+            "text": "The \"Corresponding Source\" for a work in object code form means all the source code needed to generate, install, and (for an executable work) run the object code and to modify the work, including scripts to control those activities. However",
+            "sha256": "0aa0322ea494da441088e4d9144c6720bf99d9e2e1eefcd29d1f58b19b5c4246"
+          },
+          {
+            "path": "crates/agent_ui/LICENSE-GPL",
+            "line": 138,
+            "text": "A contributor's \"essential patent claims\" are all patent claims owned or controlled by the contributor, whether already acquired or hereafter acquired, that would be infringed by some manner, permitted by this License, of making, using, or ",
+            "sha256": "0aa0322ea494da441088e4d9144c6720bf99d9e2e1eefcd29d1f58b19b5c4246"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 40,
+            "text": "use crate::completion_provider::{AgentContextSelection, AgentContextSource};",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 211,
+            "text": "/// when opening a workspace that has no per-workspace agent preference yet.",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 3215,
+            "text": "// last-used-agent preference. Snapshot and restore both.",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 5485,
+            "text": ".visible_on_hover(\"title_editor\")",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 8080,
+            "text": "\"resource link URI should reference file path\"",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          }
+        ]
+      },
+      {
+        "id": "git-diff-review",
+        "axis": "git-review",
+        "matchCount": 2660,
+        "fileCount": 120,
+        "samples": [
+          {
+            "path": "crates/agent_ui/LICENSE-GPL",
+            "line": 169,
+            "text": "If the disclaimer of warranty and limitation of liability provided above cannot be given local legal effect according to their terms, reviewing courts shall apply local law that most closely approximates an absolute waiver of all civil liab",
+            "sha256": "0aa0322ea494da441088e4d9144c6720bf99d9e2e1eefcd29d1f58b19b5c4246"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 104,
+            "text": ".set_diff_hunk_delegate(Some(agent_diff_delegate(&thread, workspace.clone())), cx);",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 166,
+            "text": "let diff_hunk_ranges = diff_handle",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 173,
+            "text": ".map(|diff_hunk| diff_hunk.buffer_range.to_point(&snapshot))",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 181,
+            "text": "diff_hunk_ranges,",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 192,
+            "text": ".diff_hunks_in_ranges(",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 249,
+            "text": ".diff_hunks_in_ranges(",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 359,
+            "text": "let diff_hunks_in_ranges = editor",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          }
+        ]
+      },
+      {
+        "id": "terminal-task-test-debug",
+        "axis": "execution",
+        "matchCount": 8632,
+        "fileCount": 255,
+        "samples": [
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 102,
+            "text": "task.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/LICENSE-GPL",
+            "line": 39,
+            "text": "To \"modify\" a work means to copy from or adapt all or part of the work in a fashion requiring copyright permission, other than the making of an exact copy. The resulting work is called a \"modified version\" of the earlier work or a work \"bas",
+            "sha256": "0aa0322ea494da441088e4d9144c6720bf99d9e2e1eefcd29d1f58b19b5c4246"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 9,
+            "text": "Subscription, Task, TextStyle, TextStyleRefinement, UnderlineStyle, WeakEntity, prelude::*,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 374,
+            "text": ") -> Task<Option<ConfigurationTarget>> {",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 378,
+            "text": "return Task::ready(None);",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 471,
+            "text": ") -> Task<Result<()>> {",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 483,
+            "text": "return Task::ready(Err(anyhow::anyhow!(\"Context server not found\")));",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 520,
+            "text": "Some(task) => task.await,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          }
+        ]
+      },
+      {
+        "id": "agent-context-proposal",
+        "axis": "agents",
+        "matchCount": 2116,
+        "fileCount": 51,
+        "samples": [
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 17,
+            "text": "\"acp_thread/test-support\",",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 29,
+            "text": "acp_thread.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 49,
+            "text": "context_server.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 123,
+            "text": "acp_thread = { workspace = true, features = [\"test-support\"] }",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration.rs",
+            "line": 1,
+            "text": "pub mod configure_context_server_modal;",
+            "sha256": "789318a14cc8f260e88d8a2e63f39bd75b5a4e1bd022bf17b78f958fb6bb1d90"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration.rs",
+            "line": 5,
+            "text": "pub(crate) use configure_context_server_modal::ConfigureContextServerModal;",
+            "sha256": "789318a14cc8f260e88d8a2e63f39bd75b5a4e1bd022bf17b78f958fb6bb1d90"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 3,
+            "text": "use context_server::{ContextServerCommand, ContextServerId};",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 16,
+            "text": "context_server_store::{",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          }
+        ]
+      },
+      {
+        "id": "settings-theme-keymap",
+        "axis": "customization",
+        "matchCount": 17129,
+        "fileCount": 293,
+        "samples": [
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 35,
+            "text": "agent_settings.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 100,
+            "text": "settings.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 107,
+            "text": "theme.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 108,
+            "text": "theme_settings.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 150,
+            "text": "vim.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 20,
+            "text": "project_settings::{ContextServerSettings, OAuthClientSettings, ProjectSettings},",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 24,
+            "text": "use settings::{Settings as _, update_settings_file};",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 26,
+            "text": "use theme_settings::ThemeSettings;",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          }
+        ]
+      },
+      {
+        "id": "collaboration-remote",
+        "axis": "collaboration-remote",
+        "matchCount": 2762,
+        "fileCount": 138,
+        "samples": [
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 91,
+            "text": "remote.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 92,
+            "text": "remote_connection.workspace = true",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 141,
+            "text": "remote = { workspace = true, features = [\"test-support\"] }",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 142,
+            "text": "remote_connection = { workspace = true, features = [\"test-support\"] }",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/Cargo.toml",
+            "line": 143,
+            "text": "remote_server = { workspace = true, features = [\"test-support\"] }",
+            "sha256": "a5f25f146e15bafb25549347a56f66c60680a5a72fe35578147b1f82f2729bb3"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 55,
+            "text": "Remote,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 124,
+            "text": "server_type: ExistingServerType::Remote,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 166,
+            "text": "ExistingServerType::Remote => {",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          }
+        ]
+      },
+      {
+        "id": "loading-empty-error",
+        "axis": "state-feedback",
+        "matchCount": 5896,
+        "fileCount": 273,
+        "samples": [
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 206,
+            "text": "&& let Err(error) = settings_validator.validate(&settings)",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 208,
+            "text": "return Err(anyhow::anyhow!(error.to_string()));",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 266,
+            "text": "let headers = if headers.is_empty() {",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 412,
+            "text": "error: Option<SharedString>,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 417,
+            "text": "Error(SharedString),",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 447,
+            "text": "Some(ContextServerStatus::ClientSecretRequired { error }) => {",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 450,
+            "text": "error: error.map(SharedString::from),",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 456,
+            "text": "Some(ContextServerStatus::Error(error)) => State::Error(error.into()),",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          }
+        ]
+      },
+      {
+        "id": "theme-token-use",
+        "axis": "theming",
+        "matchCount": 909,
+        "fileCount": 128,
+        "samples": [
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 842,
+            "text": ".border_color(cx.theme().colors().border_variant)",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 843,
+            "text": ".bg(cx.theme().colors().editor_background)",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 847,
+            "text": "color: cx.theme().colors().text,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 858,
+            "text": "background: cx.theme().colors().editor_background,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 859,
+            "text": "local_player: cx.theme().players().local(),",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 861,
+            "text": "syntax: cx.theme().syntax().clone(),",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 997,
+            "text": "color: cx.theme().colors().text,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 1041,
+            "text": "background: cx.theme().colors().editor_background,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          }
+        ]
+      },
+      {
+        "id": "motion-and-reduced-motion",
+        "axis": "motion",
+        "matchCount": 111,
+        "fileCount": 37,
+        "samples": [
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 28,
+            "text": "CommonAnimationExt, KeyBinding, Modal, ModalFooter, ModalHeader, Section, Tooltip,",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 950,
+            "text": ".with_rotate_animation(3),",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_configuration/configure_context_server_modal.rs",
+            "line": 1074,
+            "text": ".with_rotate_animation(3),",
+            "sha256": "84d39a4bb657956442da97e9093d96fb2aa0ecc28ff410983bd267c3299ebf29"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 31,
+            "text": "use ui::{CommonAnimationExt, Divider, IconButtonShape, KeyBinding, Tooltip, prelude::*};",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_diff.rs",
+            "line": 1097,
+            "text": ".with_rotate_animation(3),",
+            "sha256": "fd17be14c685b5d0993ef386b72f8c2808aebcc13811928add534f8e4488333f"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 76,
+            "text": "Action, Anchor, Animation, AnimationExt, AnyElement, App, AsyncWindowContext, ClipboardItem,",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 5347,
+            "text": ".with_animation(",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          },
+          {
+            "path": "crates/agent_ui/src/agent_panel.rs",
+            "line": 5349,
+            "text": "Animation::new(Duration::from_secs(2))",
+            "sha256": "4409288c612d1247f8c16399b5d9a64fe626ff392d1e49b81597608a334ed59d"
+          }
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "A source match is evidence for inspection. It is not proof that a user-visible capability works."
+  ]
+}

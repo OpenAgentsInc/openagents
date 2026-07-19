@@ -1,0 +1,798 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/ui-gap-evidence.v1.json",
+  "title": "OpenAgents UI gap evidence",
+  "type": "object",
+  "required": ["schemaVersion", "kind", "generatedAt"],
+  "properties": {
+    "schemaVersion": {
+      "const": "openagents.ui-gap-evidence.v1"
+    },
+    "kind": {
+      "enum": ["doctor", "source-scan", "command-receipt", "runtime-capture", "ocr-capture", "comparison", "gap-assessment"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "analysisId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "identity": {
+      "$ref": "#/$defs/identity"
+    },
+    "doctor": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "source": {
+      "$ref": "#/$defs/sourceScan"
+    },
+    "command": {
+      "$ref": "#/$defs/commandReceipt"
+    },
+    "runtime": {
+      "$ref": "#/$defs/runtimeCapture"
+    },
+    "ocr": {
+      "$ref": "#/$defs/ocrCapture"
+    },
+    "comparison": {
+      "$ref": "#/$defs/comparison"
+    },
+    "assessment": {
+      "$ref": "#/$defs/assessment"
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "source-scan"
+          }
+        }
+      },
+      "then": {
+        "required": ["analysisId", "targetId", "identity", "source"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "command-receipt"
+          }
+        }
+      },
+      "then": {
+        "required": ["command"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "runtime-capture"
+          }
+        }
+      },
+      "then": {
+        "required": ["analysisId", "targetId", "runtime"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "ocr-capture"
+          }
+        }
+      },
+      "then": {
+        "required": ["analysisId", "targetId", "ocr"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "comparison"
+          }
+        }
+      },
+      "then": {
+        "required": ["analysisId", "comparison"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "gap-assessment"
+          }
+        }
+      },
+      "then": {
+        "required": ["analysisId", "assessment"]
+      }
+    }
+  ],
+  "$defs": {
+    "identity": {
+      "type": "object",
+      "required": ["root", "commit", "tree", "dirty"],
+      "properties": {
+        "root": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "tree": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "commitTime": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourceSample": {
+      "type": "object",
+      "required": ["path", "line", "text", "sha256"],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "text": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "probeResult": {
+      "type": "object",
+      "required": ["id", "axis", "matchCount", "fileCount", "samples"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "axis": {
+          "type": "string"
+        },
+        "matchCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fileCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceSample"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "sourceScan": {
+      "type": "object",
+      "required": ["trackedFiles", "corpusFiles", "corpusBytes", "probes"],
+      "properties": {
+        "trackedFiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "corpusFiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "corpusBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "corpusDigest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "probes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/probeResult"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "commandReceipt": {
+      "type": "object",
+      "required": ["label", "argv", "cwd", "startedAt", "completedAt", "durationMs", "exitCode"],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "argv": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exitCode": {
+          "type": ["integer", "null"]
+        },
+        "signal": {
+          "type": ["string", "null"]
+        },
+        "stdoutTail": {
+          "type": "string"
+        },
+        "stderrTail": {
+          "type": "string"
+        },
+        "artifact": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "frame": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "minimum": 0
+        },
+        "height": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "accessibilityNode": {
+      "type": "object",
+      "required": ["path", "depth", "role", "actions", "children"],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "role": {
+          "type": "string"
+        },
+        "subrole": {
+          "type": ["string", "null"]
+        },
+        "title": {
+          "type": ["string", "null"]
+        },
+        "description": {
+          "type": ["string", "null"]
+        },
+        "identifier": {
+          "type": ["string", "null"]
+        },
+        "value": {
+          "type": ["string", "number", "boolean", "null"]
+        },
+        "enabled": {
+          "type": ["boolean", "null"]
+        },
+        "focused": {
+          "type": ["boolean", "null"]
+        },
+        "frame": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/frame"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "children": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "visualMetrics": {
+      "type": "object",
+      "required": ["path", "sha256", "bytes", "width", "height"],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "meanLuma": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "lumaStandardDeviation": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "lumaP10": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "lumaP90": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "edgeDensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "dominantColors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["hex", "share"],
+            "properties": {
+              "hex": {
+                "type": "string",
+                "pattern": "^#[0-9A-F]{6}$"
+              },
+              "share": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "runtimeCapture": {
+      "type": "object",
+      "required": ["platform", "process", "window", "accessibility", "visual"],
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "process": {
+          "type": "object",
+          "required": ["pid", "name"],
+          "properties": {
+            "pid": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "name": {
+              "type": "string"
+            },
+            "bundleIdentifier": {
+              "type": ["string", "null"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "window": {
+          "type": "object",
+          "required": ["id", "title", "frame"],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "title": {
+              "type": "string"
+            },
+            "frame": {
+              "$ref": "#/$defs/frame"
+            }
+          },
+          "additionalProperties": false
+        },
+        "accessibility": {
+          "type": "object",
+          "required": ["trusted", "truncated", "nodes"],
+          "properties": {
+            "provider": {
+              "enum": ["macos-ax", "browser-dom"]
+            },
+            "trusted": {
+              "type": "boolean"
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "nodes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/accessibilityNode"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "visual": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/visualMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ocrCapture": {
+      "type": "object",
+      "required": ["provider", "image", "rows"],
+      "properties": {
+        "provider": {
+          "const": "macos-vision"
+        },
+        "image": {
+          "type": "object",
+          "required": ["path"],
+          "properties": {
+            "path": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text", "confidence", "x", "y", "width", "height"],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number",
+                "minimum": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "comparison": {
+      "type": "object",
+      "required": ["leftTargetId", "rightTargetId", "sourceProbeDeltas", "accessibilityRoleDeltas", "visualDeltas"],
+      "properties": {
+        "leftTargetId": {
+          "type": "string"
+        },
+        "rightTargetId": {
+          "type": "string"
+        },
+        "sourceProbeDeltas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "axis", "left", "right", "delta"],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "axis": {
+                "type": "string"
+              },
+              "left": {
+                "type": "integer"
+              },
+              "right": {
+                "type": "integer"
+              },
+              "delta": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "accessibilityRoleDeltas": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["left", "right", "delta"],
+            "properties": {
+              "left": {
+                "type": "integer"
+              },
+              "right": {
+                "type": "integer"
+              },
+              "delta": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "visualDeltas": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["number", "null"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "evidenceReference": {
+      "type": "object",
+      "required": ["kind", "revision", "ref"],
+      "properties": {
+        "kind": {
+          "enum": ["source", "test", "build", "runtime", "visual", "receipt"]
+        },
+        "revision": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "axis",
+        "capability",
+        "leftStatus",
+        "rightStatus",
+        "gapClass",
+        "priority",
+        "confidence",
+        "leftEvidence",
+        "rightEvidence",
+        "productScopeDisposition",
+        "notes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "axis": {
+          "type": "string"
+        },
+        "capability": {
+          "type": "string"
+        },
+        "leftStatus": {
+          "enum": ["implemented", "partial", "absent", "not-observed", "not-in-scope"]
+        },
+        "rightStatus": {
+          "enum": ["implemented", "partial", "absent", "not-observed", "not-in-scope"]
+        },
+        "gapClass": {
+          "enum": ["functional-gap", "quality-gap", "scope-difference", "left-lead", "retained-rejection", "no-material-gap"]
+        },
+        "priority": {
+          "enum": ["P0", "P1", "P2", "P3", "none"]
+        },
+        "confidence": {
+          "enum": ["high", "medium", "low"]
+        },
+        "leftEvidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceReference"
+          }
+        },
+        "rightEvidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidenceReference"
+          }
+        },
+        "runtimeProbe": {
+          "type": ["string", "null"]
+        },
+        "productScopeDisposition": {
+          "enum": ["close-gap", "retain-difference", "product-decision-required", "not-in-scope", "preserve-left-lead"]
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "auditScore": {
+      "type": "object",
+      "required": ["targetId", "accessibility", "performance", "responsive", "theming", "antiPatterns", "total", "rating"],
+      "properties": {
+        "targetId": {
+          "type": "string"
+        },
+        "accessibility": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "performance": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "responsive": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "theming": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "antiPatterns": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "rating": {
+          "enum": ["excellent", "good", "acceptable", "poor", "critical"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "assessment": {
+      "type": "object",
+      "required": ["leftTargetId", "rightTargetId", "scores", "findings"],
+      "properties": {
+        "leftTargetId": {
+          "type": "string"
+        },
+        "rightTargetId": {
+          "type": "string"
+        },
+        "scores": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/auditScore"
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

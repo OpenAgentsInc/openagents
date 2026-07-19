@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "command-receipt",
+  "generatedAt": "2026-07-19T22:16:30.955Z",
+  "command": {
+    "label": "openagents-source-build",
+    "argv": [
+      "pnpm",
+      "--dir",
+      "apps/openagents-desktop",
+      "build"
+    ],
+    "cwd": "<OPENAGENTS_ROOT>",
+    "startedAt": "2026-07-19T22:16:24.697Z",
+    "completedAt": "2026-07-19T22:16:30.955Z",
+    "durationMs": 6257,
+    "exitCode": 0,
+    "signal": null,
+    "stdoutTail": "vite v8.1.3 building client environment for production...\n\u001b[2K\rtransforming...✓ 3134 modules transformed.\nrendering chunks...\ndist/renderer/app.css   1,531.59 kB\ndist/renderer/boot.js  12,309.27 kB\n\n✓ built in 1.10s\nvite v8.1.3 building client environment for production...\n\u001b[2K\rtransforming...✓ 1262 modules transformed.\nrendering chunks...\ndist/renderer/ide-editor/assets/editor.worker-Czvkus_W.js          280.09 kB\ndist/renderer/ide-editor/assets/json.worker-7tYf1h85.js            409.35 kB\ndist/renderer/ide-editor/assets/html.worker-BlY20I4a.js            719.72 kB\ndist/renderer/ide-editor/assets/css.worker-Cbq3wdcs.js           1,054.78 kB\ndist/renderer/ide-editor/assets/ts.worker-ClUuU0JT.js            6,895.29 kB\ndist/renderer/ide-editor/editor.css                                488.33 kB\ndist/renderer/ide-editor/assets/javascript-BREPUHHX.js               0.95 kB │ map:      1.95 kB\ndist/renderer/ide-editor/assets/workers-DfLxyN6P.js                  1.60 kB │ map:      8.50 kB\ndist/renderer/ide-editor/assets/cssMode-Dt3RHPmc.js                  3.72 kB │ map:     14.24 kB\ndist/renderer/ide-editor/assets/shell-DZxOw2Ds.js                    3.92 kB │ map:      7.54 kB\ndist/renderer/ide-editor/assets/htmlMode-KC6NKImV.js                 4.11 kB │ map:     15.44 kB\ndist/renderer/ide-editor/assets/yaml-C2fU_A9a.js                     4.71 kB │ map:     14.65 kB\ndist/renderer/ide-editor/assets/rust-BPJY58JV.js                     4.72 kB │ map:      9.67 kB\ndist/renderer/ide-editor/assets/python-DtYkrNeY.js                   4.80 kB │ map:     15.23 kB\ndist/renderer/ide-editor/assets/markdown-C_jeeMr1.js                 5.11 kB │ map:     10.53 kB\ndist/renderer/ide-editor/assets/monaco.contribution-CR4cLLRx.js      5.64 kB │ map:     18.26 kB\ndist/renderer/ide-editor/assets/typescript-T0fkhWI_.js               6.08 kB │ map:     17.32 kB\ndist/renderer/ide-editor/assets/jsonMode-D99lvfQr.js                16.61 kB │ map:     75.91 kB\ndist/renderer/ide-editor/assets/tsMode-5ZgvIhnl.js                  26.16 kB │ map:     79.89 kB\ndist/renderer/ide-editor/assets/lspLanguageFeatures-C24x6x4X.js     35.93 kB │ map:    132.46 kB\ndist/renderer/ide-editor/editor.js                                 204.49 kB │ map:  2,219.63 kB\ndist/renderer/ide-editor/assets/toggleHighContrast-85aZdQJ9.js   4,436.66 kB │ map: 13,611.83 kB\n\n✓ built in 1.91s\n[openagents-desktop] built dist/ (main.js, preload.cjs, workers, renderer, optional IDE package fixture, built-in skills, native voice helper)\n",
+    "stderrTail": "$ node --import tsx scripts/build.ts\n",
+    "artifact": {
+      "path": "<OPENAGENTS_BUILD>/renderer/boot.js",
+      "sha256": "0eee52aeaca8fef2432834a4dfd7f0c043f9e82531d17e5b1abb34606a4dfd0a",
+      "bytes": 12309274
+    }
+  },
+  "limitations": []
+}

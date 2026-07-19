@@ -1,0 +1,810 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "source-scan",
+  "generatedAt": "2026-07-19T22:12:50.993Z",
+  "analysisId": "openagents-ide-vs-zed-ui-2026-07-19",
+  "targetId": "openagents",
+  "identity": {
+    "root": "<OPENAGENTS_ROOT>",
+    "commit": "41726ba7068ef89c35d9f749ea9966caab95ef65",
+    "tree": "798d73205db93df2543b50e98368b38de8e22db5",
+    "dirty": false,
+    "commitTime": "2026-07-19T17:01:31-05:00",
+    "subject": "docs(sarah): full Sarah program assessment (2026-07-19)"
+  },
+  "source": {
+    "trackedFiles": 10116,
+    "corpusFiles": 281,
+    "corpusBytes": 4459424,
+    "corpusDigest": "95a43cedf13d65b152258930c11c3a71d261b78ddc4036720a77360059575342",
+    "probes": [
+      {
+        "id": "semantic-controls",
+        "axis": "accessibility",
+        "matchCount": 487,
+        "fileCount": 42,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/pierre-diffs-adapter.tsx",
+            "line": 244,
+            "text": "return <div role=\"alert\" data-oa-pierre-refusal={result.reason}>{copy}</div>;",
+            "sha256": "83bc65c1db37a94f5f53285cb05b72bad8b0824dec0903f24c74d5d9ac4b629f"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/spike/entry.tsx",
+            "line": 201,
+            "text": "<section aria-label=\"Monaco fixture\"><h2>Monaco</h2><div id=\"oa-monaco-fixture\"></div></section>",
+            "sha256": "d257a176d010f5b8b9b1e7e758ef2b22f5df2dbd1fdaf58b01812331ed2939d6"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/spike/entry.tsx",
+            "line": 202,
+            "text": "<section aria-label=\"Pierre Diffs fixture\"><h2>Pierre Diffs</h2><div id=\"oa-pierre-fixture\" data-oa-pierre-fixture=\"true\"></div></section>",
+            "sha256": "d257a176d010f5b8b9b1e7e758ef2b22f5df2dbd1fdaf58b01812331ed2939d6"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/spike/index.html",
+            "line": 14,
+            "text": "<main id=\"ide-package-spike-root\" aria-label=\"IDE package admission fixture\"></main>",
+            "sha256": "36637b9aac039a201a676d08f5f05fa5f6de46ddad13f5f57f097f45340f260b"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/app.css",
+            "line": 145,
+            "text": "item's aria-label. This is host navigation geometry, not button chrome. */",
+            "sha256": "a0cdcbba92029644ca65c5828cb86fe0d728df1c139e27e3bca5836ccea0989a"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/app.css",
+            "line": 154,
+            "text": "[data-en-key=\"sidebar-workspace-dock\"] > button [data-en-role=\"label\"] {",
+            "sha256": "a0cdcbba92029644ca65c5828cb86fe0d728df1c139e27e3bca5836ccea0989a"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/app.css",
+            "line": 170,
+            "text": "[data-en-key^=\"sidebar-thread-\"] > [data-en-role=\"label\"] {",
+            "sha256": "a0cdcbba92029644ca65c5828cb86fe0d728df1c139e27e3bca5836ccea0989a"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/app.css",
+            "line": 177,
+            "text": "[data-en-key^=\"sidebar-thread-\"] > [data-en-role=\"meta\"] {",
+            "sha256": "a0cdcbba92029644ca65c5828cb86fe0d728df1c139e27e3bca5836ccea0989a"
+          }
+        ]
+      },
+      {
+        "id": "focus-and-keyboard",
+        "axis": "accessibility",
+        "matchCount": 300,
+        "fileCount": 39,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 70,
+            "text": "keyboardOperable: Schema.Boolean,",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 100,
+            "text": "keyboard: Schema.Literal(true),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.test.ts",
+            "line": 21,
+            "text": "\"keyboard_and_assistive_tech\",",
+            "sha256": "19065cb736442999d4267748a5b5e37b8e3056c3430f121dd4c48a0c570740a4"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.ts",
+            "line": 29,
+            "text": "\"keyboard_and_assistive_tech\",",
+            "sha256": "d42b7eda707394e8e6fc9ad95d7fb9e99efd0fed98f24eca3ab45da052e2041d"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-benchmark-contract.ts",
+            "line": 103,
+            "text": "keyboardOperable: Schema.Literal(true),",
+            "sha256": "cc8e8c58567304692784421fec46023e9db7bcc774ca9f3fb8271796e318cd2e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-benchmark-contract.ts",
+            "line": 137,
+            "text": "keyboard: Schema.Literal(true),",
+            "sha256": "cc8e8c58567304692784421fec46023e9db7bcc774ca9f3fb8271796e318cd2e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/editor-runtime-entry.ts",
+            "line": 240,
+            "text": "#normalKey(event: monaco.IKeyboardEvent, key: string): boolean {",
+            "sha256": "c707f76cd8df331360dd41aa46bb1fa98dc2356f0018fbae0aa6cb380f465c90"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/editor-runtime-entry.ts",
+            "line": 341,
+            "text": "#onKey = (event: monaco.IKeyboardEvent): void => {",
+            "sha256": "c707f76cd8df331360dd41aa46bb1fa98dc2356f0018fbae0aa6cb380f465c90"
+          }
+        ]
+      },
+      {
+        "id": "project-navigation",
+        "axis": "project-files",
+        "matchCount": 618,
+        "fileCount": 25,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.ts",
+            "line": 113,
+            "text": "quickOpenReady: Schema.Literal(true),",
+            "sha256": "d42b7eda707394e8e6fc9ad95d7fb9e99efd0fed98f24eca3ab45da052e2041d"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/workbench-contract.test.ts",
+            "line": 14,
+            "text": "rankIdeQuickOpen,",
+            "sha256": "72be469d3ac8a767b44bc1a07ec7e53110e42ec20240d307042d6d29da5cb2fe"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/workbench-contract.test.ts",
+            "line": 49,
+            "text": "const ranked = rankIdeQuickOpen(\"we\", [\"src/workbench.ts\", \"src/web.ts\", \"README.md\"], 2)",
+            "sha256": "72be469d3ac8a767b44bc1a07ec7e53110e42ec20240d307042d6d29da5cb2fe"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/workbench-contract.test.ts",
+            "line": 53,
+            "text": "expect(rankIdeQuickOpen(\"secret\", [\"src/a.ts\"]).phase).toBe(\"empty\")",
+            "sha256": "72be469d3ac8a767b44bc1a07ec7e53110e42ec20240d307042d6d29da5cb2fe"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/workbench-contract.ts",
+            "line": 100,
+            "text": "export const IdeQuickOpenResultSchema = Schema.Struct({",
+            "sha256": "a4a97846c36428d8e54815c4324f4b853d817bd3b4566dd9dff537a769661994"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/workbench-contract.ts",
+            "line": 105,
+            "text": "export type IdeQuickOpenResult = typeof IdeQuickOpenResultSchema.Type",
+            "sha256": "a4a97846c36428d8e54815c4324f4b853d817bd3b4566dd9dff537a769661994"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/workbench-contract.ts",
+            "line": 107,
+            "text": "export const IdeQuickOpenStateSchema = Schema.Struct({",
+            "sha256": "a4a97846c36428d8e54815c4324f4b853d817bd3b4566dd9dff537a769661994"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/workbench-contract.ts",
+            "line": 110,
+            "text": "results: Schema.Array(IdeQuickOpenResultSchema).check(Schema.isMaxLength(100)),",
+            "sha256": "a4a97846c36428d8e54815c4324f4b853d817bd3b4566dd9dff537a769661994"
+          }
+        ]
+      },
+      {
+        "id": "editor-tabs-splits",
+        "axis": "editor",
+        "matchCount": 1551,
+        "fileCount": 88,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 93,
+            "text": "monacoAuthority: Schema.Literal(false),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.test.ts",
+            "line": 55,
+            "text": "test(\"admits the initial Monaco document generation without rewriting its identity\", () => {",
+            "sha256": "6a8ee0f3a7cf3d6685d787631dbb6cc3694594d17ed56b04f30c502de9ea28fb"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 143,
+            "text": "// Monaco's initial in-memory document version is generation zero. The",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 210,
+            "text": "* Monaco owns a zero-based model-incarnation clock. Project/workspace",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 24,
+            "text": "IdeMonacoModelVersion,",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 25,
+            "text": "} from \"./monaco-document-contract.ts\"",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 192,
+            "text": "documentVersion: IdeMonacoModelVersion.make(1),",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-service.ts",
+            "line": 996,
+            "text": "backlinkRef: IdeAgentBacklinkRefSchema.make(`ide.agent-backlink.${applyRef.split(\".\").at(-1)}.${index + 1}`),",
+            "sha256": "c5c678a92394b4df5df011a06bd124cc2e8846f27bcf3839919e9e47d029af1d"
+          }
+        ]
+      },
+      {
+        "id": "search-command-navigation",
+        "axis": "search-command",
+        "matchCount": 85,
+        "fileCount": 15,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/workbench-contract.test.ts",
+            "line": 48,
+            "text": "test(\"quick open is bounded, deterministic, fuzzy, and path-only\", () => {",
+            "sha256": "72be469d3ac8a767b44bc1a07ec7e53110e42ec20240d307042d6d29da5cb2fe"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/boot.ts",
+            "line": 1827,
+            "text": "const onCommandPaletteShortcut = (event: KeyboardEvent): void => {",
+            "sha256": "4ad64bda9ba8b52e57f26098c131700f73088adf927d902617939e4df49870ed"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/boot.ts",
+            "line": 1839,
+            "text": "registry.dispatch(resolveIntentRef(IntentRef(\"DesktopCommandPaletteToggled\", StaticPayload(null)))),",
+            "sha256": "4ad64bda9ba8b52e57f26098c131700f73088adf927d902617939e4df49870ed"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/boot.ts",
+            "line": 2032,
+            "text": "window.addEventListener(\"keydown\", onCommandPaletteShortcut)",
+            "sha256": "4ad64bda9ba8b52e57f26098c131700f73088adf927d902617939e4df49870ed"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/boot.ts",
+            "line": 2045,
+            "text": "window.removeEventListener(\"keydown\", onCommandPaletteShortcut)",
+            "sha256": "4ad64bda9ba8b52e57f26098c131700f73088adf927d902617939e4df49870ed"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            "line": 212,
+            "text": "test(\"command palette keeps the T3 search/results/footer structure\", () => {",
+            "sha256": "c11c3db7e5b1efe6fda31a4e7328e998ccb5c4233a1a17257c54f6ed9537e910"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            "line": 350,
+            "text": "test(\"command palette: surfaceOverlay panel, hairline borderSubtle, radius xl, 6px gutter, chord captions\", () => {",
+            "sha256": "c11c3db7e5b1efe6fda31a4e7328e998ccb5c4233a1a17257c54f6ed9537e910"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
+            "line": 351,
+            "text": "const view = desktopShellView({ ...baseState(), commandPaletteOpen: true })",
+            "sha256": "c11c3db7e5b1efe6fda31a4e7328e998ccb5c4233a1a17257c54f6ed9537e910"
+          }
+        ]
+      },
+      {
+        "id": "language-diagnostics",
+        "axis": "language",
+        "matchCount": 1029,
+        "fileCount": 101,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 60,
+            "text": "diagnosticObserved: Schema.Boolean,",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 8,
+            "text": "IdeDiagnosticRefSchema,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 125,
+            "text": "\"explicit_user_selection\", \"active_file\", \"active_selection\", \"diagnostic_cause\",",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 142,
+            "text": "selectedBy: Schema.Literals([\"user\", \"editor\", \"diagnostics\", \"git\", \"rule_engine\", \"skill\", \"retrieval\", \"runtime\"]),",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 166,
+            "text": "Diagnostic: {",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 168,
+            "text": "diagnosticRef: IdeDiagnosticRefSchema,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 201,
+            "text": "\"active_selection\", \"diagnostics\", \"symbols\", \"git_cochange\", \"rule\", \"skill\",",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 483,
+            "text": "kind: Schema.Literals([\"diagnostics\", \"format\", \"test\", \"git_status\", \"git_diff\", \"commit\", \"push\", \"pull_request\", \"delivery\", \"verification\", \"acceptance\"]),",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          }
+        ]
+      },
+      {
+        "id": "git-diff-review",
+        "axis": "git-review",
+        "matchCount": 1948,
+        "fileCount": 111,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 64,
+            "text": "pierreReviewRendered: Schema.Boolean,",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 94,
+            "text": "pierreAuthority: Schema.Literal(false),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 107,
+            "text": "ownerDisposition: Schema.Literal(\"unreviewed\"),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 108,
+            "text": "reviewer: Schema.Struct({",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 109,
+            "text": "reviewerClass: Schema.Literal(\"deterministic_repository_oracle\"),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.test.ts",
+            "line": 110,
+            "text": "proposalCounts: { pending: 1, reviewing: 0, partial: 0, applied: 0, undone: 0, refused: 0, stale: 0 },",
+            "sha256": "6a8ee0f3a7cf3d6685d787631dbb6cc3694594d17ed56b04f30c502de9ea28fb"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 61,
+            "text": "export const IdeAgentReviewRefSchema = boundedRef(\"IdeAgentReviewRef\", \"ide.agent-review.\")",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 62,
+            "text": "export type IdeAgentReviewRef = typeof IdeAgentReviewRefSchema.Type",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          }
+        ]
+      },
+      {
+        "id": "terminal-task-test-debug",
+        "axis": "execution",
+        "matchCount": 1130,
+        "fileCount": 116,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 347,
+            "text": "terminalOutcome: Schema.Literals([\"pending\", \"passed\", \"failed\", \"blocked\", \"disposed\"]),",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 485,
+            "text": "observedBy: Schema.Literals([\"document_authority\", \"language_service\", \"task_service\", \"git_service\", \"delivery_service\", \"owner\", \"independent_reviewer\"]),",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 246,
+            "text": "[\"test\", \"task_service\", IdeAgentEvidenceStateSchema.cases.Unavailable.make({ observedAt, reason: \"No exact test command was admitted for this proposal.\" }), null],",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-service.test.ts",
+            "line": 181,
+            "text": "terminalOutcome: \"pending\",",
+            "sha256": "94d1f10e39b5c0b6655d712c86f4a4c690471aae903ad71b5f2439b9701b941e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts",
+            "line": 79,
+            "text": "const terminal = (structuredOutput: unknown) => ({",
+            "sha256": "0dd9f991485785f97ddbb61031dd02c9293665e5ca8d7c23066f74bb759dc1d0"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts",
+            "line": 98,
+            "text": "yield terminal(output)",
+            "sha256": "0dd9f991485785f97ddbb61031dd02c9293665e5ca8d7c23066f74bb759dc1d0"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts",
+            "line": 170,
+            "text": "permissionMode: \"dontAsk\",",
+            "sha256": "0dd9f991485785f97ddbb61031dd02c9293665e5ca8d7c23066f74bb759dc1d0"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts",
+            "line": 264,
+            "text": "yield terminal(completion())",
+            "sha256": "0dd9f991485785f97ddbb61031dd02c9293665e5ca8d7c23066f74bb759dc1d0"
+          }
+        ]
+      },
+      {
+        "id": "agent-context-proposal",
+        "axis": "agents",
+        "matchCount": 5497,
+        "fileCount": 205,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 7,
+            "text": "export const IdeAgentCodeBenchmarkMetricSchema = Schema.Struct({",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 22,
+            "text": "}).annotate({ identifier: \"IdeAgentCodeBenchmarkMetric\" })",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 23,
+            "text": "export type IdeAgentCodeBenchmarkMetric = typeof IdeAgentCodeBenchmarkMetricSchema.Type",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 25,
+            "text": "export const IdeAgentCodeBenchmarkReceiptSchema = Schema.Struct({",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 26,
+            "text": "schemaVersion: Schema.Literal(\"openagents.desktop.ide-agent-code-benchmark.v1\"),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 38,
+            "text": "metrics: Schema.Array(IdeAgentCodeBenchmarkMetricSchema).check(Schema.isMinLength(10), Schema.isMaxLength(100)),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 44,
+            "text": "proposalStreamsAfter: Schema.Literal(0),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 49,
+            "text": "}).annotate({ identifier: \"IdeAgentCodeBenchmarkReceipt\" })",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          }
+        ]
+      },
+      {
+        "id": "settings-theme-keymap",
+        "axis": "customization",
+        "matchCount": 1891,
+        "fileCount": 74,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.test.ts",
+            "line": 20,
+            "text": "\"vim_on_off\",",
+            "sha256": "19065cb736442999d4267748a5b5e37b8e3056c3430f121dd4c48a0c570740a4"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.ts",
+            "line": 28,
+            "text": "\"vim_on_off\",",
+            "sha256": "d42b7eda707394e8e6fc9ad95d7fb9e99efd0fed98f24eca3ab45da052e2041d"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.ts",
+            "line": 116,
+            "text": "vimToggled: Schema.Literal(true),",
+            "sha256": "d42b7eda707394e8e6fc9ad95d7fb9e99efd0fed98f24eca3ab45da052e2041d"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.ts",
+            "line": 146,
+            "text": "vimFirstPartyOffByDefaultDisposable: Schema.Literal(true),",
+            "sha256": "d42b7eda707394e8e6fc9ad95d7fb9e99efd0fed98f24eca3ab45da052e2041d"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/basic-ide-acceptance-contract.ts",
+            "line": 173,
+            "text": "settingsSchemaCompatible: Schema.Literal(true),",
+            "sha256": "d42b7eda707394e8e6fc9ad95d7fb9e99efd0fed98f24eca3ab45da052e2041d"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-benchmark-contract.ts",
+            "line": 105,
+            "text": "vimAndTokyoNightPresent: Schema.Literal(true),",
+            "sha256": "cc8e8c58567304692784421fec46023e9db7bcc774ca9f3fb8271796e318cd2e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-benchmark-contract.ts",
+            "line": 140,
+            "text": "vimOnOff: Schema.Literal(true),",
+            "sha256": "cc8e8c58567304692784421fec46023e9db7bcc774ca9f3fb8271796e318cd2e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/cursor-claude-provider.test.ts",
+            "line": 165,
+            "text": "settingSources: [],",
+            "sha256": "0dd9f991485785f97ddbb61031dd02c9293665e5ca8d7c23066f74bb759dc1d0"
+          }
+        ]
+      },
+      {
+        "id": "collaboration-remote",
+        "axis": "collaboration-remote",
+        "matchCount": 536,
+        "fileCount": 79,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-benchmark-contract.ts",
+            "line": 47,
+            "text": "offline: Schema.Struct({ remoteRequests: Schema.Literal(0), embeddingsRequired: Schema.Literal(false) }),",
+            "sha256": "f7544c9bf5eb00dc83b3879a68d011c6f99316b7858424b44838cf3bd55b242e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 16,
+            "text": "IdePlacementGenerationSchema,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 17,
+            "text": "IdePlacementRefSchema,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 90,
+            "text": "placementGeneration: IdePlacementGenerationSchema,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 102,
+            "text": "placementRef: IdePlacementRefSchema,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 103,
+            "text": "placementGeneration: IdePlacementGenerationSchema,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 109,
+            "text": "semanticRetrieval: Schema.Literals([\"disabled\", \"local\", \"managed_remote\"]),",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 117,
+            "text": "ManagedMemory: { placementRef: IdePlacementRefSchema, policyRef: boundedLabel },",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          }
+        ]
+      },
+      {
+        "id": "loading-empty-error",
+        "axis": "state-feedback",
+        "matchCount": 1700,
+        "fileCount": 151,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.test.ts",
+            "line": 82,
+            "text": "if (opened.state !== \"available\") throw new Error(\"fixture document unavailable\")",
+            "sha256": "a7ca03951d7e2bed18b9935b33df570892c7e69665dcf45b4ff381b02f81eafb"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 45,
+            "text": "type IdeAgentCodeServiceError,",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 65,
+            "text": "} catch (error) {",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 66,
+            "text": "return (error as NodeJS.ErrnoException | null)?.code === \"ENOENT\"",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 85,
+            "text": "error: IdeAgentCodeServiceError,",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 87,
+            "text": "if (error instanceof IdeAgentCodeInvalidInput) return \"invalid_input\"",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 88,
+            "text": "if (error instanceof IdeAgentCodeStopped) return \"stopped\"",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-host.ts",
+            "line": 89,
+            "text": "if (error instanceof IdeAgentCodeStaleGeneration) return \"stale_generation\"",
+            "sha256": "c7d80e6e318d2911d47d2a724e1430f329ea4f863db3518db06b5456d9df79ec"
+          }
+        ]
+      },
+      {
+        "id": "theme-token-use",
+        "axis": "theming",
+        "matchCount": 1132,
+        "fileCount": 104,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.test.ts",
+            "line": 51,
+            "text": "expect(manifest.includedTokens).toBe(7)",
+            "sha256": "6a8ee0f3a7cf3d6685d787631dbb6cc3694594d17ed56b04f30c502de9ea28fb"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 226,
+            "text": "tokenEstimate: nonNegativeInteger,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 243,
+            "text": "includedTokens: nonNegativeInteger,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-contract.ts",
+            "line": 246,
+            "text": "tokenBudget: positiveInteger,",
+            "sha256": "9f5808de291b9714d0e301ab755685ddd0f9dd84b1fcc5d80ca9cb023664602e"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-fixture.ts",
+            "line": 113,
+            "text": "tokenEstimate: 7,",
+            "sha256": "ed529e1a35ce5edc095e8984ed41291f8d18198c26d366f856d8b150f3b8b8b6"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-fixture.ts",
+            "line": 133,
+            "text": "tokenEstimate: 0,",
+            "sha256": "ed529e1a35ce5edc095e8984ed41291f8d18198c26d366f856d8b150f3b8b8b6"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-fixture.ts",
+            "line": 148,
+            "text": "includedTokens: 7,",
+            "sha256": "ed529e1a35ce5edc095e8984ed41291f8d18198c26d366f856d8b150f3b8b8b6"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/agent-code-fixture.ts",
+            "line": 151,
+            "text": "tokenBudget: 16_000,",
+            "sha256": "ed529e1a35ce5edc095e8984ed41291f8d18198c26d366f856d8b150f3b8b8b6"
+          }
+        ]
+      },
+      {
+        "id": "motion-and-reduced-motion",
+        "axis": "motion",
+        "matchCount": 257,
+        "fileCount": 45,
+        "samples": [
+          {
+            "path": "apps/openagents-desktop/src/ide/pierre-diffs-adapter.tsx",
+            "line": 296,
+            "text": "let frame = requestAnimationFrame(() => {",
+            "sha256": "83bc65c1db37a94f5f53285cb05b72bad8b0824dec0903f24c74d5d9ac4b629f"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/pierre-diffs-adapter.tsx",
+            "line": 297,
+            "text": "frame = requestAnimationFrame(() => {",
+            "sha256": "83bc65c1db37a94f5f53285cb05b72bad8b0824dec0903f24c74d5d9ac4b629f"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/pierre-diffs-adapter.tsx",
+            "line": 306,
+            "text": "return () => cancelAnimationFrame(frame);",
+            "sha256": "83bc65c1db37a94f5f53285cb05b72bad8b0824dec0903f24c74d5d9ac4b629f"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/spike/entry.tsx",
+            "line": 157,
+            "text": "await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));",
+            "sha256": "d257a176d010f5b8b9b1e7e758ef2b22f5df2dbd1fdaf58b01812331ed2939d6"
+          },
+          {
+            "path": "apps/openagents-desktop/src/ide/spike/entry.tsx",
+            "line": 158,
+            "text": "await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));",
+            "sha256": "d257a176d010f5b8b9b1e7e758ef2b22f5df2dbd1fdaf58b01812331ed2939d6"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/app.css",
+            "line": 219,
+            "text": "animation: oa-overlay-enter var(--en-motion-fast) var(--en-ease-basic);",
+            "sha256": "a0cdcbba92029644ca65c5828cb86fe0d728df1c139e27e3bca5836ccea0989a"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/app.css",
+            "line": 226,
+            "text": "animation: oa-overlay-enter var(--en-motion-enter) var(--en-ease-enter);",
+            "sha256": "a0cdcbba92029644ca65c5828cb86fe0d728df1c139e27e3bca5836ccea0989a"
+          },
+          {
+            "path": "apps/openagents-desktop/src/renderer/app.css",
+            "line": 345,
+            "text": "transition: opacity var(--en-motion-fast) var(--en-ease-basic);",
+            "sha256": "a0cdcbba92029644ca65c5828cb86fe0d728df1c139e27e3bca5836ccea0989a"
+          }
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "A source match is evidence for inspection. It is not proof that a user-visible capability works."
+  ]
+}

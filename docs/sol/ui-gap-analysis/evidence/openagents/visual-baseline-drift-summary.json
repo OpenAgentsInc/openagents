@@ -1,0 +1,184 @@
+{
+  "schema": "openagents.ui-gap.live-baseline-drift.v1",
+  "commitSha": "41726ba7068ef89c35d9f749ea9966caab95ef65",
+  "platform": "darwin-arm64",
+  "thresholds": {
+    "perChannelTolerance": 3,
+    "maxDifferentPixelRatio": 0.001
+  },
+  "stateCount": 24,
+  "driftedCount": 24,
+  "minimumDifferentRatio": 0.0191884765625,
+  "medianDifferentRatio": 0.0744375,
+  "maximumDifferentRatio": 0.6326549707602339,
+  "states": [
+    {
+      "state": "composer-idle",
+      "ok": false,
+      "differentPixels": 68915,
+      "differentRatio": 0.0672998046875,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "thread-plan-card",
+      "ok": false,
+      "differentPixels": 80193,
+      "differentRatio": 0.0783134765625,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "approval-card",
+      "ok": false,
+      "differentPixels": 136654,
+      "differentRatio": 0.133451171875,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "reasoning-disclosure",
+      "ok": false,
+      "differentPixels": 76224,
+      "differentRatio": 0.0744375,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "full-auto-running",
+      "ok": false,
+      "differentPixels": 78556,
+      "differentRatio": 0.07671484375,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "surface-tabs",
+      "ok": false,
+      "differentPixels": 512306,
+      "differentRatio": 0.500298828125,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "files-rich-diff",
+      "ok": false,
+      "differentPixels": 118798,
+      "differentRatio": 0.116013671875,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "terminal-workbench",
+      "ok": false,
+      "differentPixels": 91909,
+      "differentRatio": 0.0897548828125,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "browser-preview",
+      "ok": false,
+      "differentPixels": 102076,
+      "differentRatio": 0.09968359375,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "settings-routed",
+      "ok": false,
+      "differentPixels": 110351,
+      "differentRatio": 0.1077646484375,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "remote-connect",
+      "ok": false,
+      "differentPixels": 44697,
+      "differentRatio": 0.0436494140625,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "responsive-standard",
+      "ok": false,
+      "differentPixels": 432736,
+      "differentRatio": 0.6326549707602339,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "responsive-minimum",
+      "ok": false,
+      "differentPixels": 36448,
+      "differentRatio": 0.10546296296296297,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-messages-reasoning",
+      "ok": false,
+      "differentPixels": 46364,
+      "differentRatio": 0.04527734375,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-commands",
+      "ok": false,
+      "differentPixels": 100120,
+      "differentRatio": 0.0977734375,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-files",
+      "ok": false,
+      "differentPixels": 27240,
+      "differentRatio": 0.0266015625,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-tools-mcp-dynamic",
+      "ok": false,
+      "differentPixels": 56177,
+      "differentRatio": 0.0548603515625,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-tools-web-image",
+      "ok": false,
+      "differentPixels": 51880,
+      "differentRatio": 0.0506640625,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-plans-approvals",
+      "ok": false,
+      "differentPixels": 50510,
+      "differentRatio": 0.049326171875,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-agents",
+      "ok": false,
+      "differentPixels": 75273,
+      "differentRatio": 0.0735087890625,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-context",
+      "ok": false,
+      "differentPixels": 19649,
+      "differentRatio": 0.0191884765625,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-notices-long-tail",
+      "ok": false,
+      "differentPixels": 36445,
+      "differentRatio": 0.0355908203125,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-shell",
+      "ok": false,
+      "differentPixels": 32017,
+      "differentRatio": 0.0312666015625,
+      "reason": "pixel_drift"
+    },
+    {
+      "state": "workbench-frame",
+      "ok": false,
+      "differentPixels": 24191,
+      "differentRatio": 0.0236240234375,
+      "reason": "pixel_drift"
+    }
+  ]
+}

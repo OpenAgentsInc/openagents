@@ -1,0 +1,176 @@
+{
+  "schemaVersion": "openagents.ui-gap-config.v1",
+  "analysisId": "openagents-ide-vs-zed-ui-2026-07-19",
+  "sampleLimit": 8,
+  "maxFileBytes": 2097152,
+  "targets": [
+    {
+      "id": "openagents",
+      "label": "OpenAgents IDE",
+      "expectedCommit": "41726ba7068ef89c35d9f749ea9966caab95ef65",
+      "expectedTree": "798d73205db93df2543b50e98368b38de8e22db5",
+      "corpus": {
+        "include": [
+          "apps/openagents-desktop/src/renderer/**",
+          "apps/openagents-desktop/src/ide/**",
+          "apps/openagents-desktop/tests/**",
+          "apps/openagents-desktop/visual-baselines/**",
+          "packages/effect-native/**"
+        ],
+        "exclude": [
+          "**/node_modules/**",
+          "**/dist/**",
+          "**/*.png",
+          "**/*.snap"
+        ]
+      }
+    },
+    {
+      "id": "zed",
+      "label": "Zed",
+      "expectedCommit": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4",
+      "expectedTree": "bc5e231b224529baeb1a3cc2c8ea54eff8ac21ad",
+      "corpus": {
+        "include": [
+          "crates/zed/**",
+          "crates/workspace/**",
+          "crates/project_panel/**",
+          "crates/editor/**",
+          "crates/search/**",
+          "crates/command_palette/**",
+          "crates/language/**",
+          "crates/git_ui/**",
+          "crates/terminal_view/**",
+          "crates/task/**",
+          "crates/debugger_ui/**",
+          "crates/agent_ui/**",
+          "crates/settings_ui/**",
+          "crates/theme/**",
+          "crates/vim/**",
+          "crates/collab_ui/**",
+          "crates/remote_server/**"
+        ],
+        "exclude": [
+          "**/target/**",
+          "**/*.png",
+          "**/*.svg",
+          "**/*.snap"
+        ]
+      }
+    }
+  ],
+  "probes": [
+    {
+      "id": "semantic-controls",
+      "axis": "accessibility",
+      "patterns": {
+        "openagents": "aria-(?:label|labelledby|describedby)|role=|accessibility(?:Label|Role)",
+        "zed": "\\.tooltip\\(|\\.on_click\\(|ToggleButton|Button::new|IconButton::new"
+      }
+    },
+    {
+      "id": "focus-and-keyboard",
+      "axis": "accessibility",
+      "patterns": {
+        "openagents": "focus-visible|tabIndex|onKeyDown|keyboard|shortcut",
+        "zed": "FocusHandle|key_context|register_action|on_action|KeyBinding"
+      }
+    },
+    {
+      "id": "project-navigation",
+      "axis": "project-files",
+      "patterns": {
+        "openagents": "WorkspaceBrowser|ProjectExplorer|workspace-browser|quickOpen|Open File|Open Folder",
+        "zed": "ProjectPanel|project_panel|OpenPath|OpenDirectory|OpenRecent|FileFinder"
+      }
+    },
+    {
+      "id": "editor-tabs-splits",
+      "axis": "editor",
+      "patterns": {
+        "openagents": "WorkspaceEditor|EditorTab|split|Monaco|editor-tab",
+        "zed": "Editor::|Pane|Split|ItemHandle|MultiBuffer|active_item"
+      }
+    },
+    {
+      "id": "search-command-navigation",
+      "axis": "search-command",
+      "patterns": {
+        "openagents": "command palette|CommandPalette|workspace search|quick open|go to",
+        "zed": "CommandPalette|ProjectSearch|BufferSearch|FileFinder|GoTo"
+      }
+    },
+    {
+      "id": "language-diagnostics",
+      "axis": "language",
+      "patterns": {
+        "openagents": "diagnostic|definition|reference|hover|completion|LanguageService",
+        "zed": "diagnostic|definition|reference|hover|completion|language_server"
+      }
+    },
+    {
+      "id": "git-diff-review",
+      "axis": "git-review",
+      "patterns": {
+        "openagents": "GitPanel|git diff|changeset|review|DiffViewer|Pierre",
+        "zed": "GitPanel|git_panel|GitDiff|ProjectDiff|Review|diff_hunk"
+      }
+    },
+    {
+      "id": "terminal-task-test-debug",
+      "axis": "execution",
+      "patterns": {
+        "openagents": "TerminalWorkbench|terminal|task|test output|debug|DAP",
+        "zed": "TerminalView|terminal_panel|Task|task_context|debugger|Dap"
+      }
+    },
+    {
+      "id": "agent-context-proposal",
+      "axis": "agents",
+      "patterns": {
+        "openagents": "agent context|proposal|WorkContext|changeset|Agent",
+        "zed": "AgentPanel|agent_panel|ContextStore|context_server|proposal|acp"
+      }
+    },
+    {
+      "id": "settings-theme-keymap",
+      "axis": "customization",
+      "patterns": {
+        "openagents": "Settings|theme|Tokyo Night|keymap|Vim",
+        "zed": "Settings|Theme|theme|Keymap|Vim"
+      }
+    },
+    {
+      "id": "collaboration-remote",
+      "axis": "collaboration-remote",
+      "patterns": {
+        "openagents": "remote|placement|portable|collaboration|shared project",
+        "zed": "remote|collab|shared_project|RemoteServer|ssh"
+      }
+    },
+    {
+      "id": "loading-empty-error",
+      "axis": "state-feedback",
+      "patterns": {
+        "openagents": "loading|empty state|error|skeleton|progress|retry",
+        "zed": "Loading|Empty|Error|Spinner|progress|retry"
+      }
+    },
+    {
+      "id": "theme-token-use",
+      "axis": "theming",
+      "patterns": {
+        "openagents": "token|theme|var\\(--|khalaTheme|useTheme",
+        "zed": "cx\\.theme\\(\\)|theme\\(\\)|ThemeColors|Appearance"
+      }
+    },
+    {
+      "id": "motion-and-reduced-motion",
+      "axis": "motion",
+      "patterns": {
+        "openagents": "prefers-reduced-motion|transition|animation",
+        "zed": "Animation|animation|transition|reduce_motion"
+      }
+    }
+  ]
+}

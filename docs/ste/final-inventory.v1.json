@@ -40052,6 +40052,18 @@
       }
     },
     {
+      "path": "docs/sol/2026-07-19-openagents-ide-zed-programmatic-ui-gap-analysis.md",
+      "sha256": "87c56ae5f60f036442b3ffef3652c8b6e6cf8fdfd6745a0899dd2416607abbe1",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
       "sha256": "bea729136337736225ab0659ed6a32624af5708f13da3315e1980a246066e66f",
       "reason": "Final review of a converted document",
@@ -40891,6 +40903,18 @@
     {
       "path": "docs/sol/the-case-against-anthropic.md",
       "sha256": "c10fa5e6ffb322c6d49518fde083549a2aca6c7b99c4b8181208d3bf34f62e4f",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/sol/ui-gap-analysis/README.md",
+      "sha256": "f8e1aff835ab6f3fdf68ce958a269ca2733f831408db762cbd482cd4b1139e39",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",

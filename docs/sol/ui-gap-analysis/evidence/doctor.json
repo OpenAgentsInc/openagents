@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "doctor",
+  "generatedAt": "2026-07-19T22:19:57.063Z",
+  "analysisId": "openagents-ide-vs-zed-ui-2026-07-19",
+  "doctor": {
+    "platform": "darwin-arm64",
+    "node": "v24.13.1",
+    "tools": {
+      "git": {
+        "available": true,
+        "version": "git version 2.50.1 (Apple Git-155)"
+      },
+      "swift": {
+        "available": true,
+        "version": "Apple Swift version 6.3.3 (swiftlang-6.3.3.1.3 clang-2100.1.1.101)"
+      },
+      "screencapture": {
+        "available": true,
+        "version": null
+      }
+    },
+    "targets": [
+      {
+        "id": "openagents",
+        "available": true,
+        "identity": {
+          "root": "<OPENAGENTS_ROOT>",
+          "commit": "41726ba7068ef89c35d9f749ea9966caab95ef65",
+          "tree": "798d73205db93df2543b50e98368b38de8e22db5",
+          "dirty": false,
+          "commitTime": "2026-07-19T17:01:31-05:00",
+          "subject": "docs(sarah): full Sarah program assessment (2026-07-19)"
+        },
+        "mismatches": []
+      },
+      {
+        "id": "zed",
+        "available": true,
+        "identity": {
+          "root": "<ZED_ROOT>",
+          "commit": "f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4",
+          "tree": "bc5e231b224529baeb1a3cc2c8ea54eff8ac21ad",
+          "dirty": false,
+          "commitTime": "2026-07-18T22:40:55Z",
+          "subject": "agent_ui: Show controls after every agent message (#61245)"
+        },
+        "mismatches": []
+      }
+    ]
+  },
+  "limitations": []
+}

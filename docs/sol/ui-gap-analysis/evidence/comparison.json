@@ -1,0 +1,205 @@
+{
+  "schemaVersion": "openagents.ui-gap-evidence.v1",
+  "kind": "comparison",
+  "generatedAt": "2026-07-19T22:33:03.110Z",
+  "analysisId": "openagents-ide-vs-zed-ui-2026-07-19",
+  "comparison": {
+    "leftTargetId": "openagents",
+    "rightTargetId": "zed",
+    "sourceProbeDeltas": [
+      {
+        "id": "agent-context-proposal",
+        "axis": "agents",
+        "left": 5497,
+        "right": 2116,
+        "delta": -3381
+      },
+      {
+        "id": "collaboration-remote",
+        "axis": "collaboration-remote",
+        "left": 536,
+        "right": 2762,
+        "delta": 2226
+      },
+      {
+        "id": "editor-tabs-splits",
+        "axis": "editor",
+        "left": 1551,
+        "right": 23273,
+        "delta": 21722
+      },
+      {
+        "id": "focus-and-keyboard",
+        "axis": "accessibility",
+        "left": 300,
+        "right": 2153,
+        "delta": 1853
+      },
+      {
+        "id": "git-diff-review",
+        "axis": "git-review",
+        "left": 1948,
+        "right": 2660,
+        "delta": 712
+      },
+      {
+        "id": "language-diagnostics",
+        "axis": "language",
+        "left": 1029,
+        "right": 7820,
+        "delta": 6791
+      },
+      {
+        "id": "loading-empty-error",
+        "axis": "state-feedback",
+        "left": 1700,
+        "right": 5896,
+        "delta": 4196
+      },
+      {
+        "id": "motion-and-reduced-motion",
+        "axis": "motion",
+        "left": 257,
+        "right": 111,
+        "delta": -146
+      },
+      {
+        "id": "project-navigation",
+        "axis": "project-files",
+        "left": 618,
+        "right": 704,
+        "delta": 86
+      },
+      {
+        "id": "search-command-navigation",
+        "axis": "search-command",
+        "left": 85,
+        "right": 690,
+        "delta": 605
+      },
+      {
+        "id": "semantic-controls",
+        "axis": "accessibility",
+        "left": 487,
+        "right": 1393,
+        "delta": 906
+      },
+      {
+        "id": "settings-theme-keymap",
+        "axis": "customization",
+        "left": 1891,
+        "right": 17129,
+        "delta": 15238
+      },
+      {
+        "id": "terminal-task-test-debug",
+        "axis": "execution",
+        "left": 1130,
+        "right": 8632,
+        "delta": 7502
+      },
+      {
+        "id": "theme-token-use",
+        "axis": "theming",
+        "left": 1132,
+        "right": 909,
+        "delta": -223
+      }
+    ],
+    "accessibilityRoleDeltas": {
+      "ARIA:aside": {
+        "left": 1,
+        "right": 0,
+        "delta": -1
+      },
+      "ARIA:button": {
+        "left": 18,
+        "right": 0,
+        "delta": -18
+      },
+      "ARIA:combobox": {
+        "left": 3,
+        "right": 0,
+        "delta": -3
+      },
+      "ARIA:heading": {
+        "left": 2,
+        "right": 0,
+        "delta": -2
+      },
+      "ARIA:main": {
+        "left": 2,
+        "right": 0,
+        "delta": -2
+      },
+      "ARIA:nav": {
+        "left": 3,
+        "right": 0,
+        "delta": -3
+      },
+      "ARIA:section": {
+        "left": 2,
+        "right": 0,
+        "delta": -2
+      },
+      "ARIA:textbox": {
+        "left": 1,
+        "right": 0,
+        "delta": -1
+      },
+      "AXApplication": {
+        "left": 0,
+        "right": 1,
+        "delta": 1
+      },
+      "AXButton": {
+        "left": 0,
+        "right": 3,
+        "delta": 3
+      },
+      "AXGroup": {
+        "left": 0,
+        "right": 2,
+        "delta": 2
+      },
+      "AXMenu": {
+        "left": 0,
+        "right": 18,
+        "delta": 18
+      },
+      "AXMenuBar": {
+        "left": 0,
+        "right": 1,
+        "delta": 1
+      },
+      "AXMenuBarItem": {
+        "left": 0,
+        "right": 10,
+        "delta": 10
+      },
+      "AXMenuItem": {
+        "left": 0,
+        "right": 279,
+        "delta": 279
+      },
+      "AXWindow": {
+        "left": 0,
+        "right": 1,
+        "delta": 1
+      }
+    },
+    "visualDeltas": {
+      "meanLuma": 0.166161,
+      "lumaStandardDeviation": 0.031325,
+      "lumaP10": 0,
+      "lumaP90": 0.176477,
+      "edgeDensity": 0.003921
+    }
+  },
+  "limitations": [
+    "A source-probe delta measures evidence density. It does not measure capability quality or completeness.",
+    "A screenshot delta measures pixels. It does not measure usability.",
+    "The accessibility comparison includes only nodes that the platform API exposed in the selected window state.",
+    "The accessibility providers use different role namespaces. Direct role deltas are not parity measures."
+  ]
+}
