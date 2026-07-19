@@ -123,6 +123,14 @@ import {
   decodeIdeAgentCodeSnapshot,
   emptyIdeAgentCodeSnapshot,
 } from "./ide/agent-code-contract.ts"
+import {
+  DesktopIdeCursorCommandChannel,
+  DesktopIdeCursorSnapshotChannel,
+  decodeIdeCursorCommand,
+  decodeIdeCursorCommandResult,
+  decodeIdeCursorSnapshot,
+  emptyIdeCursorSnapshot,
+} from "./ide/cursor-contract.ts"
 import { desktopLaunchContextFromArgv } from "./desktop-launch-context.ts"
 import { invokeDesktopThreadExportWrite } from "./thread-export-bridge-contract.ts"
 import { invokeDesktopThreadExportCreate } from "./thread-export-create-bridge-contract.ts"
@@ -423,6 +431,30 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         reason: "unavailable",
         message: "The agent-code response is invalid.",
         snapshot: emptyIdeAgentCodeSnapshot(),
+      }
+    },
+  },
+  ideCursor: {
+    snapshot: async () => decodeIdeCursorSnapshot(
+      await ipcRenderer.invoke(DesktopIdeCursorSnapshotChannel),
+    ) ?? emptyIdeCursorSnapshot(),
+    command: async (value: unknown) => {
+      const command = decodeIdeCursorCommand(value)
+      if (command === null) {
+        return {
+          _tag: "Refused",
+          reason: "invalid_input",
+          message: "The IDE cursor command was invalid.",
+          snapshot: emptyIdeCursorSnapshot(),
+        }
+      }
+      return decodeIdeCursorCommandResult(
+        await ipcRenderer.invoke(DesktopIdeCursorCommandChannel, command),
+      ) ?? {
+        _tag: "Refused",
+        reason: "unavailable",
+        message: "The IDE cursor host returned an invalid result.",
+        snapshot: emptyIdeCursorSnapshot(),
       }
     },
   },

@@ -18,6 +18,11 @@ import { execFile, execFileSync } from "node:child_process"
 import { BrowserWindow, Menu, Notification, app, dialog, ipcMain, net, protocol, screen as electronScreen, shell, systemPreferences, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions, type Session, type WebContents } from "electron"
 import { Effect } from "effect"
 import {
+  hashPylonAccountRef,
+  pylonAccountEnvironment,
+  type ResolvedPylonAccountSelection,
+} from "@openagentsinc/pylon-core/custody/account-registry"
+import {
   fetchFleetRunClientProjection,
   buildCloseTurnIntent,
   buildContinueTurnIntent,
@@ -137,6 +142,7 @@ import {
   FABLE_LOCAL_IMAGE_BYTES_LIMIT,
   FABLE_LOCAL_IMAGE_COUNT_LIMIT,
   FABLE_LOCAL_IMAGE_MEDIA_TYPES,
+  CLAUDE_MODELS,
   FableLocalPickImagesChannel,
   FableLocalQueueFollowupChannel,
   FableLocalStartChannel,
@@ -214,9 +220,11 @@ import { openDesktopPreferencesStore } from "./desktop-preferences-host.ts"
 import {
   FABLE_LOCAL_FIXTURE_ACCOUNT,
   FABLE_LOCAL_MODEL,
+  discoverReadyFableClaudeHomes,
   makeFableLocalRuntime,
   makeFixtureFableLocalQuery,
   makeFixtureFableMcpFactory,
+  type FableLocalAccountHome,
 } from "./fable-local-runtime.ts"
 import {
   fixtureCodexRevokedStderr,
@@ -268,6 +276,7 @@ import { makeCodexPreflight, type CodexProbeResult } from "./codex-preflight.ts"
 import {
   codexRuntimeAuthority,
   publicCodexRuntimeProjection,
+  resolveBundledClaudeExecutable,
 } from "./provider-runtime-host.ts"
 import { makeCodexAppServerSmokeHarness } from "./codex-app-server-smoke-fixture.ts"
 import { createCodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
@@ -447,6 +456,23 @@ import {
   emptyIdeAgentCodeSnapshot,
 } from "./ide/agent-code-contract.ts"
 import { openIdeAgentCodeHost, type IdeAgentCodeHost } from "./ide/agent-code-host.ts"
+import {
+  DesktopIdeCursorCommandChannel,
+  DesktopIdeCursorSnapshotChannel,
+  decodeIdeCursorCommand,
+  emptyIdeCursorSnapshot,
+} from "./ide/cursor-contract.ts"
+import {
+  makeIdeCursorClaudeProvider,
+  type IdeCursorClaudeQuery,
+  type IdeCursorClaudeQueryResult,
+} from "./ide/cursor-claude-provider.ts"
+import { openIdeCursorHost, type IdeCursorHost } from "./ide/cursor-host.ts"
+import {
+  IdeCursorAuthorityFailure,
+  type IdeCursorProposalAuthorityShape,
+} from "./ide/cursor-service.ts"
+import { makeIdeCursorWorkspaceAuthority } from "./ide/cursor-workspace-authority.ts"
 import {
   DesktopWorkspaceLanguageCancelChannel,
   DesktopWorkspaceLanguageRequestChannel,
@@ -1740,6 +1766,258 @@ const disposeIdeAgentCodeHost = (): void => {
   ideAgentCodeHostEntry = null
   if (entry !== null) void entry.host.then(host => host.dispose())
 }
+
+const ideCursorFixtureQuery = (): IdeCursorClaudeQuery => ({ prompt, options }) => {
+  const parsed = JSON.parse(prompt) as Readonly<{
+    intent?: Readonly<{ _tag?: string }>
+    anchor?: Readonly<{
+      pathRef?: string
+      selection?: unknown
+    }>
+    proposalContext?: Readonly<{
+      attachment?: Readonly<{ sessionRef?: string; attachmentGeneration?: number }>
+      manifestRef?: string
+      turnRef?: string
+      conversationThreadRef?: string | null
+      bases?: ReadonlyArray<Readonly<{
+        fileRef?: string
+        pathRef?: string
+        base?: Readonly<Record<string, unknown>>
+      }>>
+    }>
+  }>
+  const intent = parsed.intent?._tag
+  const selection = parsed.anchor?.selection ?? {
+    start: { line: 1, column: 1 },
+    end: { line: 1, column: 1 },
+  }
+  const suffix = createHash("sha256").update(prompt).digest("hex").slice(0, 24)
+  const structuredOutput = (() => {
+    if (intent === "Ask") return {
+      _tag: "Answer",
+      markdown: "The selected file is attached through the canonical IDE context manifest.",
+      confidence: 0.92,
+    }
+    if (intent === "Edit" || intent === "Generate") {
+      const context = parsed.proposalContext
+      const base = context?.bases?.[0]
+      if (context?.attachment === undefined || context.manifestRef === undefined ||
+        context.turnRef === undefined || base?.fileRef === undefined ||
+        base.pathRef === undefined || base.base === undefined ||
+        typeof base.base.documentRef !== "string") {
+        return {
+          _tag: "Answer",
+          markdown: "No exact proposal preimage was available.",
+          confidence: 0,
+        }
+      }
+      const previous = typeof base.base.content === "string" ? base.base.content : ""
+      const targetContent = `${previous}${previous.endsWith("\n") ? "" : "\n"}// IDE-09 fixture edit\n`
+      const proposalRef = `ide.proposal.cursor-smoke.${suffix}`
+      return {
+        _tag: "Proposal",
+        proposalRef,
+        proposal: {
+          schemaVersion: "openagents.desktop.ide-agent-code.v1",
+          proposalRef,
+          parentProposalRef: null,
+          attachment: context.attachment,
+          manifestRef: context.manifestRef,
+          sessionRef: context.attachment.sessionRef,
+          turnRef: context.turnRef,
+          conversationThreadRef: context.conversationThreadRef ?? null,
+          createdAt: new Date().toISOString(),
+          operations: [{
+            _tag: "Edit",
+            operationRef: `ide.agent-operation.cursor-smoke.${suffix}`,
+            fileRef: base.fileRef,
+            pathRef: base.pathRef,
+            base: base.base,
+            policy: { encoding: "preserve", lineEnding: "preserve", mode: "preserve", symlink: "refuse" },
+            documentRef: base.base.documentRef,
+            targetContent,
+            targetContentDigest: `sha256:${createHash("sha256").update(targetContent).digest("hex")}`,
+          }],
+          lifecycle: { _tag: "Pending" },
+          lineage: null,
+        },
+        confidence: 0.86,
+      }
+    }
+    if (intent === "NextEdit") return {
+      _tag: "NextEdit",
+      targetPathRef: parsed.anchor?.pathRef ?? "src/app.ts",
+      replace: selection,
+      text: "// predicted next edit\n",
+      explanation: "The deterministic packaged cohort predicts the next version-bound edit.",
+      confidence: 0.89,
+    }
+    return {
+      _tag: "Completion",
+      replace: selection,
+      text: "// completed by IDE-09\n",
+      confidence: 0.94,
+    }
+  })()
+  return (async function* (): AsyncGenerator<unknown> {
+    yield {
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      num_turns: 1,
+      total_cost_usd: 0,
+      usage: {
+        input_tokens: Math.ceil(prompt.length / 4),
+        output_tokens: 8,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
+      modelUsage: {
+        [options.model]: {
+          inputTokens: Math.ceil(prompt.length / 4),
+          outputTokens: 8,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+          webSearchRequests: 0,
+          costUSD: 0,
+          contextWindow: 200_000,
+          maxOutputTokens: 8_192,
+        },
+      },
+      permission_denials: [],
+      structured_output: structuredOutput,
+    }
+  })()
+}
+
+const ideCursorClaudeQueryFor = async (
+  account: FableLocalAccountHome,
+): Promise<IdeCursorClaudeQuery> => {
+  if (smokeMode) return ideCursorFixtureQuery()
+  const sdk = await import("@anthropic-ai/claude-agent-sdk") as { query?: unknown }
+  if (typeof sdk.query !== "function") throw new Error("Claude Agent SDK query() is unavailable.")
+  const rawQuery = sdk.query as (input: Readonly<{
+    prompt: string
+    options: Readonly<Record<string, unknown>>
+  }>) => IdeCursorClaudeQueryResult
+  const baseEnvironment = { ...process.env }
+  let environment: Record<string, string | undefined>
+  if (account.source === "current_session") {
+    delete baseEnvironment.CLAUDE_CONFIG_DIR
+    delete baseEnvironment.CLAUDE_CODE_OAUTH_TOKEN
+    environment = baseEnvironment
+  } else {
+    const selection: ResolvedPylonAccountSelection = {
+      provider: "claude_agent",
+      selector: "registry_ref",
+      accountRef: account.ref,
+      accountRefHash: hashPylonAccountRef("claude_agent", account.ref),
+      home: account.home,
+    }
+    environment = pylonAccountEnvironment(baseEnvironment, selection)
+  }
+  const executable = resolveBundledClaudeExecutable()
+  return ({ prompt, options }) => rawQuery({
+    prompt,
+    options: {
+      ...options,
+      env: environment,
+      ...(executable === null ? {} : { pathToClaudeCodeExecutable: executable }),
+    },
+  })
+}
+
+let ideCursorHostEntry: Readonly<{
+  workspace: NonNullable<ReturnType<typeof hostLifecycle.workspace>>
+  accountRef: string
+  host: Promise<IdeCursorHost>
+}> | null = null
+let ideCursorHostTransition: Promise<void> = Promise.resolve()
+
+const cursorAccounts = async (): Promise<ReadonlyArray<FableLocalAccountHome>> =>
+  smokeMode ? [FABLE_LOCAL_FIXTURE_ACCOUNT] : discoverReadyFableClaudeHomes()
+
+const currentIdeCursorHost = (requestedAccountRef: string | null = null): Promise<IdeCursorHost | null> => {
+  const result = ideCursorHostTransition.then(async () => {
+    const requestedWorkspace = hostLifecycle.workspace()
+    if (requestedWorkspace === null) {
+      const previous = ideCursorHostEntry
+      ideCursorHostEntry = null
+      if (previous !== null) await (await previous.host).dispose()
+      return null
+    }
+    if (requestedAccountRef === null && ideCursorHostEntry?.workspace === requestedWorkspace) {
+      return ideCursorHostEntry.host
+    }
+    if (requestedAccountRef !== null && ideCursorHostEntry?.workspace === requestedWorkspace &&
+      ideCursorHostEntry.accountRef === requestedAccountRef) {
+      return ideCursorHostEntry.host
+    }
+    const accounts = await cursorAccounts()
+    const account = requestedAccountRef === null
+      ? accounts[0]
+      : accounts.find(candidate => candidate.ref === requestedAccountRef)
+    if (account === undefined) return null
+
+    let initialSequence = 0
+    const previous = ideCursorHostEntry
+    ideCursorHostEntry = null
+    if (previous !== null) {
+      initialSequence = await (await previous.host).snapshot().then(snapshot => snapshot.latestSequence).catch(() => 0)
+      await (await previous.host).dispose()
+    }
+    const workspace = hostLifecycle.workspace()
+    if (workspace === null) return null
+    const rootDigest = createHash("sha256").update(workspace.summary().root).digest("hex")
+    const accountDigest = createHash("sha256").update(account.ref).digest("hex").slice(0, 24)
+    const isolatedCwd = path.join(app.getPath("userData"), "ide-cursor", rootDigest, accountDigest)
+    mkdirSync(isolatedCwd, { recursive: true, mode: 0o700 })
+    const provider = makeIdeCursorClaudeProvider({
+      query: await ideCursorClaudeQueryFor(account),
+      isolatedCwd,
+      providerRef: "fable-local",
+      modelRefs: [...CLAUDE_MODELS],
+      harnessRef: "fable",
+      accountRef: account.ref,
+    })
+    const documentAuthority = makeIdeCursorWorkspaceAuthority(workspace)
+    const proposalAuthority: IdeCursorProposalAuthorityShape = {
+      submit: candidate => Effect.tryPromise({
+        try: async () => {
+          const agentHost = await currentIdeAgentCodeHost()
+          if (agentHost === null) throw new Error("The IDE-08 host is unattached.")
+          const response = await agentHost.command({
+            _tag: "SubmitProposal",
+            input: {
+              proposal: candidate.proposal,
+              expectedAttachmentGeneration: candidate.proposal.attachment.attachmentGeneration,
+            },
+          })
+          if (response._tag === "Refused") throw new Error(response.message)
+        },
+        catch: error => new IdeCursorAuthorityFailure({
+          operation: "IdeCursorProposalAuthority.submit",
+          reason: "unavailable",
+          detail: String(error).slice(0, 2_000),
+        }),
+      }),
+    }
+    const host = openIdeCursorHost(provider, documentAuthority, {
+      initialSequence,
+      proposalAuthority,
+    })
+    ideCursorHostEntry = { workspace, accountRef: account.ref, host }
+    return host
+  })
+  ideCursorHostTransition = result.then(() => undefined, () => undefined)
+  return result
+}
+
+const disposeIdeCursorHost = (): void => {
+  const entry = ideCursorHostEntry
+  ideCursorHostEntry = null
+  if (entry !== null) void entry.host.then(host => host.dispose())
+}
 const workspaceSearchOwnerRef = (webContentsId: number): string =>
   `webContents.${webContentsId}`
 const requestedWorkspaceChangeWindows = new Set<number>()
@@ -2114,6 +2392,46 @@ ipcMain.handle(DesktopIdeAgentCodeCommandChannel, async (event, value: unknown) 
         snapshot: emptyIdeAgentCodeSnapshot(),
       }
     : host.command(value)
+})
+ipcMain.handle(DesktopIdeCursorSnapshotChannel, async (event) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return emptyIdeCursorSnapshot()
+  try {
+    return (await currentIdeCursorHost())?.snapshot() ?? emptyIdeCursorSnapshot()
+  } catch {
+    return emptyIdeCursorSnapshot()
+  }
+})
+ipcMain.handle(DesktopIdeCursorCommandChannel, async (event, value: unknown) => {
+  const command = decodeIdeCursorCommand(value)
+  if (!isTrustedRuntimeGatewaySender(event) || command === null) {
+    return {
+      _tag: "Refused",
+      reason: "invalid_input",
+      message: "The AI-editing request did not match the trusted Desktop schema boundary.",
+      snapshot: emptyIdeCursorSnapshot(),
+    }
+  }
+  try {
+    const accountRef = command._tag === "Start"
+      ? command.input.request.identity.effective.account.value
+      : null
+    const host = await currentIdeCursorHost(accountRef)
+    return host === null
+      ? {
+          _tag: "Refused",
+          reason: "unavailable",
+          message: "Choose an admitted workspace and linked Fable account before using AI editing.",
+          snapshot: emptyIdeCursorSnapshot(),
+        }
+      : host.command(command)
+  } catch {
+    return {
+      _tag: "Refused",
+      reason: "unavailable",
+      message: "The AI-editing provider or workspace authority is unavailable.",
+      snapshot: emptyIdeCursorSnapshot(),
+    }
+  }
 })
 ipcMain.handle(DesktopWorkspaceLanguageRequestChannel, async (event, value: unknown) => {
   const request = decodeIdeLanguageRequest(value)
@@ -8533,6 +8851,7 @@ app.on("before-quit", () => {
   for (const flush of localTurnFlushers) flush()
   localTurnFlushers.clear()
   workspaceSearchRegistry.dispose()
+  disposeIdeCursorHost()
   disposeIdeAgentCodeHost()
   terminalHost.dispose()
   hostLifecycle.dispose()

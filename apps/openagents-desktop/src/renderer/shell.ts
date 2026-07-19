@@ -164,6 +164,14 @@ import {
   unavailableIdeAgentCodeRendererHost,
   type IdeAgentCodeRendererHost,
 } from "./ide/agent-code.ts"
+import {
+  emptyIdeCursorRendererState,
+  ideCursorRendererIntents,
+  makeIdeCursorRendererHandlers,
+  unavailableIdeCursorRendererHost,
+  type IdeCursorRendererHost,
+  type IdeCursorRendererState,
+} from "./ide/cursor.ts"
 import { DesktopWorkspacePathRefSchema } from "../workspace-contract.ts"
 import {
   emptyWorkspaceBrowserState,
@@ -553,6 +561,8 @@ export type DesktopShellState = Readonly<{
   agentContextTrayOpen: boolean
   /** Public-safe last agent-code host disposition. */
   agentCodeNotice: string | null
+  /** Decoded Cursor-class AI-editing projection and exact active request. */
+  ideCursor: IdeCursorRendererState
   commandPaletteOpen: boolean
   /** Public-safe result of the latest deferred/native command admission. */
   commandNotice: string | null
@@ -679,6 +689,7 @@ export const initialDesktopShellState = (
   agentReviewProposalRef: null,
   agentContextTrayOpen: false,
   agentCodeNotice: null,
+  ideCursor: emptyIdeCursorRendererState(),
   commandPaletteOpen: false,
   commandNotice: null,
   commandBindings: null,
@@ -1082,6 +1093,7 @@ export const desktopShellIntents = [
   ...gitPanelIntents,
   ...workspaceBrowserIntents,
   ...workspaceEditorIntents,
+  ...ideCursorRendererIntents,
   ...fullAutoWorkspaceIntents,
 ] as const
 
@@ -2185,6 +2197,8 @@ export const makeDesktopShellHandlers = (
   fullAutoRunHost: FullAutoRunRendererHost = unavailableFullAutoRunRendererHost,
   // IDE-08 host is appended to preserve every historical positional caller.
   agentCodeHost: IdeAgentCodeRendererHost = unavailableIdeAgentCodeRendererHost,
+  // IDE-09 host is appended to preserve every historical positional caller.
+  ideCursorHost: IdeCursorRendererHost = unavailableIdeCursorRendererHost,
 ): IntentHandlers<typeof desktopShellIntents> => {
   // Latest-selection-wins fence for async host reads. An older click may
   // finish later, but it must never replace the newer visible conversation.
@@ -2274,6 +2288,12 @@ export const makeDesktopShellHandlers = (
       setVimEnabled: enabled => presentationHost.setEditorVimEnabled?.(enabled) ?? Promise.resolve(),
     },
     workspaceHost.language ?? unavailableWorkspaceLanguageBridge,
+  )
+  const ideCursorHandlers = makeIdeCursorRendererHandlers(
+    state,
+    ideCursorHost,
+    workspaceHost.documents ?? unavailableWorkspaceDocumentBridge,
+    agentCodeHost,
   )
   const publishAgentCodeResult = (
     result: Awaited<ReturnType<typeof executeAgentCodeRendererCommand>>,
@@ -3221,6 +3241,7 @@ export const makeDesktopShellHandlers = (
   ...gitPanelHandlers,
   ...workspaceBrowserHandlers,
   ...workspaceEditorHandlers,
+  ...ideCursorHandlers,
   DesktopSidebarCollapsedChanged: (sidebarCollapsed) => Effect.gen(function* () {
     yield* SubscriptionRef.update(state, current => ({
       ...current,

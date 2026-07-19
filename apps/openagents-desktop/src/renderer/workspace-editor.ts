@@ -424,6 +424,48 @@ export const withWorkspaceEditorOpened = (
   }
 })
 
+/**
+ * Reconciles a main-acknowledged cursor mutation from a fresh canonical read.
+ * The pre-ack renderer draft becomes one normal undo boundary. The renderer
+ * never predicts or applies the candidate bytes before main confirms them.
+ */
+export const withWorkspaceEditorCursorReconciled = (
+  state: WorkspaceEditorState,
+  pathRef: string,
+  result: DesktopWorkspaceDocumentResult,
+): WorkspaceEditorState => updateTab(state, pathRef, tab => {
+  if (
+    (result.state !== "available" && result.state !== "saved") ||
+    result.document.pathRef !== pathRef
+  ) {
+    return {
+      ...tab,
+      reason: result.state === "unavailable"
+        ? result.message
+        : "The acknowledged cursor document did not match this tab.",
+    }
+  }
+  const value = result.document.content
+  return {
+    ...tab,
+    phase: "ready",
+    document: result.document,
+    externalDocument: null,
+    draft: value,
+    selection: { start: value.length, end: value.length },
+    selectionVersion: nextSelectionVersion(tab.selectionVersion),
+    undo: value === tab.draft ? tab.undo : [...tab.undo, tab.draft].slice(-maxHistory),
+    redo: [],
+    saveState: "idle",
+    reason: null,
+    incrementalSequence: IdeDocumentSequence.make((tab.incrementalSequence ?? 0) + 1),
+    modelVersion: IdeMonacoModelVersion.make((tab.modelVersion ?? 1) + 1),
+    tabMode: "pinned",
+    findMatches: findOffsets(value, tab.findQuery),
+    findIndex: 0,
+  }
+})
+
 /** Keeps open tabs attached to the same entry after a confirmed file/folder rename. */
 export const withWorkspaceEditorRenamed = (
   state: WorkspaceEditorState,

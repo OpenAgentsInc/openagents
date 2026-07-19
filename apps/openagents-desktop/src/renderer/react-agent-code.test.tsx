@@ -100,6 +100,43 @@ describe("IDE-08 rendered agent-code surfaces", () => {
     })
   })
 
+  test("uses the completed harness account observation instead of guessing an implicit Claude target", async () => {
+    const initial = initialDesktopShellState("electron/darwin")
+    const assembled = await assembleActiveFileAgentManifest({
+      ...initial,
+      activeThreadId: "thread-observed-account",
+      activeLaneRef: "fable-local",
+      selectedHarness: "fable",
+      threads: [{
+        id: "thread-observed-account",
+        title: "Observed account",
+        updatedAt: "2026-07-19T12:00:00.000Z",
+        notes: [{
+          key: "assistant-observed-account",
+          role: "assistant",
+          text: "done",
+          timestamp: "12:00 PM",
+          meta: {
+            lane: "fable-local",
+            model: "claude-fable-5",
+            accountRef: "claude-pylon-3",
+            turnRef: "turn.fable.observed-account",
+          },
+        }],
+      }],
+      providerTargetsByThread: {},
+      composerFileContext: {
+        path: "src/active.ts",
+        revisionRef: "workspace.revision.active.1",
+        languageMode: "typescript",
+        content: "export const active = true\n",
+        dirty: false,
+      },
+      workspaceBrowser: { ...initial.workspaceBrowser, grantRef: "workspace.grant.observed-account" },
+    }, "2026-07-19T12:00:01.000Z")
+    expect(assembled?.manifest.effectiveRuntime.accountRef).toBe("claude-pylon-3")
+  })
+
   test("discloses included and omitted context plus the effective runtime", async () => {
     const container = installDom()
     const { AgentContextTray } = await import("./react-agent-context.tsx")

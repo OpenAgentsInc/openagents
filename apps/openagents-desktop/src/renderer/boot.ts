@@ -16,7 +16,7 @@ import {
   StaticPayload,
   type IntentReporter,
 } from "@effect-native/core"
-import { Effect, Exit, Schema, Scope, SubscriptionRef } from "@effect-native/core/effect"
+import { Effect, Exit, Schema, Scope, Stream, SubscriptionRef } from "@effect-native/core/effect"
 import { makeStubCodeEditorDriver } from "@effect-native/render-dom"
 import { makeReactDomRenderer } from "@effect-native/render-dom/react"
 import { projectFleetCockpitCard, type FleetAuthority } from "../fleet-cockpit.ts"
@@ -153,6 +153,13 @@ import {
   unavailableIdeAgentCodeRendererHost,
   type IdeAgentCodeRendererHost,
 } from "./ide/agent-code.ts"
+import {
+  cancelInvalidatedIdeCursor,
+  invalidateIdeCursorRendererState,
+  loadIdeCursorRendererSnapshot,
+  unavailableIdeCursorRendererHost,
+  type IdeCursorRendererHost,
+} from "./ide/cursor.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -188,6 +195,10 @@ type DesktopBridge = Readonly<{
   chooseWorkspace?: () => Promise<unknown>
   workingDirectory?: () => Promise<unknown>
   ideAgentCode?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    command?: (value: unknown) => Promise<unknown>
+  }>
+  ideCursor?: Readonly<{
     snapshot?: () => Promise<unknown>
     command?: (value: unknown) => Promise<unknown>
   }>
@@ -424,6 +435,11 @@ const workspaceLanguageBridge: WorkspaceLanguageBridge = {
 const ideAgentCodeRendererHost: IdeAgentCodeRendererHost = {
   snapshot: () => readBridge()?.ideAgentCode?.snapshot?.() ?? unavailableIdeAgentCodeRendererHost.snapshot(),
   command: value => readBridge()?.ideAgentCode?.command?.(value) ?? unavailableIdeAgentCodeRendererHost.command(value),
+}
+
+const ideCursorRendererHost: IdeCursorRendererHost = {
+  snapshot: () => readBridge()?.ideCursor?.snapshot?.() ?? unavailableIdeCursorRendererHost.snapshot(),
+  command: value => readBridge()?.ideCursor?.command?.(value) ?? unavailableIdeCursorRendererHost.command(value),
 }
 
 /**
@@ -727,7 +743,34 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const initialAgentCode = yield* Effect.promise(() =>
       loadAgentCodeRendererSnapshot(ideAgentCodeRendererHost).catch(() =>
         loadAgentCodeRendererSnapshot(unavailableIdeAgentCodeRendererHost)))
-    yield* SubscriptionRef.update(state, current => ({ ...current, agentCode: initialAgentCode }))
+    const initialIdeCursor = yield* Effect.promise(() =>
+      loadIdeCursorRendererSnapshot(ideCursorRendererHost).catch(() =>
+        loadIdeCursorRendererSnapshot(unavailableIdeCursorRendererHost)))
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      agentCode: initialAgentCode,
+      ideCursor: { ...current.ideCursor, snapshot: initialIdeCursor },
+    }))
+    let cursorInvalidationOrdinal = 0
+    yield* Effect.forkScoped(Stream.runForEach(SubscriptionRef.changes(state), latest => {
+      const invalidated = invalidateIdeCursorRendererState(latest.ideCursor, latest)
+      if (invalidated === latest.ideCursor) return Effect.void
+      return Effect.gen(function* () {
+        yield* SubscriptionRef.update(state, current => current.ideCursor === latest.ideCursor
+          ? { ...current, ideCursor: invalidated }
+          : current)
+        const result = yield* Effect.promise(() => cancelInvalidatedIdeCursor(
+          ideCursorRendererHost,
+          latest.ideCursor,
+          invalidated,
+          ++cursorInvalidationOrdinal,
+        ))
+        if (result === null) return
+        yield* SubscriptionRef.update(state, current => current.ideCursor === invalidated
+          ? { ...current, ideCursor: { ...invalidated, snapshot: result.snapshot } }
+          : current)
+      })
+    }))
     const program = makeViewProgramFromState(state, desktopShellView)
     document.documentElement.dataset.desktopPlatform = bridge?.platform ?? "unknown"
     if (typeof bridge?.localTurnRecovery?.onUpdate === "function") {
@@ -1294,7 +1337,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       } satisfies AcpProviderSettingsBridge, {
         snapshot: () => readBridge()?.codexExperimental?.snapshot?.() ?? Promise.resolve(null),
         request: value => readBridge()?.codexExperimental?.request?.(value) ?? Promise.resolve({ ok: false, reason: "unavailable" }),
-      }, fullAutoRunHost, ideAgentCodeRendererHost),
+      }, fullAutoRunHost, ideAgentCodeRendererHost, ideCursorRendererHost),
     )
     if (!documentLaunch && typeof bridge?.runtimeRequest === "function") {
       const response = yield* Effect.promise(() => bridge.runtimeRequest!({

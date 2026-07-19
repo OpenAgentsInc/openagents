@@ -34,6 +34,29 @@ const relative = (file: string): string => path.relative(repositoryRoot, file);
 export const isHandMirroredBoundaryDeclaration = (sourceLine: string): boolean =>
   /^export\s+(?:type|interface)\s+\w+(?![^=]*=\s*typeof\s+\w+(?:Schema)?\.Type)/u.test(sourceLine);
 
+const cursorRendererAuthorityPatterns = [
+  ['from "node:', "node-host-import"],
+  ["from 'node:", "node-host-import"],
+  ['from "electron"', "electron-host-import"],
+  ["from 'electron'", "electron-host-import"],
+  ["workspace-service", "workspace-service-import"],
+  ["openIdeCursorHost", "cursor-host-construction"],
+  ["cursor-provider.ts", "cursor-provider-access"],
+  ["IdeCursorDocumentAuthority", "document-authority-access"],
+  [".executeEdits(", "direct-monaco-mutation"],
+  [".pushEditOperations(", "direct-monaco-mutation"],
+  [".applyEdits(", "direct-monaco-mutation"],
+  [".setValue(", "direct-monaco-mutation"],
+  ["writeFile", "filesystem-mutation"],
+  ["renameSync", "filesystem-mutation"],
+  ["unlinkSync", "filesystem-mutation"],
+] as const;
+
+export const cursorRendererAuthorityViolations = (source: string): ReadonlyArray<string> =>
+  cursorRendererAuthorityPatterns
+    .filter(([needle]) => source.includes(needle))
+    .map(([, rule]) => rule);
+
 const addMatches = (
   violations: BoundaryViolation[],
   file: string,
@@ -60,6 +83,8 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
     path.join(ideRoot, "path-index-contract.ts"),
     path.join(ideRoot, "monaco-document-contract.ts"),
     path.join(ideRoot, "agent-code-contract.ts"),
+    path.join(ideRoot, "cursor-contract.ts"),
+    path.join(ideRoot, "cursor-benchmark-contract.ts"),
     path.join(appRoot, "src", "workspace-contract.ts"),
   ];
   const widgetProjectionFiles = new Set([
@@ -179,6 +204,79 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
         line: 1,
         rule: "agent-code-public-boundary",
         detail: `The public agent-code boundary may not expose ${forbidden}.`,
+      });
+    }
+  }
+
+  const cursorServicePath = path.join(ideRoot, "cursor-service.ts");
+  const cursorService = readFileSync(cursorServicePath, "utf8");
+  for (const [needle, rule] of [
+    ["Context.Service", "cursor-context-service"],
+    ["Layer.effect", "cursor-layer-effect"],
+    ["Effect.fn", "cursor-named-effect-functions"],
+    ["Schema.TaggedErrorClass", "cursor-typed-expected-errors"],
+    ["Effect.addFinalizer", "cursor-scoped-teardown"],
+    ["Schema.decodeUnknownEffect", "cursor-boundary-decode"],
+  ] as const) {
+    if (!cursorService.includes(needle)) {
+      violations.push({
+        file: relative(cursorServicePath),
+        line: 1,
+        rule,
+        detail: `Required cursor Effect service primitive is missing: ${needle}.`,
+      });
+    }
+  }
+
+  const cursorProviderPath = path.join(ideRoot, "cursor-provider.ts");
+  const cursorProvider = readFileSync(cursorProviderPath, "utf8");
+  for (const [needle, rule] of [
+    ["Context.Service", "cursor-provider-context-service"],
+    ["Schema.TaggedErrorClass", "cursor-provider-typed-errors"],
+    ["Stream.Stream<unknown", "cursor-provider-unknown-output"],
+  ] as const) {
+    if (!cursorProvider.includes(needle)) {
+      violations.push({
+        file: relative(cursorProviderPath),
+        line: 1,
+        rule,
+        detail: `Required cursor provider boundary primitive is missing: ${needle}.`,
+      });
+    }
+  }
+  for (const forbidden of [
+    'from "node:', "from 'node:", 'from "electron"', "from 'electron'",
+    "workspace-service", "monaco-editor", "@pierre/",
+    "writeFile", "renameSync", "unlinkSync",
+  ]) {
+    if (cursorProvider.includes(forbidden) || cursorService.includes(forbidden)) {
+      violations.push({
+        file: cursorProvider.includes(forbidden) ? relative(cursorProviderPath) : relative(cursorServicePath),
+        line: 1,
+        rule: "cursor-core-authority-perimeter",
+        detail: `Cursor provider/service code acquired forbidden host or widget authority through ${forbidden}.`,
+      });
+    }
+  }
+  if (cursorProvider.includes("IdeCursorDocumentAuthority")) {
+    violations.push({
+      file: relative(cursorProviderPath),
+      line: 1,
+      rule: "cursor-provider-document-authority",
+      detail: "The cursor provider adapter cannot acquire canonical document authority.",
+    });
+  }
+
+  const cursorRendererFiles = sourceFiles(path.join(appRoot, "src", "renderer"))
+    .filter((file) => /(?:^|[/\\])(?:react-)?cursor[^/\\]*\.tsx?$/u.test(file));
+  for (const file of cursorRendererFiles) {
+    const source = readFileSync(file, "utf8");
+    for (const rule of cursorRendererAuthorityViolations(source)) {
+      violations.push({
+        file: relative(file),
+        line: 1,
+        rule: `cursor-renderer-${rule}`,
+        detail: "Cursor renderer code is a decoded projection and cannot acquire document, provider, host, or direct Monaco mutation authority.",
       });
     }
   }

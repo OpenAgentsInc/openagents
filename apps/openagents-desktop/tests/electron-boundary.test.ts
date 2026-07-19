@@ -415,12 +415,13 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
             (name === "ide-path-index.ts" && ownedIdePathIndexImports.has(specifier)) ||
             (name === "monaco-editor-host.tsx" && ownedMonacoHostImports.has(specifier)) ||
             (name === "workspace-editor.ts" && ownedWorkspaceEditorImports.has(specifier)) ||
-            (name === "boot.ts" && specifier === "./ide/agent-code.ts") ||
+            (name === "boot.ts" && (specifier === "./ide/agent-code.ts" || specifier === "./ide/cursor.ts")) ||
             ((name === "git-panel.ts" || name === "shell.ts") && specifier === "../ide/review-contract.ts") ||
             (name === "shell.ts" && (
               specifier === "../ide/agent-code-contract.ts" ||
               specifier === "../ide/project-contract.ts" ||
-              specifier === "./ide/agent-code.ts")) ||
+              specifier === "./ide/agent-code.ts" ||
+              specifier === "./ide/cursor.ts")) ||
             (reactHostFiles.has(name) &&
               (reactHostImport.test(specifier) ||
                 specifier === sharedReactWorkbenchImport ||
@@ -430,7 +431,8 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
                   ownedAgentCodeImports.has(specifier)) ||
                 (name === "react-workspace-surfaces.tsx" &&
                   (specifier === ownedPierreAdapterImport || specifier === "../ide/workbench-contract.ts" ||
-                    specifier === "../ide/language-workbench-contract.ts")))),
+                    specifier === "../ide/language-workbench-contract.ts" ||
+                    specifier === "./ide/react-cursor.tsx")))),
           `${name} imports disallowed renderer dependency ${specifier}`,
         ).toBe(true);
       }

@@ -18,6 +18,7 @@ import {
   decodeWorkspaceEditorRecoverySnapshot,
   makeWorkspaceEditorHandlers,
   withWorkspaceEditorEvent,
+  withWorkspaceEditorCursorReconciled,
   withWorkspaceEditorMonacoEvent,
   withWorkspaceEditorExternalResult,
   withWorkspaceEditorFind,
@@ -140,6 +141,23 @@ describe("workspace editor state", () => {
       bounded = withWorkspaceEditorEvent(bounded, { type: "change", value: `edit ${index}` })
     }
     expect(bounded.tabs[0]?.undo).toHaveLength(100)
+  })
+
+  test("reconciles an acknowledged AI edit as one canonical undo boundary", () => {
+    const initial = readyState()
+    const reconciled = withWorkspaceEditorCursorReconciled(initial, "src/index.ts", {
+      state: "available",
+      document: document({
+        content: "const needle = false\n",
+        revisionRef: "workspace.document.cursor.accepted",
+      }),
+    })
+    expect(reconciled.tabs[0]?.draft).toBe("const needle = false\n")
+    expect(reconciled.tabs[0]?.undo).toEqual([document().content])
+    expect(reconciled.tabs[0]?.redo).toEqual([])
+    expect(reconciled.tabs[0]?.modelVersion).toBe(2)
+    expect(reconciled.tabs[0]?.incrementalSequence).toBe(1)
+    expect(withWorkspaceEditorUndo(reconciled).tabs[0]?.draft).toBe(document().content)
   })
 
   test("confirmed file and folder renames retarget open tabs without losing drafts", () => {

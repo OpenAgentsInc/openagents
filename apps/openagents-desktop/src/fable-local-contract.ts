@@ -615,7 +615,8 @@ export const CodexModelSchema = Schema.String.check(
   Schema.isPattern(CODEX_MODEL_ID_PATTERN),
 )
 export type CodexModel = typeof CodexModelSchema.Type
-export const ClaudeModelSchema = Schema.Literals(["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"])
+export const CLAUDE_MODELS = ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"] as const
+export const ClaudeModelSchema = Schema.Literals(CLAUDE_MODELS)
 export type ClaudeModel = typeof ClaudeModelSchema.Type
 export const LocalModelSchema = Schema.Union([CodexModelSchema, ClaudeModelSchema])
 export type LocalModel = typeof LocalModelSchema.Type

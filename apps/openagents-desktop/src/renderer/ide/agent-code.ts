@@ -96,6 +96,20 @@ const sameUnderlyingAttachment = (
 }
 
 const runtimeAccountLabel = (state: DesktopShellState): string => {
+  const thread = state.activeThreadId === null
+    ? null
+    : state.threads.find(candidate => candidate.id === state.activeThreadId) ?? null
+  const observed = thread === null
+    ? undefined
+    : [...thread.notes].reverse().find(note =>
+        note.meta?.accountRef !== undefined &&
+        (note.meta.lane === undefined || note.meta.lane === state.activeLaneRef))
+  // A completed local-harness turn persists the account that actually ran in
+  // main-owned message metadata. That observed identity outranks a selected
+  // target: implicit Claude selection can legally choose the current session
+  // or a fallback Pylon home, and calling it `account.current` would make the
+  // exact IDE-09 provider admission impossible (or tempt a false guess).
+  if (observed?.meta?.accountRef !== undefined) return observed.meta.accountRef.slice(0, 240)
   const target = state.activeThreadId === null ? null : state.providerTargetsByThread[state.activeThreadId]
   if (target === null || target === undefined) return "account.current"
   return target.accountRef.slice(0, 240)
