@@ -1,4 +1,41 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
-  "profiles": {}
+  "profiles": {
+    "AUTHORITY.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719",
+      "ste_reviewed_at": "2026-07-19T15:36:00Z"
+    },
+    "docs/sol/CLAIM_PROTOCOL.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719",
+      "ste_reviewed_at": "2026-07-19T15:36:00Z"
+    },
+    "docs/ste/templates/audit.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719",
+      "ste_reviewed_at": "2026-07-19T15:36:00Z"
+    },
+    "docs/ste/p1-control-conversion-receipt.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719",
+      "ste_reviewed_at": "2026-07-19T15:40:00Z"
+    },
+    "docs/ste/templates/receipt.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719",
+      "ste_reviewed_at": "2026-07-19T15:36:00Z"
+    },
+    "docs/ste/templates/runbook.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719",
+      "ste_reviewed_at": "2026-07-19T15:36:00Z"
+    },
+    "docs/ste/templates/specification.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719",
+      "ste_reviewed_at": "2026-07-19T15:36:00Z"
+    }
+  }
 }

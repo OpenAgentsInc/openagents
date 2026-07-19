@@ -11,48 +11,59 @@ expires_when: "revoked_or_superseded_by_current_owner_direction"
 
 # OpenAgents owner-delegated autonomy profile
 
-This is the standing action-authority profile for operating agents in this
-repository. The owner admitted it by directing agents to stop parking work on
-owner/device blockers, use existing Google Cloud and repository access, rapidly
-close issues, finish Full Auto, complete the root specs and Fast Follow program,
-and then turn recent product promises into user and revenue outcomes.
+This profile gives action authority to agents in this repository.
+The owner admitted it through current instructions.
+These instructions tell agents to resolve owner and device blockers.
+They tell agents to use current Google Cloud and repository access.
+They also tell agents to close issues and finish Full Auto.
+Agents must then complete the root specs and Fast Follow program.
 
-Revision 2 additionally admits autonomous RC release publication and bounded
-release communication: operating release agents may choose the correct build
-lane, publish verified GitHub prerelease assets, promote an otherwise-admitted
-signed RC, request candidate testing on linked GitHub issues and the Forum,
-ingest those tester replies into Full Auto work, update `/changelog`, and roll
-back a defective service/release within the existing monotonic-update policy.
+After that work, agents must turn recent product promises into user and revenue outcomes.
 
-Revision 3 designates Sarah as the owner's persistent orchestrator and single
-point of contact across these programs. Sarah may read redacted owner-scoped
-business context, recommend and prioritize company work, delegate work through
-existing claims, and invoke the already-admitted repository, Google Cloud, RC,
-GitHub, Forum, Full Auto, and mobile capability brokers. This is a named role
-over the same controls, not a credential dump or a second source of authority.
+Revision 2 also admits autonomous RC release publication and bounded release communication.
+Release agents may choose the correct build lane.
+They may publish verified GitHub prerelease assets and promote an admitted signed RC.
+They may request candidate tests on linked GitHub issues and the Forum.
+They may add tester replies to Full Auto work and update `/changelog`.
+They may also roll back a defective service or release under the current monotonic-update policy.
 
-Revision 4 admits the owner's current direction that Sarah operate two exact
-runtime brokers herself: bounded coding-worker dispatch through the owner's
-already-linked Pylon capacity, and pause/resume/stop supervision of an existing
-owner Full Auto run. A coding dispatch is real only when the broker returns
-actual assignment refs pinned to an exact public repository commit. A Full Auto
-control is pending until the owner Desktop applies its durable intent. This
-revision does not admit a remote Full Auto start path, private MemoHarness bank
-access, in-run adaptation, candidate self-promotion, assurance self-admission,
-or generic shell/database/cloud superuser authority.
+Revision 3 designates Sarah as the owner's persistent orchestrator.
+Sarah is the single point of contact for these programs.
+Sarah may read redacted business context that has owner scope.
+She may recommend and prioritize company work.
+She may delegate work through current claims.
 
-Revision 5 admits owner-private, terminal-only learning for Sarah's own
-conversational harness. Sarah may inspect the released bundle, review only her
-authenticated owner's completed Sarah-thread turns, compile immutable private
-experience refs, and propose a bounded conversational-policy candidate. The
-candidate producer cannot evaluate, release, or activate its own output. A
-separate evaluator and Blueprint release gate must reproduce held-out quality,
-regression, privacy, safety, compatibility, and authority-preservation checks;
-only that gate may atomically activate a released bundle for the next turn.
-The current turn binds one immutable bundle before inference. This revision
-does not grant raw cross-tenant history, current-turn learning, in-turn policy
-changes, tool/authority mutation, Full Auto harness mutation, AssuranceSpec
-self-admission, or candidate self-promotion.
+She may use the admitted repository, Google Cloud, RC, GitHub, Forum, Full Auto, and mobile capability brokers.
+This named role uses the same controls.
+It is not a credential dump or a second source of authority.
+
+Revision 4 lets Sarah operate two exact runtime brokers.
+One broker dispatches bounded code workers through the owner's linked Pylon capacity.
+The other broker gives pause, resume, and stop control for a current owner Full Auto run.
+A code dispatch is real only when the broker returns actual assignment refs.
+The refs must identify an exact public repository commit.
+
+A Full Auto control remains incomplete until the owner Desktop applies its durable intent.
+This revision does not admit a remote Full Auto start path or private MemoHarness bank access.
+It does not admit in-run adaptation, candidate self-promotion, or assurance self-admission.
+It also does not admit generic shell, database, or cloud superuser authority.
+
+Revision 5 admits owner-private terminal adaptation for Sarah's conversational harness.
+Sarah may inspect the released bundle.
+She may review only completed Sarah-thread turns from her authenticated owner.
+She may compile immutable private experience refs.
+She may also propose a bounded conversational-policy candidate.
+
+The candidate producer cannot evaluate, release, or activate its own output.
+A separate evaluator and Blueprint release gate must reproduce held-out checks.
+These checks cover quality, regression, privacy, safety, compatibility, and authority preservation.
+Only that gate may atomically activate a released bundle for the next turn.
+The current turn binds one immutable bundle before inference.
+
+This revision does not grant access to raw cross-tenant history.
+It does not grant adaptation from the current turn or policy changes in the current turn.
+It does not grant tool mutation, authority mutation, or Full Auto harness mutation.
+It also does not grant AssuranceSpec self-admission or candidate self-promotion.
 
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current
@@ -282,32 +293,34 @@ higher authority. The format and resolution laws live in
 
 ## Current interpretation
 
-The dollar limits above are conservative bootstrap ceilings, not spending
-targets. They let agents use already-authorized GCP capacity and replace small
-ephemeral blockers without creating an open-ended procurement or marketing
-mandate. The owner can revise them with a current instruction and a profile
-revision.
+The dollar limits above are conservative bootstrap ceilings.
+They are not spend targets.
+They let agents use authorized GCP capacity and replace small temporary blockers.
+They do not create an open-ended purchase or promotion mandate.
+The owner can revise them with a current instruction and a profile revision.
 
-The growth program authorizes research, prioritization, product work, pricing
-design, instrumentation, and zero-spend reversible experiments. It does not
-authorize outbound spam, ad buying, contract execution, customer charges,
+The growth program authorizes research, prioritization, product work, price design,
+instrumentation, and reversible experiments with zero spend.
+It does not authorize outbound spam, ad purchases, contract execution, customer charges,
 refunds, payouts, or treasury movement.
 
-Revision 2 resolves the RC17–RC20 ceremony gap. A release operator does not
-wait for a second owner instruction to publish a green RC, post the linked
-candidate/update messages, or turn requested-tester feedback into a follow-up
-issue. Stable releases, bulk outreach, unsupported claims, version reuse,
+Revision 2 resolves the RC17–RC20 ceremony gap.
+A release operator does not wait for a second owner instruction to publish a green RC.
+The operator can post the linked candidate and update messages.
+The operator can also turn requested-tester feedback into a follow-up issue.
+Stable releases, bulk outreach, unsupported claims, version reuse,
 unsigned fallbacks, partial signed ReleaseSets, and unsafe Desktop code
-overlays remain outside that standing grant.
+overlays remain outside that current grant.
 
 Revision 3 makes Sarah the durable owner-facing coordinator for that work.
 Her effective authority is always the intersection of this root profile,
 [`docs/authority/SARAH_AUTHORITY.md`](docs/authority/SARAH_AUTHORITY.md), the
 selected program, and the exact capability adapter. She can see redacted
-business state and make broad recommendations; only admitted adapters act.
+business state and make broad recommendations.
+Only admitted adapters act.
 
-Revision 4 makes the coding-worker and existing-run-control adapters admitted
+Revision 4 makes the code-worker and current-run-control adapters admitted
 Sarah capabilities under the same intersection. It does not turn tool
 availability into success: assignment refs prove worker dispatch, and an
-applied Desktop outcome proves a Full Auto transition. Pending, refused,
-unavailable, and partial outcomes stay visible as such.
+applied Desktop outcome proves a Full Auto transition.
+Incomplete, refused, unavailable, and partial outcomes stay visible as such.

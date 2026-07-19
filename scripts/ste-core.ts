@@ -111,7 +111,7 @@ export const extractProse = (input: string): readonly ProseLine[] => {
 
   for (let index = 0; index < lines.length; index += 1) {
     const raw = lines[index] ?? "";
-    const startsBlock = /^\s{0,3}(?:#{1,6}|>|[-*+]\s|\d+[.)]\s)/.test(raw);
+    const startsBlock = /^\s{0,3}(?:#{1,6}|>|[-*+]\s|\d+[.)]\s|\|)/.test(raw);
     if (index === 0 && inFrontMatter) continue;
     if (inFrontMatter) {
       if (raw.trim() === "---") inFrontMatter = false;
@@ -170,9 +170,24 @@ export const inspectStructure = (
 
   const inspectParagraph = (): void => {
     if (paragraph.length === 0) return;
-    const sentenceCount = paragraph
-      .flatMap((line) => line.text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [])
-      .filter((sentence) => wordCount(sentence) > 1).length;
+    const paragraphText = paragraph.map((line) => line.text).join(" ");
+    const sentences = paragraphText.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [];
+    const sentenceCount = sentences.filter((sentence) => wordCount(sentence) > 1).length;
+    for (const sentence of sentences) {
+      if (wordCount(sentence) > sentenceLimit) {
+        const first = paragraph[0]!;
+        diagnostics.push(
+          diagnostic(
+            "STE-5.1",
+            path,
+            first.number,
+            sentence,
+            null,
+            `Use not more than ${sentenceLimit} words in this sentence.`,
+          ),
+        );
+      }
+    }
     if (sentenceCount > 6) {
       const first = paragraph[0]!;
       diagnostics.push(
@@ -196,20 +211,6 @@ export const inspectStructure = (
     paragraph.push(line);
     previousLine = line.number;
 
-    for (const sentence of line.text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? []) {
-      if (wordCount(sentence) > sentenceLimit) {
-        diagnostics.push(
-          diagnostic(
-            "STE-5.1",
-            path,
-            line.number,
-            sentence,
-            null,
-            `Use not more than ${sentenceLimit} words in this sentence.`,
-          ),
-        );
-      }
-    }
     const semicolon = line.text.match(/;/);
     if (semicolon)
       diagnostics.push(

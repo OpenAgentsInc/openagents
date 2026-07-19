@@ -45,7 +45,9 @@ if (configurationErrors.length > 0) {
 }
 
 const tracked = (): string[] =>
-  execFileSync("git", ["ls-files", "-z"], { cwd: root })
+  execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+    cwd: root,
+  })
     .toString("utf8")
     .split("\0")
     .filter(Boolean);
