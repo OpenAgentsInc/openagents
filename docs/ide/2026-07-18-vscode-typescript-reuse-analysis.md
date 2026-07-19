@@ -2,9 +2,10 @@
 
 Date: 2026-07-18
 
-Status: source-grounded package and architecture analysis. This document adds
-specificity to the accepted IDE plan; it does not admit dependencies, modify a
-ProductSpec, authorize implementation, or reorder IDE-00 through IDE-07.
+Status: supporting source-grounded package and architecture analysis.
+`ROADMAP.md` is the single current IDE build sequence and supersedes this
+document's packet ordering. This document does not admit dependencies, modify
+a ProductSpec, authorize implementation, or independently reorder work.
 
 ## Decision
 

@@ -2,7 +2,9 @@
 
 Date: 2026-07-18
 
-Status: implementation plan; no product code is changed by this document
+Status: supporting component/adapter design. `ROADMAP.md` is the single current
+IDE build sequence and supersedes this document's packet ordering. No product
+code is changed by this document alone.
 
 Target: `apps/openagents-desktop/`, its Effect Native contracts, and narrowly
 shared Desktop workbench styles in `packages/ui/`
@@ -714,18 +716,19 @@ Create one resolved `DesktopEditorThemeProjection` from Effect Native tokens:
 - Pierre diffs receives the same resolved code theme;
 - Shiki, Monaco, and Pierre do not each select an independent dark/light mode.
 
-First-party themes required for basic parity:
+The first daily-use editor ships one theme for everyone: **Tokyo Night**. The
+same pinned, license-reviewed projection covers workbench chrome, Monaco,
+Pierre, Shiki, and the future xterm surface. A theme picker and additional
+themes are not prerequisites for that rung.
 
-- OpenAgents Dark;
-- OpenAgents Light;
-- OpenAgents High Contrast Dark;
-- OpenAgents High Contrast Light;
-- system-following selection.
+Light, high-contrast dark/light, and system-following selection remain required
+before the later complete accessibility/Cursor-parity gate. They are sequenced
+in `ROADMAP.md` IDE-18 instead of blocking the first useful editor.
 
-Theme switching must update a mounted editor/tree/diff without destroying
-models, selection, scroll, or draft state. Arbitrary VS Code theme import is a
-later allowlisted parser with size/schema/color validation; it cannot inject
-CSS or executable contribution code.
+When later theme switching is admitted, it must update a mounted editor/tree/
+diff without destroying models, selection, scroll, or draft state. Arbitrary
+VS Code theme import is a later allowlisted parser with size/schema/color
+validation; it cannot inject CSS or executable contribution code.
 
 ## Basic VS Code parity matrix
 
@@ -751,7 +754,7 @@ another editor. It does not mean extension-host or debugger parity.
 | Compare/conflicts | diff editor | Conflict copy/actions only | Pierre/Monaco compare for external/save conflicts |
 | Commands/keybindings | context-aware command/keybinding service | Typed Desktop command registry | Extend one registry; no second Monaco-only command universe |
 | Settings | editor/workbench settings | some word-wrap/minimap state | Persist bounded editor settings per user/workspace with reset |
-| Themes | dark/light/high contrast | Khala tokens, mostly dark | Four first-party code/workbench themes from one theme projection |
+| Themes | dark/light/high contrast | fixed Khala dark theme | Tokyo Night from one projection initially; light/high-contrast/system modes remain an explicit later parity gate |
 | Recovery | hot exit/backup | bounded recovery drafts | Packaged crash/restart proof with dirty documents and conflicts |
 | Accessibility | keyboard, screen reader, high contrast | custom basics | Monaco + Pierre packaged keyboard/VoiceOver/high-contrast proof |
 
@@ -938,13 +941,15 @@ Acceptance:
   and worktree switch fail closed and visibly;
 - no feature is shown as available before its provider is ready.
 
-### IDE-07 — Themes, accessibility, performance, and release gate
+### IDE-07 — Theme, accessibility, performance, and release gate
 
 Outcome: the basic IDE is release quality rather than a successful demo.
 
 Work:
 
-- land four first-party theme projections and system following;
+- land and verify the one initial Tokyo Night projection across every basic IDE
+  surface; retain light/high-contrast/system-following as a named later parity
+  gap rather than a first-editor blocker;
 - add keyboard matrices, VoiceOver scripts/manual evidence, high contrast,
   reduced motion, zoom, and localization-ready labels;
 - add startup, index, open-file, input latency, memory, worker, and disposal

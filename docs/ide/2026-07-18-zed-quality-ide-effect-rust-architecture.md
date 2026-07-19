@@ -2,10 +2,10 @@
 
 Date: 2026-07-18
 
-Status: architecture decision and cross-surface gap analysis. This document
-refines the accepted IDE recommendations and ProductSpecs; it does not by
-itself admit a dependency, a Rust crate, product implementation, release, or
-public claim.
+Status: architecture decision and cross-surface gap analysis. `ROADMAP.md` is
+the single current IDE build sequence. This document refines the accepted IDE
+recommendations and ProductSpecs; it does not by itself admit a dependency, a
+Rust crate, product implementation, release, or public claim.
 
 ## Decision
 
@@ -261,8 +261,11 @@ contracts, even when delivered in dependency-ordered packets.
 
 ### Product quality
 
-- four first-party theme modes plus system following from one Effect Native
-  token projection across chrome, Monaco, Pierre, xterm, Problems, and debug;
+- Tokyo Night as the one initial theme for everyone, projected from one Effect
+  Native token authority across chrome, Monaco, Pierre, xterm, Problems, and
+  debug; light/high-contrast/system-following modes remain required at the
+  later complete accessibility/Cursor-parity gate rather than blocking the
+  first daily-use editor;
 - keyboard-only use, VoiceOver/screen-reader semantics, high contrast, reduced
   motion, zoom, localization-ready labels, and non-color state cues;
 - startup, open-file, input, tree, search, LSP, proposal, terminal, restore,

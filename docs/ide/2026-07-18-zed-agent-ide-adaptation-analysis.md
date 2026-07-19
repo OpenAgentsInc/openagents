@@ -2,9 +2,10 @@
 
 Date: 2026-07-18
 
-Status: source-grounded adaptation analysis; proposed architecture and packet
-deltas only. This document does not admit implementation work, reorder the
-accepted roadmap, change a ProductSpec, or authorize copying upstream code.
+Status: supporting source-grounded reference and architecture analysis.
+`ROADMAP.md` is the single current IDE build sequence and supersedes this
+document's phase and packet ordering. This document does not admit
+implementation work, change a ProductSpec, or authorize copying upstream code.
 
 ## Executive decision
 
