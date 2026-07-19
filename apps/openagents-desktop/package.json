@@ -39,6 +39,8 @@
     "smoke:headed": "node --import tsx scripts/build.ts && OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_HEADED=1 electron .",
     "qa:visual": "node --import tsx scripts/build.ts && node --import tsx scripts/visual-baseline-smoke.ts",
     "startup-bench": "node --import tsx scripts/startup-bench.ts",
+    "check:ide-boundaries": "node --import tsx scripts/check-ide-boundaries.ts",
+    "ide-baseline": "node --import tsx scripts/ide-baseline.ts",
     "test": "vp test --run --max-concurrency 1 --root ../.. apps/openagents-desktop",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run build && OPENAGENTS_DESKTOP_SMOKE=1 pnpm run smoke && pnpm run smoke:react"

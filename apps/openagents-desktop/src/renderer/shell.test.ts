@@ -3,6 +3,7 @@
  * plus the full typed intent loop run headlessly through the real registry —
  * dispatch -> handler -> SubscriptionRef -> re-rendered view.
  */
+// Behavior oracle: openagents_desktop.ide_project_generation_fencing.v1
 import { describe, expect, test } from "vite-plus/test"
 import { ComponentValueBinding, IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-native/core"
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"

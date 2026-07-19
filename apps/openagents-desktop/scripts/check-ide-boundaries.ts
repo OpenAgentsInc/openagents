@@ -1,0 +1,170 @@
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+
+const appRoot = path.resolve(import.meta.dirname, "..");
+const repositoryRoot = path.resolve(appRoot, "../..");
+const ignoredSourceDirectories = new Set([
+  ".git",
+  "benchmarks",
+  "dist",
+  "node_modules",
+  "projects",
+]);
+
+type BoundaryViolation = Readonly<{
+  file: string;
+  line: number;
+  rule: string;
+  detail: string;
+}>;
+
+const sourceFiles = (root: string): ReadonlyArray<string> => {
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
+    const candidate = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      return ignoredSourceDirectories.has(entry.name) ? [] : sourceFiles(candidate);
+    }
+    return /\.(?:ts|tsx|rs)$/u.test(entry.name) ? [candidate] : [];
+  });
+};
+
+const relative = (file: string): string => path.relative(repositoryRoot, file);
+
+export const isHandMirroredBoundaryDeclaration = (sourceLine: string): boolean =>
+  /^export\s+(?:type|interface)\s+\w+(?![^=]*=\s*typeof\s+\w+(?:Schema)?\.Type)/u.test(sourceLine);
+
+const addMatches = (
+  violations: BoundaryViolation[],
+  file: string,
+  rule: string,
+  pattern: RegExp,
+  detail: string,
+): void => {
+  const lines = readFileSync(file, "utf8").split("\n");
+  lines.forEach((line, index) => {
+    pattern.lastIndex = 0;
+    if (pattern.test(line))
+      violations.push({ file: relative(file), line: index + 1, rule, detail });
+  });
+};
+
+export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
+  const violations: BoundaryViolation[] = [];
+  const ideRoot = path.join(appRoot, "src", "ide");
+  const ideSources = sourceFiles(ideRoot).filter(
+    (file) => file.endsWith(".ts") || file.endsWith(".tsx"),
+  );
+  const contracts = [
+    path.join(ideRoot, "project-contract.ts"),
+    path.join(appRoot, "src", "workspace-contract.ts"),
+  ];
+
+  for (const file of contracts) {
+    addMatches(
+      violations,
+      file,
+      "schema-derived-contract-types",
+      /^export\s+(?:type|interface)\s+\w+(?![^=]*=\s*typeof\s+\w+(?:Schema)?\.Type)/u,
+      "Persisted/wire contract types must derive from an Effect Schema Type.",
+    );
+    addMatches(
+      violations,
+      file,
+      "no-schema-class-boundaries",
+      /Schema\.(?:Class|TaggedClass)\b/u,
+      "Boundary data uses Struct/TaggedStruct/TaggedUnion; expected failures use TaggedErrorClass.",
+    );
+  }
+
+  for (const file of ideSources) {
+    addMatches(
+      violations,
+      file,
+      "no-unsafe-casts",
+      /\bas\s+(?:any|unknown)\b/u,
+      "IDE authority code may not recover type safety through unchecked casts.",
+    );
+    addMatches(
+      violations,
+      file,
+      "no-widget-authority",
+      /from\s+["'](?:monaco-editor|@pierre\/)/u,
+      "Monaco and Pierre are projections/adapters and cannot enter the authoritative IDE domain.",
+    );
+  }
+
+  const projectContract = path.join(ideRoot, "project-contract.ts");
+  addMatches(
+    violations,
+    projectContract,
+    "effect-typescript-authority",
+    /from\s+["']node:/u,
+    "The portable IDE project contract cannot depend on host process APIs.",
+  );
+
+  const projectService = readFileSync(path.join(ideRoot, "project-service.ts"), "utf8");
+  for (const [needle, rule] of [
+    ["Context.Service", "context-service"],
+    ["Layer.effect", "layer-effect"],
+    ["Effect.fn", "named-effect-functions"],
+    ["Schema.TaggedErrorClass", "typed-expected-errors"],
+    ["Effect.addFinalizer", "scoped-teardown"],
+    ["Schema.decodeUnknownEffect", "boundary-decode"],
+  ] as const) {
+    if (!projectService.includes(needle)) {
+      violations.push({
+        file: relative(path.join(ideRoot, "project-service.ts")),
+        line: 1,
+        rule,
+        detail: `Required Effect service primitive is missing: ${needle}.`,
+      });
+    }
+  }
+
+  const recoverySource = readFileSync(
+    path.join(appRoot, "src", "renderer", "workspace-editor.ts"),
+    "utf8",
+  );
+  if (
+    !/type\s+WorkspaceEditorRecoverySnapshot\s*=\s*typeof\s+WorkspaceEditorRecoverySnapshotSchema\.Type/u.test(
+      recoverySource,
+    )
+  ) {
+    violations.push({
+      file: "apps/openagents-desktop/src/renderer/workspace-editor.ts",
+      line: 1,
+      rule: "schema-derived-recovery",
+      detail: "The persisted editor recovery shape must derive from its Effect Schema.",
+    });
+  }
+
+  for (const file of sourceFiles(repositoryRoot).filter((candidate) => candidate.endsWith(".rs"))) {
+    if (readFileSync(file, "utf8").includes("openagents.desktop.ide-project.v1")) {
+      violations.push({
+        file: relative(file),
+        line: 1,
+        rule: "no-rust-contract-mirror",
+        detail:
+          "Rust may implement bounded helpers but cannot mirror the authoritative IDE graph schema.",
+      });
+    }
+  }
+
+  return violations;
+};
+
+const main = (): void => {
+  const violations = inspectIdeBoundaries();
+  if (violations.length === 0) {
+    console.log("[ide-boundaries] PASS — schema-first Effect authority is intact");
+    return;
+  }
+  console.error(`[ide-boundaries] FAIL — ${violations.length} violation(s)`);
+  for (const violation of violations) {
+    console.error(`${violation.file}:${violation.line} [${violation.rule}] ${violation.detail}`);
+  }
+  process.exitCode = 1;
+};
+
+if (import.meta.url === `file://${process.argv[1]}`) main();

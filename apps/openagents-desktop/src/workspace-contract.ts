@@ -27,18 +27,18 @@ export const DesktopWorkspacePathRefSchema = Schema.String.pipe(
     Schema.isMaxLength(1_024),
     Schema.isPattern(/^(?!\/)(?![A-Za-z]:[\\/])(?!.*(?:^|\/)\.\.(?:\/|$))(?!.*\\)[^\0\r\n]*$/u),
   ),
-)
+).annotate({ identifier: "DesktopWorkspacePathRef" })
 
 /** Narrow main-owned projection used by the empty conversation welcome. */
 export const DesktopWorkspaceWorkingDirectorySchema = Schema.NullOr(
   Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4_096)),
-)
+).annotate({ identifier: "DesktopWorkspaceWorkingDirectory" })
 
 export const DesktopWorkspaceTreeRequestSchema = Schema.Struct({
   directoryRef: DesktopWorkspacePathRefSchema,
   offset: Schema.optional(Schema.Number),
   limit: Schema.optional(Schema.Number),
-})
+}).annotate({ identifier: "DesktopWorkspaceTreeRequest" })
 
 export const DesktopWorkspaceSearchRequestSchema = Schema.Struct({
   query: Schema.String.check(Schema.isMaxLength(200)),
@@ -51,12 +51,12 @@ export const DesktopWorkspaceSearchRequestSchema = Schema.Struct({
     Schema.isInt(),
     Schema.isBetween({ minimum: 1, maximum: 100 }),
   )),
-})
+}).annotate({ identifier: "DesktopWorkspaceSearchRequest" })
 
 export const DesktopWorkspaceSearchRequestRefSchema = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(160),
-)
+).annotate({ identifier: "DesktopWorkspaceSearchRequestRef" })
 
 export const DesktopWorkspaceSearchBridgeRequestSchema = Schema.Struct({
   requestRef: DesktopWorkspaceSearchRequestRefSchema,
@@ -70,36 +70,36 @@ export const DesktopWorkspaceSearchBridgeRequestSchema = Schema.Struct({
     Schema.isInt(),
     Schema.isBetween({ minimum: 1, maximum: 100 }),
   )),
-})
+}).annotate({ identifier: "DesktopWorkspaceSearchBridgeRequest" })
 
 export const DesktopWorkspaceSearchCancelRequestSchema = Schema.Struct({
   requestRef: DesktopWorkspaceSearchRequestRefSchema,
-})
+}).annotate({ identifier: "DesktopWorkspaceSearchCancelRequest" })
 
 export const DesktopWorkspaceWatchRequestSchema = Schema.Struct({
   active: Schema.Boolean,
-})
+}).annotate({ identifier: "DesktopWorkspaceWatchRequest" })
 
 export const DesktopWorkspaceCreateRequestSchema = Schema.Struct({
   parentRef: DesktopWorkspacePathRefSchema,
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   kind: Schema.Literals(["file", "directory"]),
-})
+}).annotate({ identifier: "DesktopWorkspaceCreateRequest" })
 
 export const DesktopWorkspaceRenameRequestSchema = Schema.Struct({
   pathRef: DesktopWorkspacePathRefSchema,
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
-})
+}).annotate({ identifier: "DesktopWorkspaceRenameRequest" })
 
 export const DesktopWorkspaceDeleteRequestSchema = Schema.Struct({
   pathRef: DesktopWorkspacePathRefSchema,
   expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
-})
+}).annotate({ identifier: "DesktopWorkspaceDeleteRequest" })
 
 export const DesktopWorkspaceRevealRequestSchema = Schema.Struct({
   pathRef: DesktopWorkspacePathRefSchema,
-})
+}).annotate({ identifier: "DesktopWorkspaceRevealRequest" })
 
 export const DesktopWorkspaceDocumentUnavailableReasonSchema = Schema.Literals([
   "invalid_ref",
@@ -111,25 +111,25 @@ export const DesktopWorkspaceDocumentUnavailableReasonSchema = Schema.Literals([
   "unsupported_encoding",
   "permission_denied",
   "grant_revoked",
-])
+]).annotate({ identifier: "DesktopWorkspaceDocumentUnavailableReason" })
 
 export const DesktopWorkspaceDocumentRequestSchema = Schema.Struct({
   grantRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
   pathRef: DesktopWorkspacePathRefSchema,
-})
+}).annotate({ identifier: "DesktopWorkspaceDocumentRequest" })
 
 export const DesktopWorkspaceDocumentSaveRequestSchema = Schema.Struct({
   grantRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
   pathRef: DesktopWorkspacePathRefSchema,
   content: Schema.String.check(Schema.isMaxLength(1_000_000)),
   expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
-})
+}).annotate({ identifier: "DesktopWorkspaceDocumentSaveRequest" })
 
 export const DesktopWorkspaceDocumentSaveAsRequestSchema = Schema.Struct({
   grantRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
   pathRef: DesktopWorkspacePathRefSchema,
   content: Schema.String.check(Schema.isMaxLength(1_000_000)),
-})
+}).annotate({ identifier: "DesktopWorkspaceDocumentSaveAsRequest" })
 
 export const DesktopWorkspaceDocumentSchema = Schema.Struct({
   grantRef: Schema.String,
@@ -143,7 +143,7 @@ export const DesktopWorkspaceDocumentSchema = Schema.Struct({
   encoding: Schema.Literals(["utf-8", "utf-8-bom"]),
   lineEnding: Schema.Literals(["lf", "crlf", "mixed", "none"]),
   sizeBytes: Schema.Number,
-})
+}).annotate({ identifier: "DesktopWorkspaceDocument" })
 
 export const DesktopWorkspaceDocumentResultSchema = Schema.Union([
   Schema.Struct({ state: Schema.Literal("available"), document: DesktopWorkspaceDocumentSchema }),
@@ -154,13 +154,13 @@ export const DesktopWorkspaceDocumentResultSchema = Schema.Union([
     reason: DesktopWorkspaceDocumentUnavailableReasonSchema,
     message: Schema.String.check(Schema.isMaxLength(400)),
   }),
-])
+]).annotate({ identifier: "DesktopWorkspaceDocumentResult" })
 
 export const DesktopWorkspaceCacheFactSchema = Schema.Struct({
   key: Schema.String,
   epoch: Schema.Number,
   freshness: Schema.Literal("current"),
-})
+}).annotate({ identifier: "DesktopWorkspaceCacheFact" })
 
 export const DesktopWorkspaceTreeEntrySchema = Schema.Struct({
   name: Schema.String,
@@ -169,7 +169,7 @@ export const DesktopWorkspaceTreeEntrySchema = Schema.Struct({
   expandable: Schema.Boolean,
   sizeBytes: Schema.NullOr(Schema.Number),
   revisionRef: Schema.String,
-})
+}).annotate({ identifier: "DesktopWorkspaceTreeEntry" })
 
 export const DesktopWorkspaceOperationResultSchema = Schema.Union([
   Schema.Struct({ state: Schema.Literal("created"), entry: DesktopWorkspaceTreeEntrySchema }),
@@ -179,7 +179,7 @@ export const DesktopWorkspaceOperationResultSchema = Schema.Union([
   Schema.Struct({ state: Schema.Literal("conflict"), message: Schema.String.check(Schema.isMaxLength(400)) }),
   Schema.Struct({ state: Schema.Literal("permission_denied"), message: Schema.String.check(Schema.isMaxLength(400)) }),
   Schema.Struct({ state: Schema.Literal("unavailable"), message: Schema.String.check(Schema.isMaxLength(400)) }),
-])
+]).annotate({ identifier: "DesktopWorkspaceOperationResult" })
 
 export const DesktopWorkspaceTreePageSchema = Schema.Union([
   Schema.Struct({
@@ -194,14 +194,14 @@ export const DesktopWorkspaceTreePageSchema = Schema.Union([
     state: Schema.Literal("unavailable"),
     message: Schema.String,
   }),
-])
+]).annotate({ identifier: "DesktopWorkspaceTreePage" })
 
 export const DesktopWorkspaceSearchMatchSchema = Schema.Struct({
   pathRef: DesktopWorkspacePathRefSchema,
   kind: Schema.Literals(["path", "content"]),
   line: Schema.NullOr(Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0))),
   preview: Schema.NullOr(Schema.String.check(Schema.isMaxLength(240))),
-})
+}).annotate({ identifier: "DesktopWorkspaceSearchMatch" })
 
 export const DesktopWorkspaceSearchPageSchema = Schema.Union([
   Schema.Struct({
@@ -221,17 +221,17 @@ export const DesktopWorkspaceSearchPageSchema = Schema.Union([
     state: Schema.Literal("unavailable"),
     message: Schema.String,
   }),
-])
+]).annotate({ identifier: "DesktopWorkspaceSearchPage" })
 
 export const DesktopWorkspaceSearchResponseSchema = Schema.Struct({
   requestRef: DesktopWorkspaceSearchRequestRefSchema,
   page: DesktopWorkspaceSearchPageSchema,
-})
+}).annotate({ identifier: "DesktopWorkspaceSearchResponse" })
 
 export const DesktopWorkspaceSearchCancelResultSchema = Schema.Struct({
   requestRef: DesktopWorkspaceSearchRequestRefSchema,
   cancelled: Schema.Boolean,
-})
+}).annotate({ identifier: "DesktopWorkspaceSearchCancelResult" })
 
 export const DesktopWorkspaceChangeSchema = Schema.Struct({
   kind: Schema.Literals(["changed", "overflow", "refresh"]),
@@ -240,140 +240,87 @@ export const DesktopWorkspaceChangeSchema = Schema.Struct({
     Schema.Array(DesktopWorkspacePathRefSchema).check(Schema.isMaxLength(256)),
   ),
   epoch: Schema.Number,
-})
+}).annotate({ identifier: "DesktopWorkspaceChange" })
 
-export const DesktopWorkspaceFileRequestSchema = Schema.Struct({ path: Schema.String })
+export const DesktopWorkspaceFileRequestSchema = Schema.Struct({ path: Schema.String }).annotate({
+  identifier: "DesktopWorkspaceFileRequest",
+})
 export const DesktopWorkspaceSaveRequestSchema = Schema.Struct({
   path: Schema.String,
   content: Schema.String,
   expectedRevision: Schema.String,
+}).annotate({ identifier: "DesktopWorkspaceSaveRequest" })
+export const DesktopWorkspaceGitDiffRequestSchema = Schema.Struct({ path: Schema.String }).annotate({
+  identifier: "DesktopWorkspaceGitDiffRequest",
 })
-export const DesktopWorkspaceGitDiffRequestSchema = Schema.Struct({ path: Schema.String })
 
-export type DesktopWorkspaceEntry = Readonly<{
-  name: string
-  path: string
-  kind: "file" | "directory"
-}>
+export const DesktopWorkspaceEntrySchema = Schema.Struct({
+  name: Schema.String,
+  path: Schema.String,
+  kind: Schema.Literals(["file", "directory"]),
+}).annotate({ identifier: "DesktopWorkspaceEntry" })
 
-export type DesktopWorkspaceSnapshot = Readonly<{
-  root: string
-  label: string
-  entries: ReadonlyArray<DesktopWorkspaceEntry>
-  git: "clean" | "changed" | "unavailable"
-}>
+export const DesktopWorkspaceSnapshotSchema = Schema.Struct({
+  root: Schema.String,
+  label: Schema.String,
+  entries: Schema.Array(DesktopWorkspaceEntrySchema),
+  git: Schema.Literals(["clean", "changed", "unavailable"]),
+}).annotate({ identifier: "DesktopWorkspaceSnapshot" })
 
-export type DesktopWorkspaceCacheFact = Readonly<{
-  key: string
-  epoch: number
-  freshness: "current"
-}>
+export const DesktopWorkspaceFileSchema = Schema.Struct({
+  path: Schema.String,
+  content: Schema.String,
+  truncated: Schema.Boolean,
+  /** SHA-256 of the complete confirmed file bytes; required for safe save. */
+  revision: Schema.String,
+}).annotate({ identifier: "DesktopWorkspaceFile" })
 
-export type DesktopWorkspaceTreeEntry = Readonly<{
-  name: string
-  pathRef: string
-  kind: "file" | "directory"
-  expandable: boolean
-  sizeBytes: number | null
-  revisionRef: string
-}>
+/** A write is never silently retried after a concurrent file change. */
+export const DesktopWorkspaceSaveResultSchema = Schema.Union([
+  Schema.Struct({ state: Schema.Literal("saved"), file: DesktopWorkspaceFileSchema }),
+  Schema.Struct({ state: Schema.Literal("conflict"), file: DesktopWorkspaceFileSchema }),
+  Schema.Struct({ state: Schema.Literal("unavailable"), message: Schema.String }),
+]).annotate({ identifier: "DesktopWorkspaceSaveResult" })
 
-export type DesktopWorkspaceTreePage =
-  | Readonly<{
-      state: "available"
-      grantRef: string
-      directoryRef: string
-      entries: ReadonlyArray<DesktopWorkspaceTreeEntry>
-      nextOffset: number | null
-      cache: DesktopWorkspaceCacheFact
-    }>
-  | Readonly<{ state: "unavailable"; message: string }>
+export const DesktopWorkspaceGitChangeSchema = Schema.Struct({
+  path: Schema.String,
+  kind: Schema.Literals(["added", "modified", "deleted", "renamed", "untracked"]),
+}).annotate({ identifier: "DesktopWorkspaceGitChange" })
 
-export type DesktopWorkspaceSearchMatch = Readonly<{
-  pathRef: string
-  kind: "path" | "content"
-  line: number | null
-  preview: string | null
-}>
+export const DesktopWorkspaceGitStatusSchema = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("available"),
+    changes: Schema.Array(DesktopWorkspaceGitChangeSchema),
+    truncated: Schema.Boolean,
+  }),
+  Schema.Struct({ state: Schema.Literal("unavailable") }),
+]).annotate({ identifier: "DesktopWorkspaceGitStatus" })
 
-export type DesktopWorkspaceSearchPage =
-  | Readonly<{
-      state: "available"
-      grantRef: string
-      query: string
-      mode: "path" | "content"
-      matches: ReadonlyArray<DesktopWorkspaceSearchMatch>
-      nextOffset: number | null
-      truncated: boolean
-      cache: DesktopWorkspaceCacheFact
-    }>
-  | Readonly<{ state: "unavailable"; message: string }>
+export const DesktopWorkspaceGitDiffSchema = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("available"),
+    path: Schema.String,
+    content: Schema.String,
+    truncated: Schema.Boolean,
+  }),
+  Schema.Struct({ state: Schema.Literal("unavailable"), message: Schema.String }),
+]).annotate({ identifier: "DesktopWorkspaceGitDiff" })
 
-export type DesktopWorkspaceSearchBridgeRequest = Readonly<{
-  requestRef: string
-  query: string
-  mode: "path" | "content"
-  offset?: number
-  limit?: number
-}>
-
-export type DesktopWorkspaceSearchResponse = Readonly<{
-  requestRef: string
-  page: DesktopWorkspaceSearchPage
-}>
-
-export type DesktopWorkspaceSearchCancelResult = Readonly<{
-  requestRef: string
-  cancelled: boolean
-}>
-
-export type DesktopWorkspaceOperationResult =
-  | Readonly<{ state: "created"; entry: DesktopWorkspaceTreeEntry }>
-  | Readonly<{ state: "renamed"; entry: DesktopWorkspaceTreeEntry }>
-  | Readonly<{ state: "deleted"; pathRef: string }>
-  | Readonly<{ state: "revealed"; pathRef: string }>
-  | Readonly<{ state: "conflict"; message: string }>
-  | Readonly<{ state: "permission_denied"; message: string }>
-  | Readonly<{ state: "unavailable"; message: string }>
-
-export type DesktopWorkspaceDocumentUnavailableReason =
-  | "invalid_ref"
-  | "unavailable"
-  | "missing"
-  | "directory"
-  | "binary"
-  | "too_large"
-  | "unsupported_encoding"
-  | "permission_denied"
-  | "grant_revoked"
-
-export type DesktopWorkspaceDocument = Readonly<{
-  grantRef: string
-  pathRef: string
-  content: string
-  revisionRef: string
-  languageMode: "typescript" | "javascript" | "json" | "markdown" | "rust" | "python" | "shell" | "toml" | "yaml" | "css" | "html" | "plaintext"
-  encoding: "utf-8" | "utf-8-bom"
-  lineEnding: "lf" | "crlf" | "mixed" | "none"
-  sizeBytes: number
-}>
-
-export type DesktopWorkspaceDocumentResult =
-  | Readonly<{ state: "available"; document: DesktopWorkspaceDocument }>
-  | Readonly<{ state: "saved"; document: DesktopWorkspaceDocument }>
-  | Readonly<{ state: "conflict"; current: DesktopWorkspaceDocument }>
-  | Readonly<{
-      state: "unavailable"
-      reason: DesktopWorkspaceDocumentUnavailableReason
-      message: string
-    }>
-
-export type DesktopWorkspaceChange = Readonly<{
-  kind: "changed" | "overflow" | "refresh"
-  pathRef: string | null
-  pathRefs?: ReadonlyArray<string>
-  epoch: number
-}>
+export type DesktopWorkspaceEntry = typeof DesktopWorkspaceEntrySchema.Type
+export type DesktopWorkspaceSnapshot = typeof DesktopWorkspaceSnapshotSchema.Type
+export type DesktopWorkspaceCacheFact = typeof DesktopWorkspaceCacheFactSchema.Type
+export type DesktopWorkspaceTreeEntry = typeof DesktopWorkspaceTreeEntrySchema.Type
+export type DesktopWorkspaceTreePage = typeof DesktopWorkspaceTreePageSchema.Type
+export type DesktopWorkspaceSearchMatch = typeof DesktopWorkspaceSearchMatchSchema.Type
+export type DesktopWorkspaceSearchPage = typeof DesktopWorkspaceSearchPageSchema.Type
+export type DesktopWorkspaceSearchBridgeRequest = typeof DesktopWorkspaceSearchBridgeRequestSchema.Type
+export type DesktopWorkspaceSearchResponse = typeof DesktopWorkspaceSearchResponseSchema.Type
+export type DesktopWorkspaceSearchCancelResult = typeof DesktopWorkspaceSearchCancelResultSchema.Type
+export type DesktopWorkspaceOperationResult = typeof DesktopWorkspaceOperationResultSchema.Type
+export type DesktopWorkspaceDocumentUnavailableReason = typeof DesktopWorkspaceDocumentUnavailableReasonSchema.Type
+export type DesktopWorkspaceDocument = typeof DesktopWorkspaceDocumentSchema.Type
+export type DesktopWorkspaceDocumentResult = typeof DesktopWorkspaceDocumentResultSchema.Type
+export type DesktopWorkspaceChange = typeof DesktopWorkspaceChangeSchema.Type
 
 /** Exact affected refs for a coalesced change; null means full invalidation. */
 export const workspaceChangePathRefs = (
@@ -382,62 +329,56 @@ export const workspaceChangePathRefs = (
   ? null
   : change.pathRefs ?? (change.pathRef === null ? null : [change.pathRef])
 
-export type DesktopWorkspaceFile = Readonly<{
-  path: string
-  content: string
-  truncated: boolean
-  /** SHA-256 of the complete confirmed file bytes; required for safe save. */
-  revision: string
-}>
+export type DesktopWorkspaceFile = typeof DesktopWorkspaceFileSchema.Type
+export type DesktopWorkspaceSaveResult = typeof DesktopWorkspaceSaveResultSchema.Type
+export type DesktopWorkspaceGitChange = typeof DesktopWorkspaceGitChangeSchema.Type
+export type DesktopWorkspaceGitStatus = typeof DesktopWorkspaceGitStatusSchema.Type
+export type DesktopWorkspaceGitDiff = typeof DesktopWorkspaceGitDiffSchema.Type
+export type DesktopWorkspaceWorkingDirectory = typeof DesktopWorkspaceWorkingDirectorySchema.Type
+export type DesktopWorkspaceTreeRequest = typeof DesktopWorkspaceTreeRequestSchema.Type
+export type DesktopWorkspaceSearchRequest = typeof DesktopWorkspaceSearchRequestSchema.Type
+export type DesktopWorkspaceSearchCancelRequest = typeof DesktopWorkspaceSearchCancelRequestSchema.Type
+export type DesktopWorkspaceWatchRequest = typeof DesktopWorkspaceWatchRequestSchema.Type
+export type DesktopWorkspaceCreateRequest = typeof DesktopWorkspaceCreateRequestSchema.Type
+export type DesktopWorkspaceRenameRequest = typeof DesktopWorkspaceRenameRequestSchema.Type
+export type DesktopWorkspaceDeleteRequest = typeof DesktopWorkspaceDeleteRequestSchema.Type
+export type DesktopWorkspaceRevealRequest = typeof DesktopWorkspaceRevealRequestSchema.Type
+export type DesktopWorkspaceDocumentRequest = typeof DesktopWorkspaceDocumentRequestSchema.Type
+export type DesktopWorkspaceDocumentSaveRequest = typeof DesktopWorkspaceDocumentSaveRequestSchema.Type
+export type DesktopWorkspaceDocumentSaveAsRequest = typeof DesktopWorkspaceDocumentSaveAsRequestSchema.Type
+export type DesktopWorkspaceFileRequest = typeof DesktopWorkspaceFileRequestSchema.Type
+export type DesktopWorkspaceSaveRequest = typeof DesktopWorkspaceSaveRequestSchema.Type
+export type DesktopWorkspaceGitDiffRequest = typeof DesktopWorkspaceGitDiffRequestSchema.Type
 
-/** A write is never silently retried after a concurrent file change. */
-export type DesktopWorkspaceSaveResult =
-  | Readonly<{ state: "saved"; file: DesktopWorkspaceFile }>
-  | Readonly<{ state: "conflict"; file: DesktopWorkspaceFile }>
-  | Readonly<{ state: "unavailable"; message: string }>
-
-export type DesktopWorkspaceGitChange = Readonly<{
-  path: string
-  kind: "added" | "modified" | "deleted" | "renamed" | "untracked"
-}>
-
-export type DesktopWorkspaceGitStatus =
-  | Readonly<{ state: "available"; changes: ReadonlyArray<DesktopWorkspaceGitChange>; truncated: boolean }>
-  | Readonly<{ state: "unavailable" }>
-
-export type DesktopWorkspaceGitDiff =
-  | Readonly<{ state: "available"; path: string; content: string; truncated: boolean }>
-  | Readonly<{ state: "unavailable"; message: string }>
-
-export const decodeWorkspaceFileRequest = (value: unknown): { path: string } | null => {
+export const decodeWorkspaceFileRequest = (value: unknown): DesktopWorkspaceFileRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceFileRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceSaveRequest = (
   value: unknown,
-): { path: string; content: string; expectedRevision: string } | null => {
+): DesktopWorkspaceSaveRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceSaveRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceGitDiffRequest = (
   value: unknown,
-): { path: string } | null => {
+): DesktopWorkspaceGitDiffRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceGitDiffRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceTreeRequest = (
   value: unknown,
-): { directoryRef: string; offset?: number; limit?: number } | null => {
+): DesktopWorkspaceTreeRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceTreeRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceSearchRequest = (
   value: unknown,
-): { query: string; mode: "path" | "content"; offset?: number; limit?: number } | null => {
+): DesktopWorkspaceSearchRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
@@ -456,7 +397,7 @@ export const decodeWorkspaceSearchBridgeRequest = (
 
 export const decodeWorkspaceSearchCancelRequest = (
   value: unknown,
-): { requestRef: string } | null => {
+): DesktopWorkspaceSearchCancelRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceSearchCancelRequestSchema)(value)
   return Exit.isSuccess(result) && validWorkspaceSearchRequestRef(result.value.requestRef)
     ? result.value
@@ -465,56 +406,56 @@ export const decodeWorkspaceSearchCancelRequest = (
 
 export const decodeWorkspaceWatchRequest = (
   value: unknown,
-): { active: boolean } | null => {
+): DesktopWorkspaceWatchRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceWatchRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceCreateRequest = (
   value: unknown,
-): { parentRef: string; name: string; kind: "file" | "directory" } | null => {
+): DesktopWorkspaceCreateRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceCreateRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceRenameRequest = (
   value: unknown,
-): { pathRef: string; name: string; expectedRevisionRef: string } | null => {
+): DesktopWorkspaceRenameRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceRenameRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceDeleteRequest = (
   value: unknown,
-): { pathRef: string; expectedRevisionRef: string } | null => {
+): DesktopWorkspaceDeleteRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceDeleteRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceRevealRequest = (
   value: unknown,
-): { pathRef: string } | null => {
+): DesktopWorkspaceRevealRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceRevealRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceDocumentRequest = (
   value: unknown,
-): { grantRef: string; pathRef: string } | null => {
+): DesktopWorkspaceDocumentRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceDocumentSaveRequest = (
   value: unknown,
-): { grantRef: string; pathRef: string; content: string; expectedRevisionRef: string } | null => {
+): DesktopWorkspaceDocumentSaveRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentSaveRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
 
 export const decodeWorkspaceDocumentSaveAsRequest = (
   value: unknown,
-): { grantRef: string; pathRef: string; content: string } | null => {
+): DesktopWorkspaceDocumentSaveAsRequest | null => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceDocumentSaveAsRequestSchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }
@@ -572,7 +513,7 @@ export const decodeWorkspaceDocumentResult = (
   return Exit.isSuccess(result) ? result.value : null
 }
 
-export const decodeWorkspaceWorkingDirectory = (value: unknown): string | null => {
+export const decodeWorkspaceWorkingDirectory = (value: unknown): DesktopWorkspaceWorkingDirectory => {
   const result = Schema.decodeUnknownExit(DesktopWorkspaceWorkingDirectorySchema)(value)
   return Exit.isSuccess(result) ? result.value : null
 }

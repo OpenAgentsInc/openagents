@@ -12,6 +12,69 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     ...audioBehaviorContracts,
     {
       authorityBoundary:
+        "This freezes the IDE-00 project, worktree, file, document, capability, navigation, and generation identities plus their executable fencing and shipped Files regressions. It does not claim Monaco, LSP, debugging, collaboration, Zed quality, Cursor parity, or packaged release acceptance; widgets, helpers, Git, terminals, and future native code remain projections or bounded capabilities beneath the Effect-owned graph.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_project_generation_fencing.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/project-contract.ts",
+        "apps/openagents-desktop/src/ide/project-service.ts",
+        "apps/openagents-desktop/src/ide/project-contract.test.ts",
+        "apps/openagents-desktop/src/ide/project-service.test.ts",
+        "apps/openagents-desktop/scripts/check-ide-boundaries.ts",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-00-baseline.json",
+        "docs/ide/ROADMAP.md",
+        "github:OpenAgentsInc/openagents#9015",
+      ],
+      oracles: [
+        {
+          description:
+            "Decodes the schema-first graph; rejects invalid branded refs and invalid attachment/document/language/Git/index/placement generations; proves same-path worktrees remain isolated, attachment replacement clears stale document/navigation state, explicit stop closes access, and a late capability result cannot regain authority.",
+          id: "openagents_desktop.ide_project_generation_fencing.graph",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/project-service.test.ts",
+        },
+        {
+          description:
+            "The shipped Files corpus proves editor-first system and tree opens, stable selection across refresh/rename/delete, dirty close, save/save-all, external conflicts, recovery, grant revocation, bounded paging/search/cancellation, Git review, typed terminal teardown, and the ordinary session/thread state surviving Files entry and exit.",
+          id: "openagents_desktop.ide_project_generation_fencing.files_regression",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/renderer/workspace-editor.test.ts",
+        },
+        {
+          description:
+            "The complete shell journey proves the Files command enters/exits without replacing the selected thread/session, Finder/system-open reaches the editor-first route, tree selection survives refresh and rename, revocation closes stale document authority, and the loaded Pierre tree remains a projection of canonical refs.",
+          id: "openagents_desktop.ide_project_generation_fencing.shell_journey",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+        },
+        {
+          description:
+            "Mechanically rejects hand-mirrored boundary declarations, unchecked IDE authority casts, widget/native schema authority, and missing Effect service/layer/function/error/decode/finalizer primitives.",
+          id: "openagents_desktop.ide_project_generation_fencing.architecture",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/check-ide-boundaries.ts",
+        },
+      ],
+      productArea: "Desktop IDE authority foundation",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "The Desktop IDE uses one Effect-owned, schema-first, generation-fenced project graph across every open origin and lifecycle; editor entry preserves the current thread/session, equal relative paths in separate worktrees never alias, save/conflict/recovery and revocation stay honest, stopped or superseded capability work cannot regain authority, and the existing Files journey remains a permanent regression fixture.",
+      surface: "openagents-desktop",
+      verification:
+        "The normal Desktop and behavior-contract sweeps run the project graph/service tests and the established workspace/editor/shell/browser/search/Git/terminal/recovery suites; check:ide-boundaries enforces the architecture mechanically, and ide-baseline emits public-safe p50/p95/p99 receipts with explicit unmeasured states.",
+    },
+    {
+      authorityBoundary:
         "This binds the visible activity indicator to the renderer's existing working phase and valid browser animation state. It does not redefine turn, queue, retry, or completion authority, and reduced-motion preference intentionally replaces motion with a stable visible indicator.",
       blockerRefs: [],
       contractId: "openagents_desktop.working_indicator_continuous_motion.v1",
@@ -1052,5 +1115,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-18.1",
+  version: "2026-07-19.1",
 };

@@ -142,12 +142,19 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(34)
+    expect(decoded.contracts).toHaveLength(35)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,
     // full_auto_read_only_run_view.v1, full_auto_play_pause_stop_lifecycle.v1.
     expect(pending).toHaveLength(9)
+    const ideProjectGraph = decoded.contracts.find(
+      contract => contract.contractId === "openagents_desktop.ide_project_generation_fencing.v1",
+    )
+    expect(ideProjectGraph?.state).toBe("enforced")
+    expect(ideProjectGraph?.enforcementTier).toBe("test-sweep")
+    expect(ideProjectGraph?.oracles).toHaveLength(4)
+    expect(ideProjectGraph?.statement).toContain("generation-fenced project graph")
     expect(
       decoded.contracts.find(
         contract =>

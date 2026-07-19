@@ -369,6 +369,39 @@ Exit: contracts and invariants are accepted; a schema/type drift check rejects
 raw or hand-mirrored boundary contracts; no widget is an authority; current
 gaps have explicit ledger rows and baseline measurements.
 
+#### IDE-00 implementation receipt
+
+Issue [#9015](https://github.com/OpenAgentsInc/openagents/issues/9015) is the
+exact delivery receipt for this packet; its closing comment records the landed
+`main` SHA and final command results. The implementation evidence is:
+
+- `apps/openagents-desktop/src/ide/project-contract.ts`: the identified,
+  schema-first project graph, branded refs/generations, tagged lifecycle and
+  navigation variants, excerpts, proposals, and boundary decoders;
+- `apps/openagents-desktop/src/ide/project-service.ts`: the scoped
+  `Context.Service` / `Layer.effect` implementation with named operations,
+  decoded inputs, typed expected failures, atomic generation changes,
+  capability stop semantics, and late-result fencing;
+- `apps/openagents-desktop/src/workspace-contract.ts` and the editor recovery
+  schema: the shipped Files boundary types now derive from their schemas
+  instead of mirroring them by hand;
+- `apps/openagents-desktop/scripts/check-ide-boundaries.ts`: the mechanical
+  guard against raw parallel contracts, unchecked IDE authority casts,
+  widget/native authority, Rust schema mirrors, or removal of required Effect
+  lifecycle primitives;
+- `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-00-baseline.json`
+  and its raw/startup companions: public-safe p50/p95/p99 observations plus
+  explicit gaps for Finder, input-to-paint, real PTY, worker cancellation, and
+  split Electron resource telemetry;
+- behavior contract
+  `openagents_desktop.ide_project_generation_fencing.v1` and the project,
+  shell, workspace-editor, Files, search, Git, terminal, recovery, and launch
+  regression corpus.
+
+This receipt admits the shared graph and preserves the Files foundation. It
+does not imply Monaco, complete Explorer, language intelligence, Zed quality,
+the daily-use basic IDE rung, or Cursor parity. Those remain IDE-01 onward.
+
 ### IDE-01 — De-risk packages, Tokyo Night, Vim, and packaging
 
 Pin Monaco from the already proven OpenAgents lineage, then prove worker URLs,
@@ -767,9 +800,10 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Immediate next work
 
-The next admitted implementation work should be IDE-00 and IDE-01, followed by
-IDE-02 and IDE-03 in parallel only after their shared project/document/theme
-contracts are fixed. The first visible destination is deliberately narrow:
+After IDE-00's exact issue receipt lands, the next admitted implementation work
+is IDE-01, followed by IDE-02 and IDE-03 only after their shared package,
+project, document, and theme contracts are fixed. The first visible destination
+is deliberately narrow:
 
 1. preserve the current Command-E/Finder/Pierre Files behavior;
 2. replace the main-region textarea with one canonical Monaco controller;

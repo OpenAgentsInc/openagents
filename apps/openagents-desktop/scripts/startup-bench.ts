@@ -10,7 +10,7 @@
  *   -> capability ready (runtime-gateway bootstrap)
  *
  * All marks are ms from process start. A warmup run is discarded (cold V8/OS
- * cache), then it reports median + p95 per mark over the measured runs and
+ * cache), then it reports p50 + p95 + p99 per mark over the measured runs and
  * writes a privacy-safe JSON receipt (timings only — no paths, no user data).
  *
  * Usage:
@@ -153,7 +153,15 @@ const main = async (): Promise<void> => {
     console.log(`[startup-bench] run ${i + 1}/${args.runs} shellMounted=${marks.shellMounted}ms firstPaint=${marks.firstPaint}ms`)
   }
 
-  const aggregate: Record<string, { median: number; p95: number; min: number; max: number; n: number } | null> = {}
+  const aggregate: Record<string, {
+    median: number
+    p50: number
+    p95: number
+    p99: number
+    min: number
+    max: number
+    n: number
+  } | null> = {}
   for (const mark of MARK_ORDER) {
     const values = samples
       .map((sample) => sample[mark])
@@ -162,7 +170,9 @@ const main = async (): Promise<void> => {
       ? null
       : {
           median: round2(median(values)),
+          p50: round2(percentile(values, 0.5)),
           p95: round2(percentile(values, 0.95)),
+          p99: round2(percentile(values, 0.99)),
           min: round2(Math.min(...values)),
           max: round2(Math.max(...values)),
           n: values.length,
@@ -186,11 +196,11 @@ const main = async (): Promise<void> => {
   writeFileSync(args.out, JSON.stringify(receipt, null, 2))
 
   console.log("")
-  console.log(`[startup-bench] === milestone chain (median / p95, ms from process start) ===`)
+  console.log(`[startup-bench] === milestone chain (p50 / p95 / p99, ms from process start) ===`)
   for (const mark of MARK_ORDER) {
     const agg = aggregate[mark]
     if (agg === null) { console.log(`  ${mark.padEnd(20)} —`); continue }
-    console.log(`  ${mark.padEnd(20)} ${String(agg.median).padStart(8)}  / ${String(agg.p95).padStart(8)}  (n=${agg.n})`)
+    console.log(`  ${mark.padEnd(20)} ${String(agg.p50).padStart(8)}  / ${String(agg.p95).padStart(8)}  / ${String(agg.p99).padStart(8)}  (n=${agg.n})`)
   }
   console.log("")
   console.log(`[startup-bench] receipt written to ${args.out}`)

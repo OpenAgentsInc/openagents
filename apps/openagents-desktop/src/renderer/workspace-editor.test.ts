@@ -3,6 +3,8 @@ import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-n
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 
 import type { DesktopWorkspaceDocument } from "../workspace-contract.ts"
+
+// Behavior oracle: openagents_desktop.ide_project_generation_fencing.v1
 import {
   emptyWorkspaceEditorState,
   decodeWorkspaceEditorRecoverySnapshot,

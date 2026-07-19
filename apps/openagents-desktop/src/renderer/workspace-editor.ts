@@ -416,16 +416,6 @@ export const withWorkspaceEditorExternalResult = (
   }
 })
 
-export type WorkspaceEditorRecoverySnapshot = Readonly<{
-  version: 2
-  activePathRef: string | null
-  tabs: ReadonlyArray<Readonly<{
-    pathRef: string
-    expectedRevisionRef: string
-    draft: string
-  }>>
-}>
-
 export const WorkspaceEditorRecoverySnapshotSchema = Schema.Struct({
   version: Schema.Literal(2),
   activePathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
@@ -435,6 +425,7 @@ export const WorkspaceEditorRecoverySnapshotSchema = Schema.Struct({
     draft: Schema.String.check(Schema.isMaxLength(1_000_000)),
   })).check(Schema.isMaxLength(maxTabs)),
 })
+export type WorkspaceEditorRecoverySnapshot = typeof WorkspaceEditorRecoverySnapshotSchema.Type
 
 export const decodeWorkspaceEditorRecoverySnapshot = (value: unknown): WorkspaceEditorRecoverySnapshot | null => {
   const decoded = Schema.decodeUnknownExit(WorkspaceEditorRecoverySnapshotSchema)(value)

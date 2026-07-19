@@ -85,6 +85,21 @@ authorized to execute and cannot be used as release evidence.
 | IDE-18 — custody/migration/platform/accessibility | Desktop AC-7, AC-9, AC-29, AC-32, AC-49; Cursor CP-AC-13..18, CP-AC-25; Mobile AC-26; Web AC-24..30 | Desktop and Cursor proposed companions | Complete data inventory/erasure convergence, safe Cursor import, enterprise/distribution evidence, localization/accessibility, and deferred light/high-contrast/system themes |
 | IDE-19 — maintained Cursor closure | Desktop AC-25, AC-52; Cursor CP-AC-01..02, CP-AC-16, CP-AC-27; Fast Follow FF-AC-16 | Cursor proposed companion is the primary parity proof-design seed | Every current ledger row has exact evidence, implementation, acceptance, assurance, placement/data posture, owner disposition, and promise gate; no required gap remains |
 
+### IDE-00 implementation evidence
+
+IDE-00 is implemented by the exact receipt in
+[#9015](https://github.com/OpenAgentsInc/openagents/issues/9015). Its admitted
+code evidence is the schema-first graph and scoped Effect service under
+`apps/openagents-desktop/src/ide/`, the schema-derived shipped Files/recovery
+contracts, the `check:ide-boundaries` architecture guard, the public-safe
+p50/p95/p99 baseline receipts, and behavior contract
+`openagents_desktop.ide_project_generation_fencing.v1`. The issue's closing
+comment is authoritative for the final `main` SHA and verification commands.
+
+That evidence supports only the IDE-00 foundation row. It does not change the
+proposed lifecycle of either AssuranceSpec, satisfy IDE-01–07, promote the
+Daily-use basic IDE rung, or close any later Cursor parity row.
+
 ## Cross-surface defaults and non-authorities
 
 | Concern | Desktop authority | Mobile contract | Web/public contract |
