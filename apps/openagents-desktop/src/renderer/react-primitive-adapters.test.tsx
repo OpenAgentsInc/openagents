@@ -11,6 +11,8 @@ import { RedactedSensitiveText, redactedSensitivePlaceholder } from "./react-sen
 import { IdePathIndexGenerationSchema } from "../ide/project-contract.ts"
 import { IdePathNodeRefSchema, IdePathScanRefSchema, IdePierreTreeProjectionSchema } from "../ide/path-index-contract.ts"
 
+// Behavior oracle: openagents_desktop.ide_monaco_document_runtime.v1
+
 const restores: Array<() => void> = []
 const roots = new Set<Root>()
 const installDom = () => {
@@ -945,6 +947,14 @@ describe("React workbench shell", () => {
       .map(row => row.dataset.itemPath)
     expect(treePaths).toEqual(["src/", "README.md"])
     expect(container.querySelector('[aria-label="Editor for src/app.ts"]')).not.toBeNull()
+    expect(container.querySelector('.oa-react-file-editor textarea:not(.inputarea)')).toBeNull()
+    expect(container.querySelector('.oa-react-monaco-pane[data-monaco-view="primary"]')).not.toBeNull()
+    expect(container.querySelector('.oa-react-monaco-splits')?.getAttribute("data-split")).toBe("false")
+    expect([...container.querySelectorAll('.oa-react-editor-toolbar button')].map(button => button.textContent)).toEqual(
+      expect.arrayContaining(["Wrap", "Minimap", "Split", "Vim off", "Save all", "Save As", "Save"]),
+    )
+    await interact(() => ([...container.querySelectorAll('.oa-react-editor-toolbar button')].find(button => button.textContent === "Vim off") as HTMLButtonElement).click())
+    expect(received).toContainEqual({ name: "WorkspaceEditorVimToggled", payload: null })
     await interact(() => (pierreTree?.shadowRoot?.querySelector('[data-item-path="src/"]') as HTMLButtonElement).click())
     expect(received).toContainEqual({ name: "WorkspaceBrowserTreeToggled", payload: "src" })
     const expandedFilesState: DesktopShellState = {

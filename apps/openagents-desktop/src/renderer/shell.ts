@@ -161,6 +161,7 @@ import {
 } from "./workspace-browser.ts"
 import {
   emptyWorkspaceEditorState,
+  decodeWorkspaceEditorRecoverySnapshot,
   makeWorkspaceEditorHandlers,
   unavailableWorkspaceDocumentBridge,
   workspaceEditorIntents,
@@ -1834,7 +1835,7 @@ export type WorkspaceHost = Readonly<{
   browser?: WorkspaceBrowserBridge
   documents?: WorkspaceDocumentBridge
   recovery?: Readonly<{
-    load: (workspaceSessionRef: string) => WorkspaceEditorRecoverySnapshot | null
+    load: (workspaceSessionRef: string) => unknown
     save?: (workspaceSessionRef: string, snapshot: WorkspaceEditorRecoverySnapshot) => void
   }>
 }>
@@ -2047,6 +2048,7 @@ export type CodexHandoffRendererHost = Readonly<{
 export type DesktopPresentationRendererHost = Readonly<{
   setSidebarCollapsed: (collapsed: boolean) => Promise<void>
   setLocalCodexUsageSharing?: (enabled: boolean) => Promise<void>
+  setEditorVimEnabled?: (enabled: boolean) => Promise<void>
 }>
 /**
  * Full Auto (#8853, FA-H1 #8874): main-owned durable per-thread toggle. `set`
@@ -2212,6 +2214,9 @@ export const makeDesktopShellHandlers = (
     state,
     workspaceHost.documents ?? unavailableWorkspaceDocumentBridge,
     persistWorkspaceRecovery,
+    {
+      setVimEnabled: enabled => presentationHost.setEditorVimEnabled?.(enabled) ?? Promise.resolve(),
+    },
   )
   const synchronizeWorkingDirectory = Effect.gen(function* () {
     const workingDirectory = yield* Effect.promise(
@@ -2241,7 +2246,9 @@ export const makeDesktopShellHandlers = (
       current.codingCatalog.sessions[0]?.sessionRef ?? null
     const grantRef = current.workspaceBrowser.grantRef
     if (workspaceSessionRef === null || grantRef === null) return
-    const snapshot = workspaceHost.recovery?.load(workspaceSessionRef) ?? null
+    const snapshot = decodeWorkspaceEditorRecoverySnapshot(
+      workspaceHost.recovery?.load(workspaceSessionRef) ?? null,
+    )
     if (snapshot === null || snapshot.tabs.length === 0) return
     yield* workspaceEditorHandlers.WorkspaceEditorRecoveryRequested({ grantRef, snapshot })
   })

@@ -33,6 +33,11 @@ const Account = ({ state, codexOnly = false }: { readonly state: DesktopShellSta
 
 const General = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => <>
   <Maintenance state={state} report={report} />
+  <section className="oa-react-settings-section" aria-labelledby="react-editor-input-title">
+    <h2 id="react-editor-input-title">Editor input</h2>
+    <p>Built-in Vim uses the same Monaco document, save, conflict, and recovery authority. It is off by default and works offline.</p>
+    <Button variant={state.workspaceEditor.vimEnabled ? "default" : "outline"} aria-pressed={state.workspaceEditor.vimEnabled} onClick={() => dispatch(report, "WorkspaceEditorVimToggled")}>{state.workspaceEditor.vimEnabled ? "Vim enabled" : "Vim disabled"}</Button>
+  </section>
   {state.settings.localCodexUsageControlAvailable ? <section className="oa-react-settings-section" aria-labelledby="react-local-usage-title"><h2 id="react-local-usage-title">Share local Codex usage</h2><p>When on, OpenAgents reports how many tokens each turn used — the input, cached-input, output, reasoning, and total token counts — plus the model name and a one-time turn reference. Only those numbers are sent: never your prompts, responses, files, paths, account names, or credentials. This updates the aggregate public tokens-served counter. Turn it off any time; queued reports are deleted.</p><Button variant={state.settings.shareLocalCodexUsage ? "default" : "outline"} aria-pressed={state.settings.shareLocalCodexUsage} onClick={() => dispatch(report, "DesktopLocalCodexUsageSharingToggled", !state.settings.shareLocalCodexUsage)}>{state.settings.shareLocalCodexUsage ? "Sharing on" : "Sharing off"}</Button></section> : null}
   <Account state={state} codexOnly />
 </>

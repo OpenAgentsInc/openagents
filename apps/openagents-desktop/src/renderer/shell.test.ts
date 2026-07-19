@@ -72,7 +72,6 @@ import { withWorkspaceBrowserRoot, type WorkspaceBrowserBridge } from "./workspa
 import type { WorkspaceDocumentBridge } from "./workspace-editor.ts"
 import type { ComposerImageAttachment } from "./composer-images.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
-import { khalaTheme } from "@effect-native/tokens"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
 import type { RuntimeControlOutcome } from "@openagentsinc/agent-runtime-schema"
 import { openAgentsDesktopUxContractRegistry } from "../contracts/ux-contracts.ts"
@@ -2002,6 +2001,9 @@ describe("pure transitions", () => {
           closeConfirmRef: null,
           wordWrap: false,
           minimap: false,
+          split: false,
+          vimEnabled: false,
+          nextDocumentOrdinal: 0,
           saveAsPathRef: null,
         },
       }
@@ -4643,16 +4645,15 @@ describe("EP250 window + sidebar owner contracts", () => {
 })
 
 describe("theme parity (one OpenAgents product theme, many hosts)", () => {
-  test("desktop theme IS the canonical khalaTheme — no app-local drift", () => {
-    expect(openagentsDesktopTheme).toBe(khalaTheme)
-    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
-    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
+  test("desktop theme is the canonical Tokyo Night projection over shared scales", () => {
+    expect(openagentsDesktopTheme.color.background).toBe("#1a1b26")
+    expect(openagentsDesktopTheme.color.accent).toBe("#7aa2f7")
     expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 2, md: 4, lg: 6, xl: 8, full: 9999 })
     // Chrome-language roles are present for the state-overlay engine.
-    expect(openagentsDesktopTheme.color.stateHover).toBe("#8fb3ff14")
-    expect(openagentsDesktopTheme.color.stateSelected).toBe("#3b82f629")
-    expect(openagentsDesktopTheme.color.textFaint).toBe("#6b7ca1")
-    expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#182640")
+    expect(openagentsDesktopTheme.color.stateHover).toBe("#c0caf514")
+    expect(openagentsDesktopTheme.color.stateSelected).toBe("#515c7e4d")
+    expect(openagentsDesktopTheme.color.textFaint).toBe("#8990ad")
+    expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#24283b")
     expect(openagentsDesktopTheme.motion.durationFastMs).toBe(150)
     expect(openagentsDesktopTheme.control.md).toEqual({ height: 28, gutter: 10, radius: 4, fontSize: 13, icon: 16 })
   })

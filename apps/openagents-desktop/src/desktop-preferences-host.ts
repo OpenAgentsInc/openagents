@@ -93,6 +93,16 @@ export const openDesktopPreferencesStore = (filePath: string): DesktopPreference
         notifications: { ...current.notifications, ...(patch.notifications ?? {}) },
         updates: { ...current.updates, ...(patch.updates ?? {}) },
         presentation: { ...current.presentation, ...(patch.presentation ?? {}) },
+        editor: {
+          ...current.editor,
+          ...(patch.editor ?? {}),
+          vim: {
+            ...current.editor.vim,
+            ...((patch.editor?.vim !== null && typeof patch.editor?.vim === "object")
+              ? patch.editor.vim as Record<string, unknown>
+              : {}),
+          },
+        },
       }
       const normalized = migrateDesktopPreferences(merged).preferences
       writeDocument(normalized)

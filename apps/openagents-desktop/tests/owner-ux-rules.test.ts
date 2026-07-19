@@ -34,7 +34,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 
 import { iconNames } from "@effect-native/core"
-import { khalaTheme } from "@effect-native/tokens"
+import { tokyoNightDesktopThemeProjection } from "../src/ide/tokyo-night-theme.ts"
 
 import {
   desktopShellView,
@@ -408,25 +408,24 @@ describe("openagents_desktop.microinteraction.owner_review_register.v1", () => {
 // background and fold Autopilot's mono/condensed and compatible color ideas
 // into Khala without overriding or conflicting with Khala.
 //
-// Enforcement shape: (a) the mounted desktop theme IS the tokens-package
-// khalaTheme with the pinned Protoss-blue roles; (b) the temporary gray
-// Autopilot pins are proven absent (falsifier sensitivity); (c) no non-test
-// desktop source module mounts autopilotTheme.
+// IDE-03 supersedes the former color identity with one pinned Tokyo Night
+// projection while preserving the shared catalog/scales and the prohibition
+// on a second mutable theme.
 // ---------------------------------------------------------------------------
 
 describe("openagents_desktop.design.khala_autopilot_foldin.v1", () => {
-  test("the desktop theme IS khalaTheme with the pinned Protoss-blue roles", () => {
-    expect(openagentsDesktopTheme).toBe(khalaTheme)
-    expect(openagentsDesktopTheme.color.accent).toBe("#3b82f6")
-    expect(openagentsDesktopTheme.color.background).toBe("#05070d")
-    expect(openagentsDesktopTheme.color.surfaceRaised).toBe("#141f36")
-    expect(openagentsDesktopTheme.color.danger).toBe("#f87171")
+  test("the desktop theme is the pinned Tokyo Night projection over shared scales", () => {
+    expect(openagentsDesktopTheme.color).toBe(tokyoNightDesktopThemeProjection.effectNative)
+    expect(openagentsDesktopTheme.color.accent).toBe("#7aa2f7")
+    expect(openagentsDesktopTheme.color.background).toBe("#1a1b26")
+    expect(openagentsDesktopTheme.color.surfaceRaised).toBe("#202330")
+    expect(openagentsDesktopTheme.color.danger).toBe("#f7768e")
     expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 2, md: 4, lg: 6, xl: 8, full: 9999 })
   })
 
   test("falsifier: the temporary gray Autopilot pins are rejected", () => {
     expect(openagentsDesktopTheme.color.accent).not.toBe("#5262fd")
-    expect(openagentsDesktopTheme.color.background).not.toBe("#16161e")
+    expect(openagentsDesktopTheme.color.background).not.toBe("#05070d")
     expect(openagentsDesktopTheme.color.surfaceRaised).not.toBe("#1d1e20")
     expect(openagentsDesktopTheme.radius.md).not.toBe(0)
   })
@@ -444,12 +443,12 @@ describe("openagents_desktop.design.khala_autopilot_foldin.v1", () => {
     expect(offenders).toEqual([])
   })
 
-  test("the contract is registered, enforced, and points at this suite", () => {
+  test("the historical Khala color contract is retained as retired after IDE-03", () => {
     const contract = openAgentsDesktopUxContractRegistry.contracts.find(
       (candidate) => candidate.contractId === "openagents_desktop.design.khala_autopilot_foldin.v1",
     )
     expect(contract).toBeDefined()
-    expect(contract?.state).toBe("enforced")
+    expect(contract?.state).toBe("retired")
     expect(contract?.source.statedOn).toBe("2026-07-16")
     expect(contract?.statement).toBe(
       "Some recent Autopilot UI change changed my blue background to gray, undo that. The Autopilot palette needs to be kinda folded INTO Khala: use its mono/condensed ideas and generally its colors, but do not override or conflict with Khala.",

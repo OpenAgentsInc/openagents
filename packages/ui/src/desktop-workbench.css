@@ -3,8 +3,8 @@
 .oa-react-workbench {
   /*
    * Autopilot UI grammar fold-in (2026-07-16, owner-directed): the mounted
-   * product theme stays khalaTheme (blue background/surface/accent — "not
-   * overriding our blue, gray is not supposed to dominate over blue"). Its
+   * IDE-03 installs the provenance-pinned Tokyo Night semantic projection
+   * before first paint while retaining the product control/radius lattice. Its
    * shared radius scale keeps buttons/inputs/settings unchanged across the
    * whole app (khalaTheme.radius sits on the theme's control lattice — see
    * effect-native packages/tokens/src/index.ts's khalaTheme doc comment).
@@ -1179,7 +1179,20 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-rich-diff > header button { height: 26px; font-size: 10px; }
 .oa-react-editor-find input { min-width: 100px; height: 26px; flex: 1 1 auto; }
 .oa-react-editor-find small { color: var(--en-color-textMuted); font-size: 9px; white-space: nowrap; }
-.oa-react-code-editor { width: 100%; min-width: 0; min-height: 0; resize: none; padding: 12px; border: 0; outline: 0; color: var(--en-color-textPrimary); background: var(--en-color-surfaceSunken); font-family: var(--oa-font-mono); font-size: 11px; line-height: 1.55; tab-size: 2; }
+.oa-react-code-editor { width: 100%; min-width: 0; min-height: 0; resize: none; padding: 12px; border: 0; outline: 0; color: var(--en-color-textPrimary); background: var(--en-color-codeBackground); font-family: var(--oa-font-mono); font-size: 11px; line-height: 1.55; tab-size: 2; }
+.oa-react-editor-save-as { display: flex; flex: 0 0 auto; gap: var(--en-spacing-2); align-items: center; padding: 0 var(--en-spacing-2) var(--en-spacing-2); border-bottom: 1px solid var(--en-color-borderSubtle); }
+.oa-react-editor-save-as input { min-width: 0; flex: 1 1 auto; }
+.oa-react-monaco-splits { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; flex: 1 1 auto; overflow: hidden; background: var(--en-color-codeBackground); }
+.oa-react-monaco-splits[data-split="true"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.oa-react-monaco-pane { position: relative; display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border-right: 1px solid var(--en-color-borderSubtle); background: var(--en-color-codeBackground); }
+.oa-react-monaco-pane:last-child { border-right: 0; }
+.oa-react-monaco-host { min-width: 0; min-height: 0; flex: 1 1 auto; }
+.oa-react-monaco-status { display: flex; min-height: 24px; flex: 0 0 auto; gap: var(--en-spacing-3); align-items: center; justify-content: flex-end; overflow: hidden; padding: 2px var(--en-spacing-2); border-top: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textFaint); background: var(--en-color-surface); font-family: var(--oa-font-mono); font-size: 10px; white-space: nowrap; }
+.oa-react-monaco-status > span:first-child { margin-right: auto; }
+.oa-react-monaco-status strong { color: var(--en-color-accent); font-weight: 600; text-transform: uppercase; }
+.oa-react-monaco-unavailable { position: absolute; inset: 0; display: grid; place-content: center; gap: var(--en-spacing-2); padding: var(--en-spacing-6); border: 2px solid var(--en-color-danger); color: var(--en-color-textPrimary); background: var(--en-color-codeBackground); text-align: center; }
+.oa-react-monaco-unavailable strong::before { content: "! "; color: var(--en-color-danger); }
+@media (max-width: 880px) { .oa-react-monaco-splits[data-split="true"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); } .oa-react-monaco-pane { border-right: 0; border-bottom: 1px solid var(--en-color-borderSubtle); } }
 .oa-react-editor-empty { display: flex; min-width: 0; min-height: 0; grid-row: 1 / -1; flex-direction: column; align-items: center; justify-content: center; padding: var(--en-spacing-5); color: var(--en-color-textMuted); text-align: center; }
 .oa-react-editor-empty svg { width: 20px; height: 20px; }
 .oa-react-editor-empty h3 { margin: var(--en-spacing-2) 0 0; color: var(--en-color-textPrimary); font-size: 12px; }

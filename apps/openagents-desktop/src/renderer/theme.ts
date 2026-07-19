@@ -1,14 +1,11 @@
 /**
- * OpenAgents Desktop theme (#8574, EP250 #8712) — the one Protoss-blue
- * OpenAgents theme, consumed directly from `@effect-native/tokens`.
+ * OpenAgents Desktop's one mounted product theme.
  *
- * The owner restored the blue Khala palette on 2026-07-16 after the temporary
- * Autopilot palette made the workroom read gray. The one-theme-many-hosts
- * invariant remains unchanged: one catalog, one theme, many hosts. Autopilot's
- * condensed/mono instrumentation and compatible color relationships fold into
- * Khala semantic roles; they never mount a competing theme. Desktop deliberately
- * re-exports the shared theme instead of constructing one.
+ * IDE-01 admitted the owned, pinned Tokyo Night data projection and IDE-03
+ * makes it the initial workbench theme. The projection keeps the shared
+ * Effect Native structure (type scale, spacing, radii, motion, controls) and
+ * replaces only semantic color roles. Monaco, Pierre, terminals, boot paint,
+ * and the ordinary workbench therefore consume one palette without importing
+ * one another or creating a mutable theme marketplace.
  */
-import { khalaTheme } from "@effect-native/tokens"
-
-export const openagentsDesktopTheme = khalaTheme
+export { tokyoNightDesktopTheme as openagentsDesktopTheme } from "../desktop-preferences-effects.ts"

@@ -5,12 +5,12 @@
  * inert stored value:
  *
  * - `fontScale` and `density` produce a SCALED copy of the fixed product
- *   theme (`khalaTheme` — type-scale tokens for font; spacing + control
+ *   theme (Tokyo Night colors over the shared type-scale, spacing, and control
  *   tokens for density). The renderer emits every scaled token as a `--en-*`
  *   CSS variable, so passing the scaled theme to the Effect Native DOM
  *   renderer / `setTheme` genuinely resizes the whole app through the
- *   existing token pipeline. The one Protoss-blue COLOR identity is
- *   untouched (single-theme policy) — only sizing scales.
+ *   existing token pipeline. The one Tokyo Night color identity is untouched
+ *   (single-theme policy) — only sizing scales.
  * - `reducedMotion` produces a root data attribute the app CSS honors
  *   (`:root[data-en-reduce-motion="true"]`) so an explicit user override works
  *   regardless of the OS `prefers-reduced-motion` setting; `system` leaves the
@@ -27,6 +27,13 @@ import type {
   DesktopPreferences,
   DesktopReducedMotion,
 } from "./desktop-preferences-contract.ts"
+import { tokyoNightDesktopThemeProjection } from "./ide/tokyo-night-theme.ts"
+
+/** Tokyo Night is installed before the first workbench/editor paint. */
+export const tokyoNightDesktopTheme: Theme = {
+  ...khalaTheme,
+  color: tokyoNightDesktopThemeProjection.effectNative,
+}
 
 /** Multiplier applied to type-scale font/line tokens. */
 export const fontScaleFactor = (scale: DesktopFontScale): number => {
@@ -100,9 +107,9 @@ export const applyPreferencesToTheme = (
   return { ...base, typeScale, spacing, control }
 }
 
-/** The scaled theme for a full preferences document, from the fixed khalaTheme. */
+/** The scaled theme for a full preferences document, from fixed Tokyo Night. */
 export const themeForPreferences = (preferences: DesktopPreferences): Theme =>
-  applyPreferencesToTheme(khalaTheme, {
+  applyPreferencesToTheme(tokyoNightDesktopTheme, {
     fontScale: preferences.appearance.fontScale,
     density: preferences.appearance.density,
   })

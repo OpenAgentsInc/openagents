@@ -28,6 +28,10 @@ export const DesktopCommandId = Schema.Literals([
   "workspace.explorer.refresh",
   "workspace.explorer.retry",
   "workspace.explorer.rescan",
+  "editor.save",
+  "editor.save_all",
+  "editor.split.toggle",
+  "editor.vim.toggle",
   "full-auto.launch",
 ])
 export type DesktopCommandId = typeof DesktopCommandId.Type
@@ -91,6 +95,10 @@ export const desktopCanonicalCommandRegistry: ReadonlyArray<DesktopCommandDefini
   { id: "workspace.explorer.refresh", label: "Refresh Explorer", intentName: "WorkspaceBrowserExplorerCommandRequested", arguments: "explorer", defaultArguments: { kind: "explorer", command: { _tag: "Refresh" } }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "workspace.explorer.retry", label: "Retry Explorer", intentName: "WorkspaceBrowserExplorerCommandRequested", arguments: "explorer", defaultArguments: { kind: "explorer", command: { _tag: "Retry" } }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "workspace.explorer.rescan", label: "Rescan Explorer", intentName: "WorkspaceBrowserExplorerCommandRequested", arguments: "explorer", defaultArguments: { kind: "explorer", command: { _tag: "Rescan" } }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.save", label: "Save active editor", intentName: "WorkspaceEditorSaveRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.save_all", label: "Save all editors", intentName: "WorkspaceEditorSaveAllRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: ["Meta+Alt+S", "Control+Alt+S"], palette: true },
+  { id: "editor.split.toggle", label: "Toggle editor split", intentName: "WorkspaceEditorSplitToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.vim.toggle", label: "Toggle Vim mode", intentName: "WorkspaceEditorVimToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "workspace.choose", label: "Choose workspace folder", intentName: "DesktopWorkspacePickerRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "workspace_picker_requested", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+O", "Control+O"], palette: true },
   { id: "settings.open", label: "Open Settings", intentName: "DesktopSettingsToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+,", "Control+,"], palette: true },
   // FA-AC-54 (#8974): the dedicated left-rail Full Auto launcher entry,

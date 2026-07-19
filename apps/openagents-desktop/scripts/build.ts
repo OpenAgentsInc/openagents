@@ -166,6 +166,43 @@ export const buildDesktop = async (): Promise<string> => {
         },
       },
     })
+    // IDE-03: the production Monaco graph is an independently fetched ESM
+    // island. Chat-only launches never import it, while a Files/Finder open
+    // resolves the fixed private-scheme entry and its local module workers.
+    // Keeping a fixed entry/CSS name gives the loader an allowlistable target;
+    // all transitive chunks and worker assets stay content-hashed below it.
+    await viteBuild({
+      configFile: false,
+      mode: "production",
+      root: appRoot,
+      base: "./",
+      plugins: desktopRendererPlugins(),
+      resolve: desktopRendererResolve,
+      define: {
+        "process.env.NODE_ENV": JSON.stringify("production"),
+      },
+      build: {
+        outDir: path.join(dist, "renderer", "ide-editor"),
+        emptyOutDir: true,
+        minify: BUILD_MINIFY,
+        reportCompressedSize: false,
+        sourcemap: true,
+        lib: {
+          entry: path.join(appRoot, "src", "ide", "editor-runtime-entry.ts"),
+          formats: ["es"],
+          fileName: () => "editor.js",
+          cssFileName: "editor",
+        },
+        rollupOptions: {
+          output: {
+            chunkFileNames: "assets/[name]-[hash].js",
+            assetFileNames: asset => asset.name === "editor.css"
+              ? "editor.css"
+              : "assets/[name]-[hash][extname]",
+          },
+        },
+      },
+    })
     if (process.env.OPENAGENTS_DESKTOP_IDE_PACKAGE_SPIKE_BUILD === "1") {
       // IDE-01's admission fixture is a separate, opt-in ESM graph. It proves
       // Monaco/Pierre workers and package assets without shipping the fixture

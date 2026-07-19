@@ -10,6 +10,7 @@ import type { IdeExplorerCommand } from "./ide-path-index.ts"
 import { PierreWorkspaceTree, pierreWorkspacePaths } from "./ide/pierre-tree-adapter.tsx"
 import type { DesktopShellState } from "./shell.ts"
 import { workspaceEditorTabDirty } from "./workspace-editor.ts"
+import { MonacoEditorHost } from "./monaco-editor-host.tsx"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
@@ -107,9 +108,20 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
         <div>
           <Button size="sm" variant="ghost" disabled={tab.undo.length === 0} onClick={() => dispatch(report, "WorkspaceEditorUndoRequested")}>Undo</Button>
           <Button size="sm" variant="ghost" disabled={tab.redo.length === 0} onClick={() => dispatch(report, "WorkspaceEditorRedoRequested")}>Redo</Button>
+          <Button size="sm" variant="ghost" aria-pressed={editor.wordWrap} onClick={() => dispatch(report, "WorkspaceEditorWordWrapToggled")}>Wrap</Button>
+          <Button size="sm" variant="ghost" aria-pressed={editor.minimap} onClick={() => dispatch(report, "WorkspaceEditorMinimapToggled")}>Minimap</Button>
+          <Button size="sm" variant="ghost" aria-pressed={editor.split} onClick={() => dispatch(report, "WorkspaceEditorSplitToggled")}>Split</Button>
+          <Button size="sm" variant={editor.vimEnabled ? "default" : "outline"} aria-pressed={editor.vimEnabled} onClick={() => dispatch(report, "WorkspaceEditorVimToggled")}>{editor.vimEnabled ? "Vim on" : "Vim off"}</Button>
+          <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorSaveAllRequested")}>Save all</Button>
+          <Button size="sm" variant="outline" disabled={tab.saveState === "saving"} onClick={() => dispatch(report, "WorkspaceEditorSaveAsStarted")}>Save As</Button>
           <Button size="sm" disabled={!workspaceEditorTabDirty(tab) || tab.saveState === "saving" || tab.phase === "unavailable"} onClick={() => dispatch(report, "WorkspaceEditorSaveRequested")}>{tab.saveState === "saving" ? "Saving…" : tab.saveState === "saved" ? "Saved" : "Save"}</Button>
         </div>
       </header>
+      {editor.saveAsPathRef === null ? null : <div className="oa-react-editor-save-as">
+        <Input aria-label="New relative document path" placeholder="src/new-file.ts" value={editor.saveAsPathRef} onChange={event => dispatch(report, "WorkspaceEditorSaveAsChanged", event.currentTarget.value)} />
+        <Button size="sm" disabled={editor.saveAsPathRef.trim() === ""} onClick={() => dispatch(report, "WorkspaceEditorSaveAsSubmitted")}>Create copy</Button>
+        <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorSaveAsCancelled")}>Cancel</Button>
+      </div>}
       <div className="oa-react-editor-find">
         <Input aria-label={`Find in ${tab.pathRef}`} placeholder="Find" value={tab.findQuery} onChange={event => dispatch(report, "WorkspaceEditorFindChanged", event.currentTarget.value)} />
         <small>{tab.findMatches.length === 0 ? "No matches" : `${tab.findIndex + 1} of ${tab.findMatches.length}`}</small>
@@ -120,9 +132,26 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
       {tab.phase !== "conflict" ? null : <div className="oa-react-editor-conflict" role="alert"><span>{tab.externalDocument === null ? "The file is no longer available. Your draft is retained." : "Changed outside the editor."}</span>{tab.externalDocument === null ? null : <><Button size="sm" variant="outline" onClick={() => dispatch(report, "WorkspaceEditorConflictReload")}>Reload theirs</Button><Button size="sm" onClick={() => dispatch(report, "WorkspaceEditorConflictKeepMine")}>Save mine</Button></>}</div>}
       {tab.phase === "loading" ? <p role="status">Opening document…</p>
         : tab.phase === "unavailable" ? <p role="alert">{tab.reason ?? "This document is unavailable."}</p>
-        : <textarea aria-label={`Editor for ${tab.pathRef}`} className="oa-react-code-editor" readOnly={tab.saveState === "saving"} spellCheck={false} value={tab.draft}
-            onChange={event => dispatch(report, "WorkspaceEditorEventReceived", { type: "change", value: event.currentTarget.value })}
-            onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "s") { event.preventDefault(); dispatch(report, "WorkspaceEditorSaveRequested") } }} />}
+        : <div className="oa-react-monaco-splits" data-split={editor.split ? "true" : "false"}>
+            <MonacoEditorHost
+              key={`${tab.documentRef}:primary`}
+              tab={tab}
+              view="primary"
+              wordWrap={editor.wordWrap}
+              minimap={editor.minimap}
+              vimEnabled={editor.vimEnabled}
+              onEvent={event => dispatch(report, "WorkspaceEditorMonacoEventReceived", event)}
+            />
+            {!editor.split ? null : <MonacoEditorHost
+              key={`${tab.documentRef}:secondary`}
+              tab={tab}
+              view="secondary"
+              wordWrap={editor.wordWrap}
+              minimap={editor.minimap}
+              vimEnabled={editor.vimEnabled}
+              onEvent={event => dispatch(report, "WorkspaceEditorMonacoEventReceived", event)}
+            />}
+          </div>}
     </>}
   </section>
 }

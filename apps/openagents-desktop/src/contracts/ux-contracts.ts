@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-18.6",
+    version: "2026-07-19.1",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
@@ -452,7 +452,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "ALL styles harmonized with apps-sdk-ui while preserving our starcraft design",
         authorityBoundary:
-          "OpenAgents Desktop composes the Effect Native catalog's typed components, variants, and shared token scales for component appearance while app.css is restricted to Electron host physics: viewport geometry, containment, scrolling, overlays, responsive adaptation, and reduced-motion policy. The only desktop theme is the dark khalaTheme with Protoss blue (#3b82f6) as primary. This contract grants no new runtime, filesystem, provider, payment, or network authority and does not authorize one-off component recipes outside the typed catalog.",
+          "OpenAgents Desktop composes the Effect Native catalog's typed components, variants, and shared token scales for component appearance while app.css is restricted to Electron host physics: viewport geometry, containment, scrolling, overlays, responsive adaptation, and reduced-motion policy. The only desktop theme is the pinned Tokyo Night semantic projection. This contract grants no new runtime, filesystem, provider, payment, or network authority and does not authorize one-off component recipes outside the typed catalog.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/app.css",
           "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
@@ -467,7 +467,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/design-conformance.test.ts",
             description:
-              "Proves renderer source has no raw colors or non-token sizing recipes, app.css stays within the bounded host-physics vocabulary, typed catalog components own component appearance, and the dark khalaTheme retains the canonical Protoss-blue primary.",
+              "Proves renderer source has no raw colors or non-token sizing recipes, app.css stays within the bounded host-physics vocabulary, typed catalog components own component appearance, and the pinned Tokyo Night projection is the one mounted palette.",
           },
         ],
         verification:
@@ -2813,7 +2813,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "do a separate design pass of projects/repos/apps-sdk-ui and thats what i want to use for the rest of the app chrome, menus, etc, everything other than messages, but still harmonized to messages. we want that design language, ported to starcraft kinda, represented in EVERY other surface of the app",
         authorityBoundary:
-          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as new @effect-native/tokens roles/groups (upstream, public-safe), the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; one uniform dark product theme only (khalaTheme, with Autopilot folded in as a donor language — see openagents_desktop.design.khala_autopilot_foldin.v1); no light theme, no caution/discovery intents, no pink family, no 24px composer radius, no backdrop-blur popover variant, no 9-step lattice, none of their icons (deviations recorded in docs/design-ports.md). Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
+          "Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as shared @effect-native/tokens roles/groups, the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; one uniform dark product theme only, now the owned Tokyo Night projection admitted by IDE-01 and mounted by IDE-03; no light theme, mutable theme marketplace, 24px composer radius, backdrop-blur popover variant, 9-step lattice, or donor icons. Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.",
         evidenceRefs: [
           "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
           "apps/openagents.com/packages/effect-native-render-dom/src/index.ts",
@@ -2833,12 +2833,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Mechanical conformance: (a) zero raw hex/rgb/hsl color literals in renderer modules and the host stylesheet outside the theme module; (b) spacing/radius/type style values are members of the shared token scales with a small documented numeric-dimension allowlist; (c) per-surface structural recipes — sidebar rail sections, palette on surfaceOverlay+borderSubtle+xl with chord captions, composer radius cap + recessed segmented harness track, settings panel padding/hairline, fleet chrome, inspector rail scale, tool-card shimmer keys, 240px raw wells, context-group anatomy.",
           },
           {
-            id: "chrome_design.theme_is_khala_canonical",
+            id: "chrome_design.theme_is_tokyo_night_canonical",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "The desktop theme IS the canonical tokens-package product theme (khalaTheme: Protoss-blue surfaces, state-overlay + dim-ladder + overlay-surface roles, motion/control groups) — app-local palette drift deleted.",
+              "The desktop theme uses the pinned Tokyo Night semantic colors over the canonical shared state-overlay, dim-ladder, motion, spacing, radius, and control groups; app-local palette drift remains forbidden.",
           },
           {
             id: "chrome_design.smoke_pixels",
@@ -3937,7 +3937,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Theme, density, font, reduced motion, keybindings, provider defaults, privacy, notifications, and update preferences have typed durable schemas/migrations.",
         authorityBoundary:
-          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT a mutable field (the app is the fixed dark Protoss-blue khalaTheme; Autopilot design ideas are folded into its semantic roles rather than offered as another theme) and keybindings keep their existing typed store (desktop-command-bindings). Density and font genuinely resize the app through a scaled theme applied at mount; reduced-motion resolves to a root attribute the CSS honors (explicit override wins over the OS). Provider-defaults/privacy/notifications/update-prefs are durable and IPC-round-tripped; each is consumed where a real effect already exists. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
+          "A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, built-in Vim enablement, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT mutable: the app mounts the fixed pinned Tokyo Night projection; keybindings keep their existing typed store (desktop-command-bindings). Density and font resize the app through a scaled theme, reduced-motion resolves to a root attribute, and Vim is off by default but persists when toggled. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.",
         evidenceRefs: [
           "https://github.com/OpenAgentsInc/openagents/issues/8704",
           "apps/openagents-desktop/src/desktop-preferences-contract.ts",
@@ -4178,7 +4178,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       },
       {
         contractId: "openagents_desktop.design.khala_autopilot_foldin.v1",
-        state: "enforced",
+        state: "retired",
         surface: "openagents-desktop",
         productArea: "product theme / palette",
         enforcementTier: "test-sweep",
@@ -4187,7 +4187,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Some recent Autopilot UI change changed my blue background to gray, undo that. The Autopilot palette needs to be kinda folded INTO Khala: use its mono/condensed ideas and generally its colors, but do not override or conflict with Khala.",
         authorityBoundary:
-          "Presentation only, and a palette correction — not a new theming architecture. The one-theme-many-hosts invariant is unchanged: the canonical mounted product theme is the tokens-package khalaTheme (upstream OpenAgentsInc/effect-native, vendored via effect-native-vendor.json). Its semantic roles keep main workroom surfaces in the deep blue Khala family: background #05070d, surface #0b1220, raised surface #141f36, blue accent #3b82f6, blue selected overlays, and the restrained 2/4/6/8 radius scale. Autopilot UI folds into Khala as a donor language: its condensed information hierarchy, Disket Mono instrumentation, tactical density, and compatible indigo/cool-neutral/muted-status relationships may inform Khala roles, but raw Autopilot hexes and autopilotTheme may not replace, mount beside, override, or conflict with the Khala hierarchy. Desktop, its boot frame and preferences scaler, /splash, and /components storybook all consume khalaTheme through theme roles/--en-* variables; boot-only literals remain mechanically pinned by startup tests.",
+          "Retired on 2026-07-19 by the owner's newer IDE roadmap directive selecting Tokyo Night as the initial theme for everyone. The one-theme-many-hosts, shared-scale, no-Autopilot-override, and no-mutable-theme invariants remain; only the former Khala color identity is superseded by openagents_desktop.ide_monaco_document_runtime.v1.",
         evidenceRefs: [
           "apps/openagents.com/packages/effect-native-tokens/src/index.ts",
           "apps/openagents-desktop/src/renderer/theme.ts",
@@ -4206,7 +4206,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/owner-ux-rules.test.ts",
             description:
-              "Proves openagentsDesktopTheme IS the tokens-package khalaTheme with pinned blue roles (accent #3b82f6, background #05070d, raised surface #141f36), that raw gray Autopilot surface pins are absent, and that no desktop renderer/runtime module mounts autopilotTheme. Autopilot influence must enter only through Khala roles; the falsifier demonstrates the checks reject a competing gray palette.",
+              "Historical oracle now proves the successor Tokyo Night projection is mounted over the shared scales and no desktop module mounts the temporary autopilotTheme.",
           },
           {
             id: "khala_autopilot_foldin.theme_is_canonical",
@@ -4214,7 +4214,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
             description:
-              "The theme-parity suite pins the desktop theme identity to khalaTheme with the restrained radius scale and blue state-overlay roles.",
+              "The theme-parity suite pins the successor Tokyo Night colors while retaining the shared radius, motion, and control scales.",
           },
         ],
         verification:
@@ -4265,7 +4265,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/startup-contract.test.ts",
             description:
-              "Proves the branded boot frame exists in index.html and every color literal in it is an exact khalaTheme token value — no off-palette (brown) frame can ever paint — and the BrowserWindow backgroundColor stays the token background.",
+              "Proves the branded boot frame exists in index.html and every color literal in it is an exact Tokyo Night projection value — no off-palette frame can paint — and BrowserWindow backgroundColor stays the projected background.",
           },
           {
             id: "startup.sidebar_scanning_honesty",

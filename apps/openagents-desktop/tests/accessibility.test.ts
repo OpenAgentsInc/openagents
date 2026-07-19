@@ -17,7 +17,7 @@ import { describe, expect, test } from "vite-plus/test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-import { khalaTheme } from "@effect-native/tokens"
+import { tokyoNightDesktopThemeProjection } from "../src/ide/tokyo-night-theme.ts"
 
 // --- WCAG relative-luminance contrast ---------------------------------------
 const hexToRgb = (hex: string): [number, number, number] => {
@@ -41,7 +41,7 @@ export const contrastRatio = (a: string, b: string): number => {
   return (hi + 0.05) / (lo + 0.05)
 }
 
-const color = khalaTheme.color
+const color = tokyoNightDesktopThemeProjection.effectNative
 const surfaces: ReadonlyArray<[string, string]> = [
   ["background", color.background],
   ["surface", color.surface],

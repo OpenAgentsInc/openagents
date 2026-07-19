@@ -26,6 +26,7 @@ import { Effect, Exit, Schema, SubscriptionRef } from "@effect-native/core/effec
 
 import {
   DesktopWorkspaceChangeSchema,
+  DesktopWorkspaceDocumentSchema,
   DesktopWorkspaceDocumentResultSchema,
   DesktopWorkspacePathRefSchema,
   decodeWorkspaceDocumentResult,
@@ -34,43 +35,72 @@ import {
   type DesktopWorkspaceDocument,
   type DesktopWorkspaceDocumentResult,
 } from "../workspace-contract.ts"
+import {
+  IdeDocumentGeneration,
+  IdeDocumentRef,
+  IdeDocumentSequence,
+  IdeEditorSelectionSchema,
+  IdeMonacoModelVersion,
+  IdeMonacoDocumentEventSchema,
+  makeIdeDocumentRef,
+  type IdeMonacoDocumentEvent,
+} from "../ide/monaco-document-contract.ts"
 
 const maxTabs = 12
 const maxHistory = 100
 const maxFindMatches = 1_000
 
-export type WorkspaceEditorTab = Readonly<{
-  pathRef: string
-  phase: "loading" | "ready" | "unavailable" | "conflict"
-  document: DesktopWorkspaceDocument | null
-  externalDocument: DesktopWorkspaceDocument | null
-  draft: string
-  selection: Readonly<{ start: number; end: number }>
-  selectionVersion: number
-  undo: ReadonlyArray<string>
-  redo: ReadonlyArray<string>
-  saveState: "idle" | "saving" | "saved" | "unavailable"
-  reason: string | null
-  findQuery: string
-  findMatches: ReadonlyArray<number>
-  findIndex: number
-}>
+const EditorCountSchema = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0))
+const EditorContentSchema = Schema.String.check(Schema.isMaxLength(1_000_000))
 
-export type WorkspaceEditorState = Readonly<{
-  tabs: ReadonlyArray<WorkspaceEditorTab>
-  activePathRef: string | null
-  closeConfirmRef: string | null
-  wordWrap: boolean
-  minimap: boolean
-  saveAsPathRef: string | null
-}>
+export const WorkspaceEditorTabSchema = Schema.Struct({
+  /** Required on production opens; optional only for retained fixture compatibility. */
+  documentRef: Schema.optional(IdeDocumentRef),
+  generation: Schema.optional(IdeDocumentGeneration),
+  pathRef: DesktopWorkspacePathRefSchema,
+  phase: Schema.Literals(["loading", "ready", "unavailable", "conflict"]),
+  document: Schema.NullOr(DesktopWorkspaceDocumentSchema),
+  externalDocument: Schema.NullOr(DesktopWorkspaceDocumentSchema),
+  draft: EditorContentSchema,
+  selection: IdeEditorSelectionSchema,
+  selectionVersion: EditorCountSchema,
+  undo: Schema.Array(EditorContentSchema).check(Schema.isMaxLength(maxHistory)),
+  redo: Schema.Array(EditorContentSchema).check(Schema.isMaxLength(maxHistory)),
+  saveState: Schema.Literals(["idle", "saving", "saved", "unavailable"]),
+  reason: Schema.NullOr(Schema.String.check(Schema.isMaxLength(400))),
+  findQuery: Schema.String.check(Schema.isMaxLength(200)),
+  findMatches: Schema.Array(EditorCountSchema).check(Schema.isMaxLength(maxFindMatches)),
+  findIndex: EditorCountSchema,
+  incrementalSequence: Schema.optional(IdeDocumentSequence),
+  modelVersion: Schema.optional(IdeMonacoModelVersion),
+  gapRecoveries: Schema.optional(EditorCountSchema),
+}).annotate({ identifier: "WorkspaceEditorTab" })
+export type WorkspaceEditorTab = typeof WorkspaceEditorTabSchema.Type
 
-export const emptyWorkspaceEditorState = (): WorkspaceEditorState => ({
+export const WorkspaceEditorStateSchema = Schema.Struct({
+  tabs: Schema.Array(WorkspaceEditorTabSchema).check(Schema.isMaxLength(maxTabs)),
+  activePathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  closeConfirmRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  wordWrap: Schema.Boolean,
+  minimap: Schema.Boolean,
+  split: Schema.Boolean,
+  vimEnabled: Schema.Boolean,
+  nextDocumentOrdinal: EditorCountSchema,
+  saveAsPathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+}).annotate({ identifier: "WorkspaceEditorState" })
+export type WorkspaceEditorState = typeof WorkspaceEditorStateSchema.Type
+
+export const emptyWorkspaceEditorState = (
+  options: Readonly<{ vimEnabled?: boolean }> = {},
+): WorkspaceEditorState => ({
   tabs: [],
   activePathRef: null,
   closeConfirmRef: null,
   wordWrap: false,
   minimap: false,
+  split: false,
+  vimEnabled: options.vimEnabled ?? false,
+  nextDocumentOrdinal: 0,
   saveAsPathRef: null,
 })
 
@@ -92,7 +122,13 @@ const updateTab = (
   tabs: state.tabs.map(tab => tab.pathRef === pathRef ? update(tab) : tab),
 })
 
-const emptyTab = (pathRef: string): WorkspaceEditorTab => ({
+const emptyTab = (
+  pathRef: string,
+  documentRef: IdeDocumentRef,
+  generation: IdeDocumentGeneration,
+): WorkspaceEditorTab => ({
+  documentRef,
+  generation,
   pathRef,
   phase: "loading",
   document: null,
@@ -107,20 +143,30 @@ const emptyTab = (pathRef: string): WorkspaceEditorTab => ({
   findQuery: "",
   findMatches: [],
   findIndex: 0,
+  incrementalSequence: IdeDocumentSequence.make(0),
+  modelVersion: IdeMonacoModelVersion.make(1),
+  gapRecoveries: 0,
 })
 
 export const withWorkspaceEditorOpening = (
   state: WorkspaceEditorState,
   pathRef: string,
+  grantGenerationRef = "compatibility",
+  recoveredIdentity?: Readonly<{ documentRef: IdeDocumentRef; generation: IdeDocumentGeneration }>,
 ): WorkspaceEditorState => {
   const existing = tabFor(state, pathRef)
   if (existing !== null) return { ...state, activePathRef: pathRef, closeConfirmRef: null }
   if (state.tabs.length >= maxTabs) return state
   return {
     ...state,
-    tabs: [...state.tabs, emptyTab(pathRef)],
+    tabs: [...state.tabs, emptyTab(
+      pathRef,
+      recoveredIdentity?.documentRef ?? makeIdeDocumentRef(grantGenerationRef, state.nextDocumentOrdinal),
+      recoveredIdentity?.generation ?? IdeDocumentGeneration.make(state.nextDocumentOrdinal),
+    )],
     activePathRef: pathRef,
     closeConfirmRef: null,
+    nextDocumentOrdinal: state.nextDocumentOrdinal + 1,
   }
 }
 
@@ -225,6 +271,47 @@ export const withWorkspaceEditorEvent = (
     redo: [],
     saveState: "idle",
     reason: null,
+    findMatches: findOffsets(value, current.findQuery),
+    findIndex: 0,
+  }))
+}
+
+/**
+ * Applies only events fenced to the active opaque document generation.
+ * Monaco supplies mechanics and a complete edit snapshot; the Effect-owned
+ * state remains the canonical dirty/recovery copy. A sequence gap is accepted
+ * only as an explicit full-value resync and is counted for diagnostics.
+ */
+export const withWorkspaceEditorMonacoEvent = (
+  state: WorkspaceEditorState,
+  event: IdeMonacoDocumentEvent,
+): WorkspaceEditorState => {
+  const tab = activeTab(state)
+  if (tab === null || tab.documentRef === undefined || tab.generation === undefined || tab.documentRef !== event.documentRef || tab.generation !== event.generation) return state
+  if (event._tag === "Save" || event._tag === "Close") return state
+  if (event._tag === "Selection") {
+    const maximum = tab.draft.length
+    const start = Math.max(0, Math.min(maximum, Math.trunc(event.selection.start)))
+    const end = Math.max(start, Math.min(maximum, Math.trunc(event.selection.end)))
+    if (start === tab.selection.start && end === tab.selection.end) return state
+    return updateTab(state, tab.pathRef, current => ({ ...current, selection: { start, end } }))
+  }
+  const sequence = event.sequence as number
+  const currentSequence = (tab.incrementalSequence ?? 0) as number
+  if (sequence <= currentSequence) return state
+  const value = event.value.slice(0, 1_000_000)
+  const gap = sequence !== currentSequence + 1
+  const undo = value === tab.draft ? tab.undo : [...tab.undo, tab.draft].slice(-maxHistory)
+  return updateTab(state, tab.pathRef, current => ({
+    ...current,
+    draft: value,
+    undo,
+    redo: value === current.draft ? current.redo : [],
+    incrementalSequence: IdeDocumentSequence.make(sequence),
+    modelVersion: event.modelVersion,
+    gapRecoveries: (current.gapRecoveries ?? 0) + (gap ? 1 : 0),
+    saveState: "idle",
+    reason: gap ? `Editor sequence gap recovered from the complete model snapshot at sequence ${sequence}.` : null,
     findMatches: findOffsets(value, current.findQuery),
     findIndex: 0,
   }))
@@ -416,10 +503,24 @@ export const withWorkspaceEditorExternalResult = (
   }
 })
 
-export const WorkspaceEditorRecoverySnapshotSchema = Schema.Struct({
+const WorkspaceEditorRecoverySnapshotV2Schema = Schema.Struct({
   version: Schema.Literal(2),
   activePathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
   tabs: Schema.Array(Schema.Struct({
+    pathRef: DesktopWorkspacePathRefSchema,
+    expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+    draft: Schema.String.check(Schema.isMaxLength(1_000_000)),
+  })).check(Schema.isMaxLength(maxTabs)),
+})
+
+export const WorkspaceEditorRecoverySnapshotSchema = Schema.Struct({
+  version: Schema.Literal(3),
+  activePathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  tabs: Schema.Array(Schema.Struct({
+    documentRef: IdeDocumentRef,
+    generation: IdeDocumentGeneration,
+    incrementalSequence: IdeDocumentSequence,
+    selection: IdeEditorSelectionSchema,
     pathRef: DesktopWorkspacePathRefSchema,
     expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
     draft: Schema.String.check(Schema.isMaxLength(1_000_000)),
@@ -429,15 +530,32 @@ export type WorkspaceEditorRecoverySnapshot = typeof WorkspaceEditorRecoverySnap
 
 export const decodeWorkspaceEditorRecoverySnapshot = (value: unknown): WorkspaceEditorRecoverySnapshot | null => {
   const decoded = Schema.decodeUnknownExit(WorkspaceEditorRecoverySnapshotSchema)(value)
-  return Exit.isSuccess(decoded) ? decoded.value : null
+  if (Exit.isSuccess(decoded)) return decoded.value
+  const legacy = Schema.decodeUnknownExit(WorkspaceEditorRecoverySnapshotV2Schema)(value)
+  if (Exit.isFailure(legacy)) return null
+  return WorkspaceEditorRecoverySnapshotSchema.make({
+    version: 3,
+    activePathRef: legacy.value.activePathRef,
+    tabs: legacy.value.tabs.map((tab, index) => ({
+      ...tab,
+      documentRef: makeIdeDocumentRef("recovery-v2", index),
+      generation: IdeDocumentGeneration.make(index),
+      incrementalSequence: IdeDocumentSequence.make(0),
+      selection: { start: 0, end: 0 },
+    })),
+  })
 }
 
 export const workspaceEditorRecoverySnapshot = (
   state: WorkspaceEditorState,
 ): WorkspaceEditorRecoverySnapshot => ({
-  version: 2,
+  version: 3,
   activePathRef: state.activePathRef,
   tabs: state.tabs.flatMap(tab => tab.document === null ? [] : [{
+    documentRef: tab.documentRef ?? makeIdeDocumentRef(tab.document?.grantRef ?? "compatibility-recovery", 0),
+    generation: tab.generation ?? IdeDocumentGeneration.make(0),
+    incrementalSequence: tab.incrementalSequence ?? IdeDocumentSequence.make(0),
+    selection: tab.selection,
     pathRef: tab.pathRef,
     expectedRevisionRef: tab.document.revisionRef,
     draft: tab.draft.slice(0, 1_000_000),
@@ -463,21 +581,44 @@ const recoveryLanguageMode = (pathRef: string): DesktopWorkspaceDocument["langua
 export const withWorkspaceEditorRecoveredTab = (
   state: WorkspaceEditorState,
   grantRef: string,
-  recovered: WorkspaceEditorRecoverySnapshot["tabs"][number],
+  recovered: WorkspaceEditorRecoverySnapshot["tabs"][number] | Readonly<{
+    pathRef: string
+    expectedRevisionRef: string
+    draft: string
+  }>,
   result: DesktopWorkspaceDocumentResult,
 ): WorkspaceEditorState => {
-  const opening = withWorkspaceEditorOpening(state, recovered.pathRef)
+  const documentRef = "documentRef" in recovered
+    ? recovered.documentRef
+    : makeIdeDocumentRef(grantRef, state.nextDocumentOrdinal)
+  const generation = "generation" in recovered
+    ? recovered.generation
+    : IdeDocumentGeneration.make(state.nextDocumentOrdinal)
+  const incrementalSequence = "incrementalSequence" in recovered
+    ? recovered.incrementalSequence
+    : IdeDocumentSequence.make(0)
+  const selection = "selection" in recovered ? recovered.selection : { start: 0, end: 0 }
+  const opening = withWorkspaceEditorOpening(state, recovered.pathRef, grantRef, {
+    documentRef,
+    generation,
+  })
   if (result.state === "available" && result.document.pathRef === recovered.pathRef) {
     const opened = withWorkspaceEditorOpened(opening, recovered.pathRef, result)
     return updateTab(opened, recovered.pathRef, tab => {
       if (result.document.revisionRef === recovered.expectedRevisionRef) {
-        return { ...tab, draft: recovered.draft }
+        return { ...tab, draft: recovered.draft, incrementalSequence, selection }
       }
-      if (result.document.content === recovered.draft) return tab
+      if (result.document.content === recovered.draft) return {
+        ...tab,
+        incrementalSequence,
+        selection,
+      }
       return {
         ...tab,
         phase: "conflict",
         draft: recovered.draft,
+        incrementalSequence,
+        selection,
         externalDocument: result.document,
         reason: "This recovered draft changed on disk while the app was closed.",
       }
@@ -499,6 +640,8 @@ export const withWorkspaceEditorRecoveredTab = (
     document: synthetic,
     externalDocument: null,
     draft: recovered.draft,
+    incrementalSequence,
+    selection,
     saveState: "unavailable",
     reason: result.state === "unavailable"
       ? `${result.message} Your recovered draft remains available for Save As.`
@@ -521,7 +664,9 @@ export const WorkspaceEditorTabCloseRequested = defineIntent("WorkspaceEditorTab
 export const WorkspaceEditorTabCloseConfirmed = defineIntent("WorkspaceEditorTabCloseConfirmed", DesktopWorkspacePathRefSchema)
 export const WorkspaceEditorTabCloseCancelled = defineIntent("WorkspaceEditorTabCloseCancelled", Schema.Null)
 export const WorkspaceEditorEventReceived = defineIntent("WorkspaceEditorEventReceived", CodeEditorEventSchema)
+export const WorkspaceEditorMonacoEventReceived = defineIntent("WorkspaceEditorMonacoEventReceived", IdeMonacoDocumentEventSchema)
 export const WorkspaceEditorSaveRequested = defineIntent("WorkspaceEditorSaveRequested", Schema.Null)
+export const WorkspaceEditorSaveAllRequested = defineIntent("WorkspaceEditorSaveAllRequested", Schema.Null)
 export const WorkspaceEditorUndoRequested = defineIntent("WorkspaceEditorUndoRequested", Schema.Null)
 export const WorkspaceEditorRedoRequested = defineIntent("WorkspaceEditorRedoRequested", Schema.Null)
 export const WorkspaceEditorFindChanged = defineIntent("WorkspaceEditorFindChanged", Schema.String)
@@ -531,6 +676,8 @@ export const WorkspaceEditorConflictReload = defineIntent("WorkspaceEditorConfli
 export const WorkspaceEditorConflictKeepMine = defineIntent("WorkspaceEditorConflictKeepMine", Schema.Null)
 export const WorkspaceEditorWordWrapToggled = defineIntent("WorkspaceEditorWordWrapToggled", Schema.Null)
 export const WorkspaceEditorMinimapToggled = defineIntent("WorkspaceEditorMinimapToggled", Schema.Null)
+export const WorkspaceEditorSplitToggled = defineIntent("WorkspaceEditorSplitToggled", Schema.Null)
+export const WorkspaceEditorVimToggled = defineIntent("WorkspaceEditorVimToggled", Schema.Null)
 export const WorkspaceEditorExternalChangeReceived = defineIntent("WorkspaceEditorExternalChangeReceived", DesktopWorkspaceChangeSchema)
 export const WorkspaceEditorSaveAsStarted = defineIntent("WorkspaceEditorSaveAsStarted", Schema.Null)
 export const WorkspaceEditorSaveAsChanged = defineIntent("WorkspaceEditorSaveAsChanged", Schema.String)
@@ -545,7 +692,9 @@ export const workspaceEditorIntents = [
   WorkspaceEditorTabCloseConfirmed,
   WorkspaceEditorTabCloseCancelled,
   WorkspaceEditorEventReceived,
+  WorkspaceEditorMonacoEventReceived,
   WorkspaceEditorSaveRequested,
+  WorkspaceEditorSaveAllRequested,
   WorkspaceEditorUndoRequested,
   WorkspaceEditorRedoRequested,
   WorkspaceEditorFindChanged,
@@ -555,6 +704,8 @@ export const workspaceEditorIntents = [
   WorkspaceEditorConflictKeepMine,
   WorkspaceEditorWordWrapToggled,
   WorkspaceEditorMinimapToggled,
+  WorkspaceEditorSplitToggled,
+  WorkspaceEditorVimToggled,
   WorkspaceEditorExternalChangeReceived,
   WorkspaceEditorSaveAsStarted,
   WorkspaceEditorSaveAsChanged,
@@ -577,6 +728,14 @@ export const unavailableWorkspaceDocumentBridge: WorkspaceDocumentBridge = {
   saveWorkspaceDocumentAs: async () => ({ state: "unavailable", reason: "unavailable", message: "Workspace Save As is unavailable." }),
 }
 
+export type WorkspaceEditorPreferenceHost = Readonly<{
+  setVimEnabled: (enabled: boolean) => Promise<void>
+}>
+
+export const unavailableWorkspaceEditorPreferenceHost: WorkspaceEditorPreferenceHost = {
+  setVimEnabled: async () => {},
+}
+
 const suggestedSaveAsPathRef = (pathRef: string): string => {
   const slash = pathRef.lastIndexOf("/")
   const directory = slash < 0 ? "" : pathRef.slice(0, slash + 1)
@@ -591,6 +750,7 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: WorkspaceDocumentBridge = unavailableWorkspaceDocumentBridge,
   onStateChange?: (state: S) => void,
+  preferenceHost: WorkspaceEditorPreferenceHost = unavailableWorkspaceEditorPreferenceHost,
 ) => {
   const setEditor = (mutate: (editor: WorkspaceEditorState) => WorkspaceEditorState) =>
     Effect.gen(function* () {
@@ -600,9 +760,9 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
       }
     })
 
-  const saveActive = Effect.gen(function* () {
+  const savePath = Effect.fn("WorkspaceEditor.savePath")(function* (pathRef: string) {
     const current = yield* SubscriptionRef.get(state)
-    const tab = activeTab(current.workspaceEditor)
+    const tab = tabFor(current.workspaceEditor, pathRef)
     if (tab === null || tab.document === null || tab.phase === "loading" || tab.saveState === "saving" || !workspaceEditorTabDirty(tab)) return
     yield* setEditor(editor => updateTab(editor, tab.pathRef, value => ({ ...value, saveState: "saving", reason: null })))
     const raw = yield* Effect.promise(() => bridge.saveWorkspaceDocument({
@@ -620,6 +780,50 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
     }
     yield* setEditor(editor => withWorkspaceEditorSaveResult(editor, tab.pathRef, result))
   })
+
+  const saveActive = Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    const tab = activeTab(current.workspaceEditor)
+    if (tab !== null) yield* savePath(tab.pathRef)
+  })
+
+  const saveAll = Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state)
+    for (const tab of current.workspaceEditor.tabs) {
+      if (workspaceEditorTabDirty(tab)) yield* savePath(tab.pathRef)
+    }
+  })
+
+  const closePath = (pathRef: string, force: boolean) => setEditor(editor => {
+    const tab = tabFor(editor, pathRef)
+    if (tab === null) return editor
+    if (!force && workspaceEditorTabDirty(tab)) return { ...editor, closeConfirmRef: pathRef }
+    const tabs = editor.tabs.filter(value => value.pathRef !== pathRef)
+    return {
+      ...editor,
+      tabs,
+      activePathRef: editor.activePathRef === pathRef ? tabs.at(-1)?.pathRef ?? null : editor.activePathRef,
+      closeConfirmRef: editor.closeConfirmRef === pathRef ? null : editor.closeConfirmRef,
+    }
+  })
+
+  const closeDocument = (event: Extract<IdeMonacoDocumentEvent, { readonly _tag: "Close" }>) =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const tab = current.workspaceEditor.tabs.find(candidate =>
+        candidate.documentRef === event.documentRef && candidate.generation === event.generation,
+      )
+      if (tab !== undefined) yield* closePath(tab.pathRef, event.force)
+    })
+
+  const saveDocument = (event: Extract<IdeMonacoDocumentEvent, { readonly _tag: "Save" }>) =>
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const tab = current.workspaceEditor.tabs.find(candidate =>
+        candidate.documentRef === event.documentRef && candidate.generation === event.generation,
+      )
+      if (tab !== undefined) yield* savePath(tab.pathRef)
+    })
 
   const refreshChangedDocuments = (change: DesktopWorkspaceChange) => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
@@ -670,7 +874,7 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
           yield* setEditor(editor => ({ ...editor, activePathRef: pathRef, closeConfirmRef: null }))
           return
         }
-        yield* setEditor(editor => withWorkspaceEditorOpening(editor, pathRef))
+        yield* setEditor(editor => withWorkspaceEditorOpening(editor, pathRef, grantRef))
         const raw = yield* Effect.promise(() => bridge.openWorkspaceDocument({ grantRef, pathRef }).catch(() => null))
         const result = decodeWorkspaceDocumentResult(raw) ?? {
           state: "unavailable" as const,
@@ -700,9 +904,15 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
       ? Effect.gen(function* () {
           yield* setEditor(editor => withWorkspaceEditorEvent(editor, event))
           yield* saveActive
-        })
+      })
       : setEditor(editor => withWorkspaceEditorEvent(editor, event)),
+    WorkspaceEditorMonacoEventReceived: (event: IdeMonacoDocumentEvent) => event._tag === "Save"
+      ? saveDocument(event)
+      : event._tag === "Close"
+        ? closeDocument(event)
+        : setEditor(editor => withWorkspaceEditorMonacoEvent(editor, event)),
     WorkspaceEditorSaveRequested: () => saveActive,
+    WorkspaceEditorSaveAllRequested: () => saveAll,
     WorkspaceEditorUndoRequested: () => setEditor(withWorkspaceEditorUndo),
     WorkspaceEditorRedoRequested: () => setEditor(withWorkspaceEditorRedo),
     WorkspaceEditorFindChanged: (query: string) => setEditor(editor => withWorkspaceEditorFind(editor, query)),
@@ -728,6 +938,13 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
     WorkspaceEditorConflictKeepMine: () => saveActive,
     WorkspaceEditorWordWrapToggled: () => setEditor(editor => ({ ...editor, wordWrap: !editor.wordWrap })),
     WorkspaceEditorMinimapToggled: () => setEditor(editor => ({ ...editor, minimap: !editor.minimap })),
+    WorkspaceEditorSplitToggled: () => setEditor(editor => ({ ...editor, split: !editor.split })),
+    WorkspaceEditorVimToggled: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const enabled = !before.workspaceEditor.vimEnabled
+      yield* setEditor(editor => ({ ...editor, vimEnabled: enabled }))
+      yield* Effect.promise(() => preferenceHost.setVimEnabled(enabled).catch(() => undefined))
+    }),
     WorkspaceEditorExternalChangeReceived: refreshChangedDocuments,
     WorkspaceEditorSaveAsStarted: () => setEditor(editor => {
       const tab = activeTab(editor)
@@ -745,9 +962,10 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
       Effect.gen(function* () {
         const before = yield* SubscriptionRef.get(state)
         let recovered: WorkspaceEditorState = {
-          ...emptyWorkspaceEditorState(),
+          ...emptyWorkspaceEditorState({ vimEnabled: before.workspaceEditor.vimEnabled }),
           wordWrap: before.workspaceEditor.wordWrap,
           minimap: before.workspaceEditor.minimap,
+          split: before.workspaceEditor.split,
         }
         for (const tab of snapshot.tabs) {
           const raw = yield* Effect.promise(() => bridge.openWorkspaceDocument({
@@ -814,6 +1032,8 @@ export const workspaceEditorView = (
       Button({ key: "workspace-editor-redo", label: "Redo", variant: "ghost", disabled: tab.redo.length === 0, onPress: IntentRef("WorkspaceEditorRedoRequested") }),
       Button({ key: "workspace-editor-wrap", label: "Wrap", variant: "ghost", selected: state.wordWrap, onPress: IntentRef("WorkspaceEditorWordWrapToggled"), a11y: { selected: state.wordWrap } }),
       Button({ key: "workspace-editor-minimap", label: "Minimap", variant: "ghost", selected: state.minimap, onPress: IntentRef("WorkspaceEditorMinimapToggled"), a11y: { selected: state.minimap } }),
+      Button({ key: "workspace-editor-split", label: "Split", variant: "ghost", selected: state.split, onPress: IntentRef("WorkspaceEditorSplitToggled"), a11y: { selected: state.split } }),
+      Button({ key: "workspace-editor-vim", label: state.vimEnabled ? "Vim on" : "Vim off", variant: state.vimEnabled ? "primary" : "ghost", selected: state.vimEnabled, onPress: IntentRef("WorkspaceEditorVimToggled"), a11y: { selected: state.vimEnabled } }),
       ...(options.attachToChat === undefined ? [] : [Button({
         key: "workspace-editor-attach-chat",
         label: "Mention in chat",

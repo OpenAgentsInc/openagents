@@ -588,7 +588,8 @@ const idePackageSpikeContentTypes = new Map([
 const resolveRendererAsset = (asset: string): Readonly<{ path: string; contentType: string }> | null => {
   const fixedType = rendererAssetContentTypes.get(asset as "index.html" | "boot.js" | "app.css")
   const fixtureAsset = asset.startsWith("ide-package-spike/") && /^ide-package-spike\/[A-Za-z0-9._/-]+$/u.test(asset)
-  const contentType = fixedType ?? (fixtureAsset ? idePackageSpikeContentTypes.get(path.extname(asset) as ".html" | ".js" | ".css" | ".json" | ".map" | ".woff" | ".woff2" | ".ttf" | ".svg") : undefined)
+  const editorAsset = asset.startsWith("ide-editor/") && /^ide-editor\/[A-Za-z0-9._/-]+$/u.test(asset)
+  const contentType = fixedType ?? (fixtureAsset || editorAsset ? idePackageSpikeContentTypes.get(path.extname(asset) as ".html" | ".js" | ".css" | ".json" | ".map" | ".woff" | ".woff2" | ".ttf" | ".svg") : undefined)
   if (contentType === undefined) return null
   const root = path.resolve(rendererRoot)
   const resolved = path.resolve(root, ...asset.split("/"))
@@ -4913,9 +4914,9 @@ const createWindow = (): BrowserWindow => {
     minWidth: 480,
     minHeight: 480,
     fullscreen: false,
-    // khalaTheme color.background — must match @effect-native/tokens so the
-    // pre-boot window never flashes an off-palette frame (EP250 #8712).
-    backgroundColor: "#05070d",
+    // Tokyo Night background — mechanically pinned by the startup contract so
+    // the native window and first HTML paint cannot flash another palette.
+    backgroundColor: "#1a1b26",
     show: false,
     title: desktopApplicationName,
     icon: desktopIconPath,
@@ -5601,30 +5602,32 @@ const smokeWorkspaceFilesUi = `(async () => {
   const filesDockItem = document.querySelector('[data-en-key="workspace-files"]')
   if (filesDockItem !== null) return { ok: false, reason: "swept Files dock icon rendered" }
   const deadline = Date.now() + 10000
-  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-browser-tree-list"]') === null) {
+  while (Date.now() < deadline && document.querySelector('[data-oa-pierre-tree="true"]') === null) {
     await wait(50)
   }
-  const browser = document.querySelector('[data-en-key="workspace-browser"]')
-  const tree = document.querySelector('[data-en-key="workspace-browser-tree-list"]')
-  const search = document.querySelector('[data-en-key="workspace-browser-query"] input')
-  const boundary = document.querySelector('[data-en-key="workspace-browser-boundary"]')
-  const legacyEditor = document.querySelector('[data-en-key="workspace-file-editor"]')
-  const file = document.querySelector('[data-en-key="workspace-browser-select-session_index.jsonl"]')
+  const browser = document.querySelector('.oa-react-files-mode')
+  const tree = document.querySelector('[data-oa-pierre-tree="true"]')
+  const search = document.querySelector('[aria-label="Search workspace files"]')
+  const boundary = document.querySelector('.oa-react-files-tree')
+  const legacyEditor = document.querySelector('.oa-react-editor-textarea, [data-en-key="workspace-file-editor"]')
+  const file = Array.from(tree?.querySelectorAll('[role="treeitem"]') ?? [])
+    .find((entry) => entry.textContent?.includes("session_index.jsonl"))
   file?.click()
-  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea') === null) {
+  while (Date.now() < deadline && document.querySelector('.oa-react-monaco-pane [data-monaco-phase="ready"]') === null) {
     await wait(50)
   }
-  const editor = document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea')
+  const pane = document.querySelector('.oa-react-monaco-pane[data-monaco-view="primary"]')
+  const editor = pane?.querySelector('.monaco-editor textarea')
   if (editor !== null) {
-    editor.value = editor.value + "\\nrecovery-smoke-draft"
-    editor.dispatchEvent(new Event("input", { bubbles: true }))
+    editor.focus()
+    document.execCommand("insertText", false, "\\nrecovery-smoke-draft")
     await wait(300)
   }
-  const saveAs = document.querySelector('[data-en-key="workspace-editor-save-as"]')
+  const saveAs = Array.from(document.querySelectorAll('.oa-react-editor-toolbar button')).find((button) => button.textContent === "Save As")
   saveAs?.click()
   await wait(50)
-  const saveAsPath = document.querySelector('[data-en-key="workspace-editor-save-as-path"] input')
-  document.querySelector('[data-en-key="workspace-editor-save-as-cancel"]')?.click()
+  const saveAsPath = document.querySelector('[aria-label="New relative document path"]')
+  Array.from(document.querySelectorAll('.oa-react-editor-save-as button')).find((button) => button.textContent === "Cancel")?.click()
   await wait(300)
   const recoveryKey = typeof codingCatalog?.selectedSessionRef === "string"
     ? "openagents.desktop.workspace-editor.v2." + codingCatalog.selectedSessionRef
@@ -5639,7 +5642,7 @@ const smokeWorkspaceFilesUi = `(async () => {
       recoveryTabCount = Array.isArray(stored?.tabs) ? stored.tabs.length : -1
       recoveryDraftHasMarker = stored?.tabs?.some((tab) => tab.pathRef === "session_index.jsonl" && tab.draft.includes("recovery-smoke-draft")) === true
       recoveryDraftTail = typeof stored?.tabs?.[0]?.draft === "string" ? stored.tabs[0].draft.slice(-32) : ""
-      recoveryStored = stored?.version === 2 && recoveryDraftHasMarker
+      recoveryStored = stored?.version === 3 && recoveryDraftHasMarker
     } catch {}
   }
   const leakedRoot = document.body.textContent?.includes("tests/fixtures/codex-smoke") === true
@@ -5648,10 +5651,10 @@ const smokeWorkspaceFilesUi = `(async () => {
     .find((key) => document.querySelector('[data-en-key="' + key + '"]') !== null) ?? null
   return {
     ok: browser !== null && tree !== null && search !== null && boundary !== null &&
-      legacyEditor === null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot &&
+      legacyEditor === null && pane !== null && editor !== null && saveAsPath !== null && recoveryStored && !leakedRoot &&
       mutationAffordance === null,
     mutationAffordance,
-    relativeBoundary: boundary?.textContent,
+    relativeBoundary: boundary?.getAttribute("aria-label") ?? boundary?.textContent,
     legacyEditor: legacyEditor !== null,
     editorHost: editor !== null,
     saveAsForm: saveAsPath !== null,
@@ -5660,7 +5663,7 @@ const smokeWorkspaceFilesUi = `(async () => {
     recoveryTabCount,
     recoveryDraftHasMarker,
     recoveryDraftTail,
-    editorHasMarker: editor?.value?.includes("recovery-smoke-draft") === true,
+    editorHasMarker: recoveryDraftHasMarker,
     catalogSessions: codingCatalog?.sessions?.length ?? -1,
     catalogSelected: codingCatalog?.selectedSessionRef ?? null,
     leakedRoot,
@@ -5689,23 +5692,29 @@ const smokeWorkspaceEditorRecovery = `(async () => {
     await wait(50)
   }
   document.querySelector('[data-en-key="desktop-command-workspace.files"]')?.click()
-  while (Date.now() < deadline && document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea') === null) {
+  while (Date.now() < deadline && document.querySelector('.oa-react-monaco-pane [data-monaco-phase="ready"]') === null) {
     await wait(50)
   }
-  const editor = document.querySelector('[data-en-key="workspace-editor-host-session_index.jsonl"] textarea')
-  const recovered = editor?.value?.includes("recovery-smoke-draft") === true
+  const pane = document.querySelector('.oa-react-monaco-pane[data-monaco-view="primary"]')
   const recoveryKey = typeof codingCatalog?.selectedSessionRef === "string"
     ? "openagents.desktop.workspace-editor.v2." + codingCatalog.selectedSessionRef
     : undefined
-  document.querySelector('[data-en-key="workspace-editor-close"]')?.click()
+  let recovered = false
+  if (recoveryKey !== undefined) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(recoveryKey) ?? "null")
+      recovered = stored?.version === 3 && stored?.tabs?.some((tab) => tab.pathRef === "session_index.jsonl" && tab.draft.includes("recovery-smoke-draft")) === true
+    } catch {}
+  }
+  document.querySelector('button[aria-label="Close session_index.jsonl"]')?.click()
   await wait(50)
-  document.querySelector('[data-en-key="workspace-editor-close"]')?.click()
+  document.querySelector('button[aria-label="Close session_index.jsonl"]')?.click()
   document.querySelector('[data-en-key="workspace-new-chat"]')?.click()
   return {
     ok: recovered,
     recovered,
     stored: recoveryKey !== undefined && localStorage.getItem(recoveryKey) !== null,
-    editor: editor !== null,
+    editor: pane !== null,
     catalogSelected: codingCatalog?.selectedSessionRef ?? null,
   }
 })()`
@@ -8195,8 +8204,8 @@ void app.whenReady().then(async () => {
         useContentSize: true,
         show: false,
         frame: false,
-        // khalaTheme color.background, same as createWindow.
-        backgroundColor: "#05070d",
+        // Tokyo Night background, same as createWindow.
+        backgroundColor: "#1a1b26",
         webPreferences: {
           partition: "openagents-visual-baseline-memory",
           offscreen: true,

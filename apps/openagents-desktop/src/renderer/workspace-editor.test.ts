@@ -3,13 +3,21 @@ import { IntentRef, StaticPayload, resolveIntentRef, type View } from "@effect-n
 import { Effect, SubscriptionRef } from "@effect-native/core/effect"
 
 import type { DesktopWorkspaceDocument } from "../workspace-contract.ts"
+import {
+  IdeDocumentGeneration,
+  IdeDocumentSequence,
+  IdeMonacoDocumentEventSchema,
+  IdeMonacoModelVersion,
+} from "../ide/monaco-document-contract.ts"
 
 // Behavior oracle: openagents_desktop.ide_project_generation_fencing.v1
+// Behavior oracle: openagents_desktop.ide_monaco_document_runtime.v1
 import {
   emptyWorkspaceEditorState,
   decodeWorkspaceEditorRecoverySnapshot,
   makeWorkspaceEditorHandlers,
   withWorkspaceEditorEvent,
+  withWorkspaceEditorMonacoEvent,
   withWorkspaceEditorExternalResult,
   withWorkspaceEditorFind,
   withWorkspaceEditorFindStep,
@@ -116,6 +124,55 @@ describe("workspace editor state", () => {
     expect(state.activePathRef).toBe("lib/nested/worker.ts")
   })
 
+  test("opaque model identity is grant-scoped and survives rename plus Save As", () => {
+    const first = withWorkspaceEditorOpening(emptyWorkspaceEditorState(), "src/index.ts", "workspace.grant.alpha")
+    const second = withWorkspaceEditorOpening(emptyWorkspaceEditorState(), "src/index.ts", "workspace.grant.beta")
+    expect(first.tabs[0]?.documentRef).not.toBe(second.tabs[0]?.documentRef)
+    const identity = first.tabs[0]?.documentRef
+    const renamed = withWorkspaceEditorRenamed(first, "src/index.ts", "src/renamed.ts")
+    expect(renamed.tabs[0]?.documentRef).toBe(identity)
+
+    const opened = withWorkspaceEditorOpened(renamed, "src/renamed.ts", {
+      state: "available",
+      document: document({ grantRef: "workspace.grant.alpha", pathRef: "src/renamed.ts" }),
+    })
+    const saved = withWorkspaceEditorSaveAsResult(
+      opened,
+      "src/renamed.ts",
+      "src/copied.ts",
+      { state: "saved", document: document({ grantRef: "workspace.grant.alpha", pathRef: "src/copied.ts" }) },
+    )
+    expect(saved.tabs[0]?.documentRef).toBe(identity)
+  })
+
+  test("Monaco edits are generation fenced, monotonic, and gap-resynchronized", () => {
+    const initial = readyState()
+    const tab = initial.tabs[0]!
+    if (tab.documentRef === undefined || tab.generation === undefined) throw new Error("production identity missing")
+    const documentRef = tab.documentRef
+    const currentGeneration = tab.generation
+    const edit = (sequence: number, value: string, generation = currentGeneration) =>
+      IdeMonacoDocumentEventSchema.cases.Edit.make({
+        documentRef,
+        generation,
+        sequence: IdeDocumentSequence.make(sequence),
+        modelVersion: IdeMonacoModelVersion.make(sequence + 1),
+        value,
+        changes: [{ offset: 0, length: 0, text: value }],
+      })
+    const first = withWorkspaceEditorMonacoEvent(initial, edit(1, "first"))
+    expect(first.tabs[0]).toMatchObject({ draft: "first", incrementalSequence: 1, gapRecoveries: 0 })
+    expect(withWorkspaceEditorMonacoEvent(first, edit(1, "stale"))).toBe(first)
+    expect(withWorkspaceEditorMonacoEvent(first, edit(2, "wrong generation", IdeDocumentGeneration.make((currentGeneration as number) + 1)))).toBe(first)
+    const recovered = withWorkspaceEditorMonacoEvent(first, edit(3, "complete resync"))
+    expect(recovered.tabs[0]).toMatchObject({
+      draft: "complete resync",
+      incrementalSequence: 3,
+      gapRecoveries: 1,
+      reason: "Editor sequence gap recovered from the complete model snapshot at sequence 3.",
+    })
+  })
+
   test("find is bounded, wraps, and projects the active selection", () => {
     let state = withWorkspaceEditorFind(readyState(), "needle")
     expect(state.tabs[0]?.findMatches).toEqual([6, 34])
@@ -192,19 +249,38 @@ describe("workspace editor state", () => {
   test("recovery snapshot contains bounded relative refs and drafts, never a root", () => {
     const state = withWorkspaceEditorEvent(readyState(), { type: "change", value: "recover me" })
     const snapshot = workspaceEditorRecoverySnapshot(state)
-    expect(snapshot).toEqual({
-      version: 2,
+    expect(snapshot).toMatchObject({
+      version: 3,
       activePathRef: "src/index.ts",
       tabs: [{
         pathRef: "src/index.ts",
         expectedRevisionRef: "workspace.document.initial",
         draft: "recover me",
+        generation: 0,
+        incrementalSequence: 0,
+        selection: { start: 0, end: 0 },
       }],
     })
+    expect(snapshot.tabs[0]?.documentRef).toMatch(/^ide\.document\./)
     expect(JSON.stringify(snapshot)).not.toContain("/Users/")
     expect(JSON.stringify(snapshot)).not.toContain("workspace.grant.editor")
     expect(decodeWorkspaceEditorRecoverySnapshot(snapshot)).toEqual(snapshot)
     expect(decodeWorkspaceEditorRecoverySnapshot({ ...snapshot, tabs: [{ pathRef: "../escape", expectedRevisionRef: "x", draft: "x" }] })).toBeNull()
+  })
+
+  test("v2 recovery migrates to schema-derived opaque identity without inventing authority", () => {
+    const decoded = decodeWorkspaceEditorRecoverySnapshot({
+      version: 2,
+      activePathRef: "src/index.ts",
+      tabs: [{ pathRef: "src/index.ts", expectedRevisionRef: "revision-v2", draft: "legacy draft" }],
+    })
+    expect(decoded).toMatchObject({
+      version: 3,
+      activePathRef: "src/index.ts",
+      tabs: [{ generation: 0, incrementalSequence: 0, selection: { start: 0, end: 0 } }],
+    })
+    expect(decoded?.tabs[0]?.documentRef).toMatch(/^ide\.document\./)
+    expect(JSON.stringify(decoded)).not.toContain("workspace.grant")
   })
 
   test("recovery reconciles unchanged files and preserves changed or missing drafts", () => {
@@ -374,6 +450,28 @@ describe("workspace editor typed intent loop", () => {
       const tab = (yield* SubscriptionRef.get(state)).workspaceEditor.tabs[0]!
       expect(tab.saveState).toBe("saved")
       expect(workspaceEditorTabDirty(tab)).toBe(false)
+    }))
+  })
+
+  test("Vim and split toggles preserve document identity and persist only the Vim preference", async () => {
+    await Effect.runPromise(Effect.gen(function* () {
+      const persisted: boolean[] = []
+      const initial = readyState()
+      const identity = initial.tabs[0]?.documentRef
+      const state = yield* SubscriptionRef.make({ workspaceEditor: initial })
+      const registry = yield* makeIntentRegistry(
+        workspaceEditorIntents,
+        makeWorkspaceEditorHandlers(state, undefined, undefined, {
+          setVimEnabled: async enabled => { persisted.push(enabled) },
+        }),
+      )
+      yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceEditorVimToggled", StaticPayload(null)), null))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceEditorSplitToggled", StaticPayload(null)), null))
+      const current = (yield* SubscriptionRef.get(state)).workspaceEditor
+      expect(current).toMatchObject({ vimEnabled: true, split: true })
+      expect(current.tabs[0]?.documentRef).toBe(identity)
+      expect(current.tabs[0]?.draft).toBe(document().content)
+      expect(persisted).toEqual([true])
     }))
   })
 

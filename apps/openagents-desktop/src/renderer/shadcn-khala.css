@@ -58,7 +58,7 @@
 
 :root {
   /* shadcn base-vega zinc/blue lifted into the one dark OpenAgents product
-     theme (khalaTheme via the runtime --en-* variables — every value
+     theme (the mounted Tokyo Night projection via runtime --en-* variables — every value
      below is var indirection, so the shadcn layer retunes automatically when
      the mounted theme changes). The preset owns component structure and
      fonts; Effect Native owns semantics. */

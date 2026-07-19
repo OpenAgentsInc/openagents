@@ -8,13 +8,13 @@
  *
  * Scope note (honest, per the issue's nine listed keys):
  * - `theme` is intentionally NOT a preference: the app is the single fixed
- *   dark Protoss-blue product theme (`khalaTheme` — see
- *   openagents_desktop.design.khala_autopilot_foldin.v1) with no light variant and
- *   no runtime theme switch. It is recorded here as a fixed, read-only fact
- *   rather than a mutable field.
+ *   dark Tokyo Night projection (see
+ *   `openagents_desktop.ide_monaco_document_runtime.v1`) with no light variant
+ *   and no runtime theme switch. It is a fixed product fact, not a mutable field.
  * - `keybindings` already have a typed durable store (`desktop-command-bindings`
  *   → `<userData>/commands/bindings.json`); this document does not duplicate
  *   them, it references that store as the authority.
+ * - Vim mode is a built-in editor preference, off by default and durable.
  * - The remaining seven keys — density, font, reduced-motion, provider-defaults,
  *   privacy, notifications, and update preferences — get typed durable schemas
  *   HERE. Density, font, and reduced-motion are genuinely consumed (a scaled
@@ -30,7 +30,7 @@
 import { Schema } from "effect"
 
 export const DESKTOP_PREFERENCES_SCHEMA_ID =
-  "openagents.desktop.preferences.store.v3" as const
+  "openagents.desktop.preferences.store.v4" as const
 
 /** Additive IPC channels (main ↔ renderer). Public-safe payloads only. */
 export const DesktopPreferencesGetChannel = "openagents-desktop/preferences-get" as const
@@ -38,7 +38,7 @@ export const DesktopPreferencesUpdateChannel = "openagents-desktop/preferences-u
 export const DesktopPreferencesResetChannel = "openagents-desktop/preferences-reset" as const
 
 /** Current on-disk document version. Bump + add a migration when the shape changes. */
-export const DESKTOP_PREFERENCES_VERSION = 3 as const
+export const DESKTOP_PREFERENCES_VERSION = 4 as const
 
 // ---------------------------------------------------------------------------
 // Field vocabularies (bounded enums — never free text).
@@ -139,6 +139,12 @@ export const DesktopPresentationPreferencesSchema = Schema.Struct({
 })
 export type DesktopPresentationPreferences = typeof DesktopPresentationPreferencesSchema.Type
 
+/** First-party editor mechanics. Files, grants, drafts, and receipts are not preferences. */
+export const DesktopEditorPreferencesSchema = Schema.Struct({
+  vim: Schema.Struct({ enabled: Schema.Boolean }),
+})
+export type DesktopEditorPreferences = typeof DesktopEditorPreferencesSchema.Type
+
 // ---------------------------------------------------------------------------
 // Root document (v2).
 // ---------------------------------------------------------------------------
@@ -152,6 +158,7 @@ export const DesktopPreferencesSchema = Schema.Struct({
   notifications: DesktopNotificationPreferencesSchema,
   updates: DesktopUpdatePreferencesSchema,
   presentation: DesktopPresentationPreferencesSchema,
+  editor: DesktopEditorPreferencesSchema,
 })
 export type DesktopPreferences = typeof DesktopPreferencesSchema.Type
 
@@ -188,6 +195,9 @@ export const defaultDesktopPreferences = (): DesktopPreferences => ({
   presentation: {
     sidebarCollapsed: false,
   },
+  editor: {
+    vim: { enabled: false },
+  },
 })
 
 const decodeExit = Schema.decodeUnknownExit(DesktopPreferencesSchema)
@@ -214,6 +224,7 @@ export type DesktopPreferencesMigrationOrigin =
   | "legacy_v0" // pre-versioned flat blob lifted into the current shape
   | "legacy_v1" // nested v1 document lifted into v2 with presentation defaults
   | "legacy_v2" // nested v2 document lifted into v3 with usage consent off
+  | "legacy_v3" // nested v3 document lifted into v4 with Vim disabled
   | "downgraded" // future version → unknown fields dropped, known ones kept
 
 export type DesktopPreferencesMigrationResult = Readonly<{
@@ -255,6 +266,7 @@ const normalize = (
   notifications: Record<string, unknown>,
   updates: Record<string, unknown>,
   presentation: Record<string, unknown>,
+  editor: Record<string, unknown>,
 ): DesktopPreferences => {
   const d = defaultDesktopPreferences()
   return {
@@ -292,6 +304,11 @@ const normalize = (
     presentation: {
       sidebarCollapsed: bool(presentation.sidebarCollapsed, d.presentation.sidebarCollapsed),
     },
+    editor: {
+      vim: {
+        enabled: bool(asRecord(editor.vim)?.enabled, d.editor.vim.enabled),
+      },
+    },
   }
 }
 
@@ -307,9 +324,10 @@ export type DesktopPreferencesPatch = {
   readonly notifications?: Record<string, unknown>
   readonly updates?: Record<string, unknown>
   readonly presentation?: Record<string, unknown>
+  readonly editor?: Record<string, unknown>
 }
 
-const sectionKeys = ["appearance", "providerDefaults", "privacy", "notifications", "updates", "presentation"] as const
+const sectionKeys = ["appearance", "providerDefaults", "privacy", "notifications", "updates", "presentation", "editor"] as const
 
 /** Decode an untrusted patch: keep only known sections that are plain objects. */
 export const decodeDesktopPreferencesPatch = (value: unknown): DesktopPreferencesPatch => {
@@ -345,6 +363,7 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
       asRecord(record.notifications) ?? {},
       asRecord(record.updates) ?? {},
       asRecord(record.presentation) ?? {},
+      asRecord(record.editor) ?? {},
     )
     return { preferences: normalized, origin: "merged", changed: true, fromVersion: rawVersion }
   }
@@ -359,6 +378,7 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
       asRecord(record.notifications) ?? {},
       asRecord(record.updates) ?? {},
       asRecord(record.presentation) ?? {},
+      asRecord(record.editor) ?? {},
     )
     return { preferences: normalized, origin: "downgraded", changed: true, fromVersion: rawVersion }
   }
@@ -366,7 +386,7 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
   // Versions 1 and 2 used the same nested sections; v1 had no presentation
   // section and neither had local-usage consent. Preserve every known value
   // while the new consent field is seeded false by normalize().
-  if (rawVersion === 1 || rawVersion === 2) {
+  if (rawVersion === 1 || rawVersion === 2 || rawVersion === 3) {
     const normalized = normalize(
       asRecord(record.appearance) ?? {},
       asRecord(record.providerDefaults) ?? {},
@@ -374,10 +394,11 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
       asRecord(record.notifications) ?? {},
       asRecord(record.updates) ?? {},
       rawVersion === 1 ? {} : asRecord(record.presentation) ?? {},
+      rawVersion === 3 ? asRecord(record.editor) ?? {} : {},
     )
     return {
       preferences: normalized,
-      origin: rawVersion === 1 ? "legacy_v1" : "legacy_v2",
+      origin: rawVersion === 1 ? "legacy_v1" : rawVersion === 2 ? "legacy_v2" : "legacy_v3",
       changed: true,
       fromVersion: rawVersion,
     }
@@ -392,6 +413,7 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
     asRecord(record.notifications) ?? {},
     asRecord(record.updates) ?? {},
     asRecord(record.presentation) ?? {},
+    asRecord(record.editor) ?? {},
   )
   return { preferences: normalized, origin: "legacy_v0", changed: true, fromVersion: rawVersion }
 }

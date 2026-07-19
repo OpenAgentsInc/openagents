@@ -366,14 +366,13 @@ const clickKeyScript = (key: string): string => `(() => {
   return { clicked: true }
 })()`
 
-/** Saves the open file with its CURRENT content (non-destructive round trip). */
+/** Saves the open Monaco document with its CURRENT content (non-destructive round trip). */
 const saveOpenFileScript = `(() => {
-  const editor = document.querySelector('[data-en-key="workspace-file-editor"] textarea, [data-en-key="workspace-file-editor"] input')
-  const save = document.querySelector('[data-en-key="workspace-file-save"]')
+  const editor = document.querySelector('.oa-react-monaco-pane[data-monaco-view="primary"] .monaco-editor textarea')
+  const save = Array.from(document.querySelectorAll('.oa-react-editor-toolbar button')).find((button) => button.textContent === "Save")
   if (editor === null || save === null) return { ready: false }
-  // Re-emit the current value unchanged so the save writes identical bytes:
-  // this proves the save seam + revision guard without mutating file meaning.
-  editor.dispatchEvent(new Event("input", { bubbles: true }))
+  // The editor has already projected its current canonical value; invoking the
+  // typed save control proves the save seam + revision guard without changing bytes.
   save.click()
   return { ready: true }
 })()`

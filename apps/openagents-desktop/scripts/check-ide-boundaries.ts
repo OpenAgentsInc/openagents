@@ -58,9 +58,11 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
   const contracts = [
     path.join(ideRoot, "project-contract.ts"),
     path.join(ideRoot, "path-index-contract.ts"),
+    path.join(ideRoot, "monaco-document-contract.ts"),
     path.join(appRoot, "src", "workspace-contract.ts"),
   ];
   const widgetProjectionFiles = new Set([
+    path.join(ideRoot, "editor-runtime-entry.ts"),
     path.join(ideRoot, "pierre-diffs-adapter.tsx"),
     path.join(ideRoot, "spike", "entry.tsx"),
   ]);
@@ -146,6 +148,54 @@ export const inspectIdeBoundaries = (): ReadonlyArray<BoundaryViolation> => {
         detail: `Required path-index Effect service primitive is missing: ${needle}.`,
       });
     }
+  }
+
+  const monacoRuntime = path.join(ideRoot, "editor-runtime-entry.ts");
+  const monacoRuntimeSource = readFileSync(monacoRuntime, "utf8");
+  for (const forbidden of [
+    'from "node:',
+    "from 'node:",
+    "openWorkspaceDocument",
+    "saveWorkspaceDocument",
+    "workspace.grant",
+    "absolutePath",
+  ]) {
+    if (monacoRuntimeSource.includes(forbidden)) {
+      violations.push({
+        file: relative(monacoRuntime),
+        line: 1,
+        rule: "monaco-projection-only",
+        detail: `The Monaco island may not acquire host/file authority through ${forbidden}.`,
+      });
+    }
+  }
+  for (const required of [
+    "inmemory://openagents/",
+    "IdeMonacoDocumentEventSchema",
+    "tokyoNightMonacoThemeData",
+    "runtimeState === \"stopped\"",
+  ]) {
+    if (!monacoRuntimeSource.includes(required)) {
+      violations.push({
+        file: relative(monacoRuntime),
+        line: 1,
+        rule: "monaco-bounded-runtime",
+        detail: `The Monaco island is missing its bounded projection invariant: ${required}.`,
+      });
+    }
+  }
+
+  const reactEditorSource = readFileSync(
+    path.join(appRoot, "src", "renderer", "react-workspace-surfaces.tsx"),
+    "utf8",
+  );
+  if (/className=["']oa-react-editor-textarea["']/u.test(reactEditorSource)) {
+    violations.push({
+      file: "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+      line: 1,
+      rule: "production-monaco-only",
+      detail: "The production React editor may not regress to the legacy textarea.",
+    });
   }
 
   const recoverySource = readFileSync(

@@ -204,6 +204,78 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This makes Monaco the production editing mechanic behind one schema-first, Effect-owned document state and makes Tokyo Night the one initial workbench theme. Monaco receives only opaque document/view refs, relative display labels, bounded text/options, and typed callbacks; it receives no root, filesystem grant, preload bridge, Git/process/network/persistence authority, or canonical success claim. Vim is a first-party controller over public Monaco commands, not a second document model. The legacy CodeEditor stub remains only in the explicitly named compatibility renderer and tests. This does not claim LSP, diagnostics, formatting, debugging, collaboration, remote editing, or arbitrary theme installation.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_monaco_document_runtime.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/monaco-document-contract.ts",
+        "apps/openagents-desktop/src/ide/editor-runtime-entry.ts",
+        "apps/openagents-desktop/src/ide/monaco-runtime-loader.ts",
+        "apps/openagents-desktop/src/renderer/monaco-editor-host.tsx",
+        "apps/openagents-desktop/src/renderer/workspace-editor.ts",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-monaco.json",
+        "docs/ide/2026-07-19-ide-03-monaco-vim-tokyo-night.md",
+        "github:OpenAgentsInc/openagents#9018",
+      ],
+      oracles: [
+        {
+          description:
+            "Decodes opaque document/generation/sequence/view identities, edit/selection/save/close events, Vim projection, attach inputs, and resource receipts; proves equal relative paths under different grants never alias and mechanically pins the lazy offline private-scheme island with no host authority.",
+          id: "openagents_desktop.ide_monaco_document_runtime.contract",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/monaco-document-contract.test.ts",
+        },
+        {
+          description:
+            "Proves document identity survives rename/Save As, generations reject stale events, monotonic edits recover explicit sequence gaps from complete snapshots, recovery v2 migrates to v3, dirty/save/conflict/undo/find remain canonical, and Vim/split toggles preserve drafts while Vim persists.",
+          id: "openagents_desktop.ide_monaco_document_runtime.state",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/renderer/workspace-editor.test.ts",
+        },
+        {
+          description:
+            "The production React Files surface contains Monaco hosts and no legacy textarea, exposes keyboard-named wrap/minimap/split/Vim/save controls, and routes tree/file opens and editor commands through the same typed intent registry.",
+          id: "openagents_desktop.ide_monaco_document_runtime.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+        },
+        {
+          description:
+            "Builds the production editor island, audits ordinary boot isolation and fixed private-scheme assets, then runs the packaged Electron Files journey through a real Monaco edit, Vim toggle, split view, recovery reload, screenshot, CSP/offline check, and zero-resource teardown.",
+          id: "openagents_desktop.ide_monaco_document_runtime.packaged",
+          kind: "script",
+          mode: "e2e",
+          ref: "apps/openagents-desktop/scripts/ide-monaco-packaged-journey.ts",
+        },
+        {
+          description:
+            "Measures schema/reducer open, incremental edit, gap resync, multi-tab, recovery encode/decode, and teardown paths at p50/p95/p99 with explicit TypeScript placement and memory/asset receipts.",
+          id: "openagents_desktop.ide_monaco_document_runtime.scale",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-monaco-benchmark.ts",
+        },
+      ],
+      productArea: "Desktop IDE editor",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "The production Desktop editor uses lazy offline Monaco instead of a textarea while Effect-owned schema-derived document state remains canonical; opaque grant-scoped identity survives path changes, generations and sequences fence stale events, edits/save-all/conflicts/recovery/split views stay coherent, Vim is built in and durable but off by default, and Tokyo Night is installed before the native window, workbench, Monaco, Pierre, and future terminal paint from one pinned projection.",
+      surface: "openagents-desktop",
+      verification:
+        "The normal Desktop and behavior-contract sweeps run the contract/state/DOM/accessibility/preferences/command/boundary suites. verify:ide-03 rebuilds and audits the lazy production island, emits a schema-decoded public-safe benchmark receipt, executes the packaged Electron journey, and requires all Monaco models, views, workers, and listeners to reach zero after disposal.",
+    },
+    {
+      authorityBoundary:
         "This binds the visible activity indicator to the renderer's existing working phase and valid browser animation state. It does not redefine turn, queue, retry, or completion authority, and reduced-motion preference intentionally replaces motion with a stable visible indicator.",
       blockerRefs: [],
       contractId: "openagents_desktop.working_indicator_continuous_motion.v1",
@@ -1244,5 +1316,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-19.1",
+  version: "2026-07-19.2",
 };

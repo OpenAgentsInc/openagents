@@ -19,8 +19,10 @@ import {
   preferencesRootAttributes,
   reduceMotionAttributeValue,
   themeForPreferences,
+  tokyoNightDesktopTheme,
 } from "../src/desktop-preferences-effects.ts"
 import { khalaTheme } from "@effect-native/tokens"
+import { tokyoNightDesktopThemeProjection } from "../src/ide/tokyo-night-theme.ts"
 
 const dirs: string[] = []
 const scratch = (): string => {
@@ -51,6 +53,7 @@ describe("preferences migration", () => {
 
   test("the default document decodes cleanly against the schema", () => {
     expect(decodeDesktopPreferences(defaultDesktopPreferences())).not.toBeNull()
+    expect(defaultDesktopPreferences().editor.vim.enabled).toBe(false)
   })
 
   test("unusable inputs seed defaults", () => {
@@ -92,7 +95,8 @@ describe("preferences migration", () => {
     }
     const result = migrateDesktopPreferences(v1)
     expect(result).toMatchObject({ origin: "legacy_v1", changed: true, fromVersion: 1 })
-    expect(result.preferences.version).toBe(3)
+    expect(result.preferences.version).toBe(DESKTOP_PREFERENCES_VERSION)
+    expect(result.preferences.editor.vim.enabled).toBe(false)
     expect(result.preferences.appearance).toEqual(v1.appearance)
     expect(result.preferences.providerDefaults).toEqual(v1.providerDefaults)
     expect(result.preferences.presentation).toEqual({ sidebarCollapsed: false })
@@ -181,6 +185,10 @@ describe("preferences host", () => {
     const presentation = store.update({ presentation: { sidebarCollapsed: true } })
     expect(presentation.presentation.sidebarCollapsed).toBe(true)
     expect(openDesktopPreferencesStore(file).snapshot().presentation.sidebarCollapsed).toBe(true)
+
+    const editor = store.update({ editor: { vim: { enabled: true } } })
+    expect(editor.editor.vim.enabled).toBe(true)
+    expect(openDesktopPreferencesStore(file).snapshot().editor.vim.enabled).toBe(true)
   })
 
   test("an update with a bad value is normalized, never persisted raw", () => {
@@ -249,7 +257,7 @@ describe("preferences effects (density / font / reduced-motion)", () => {
     for (const value of Object.values(theme.typeScale)) {
       expect(value.lineHeight).toBeGreaterThanOrEqual(value.fontSize)
     }
-    // Colors (the blue identity) are untouched.
+    // Colors are untouched by sizing projection.
     expect(theme.color).toEqual(khalaTheme.color)
   })
 
@@ -287,5 +295,7 @@ describe("preferences effects (density / font / reduced-motion)", () => {
     })
     expect(theme.typeScale.body.fontSize).toBeGreaterThan(khalaTheme.typeScale.body.fontSize)
     expect(theme.spacing["4"]).toBeLessThan(khalaTheme.spacing["4"])
+    expect(theme.color).toBe(tokyoNightDesktopThemeProjection.effectNative)
+    expect(tokyoNightDesktopTheme.color).toBe(tokyoNightDesktopThemeProjection.effectNative)
   })
 })

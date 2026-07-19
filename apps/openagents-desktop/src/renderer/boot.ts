@@ -1254,6 +1254,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         setLocalCodexUsageSharing: async (enabled) => {
           await readBridge()?.preferences?.update?.({ privacy: { shareLocalCodexUsage: enabled } })
         },
+        setEditorVimEnabled: async (enabled) => {
+          await readBridge()?.preferences?.update?.({ editor: { vim: { enabled } } })
+        },
       }, fullAutoHost, {
         status: () => readBridge()?.acpProviders?.status?.() ?? unavailableAcpProviderSettingsBridge.status(),
         action: (provider, action) => readBridge()?.acpProviders?.action?.({ provider, action }) ?? unavailableAcpProviderSettingsBridge.action(provider, action),
@@ -1981,6 +1984,10 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         localCodexUsageControlAvailable:
           preferences.privacy.localCodexUsageControlAvailable,
         shareLocalCodexUsage: preferences.privacy.shareLocalCodexUsage,
+      },
+      workspaceEditor: {
+        ...current.workspaceEditor,
+        vimEnabled: preferences.editor.vim.enabled,
       },
     }))
     for (const [name, value] of Object.entries(preferencesRootAttributes(preferences))) {
