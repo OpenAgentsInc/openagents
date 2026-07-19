@@ -38200,6 +38200,28 @@
       }
     },
     {
+      "path": "docs/sarah/2026-07-19-sarah-activation-status.md",
+      "sha256": "302d54f976fbab3480f796c715adadb427f7d2671d0ad6bde1532524708051e7",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/sarah/2026-07-19-sarah-program-assessment.md",
       "sha256": "956ac683c8e082f89443a9c0cfad059ffdd26f62a3566f8614ffdd142e74bccb",
       "reason": "Final review of a converted document",
