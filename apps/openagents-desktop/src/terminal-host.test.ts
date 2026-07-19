@@ -415,7 +415,9 @@ describe("built-host receipt (real child-process backend)", () => {
     })
     const created = host.create({ sessionRef: "terminal.receipt01" })
     expect(created.ok).toBe(true)
-    host.input("terminal.receipt01", "echo hello-cut20-receipt\n")
+    // xterm sends Enter as CR. The pipe-backed fallback must adapt that to LF
+    // just as a real PTY's line discipline would.
+    host.input("terminal.receipt01", "echo hello-cut20-receipt\r")
     await waitFor(() =>
       sink.events.some((event) => event.kind === "output" && event.chunk.includes("hello-cut20-receipt")))
     host.input("terminal.receipt01", "exit 3\n")

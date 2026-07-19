@@ -95,7 +95,12 @@ export const childProcessTerminalBackend = (
       pid: pgid,
       write: (data) => {
         try {
-          child.stdin?.write(data)
+          // xterm emits Enter as CR because a real PTY's line discipline
+          // translates it. This fallback is pipe-backed, so perform that one
+          // compatibility translation here; otherwise ordinary Enter leaves
+          // the shell waiting forever. A future node-pty backend receives the
+          // original data through its own implementation of `write`.
+          child.stdin?.write(data.replace(/\r\n?/g, "\n"))
         } catch {
           // A closed stdin (already-exited shell) drops the frame; the exit
           // path is what the renderer observes.
@@ -550,7 +555,7 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
       if (session === undefined) return { ok: false, reason: "not_found" }
       if (!liveGrant(session)) return { ok: false, reason: "grant_revoked" }
       if (session.status === "exited") return { ok: false, reason: "exited" }
-      // The data is written to the shell's STDIN. It is never interpolated
+      // The data is written to the backend's STDIN. It is never interpolated
       // into any argv — the spawn command/args are fixed and workspace-bound.
       session.process.write(data)
       return { ok: true }

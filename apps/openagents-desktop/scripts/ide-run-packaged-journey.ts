@@ -129,8 +129,18 @@ const main = async (): Promise<void> => {
     await terminalSurface.locator('[data-xterm-projection="true"]').waitFor({ state: "visible", timeout: 30_000 })
     const terminalTextarea = terminalSurface.locator(".xterm-helper-textarea")
     await terminalTextarea.focus()
-    await page.keyboard.type("printf 'IDE10_PTY_OK\\n'\n")
-    await page.waitForFunction(() => Number(document.querySelector("[data-serialized-screen-bytes]")?.getAttribute("data-serialized-screen-bytes") ?? "0") > 0, undefined, { timeout: 15_000 })
+    await page.keyboard.type("printf 'IDE10_PTY_OK\\n'")
+    await page.keyboard.press("Enter")
+    await page.waitForFunction(() => Number(document.querySelector("[data-serialized-screen-bytes]")?.getAttribute("data-serialized-screen-bytes") ?? "0") > 0, undefined, { timeout: 15_000 }).catch(async (cause: unknown) => {
+      const diagnostic = await page.evaluate(() => ({
+        activeElement: document.activeElement?.className ?? document.activeElement?.tagName ?? null,
+        alert: document.querySelector('[role="alert"]')?.textContent ?? null,
+        screenBytes: document.querySelector("[data-serialized-screen-bytes]")?.getAttribute("data-serialized-screen-bytes") ?? null,
+        terminalText: (document.querySelector('[aria-label="Terminal surface"]') as HTMLElement | null)?.innerText ?? null,
+        textareaValue: (document.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null)?.value ?? null,
+      }))
+      throw new Error(`IDE-10 terminal input did not reach the packaged PTY: ${publicMessage(JSON.stringify(diagnostic))}`, { cause })
+    })
     await terminalSurface.getByRole("button", { name: "Search terminal" }).click()
     await terminalSurface.getByRole("textbox", { name: "Search terminal output" }).fill("IDE10_PTY_OK")
     const terminalSearch = await terminalSurface.getByRole("textbox", { name: "Search terminal output" }).isVisible()
