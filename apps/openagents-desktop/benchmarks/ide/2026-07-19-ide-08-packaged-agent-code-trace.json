@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "openagents.desktop.ide-agent-code-packaged-trace.v1",
+  "candidateCommitSha": "6883463cbec1e58f734edd29fe56fb3856222ca6",
+  "steps": [
+    "diagnostics",
+    "context_manifest",
+    "proposal",
+    "pierre_review",
+    "canonical_apply",
+    "host_evidence",
+    "backlink",
+    "undo"
+  ],
+  "proposalRef": "ide.proposal.packaged.ide08",
+  "manifestRef": "ide.agent-manifest.bb5e1b91bfa7f7f2739cff635f723158",
+  "includedCount": 4,
+  "omittedCount": 7,
+  "lifecycle": [
+    "Pending",
+    "Reviewing",
+    "Accepted",
+    "Applied",
+    "Undone"
+  ]
+}

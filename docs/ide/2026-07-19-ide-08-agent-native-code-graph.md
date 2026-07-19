@@ -247,6 +247,21 @@ noise, threshold, and pass state. Resource evidence requires zero active-
 handle, listener, proposal-stream, and temporary-preimage growth and zero
 remote requests or embeddings.
 
+The accepted implementation candidate is
+`6883463cbec1e58f734edd29fe56fb3856222ca6`. Its final staged macOS arm64
+application tree is
+`sha256:0c57b99c31d87c01196510f805c931872ee5072926d380ceb62a47d79b7cc2db`.
+The scoped gate passed 276 tests with 11 intentional skips; the broader
+Desktop suite passed 2,690 tests with 39 intentional skips. All thirteen
+benchmark rows passed. Representative p95 measurements were 0.167 ms for the
+eleven-source manifest decode, 0.836 ms for exact single-file apply, and 2.765
+ms for a 25-file/~100 KiB aggregate apply. Twenty teardown cycles retained no
+active handles, listeners, proposal streams, or temporary preimages; the run
+made zero remote requests and required no embeddings. The packaged journey's
+twelve owner-visible assertions all passed, including keyboard-only apply and
+undo, non-color state cues, context omission disclosure, root withholding at
+the agent boundary, and disk preimage restoration.
+
 The exact candidate SHA, `.app` tree SHA-256, measurements, screenshot, trace,
 reviewer disposition, rollback target, and final `main` SHA live in:
 

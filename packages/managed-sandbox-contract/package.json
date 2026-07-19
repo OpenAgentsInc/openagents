@@ -2,13 +2,13 @@
   "name": "@openagentsinc/managed-sandbox-contract",
   "version": "0.1.0",
   "private": false,
+  "license": "MIT",
   "files": [
     "src",
     "README.md",
     "THIRD_PARTY_NOTICES.md"
   ],
   "type": "module",
-  "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
     "./box-v1": "./src/box-v1.ts",

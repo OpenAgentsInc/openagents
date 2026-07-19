@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "openagents.desktop.ide-agent-code-packaged-journey.v1",
+  "issue": "IDE-08",
+  "capturedAt": "2026-07-19T17:56:07.172Z",
+  "candidateCommitSha": "6883463cbec1e58f734edd29fe56fb3856222ca6",
+  "artifactTreeSha256": "sha256:0c57b99c31d87c01196510f805c931872ee5072926d380ceb62a47d79b7cc2db",
+  "target": "darwin-arm64",
+  "journey": {
+    "diagnosticObserved": true,
+    "contextManifestDisclosed": true,
+    "omittedContextDisclosed": true,
+    "exactProposalAdmitted": true,
+    "pierreReviewRendered": true,
+    "canonicalApplyObserved": true,
+    "evidenceSeparatedFromHarness": true,
+    "backlinkRoundTrip": true,
+    "undoRestoredPreimage": true,
+    "rootWithheld": true,
+    "keyboardOperable": true,
+    "nonColorStateCues": true
+  },
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.png",
+  "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code-trace.json",
+  "passed": true
+}

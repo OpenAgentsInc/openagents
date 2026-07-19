@@ -1,0 +1,141 @@
+{
+  "schemaVersion": "openagents.desktop.ide-agent-code-acceptance.v1",
+  "issue": "IDE-08",
+  "generatedAt": "2026-07-19T17:56:13.359Z",
+  "candidateCommitSha": "6883463cbec1e58f734edd29fe56fb3856222ca6",
+  "mainEvaluationSha": "6883463cbec1e58f734edd29fe56fb3856222ca6",
+  "artifactTreeSha256": "sha256:0c57b99c31d87c01196510f805c931872ee5072926d380ceb62a47d79b7cc2db",
+  "evidenceRefs": [
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-agent-code.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code.png",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-packaged-agent-code-trace.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-08-acceptance.json",
+    "apps/openagents-desktop/src/ide/agent-code-contract.test.ts",
+    "apps/openagents-desktop/src/ide/agent-code-service.test.ts",
+    "apps/openagents-desktop/src/ide/agent-code-host.test.ts",
+    "apps/openagents-desktop/src/renderer/react-agent-code.test.tsx",
+    "apps/openagents-desktop/src/renderer/shell.test.ts",
+    "apps/openagents-desktop/tests/electron-boundary.test.ts",
+    "apps/openagents-desktop/tests/accessibility.test.ts",
+    "apps/openagents-desktop/tests/design-conformance.test.ts"
+  ],
+  "faultMatrix": [
+    {
+      "fault": "dirty document refusal",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "external change / changed-base refusal",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "stale proposal refusal",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "explicit rebase-required replacement",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "encoding / EOL / mode admission",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "secret / private / binary / too-large refusal",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "revoked or wrong workspace grant refusal",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "deleted / renamed file refusal",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "parallel worktree attachment isolation",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "generation-fenced cancellation / supersession / late output",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "semantic retrieval off / unavailable sources",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "restart pending / reviewed / partial / applied / undoable recovery",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "corrupt persistence refusal",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "partial accept / reject",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "mixed create / edit / rename / delete",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    },
+    {
+      "fault": "full teardown",
+      "passed": true,
+      "evidenceRef": "apps/openagents-desktop/src/ide/agent-code-service.test.ts + apps/openagents-desktop/src/ide/agent-code-host.test.ts"
+    }
+  ],
+  "architecture": {
+    "oneSchemaGraph": true,
+    "effectServices": true,
+    "rendererAuthority": false,
+    "harnessAuthority": false,
+    "monacoAuthority": false,
+    "pierreAuthority": false,
+    "nativeAuthority": false,
+    "embeddingsRequired": false,
+    "publicReceiptsContainPrivateContent": false
+  },
+  "accessibility": {
+    "keyboard": true,
+    "screenReaderLabels": true,
+    "nonColorCues": true,
+    "reducedMotion": true,
+    "zoomAndMinimumWindow": true
+  },
+  "assuranceLifecycle": "proposed",
+  "ownerDisposition": "unreviewed",
+  "reviewer": {
+    "reviewerClass": "deterministic_repository_oracle",
+    "oracleRef": "apps/openagents-desktop/scripts/ide-agent-code-acceptance.ts",
+    "producerCanOverride": false,
+    "disposition": "pass"
+  },
+  "rollbackTargetSha": "9ae48ee06fa6cec41f2a1e01e4fe8c508b2e48ce",
+  "claimedTargets": [
+    "darwin-arm64"
+  ],
+  "laterGaps": [
+    "IDE-09 completion, next-edit, and inline AI remain intentionally unimplemented.",
+    "IDE-10 through IDE-19 terminal, SCM, extension, remote, browser, parity, and closure packets remain open.",
+    "Independent owner acceptance for Desktop AC-17/AC-43 and Cursor CP-AC-20 remains proposed and unreviewed."
+  ],
+  "passed": true
+}
