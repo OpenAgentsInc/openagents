@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:9583b26975256e417e447d04d7be16ae76c4a85c322aeb2ef8c295ae588f9d31",
+  "sourceDigest": "sha256:7da79279f892fd4c34b58da33d45546419d8ddeff7cab6fd2d6eb559e4c73ab7",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -14,7 +14,11 @@
           "type": "test",
           "ref": "apps/acceptance-runner (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/ai-sdk-harness-poc",
@@ -26,6 +30,10 @@
       "unverified": {
         "reason": "reference-only",
         "note": "policy: reference-only"
+      },
+      "obligation": {
+        "state": "out-of-scope",
+        "note": "unverified: reference-only"
       }
     },
     {
@@ -39,7 +47,11 @@
           "type": "test",
           "ref": "apps/aiur (16 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/electron-ai-sdk-test",
@@ -51,6 +63,10 @@
       "unverified": {
         "reason": "reference-only",
         "note": "policy: reference-only"
+      },
+      "obligation": {
+        "state": "out-of-scope",
+        "note": "unverified: reference-only"
       }
     },
     {
@@ -64,7 +80,11 @@
           "type": "test",
           "ref": "apps/forum (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/khala-capture",
@@ -77,7 +97,11 @@
           "type": "test",
           "ref": "apps/khala-capture (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/khala-live-hub",
@@ -94,7 +118,11 @@
           "type": "behavior-contract",
           "ref": "khala_sync.credit_balance.change_delivers_live.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/oa-queue-worker",
@@ -107,7 +135,11 @@
           "type": "test",
           "ref": "apps/oa-queue-worker (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/oa-updates",
@@ -120,7 +152,11 @@
           "type": "test",
           "ref": "apps/oa-updates (28 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/openagents-audio",
@@ -133,7 +169,11 @@
           "type": "test",
           "ref": "apps/openagents-audio (8 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/openagents-audio-edge",
@@ -145,6 +185,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "no tracked test files and no bound behavior contract"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -226,7 +270,11 @@
           "type": "behavior-contract",
           "ref": "openagents_web.portal_owner_scoped_engagement.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/openagents-desktop",
@@ -237,7 +285,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-desktop (286 tracked test files)"
+          "ref": "apps/openagents-desktop (288 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -295,7 +343,11 @@
           "type": "behavior-contract",
           "ref": "openagents_desktop.working_indicator_continuous_motion.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/openagents-mobile",
@@ -344,7 +396,11 @@
           "type": "behavior-contract",
           "ref": "openagents_mobile.sync.host_owned_expo_sqlite.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/pylon",
@@ -385,7 +441,11 @@
           "type": "behavior-contract",
           "ref": "background_agents.warm_dispatch.prepared_worktree_cache.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "app:@openagentsinc/qa-runner",
@@ -398,7 +458,11 @@
           "type": "test",
           "ref": "apps/qa-runner (53 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "crate:oa-cloud-run-bridge",
@@ -411,7 +475,11 @@
           "type": "test",
           "ref": "crates/oa-cloud-run-bridge (cargo test --workspace)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "crate:oa-codex-control",
@@ -424,7 +492,11 @@
           "type": "test",
           "ref": "crates/oa-codex-control (cargo test --workspace)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "crate:oa-desktop-audio",
@@ -437,7 +509,11 @@
           "type": "test",
           "ref": "crates/oa-desktop-audio (cargo test --workspace)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "crate:oa-node",
@@ -450,7 +526,11 @@
           "type": "test",
           "ref": "crates/oa-node (cargo test --workspace)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "crate:oa-workroomd",
@@ -463,7 +543,11 @@
           "type": "test",
           "ref": "crates/oa-workroomd (cargo test --workspace)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "crate:openagents-cloud-contract",
@@ -476,7 +560,11 @@
           "type": "test",
           "ref": "crates/openagents-cloud-contract (cargo test --workspace)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "document:AGENTS.md",
@@ -488,6 +576,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "governed document; AR-4 drift oracles will bind checkable claims"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -500,6 +592,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "governed document; AR-4 drift oracles will bind checkable claims"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -512,6 +608,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "governed document; AR-4 drift oracles will bind checkable claims"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -525,7 +625,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
@@ -542,7 +646,11 @@
           "type": "assurance-obligation",
           "ref": "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: assurance-obligation; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "document:docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
@@ -555,7 +663,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md",
@@ -568,7 +680,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:docs/sol/MASTER_ROADMAP.md",
@@ -580,6 +696,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "governed document; AR-4 drift oracles will bind checkable claims"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -593,7 +713,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/assurance-spec/starter-kit/docs/product-specs/example.product-spec.md",
@@ -606,7 +730,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/invalid/malformed-applies-to.product-spec.md",
@@ -619,7 +747,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/invalid/malformed-related-artifact.product-spec.md",
@@ -632,7 +764,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/invalid/malformed-spec-dependency.product-spec.md",
@@ -645,7 +781,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/invalid/missing-frontmatter.product-spec.md",
@@ -658,7 +798,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/invalid/missing-required-section.product-spec.md",
@@ -671,7 +815,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/invalid/unsupported-version.product-spec.md",
@@ -684,7 +832,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/minimal.product-spec.md",
@@ -697,7 +849,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/with-ai-evals.product-spec.md",
@@ -710,7 +866,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/with-custom-section.product-spec.md",
@@ -723,7 +883,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/with-fenced-heading.product-spec.md",
@@ -736,7 +900,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/with-provisional-success-metric.product-spec.md",
@@ -749,7 +917,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/with-spec-dependency.product-spec.md",
@@ -762,7 +934,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/with-structured-scope-and-metrics.product-spec.md",
@@ -775,7 +951,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/with-traceability.product-spec.md",
@@ -788,7 +968,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/conformance/valid/with-user-experience.product-spec.md",
@@ -801,7 +985,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/openagents/evidence-edit-after.product-spec.md",
@@ -814,7 +1002,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/openagents/evidence-edit-before.product-spec.md",
@@ -827,7 +1019,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/openagents/invalid-bad-metric.product-spec.md",
@@ -840,7 +1036,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/openagents/legacy-rev6-mvp.product-spec.md",
@@ -853,7 +1053,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:packages/product-spec/fixtures/openagents/valid-extended.product-spec.md",
@@ -866,7 +1070,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:specs/desktop/desktop-trust-complete-workbench.product-spec.md",
@@ -883,7 +1091,11 @@
           "type": "assurance-obligation",
           "ref": "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: assurance-obligation; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "document:specs/desktop/full-auto.product-spec.md",
@@ -900,7 +1112,11 @@
           "type": "assurance-obligation",
           "ref": "specs/desktop/full-auto.assurance-spec.md"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: assurance-obligation; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "document:specs/mobile/mobile-any-host-fleet-controller.product-spec.md",
@@ -913,7 +1129,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:specs/openagents/assure-repo-codebase-verification.product-spec.md",
@@ -926,7 +1146,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:specs/openagents/authority-delegation.product-spec.md",
@@ -939,7 +1163,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:specs/openagents/cursor-capability-parity.product-spec.md",
@@ -956,7 +1184,11 @@
           "type": "assurance-obligation",
           "ref": "specs/openagents/cursor-capability-parity.assurance-spec.md"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: assurance-obligation; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "document:specs/openagents/fast-follow.product-spec.md",
@@ -969,7 +1201,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:specs/openagents/managed-agent-sandboxes.product-spec.md",
@@ -986,7 +1222,11 @@
           "type": "assurance-obligation",
           "ref": "specs/openagents/managed-agent-sandboxes.assurance-spec.md"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: assurance-obligation; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "document:specs/openagents/portable-coding-sessions.product-spec.md",
@@ -999,7 +1239,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:specs/openagents/sarah-owner-orchestrator.product-spec.md",
@@ -1016,7 +1260,11 @@
           "type": "assurance-obligation",
           "ref": "specs/openagents/sarah-owner-orchestrator.assurance-spec.md"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: assurance-obligation; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "document:specs/web/openagents-com-sales-landing.product-spec.md",
@@ -1029,7 +1277,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "document:specs/web/openagents-com-trust-surface.product-spec.md",
@@ -1042,7 +1294,11 @@
           "type": "product-spec",
           "ref": "pnpm run test:product-spec"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
     },
     {
       "id": "package:@effect-native/core",
@@ -1054,6 +1310,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "no tracked test files and no bound behavior contract"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -1066,6 +1326,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "no tracked test files and no bound behavior contract"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -1078,6 +1342,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "no tracked test files and no bound behavior contract"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -1090,6 +1358,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "no tracked test files and no bound behavior contract"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -1103,7 +1375,11 @@
           "type": "test",
           "ref": "apps/openagents.com/packages/effect-native-render-dom (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@effect-native/render-rn",
@@ -1116,7 +1392,11 @@
           "type": "test",
           "ref": "apps/openagents.com/packages/effect-native-render-rn (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@effect-native/tokens",
@@ -1128,6 +1408,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "no tracked test files and no bound behavior contract"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -1141,7 +1425,11 @@
           "type": "test",
           "ref": "packages/agent-client-protocol (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/agent-client-protocol-conformance",
@@ -1154,7 +1442,11 @@
           "type": "test",
           "ref": "packages/agent-client-protocol-conformance (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/agent-client-runtime-bridge",
@@ -1167,7 +1459,11 @@
           "type": "test",
           "ref": "packages/agent-client-runtime-bridge (7 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/agent-readiness",
@@ -1180,7 +1476,11 @@
           "type": "test",
           "ref": "packages/agent-readiness (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/agent-runtime-schema",
@@ -1209,7 +1509,11 @@
           "type": "behavior-contract",
           "ref": "background_agents.toolset.compiled_policy_enforced.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/agent-stdio-transport",
@@ -1222,7 +1526,11 @@
           "type": "test",
           "ref": "packages/agent-stdio-transport (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/ai-sdk-sandbox-local",
@@ -1235,7 +1543,11 @@
           "type": "test",
           "ref": "packages/ai-sdk-sandbox-local (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/ai-sdk-sandbox-openagents",
@@ -1248,7 +1560,11 @@
           "type": "test",
           "ref": "packages/ai-sdk-sandbox-openagents (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/arbiter-effect",
@@ -1261,7 +1577,11 @@
           "type": "test",
           "ref": "packages/arbiter-effect (3 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/assurance-spec",
@@ -1274,7 +1594,28 @@
           "type": "test",
           "ref": "packages/assurance-spec (17 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "package:@openagentsinc/assure-repo",
+      "kind": "package",
+      "owningPath": "packages/assure-repo",
+      "title": "@openagentsinc/assure-repo",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/assure-repo (2 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/atif",
@@ -1287,7 +1628,11 @@
           "type": "test",
           "ref": "packages/atif (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/audio-contract",
@@ -1320,7 +1665,11 @@
           "type": "behavior-contract",
           "ref": "openagents_voice.retention_requires_policy_receipt.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/authority",
@@ -1333,7 +1682,11 @@
           "type": "test",
           "ref": "packages/authority (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/autopilot-control-protocol",
@@ -1346,7 +1699,11 @@
           "type": "test",
           "ref": "packages/autopilot-control-protocol (117 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/behavior-contracts",
@@ -1359,7 +1716,11 @@
           "type": "test",
           "ref": "packages/behavior-contracts (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/blueprint-contracts",
@@ -1372,7 +1733,11 @@
           "type": "test",
           "ref": "packages/blueprint-contracts (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/cloud-contract",
@@ -1385,7 +1750,11 @@
           "type": "test",
           "ref": "packages/cloud-contract (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/codex-app-server-protocol",
@@ -1398,7 +1767,11 @@
           "type": "test",
           "ref": "packages/codex-app-server-protocol (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/composer-state",
@@ -1411,7 +1784,11 @@
           "type": "test",
           "ref": "packages/composer-state (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/connector-sidecar",
@@ -1424,7 +1801,11 @@
           "type": "test",
           "ref": "packages/connector-sidecar (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/cursor-agent-runtime",
@@ -1437,7 +1818,11 @@
           "type": "test",
           "ref": "packages/cursor-agent-runtime (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/durable-stream",
@@ -1450,7 +1835,11 @@
           "type": "test",
           "ref": "packages/durable-stream (4 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/effect-boundary",
@@ -1463,7 +1852,11 @@
           "type": "test",
           "ref": "packages/effect-boundary (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/effect-start",
@@ -1476,7 +1869,11 @@
           "type": "test",
           "ref": "packages/effect-start (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/email-templates",
@@ -1489,7 +1886,11 @@
           "type": "test",
           "ref": "apps/openagents.com/packages/email-templates (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/environment-auth",
@@ -1502,7 +1903,11 @@
           "type": "test",
           "ref": "packages/environment-auth (3 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/fast-follow-spec",
@@ -1515,7 +1920,11 @@
           "type": "test",
           "ref": "packages/fast-follow-spec (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/forge-protocol",
@@ -1528,7 +1937,11 @@
           "type": "test",
           "ref": "packages/forge-protocol (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/grok-harness",
@@ -1541,7 +1954,11 @@
           "type": "test",
           "ref": "packages/grok-harness (8 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/harness-conformance",
@@ -1554,7 +1971,11 @@
           "type": "test",
           "ref": "packages/harness-conformance (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/input-bindings",
@@ -1567,7 +1988,11 @@
           "type": "test",
           "ref": "packages/input-bindings (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/khala-ai-sdk-core",
@@ -1580,7 +2005,11 @@
           "type": "test",
           "ref": "packages/khala-ai-sdk-core (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/khala-fleet-intents",
@@ -1593,7 +2022,11 @@
           "type": "test",
           "ref": "packages/khala-fleet-intents (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/khala-qa-harness",
@@ -1606,7 +2039,11 @@
           "type": "test",
           "ref": "packages/khala-qa-harness (15 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/khala-sync",
@@ -1619,7 +2056,11 @@
           "type": "test",
           "ref": "packages/khala-sync (19 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/khala-sync-client",
@@ -1648,7 +2089,11 @@
           "type": "behavior-contract",
           "ref": "khala_sync.client.staleness_never_fabricated.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/khala-sync-db-collection",
@@ -1661,7 +2106,11 @@
           "type": "test",
           "ref": "packages/khala-sync-db-collection (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/khala-sync-server",
@@ -1678,7 +2127,11 @@
           "type": "behavior-contract",
           "ref": "khala_sync.push.validation_never_blocks_queue.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/khala-tools",
@@ -1695,7 +2148,11 @@
           "type": "behavior-contract",
           "ref": "background_agents.toolset.compiled_policy_enforced.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/managed-sandbox-contract",
@@ -1708,7 +2165,11 @@
           "type": "test",
           "ref": "packages/managed-sandbox-contract (4 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/mcp-contract",
@@ -1721,7 +2182,11 @@
           "type": "test",
           "ref": "packages/mcp-contract (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/mullet-schema",
@@ -1734,7 +2199,11 @@
           "type": "test",
           "ref": "apps/openagents.com/packages/mullet-schema (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/mullet-sim",
@@ -1747,7 +2216,11 @@
           "type": "test",
           "ref": "apps/openagents.com/packages/mullet-sim (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/nip90",
@@ -1760,7 +2233,11 @@
           "type": "test",
           "ref": "packages/nip90 (4 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/oa-infra",
@@ -1773,7 +2250,11 @@
           "type": "test",
           "ref": "packages/oa-infra (5 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/openagents-com-start",
@@ -1798,7 +2279,11 @@
           "type": "behavior-contract",
           "ref": "openagents_web.portal_owner_scoped_engagement.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/oxlint-plugin-openagents",
@@ -1811,7 +2296,11 @@
           "type": "test",
           "ref": "packages/oxlint-plugin-openagents (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/pipeline-signals",
@@ -1824,7 +2313,11 @@
           "type": "test",
           "ref": "packages/pipeline-signals (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/portable-session-contract",
@@ -1845,7 +2338,11 @@
           "type": "behavior-contract",
           "ref": "openagents_cloud.brokered_session_secrets.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/postgres-runtime",
@@ -1857,6 +2354,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "no tracked test files and no bound behavior contract"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -1870,7 +2371,11 @@
           "type": "test",
           "ref": "packages/probe/packages/runtime (74 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/product-spec",
@@ -1883,7 +2388,11 @@
           "type": "test",
           "ref": "packages/product-spec (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/provider-account-schema",
@@ -1896,7 +2405,11 @@
           "type": "test",
           "ref": "packages/provider-account-schema (2 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/public-activity-timeline",
@@ -1909,7 +2422,11 @@
           "type": "test",
           "ref": "packages/public-activity-timeline (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/pylon-core",
@@ -1926,7 +2443,11 @@
           "type": "behavior-contract",
           "ref": "background_agents.claude.owner_local_execution_authority.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/pylon-runtime",
@@ -1939,7 +2460,11 @@
           "type": "test",
           "ref": "apps/pylon/packages/runtime (42 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/qa-swarm-contract",
@@ -1952,7 +2477,11 @@
           "type": "test",
           "ref": "packages/qa-swarm-contract (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/reactor-contracts",
@@ -1965,7 +2494,11 @@
           "type": "test",
           "ref": "packages/reactor-contracts (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/runtime-platform",
@@ -1977,6 +2510,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "no tracked test files and no bound behavior contract"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -1990,7 +2527,11 @@
           "type": "test",
           "ref": "packages/sarah (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/sqlite-runtime",
@@ -2003,7 +2544,11 @@
           "type": "test",
           "ref": "packages/sqlite-runtime (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/sync-client",
@@ -2016,7 +2561,11 @@
           "type": "test",
           "ref": "apps/openagents.com/packages/sync-client (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/sync-schema",
@@ -2029,7 +2578,11 @@
           "type": "test",
           "ref": "apps/openagents.com/packages/sync-schema (3 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/sync-worker",
@@ -2042,7 +2595,11 @@
           "type": "test",
           "ref": "apps/openagents.com/packages/sync-worker (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/tassadar-executor",
@@ -2055,7 +2612,11 @@
           "type": "test",
           "ref": "packages/tassadar-executor (7 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/ui",
@@ -2068,7 +2629,11 @@
           "type": "test",
           "ref": "packages/ui (8 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/world-client",
@@ -2081,7 +2646,11 @@
           "type": "test",
           "ref": "packages/world-client (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@openagentsinc/world-contract",
@@ -2094,7 +2663,11 @@
           "type": "test",
           "ref": "packages/world-contract (1 tracked test file)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "package:@types/openagents-platform",
@@ -2106,6 +2679,10 @@
       "unverified": {
         "reason": "config-only",
         "note": "policy: config-only"
+      },
+      "obligation": {
+        "state": "out-of-scope",
+        "note": "unverified: config-only"
       }
     },
     {
@@ -2118,6 +2695,10 @@
       "unverified": {
         "reason": "config-only",
         "note": "policy: config-only"
+      },
+      "obligation": {
+        "state": "out-of-scope",
+        "note": "unverified: config-only"
       }
     },
     {
@@ -2131,7 +2712,11 @@
           "type": "test",
           "ref": "packages/probe (74 tracked test files)"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "public-endpoint:exact-route-registry",
@@ -2144,7 +2729,11 @@
           "type": "test",
           "ref": "apps/openagents.com/workers/api/src/worker-exact-routes.test.ts"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "public-endpoint:openapi",
@@ -2157,7 +2746,11 @@
           "type": "test",
           "ref": "apps/openagents.com/workers/api/src/openagents-openapi-routes.test.ts"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
     },
     {
       "id": "release-pipeline:changelog",
@@ -2169,6 +2762,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -2181,6 +2778,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -2193,6 +2794,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -2205,6 +2810,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -2217,6 +2826,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -2229,6 +2842,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -2241,6 +2858,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -2253,6 +2874,10 @@
       "unverified": {
         "reason": "no-oracle-authored",
         "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
       }
     },
     {
@@ -2330,33 +2955,42 @@
           "type": "behavior-contract",
           "ref": "openagents_web.portal_owner_scoped_engagement.v1"
         }
-      ]
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
+      }
     }
   ],
   "summary": {
-    "totalSurfaces": 153,
+    "totalSurfaces": 154,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 42,
-      "package": 78,
+      "package": 79,
       "public-endpoint": 2,
       "release-pipeline": 8,
       "worker": 1
     },
-    "withOracle": 129,
+    "withOracle": 130,
     "unverified": 24,
     "byUnverifiedReason": {
       "config-only": 2,
       "no-oracle-authored": 20,
       "reference-only": 2
     },
-    "byObligationState": {},
+    "byObligationState": {
+      "designed": 98,
+      "inconclusive": 20,
+      "mapped": 32,
+      "out-of-scope": 4
+    },
     "coverageNotes": [
       "AR-0 rev 1 enumerates surfaces at package/app/worker/crate/public-endpoint/release-pipeline/document granularity derived from the workspace, Cargo, contract, and product-spec graphs.",
+      "AR-1 grades obligation state (mapped/designed/observed/accepted/inconclusive/out-of-scope) with designed and observed kept distinct; this grader never emits observed or accepted, which require an AR-3 #9059 sweep receipt or owner acceptance. AR-4 #9060 binds drift oracles for governed documents.",
       "CLI entrypoints are covered by their owning package surface rather than counted separately.",
-      "Individual HTTP routes, Electron IPC channels, and per-endpoint contracts are represented by their owning worker/app/public-endpoint surface, not yet subdivided; fine-grained route/IPC enumeration is a bounded follow-up.",
-      "Obligation grading (state field) is populated by AR-1 #9057; drift oracles for governed documents by AR-4 #9060; standing verdicts by AR-3 #9059."
+      "Individual HTTP routes, Electron IPC channels, and per-endpoint contracts are represented by their owning worker/app/public-endpoint surface, not yet subdivided; fine-grained route/IPC enumeration is a bounded follow-up."
     ]
   }
 }

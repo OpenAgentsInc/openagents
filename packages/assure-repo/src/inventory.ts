@@ -19,6 +19,7 @@ import {
   crateHasTests,
   type FlatContract,
 } from "./oracles.ts";
+import { gradeSurfaces } from "./grade.ts";
 import { cargoCrates, pnpmPackages, releasePipelines, trackedFiles } from "./workspace.ts";
 
 /**
@@ -246,22 +247,24 @@ const COVERAGE_NOTES: ReadonlyArray<string> = [
   "AR-0 rev 1 enumerates surfaces at package/app/worker/crate/public-endpoint/release-pipeline/document granularity derived from the workspace, Cargo, contract, and product-spec graphs.",
   "Individual HTTP routes, Electron IPC channels, and per-endpoint contracts are represented by their owning worker/app/public-endpoint surface, not yet subdivided; fine-grained route/IPC enumeration is a bounded follow-up.",
   "CLI entrypoints are covered by their owning package surface rather than counted separately.",
-  "Obligation grading (state field) is populated by AR-1 #9057; drift oracles for governed documents by AR-4 #9060; standing verdicts by AR-3 #9059.",
+  "AR-1 grades obligation state (mapped/designed/observed/accepted/inconclusive/out-of-scope) with designed and observed kept distinct; this grader never emits observed or accepted, which require an AR-3 #9059 sweep receipt or owner acceptance. AR-4 #9060 binds drift oracles for governed documents.",
 ];
 
 export const buildInventory = (root: string): SurfaceInventoryDocument => {
   const tracked = trackedFiles(root);
   const contracts = allBehaviorContracts();
   const policy = loadPolicy(root);
-  const surfaces = [...buildSurfaces(root, tracked, contracts, policy)].sort((a, b) =>
+  const derived = [...buildSurfaces(root, tracked, contracts, policy)].sort((a, b) =>
     compareStrings(a.id, b.id),
   );
+  // AR-1: grade obligation state over the inventory.
+  const surfaces = gradeSurfaces(derived, policy.outOfScope);
   const summary = summarize(surfaces, COVERAGE_NOTES);
 
   const digestInput = surfaces
     .map(
       (surface) =>
-        `${surface.id} ${surface.owningPath} ${surface.oracles.map((oracle) => `${oracle.type}:${oracle.ref}`).join("|")} ${surface.unverified?.reason ?? ""}`,
+        `${surface.id} ${surface.owningPath} ${surface.oracles.map((oracle) => `${oracle.type}:${oracle.ref}`).join("|")} ${surface.unverified?.reason ?? ""} ${surface.obligation?.state ?? ""}`,
     )
     .join("\n");
   const sourceDigest = `sha256:${createHash("sha256").update(digestInput).digest("hex")}`;

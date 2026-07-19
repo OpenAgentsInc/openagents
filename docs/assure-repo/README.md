@@ -17,13 +17,13 @@ actually proves.
 
 ## Packets
 
-| Packet | Issue | State | What it adds |
-| ------ | ----- | ----- | ------------ |
-| AR-0 | [#9056](https://github.com/OpenAgentsInc/openagents/issues/9056) | delivered | Typed surface inventory with loss accounting |
-| AR-1 | [#9057](https://github.com/OpenAgentsInc/openagents/issues/9057) | planned | Assurance obligations graded over the inventory |
-| AR-2 | [#9058](https://github.com/OpenAgentsInc/openagents/issues/9058) | planned | False-green audit + mutation evidence |
-| AR-3 | [#9059](https://github.com/OpenAgentsInc/openagents/issues/9059) | planned | Standing verification sweep (Full Auto lane) |
-| AR-4 | [#9060](https://github.com/OpenAgentsInc/openagents/issues/9060) | planned | Drift oracles for the repository's own claims |
+| Packet | Issue                                                            | State     | What it adds                                    |
+| ------ | ---------------------------------------------------------------- | --------- | ----------------------------------------------- |
+| AR-0   | [#9056](https://github.com/OpenAgentsInc/openagents/issues/9056) | delivered | Typed surface inventory with loss accounting    |
+| AR-1   | [#9057](https://github.com/OpenAgentsInc/openagents/issues/9057) | delivered | Assurance obligations graded over the inventory |
+| AR-2   | [#9058](https://github.com/OpenAgentsInc/openagents/issues/9058) | planned   | False-green audit + mutation evidence           |
+| AR-3   | [#9059](https://github.com/OpenAgentsInc/openagents/issues/9059) | planned   | Standing verification sweep (Full Auto lane)    |
+| AR-4   | [#9060](https://github.com/OpenAgentsInc/openagents/issues/9060) | planned   | Drift oracles for the repository's own claims   |
 
 ## The surface inventory (AR-0)
 
@@ -39,6 +39,17 @@ validation.
 An oracle ref is an **index entry, not a verdict**: it proves an oracle is
 authored for the surface, not that the surface is proven. AR-1 grades the
 obligation state; AR-3 carries the observed verdict.
+
+### Obligation grading (AR-1)
+
+Each surface carries an `obligation` state graded in the assurance-spec
+vocabulary, with the four coverage facts kept independent — `mapped`,
+`designed`, `observed`, `accepted` — plus `inconclusive` (a real coverage
+gap) and `out-of-scope` (a typed disposition). Grading **never emits
+`observed` or `accepted`**: those require a passing, source-bound AR-3 sweep
+receipt or owner acceptance. A designed oracle is not a passing observation.
+`pnpm exec assure-repo coverage` prints the per-program-area report; there is
+**no blended score** — that is structurally excluded.
 
 ### Determinism and the freshness guard
 
@@ -67,7 +78,7 @@ node --import tsx packages/assure-repo/src/cli.ts summary   # print the coverage
   `unverified` reasons for surfaces that genuinely lack oracles, the curated
   governed-document set (AR-4 will bind drift oracles to these), and AR-1
   out-of-scope dispositions. Keeps the generator deterministic while letting a
-  human state *why* a surface is unverified instead of the generator guessing.
+  human state _why_ a surface is unverified instead of the generator guessing.
 - Implementation: [`packages/assure-repo`](../../packages/assure-repo/).
 
 ### Scope of AR-0 rev 1

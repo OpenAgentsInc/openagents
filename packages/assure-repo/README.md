@@ -18,9 +18,12 @@ for the program overview and the generated artifact.
   crates, tracked files, and release pipelines (no network, no wall clock).
 - `oracles.ts` — oracle enumeration and surface binding: behavior-contract
   registries, tracked test files, and Rust in-tree tests.
-- `inventory.ts` — the generator (`buildInventory`) and the surface policy
-  loader.
-- `cli.ts` — `generate` / `check` / `summary`.
+- `grade.ts` — AR-1 obligation grading over the inventory (mapped / designed /
+  observed / accepted / inconclusive / out-of-scope, kept as independent
+  facts; never emits observed/accepted) plus the program-area coverage report.
+- `inventory.ts` — the generator (`buildInventory`, which also grades) and the
+  surface policy loader.
+- `cli.ts` — `generate` / `check` / `summary` / `coverage`.
 
 ## Usage
 

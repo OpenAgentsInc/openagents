@@ -2,6 +2,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { coverageByArea } from "./grade.ts";
 import { buildInventory } from "./inventory.ts";
 import {
   serializeSurfaceInventory,
@@ -11,17 +12,20 @@ import {
 import { repositoryRoot } from "./workspace.ts";
 
 /**
- * assure-repo CLI (AR-0, issue #9056).
+ * assure-repo CLI (AR-0 #9056, AR-1 #9057).
  *
  *   generate   Regenerate docs/assure-repo/surface-inventory.v1.json.
  *   check      Regenerate in memory and byte-compare against the committed
  *              artifact; validate the no-silent-surface invariant. Exit 1 on
  *              staleness or any validation issue.
  *   summary    Print the coverage summary for the committed artifact.
+ *   coverage   Print the AR-1 program-area obligation grading report.
  */
 
 const usage = (): never => {
-  process.stderr.write("usage: assure-repo <generate|check|summary> [--root <dir>] [--json]\n");
+  process.stderr.write(
+    "usage: assure-repo <generate|check|summary|coverage> [--root <dir>] [--json]\n",
+  );
   process.exit(2);
 };
 
@@ -108,6 +112,37 @@ const main = (): void => {
     process.stdout.write(`By unverified reason: ${JSON.stringify(summary.byUnverifiedReason)}\n`);
     if (Object.keys(summary.byObligationState).length > 0)
       process.stdout.write(`By obligation state: ${JSON.stringify(summary.byObligationState)}\n`);
+    return;
+  }
+
+  if (command === "coverage") {
+    const document = existsSync(path)
+      ? JSON.parse(readFileSync(path, "utf8"))
+      : buildInventory(root);
+    const validation = validateSurfaceInventory(document);
+    if (!validation.ok) {
+      process.stderr.write(
+        `inventory invalid:\n${validation.issues.map((i) => `  - ${i.message}`).join("\n")}\n`,
+      );
+      process.exit(1);
+    }
+    const report = coverageByArea(validation.document!.surfaces);
+    if (json) {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(
+      "Obligation coverage by program area (mapped/designed/observed/accepted/inconclusive/out-of-scope):\n",
+    );
+    for (const area of report) {
+      const s = area.byState;
+      process.stdout.write(
+        `  ${area.area.padEnd(26)} total=${area.total}  m=${s.mapped} d=${s.designed} o=${s.observed} a=${s.accepted} inc=${s.inconclusive} oos=${s["out-of-scope"]}\n`,
+      );
+    }
+    process.stdout.write(
+      "\nNote: `designed` means an executable oracle is authored, not observed. `observed`/`accepted` require an AR-3 sweep receipt or owner acceptance and are never set by grading.\n",
+    );
     return;
   }
 
