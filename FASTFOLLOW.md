@@ -8,7 +8,7 @@ lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-17T23:15:00Z"
+updated_at: "2026-07-19T01:06:17Z"
 ---
 
 # OpenAgents Fast Follow
@@ -795,6 +795,61 @@ policy, or turn Fable prose into target authority.
     ]
   },
   {
+    "id": "openinterpreter.openinterpreter",
+    "title": "Open Interpreter",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/openinterpreter/openinterpreter",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-18-open-interpreter-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "native_vs_emulated_harness",
+        "kind": "architecture",
+        "summary": "Keep real external runtime adapters distinct from in-process model-facing harness emulations; an emulated foreign prompt and tool dialect is not the foreign runtime.",
+        "stance": "adapt"
+      },
+      {
+        "id": "generated_policy_manifest",
+        "kind": "protocol",
+        "summary": "Generate picker, API, routing, docs, diagnostics, conformance, and receipts from one versioned content-addressed policy manifest containing prompt, tool, wire, response, compaction, state, capability, and loss declarations.",
+        "stance": "adapt"
+      },
+      {
+        "id": "fail_closed_policy_admission",
+        "kind": "security",
+        "summary": "Validate runtime, policy, provider, model, wire, native tools, platform, and containment before thread creation; reject incompatible or unknown policies instead of silently falling back to native behavior.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "canonical_tool_authority",
+        "kind": "security",
+        "summary": "Decode every foreign harness tool into canonical typed intents, apply ordinary authority and containment, and encode only the canonical outcome back; emulation never widens authority.",
+        "stance": "adapt"
+      },
+      {
+        "id": "runtime_policy_receipt",
+        "kind": "reliability",
+        "summary": "Receipt outer runtime adapter, inner emulation policy version and digest, provider, model, wire, translators, auxiliary calls, semantic losses, and effective containment as independently visible identities.",
+        "stance": "adapt"
+      },
+      {
+        "id": "pinned_peer_before_ownership",
+        "kind": "evaluation",
+        "summary": "Evaluate an exact-version Open Interpreter ACP or app-server peer before owning an emulation compiler or branded prompt and tool maintenance burden.",
+        "stance": "study"
+      },
+      {
+        "id": "moving_computer_use_installers",
+        "kind": "security",
+        "summary": "Reject moving latest-release and mutable-branch installers for browser and computer-control drivers; require signed component admission, compatibility, rollback, and install/run receipts.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "openagents.synthesis",
     "title": "OpenAgents Teardown Synthesis",
     "role": "local_synthesis",
@@ -1102,7 +1157,12 @@ policy, or turn Fable prose into target authority.
       "pingdotgg.t3code#provider_neutral_cqrs",
       "pingdotgg.t3code#acp_peer_profiles",
       "xai.grok_build#acp_edge_adapter",
-      "factory.droid#one_engine_many_clients"
+      "factory.droid#one_engine_many_clients",
+      "openinterpreter.openinterpreter#native_vs_emulated_harness",
+      "openinterpreter.openinterpreter#generated_policy_manifest",
+      "openinterpreter.openinterpreter#fail_closed_policy_admission",
+      "openinterpreter.openinterpreter#canonical_tool_authority",
+      "openinterpreter.openinterpreter#runtime_policy_receipt"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1327,7 +1387,10 @@ policy, or turn Fable prose into target authority.
       "pingdotgg.t3code#dpop_environment_access",
       "factory.droid#hierarchical_policy",
       "factory.droid#closed_schema_telemetry",
-      "openai.chatgpt_desktop#ambient_memory_default"
+      "openai.chatgpt_desktop#ambient_memory_default",
+      "openinterpreter.openinterpreter#canonical_tool_authority",
+      "openinterpreter.openinterpreter#fail_closed_policy_admission",
+      "openinterpreter.openinterpreter#moving_computer_use_installers"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1395,7 +1458,9 @@ policy, or turn Fable prose into target authority.
       "cursor.cursor#startup_restore_oracle",
       "openclaw.crabbox#failure_capsule_receipt",
       "xai.grok_build#terminal_proof",
-      "openagents.synthesis#target_native_adaptation"
+      "openagents.synthesis#target_native_adaptation",
+      "openinterpreter.openinterpreter#pinned_peer_before_ownership",
+      "openinterpreter.openinterpreter#runtime_policy_receipt"
     ],
     "target_scopes": [
       "apps/qa-runner",

@@ -20,14 +20,15 @@ design note, OpenCode (desktop, V2 engine, Effect architecture, Electron
 build/update), Cursor, Executor, OpenChamber, Crabbox, T3 Code (whole product,
 mobile app, ACP implementation, Electron build/update, desktop full gap,
 desktop UI gap, mobile controller gap), Codex app-server client support, Grok
-Build, Command Code, Factory Desktop/Droid, Amp Code, and the prior
+Build, Command Code, Factory Desktop/Droid, Amp Code, Open Interpreter's
+in-process harness-emulation architecture, and the prior
 cross-teardown adaptation analysis.
 
 ---
 
 ## 1. The market has converged on a shape; the trust half is unclaimed
 
-Read together, twenty-eight documents describe one striking fact: every
+Read together, twenty-nine documents describe one striking fact: every
 serious product in this space — OpenAI's Codex desktop, Anthropic's Claude
 desktop and Claude Code, Cursor, Factory, Amp, Grok Build, OpenCode, T3 Code,
 OpenChamber — has independently converged on the same architecture:
@@ -144,12 +145,51 @@ depends on it.
   capabilities, update/relaunch state), idempotent start, bounded drain on
   update, typed exit reasons, per-generation client authentication — never
   ambient localhost trust or a shared Basic password as client identity.
+- **Two harness classes, never one overloaded name.** AI SDK v7 proves the
+  `native_runtime_adapter`: a real external runtime owns native history,
+  built-ins, permissions, compaction, and resume behind an adapter. Open
+  Interpreter proves the different `in_process_emulation`: one Codex-derived
+  engine keeps authority and rewrites prompt, tools, wire requests, response
+  grammar, title/compaction calls, reminders, and result encoding to imitate a
+  foreign agent dialect. OpenAgents must model both explicitly. A real Codex,
+  Claude Code, Grok, Cursor, or Open Interpreter process is a runtime adapter;
+  “Kimi Code policy inside Open Interpreter” is an inner emulation binding,
+  not a Kimi runtime.
+- **One content-addressed emulation manifest.** Policy ID is insufficient.
+  Generate picker, API, route, docs, diagnostics, conformance, and receipt
+  projections from a versioned manifest containing prompt/tool assets,
+  request/result translators, wire and model requirements, compaction/state
+  behavior, preserved and removed capabilities, authority ceiling, known
+  semantic losses, and evidence refs. Open Interpreter's core, TUI,
+  app-server, README, and guide already disagree, demonstrating the cost of
+  duplicated catalogs.
+- **Fail-closed harness admission.** Resolve runtime × policy × provider ×
+  model × wire × native-tool × platform × authority/containment compatibility
+  before a thread starts. Recommendations are typed/evaluated advice, never
+  hard-coded model-name execution routing. Incompatible named policy is a
+  typed refusal or a separately confirmed native fallback; the effective
+  policy can never silently differ from the selected label. Switching policy
+  starts or forks a thread with explicit lineage and losses rather than
+  mutating conversation semantics in place.
+- **Foreign tools terminate in canonical intents.** A Claude-shaped `Bash`,
+  Kimi-shaped file tool, or Qwen-shaped subagent call decodes into the same
+  canonical OpenAgents command and ordinary policy/containment compiler as its
+  native equivalent. The response is encoded back only after the canonical
+  outcome. Emulation never widens filesystem, network, secret, child, spend,
+  placement, publication, or acceptance authority.
+- **Requested and effective identity is receipt material.** Every turn records
+  outer runtime adapter and version, inner emulation policy version/digest,
+  provider/model/wire, auxiliary title/compaction calls, translator
+  generations, semantic losses, and effective containment. A foreign-shaped
+  prompt or tool surface is not evidence that the foreign runtime executed.
 
 **Refuse:** two query owners (Claude Code's duplicated loop), two protocol
 generations without deletion gates (OpenCode Desktop still embedding V1 while
 V2 exists), 92-flag compatibility accretion (Codex), whole-transcript rewrite
 as durability (Command Code), a durable "running" status that a crash makes
-into a lie (OpenCode V2 explicitly refuses to persist one).
+into a lie (OpenCode V2 explicitly refuses to persist one), and a string named
+`harness` that can silently select native/generic behavior while the UI retains
+the foreign label (Open Interpreter).
 
 ---
 
@@ -638,6 +678,9 @@ The catalog is as much a record of what not to build. Consolidated:
     authority; confidence without evidence.
 14. Compatibility accretion without expiry — every bridge gets an owner,
     telemetry, and a removal date.
+15. Harness identity theater: duplicated catalogs, arbitrary-string admission,
+    model-name substring routing, silent native fallback, or branding an
+    emulated prompt/tool dialect as the real foreign runtime.
 
 ---
 
@@ -652,7 +695,11 @@ essay's operational conclusion:
   right-panel workbench (review/diff/files first, terminal after PTY proof,
   preview last); then worktree/checkpoint/delivery depth; then remote
   portability; then platform breadth (macOS x64 → Windows/Linux x64 →
-  arm64, channels last); additional providers only after one provider is
+  arm64, channels last); then split real runtime-adapter conformance from
+  in-process emulation-policy conformance and evaluate a pinned Open
+  Interpreter peer before owning any branded emulation; additional providers
+  or policies only after one exact runtime × policy × model × provider × wire
+  tuple is
   complete by the eleven-predicate closure definition (Known, Decoded,
   Owned, Retained, Projected, Presented, Authorized, Recovered, Fast,
   Receipted, Shipped).

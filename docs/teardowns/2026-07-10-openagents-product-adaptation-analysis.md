@@ -20,6 +20,7 @@ Evidence base:
 - [Command Code teardown](./2026-07-16-command-code-teardown.md)
 - [Factory Desktop and Droid CLI teardown](./2026-07-16-factory-desktop-cli-teardown.md)
 - [Amp Code teardown](./2026-07-16-amp-code-teardown.md)
+- [Open Interpreter harness-emulation teardown](./2026-07-18-open-interpreter-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -2316,3 +2317,113 @@ Amp does while keeping accepted events local-portable, protocols public,
 execution contained, extensions non-amplifying, data planes explicit, and
 release identity independently verifiable. These conclusions remain analysis
 until represented in the owning roadmap, schemas, tests, and receipts.
+
+## Open Interpreter harness-emulation addendum (2026-07-18)
+
+The
+[Open Interpreter teardown](./2026-07-18-open-interpreter-teardown.md)
+adds a runtime class the prior analyses did not name precisely. AI SDK v7,
+Goose, T3 Code, and the Agent Client Protocol work all normalize **real agent
+runtimes** behind an adapter. Open Interpreter keeps one Codex-derived runtime
+and emulates foreign **model-facing harness policies** inside it. It changes
+prompts, context, tools, provider wire requests, response grammar, title and
+compaction calls, reminders, and result encoding while the native runtime
+continues to own sessions, tools, approvals, sandboxing, persistence, ACP, and
+app-server behavior.
+
+This distinction changes the analysis in the following exact ways.
+
+1. **“Harness” must split into two execution classes.** A
+   `native_runtime_adapter` launches or attaches the real Codex, Claude Code,
+   Grok, Cursor, OpenCode, Goose, or Open Interpreter runtime and preserves its
+   native session semantics. An `in_process_emulation` is a content-addressed
+   policy compiled inside an owned runtime. It may imitate a foreign dialect,
+   but the foreign runtime did not execute. OpenAgents' existing
+   `AgentRuntimeAdapterKind`, `AgentDefinitionHarnessKind`, and
+   `AgentRuntimeLoopKind` provide the right starting separation; add the
+   execution class rather than overloading another string.
+2. **Outer runtime and inner policy are independently receipted.** An Open
+   Interpreter peer can itself run `kimi-code` or `claude-code-bare`
+   emulation. The run record therefore needs outer adapter/executable/protocol
+   version and inner policy ID/version/digest, beside provider, model, wire,
+   translator generations, known losses, auxiliary calls, and effective
+   containment. “Kimi Code” alone is a false runtime identity.
+3. **One manifest generates every policy projection.** Open Interpreter's
+   core enum, TUI picker, app-server catalog, README, and guide already differ
+   on membership and wire support; its app-server setter accepts arbitrary
+   strings. OpenAgents should generate picker, API, route, docs, diagnostics,
+   conformance, and receipts from one immutable manifest covering prompt/tool
+   assets, compatibility, state, compaction, approvals, capabilities, losses,
+   attribution, and evidence.
+4. **Compatibility is admission, not fallback.** The audited resolver rejects
+   unsupported Messages combinations but can silently route non-Claude named
+   policies over Responses as native and ZCode/unknown policies over Chat as
+   generic compatibility. OpenAgents must fail closed before thread creation
+   unless the owner separately confirms a native fallback. Requested and
+   effective policy are both returned; they can never diverge behind a green
+   selected label.
+5. **Recommendations cannot be string routers.** Open Interpreter recommends
+   policies using substring checks over provider ID, name, model, and base URL,
+   including a deliberate DeepSeek → Claude Code Bare choice. That is useful
+   product evidence but violates the OpenAgents semantic-routing rule as an
+   execution mechanism. Typed compatibility and evaluation records or the
+   central semantic selector may rank policies; ordinary admission selects the
+   effective one.
+6. **Foreign tools remain below canonical authority.** Open Interpreter's
+   best boundary is that Claude, Kimi, Qwen, DeepSeek, ZCode, OpenCode, and Pi
+   tool aliases all terminate in one native Rust runtime. OpenAgents should
+   decode each foreign schema into canonical typed intents, run the normal
+   authority and containment compiler, and encode only the canonical outcome
+   back. An emulation policy cannot widen filesystem, network, secret, child,
+   spend, placement, publication, or acceptance authority.
+7. **Policy changes are session transitions.** Open Interpreter's TUI starts a
+   fresh chat after harness or provider/model/harness selection. Preserve that
+   honesty. Setting a future default, starting a thread with a policy, and
+   forking an existing thread under a different policy are distinct commands.
+   In-place change is normally refused; a supported migration needs a safe
+   boundary, new generation, context recompilation, lineage, and loss report.
+8. **Conformance must split beside the taxonomy.** The current OpenAgents
+   `harness-conformance` suite correctly proves real coding-worker runtimes
+   through chat lifecycle, claim/closeout, readiness, metering, and typed
+   failures. Emulations need a sibling enum-exhaustive suite for request/stream
+   translators, canonical-tool authority equivalence, compatibility/no-
+   fallback laws, compaction and translator state, behavioral evaluation,
+   auxiliary usage, recovery losses, and requested/effective receipts. Do not
+   make an emulation pose as another worker fixture.
+9. **A pinned Open Interpreter peer is the first experiment.** Its ACP and
+   Codex-compatible app-server/exec surfaces make it consumable without
+   importing the fork. Add only an experimental exact-version peer profile,
+   retain the private native event envelope, project portable events with loss
+   accounting, and compare native OpenAgents/Codex, Open Interpreter native,
+   and named Open Interpreter policies on exact admitted tuples. This measures
+   value before OpenAgents accepts prompt/tool maintenance and attribution
+   burden.
+10. **Computer-use behavior and component admission separate.** Open
+    Interpreter's QA skill has the right post-state verification doctrine, but
+    downloads `agent-browser` from moving `latest` and pipes Cua installers
+    from mutable `main`. Adapt snapshot/act/re-snapshot and consequential-
+    action confirmation. Reject moving privileged installers; drivers belong
+    in the signed component graph with screen/input authority and install/run
+    receipts.
+11. **Product-home isolation becomes a peer-profile requirement.** Open
+    Interpreter intentionally ignores `CODEX_HOME` and uses
+    `INTERPRETER_HOME`/`~/.openinterpreter`, preventing Codex credentials,
+    config, and sessions from leaking across product identities. Any external
+    runtime profile should declare and test its exact home, credential stores,
+    migration behavior, and forbidden ambient homes.
+12. **Do not fork or wholesale-copy branded prompts.** Open Interpreter's
+    rapid Codex merge cadence and roughly 19.5k-line harness directory prove
+    the maintenance cost. Consume it as a peer, learn the compiler seams, and
+    implement an OpenAgents-owned minimal/model-family policy only after
+    behavioral evidence and legal/attribution review. A branded foreign prompt
+    is not a durable public protocol.
+
+This addendum sharpens, rather than changes, the standing architecture. The
+runtime remains outside the renderer; provider lanes remain generated and
+admitted; foreign-native events remain private evidence beside portable
+projections; authority and containment remain separate; and receipts remain
+canonical. The new requirement is to make **runtime adaptation** and **harness
+policy emulation** separately typed, visible, versioned, tested, and
+receipted. As with every teardown, the owning roadmap gate, schemas, issue,
+tests, and receipts determine whether the experimental peer or an owned policy
+ever ships.
