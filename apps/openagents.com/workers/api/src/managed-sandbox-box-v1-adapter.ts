@@ -32,6 +32,8 @@ export const isManagedSandboxBoxV1Enabled = (
   value?.toLowerCase() === 'true' ||
   value?.toLowerCase() === 'on'
 
+export const isManagedSandboxBrokerEnabled = isManagedSandboxBoxV1Enabled
+
 const storeError = (error: unknown): BoxV1FacadeError => {
   if (error instanceof ManagedSandboxStoreError) {
     switch (error.code) {

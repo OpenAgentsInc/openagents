@@ -263,6 +263,9 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // SBX-03 (#9025): bounded Box-v1 compatibility facade. Default OFF until
   // SBX-09 independently proves and arms the complete managed-sandbox graph.
   MANAGED_SANDBOX_BOX_V1_ENABLED?: string | undefined
+  // SBX-07 (#9030): native owner/Sarah/Desktop broker. Default OFF until
+  // SBX-09 independently proves the live GCP target and arms rollout.
+  MANAGED_SANDBOX_BROKER_ENABLED?: string | undefined
   OA_MANAGED_SANDBOX_IMAGE_DIGEST?: string | undefined
   // Agent Computer launch surface flag (autopilot.cloud_coding_sessions.v1, red).
   // Default OFF: the `/v1/cloud-coding-sessions` launch + lifecycle routes are

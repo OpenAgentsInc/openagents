@@ -145,3 +145,9 @@ SBX-00/07/09 are closed: the owner can create and supervise one real GCP
 sandbox through the same durable lifecycle authority as Desktop, every step
 has authority and target receipts, and delete proves zero residue. That later
 gate does not retroactively widen this plan's completed Sarah runtime proof.
+
+As of 2026-07-19, SBX-00 and the default-off SBX-07 broker component are
+code-landed. Sarah revision 4 now advertises exactly eight closed sandbox tools,
+and Desktop shares the native broker through authenticated host endpoints.
+SBX-09 still owns deployment, a real stable-owner-thread journey, packaged
+Desktop proof, cleanup/cost/rollback evidence, and rollout activation.

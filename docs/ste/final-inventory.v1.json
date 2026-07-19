@@ -1090,7 +1090,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "aa8b5ed2e333460bb3b9a4a0305ade01aea8dc523a4012e6d9f90381fe3a7661",
+      "sha256": "ca9cc5e5d97dffb7cddde21701ceb6bf9ae9786bd2d26e2d57a0cb2df406c805",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -4345,6 +4345,28 @@
     {
       "path": "apps/openagents.com/docs/2026-07-19-managed-sandbox-box-v1-facade.md",
       "sha256": "30d2e6a968f7c2b0cf448eb1030a73222e1b5313ec7a8fee727c6602a8610c81",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "apps/openagents.com/docs/2026-07-19-managed-sandbox-owner-broker.md",
+      "sha256": "2d91b3f7ebc06091b25909aad9578c41d421ef28bb5252d53fb1240277b496bc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -16271,6 +16293,28 @@
       }
     },
     {
+      "path": "docs/assure-repo/README.md",
+      "sha256": "de4b96b41ea42ad8b9f44b575d0cbf61795caae603fd0cb28ea25384a71e3a05",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/audits/2026-06-28-effect-usage-audit.md",
       "sha256": "6f585d8ad1cccad1bd453189ed1834ea00dfac5098f929281867dab29c974e65",
       "reason": "Immutable historical or evidence source data",
@@ -16364,7 +16408,7 @@
     },
     {
       "path": "docs/authority/SARAH_AUTHORITY.md",
-      "sha256": "dd33b61697955f90f002acd999d888166e8260d339b241cc4f33ebf9fbde4935",
+      "sha256": "e6628823f2ae5de90b49b47f588e36c4a390a7429cdd3a6fbd11219b8f39cd0b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39831,7 +39875,7 @@
     },
     {
       "path": "docs/sol/2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md",
-      "sha256": "91d468bd9af561a6e90c1d3180f6d5be08eb22625495aec87aa06a46a26948d7",
+      "sha256": "cc740e653d607d9bb94c6b951fbdcfb1863f2d6cfb30b3aec26705fece716525",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39909,7 +39953,7 @@
     },
     {
       "path": "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md",
-      "sha256": "b7378967228191418e97902694d4c3c1bbe0ff41cc0d74e3820f77c23e087e71",
+      "sha256": "b8a011ed894b2f2f09585d47e06b3c476acbbba00768424979f4dc64fca608b1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39979,7 +40023,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "46176570c2b8e16458b370152c8c3663c07a2b6f9fb64b9743c8a41f692bdb98",
+      "sha256": "f53f92a466f7ad1c6b9ea32eee387eba9619bfb4a0c1499295839551abd72946",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40036,7 +40080,7 @@
     },
     {
       "path": "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md",
-      "sha256": "b459e058679d94f731c46c914b90ed6f07096d5c313dc8f3ccb1a602e1549834",
+      "sha256": "527036784ad0ec1a5c61fb7684bc1849c790a2f3e522426d45b3baaf34aa84c8",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -46295,6 +46339,28 @@
       }
     },
     {
+      "path": "packages/assure-repo/README.md",
+      "sha256": "4d5df429745c7af12af282d7c07e4725c19f348f2f4c9627efe95a7ea5e67bc0",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "packages/atif/README.md",
       "sha256": "5915df223b0cfe9fdb0d6d2b1a2ed9318ecfffca81ad56624078ae2139f80601",
       "reason": "Final review of a converted document",
@@ -48789,7 +48855,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
-      "sha256": "bcb8adf135621eb24ea2e4e7623b3b93f3676dba5524c89c8741aa0e5a25d0c8",
+      "sha256": "84e52a4a9496359de477005c72ae6e51ffd34561ad62a9dc57be74c2a1c7f3fc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48852,7 +48918,7 @@
     },
     {
       "path": "specs/openagents/sarah-owner-orchestrator.assurance-spec.md",
-      "sha256": "b6048674a828a82c4331382db879de75085cf6142d2ce8d3852eb8bd3857ce93",
+      "sha256": "1047e076048b18f3649111ce6be38363190991ecea16185fd4eac72231881d60",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

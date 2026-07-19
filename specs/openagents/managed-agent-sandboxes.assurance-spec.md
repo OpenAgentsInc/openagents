@@ -122,7 +122,12 @@ Desktop/Sarah journey. None is admitted by this proposal.
     }
   ],
   "repository_inventory": {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-desktop-routes.test.ts",
+      "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+    ],
     "declared_scripts": [],
     "diagnostics": [
       "repository_not_supplied"
@@ -502,7 +507,12 @@ or observations exist today.
     "technique": "deterministic_consumer_integration"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-desktop-routes.test.ts",
+      "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+    ],
     "criterion_refs": [
       "MSB-AC-12"
     ],
@@ -525,8 +535,8 @@ or observations exist today.
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "packages/authority/src/managed-sandbox-authority.test.ts",
-      "statement": "Admit only eight Sarah actions for the authenticated owner's sandbox resource when every scope, budget, broker, and target gate passes; generic cloud/container actions refuse."
+      "evaluator_ref": "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "statement": "Admit only eight Sarah actions for the authenticated owner's sandbox resource when every scope, budget, broker, and target gate passes; require authority and target receipts with ordered activity, and refuse generic cloud/container actions or cross-owner results before effects."
     },
     "technique": "authority_decision_matrix"
   },

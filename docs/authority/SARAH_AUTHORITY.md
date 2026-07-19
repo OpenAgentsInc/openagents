@@ -71,7 +71,7 @@ receives raw credentials and cannot turn visibility into mutation authority.
     "roles": ["sarah_orchestrator"],
     "actions": ["create_managed_sandbox", "list_managed_sandboxes", "inspect_managed_sandbox", "dispatch_managed_sandbox_work", "interrupt_managed_sandbox_turn", "stop_managed_sandbox", "resume_managed_sandbox", "delete_managed_sandbox"],
     "resources": ["authenticated_owner_openagents_managed_sandboxes"],
-    "program_refs": ["program.sarah_company_operations"],
+    "program_refs": ["program.managed_agent_sandboxes"],
     "condition_refs": ["condition.owner_scope", "condition.managed_sandbox_scope", "condition.managed_sandbox_budget", "condition.managed_sandbox_runtime_admission", "condition.redaction", "condition.rollback"]
   }
 ]

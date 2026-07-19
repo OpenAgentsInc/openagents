@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx07_sarah_broker_component.v1",
+  "capturedAt": "2026-07-19T21:29:00Z",
+  "passed": true,
+  "issueRef": "https://github.com/OpenAgentsInc/openagents/issues/9030",
+  "proofRung": "deterministic_authority_and_broker_component",
+  "authority": {
+    "rootRevision": 6,
+    "sarahRevision": 4,
+    "principalRef": "principal.sarah",
+    "programRef": "program.managed_agent_sandboxes",
+    "actionCount": 8,
+    "refusalBeforeTargetEffect": true,
+    "authorityReceiptRequired": true,
+    "targetReceiptRequired": true
+  },
+  "tools": {
+    "names": [
+      "managed_sandbox_create",
+      "managed_sandboxes_list",
+      "managed_sandbox_inspect",
+      "managed_sandbox_dispatch",
+      "managed_sandbox_interrupt",
+      "managed_sandbox_stop",
+      "managed_sandbox_resume",
+      "managed_sandbox_delete"
+    ],
+    "genericCloudTools": 0,
+    "genericContainerTools": 0,
+    "rawShellOrDatabaseTools": 0,
+    "remoteFullAutoStartTools": 0
+  },
+  "broker": {
+    "provider": "google_cloud",
+    "nativeSchema": "openagents.managed_sandbox.v1",
+    "desktopAdmissionPath": "/api/managed-sandboxes/desktop/admission",
+    "desktopCommandsPath": "/api/managed-sandboxes/desktop/commands",
+    "defaultEnabled": false,
+    "exactPromptDigestRequired": true,
+    "exactAttachmentGenerationRequired": true,
+    "durableRetryTimestampReused": true,
+    "changedRetryBytesRefused": true,
+    "crossOwnerRefused": true,
+    "targetSubstitutionRefused": true,
+    "recoveryRequiredIsNotSuccess": true,
+    "cleanupCompleteRequiredForDeletedSuccess": true
+  },
+  "proof": {
+    "workerTestFilesPassed": 5,
+    "workerTestsPassed": 30,
+    "workerTypecheckPassed": true,
+    "sarahPackageTestFilesPassed": 36,
+    "sarahPackageTestsPassed": 435,
+    "sarahPackageTypecheckPassed": true,
+    "desktopManagedTestFilesPassed": 1,
+    "desktopManagedTestsPassed": 5,
+    "desktopFullTestFilesPassed": 288,
+    "desktopFullTestsPassed": 2741,
+    "desktopFullTestsSkipped": 39,
+    "desktopTypecheckPassed": true,
+    "ideBoundaryScanPassed": true
+  },
+  "limitations": [
+    "No production deployment or feature flag was changed by SBX-07.",
+    "This deterministic component proof cannot satisfy owner-gated live Sarah or packaged Desktop acceptance.",
+    "SBX-09 remains the only live GCP, cost, rollback, cleanup, zero-residue, owner-thread, packaged Desktop, and rollout gate."
+  ]
+}

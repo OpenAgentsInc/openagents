@@ -1766,7 +1766,7 @@
       ]
     },
     "docs/sol/MASTER_ROADMAP.md": {
-      "sourceSha256": "46176570c2b8e16458b370152c8c3663c07a2b6f9fb64b9743c8a41f692bdb98",
+      "sourceSha256": "f53f92a466f7ad1c6b9ea32eee387eba9619bfb4a0c1499295839551abd72946",
       "normativeKeywords": [],
       "inlineCode": [
         "/",
@@ -2076,8 +2076,11 @@
         "07",
         "07",
         "07",
+        "07",
         "08",
         "08",
+        "09",
+        "09",
         "09",
         "09",
         "09",
@@ -2897,7 +2900,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "aa8b5ed2e333460bb3b9a4a0305ade01aea8dc523a4012e6d9f90381fe3a7661",
+      "sourceSha256": "ca9cc5e5d97dffb7cddde21701ceb6bf9ae9786bd2d26e2d57a0cb2df406c805",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -2961,6 +2964,8 @@
         "/api/internal/khala-sync/public-counters/tokens-served/reconcile",
         "/api/internal/queue/deliver",
         "/api/khala-code/auth/openagents/device/start",
+        "/api/managed-sandboxes/desktop/admission",
+        "/api/managed-sandboxes/desktop/commands",
         "/api/mdk",
         "/api/mdk",
         "/api/mobile/codex-accounts*",
@@ -3205,6 +3210,7 @@
         "KHALA_SYNC_DB",
         "KHALA_SYNC_LIVE_HUB_URL",
         "MANAGED_SANDBOX_BOX_V1_ENABLED",
+        "MANAGED_SANDBOX_BROKER_ENABLED",
         "MARKETPLACE_COMPOSE_AND_LIST_ENABLED",
         "MDK_SIDECAR",
         "MDK_SIDECAR_SERVICE_URL",
@@ -3436,6 +3442,7 @@
         "chris@openagents.com",
         "claimRef",
         "clawbackInferenceCredits",
+        "cleanupComplete=true",
         "clients/khala-code-desktop/tests/app-shell.test.ts",
         "closeout_receipt_missing",
         "closeout_submitted",
@@ -3481,6 +3488,7 @@
         "default_unavailable",
         "deferredToApprovalGate",
         "delegateCodingWorkflow",
+        "deleted",
         "delivered → accepted",
         "delta.reasoning_content",
         "demandSegments",
@@ -3561,6 +3569,7 @@
         "forum_post",
         "gate.public.pylon.assignment_dispatch.controlled.v1",
         "gate.public.pylon.assignment_dispatch.controlled.v1",
+        "gcloud",
         "gemini",
         "gemini",
         "generatedAt",
@@ -3989,6 +3998,7 @@
         "preference_unavailable",
         "prefilled_workspace*",
         "prefilled_workspaces",
+        "principal.sarah",
         "principal.sarah",
         "private/gym/harbor-full-trace-archives/...",
         "privateMaterialExcluded: true",
@@ -4831,7 +4841,8 @@
         "#8600",
         "#9024",
         "#9025",
-        "#9026"
+        "#9026",
+        "#9030"
       ],
       "numericValues": [
         "0",
@@ -4872,6 +4883,8 @@
         "05",
         "05",
         "06",
+        "07",
+        "09",
         "09",
         "09",
         "09",
@@ -5195,7 +5208,8 @@
         "9.3",
         "9024",
         "9025",
-        "9026"
+        "9026",
+        "9030"
       ]
     },
     "apps/openagents.com/apps/start/public/AGENTS.md": {
@@ -8992,7 +9006,7 @@
       ]
     },
     "specs/openagents/managed-agent-sandboxes.assurance-spec.md": {
-      "sourceSha256": "bcb8adf135621eb24ea2e4e7623b3b93f3676dba5524c89c8741aa0e5a25d0c8",
+      "sourceSha256": "84e52a4a9496359de477005c72ae6e51ffd34561ad62a9dc57be74c2a1c7f3fc",
       "normativeKeywords": [],
       "inlineCode": [
         "501\\ncapability_not_implemented",
@@ -9106,7 +9120,11 @@
         "19",
         "19",
         "19",
+        "19",
+        "19",
         "2",
+        "2026-07",
+        "2026-07",
         "2026-07",
         "2026-07",
         "2026-07",
@@ -9295,7 +9313,7 @@
       ]
     },
     "specs/openagents/sarah-owner-orchestrator.assurance-spec.md": {
-      "sourceSha256": "b6048674a828a82c4331382db879de75085cf6142d2ce8d3852eb8bd3857ce93",
+      "sourceSha256": "1047e076048b18f3649111ce6be38363190991ecea16185fd4eac72231881d60",
       "normativeKeywords": [],
       "inlineCode": [
         "/sarah",
@@ -9390,11 +9408,19 @@
         "19",
         "19",
         "19",
+        "19",
+        "19",
+        "19",
+        "19",
         "19-01",
         "20",
         "20",
         "20",
         "20-01",
+        "2026-07",
+        "2026-07",
+        "2026-07",
+        "2026-07",
         "21",
         "21",
         "21",

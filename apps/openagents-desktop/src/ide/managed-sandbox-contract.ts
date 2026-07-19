@@ -183,6 +183,7 @@ export const IdeManagedSandboxCommandSchema = Schema.TaggedUnion({
     sandboxRef: boundedRef,
     turnRef: boundedRef,
     capabilityRef: boundedRef,
+    prompt: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100_000)),
     promptDigest: Sha256Digest,
     runtime: ManagedSandboxRuntimeIdentitySchema,
   },

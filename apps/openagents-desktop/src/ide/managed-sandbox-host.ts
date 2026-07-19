@@ -136,10 +136,14 @@ export const makeIdeManagedSandboxHttpGateway = (
           ),
         ),
       ),
-    execute: (command) =>
+    execute: (command, options) =>
       fetchJson(fetchImpl, `${baseUrl}/api/managed-sandboxes/desktop/commands`, input.accessToken, {
         schemaVersion: "openagents.desktop.ide-managed-sandbox.v1",
         command,
+        ...(options?.prompt === undefined ? {} : { prompt: options.prompt }),
+        ...(options?.attachmentGeneration === undefined
+          ? {}
+          : { attachmentGeneration: options.attachmentGeneration }),
       }).pipe(
         Effect.flatMap((value) =>
           Effect.try({

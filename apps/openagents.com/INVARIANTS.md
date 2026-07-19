@@ -4255,6 +4255,7 @@ name the blocking issue instead of claiming enforcement.
 Operational procedures (Cloud SQL monitoring, migrations, compaction
 scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
 `docs/khala-sync/RUNBOOK.md`.
+
 ## Managed Sandbox Box-v1 Facade (SBX-03, #9025)
 
 - `/v1` is a compatibility route over the native managed-sandbox authority,
@@ -4329,3 +4330,35 @@ scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
 - Guest I/O has no wallet, payment, settlement, broad host, raw cloud, generic
   shell, or service-account authority. The facade remains default-off until
   SBX-09 accepts the live gate.
+
+## Managed Sandbox Owner Broker (SBX-07, #9030)
+
+- The native owner broker is the only Sarah/Desktop lifecycle and turn adapter.
+  It composes the generation-fenced store and private GCP runtime. It is not a
+  second resource, event, cleanup, or billing authority.
+- `principal.sarah` has exactly eight actions: create, list, inspect, dispatch,
+  interrupt, stop, resume, and delete. It receives no raw `gcloud`, shell,
+  database, topology, guest address, service-account, provider credential,
+  host path, generic container administration, or remote Full Auto start tool.
+- Every Sarah action first persists an owner-thread authority decision. A
+  refusal occurs before store or provider effects. Admitted calls then bind the
+  owner, tenant, managed-sandbox program, repository, work unit, target, image,
+  profile, lease, budget, capability set, idempotency identity, version, and
+  generation and expose ordered authority plus target receipt activity.
+- Desktop uses only authenticated main-process endpoints at
+  `/api/managed-sandboxes/desktop/admission` and
+  `/api/managed-sandboxes/desktop/commands`. The renderer receives no bearer,
+  provider credential, raw root, Box SDK, or generic cloud client.
+- Create carries the exact positive attachment generation in the authenticated
+  broker envelope and persists it on the native resource without changing the
+  frozen command schema. Retry reuses the durable command timestamp and
+  accepted receipt. Changed semantic bytes or attachment generation conflict
+  before a second reservation or target effect.
+- Pending, refused, failed, recovery-required, and cleanup-complete are distinct.
+  An accepted command is not terminal, output silence is not completion, and a
+  delete is successful only when native cleanup truth says `deleted` with
+  `cleanupComplete=true`.
+- `MANAGED_SANDBOX_BROKER_ENABLED` is default-off. Missing image, control URL,
+  control bearer, storage, or runtime admission fails closed. SBX-09 alone may
+  arm rollout after independent live GCP, packaged Desktop, Sarah, cost,
+  rollback, and zero-residue proof.

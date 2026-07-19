@@ -861,6 +861,7 @@ import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
 import { handleLander5Page } from './lander5-routes'
 import {
+  isManagedSandboxBrokerEnabled,
   isManagedSandboxBoxV1Enabled,
   makeBoxV1Principal,
   managedSandboxBoxV1PolicyForEnv,
@@ -871,6 +872,12 @@ import {
   BoxV1FacadeError,
   makeBoxV1Routes,
 } from './managed-sandbox-box-v1-routes'
+import { makeManagedSandboxBroker } from './managed-sandbox-broker'
+import {
+  MANAGED_SANDBOX_DESKTOP_ADMISSION_PATH,
+  MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
+  makeManagedSandboxDesktopRoutes,
+} from './managed-sandbox-desktop-routes'
 import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from './marketing-agency-claim-upgrade'
 import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import { makeInMemoryMarketingAgencySelfServeClaimStore } from './marketing-agency-self-serve-claim-upgrade'
@@ -1177,6 +1184,7 @@ import {
   makeSarahSpeechRoutes,
 } from './sarah-speech-routes'
 import { makeSarahRuntimeTools } from './sarah-runtime-tools'
+import { makeSarahManagedSandboxTools } from './sarah-managed-sandbox'
 import {
   SelfServeFanoutEndpoint,
   handleSelfServeFanoutApi,
@@ -6896,6 +6904,42 @@ const runHostedRuntimeTurnDispatchForEnv = async (
             ? { ok: true, text: result.text }
             : { ok: true, text: result.text, usage }
         }
+        const managedSandboxTools = await Effect.runPromise(
+          Effect.gen(function* () {
+            const policy = yield* managedSandboxBoxV1PolicyForEnv(env)
+            const runtime = yield* managedSandboxBoxV1RuntimeForEnv(env)
+            const sarahPrincipal = {
+              actorRef: 'principal.sarah',
+              ownerRef: turn.ownerUserId,
+              tenantRef: turn.ownerUserId,
+              login: 'Sarah',
+              email: null,
+            }
+            return makeSarahManagedSandboxTools({
+              sql: client.sql,
+              ownerUserId: turn.ownerUserId,
+              threadRef: turn.threadId,
+              turnId: turn.turnId,
+              principal: sarahPrincipal,
+              policy,
+              runtimeAdmitted:
+                isManagedSandboxBrokerEnabled(
+                  env.MANAGED_SANDBOX_BROKER_ENABLED,
+                ) &&
+                env.KHALA_SYNC_DB !== undefined &&
+                typeof env.OA_CLOUD_CONTROL_URL === 'string' &&
+                env.OA_CLOUD_CONTROL_URL.trim() !== '' &&
+                typeof env.OA_CLOUD_CONTROL_TOKEN === 'string' &&
+                env.OA_CLOUD_CONTROL_TOKEN.trim() !== '',
+              broker: makeManagedSandboxBroker({
+                principal: sarahPrincipal,
+                policy,
+                runtime,
+                store: managedSandboxBoxV1StoreForEnv(env),
+              }),
+            })
+          }),
+        ).catch(() => [])
         const result = await Effect.runPromise(
           runSarahAgentTurn({
             adapter: gemma4,
@@ -6911,6 +6955,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
               sql: client.sql,
               threadRef: turn.threadId,
               turnId: turn.turnId,
+              managedSandboxTools,
               harnessStatus: () =>
                 readSarahHarnessStatus({
                   ownerUserId: turn.ownerUserId,
@@ -10532,6 +10577,33 @@ const sarahOwnerRoutes = makeSarahOwnerRoutes<Env>({
   },
 })
 
+const managedSandboxDesktopRoutes = makeManagedSandboxDesktopRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (actor === undefined || actor.kind !== 'human') return undefined
+    return {
+      userId: actor.user.userId,
+      ...(actor.tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, actor.tokens!)
+            },
+          }),
+    }
+  },
+  enabled: env =>
+    isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
+    env.KHALA_SYNC_DB !== undefined &&
+    typeof env.OA_CLOUD_CONTROL_URL === 'string' &&
+    env.OA_CLOUD_CONTROL_URL.trim() !== '' &&
+    typeof env.OA_CLOUD_CONTROL_TOKEN === 'string' &&
+    env.OA_CLOUD_CONTROL_TOKEN.trim() !== '',
+  policy: managedSandboxBoxV1PolicyForEnv,
+  store: managedSandboxBoxV1StoreForEnv,
+  runtime: managedSandboxBoxV1RuntimeForEnv,
+})
+
 const sarahSpeechRoutes = makeSarahSpeechRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
     const actor = await authenticateRequestActor(request, env, ctx)
@@ -11714,6 +11786,16 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       sarahOwnerRoutes
         .handle(request, env, ctx)
         .pipe(Effect.map(materializeHttpResult)),
+  },
+  {
+    path: MANAGED_SANDBOX_DESKTOP_ADMISSION_PATH,
+    handler: (request, env, ctx) =>
+      managedSandboxDesktopRoutes.admission(request, env, ctx),
+  },
+  {
+    path: MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
+    handler: (request, env, ctx) =>
+      managedSandboxDesktopRoutes.commands(request, env, ctx),
   },
   {
     path: SARAH_SPEECH_PATH,

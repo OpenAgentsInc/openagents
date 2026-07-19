@@ -89,19 +89,19 @@ or cleanup truth.
 
 ## Dependency-ordered issue ledger
 
-| Packet | GitHub                                                           | Outcome                                                               | Depends on                                                  | State                                                  |
-| ------ | ---------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------ |
-| SBX-00 | [#9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | contract, authority, AssuranceSpec, model, and SDK conformance freeze | this plan                                                   | complete                                               |
-| SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store                         | SBX-00                                                      | complete                                               |
-| SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission                            | SBX-00/01                                                   | complete, default-off live component accepted          |
-| SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof                       | SBX-00/01                                                   | complete, default-off facade accepted                  |
-| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | complete, default-off driver component accepted        |
-| SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | complete, default-off guest I/O component accepted     |
+| Packet | GitHub                                                           | Outcome                                                               | Depends on                                                  | State                                                     |
+| ------ | ---------------------------------------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------- |
+| SBX-00 | [#9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | contract, authority, AssuranceSpec, model, and SDK conformance freeze | this plan                                                   | complete                                                  |
+| SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store                         | SBX-00                                                      | complete                                                  |
+| SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission                            | SBX-00/01                                                   | complete, default-off live component accepted             |
+| SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof                       | SBX-00/01                                                   | complete, default-off facade accepted                     |
+| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | complete, default-off driver component accepted           |
+| SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | complete, default-off guest I/O component accepted        |
 | SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration                                   | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | complete, default-off Desktop consumer component accepted |
-| SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker                                   | SBX-00/04/05                                                | not started                                            |
-| SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision                                    | SBX-06/07                                                   | not started                                            |
-| SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout                           | SBX-00 through SBX-08                                       | not started                                            |
-| SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2                        | SBX-09                                                      | not started                                            |
+| SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker                                   | SBX-00/04/05                                                | complete, default-off native broker component accepted    |
+| SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision                                    | SBX-06/07                                                   | not started                                               |
+| SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout                           | SBX-00 through SBX-08                                       | not started                                               |
+| SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2                        | SBX-09                                                      | not started                                               |
 
 The issues are native subissues of #9023. Each child owns one bounded claim.
 the epic is not a mutation claim. SBX-01, SBX-03, and the Assurance/model lane
@@ -144,15 +144,17 @@ The canonical post-basic-IDE epic is #9035. SBX-06 supplies the managed target
 consumed by IDE-13 #9041 and IDE-17 #9045 without claiming their broader exits.
 The implemented SBX-06 component retains the exact IDE-08 attachment and
 projects native managed lifecycle truth through main-owned, schema-decoded
-Desktop IPC. Its authenticated Worker endpoints land in SBX-07 and its live
-packaged acceptance remains gated by SBX-09.
+Desktop IPC. SBX-07 lands its authenticated Worker admission and command
+endpoints over the same native broker. They remain default-off, and packaged
+live acceptance remains gated by SBX-09.
 
 ### Sarah
 
 Sarah revision 4 states the desired brokered action. SBX-00 must change the
 root and Sarah authority profiles only after the closed action/resource/
 condition contract and its denial tests exist. SBX-07 then composes the same
-ManagedSandboxService used by Desktop. Every conversational tool call emits
+ManagedSandboxService used by Desktop. The SBX-07 component now exposes exactly
+eight owner-scoped Sarah tools and no generic administration surface. Every conversational tool call emits
 ordered owner-visible activity plus authority and target receipts. Pending,
 failed, refused, recovery-required, and complete stay distinct.
 

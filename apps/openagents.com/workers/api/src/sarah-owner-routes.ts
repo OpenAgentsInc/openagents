@@ -146,6 +146,16 @@ export type SarahOperationAuthorityInput = Readonly<{
   resource: string;
   triggerRef: string;
   targetEvidenceRefs?: ReadonlyArray<string> | undefined;
+  programRef?: string | undefined;
+  conditionResults?:
+    | ReadonlyArray<
+        Readonly<{
+          conditionRef: string;
+          passed: boolean;
+          evidenceRefs: ReadonlyArray<string>;
+        }>
+      >
+    | undefined;
 }>;
 
 export type SarahOperationAuthorityOutcome = Readonly<{
@@ -177,9 +187,20 @@ export const authorizeSarahOperation = (
       actorRole: "sarah_orchestrator",
       action: input.action,
       resource: input.resource,
-      programRef: "program.sarah_company_operations",
+      programRef: input.programRef ?? "program.sarah_company_operations",
       triggerRef: input.triggerRef,
-      conditionResults: [
+      conditionResults: input.conditionResults?.map((result) =>
+        result.conditionRef === "condition.owner_scope"
+          ? {
+              ...result,
+              passed: result.passed && ownerScoped,
+              evidenceRefs:
+                result.passed && ownerScoped
+                  ? [...result.evidenceRefs, `owner_scope:${input.threadRef}`]
+                  : [],
+            }
+          : result,
+      ) ?? [
         {
           conditionRef: "condition.owner_scope",
           passed: ownerScoped,

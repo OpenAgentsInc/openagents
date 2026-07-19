@@ -119,6 +119,10 @@ The generation-fenced resource reports GCE VM or Firecracker isolation
 honestly, native GCP/workroom truth remains authority and Box is compatibility
 only. SBX-00..09 lead from contract to live IDE/Sarah proof, SBX-10 is deferred.
 Portable movement and cross-machine Full Auto stay separately gated.
+SBX-00 through SBX-07 are code-landed: the native Worker broker now serves the
+closed Sarah tool set and authenticated Desktop endpoints. The broker flag stays
+off until SBX-09 independently proves the deployed GCP, cleanup, cost, rollback,
+packaged Desktop, and real owner-thread journeys.
 
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
@@ -223,7 +227,7 @@ there is no remaining AssuranceSpec program queue.
 ## Owner decisions
 
 1. **The ProductSpec-native Codex Workroom MVP is the accepted baseline.** Its signed local-first Desktop journey stays proven, closed R0–R7 successors do not silently reopen.
-2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. Managed-sandbox actions remain unavailable until SBX-00 revises authority and SBX-07 lands the closed broker.
+2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 managed-sandbox broker is code-landed and default-off. Mutation remains unavailable until SBX-09 admits the live target and rollout flag.
 3. **Desktop is the deep workbench, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** Unpacketized expansion cannot preempt Full Auto.
 4. **Retained UI uses Effect Native.** Electron, React Native/Expo, DOM, native, and canvas are hosts/renderers over shared typed components and intents.
 5. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes, local stores remain bounded caches/offline queues.
@@ -555,12 +559,12 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 This guarded projection excludes `area:docs`, live issue claims still own
 dispatch and exact plans own dependency order.
 
-| Program              | Open issues                                                                | Owning plan                                           |
-| -------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Basic IDE closure    | #9014                                                                      | `docs/ide/ROADMAP.md`                                 |
-| Managed sandboxes    | #9023, #9027, #9030, #9031, #9032, #9033                                   | `2026-07-19-managed-agent-sandboxes-accepted-plan.md` |
-| Agent IDE and parity | #9035, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                 |
-| ASSURE-REPO          | #9055, #9056, #9057, #9058, #9059, #9060                                   | `specs/openagents/assure-repo-codebase-verification.product-spec.md` |
+| Program              | Open issues                                                                 | Owning plan                                                          |
+| -------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Basic IDE closure    | #9014                                                                       | `docs/ide/ROADMAP.md`                                                |
+| Managed sandboxes    | #9023, #9027, #9030, #9031, #9032, #9033                                    | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`                |
+| Agent IDE and parity | #9035, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                                |
+| ASSURE-REPO          | #9055, #9056, #9057, #9058, #9059, #9060                                    | `specs/openagents/assure-repo-codebase-verification.product-spec.md` |
 
 The superseded broad program/client, CUT-27, AUDIO-8, and non-reauthorized PORT
 outcomes remain closed `not planned`, their bodies were not rewritten and

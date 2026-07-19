@@ -6,9 +6,9 @@ export const SARAH_PRINCIPAL_SCHEMA = "openagents.sarah.principal.v1" as const;
 export const SARAH_CONTEXT_SCHEMA = "openagents.sarah.business_context.v1" as const;
 export const SARAH_HARNESS_POLICY_SCHEMA = "openagents.sarah.harness_policy.v1" as const;
 export const SARAH_AUTHORITY_PROFILE_REF = "openagents.sarah-owner-orchestrator" as const;
-export const SARAH_AUTHORITY_REVISION = 3 as const;
+export const SARAH_AUTHORITY_REVISION = 4 as const;
 export const ROOT_AUTHORITY_PROFILE_REF = "openagents.owner-delegated-autonomy" as const;
-export const ROOT_AUTHORITY_REVISION = 5 as const;
+export const ROOT_AUTHORITY_REVISION = 6 as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Summary = S.String.check(S.isMaxLength(4_000));
@@ -128,6 +128,12 @@ export const SARAH_CAPABILITIES: ReadonlyArray<SarahCapability> = [
   {
     capabilityRef: "capability.sarah.codex_worker_dispatch",
     label: "Owner-capacity Codex workers",
+    mode: "brokered",
+    access: "act",
+  },
+  {
+    capabilityRef: "capability.sarah.managed_sandbox",
+    label: "Managed agent sandboxes",
     mode: "brokered",
     access: "act",
   },
@@ -282,6 +288,30 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
         "condition.rollback",
       ],
     },
+    {
+      grantRef: "grant.sarah.managed_sandbox",
+      roles: ["sarah_orchestrator"],
+      actions: [
+        "create_managed_sandbox",
+        "list_managed_sandboxes",
+        "inspect_managed_sandbox",
+        "dispatch_managed_sandbox_work",
+        "interrupt_managed_sandbox_turn",
+        "stop_managed_sandbox",
+        "resume_managed_sandbox",
+        "delete_managed_sandbox",
+      ],
+      resources: ["authenticated_owner_openagents_managed_sandboxes"],
+      programs: ["program.managed_agent_sandboxes"],
+      conditionRefs: [
+        "condition.owner_scope",
+        "condition.managed_sandbox_scope",
+        "condition.managed_sandbox_budget",
+        "condition.managed_sandbox_runtime_admission",
+        "condition.redaction",
+        "condition.rollback",
+      ],
+    },
   ],
   reservedActions: [
     "increase_own_authority",
@@ -323,7 +353,7 @@ export const buildSarahSystemPrompt = (
     "Provenance is retained in the private context layer. Never print raw source refs, internal IDs, UUIDs, contract refs, fleet-run refs, or bracketed citations in conversational prose. If the owner asks for evidence, use readable issue numbers, titles, and normal links available in context.",
     "Never invent a source or imply an action ran when it did not.",
     "You may recommend and prioritize broadly. Mutations still travel through typed capability brokers and the admitted authority profile.",
-    "You have real tools for reading owner-linked coding capacity, dispatching bounded Codex workers against an exact public OpenAgents commit, reading their status, reading the current Full Auto projection, and dispatching pause/resume/stop intents for an existing Full Auto run. Use those tools when the owner asks you to act or when current state is required; never claim dispatch, application, or completion until the corresponding tool result says it happened.",
+    "You have real tools for reading owner-linked coding capacity, dispatching bounded Codex workers against an exact public OpenAgents commit, reading their status, reading the current Full Auto projection, and dispatching pause/resume/stop intents for an existing Full Auto run. You also have eight closed managed-sandbox tools for create, list, inspect, dispatch, interrupt, stop, resume, and delete. Each sandbox tool is owner-scoped, exact-target, receipt-first, and may refuse while the broker or live GCP target remains unadmitted. Use those tools when the owner asks you to act or when current state is required; never claim dispatch, application, terminal completion, cleanup, or deletion until the corresponding native receipt says it happened.",
     "A pending Full Auto control intent is queued for Desktop application, not completed. Starting a new Full Auto run and editing an active Full Auto run's harness remain unavailable tools in this revision.",
     "You can inspect your released conversational harness and request a review of your own terminal owner-thread history. The review compiles private terminal experiences, proposes a bounded candidate, and submits it to a separate evaluator and Blueprint release gate. You do not evaluate, release, or activate your own candidate; any released change starts with the next turn because this turn's bundle is immutable.",
     "Never request, reveal, or reproduce raw credentials, secrets, mnemonics, private paths, or customer-private payloads.",

@@ -73,6 +73,7 @@ export type SarahRuntimeToolDependencies<Bindings> = Readonly<{
   harnessStatus?: (() => Effect.Effect<SarahHarnessStatus, unknown>) | undefined
   reviewHarness?:
     (() => Effect.Effect<SarahHarnessReviewOutcome, unknown>) | undefined
+  managedSandboxTools?: ReadonlyArray<SarahAgentTool> | undefined
 }>
 
 const toolFailure = (reason: string): SarahAgentToolError =>
@@ -688,5 +689,6 @@ export const makeSarahRuntimeTools = <Bindings>(
     fullAutoControl,
     ...(harnessStatus === undefined ? [] : [harnessStatus]),
     ...(harnessReview === undefined ? [] : [harnessReview]),
+    ...(deps.managedSandboxTools ?? []),
   ]
 }

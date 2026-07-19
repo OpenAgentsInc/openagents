@@ -281,9 +281,9 @@ product work remain closed unless separately reauthorized.
 
 The authenticated owner-private `principal.sarah` thread is admitted and is
 not part of that closed presentation scope. It reads bounded cited business
-context and invokes only named typed brokers. The #9023 expansion may add
-managed-sandbox create/list/inspect/dispatch/interrupt/stop/resume/delete only
-after SBX-00 revises authority and SBX-07 lands the closed broker. It grants no
+context and invokes only named typed brokers. SBX-00 and SBX-07 have now landed
+the exact managed-sandbox create/list/inspect/dispatch/interrupt/stop/resume/delete
+authority and broker component. Its rollout flag remains off pending SBX-09. It grants no
 generic cloud, shell, database, topology, credential, or container-admin tool,
 and it does not imply remote Full Auto start.
 

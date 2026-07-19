@@ -41,7 +41,14 @@ export type IdeManagedSandboxGateway = Readonly<{
       attachment: IdeAgentAttachment
     }>,
   ) => Effect.Effect<IdeManagedSandboxAdmission, Error>
-  execute: (command: ManagedSandboxCommand) => Effect.Effect<IdeManagedSandboxGatewayResult, Error>
+  execute: (
+    command: ManagedSandboxCommand,
+    options?: Readonly<{
+      prompt?: string | undefined
+      attachmentGeneration?: number | undefined
+    }>,
+  ) =>
+    Effect.Effect<IdeManagedSandboxGatewayResult, Error>
 }>
 
 export class IdeManagedSandboxRefused extends Schema.TaggedErrorClass<IdeManagedSandboxRefused>()(
@@ -562,7 +569,12 @@ export const makeIdeManagedSandboxLayer = (
         }
         const native = yield* canonicalCommand(decoded, input.principal, current.admission, current.resource)
         const rawResult = yield* input.gateway
-          .execute(native)
+          .execute(native, {
+            ...(decoded._tag === "Dispatch" ? { prompt: decoded.prompt } : {}),
+            ...(decoded._tag === "Create"
+              ? { attachmentGeneration: attachment.attachmentGeneration }
+              : {}),
+          })
           .pipe(
             Effect.mapError(() =>
               refusal("gateway_unavailable", "The managed-sandbox command service is unavailable."),

@@ -164,14 +164,20 @@ const fakeGateway = (
 ): Readonly<{
   gateway: IdeManagedSandboxGateway
   commands: ReadonlyArray<ManagedSandboxCommand>
+  executions: ReadonlyArray<Readonly<{ prompt?: string; attachmentGeneration?: number }>>
 }> => {
   const commands: Array<ManagedSandboxCommand> = []
+  const executions: Array<Readonly<{ prompt?: string; attachmentGeneration?: number }>> = []
   let version = 0
   let generation = 0
   let lifecycle: ManagedSandboxResource["facts"]["lifecycle"] = "ready"
   let turn: ManagedSandboxTurn | null = null
-  const execute = (command: ManagedSandboxCommand): IdeManagedSandboxGatewayResult => {
+  const execute = (
+    command: ManagedSandboxCommand,
+    executionOptions: Readonly<{ prompt?: string; attachmentGeneration?: number }> = {},
+  ): IdeManagedSandboxGatewayResult => {
     commands.push(command)
+    executions.push(executionOptions)
     switch (command._tag) {
       case "Create":
         version = 1
@@ -232,7 +238,8 @@ const fakeGateway = (
       generation,
       lifecycle,
       targetRef: options.targetRef,
-      attachmentGeneration: options.attachmentGeneration,
+      attachmentGeneration:
+        options.attachmentGeneration ?? executionOptions.attachmentGeneration,
     })
     return IdeManagedSandboxGatewayResultSchema.make({
       command,
@@ -259,9 +266,11 @@ const fakeGateway = (
   }
   return {
     commands,
+    executions,
     gateway: {
       admission: () => Effect.succeed(admission),
-      execute: (command) => Effect.sync(() => execute(command)),
+      execute: (command, executionOptions) =>
+        Effect.sync(() => execute(command, executionOptions)),
     },
   }
 }
@@ -302,6 +311,7 @@ describe("IDE managed sandbox", () => {
             sandboxRef: "sandbox.desktop.fixture",
             turnRef: "turn.desktop.fixture",
             capabilityRef: "capability.desktop.agent-turn",
+            prompt: "Inspect the attached project and report the next bounded change.",
             promptDigest: ideAgentFixtureDigest("c"),
             runtime: {
               provider: "codex",
@@ -386,6 +396,10 @@ describe("IDE managed sandbox", () => {
       "Stop",
       "Delete",
     ])
+    expect(fixture.executions[0]).toEqual({ attachmentGeneration: 1 })
+    expect(fixture.executions[1]).toEqual({
+      prompt: "Inspect the attached project and report the next bounded change.",
+    })
   })
 
   test("rejects an attachment generation fork before sending a mutation", async () => {

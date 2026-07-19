@@ -87,7 +87,11 @@ that the broker or live journey exists.
     }
   ],
   "repository_inventory": {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+    ],
     "declared_scripts": [],
     "diagnostics": [
       "repository_not_supplied"
@@ -328,7 +332,11 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "title": "Assure SARAH-AC-20"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+    ],
     "criterion_refs": [
       "SARAH-AC-21"
     ],
@@ -357,7 +365,11 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "technique": "authority_and_live_consumer_journey"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+    ],
     "criterion_refs": [
       "SARAH-AC-22"
     ],
@@ -386,7 +398,11 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "technique": "independent_live_liveness_journey"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-desktop-routes.test.ts",
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+    ],
     "criterion_refs": [
       "SARAH-AC-23"
     ],
