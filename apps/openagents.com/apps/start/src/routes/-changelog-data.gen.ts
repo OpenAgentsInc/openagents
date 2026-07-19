@@ -27,6 +27,38 @@ export type ChangelogRelease = Readonly<{
 export const CHANGELOG_RELEASES: ReadonlyArray<ChangelogRelease> =
   [
     {
+      "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-19-desktop-0.1.0-rc.25.md",
+      "blocks": [
+        {
+          "items": [
+            "Open **Files** with Command-E on macOS or Control-E on Windows and Linux. Browse the selected workspace in the Pierre file tree and edit files in Monaco with Tokyo Night and optional Vim mode.",
+            "Work with preview and pinned tabs, multiple editor groups, split views, quick open, back/forward navigation, restart recovery, and the real Git working-tree review surface.",
+            "TypeScript and JavaScript files now have generation-safe project intelligence: Problems, Outline, breadcrumbs, definitions, references, rename previews, formatting, code actions, semantic styling, inlay hints, and folding.",
+            "The deterministic daily-use acceptance gate now binds the basic-IDE claim to an exact packaged app tree and checks 15 workflow classes, performance budgets, chat-only laziness, teardown, rollback, and architecture custody.",
+            "Full Auto remains available from the left rail and is covered by the Desktop release gate.",
+            "The macOS artifact is Developer ID signed, Apple notarized, stapled, and Gatekeeper-verified. This strictly newer RC corrects rc.24's unsigned experimental artifact without replacing its immutable bytes."
+          ],
+          "kind": "bullets"
+        },
+        {
+          "kind": "paragraph",
+          "text": "This is a release candidate, not a stable-channel or signed-feed promotion. Integrated terminal, debugger, tasks/tests, cloud language services, and inline AI editing remain outside this candidate."
+        }
+      ],
+      "channel": "rc",
+      "date": "2026-07-19",
+      "title": "OpenAgents Desktop 0.1.0-rc.25 — 2026-07-19",
+      "version": "0.1.0-rc.25",
+      "attribution": {
+        "authorityRef": "AUTHORITY.md revision 2; grant.autonomous_rc_release_and_communication",
+        "releaseActor": "OpenAgents release operator",
+        "releaseUrl": "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25",
+        "sourceFeedback": "owner-directed Codex release correction, 2026-07-19",
+        "triggeredBy": "OpenAgents owner request for a tested, signed basic-IDE release candidate",
+        "triggerKind": "owner_direction"
+      }
+    },
+    {
       "agentChangelogUrl": "https://github.com/OpenAgentsInc/openagents/blob/main/docs/changelog/2026-07-19-desktop-0.1.0-rc.24.md",
       "blocks": [
         {
