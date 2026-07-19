@@ -76,6 +76,17 @@ relative path or use without `--enable-managed-sandbox`.
 Absent configuration returns typed `503`. There is no local, fake, alternate
 provider, broad host, wallet, payment, or cloud-admin fallback.
 
+SBX-09 supplies the live driver at
+`scripts/cloud/managed-sandbox-io-driver.mjs` and installs the guest executor
+from `scripts/cloud/managed-sandbox-guest-io.py` in the immutable image. The
+control driver uses internal-IP SSH only. The guest executor resolves file and
+artifact paths with Linux `openat2` beneath `/workspace`, rejects symlinks and
+magic links, and runs commands in a Bubblewrap network namespace with no
+network interface. It applies CPU, process, duration, and combined output
+limits, kills the process group on timeout or output excess, scans returned
+bytes for secret-shaped material, and removes operation scratch before it
+emits a success receipt.
+
 ## Fault response
 
 The component refuses these classes before it returns success:
@@ -102,6 +113,8 @@ pnpm --dir apps/openagents.com/workers/api run typecheck
 pnpm --dir apps/openagents.com/workers/api exec vp test --run src/managed-sandbox-box-v1-routes.test.ts
 cargo test -p oa-codex-control managed_sandbox_guest_io
 bash -n scripts/cloud/gcp-codex-control-deploy.sh
+node --check scripts/cloud/managed-sandbox-io-driver.mjs
+python3 -m py_compile scripts/cloud/managed-sandbox-guest-io.py
 pnpm run check:fast
 ```
 

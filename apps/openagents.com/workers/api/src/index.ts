@@ -865,6 +865,7 @@ import { handleLander5Page } from './lander5-routes'
 import {
   isManagedSandboxBrokerEnabled,
   isManagedSandboxBoxV1Enabled,
+  isManagedSandboxRuntimeConfigured,
   makeBoxV1Principal,
   managedSandboxBoxV1PolicyForEnv,
   managedSandboxBoxV1RuntimeForEnv,
@@ -880,6 +881,7 @@ import {
   MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
   makeManagedSandboxDesktopRoutes,
 } from './managed-sandbox-desktop-routes'
+import { makeManagedSandboxProviderBrokerRoutes } from './managed-sandbox-provider-broker'
 import {
   MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
   MANAGED_SANDBOX_WEB_SUPERVISION_PATH,
@@ -6932,12 +6934,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
               runtimeAdmitted:
                 isManagedSandboxBrokerEnabled(
                   env.MANAGED_SANDBOX_BROKER_ENABLED,
-                ) &&
-                env.KHALA_SYNC_DB !== undefined &&
-                typeof env.OA_CLOUD_CONTROL_URL === 'string' &&
-                env.OA_CLOUD_CONTROL_URL.trim() !== '' &&
-                typeof env.OA_CLOUD_CONTROL_TOKEN === 'string' &&
-                env.OA_CLOUD_CONTROL_TOKEN.trim() !== '',
+                ) && isManagedSandboxRuntimeConfigured(env),
               broker: makeManagedSandboxBroker({
                 principal: sarahPrincipal,
                 policy,
@@ -10601,11 +10598,7 @@ const managedSandboxDesktopRoutes = makeManagedSandboxDesktopRoutes<Env>({
   },
   enabled: env =>
     isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
-    env.KHALA_SYNC_DB !== undefined &&
-    typeof env.OA_CLOUD_CONTROL_URL === 'string' &&
-    env.OA_CLOUD_CONTROL_URL.trim() !== '' &&
-    typeof env.OA_CLOUD_CONTROL_TOKEN === 'string' &&
-    env.OA_CLOUD_CONTROL_TOKEN.trim() !== '',
+    isManagedSandboxRuntimeConfigured(env),
   policy: managedSandboxBoxV1PolicyForEnv,
   store: managedSandboxBoxV1StoreForEnv,
   runtime: managedSandboxBoxV1RuntimeForEnv,
@@ -10628,11 +10621,7 @@ const managedSandboxSupervisionRoutes = makeManagedSandboxSupervisionRoutes<Env>
   },
   enabled: env =>
     isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
-    env.KHALA_SYNC_DB !== undefined &&
-    typeof env.OA_CLOUD_CONTROL_URL === 'string' &&
-    env.OA_CLOUD_CONTROL_URL.trim() !== '' &&
-    typeof env.OA_CLOUD_CONTROL_TOKEN === 'string' &&
-    env.OA_CLOUD_CONTROL_TOKEN.trim() !== '',
+    isManagedSandboxRuntimeConfigured(env),
   policy: managedSandboxBoxV1PolicyForEnv,
   store: managedSandboxBoxV1StoreForEnv,
   runtime: managedSandboxBoxV1RuntimeForEnv,
@@ -13777,7 +13766,8 @@ export const exactRouteHandlerForPath = (path: string) =>
 
 const boxV1Routes = makeBoxV1Routes<OpenAgentsWorkerEnv>({
   enabled: env =>
-    isManagedSandboxBoxV1Enabled(env.MANAGED_SANDBOX_BOX_V1_ENABLED),
+    isManagedSandboxBoxV1Enabled(env.MANAGED_SANDBOX_BOX_V1_ENABLED) &&
+    isManagedSandboxRuntimeConfigured(env),
   authenticate: (request, env) =>
     Effect.gen(function* () {
       const token = readBearerToken(request)
@@ -13824,6 +13814,11 @@ const boxV1Routes = makeBoxV1Routes<OpenAgentsWorkerEnv>({
   store: env => Effect.succeed(managedSandboxBoxV1StoreForEnv(env)),
   runtime: managedSandboxBoxV1RuntimeForEnv,
 })
+
+const managedSandboxProviderBrokerRoutes =
+  makeManagedSandboxProviderBrokerRoutes({
+    store: managedSandboxBoxV1StoreForEnv,
+  })
 
 const routeRequest = makeWorkerRouteRequest({
   cleanProductRouteRedirectLocation,
@@ -14065,6 +14060,7 @@ const routeRequest = makeWorkerRouteRequest({
       enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
     }),
   routeBoxV1Request: (request, env) =>
+    managedSandboxProviderBrokerRoutes.route(request, env) ??
     boxV1Routes.routeBoxV1Request(request, env),
   routeSandboxRequest: (request, env) =>
     routeSandboxRequest(request, {

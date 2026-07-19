@@ -19,7 +19,7 @@ usage() {
 Usage:
   scripts/gcp-codex-control-deploy.sh \
     --project PROJECT_ID \
-    --control-token TOKEN \
+    (--control-token TOKEN | --control-token-secret SECRET_NAME) \
     [--zone us-central1-a] [--machine-type e2-small] \
     [--instance oa-codex-control-1] \
     [--firewall-rule oa-codex-control-port] \
@@ -32,6 +32,9 @@ Usage:
       --managed-sandbox-image-id IMMUTABLE_ID \
       --managed-sandbox-image-digest sha256:HEX \
       --managed-sandbox-profile-digest sha256:HEX \
+      --managed-sandbox-control-internal-ip 10.0.0.10 \
+      --managed-sandbox-provider-broker-url https://openagents.com \
+      [--managed-sandbox-provider-broker-port 8790] \
       [--managed-sandbox-turn-driver /absolute/path] \
       [--managed-sandbox-io-driver /absolute/path]] \
     [--apply]
@@ -39,6 +42,7 @@ Usage:
 Required:
   --project          GCP project id (e.g. openagentsgemini)
   --control-token    OA_CODEX_CONTROL_TOKEN bearer for the HTTP control API
+  --control-token-secret  Secret Manager secret read by the keyless control VM
 
 Notes:
   - The control port (8787) firewall is restricted to --control-source-cidr
@@ -56,6 +60,7 @@ firewall_rule="oa-codex-control-port"
 network_tag="oa-codex-control"
 image_tag="cloud95"
 control_token=""
+control_token_secret=""
 control_source_cidr=""
 apply="false"
 enable_managed_sandbox="false"
@@ -64,6 +69,9 @@ managed_sandbox_image_name=""
 managed_sandbox_image_id=""
 managed_sandbox_image_digest=""
 managed_sandbox_profile_digest=""
+managed_sandbox_control_internal_ip=""
+managed_sandbox_provider_broker_url=""
+managed_sandbox_provider_broker_port="8790"
 managed_sandbox_turn_driver=""
 managed_sandbox_io_driver=""
 
@@ -77,6 +85,7 @@ while [[ $# -gt 0 ]]; do
     --network-tag) network_tag="${2:-}"; shift 2 ;;
     --image-tag) image_tag="${2:-}"; shift 2 ;;
     --control-token) control_token="${2:-}"; shift 2 ;;
+    --control-token-secret) control_token_secret="${2:-}"; shift 2 ;;
     --control-source-cidr) control_source_cidr="${2:-}"; shift 2 ;;
     --enable-managed-sandbox) enable_managed_sandbox="true"; shift ;;
     --managed-sandbox-image-project) managed_sandbox_image_project="${2:-}"; shift 2 ;;
@@ -84,6 +93,9 @@ while [[ $# -gt 0 ]]; do
     --managed-sandbox-image-id) managed_sandbox_image_id="${2:-}"; shift 2 ;;
     --managed-sandbox-image-digest) managed_sandbox_image_digest="${2:-}"; shift 2 ;;
     --managed-sandbox-profile-digest) managed_sandbox_profile_digest="${2:-}"; shift 2 ;;
+    --managed-sandbox-control-internal-ip) managed_sandbox_control_internal_ip="${2:-}"; shift 2 ;;
+    --managed-sandbox-provider-broker-url) managed_sandbox_provider_broker_url="${2:-}"; shift 2 ;;
+    --managed-sandbox-provider-broker-port) managed_sandbox_provider_broker_port="${2:-}"; shift 2 ;;
     --managed-sandbox-turn-driver) managed_sandbox_turn_driver="${2:-}"; shift 2 ;;
     --managed-sandbox-io-driver) managed_sandbox_io_driver="${2:-}"; shift 2 ;;
     --apply) apply="true"; shift ;;
@@ -92,8 +104,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$project_id" || -z "$control_token" || -z "$instance" || -z "$firewall_rule" || -z "$network_tag" ]]; then
-  echo "project, control token, instance, firewall rule, and network tag are required" >&2
+if [[ -z "$project_id" || -z "$instance" || -z "$firewall_rule" || -z "$network_tag" ]] || \
+   [[ -z "$control_token" && -z "$control_token_secret" ]] || \
+   [[ -n "$control_token" && -n "$control_token_secret" ]]; then
+  echo "project, exactly one control token source, instance, firewall rule, and network tag are required" >&2
   usage >&2
   exit 2
 fi
@@ -121,7 +135,9 @@ if [[ "$enable_managed_sandbox" == "true" ]]; then
     "$managed_sandbox_image_name" \
     "$managed_sandbox_image_id" \
     "$managed_sandbox_image_digest" \
-    "$managed_sandbox_profile_digest"; do
+    "$managed_sandbox_profile_digest" \
+    "$managed_sandbox_control_internal_ip" \
+    "$managed_sandbox_provider_broker_url"; do
     if [[ -z "$value" ]]; then
       echo "managed-sandbox image project/name/id/digest and profile digest are required when enabled" >&2
       exit 2
@@ -132,12 +148,19 @@ if [[ "$enable_managed_sandbox" == "true" ]]; then
     echo "managed-sandbox image and profile digests must be sha256 refs" >&2
     exit 2
   fi
+  if [[ ! "$managed_sandbox_control_internal_ip" =~ ^10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || \
+     [[ ! "$managed_sandbox_provider_broker_port" =~ ^[0-9]{2,5}$ ]] || \
+     [[ ! "$managed_sandbox_provider_broker_url" =~ ^https:// ]]; then
+    echo "managed-sandbox control IP, broker port, or HTTPS broker URL is invalid" >&2
+    exit 2
+  fi
 fi
 
 region="${zone%-*}"
 control_sa="oa-codex-control@${project_id}.iam.gserviceaccount.com"
 image="${region}-docker.pkg.dev/${project_id}/oa-cloud/oa-codex-control:${image_tag}"
 fw_control="$firewall_rule"
+fw_control_deny="${firewall_rule}-deny"
 
 run() {
   if [[ "$apply" == "true" ]]; then
@@ -147,27 +170,33 @@ run() {
   fi
 }
 
-# Container declaration runs the control image. The live GCE provisioner shells
-# out to gcloud inside the container using GCE metadata ADC (the instance SA).
-# OA_CODEX_GCE_USE_METADATA_ADC=true tells adc_available() to trust the
-# metadata-server identity (no key files).
-container_env="\
-OA_CODEX_CONTROL_BIND=0.0.0.0:8787,\
-OA_CODEX_CONTROL_TOKEN=${control_token},\
-OA_CODEX_CONTROL_STATE_ROOT=/var/lib/openagents/codex-control,\
-OA_CODEX_GCE_PROVISIONER=live,\
-OA_CODEX_GCE_PROJECT_ID=${project_id},\
-OA_CODEX_GCE_ZONE=${zone},\
-OA_CODEX_GCE_MACHINE_TYPE=e2-small,\
-OA_CODEX_GCE_USE_METADATA_ADC=true"
-
 # Use the Container-Optimized OS container declaration via metadata so the VM
 # runs the image as a managed container with the instance SA's ADC.
 container_decl="$(mktemp)"
-trap 'rm -f "$container_decl"' EXIT
+startup_script="$(mktemp)"
+trap 'rm -f "$container_decl" "$startup_script"' EXIT
+cat >"$startup_script" <<'STARTUP'
+#!/bin/sh
+set -eu
+install -d -m 0700 /var/lib/openagents
+STARTUP
 managed_sandbox_env_yaml=""
 managed_sandbox_turn_driver_env_yaml=""
 managed_sandbox_io_driver_env_yaml=""
+control_token_env_yaml=""
+if [[ -n "$control_token_secret" ]]; then
+  control_token_env_yaml="$(cat <<ENVYAML
+        - name: OA_CODEX_CONTROL_TOKEN_SECRET
+          value: "${control_token_secret}"
+ENVYAML
+)"
+else
+  control_token_env_yaml="$(cat <<ENVYAML
+        - name: OA_CODEX_CONTROL_TOKEN
+          value: "${control_token}"
+ENVYAML
+)"
+fi
 if [[ -n "$managed_sandbox_turn_driver" ]]; then
   managed_sandbox_turn_driver_env_yaml="$(cat <<ENVYAML
         - name: OA_MANAGED_SANDBOX_TURN_DRIVER
@@ -211,9 +240,17 @@ if [[ "$enable_managed_sandbox" == "true" ]]; then
         - name: OA_MANAGED_SANDBOX_PROVISIONER_REF
           value: "provisioner-ref://openagents/oa-codex-control/gce-v1"
         - name: OA_MANAGED_SANDBOX_NETWORK_POLICY_REF
-          value: "network-policy-ref://openagents/managed-sandbox/deny-all-v1"
+          value: "network-policy-ref://openagents/managed-sandbox/broker-only-v1"
         - name: OA_MANAGED_SANDBOX_CONTROL_IDENTITY_REF
           value: "identity-ref://openagents/managed-sandbox/control"
+        - name: OA_MANAGED_SANDBOX_CONTROL_INTERNAL_IP
+          value: "${managed_sandbox_control_internal_ip}"
+        - name: OA_MANAGED_SANDBOX_CONTROL_SERVICE_ACCOUNT
+          value: "${control_sa}"
+        - name: OA_MANAGED_SANDBOX_PROVIDER_BROKER_URL
+          value: "${managed_sandbox_provider_broker_url}"
+        - name: OA_MANAGED_SANDBOX_PROVIDER_BROKER_PORT
+          value: "${managed_sandbox_provider_broker_port}"
 ${managed_sandbox_turn_driver_env_yaml}
 ${managed_sandbox_io_driver_env_yaml}
 ENVYAML
@@ -229,8 +266,7 @@ spec:
       env:
         - name: OA_CODEX_CONTROL_BIND
           value: "0.0.0.0:8787"
-        - name: OA_CODEX_CONTROL_TOKEN
-          value: "${control_token}"
+${control_token_env_yaml}
         - name: OA_CODEX_CONTROL_STATE_ROOT
           value: "/var/lib/openagents/codex-control"
         # Required by Config even for provisioner-only operation. The account
@@ -253,7 +289,14 @@ spec:
         - name: OA_CODEX_GCE_USE_METADATA_ADC
           value: "true"
 ${managed_sandbox_env_yaml}
+      volumeMounts:
+        - name: control-state
+          mountPath: /var/lib/openagents
   restartPolicy: Always
+  volumes:
+    - name: control-state
+      hostPath:
+        path: /var/lib/openagents
   # Host networking so the control daemon's :8787 listener is reachable on the
   # VM's network interface (the GCE firewall is the access control boundary).
   hostNetwork: true
@@ -271,6 +314,8 @@ if [[ "$apply" == "true" ]] && gcloud compute firewall-rules describe "$fw_contr
   run gcloud compute firewall-rules update "$fw_control" \
     --project "$project_id" \
     --rules tcp:8787 \
+    --priority 900 \
+    --target-tags "$network_tag" \
     --source-ranges "$source_ranges"
 else
   run gcloud compute firewall-rules create "$fw_control" \
@@ -278,8 +323,27 @@ else
     --direction INGRESS \
     --action ALLOW \
     --rules tcp:8787 \
+    --priority 900 \
     --target-tags "$network_tag" \
     --source-ranges "$source_ranges"
+fi
+if [[ "$apply" == "true" ]] && gcloud compute firewall-rules describe "$fw_control_deny" \
+     --project "$project_id" >/dev/null 2>&1; then
+  run gcloud compute firewall-rules update "$fw_control_deny" \
+    --project "$project_id" \
+    --rules tcp:8787 \
+    --priority 1000 \
+    --target-tags "$network_tag" \
+    --source-ranges 0.0.0.0/0
+else
+  run gcloud compute firewall-rules create "$fw_control_deny" \
+    --project "$project_id" \
+    --direction INGRESS \
+    --action DENY \
+    --rules tcp:8787 \
+    --priority 1000 \
+    --target-tags "$network_tag" \
+    --source-ranges 0.0.0.0/0
 fi
 
 # Redeploy-safe: delete an existing instance of the same name before recreate.
@@ -297,6 +361,14 @@ if [[ "$apply" == "true" ]] && gcloud compute instances describe "$instance" \
   fi
 fi
 
+private_network_args=()
+if [[ -n "$managed_sandbox_control_internal_ip" ]]; then
+  private_network_args=(
+    --private-network-ip "$managed_sandbox_control_internal_ip"
+    --no-address
+  )
+fi
+
 run gcloud compute instances create "$instance" \
   --project "$project_id" \
   --zone "$zone" \
@@ -305,9 +377,10 @@ run gcloud compute instances create "$instance" \
   --scopes cloud-platform \
   --image-family cos-stable \
   --image-project cos-cloud \
+  "${private_network_args[@]}" \
   --tags "$network_tag" \
   --labels "openagents-managed=control,openagents-component=codex-control" \
-  --metadata-from-file "gce-container-declaration=${container_decl}" \
+  --metadata-from-file "gce-container-declaration=${container_decl},startup-script=${startup_script}" \
   --metadata "google-logging-enabled=true"
 
 cat <<SUMMARY

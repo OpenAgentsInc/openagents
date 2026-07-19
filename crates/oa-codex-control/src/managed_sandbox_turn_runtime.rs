@@ -59,6 +59,10 @@ pub struct ManagedSandboxTurnRuntimeRequest {
     pub reason_ref: Option<String>,
     #[serde(default)]
     pub idempotency_ref: Option<String>,
+    #[serde(default)]
+    pub provider_capability_token: Option<String>,
+    #[serde(default)]
+    pub provider_model: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -405,8 +409,29 @@ impl ManagedSandboxTurnRuntimeRequest {
                         "dispatch_sequence_must_start_at_zero",
                     ));
                 }
+                let capability = self.provider_capability_token.as_deref().ok_or_else(|| {
+                    TurnRuntimeError::invalid("dispatch_provider_capability_required")
+                })?;
+                if capability.len() < 32
+                    || capability.len() > 16_384
+                    || capability.chars().any(char::is_whitespace)
+                {
+                    return Err(TurnRuntimeError::invalid(
+                        "dispatch_provider_capability_invalid",
+                    ));
+                }
+                let provider_model = self
+                    .provider_model
+                    .as_deref()
+                    .ok_or_else(|| TurnRuntimeError::invalid("dispatch_provider_model_required"))?;
+                validate_provider_model(provider_model)?;
             }
-            TurnAction::Sync if self.prompt.is_some() || self.reason_ref.is_some() => {
+            TurnAction::Sync
+                if self.prompt.is_some()
+                    || self.reason_ref.is_some()
+                    || self.provider_capability_token.is_some()
+                    || self.provider_model.is_some() =>
+            {
                 return Err(TurnRuntimeError::invalid("sync_payload_invalid"));
             }
             TurnAction::Interrupt => {
@@ -416,6 +441,9 @@ impl ManagedSandboxTurnRuntimeRequest {
                         .as_deref()
                         .ok_or_else(|| TurnRuntimeError::invalid("interrupt_reason_required"))?,
                 )?;
+                if self.provider_capability_token.is_some() || self.provider_model.is_some() {
+                    return Err(TurnRuntimeError::invalid("interrupt_payload_invalid"));
+                }
                 validate_ref(
                     "idempotencyRef",
                     self.idempotency_ref.as_deref().ok_or_else(|| {
@@ -571,6 +599,22 @@ fn validate_ref(_field: &str, value: &str) -> Result<(), TurnRuntimeError> {
     Ok(())
 }
 
+fn validate_provider_model(value: &str) -> Result<(), TurnRuntimeError> {
+    if value.len() < 3
+        || value.len() > 256
+        || !value
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_alphanumeric())
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | ':' | '-' | '@')
+        })
+    {
+        return Err(TurnRuntimeError::invalid("provider_model_invalid"));
+    }
+    Ok(())
+}
+
 fn valid_sha256(value: &str) -> bool {
     value.len() == 71
         && value.starts_with("sha256:")
@@ -611,6 +655,10 @@ mod tests {
             reason_ref: (action == TurnAction::Interrupt).then(|| "reason.sbx04.stop".to_string()),
             idempotency_ref: (action == TurnAction::Interrupt)
                 .then(|| "idempotency.sbx04.stop".to_string()),
+            provider_capability_token: (action == TurnAction::Dispatch)
+                .then(|| "private.signed.capability.token.with.sufficient.length".to_string()),
+            provider_model: (action == TurnAction::Dispatch)
+                .then(|| format!("{provider}-provider-model")),
         }
     }
 

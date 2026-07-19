@@ -273,6 +273,13 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // SBX-09 independently proves the live GCP target and arms rollout.
   MANAGED_SANDBOX_BROKER_ENABLED?: string | undefined
   OA_MANAGED_SANDBOX_IMAGE_DIGEST?: string | undefined
+  OA_MANAGED_SANDBOX_PROFILE_DIGEST?: string | undefined
+  OA_MANAGED_SANDBOX_CONTROL_URL?: string | undefined
+  OA_MANAGED_SANDBOX_CONTROL_TOKEN?: string | undefined
+  OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY?: string | undefined
+  OA_MANAGED_SANDBOX_CODEX_MODEL?: string | undefined
+  OA_MANAGED_SANDBOX_CLAUDE_MODEL?: string | undefined
+  OA_MANAGED_SANDBOX_CLAUDE_LOCATION?: string | undefined
   // Agent Computer launch surface flag (autopilot.cloud_coding_sessions.v1, red).
   // Default OFF: the `/v1/cloud-coding-sessions` launch + lifecycle routes are
   // inert on the live Worker until the Firecracker/GCE runtime is wired. Set

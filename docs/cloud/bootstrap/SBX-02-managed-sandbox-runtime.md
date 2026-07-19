@@ -40,7 +40,7 @@ The first profile has these fixed values:
 | immutable image ID | `8995931917882208093` |
 | image identity digest | `sha256:6db516ddd2287bf98ae0471f5d2f920748f55777af6167647da86eff7267bec2` |
 | profile digest | `sha256:078db1b226e34dcc2df0738c81f0134b9bcb3d92b2b1242565fa6a5b27e9dedc` |
-| network policy | `network-policy-ref://openagents/managed-sandbox/deny-all-v1` |
+| network policy | `network-policy-ref://openagents/managed-sandbox/deny-all-v1` (historical SBX-02 probe profile) |
 | control identity | `identity-ref://openagents/managed-sandbox/control` |
 | guest identity | `identity-ref://openagents/managed-sandbox/guest-none` |
 | minimum and prewarm | `0` |
@@ -62,6 +62,37 @@ class, network policy, and no-identity guest policy.
 The deployment must supply both digests.
 The service refuses a profile or image mismatch.
 
+## SBX-09 operational profile overlay
+
+The historical Ubuntu image and deny-all probe profile above remain the
+evidence-bound SBX-02 component baseline. They are not accepted for owner
+agent turns. SBX-09 builds a dedicated Debian guest image with
+`scripts/cloud/build-managed-sandbox-guest-image.sh` and records its immutable
+image ID, image digest, profile digest, source revision, and provisioner
+revision in the acceptance evidence.
+
+The operational profile uses
+`network-policy-ref://openagents/managed-sandbox/broker-only-v1`. Each
+sandbox generation owns four firewall rules:
+
+- allow egress only to the private control broker on TCP 8790 at priority 900.
+- deny all other egress at priority 1000.
+- allow ingress only from the control service account on TCP 22 at priority
+  900. And
+- deny all other ingress at priority 1000.
+
+The VM still has no external address, service account, OAuth scope, provider
+credential, or ambient provider home. The Worker retains the provider
+credentials. It issues a short-lived HMAC capability bound to the exact
+tenant, sandbox, generation, turn, provider, model, and capability ref. The
+guest can present that capability only through the private control broker.
+The control bearer token and broker signing key live in Secret Manager and do
+not appear in VM metadata. The dedicated control VM also has no external IP.
+Persistent priority-900 rules admit only the managed-sandbox guest tag to TCP
+8790 and the Cloud Run connector or IAP to TCP 8787. Priority-1000 rules deny
+every other source on those ports, including traffic otherwise admitted by a
+default-VPC internal rule.
+
 ## Isolation controls
 
 The live provider applies these controls before it reports `ready`:
@@ -69,8 +100,11 @@ The live provider applies these controls before it reports `ready`:
 - The VM has no external IP address.
 - The VM has no service account and no OAuth scopes.
 - Project SSH keys are blocked.
-- The VM has no ingress firewall rule.
-- A sandbox-specific egress firewall rule denies all IPv4 egress.
+- The historical readiness profile has no ingress rule and denies all IPv4
+  egress.
+- The operational turn profile admits only the generation-owned control SSH
+  and provider-broker paths described above. It denies every other ingress and
+  egress path.
 - Secure Boot, vTPM, and integrity monitoring are on.
 - The boot disk is an auto-delete disk.
 - IP forwarding is off.
@@ -116,15 +150,15 @@ It does not select a different region, image, machine, or provider.
 
 Delete is valid only after `stopped`, `failed`, `recovery_required`, or an
 earlier `deleting` settlement.
-Cleanup deletes the VM and the sandbox egress rule.
+Cleanup deletes the VM and every generation-owned ingress and egress rule.
 It then queries GCE until all these counts are zero:
 
 - instance.
-- firewall rule. And
+- firewall rules. And
 - boot or scratch disk.
 
-The admitted profile creates no ingress rule and no guest service-account
-grant.
+The guest receives no service-account grant. The operational profile creates
+only the scoped control ingress rules described above.
 The cleanup receipt records those sets as zero.
 If any observed set is not zero, the runtime reports `recovery_required`.
 It does not report `deleted`.

@@ -4,9 +4,11 @@ import {
 } from '@openagentsinc/khala-sync-server'
 import {
   BOX_V1_TRANSLATOR_REF,
+  type ManagedSandboxCommand,
   type ManagedSandboxGuestIoAction,
   type ManagedSandboxGuestIoResponse,
   ManagedSandboxGuestIoResponseSchema,
+  type ManagedSandboxResource,
   ManagedSandboxResourceSchema,
   ManagedSandboxRuntimeEventInputSchema,
 } from '@openagentsinc/managed-sandbox-contract'
@@ -24,6 +26,10 @@ import {
   unavailableBoxV1Runtime,
   upstreamUnavailable,
 } from './managed-sandbox-box-v1-routes'
+import {
+  managedSandboxProviderModel,
+  mintManagedSandboxProviderCapability,
+} from './managed-sandbox-provider-broker'
 
 export const isManagedSandboxBoxV1Enabled = (
   value: string | undefined,
@@ -33,6 +39,23 @@ export const isManagedSandboxBoxV1Enabled = (
   value?.toLowerCase() === 'on'
 
 export const isManagedSandboxBrokerEnabled = isManagedSandboxBoxV1Enabled
+
+const Sha256RefPattern = /^sha256:[0-9a-f]{64}$/
+
+export const isManagedSandboxRuntimeConfigured = (
+  env: OpenAgentsWorkerEnv,
+): boolean =>
+  env.KHALA_SYNC_DB !== undefined &&
+  typeof env.OA_MANAGED_SANDBOX_CONTROL_URL === 'string' &&
+  env.OA_MANAGED_SANDBOX_CONTROL_URL.trim().startsWith('https://') &&
+  typeof env.OA_MANAGED_SANDBOX_CONTROL_TOKEN === 'string' &&
+  env.OA_MANAGED_SANDBOX_CONTROL_TOKEN.trim() !== '' &&
+  typeof env.OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY === 'string' &&
+  env.OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY.trim().length >= 32 &&
+  typeof env.OA_MANAGED_SANDBOX_IMAGE_DIGEST === 'string' &&
+  Sha256RefPattern.test(env.OA_MANAGED_SANDBOX_IMAGE_DIGEST.trim()) &&
+  typeof env.OA_MANAGED_SANDBOX_PROFILE_DIGEST === 'string' &&
+  Sha256RefPattern.test(env.OA_MANAGED_SANDBOX_PROFILE_DIGEST.trim())
 
 const storeError = (error: unknown): BoxV1FacadeError => {
   if (error instanceof ManagedSandboxStoreError) {
@@ -195,17 +218,17 @@ export const managedSandboxBoxV1PolicyForEnv = (
           leaseRef: 'lease.policy.validation',
           state: 'active',
           issuedAt: '2026-07-19T00:00:00.000Z',
-          expiresAt: '2026-07-19T01:00:00.000Z',
-          ttlSeconds: 3_600,
+          expiresAt: '2026-07-19T00:15:00.000Z',
+          ttlSeconds: 900,
           renewable: true,
         },
         budget: {
           currency: 'USD',
           maxCostMicros: 10_000,
-          maxCpuMillis: 3_600_000,
+          maxCpuMillis: 900_000,
           maxNetworkBytes: 100_000_000,
           maxArtifactBytes: 10_000_000,
-          maxLifetimeSeconds: 3_600,
+          maxLifetimeSeconds: 900,
         },
         capabilities: [],
         facts: {
@@ -225,11 +248,11 @@ export const managedSandboxBoxV1PolicyForEnv = (
         target: resource.target,
         imageDigest: resource.imageDigest,
         profileRef: resource.profileRef,
-        defaultTtlSeconds: 3_600,
-        maxTtlSeconds: 86_400,
+        defaultTtlSeconds: 900,
+        maxTtlSeconds: 1_800,
         maxActiveBoxes: 2,
         maxCostMicros: 10_000,
-        maxCpuMillis: 86_400_000,
+        maxCpuMillis: 1_800_000,
         maxNetworkBytes: 100_000_000,
         maxArtifactBytes: 10_000_000,
       }
@@ -290,6 +313,244 @@ const managedSandboxTurnResponseSchema = S.Struct({
   events: S.Array(ManagedSandboxRuntimeEventInputSchema),
 })
 
+const NonNegativeInteger = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+)
+const PositiveInteger = S.Number.check(S.isInt(), S.isGreaterThan(0))
+
+const managedSandboxLifecycleResponseSchema = S.Struct({
+  schemaVersion: S.Literal('openagents.managed_sandbox_runtime.v1'),
+  receiptRef: S.String,
+  operationRef: S.String,
+  action: S.Literals(['create', 'stop', 'resume', 'delete']),
+  sandboxRef: S.String,
+  generation: PositiveInteger,
+  phase: S.Literals([
+    'ready',
+    'stopped',
+    'failed',
+    'recovery_required',
+    'deleted',
+  ]),
+  targetRef: S.String,
+  profileRef: S.String,
+  profileDigest: S.String,
+  imageRef: S.String,
+  imageDigest: S.String,
+  isolationClass: S.String,
+  networkPolicyRef: S.String,
+  controlIdentityRef: S.String,
+  guestIdentityRef: S.String,
+  providerKind: S.Literal('live_gce'),
+  readinessObserved: S.Boolean,
+  cleanupObserved: S.Boolean,
+  measuredRunningMs: NonNegativeInteger,
+  measuredCostMicrousd: NonNegativeInteger,
+  sandboxBudgetMicrousd: PositiveInteger,
+  programBudgetMicrousd: PositiveInteger,
+  emittedAtMs: PositiveInteger,
+  errorCode: S.NullOr(S.String),
+})
+
+const lifecycleAction = (
+  command: Extract<
+    ManagedSandboxCommand,
+    { _tag: 'Create' | 'Stop' | 'Resume' | 'Delete' }
+  >,
+): 'create' | 'stop' | 'resume' | 'delete' =>
+  command._tag.toLowerCase() as 'create' | 'stop' | 'resume' | 'delete'
+
+const managedSandboxLifecycleRequest = (
+  env: OpenAgentsWorkerEnv,
+  input: {
+    principal: BoxV1Principal
+    resource: ManagedSandboxResource
+    command: Extract<
+      ManagedSandboxCommand,
+      { _tag: 'Create' | 'Stop' | 'Resume' | 'Delete' }
+    >
+  },
+) =>
+  Effect.gen(function* () {
+    const baseUrl = env.OA_MANAGED_SANDBOX_CONTROL_URL?.trim()
+    const bearerToken = env.OA_MANAGED_SANDBOX_CONTROL_TOKEN?.trim()
+    const profileDigest = env.OA_MANAGED_SANDBOX_PROFILE_DIGEST?.trim()
+    if (!baseUrl || !bearerToken || !profileDigest) {
+      return yield* upstreamUnavailable('lifecycle')
+    }
+    const action = lifecycleAction(input.command)
+    const capabilityRefs = yield* Effect.forEach(
+      input.resource.capabilities,
+      capability =>
+        digestRef(
+          `${input.resource.sandboxRef}\n${input.resource.resourceGeneration}\n${capability.capabilityRef}`,
+        ).pipe(
+          Effect.map(value => `capability-ref://run/${value.slice(0, 32)}`),
+        ),
+    )
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(
+          `${baseUrl.replace(/\/$/, '')}/v1/managed-sandbox/runtime/operations`,
+          {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${bearerToken}`,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              operationRef: input.command.commandRef,
+              idempotencyRef: input.command.idempotencyRef,
+              actorRef: input.principal.actorRef,
+              ownerRef: input.resource.ownerRef,
+              tenantRef: input.resource.tenantRef,
+              programRef: input.resource.programRef,
+              workUnitRef: input.resource.workUnitRef,
+              sandboxRef: input.resource.sandboxRef,
+              expectedGeneration:
+                action === 'create' ? 0 : input.resource.resourceGeneration,
+              action,
+              ...(action === 'create'
+                ? {
+                    profile: {
+                      profileRef: input.resource.profileRef,
+                      profileDigest,
+                      targetRef:
+                        'target://openagents/google-cloud/managed-sandbox',
+                      provisionerRef:
+                        'provisioner-ref://openagents/oa-codex-control/gce-v1',
+                      region: input.resource.target.region,
+                      machineClass: 'e2-small',
+                      isolationClass: input.resource.target.isolation,
+                      imageRef: `gce-image-ref://sha256/${input.resource.imageDigest.replace('sha256:', '')}`,
+                      imageDigest: input.resource.imageDigest,
+                      networkPolicyRef:
+                        'network-policy-ref://openagents/managed-sandbox/broker-only-v1',
+                      controlIdentityRef:
+                        'identity-ref://openagents/managed-sandbox/control',
+                      guestIdentityRef:
+                        'identity-ref://openagents/managed-sandbox/guest-none',
+                      ttlMs: input.resource.lease.ttlSeconds * 1_000,
+                      capacity: {
+                        minCapacity: 0,
+                        maxCapacity: 2,
+                        prewarmCapacity: 0,
+                        concurrentCapacityCap: 2,
+                      },
+                      budget: {
+                        sandboxBudgetMicrousd:
+                          input.resource.budget.maxCostMicros,
+                        programBudgetMicrousd: 40_000,
+                        maxHourlyCostMicrousd: 20_000,
+                      },
+                      capabilityRefs,
+                    },
+                  }
+                : {}),
+            }),
+          },
+        ),
+      catch: () => upstreamUnavailable('lifecycle'),
+    })
+    const text = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: () => upstreamUnavailable('lifecycle_response'),
+    })
+    if (!response.ok) {
+      return yield* new BoxV1FacadeError({
+        code:
+          response.status === 403
+            ? 'permission_denied'
+            : response.status === 409
+              ? 'conflict'
+              : response.status === 429
+                ? 'rate_limited'
+                : 'upstream_unavailable',
+        status: [403, 409, 429].includes(response.status)
+          ? response.status
+          : 503,
+        message: 'managed-sandbox lifecycle control refused the operation',
+        retryable: response.status === 429 || response.status >= 500,
+      })
+    }
+    const receipt = yield* Effect.try({
+      try: () =>
+        S.decodeUnknownSync(managedSandboxLifecycleResponseSchema)(
+          parseJsonUnknown(text),
+          {
+            onExcessProperty: 'preserve',
+          },
+        ),
+      catch: () => upstreamUnavailable('lifecycle_contract'),
+    })
+    const expectedGeneration =
+      action === 'create'
+        ? 1
+        : action === 'resume'
+          ? input.resource.resourceGeneration + 1
+          : input.resource.resourceGeneration
+    const expectedPhase = {
+      create: 'ready',
+      stop: 'stopped',
+      resume: 'ready',
+      delete: 'deleted',
+    }[action]
+    const expectedImageRef = `gce-image-ref://sha256/${input.resource.imageDigest.replace('sha256:', '')}`
+    if (
+      receipt.operationRef !== input.command.commandRef ||
+      receipt.action !== action ||
+      receipt.sandboxRef !== input.resource.sandboxRef ||
+      receipt.generation !== expectedGeneration ||
+      (receipt.phase !== expectedPhase &&
+        receipt.phase !== 'failed' &&
+        receipt.phase !== 'recovery_required') ||
+      receipt.targetRef !==
+        'target://openagents/google-cloud/managed-sandbox' ||
+      receipt.profileRef !== input.resource.profileRef ||
+      receipt.profileDigest !== profileDigest ||
+      receipt.imageRef !== expectedImageRef ||
+      receipt.imageDigest !== input.resource.imageDigest ||
+      receipt.isolationClass !== input.resource.target.isolation ||
+      receipt.networkPolicyRef !==
+        'network-policy-ref://openagents/managed-sandbox/broker-only-v1' ||
+      receipt.controlIdentityRef !==
+        'identity-ref://openagents/managed-sandbox/control' ||
+      receipt.guestIdentityRef !==
+        'identity-ref://openagents/managed-sandbox/guest-none' ||
+      receipt.readinessObserved !== (receipt.phase === 'ready') ||
+      (receipt.phase === 'deleted' && !receipt.cleanupObserved) ||
+      (receipt.cleanupObserved &&
+        receipt.phase !== 'deleted' &&
+        receipt.phase !== 'failed') ||
+      receipt.measuredCostMicrousd > receipt.sandboxBudgetMicrousd ||
+      receipt.sandboxBudgetMicrousd !== input.resource.budget.maxCostMicros ||
+      receipt.programBudgetMicrousd !== 40_000 ||
+      !Number.isFinite(new Date(receipt.emittedAtMs).getTime())
+    ) {
+      return yield* new BoxV1FacadeError({
+        code: 'conflict',
+        status: 409,
+        message:
+          'managed-sandbox lifecycle receipt did not bind the exact request',
+        retryable: false,
+      })
+    }
+    return {
+      operationRef: receipt.operationRef,
+      receiptRef: receipt.receiptRef,
+      action: receipt.action,
+      phase: receipt.phase,
+      generation: receipt.generation,
+      readinessObserved: receipt.readinessObserved,
+      cleanupObserved: receipt.cleanupObserved,
+      measuredRunningMs: receipt.measuredRunningMs,
+      measuredCostMicros: receipt.measuredCostMicrousd,
+      errorCode: receipt.errorCode,
+      observedAt: new Date(receipt.emittedAtMs).toISOString(),
+    }
+  })
+
 const guestIoBytes = (
   encoding: 'utf8' | 'base64',
   content: string,
@@ -330,8 +591,8 @@ const managedSandboxGuestIoRequest = (
   body: Readonly<Record<string, unknown>>,
 ) =>
   Effect.gen(function* () {
-    const baseUrl = env.OA_CLOUD_CONTROL_URL?.trim()
-    const bearerToken = env.OA_CLOUD_CONTROL_TOKEN?.trim()
+    const baseUrl = env.OA_MANAGED_SANDBOX_CONTROL_URL?.trim()
+    const bearerToken = env.OA_MANAGED_SANDBOX_CONTROL_TOKEN?.trim()
     if (!baseUrl || !bearerToken) return yield* upstreamUnavailable('guest_io')
     const response = yield* Effect.tryPromise({
       try: () =>
@@ -422,8 +683,8 @@ const managedSandboxRuntimeRequest = (
   body: Readonly<Record<string, unknown>>,
 ) =>
   Effect.gen(function* () {
-    const baseUrl = env.OA_CLOUD_CONTROL_URL?.trim()
-    const bearerToken = env.OA_CLOUD_CONTROL_TOKEN?.trim()
+    const baseUrl = env.OA_MANAGED_SANDBOX_CONTROL_URL?.trim()
+    const bearerToken = env.OA_MANAGED_SANDBOX_CONTROL_TOKEN?.trim()
     if (!baseUrl || !bearerToken) {
       return yield* upstreamUnavailable('agent_turn')
     }
@@ -535,12 +796,47 @@ export const managedSandboxBoxV1RuntimeForEnv = (
 ): Effect.Effect<BoxV1Runtime, BoxV1FacadeError> =>
   Effect.succeed({
     ...unavailableBoxV1Runtime,
+    lifecycle: input => managedSandboxLifecycleRequest(env, input),
     dispatch: input =>
-      managedSandboxRuntimeRequest(env, {
-        action: 'dispatch',
-        ...runtimeScope(input),
-        prompt: input.prompt,
-      }).pipe(Effect.map(response => response.events)),
+      Effect.gen(function* () {
+        const capability = input.resource.capabilities.find(
+          candidate =>
+            candidate.kind === 'agent_turn' && candidate.state === 'active',
+        )
+        if (capability === undefined) {
+          return yield* new BoxV1FacadeError({
+            code: 'permission_denied',
+            status: 403,
+            message: 'sandbox generation has no active agent-turn capability',
+            retryable: false,
+          })
+        }
+        const providerCapabilityToken =
+          yield* mintManagedSandboxProviderCapability(env, {
+            actorRef: input.principal.actorRef,
+            ownerRef: input.principal.ownerRef,
+            tenantRef: input.principal.tenantRef,
+            sandboxRef: input.resource.sandboxRef,
+            turnRef: input.turn.turnRef,
+            resourceGeneration: input.resource.resourceGeneration,
+            capabilityRef: capability.capabilityRef,
+            capabilityExpiresAt: capability.expiresAt,
+            provider: input.turn.runtime.provider,
+            requestedModelRef: input.turn.runtime.modelRef,
+          })
+        const response = yield* managedSandboxRuntimeRequest(env, {
+          action: 'dispatch',
+          ...runtimeScope(input),
+          prompt: input.prompt,
+          providerCapabilityToken,
+          providerModel: managedSandboxProviderModel(
+            env,
+            input.turn.runtime.provider,
+            input.turn.runtime.modelRef,
+          ),
+        })
+        return response.events
+      }),
     sync: input =>
       managedSandboxRuntimeRequest(env, {
         action: 'sync',

@@ -39,6 +39,7 @@ RUN apt-get update \
       git \
       iproute2 \
       iptables \
+      nodejs \
       procps \
       python3 \
       apt-transport-https \
@@ -52,6 +53,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/oa-codex-control /usr/local/bin/oa-codex-control
+COPY scripts/cloud/managed-sandbox-provider-proxy.py /usr/local/bin/managed-sandbox-provider-proxy.py
+COPY scripts/cloud/managed-sandbox-control-entrypoint.sh /usr/local/bin/managed-sandbox-control-entrypoint.sh
+COPY scripts/cloud/managed-sandbox-io-driver.mjs /usr/local/bin/managed-sandbox-io-driver.mjs
+COPY scripts/cloud/managed-sandbox-turn-driver.mjs /usr/local/bin/managed-sandbox-turn-driver.mjs
+RUN chmod 0755 \
+      /usr/local/bin/managed-sandbox-provider-proxy.py \
+      /usr/local/bin/managed-sandbox-control-entrypoint.sh \
+      /usr/local/bin/managed-sandbox-io-driver.mjs \
+      /usr/local/bin/managed-sandbox-turn-driver.mjs
 
 # State root for the durable local job registry (job.json / events.jsonl).
 ENV OA_CODEX_CONTROL_STATE_ROOT=/var/lib/openagents/codex-control
@@ -60,4 +70,4 @@ RUN install -d -m 0750 /var/lib/openagents/codex-control
 # Bind on all interfaces inside the VM; the GCE firewall restricts the source.
 ENV OA_CODEX_CONTROL_BIND=0.0.0.0:8787
 
-ENTRYPOINT ["/usr/local/bin/oa-codex-control"]
+ENTRYPOINT ["/usr/local/bin/managed-sandbox-control-entrypoint.sh"]

@@ -161,6 +161,11 @@ SET_SECRETS=(
   "GITHUB_CLIENT_SECRET=openagents-github-client-secret:latest"
   # Cloud coding sessions control-plane bearer (oa-cloud-run-bridge).
   "OA_CLOUD_CONTROL_TOKEN=oa-cloud-run-bridge-control-token:latest"
+  # SBX-09 dedicated managed-sandbox control and generation-scoped provider
+  # broker authority. These secrets are inert unless the exact managed-
+  # sandbox flags, image/profile digests, and dedicated control URL all bind.
+  "OA_MANAGED_SANDBOX_CONTROL_TOKEN=oa-managed-sandbox-control-token:latest"
+  "OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY=oa-managed-sandbox-broker-signing-key:latest"
   # CFG-8 GCS artifacts.
   "ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID=oa-artifacts-gcs-hmac-access-key-id:latest"
   "ARTIFACTS_GCS_HMAC_SECRET=oa-artifacts-gcs-hmac-secret:latest"

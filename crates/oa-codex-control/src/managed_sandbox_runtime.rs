@@ -230,6 +230,12 @@ impl ManagedSandboxRuntimeRequest {
 struct ProviderOwnership {
     resource_name: String,
     firewall_name: String,
+    #[serde(default)]
+    broker_egress_firewall_name: String,
+    #[serde(default)]
+    control_ingress_firewall_name: String,
+    #[serde(default)]
+    ingress_deny_firewall_name: String,
     disk_name: String,
     resource_ref: String,
     firewall_ref: String,
@@ -245,6 +251,8 @@ struct ReadinessObservation {
     no_external_ip: bool,
     no_guest_service_account: bool,
     egress_default_deny: bool,
+    broker_egress_only: bool,
+    control_ingress_only: bool,
     metadata_restricted: bool,
 }
 
@@ -256,6 +264,8 @@ impl ReadinessObservation {
             && self.no_external_ip
             && self.no_guest_service_account
             && self.egress_default_deny
+            && self.broker_egress_only
+            && self.control_ingress_only
             && self.metadata_restricted
     }
 }
@@ -990,6 +1000,9 @@ struct LiveGceManagedSandboxConfig {
     provisioner_ref: String,
     network_policy_ref: String,
     control_identity_ref: String,
+    control_internal_ip: String,
+    control_service_account: String,
+    broker_port: u16,
     gcloud_bin: String,
 }
 
@@ -1041,6 +1054,17 @@ impl LiveGceManagedSandboxProvider {
                 provisioner_ref: required("OA_MANAGED_SANDBOX_PROVISIONER_REF")?,
                 network_policy_ref: required("OA_MANAGED_SANDBOX_NETWORK_POLICY_REF")?,
                 control_identity_ref: required("OA_MANAGED_SANDBOX_CONTROL_IDENTITY_REF")?,
+                control_internal_ip: required("OA_MANAGED_SANDBOX_CONTROL_INTERNAL_IP")?,
+                control_service_account: required("OA_MANAGED_SANDBOX_CONTROL_SERVICE_ACCOUNT")?,
+                broker_port: required("OA_MANAGED_SANDBOX_PROVIDER_BROKER_PORT")?
+                    .parse::<u16>()
+                    .map_err(|_| {
+                        RuntimeError::new(
+                            503,
+                            "live_profile_incomplete",
+                            "managed-sandbox provider broker port is invalid",
+                        )
+                    })?,
                 gcloud_bin: optional_env("OA_MANAGED_SANDBOX_GCLOUD_BIN")
                     .unwrap_or_else(|| "gcloud".to_string()),
             },
@@ -1111,7 +1135,7 @@ impl LiveGceManagedSandboxProvider {
         args.extend(self.instance_args(ownership));
         args.extend([
             "--format".to_string(),
-            "json(status,networkInterfaces.accessConfigs,serviceAccounts,metadata.items)"
+            "json(status,tags.items,networkInterfaces.accessConfigs,serviceAccounts,metadata.items)"
                 .to_string(),
         ]);
         let description: Value = serde_json::from_str(&self.gcloud(&args)?).map_err(|_| {
@@ -1142,27 +1166,31 @@ impl LiveGceManagedSandboxProvider {
                 && item.get("value").and_then(Value::as_str) == Some("TRUE")
         });
 
-        let firewall = self.gcloud(&[
-            "compute".to_string(),
-            "firewall-rules".to_string(),
-            "describe".to_string(),
-            ownership.firewall_name.clone(),
-            "--project".to_string(),
-            self.config.project_id.clone(),
-            "--format".to_string(),
-            "json(direction,denied,destinationRanges,targetTags,disabled)".to_string(),
-        ])?;
-        let firewall: Value = serde_json::from_str(&firewall).map_err(|_| {
-            RuntimeError::new(
-                503,
-                "provider_observation_invalid",
-                "GCE firewall observation was not valid JSON",
-            )
-        })?;
-        let egress_default_deny = firewall.get("direction").and_then(Value::as_str)
+        let observe_firewall = |name: &str| -> Result<Value, RuntimeError> {
+            let output = self.gcloud(&[
+                "compute".to_string(),
+                "firewall-rules".to_string(),
+                "describe".to_string(),
+                name.to_string(),
+                "--project".to_string(),
+                self.config.project_id.clone(),
+                "--format".to_string(),
+                "json(direction,priority,allowed,denied,sourceRanges,sourceServiceAccounts,destinationRanges,targetTags,disabled)".to_string(),
+            ])?;
+            serde_json::from_str(&output).map_err(|_| {
+                RuntimeError::new(
+                    503,
+                    "provider_observation_invalid",
+                    "GCE firewall observation was not valid JSON",
+                )
+            })
+        };
+        let egress_deny = observe_firewall(&ownership.firewall_name)?;
+        let egress_default_deny = egress_deny.get("direction").and_then(Value::as_str)
             == Some("EGRESS")
-            && firewall.get("disabled").and_then(Value::as_bool) != Some(true)
-            && firewall
+            && egress_deny.get("priority").and_then(Value::as_u64) == Some(1000)
+            && egress_deny.get("disabled").and_then(Value::as_bool) != Some(true)
+            && egress_deny
                 .get("destinationRanges")
                 .and_then(Value::as_array)
                 .is_some_and(|ranges| {
@@ -1170,7 +1198,63 @@ impl LiveGceManagedSandboxProvider {
                         .iter()
                         .any(|range| range.as_str() == Some("0.0.0.0/0"))
                 })
-            && firewall
+            && egress_deny
+                .get("denied")
+                .and_then(Value::as_array)
+                .is_some_and(|rules| {
+                    rules
+                        .iter()
+                        .any(|rule| rule.get("IPProtocol").and_then(Value::as_str) == Some("all"))
+                });
+        let broker_egress = observe_firewall(&ownership.broker_egress_firewall_name)?;
+        let broker_egress_only = broker_egress.get("direction").and_then(Value::as_str)
+            == Some("EGRESS")
+            && broker_egress.get("priority").and_then(Value::as_u64) == Some(900)
+            && broker_egress.get("disabled").and_then(Value::as_bool) != Some(true)
+            && broker_egress
+                .get("destinationRanges")
+                .and_then(Value::as_array)
+                .is_some_and(|ranges| {
+                    ranges.len() == 1
+                        && ranges[0].as_str()
+                            == Some(format!("{}/32", self.config.control_internal_ip).as_str())
+                })
+            && broker_egress
+                .get("allowed")
+                .and_then(Value::as_array)
+                .is_some_and(|rules| {
+                    rules.iter().any(|rule| {
+                        rule.get("IPProtocol").and_then(Value::as_str) == Some("tcp")
+                            && rule
+                                .get("ports")
+                                .and_then(Value::as_array)
+                                .is_some_and(|ports| {
+                                    ports.len() == 1
+                                        && ports[0].as_str()
+                                            == Some(self.config.broker_port.to_string().as_str())
+                                })
+                    })
+                });
+        let ingress_allow = observe_firewall(&ownership.control_ingress_firewall_name)?;
+        let ingress_deny = observe_firewall(&ownership.ingress_deny_firewall_name)?;
+        let control_ingress_only = ingress_allow.get("direction").and_then(Value::as_str)
+            == Some("INGRESS")
+            && ingress_allow.get("priority").and_then(Value::as_u64) == Some(900)
+            && ingress_allow
+                .get("sourceServiceAccounts")
+                .and_then(Value::as_array)
+                .is_some_and(|accounts| {
+                    accounts.len() == 1
+                        && accounts[0].as_str()
+                            == Some(self.config.control_service_account.as_str())
+                })
+            && ingress_deny.get("direction").and_then(Value::as_str) == Some("INGRESS")
+            && ingress_deny.get("priority").and_then(Value::as_u64) == Some(1000)
+            && ingress_deny
+                .get("sourceRanges")
+                .and_then(Value::as_array)
+                .is_some_and(|ranges| ranges.len() == 1 && ranges[0].as_str() == Some("0.0.0.0/0"))
+            && ingress_deny
                 .get("denied")
                 .and_then(Value::as_array)
                 .is_some_and(|rules| {
@@ -1202,6 +1286,8 @@ impl LiveGceManagedSandboxProvider {
             no_external_ip,
             no_guest_service_account,
             egress_default_deny,
+            broker_egress_only,
+            control_ingress_only,
             metadata_restricted,
         })
     }
@@ -1230,6 +1316,9 @@ impl LiveGceManagedSandboxProvider {
         name: &str,
         zone_scoped: bool,
     ) -> Result<usize, RuntimeError> {
+        if name.is_empty() {
+            return Ok(0);
+        }
         let mut args = vec![
             "compute".to_string(),
             collection.to_string(),
@@ -1253,6 +1342,9 @@ impl LiveGceManagedSandboxProvider {
     }
 
     fn delete_named(&self, collection: &str, name: &str, zone_scoped: bool) {
+        if name.is_empty() {
+            return;
+        }
         let mut args = vec![
             "compute".to_string(),
             collection.to_string(),
@@ -1342,6 +1434,9 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
         ProviderOwnership {
             resource_name: format!("oa-msb-{suffix}"),
             firewall_name: format!("oa-msb-egress-{suffix}"),
+            broker_egress_firewall_name: format!("oa-msb-broker-{suffix}"),
+            control_ingress_firewall_name: format!("oa-msb-ssh-{suffix}"),
+            ingress_deny_firewall_name: format!("oa-msb-ingress-{suffix}"),
             disk_name: format!("oa-msb-{suffix}"),
             resource_ref: format!(
                 "gce-instance-ref://sha256/{}",
@@ -1395,6 +1490,26 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             "compute".to_string(),
             "firewall-rules".to_string(),
             "create".to_string(),
+            ownership.broker_egress_firewall_name.clone(),
+            "--project".to_string(),
+            self.config.project_id.clone(),
+            "--direction".to_string(),
+            "EGRESS".to_string(),
+            "--action".to_string(),
+            "ALLOW".to_string(),
+            "--rules".to_string(),
+            format!("tcp:{}", self.config.broker_port),
+            "--priority".to_string(),
+            "900".to_string(),
+            "--destination-ranges".to_string(),
+            format!("{}/32", self.config.control_internal_ip),
+            "--target-tags".to_string(),
+            ownership.resource_name.clone(),
+        ])?;
+        self.gcloud(&[
+            "compute".to_string(),
+            "firewall-rules".to_string(),
+            "create".to_string(),
             ownership.firewall_name.clone(),
             "--project".to_string(),
             self.config.project_id.clone(),
@@ -1407,6 +1522,46 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             "--priority".to_string(),
             "1000".to_string(),
             "--destination-ranges".to_string(),
+            "0.0.0.0/0".to_string(),
+            "--target-tags".to_string(),
+            ownership.resource_name.clone(),
+        ])?;
+        self.gcloud(&[
+            "compute".to_string(),
+            "firewall-rules".to_string(),
+            "create".to_string(),
+            ownership.control_ingress_firewall_name.clone(),
+            "--project".to_string(),
+            self.config.project_id.clone(),
+            "--direction".to_string(),
+            "INGRESS".to_string(),
+            "--action".to_string(),
+            "ALLOW".to_string(),
+            "--rules".to_string(),
+            "tcp:22".to_string(),
+            "--priority".to_string(),
+            "900".to_string(),
+            "--source-service-accounts".to_string(),
+            self.config.control_service_account.clone(),
+            "--target-tags".to_string(),
+            ownership.resource_name.clone(),
+        ])?;
+        self.gcloud(&[
+            "compute".to_string(),
+            "firewall-rules".to_string(),
+            "create".to_string(),
+            ownership.ingress_deny_firewall_name.clone(),
+            "--project".to_string(),
+            self.config.project_id.clone(),
+            "--direction".to_string(),
+            "INGRESS".to_string(),
+            "--action".to_string(),
+            "DENY".to_string(),
+            "--rules".to_string(),
+            "all".to_string(),
+            "--priority".to_string(),
+            "1000".to_string(),
+            "--source-ranges".to_string(),
             "0.0.0.0/0".to_string(),
             "--target-tags".to_string(),
             ownership.resource_name.clone(),
@@ -1445,7 +1600,7 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             "--shielded-integrity-monitoring".to_string(),
             "--boot-disk-auto-delete".to_string(),
             "--tags".to_string(),
-            ownership.resource_name.clone(),
+            format!("{},oa-managed-sandbox-guest", ownership.resource_name),
             "--labels".to_string(),
             labels,
             "--metadata".to_string(),
@@ -1513,16 +1668,48 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
     fn cleanup(&self, ownership: &ProviderOwnership) -> Result<CleanupObservation, RuntimeError> {
         self.delete_named("instances", &ownership.resource_name, true);
         self.delete_named("firewall-rules", &ownership.firewall_name, false);
+        self.delete_named(
+            "firewall-rules",
+            &ownership.broker_egress_firewall_name,
+            false,
+        );
+        self.delete_named(
+            "firewall-rules",
+            &ownership.control_ingress_firewall_name,
+            false,
+        );
+        self.delete_named(
+            "firewall-rules",
+            &ownership.ingress_deny_firewall_name,
+            false,
+        );
         let mut observation = CleanupObservation {
-            zero_ingress: true,
             zero_grants: true,
             ..CleanupObservation::default()
         };
         for _ in 0..15 {
             observation.zero_compute =
                 self.count_named("instances", &ownership.resource_name, true)? == 0;
-            observation.zero_firewall =
-                self.count_named("firewall-rules", &ownership.firewall_name, false)? == 0;
+            observation.zero_firewall = [
+                &ownership.firewall_name,
+                &ownership.broker_egress_firewall_name,
+                &ownership.control_ingress_firewall_name,
+                &ownership.ingress_deny_firewall_name,
+            ]
+            .iter()
+            .all(|name| {
+                self.count_named("firewall-rules", name, false)
+                    .is_ok_and(|count| count == 0)
+            });
+            observation.zero_ingress = [
+                &ownership.control_ingress_firewall_name,
+                &ownership.ingress_deny_firewall_name,
+            ]
+            .iter()
+            .all(|name| {
+                self.count_named("firewall-rules", name, false)
+                    .is_ok_and(|count| count == 0)
+            });
             observation.zero_scratch = self.count_named("disks", &ownership.disk_name, true)? == 0;
             if observation.is_clean() {
                 break;
@@ -1657,6 +1844,8 @@ mod tests {
                 no_external_ip: true,
                 no_guest_service_account: true,
                 egress_default_deny: true,
+                broker_egress_only: true,
+                control_ingress_only: true,
                 metadata_restricted: true,
             }
         }
@@ -1683,6 +1872,18 @@ mod tests {
             ProviderOwnership {
                 resource_name: format!("private-{}", short_digest(sandbox_ref)),
                 firewall_name: format!("private-fw-{}", short_digest(sandbox_ref)),
+                broker_egress_firewall_name: format!(
+                    "private-broker-fw-{}",
+                    short_digest(sandbox_ref)
+                ),
+                control_ingress_firewall_name: format!(
+                    "private-ssh-fw-{}",
+                    short_digest(sandbox_ref)
+                ),
+                ingress_deny_firewall_name: format!(
+                    "private-ingress-fw-{}",
+                    short_digest(sandbox_ref)
+                ),
                 disk_name: format!("private-disk-{}", short_digest(sandbox_ref)),
                 resource_ref: "gce-instance-ref://sha256/abc".to_string(),
                 firewall_ref: "gce-firewall-ref://sha256/abc".to_string(),
@@ -1754,7 +1955,7 @@ mod tests {
             isolation_class: "gce_vm".to_string(),
             image_ref: "gce-image-ref://sha256/example".to_string(),
             image_digest: format!("sha256:{}", "a".repeat(64)),
-            network_policy_ref: "network-policy-ref://openagents/managed-sandbox/deny-all-v1"
+            network_policy_ref: "network-policy-ref://openagents/managed-sandbox/broker-only-v1"
                 .to_string(),
             control_identity_ref: "identity-ref://openagents/managed-sandbox/control".to_string(),
             guest_identity_ref: "identity-ref://openagents/managed-sandbox/guest-none".to_string(),
