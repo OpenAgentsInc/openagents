@@ -8,7 +8,7 @@ lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-19T03:22:07Z"
+updated_at: "2026-07-19T04:02:17Z"
 ---
 
 # OpenAgents Fast Follow
@@ -911,6 +911,73 @@ policy, or turn Fable prose into target authority.
     ]
   },
   {
+    "id": "zed_industries.zed",
+    "title": "Zed",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/zed-industries/zed",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-18-zed-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "typed_project_capability_graph",
+        "kind": "architecture",
+        "summary": "Compose worktrees, revisioned buffers, language services, Git, search, tasks, terminals, remote placement, persistence, and agents behind one typed project capability graph rather than independent renderer panels or ambient working directories.",
+        "stance": "adapt"
+      },
+      {
+        "id": "multi_root_versioned_file_identity",
+        "kind": "protocol",
+        "summary": "Use opaque workspace and root identity plus normalized relative path, attachment generation, and document generation across tree, editor, language, diff, Git, review, and agent context while keeping raw roots private to the host.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "excerpt_projection_plane",
+        "kind": "architecture",
+        "summary": "Reserve generation-bound excerpt identities so search, references, Problems, review, and agent context can compose multi-file editor projections without becoming synthetic filesystem or mutation authority.",
+        "stance": "adapt"
+      },
+      {
+        "id": "local_remote_capability_symmetry",
+        "kind": "architecture",
+        "summary": "Keep local and remote workspace services behind the same capability and lifecycle intents while separately exposing placement, attachment generation, compatibility, containment, latency, and recovery class.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "project_bound_agent_context",
+        "kind": "product_ux",
+        "summary": "Group native, ACP, emulated, and terminal agent threads by canonical project and worktree and feed them provenance-bearing open-buffer, diagnostic, language, Git, recent-edit, and excerpt context through ordinary authority.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "explicit_local_ide_state_inventory",
+        "kind": "security",
+        "summary": "Declare purpose, sensitivity, retention, quota, encryption, export, deletion, backup and Sync eligibility, and external-runtime access for layouts, roots, trust, unsaved contents, terminal data, indexes, and agent histories; a dormant embeddings path is not evidence of active embeddings.",
+        "stance": "adapt"
+      },
+      {
+        "id": "wasm_guest_vs_host_effect",
+        "kind": "security",
+        "summary": "Use versioned WASM components and manifest-plus-owner capability intersection, but reject wildcard process, download, and package effects and any claim that guest memory isolation proves host-effect containment.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "integrated_ide_verification",
+        "kind": "evaluation",
+        "summary": "Property-test path, coordinate, generation, recovery, tree, language, and Git state laws and gate the packaged IDE with large-workspace, accessibility, and p50/p95/p99 interaction evidence rather than adopting upstream benchmark numbers.",
+        "stance": "adapt"
+      },
+      {
+        "id": "gpui_editor_and_scm_wholesale",
+        "kind": "architecture",
+        "summary": "Reject adopting GPUI, Zed's Rust editor and CRDT, Project Panel, or mutable SCM wholesale; reproduce the coherent behavior with the target's Effect Native, Monaco, Pierre, WorkContext, authority, and receipt boundaries.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "openagents.synthesis",
     "title": "OpenAgents Teardown Synthesis",
     "role": "local_synthesis",
@@ -1341,7 +1408,12 @@ policy, or turn Fable prose into target authority.
       "maddiedreese.multaiplayer#proposal_execution_authority_split",
       "maddiedreese.multaiplayer#cryptographic_host_handoff",
       "maddiedreese.multaiplayer#bounded_room_runtime_projection",
-      "maddiedreese.multaiplayer#group_e2ee_metadata_truth"
+      "maddiedreese.multaiplayer#group_e2ee_metadata_truth",
+      "zed_industries.zed#typed_project_capability_graph",
+      "zed_industries.zed#multi_root_versioned_file_identity",
+      "zed_industries.zed#excerpt_projection_plane",
+      "zed_industries.zed#local_remote_capability_symmetry",
+      "zed_industries.zed#project_bound_agent_context"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1465,7 +1537,10 @@ policy, or turn Fable prose into target authority.
       "maddiedreese.multaiplayer#proposal_execution_authority_split",
       "maddiedreese.multaiplayer#cryptographic_host_handoff",
       "maddiedreese.multaiplayer#group_e2ee_metadata_truth",
-      "maddiedreese.multaiplayer#trusted_webview_and_host_shell"
+      "maddiedreese.multaiplayer#trusted_webview_and_host_shell",
+      "zed_industries.zed#multi_root_versioned_file_identity",
+      "zed_industries.zed#explicit_local_ide_state_inventory",
+      "zed_industries.zed#wasm_guest_vs_host_effect"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1538,7 +1613,9 @@ policy, or turn Fable prose into target authority.
       "openinterpreter.openinterpreter#pinned_peer_before_ownership",
       "openinterpreter.openinterpreter#runtime_policy_receipt",
       "maddiedreese.multaiplayer#signed_collaboration_journey",
-      "maddiedreese.multaiplayer#bounded_room_runtime_projection"
+      "maddiedreese.multaiplayer#bounded_room_runtime_projection",
+      "zed_industries.zed#integrated_ide_verification",
+      "zed_industries.zed#gpui_editor_and_scm_wholesale"
     ],
     "target_scopes": [
       "apps/qa-runner",

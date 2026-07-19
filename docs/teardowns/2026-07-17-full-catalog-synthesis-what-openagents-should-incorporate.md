@@ -22,14 +22,15 @@ mobile app, ACP implementation, Electron build/update, desktop full gap,
 desktop UI gap, mobile controller gap), Codex app-server client support, Grok
 Build, Command Code, Factory Desktop/Droid, Amp Code, Open Interpreter's
 in-process harness-emulation architecture, multAIplayer's encrypted
-single-host collaboration architecture, and the prior
+single-host collaboration architecture, Zed's integrated native IDE and agent
+workbench architecture, and the prior
 cross-teardown adaptation analysis.
 
 ---
 
 ## 1. The market has converged on a shape; the trust half is unclaimed
 
-Read together, thirty documents describe one striking fact: every
+Read together, thirty-one documents describe one striking fact: every
 serious product in this space — OpenAI's Codex desktop, Anthropic's Claude
 desktop and Claude Code, Cursor, Factory, Amp, Grok Build, OpenCode, T3 Code,
 OpenChamber — has independently converged on the same architecture:
@@ -46,8 +47,11 @@ OpenChamber — has independently converged on the same architecture:
 4. **Desktop/mobile continuity and remote steering** (Cursor's `&` handoff and
    iOS Remote Control, Amp's web/mobile thread control, T3's full mobile
    workbench, OpenChamber's relay, Codex's drive-my-Mac pairing).
-5. A workbench that **grows beyond chat without becoming an IDE** — diff
-   review, terminals, file trees, previews as projections over engine state.
+5. A workbench that can **grow from chat into a basic IDE without surrendering
+   engine authority** — Zed demonstrates the coherent target; Monaco and Pierre
+   provide practical OpenAgents editor/tree/diff projections; files,
+   diagnostics, terminals, search, review, and previews remain projections over
+   one typed workspace service graph.
 6. **Collaboration and execution are separate relationships** — multAIplayer
    lets several authenticated people discuss, propose, inspect, and review
    while one explicit host device owns the repository, Codex process,
@@ -326,11 +330,32 @@ of section 3.
   state, handoff state, projection privacy, and the distinction between relay
   delivery and executed/accepted effects. Do not reduce this to an online dot
   or a shared composer.
-- **Right-panel surface manager** (T3's strongest UI mechanism): a tab strip
-  hosting `review-summary | diff-file | files | file | terminal | plan |
-  preview` surfaces with real tab mechanics, maximize, and inline/sheet
-  modes — every surface a projection over engine state, none holding
-  authority.
+- **Primary Editor mode plus an ancillary surface manager.** T3's tab mechanics
+  remain useful for `review-summary | diff-file | terminal | plan | preview`,
+  but Zed and the dedicated IDE plan make the hierarchy precise: Files mode
+  becomes a primary Editor mode with its own rail, top bar, tree, tabs/splits,
+  Monaco region, Problems/search/outline, and optional ancillary panel. Code
+  editing is not squeezed into a generic right panel. Every surface remains a
+  projection over main-owned engine state and none holds authority.
+- **One Project/Workspace capability graph.** Zed's strongest lesson is that
+  worktrees, buffers, language services, Git, tasks, terminals, remote
+  placement, and agents share stable project-relative identity and lifecycle.
+  OpenAgents should reproduce that coherence as Effect services around
+  canonical `WorkContext`, multi-root relative file references, revisioned
+  documents, and generation-bound intents—not by importing Zed's GPUI/Project
+  object graph.
+- **Monaco for editing; pinned Pierre for tree and diff presentation.** Zed is
+  the behavior and architecture reference, not the component dependency. The
+  Pierre tree projection needs Zed-grade multi-root identity, folded
+  directories, stable virtualization, sticky context, Git/diagnostic/conflict
+  decorations, drag and keyboard semantics, and accessibility. Monaco models,
+  language results, Pierre hunks, Git evidence, and agent context all carry the
+  same document generation.
+- **Revisioned documents and excerpt projections.** An open document retains
+  save base, dirty/conflict/recovery state, encoding, language, diagnostics,
+  and service generations. Reserve typed excerpt identities so workspace
+  search, references, Problems, review, and agent context can later compose
+  multi-file views without becoming synthetic filesystem authority.
 - **Transcript engine before richer cards:** virtualization, a turn
   navigator/minimap, and performance budgets as merge gates. OpenChamber's
   reducer discipline (touched-field cloning cut a message list from 1,972
@@ -729,9 +754,14 @@ essay's operational conclusion:
 
 - **Desktop:** freeze the engine protocol and long-lived supervisor with a
   lossless native event plane first; then the chat column (hierarchy,
-  virtualization, composer admission states, inline decisions); then the
-  right-panel workbench (review/diff/files first, terminal after PTY proof,
-  preview last); then worktree/checkpoint/delivery depth; then remote
+  virtualization, composer admission states, inline decisions); then establish
+  the main-owned Workspace capability graph and primary Editor mode (Pierre
+  multi-root tree, one revisioned Monaco document, save/recovery, language
+  lifecycle, versioned diagnostics/navigation, and read-only Pierre diff
+  against exact Git evidence); then add workspace search, Problems, symbols,
+  excerpt projections, and the ancillary review/diff panel; terminal follows
+  PTY proof and preview remains last; then add worktree/checkpoint/delivery
+  depth and separately admitted writable tree/Git mutations; then remote
   portability; then platform breadth (macOS x64 → Windows/Linux x64 →
   arm64, channels last); then split real runtime-adapter conformance from
   in-process emulation-policy conformance and evaluate a pinned Open

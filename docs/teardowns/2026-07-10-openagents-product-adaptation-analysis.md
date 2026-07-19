@@ -2527,3 +2527,118 @@ automatic `git add -A`, trusted-webview assumptions, or macOS-only product
 contract. It needs the protocol-level idea the source makes concrete:
 **collaboration can be broad while execution authority remains singular,
 explicit, generation-fenced, locally reauthorized, and receipted.**
+
+## Zed integrated-IDE addendum (2026-07-18)
+
+The [Zed teardown](./2026-07-18-zed-teardown.md) changes the workbench analysis
+from a collection of panels into a coherent IDE service graph. Zed's strongest
+lesson is not GPUI performance or a particular editor implementation. It is
+that worktrees, text versions, language services, Git, search, remote
+placement, collaboration, agents, navigation, and persistence all share one
+typed Project identity and lifecycle. The existing OpenAgents Desktop IDE plan
+already chooses the right target components—Effect Native, Monaco, and Pierre.
+Zed supplies the integration and parity model around them.
+
+This changes the analysis in the following exact ways.
+
+1. **Editor mode becomes a primary workspace mode.** The older “right-panel
+   workbench” shorthand is too weak for basic IDE parity. Files mode should
+   replace the primary Sessions rail and main region with an Editor rail, top
+   bar, tree, tabs/splits, Monaco editor, Problems/search/outline, and optional
+   ancillary panel. Review, terminal, plan, and preview can still use the
+   surface manager; the code editor is not a sidebar accessory.
+2. **One workspace capability graph owns the IDE.** Model Zed's Project/Store
+   coherence as Effect services under the existing main-owned `WorkContext`:
+   filesystem/worktree, revisioned documents, language services, Git evidence,
+   search, terminal/tasks/debug, local state, remote placement, and agent
+   context. The renderer consumes typed projections and intents; it does not
+   become another engine or query authority.
+3. **Project-relative identity is universal.** Standardize an opaque root/work
+   context ID plus normalized relative path and attachment generation across
+   tree, Monaco, search, diagnostics, definitions, diffs, Git, terminals,
+   review, and agent tools. Absolute roots remain in privileged main state.
+   Multi-root collisions, root reorder, rename, and stale attachments become
+   testable protocol cases instead of string conventions.
+4. **A document is a versioned resource, not a path and string.** The canonical
+   document service retains load/save base, dirty state, encoding/BOM,
+   language, conflict, recovery, and expected-revision mutation. Monaco model
+   version, language result generation, Pierre hunk identity, Git evidence,
+   and agent context all map to that document generation and reject stale
+   conversion.
+5. **Pierre tree parity gets a concrete state checklist.** Add multi-root
+   identity, explicit scan/loading/error state, stable virtualization and
+   scroll anchoring, folded single-child directories, sticky ancestors,
+   Git/diagnostic/conflict/hidden/ignored/remote decorations with non-color
+   cues, keyboard/typeahead/focus/accessibility, and typed create/rename/move/
+   delete/copy/cut/paste/drag intents. Pierre remains projection-only; host
+   snapshots, mutation, undo, and receipts remain main-owned.
+6. **Monaco is one layer in an editor stack.** Keep Monaco rather than porting
+   Zed's SumTree/Rope/text CRDT/Editor. Surround it with explicit project,
+   document, language, navigation, Git, review, persistence, and agent-context
+   services. This reaches behavior parity without importing GPUI or creating a
+   second Rust UI/state runtime.
+7. **Reserve excerpt identity now.** Zed's MultiBuffer shows how search,
+   references, Problems, review, and agent context can become composed editor
+   views while retaining exact source ranges. Basic editing should still ship
+   first. The protocol should nevertheless reserve source document generation,
+   source/projection ranges, and writable capability so later excerpt views do
+   not require a breaking identity redesign.
+8. **Language intelligence is an observable capability lifecycle.** Parsing
+   and LSP providers advertise `unconfigured/starting/ready/degraded/stopped/
+   failed`, exact capabilities, placement, service generation, cancellation,
+   and versioned results. URI translation and server process/download policy
+   stay in main. Unsupported, stale, and degraded outcomes are typed rather
+   than silent.
+9. **Local and remote use the same service intents.** Zed's remote stores prove
+   the value of placement behind the Project contract. OpenAgents should bind
+   every request to host/runtime/WorkContext/attachment generation while the
+   UI asks the same file, language, search, Git, terminal, and agent questions.
+   Remote helpers enter the signed component graph with compatibility,
+   admission, rollback, and receipts; network reachability is not authority.
+10. **Mutable SCM remains a later, separately admitted state machine.** Zed's
+    staged/unstaged/partially staged/pending model and recent ambiguous-hunk fix
+    show why rich source control is not a button over `git add`. Ship exact
+    read-only Git evidence first. Future mutation carries repository, HEAD,
+    index, document, hunk, and operation generations, proves post-state, and
+    receipts stage/unstage/discard/commit separately from acceptance or push.
+11. **Agent context becomes project-bound and provenance-bearing.** Native,
+    ACP, emulated, and terminal agents remain distinct runtime classes, but can
+    share canonical project references, open buffers, diagnostics, LSP
+    definitions, Git changes, recent edits, and excerpt candidates. Every
+    context item declares source, revision, reason, audience, sensitivity, and
+    truncation; useful retrieval is not permission to upload the repository.
+12. **Local IDE data becomes an explicit product contract.** Zed persists
+    layouts, roots, trusted worktrees, breakpoints, toolchains, unsaved
+    contents, selections/folds, terminal/thread metadata, and zstd-compressed
+    agent histories. Its source defines an embeddings directory, but this pin
+    has no active call site. OpenAgents should publish per-store purpose,
+    retention, quota, encryption, export/deletion, backup/Sync eligibility,
+    and external-runtime access, and never infer or market an index from a
+    dormant path.
+13. **Themes resolve through one bounded editor plane.** A validated editor
+    theme projects into Monaco, Pierre tree/diffs, syntax, terminal, minimap,
+    and code-adjacent chrome while the Effect Native theme stays canonical for
+    the product. Live reload and VS Code theme compatibility are useful;
+    arbitrary CSS and executable theme loaders are not.
+14. **Extension containment must exceed Zed's defaults.** Adapt the versioned
+    WASM component API, extension-specific work directory, cancellation, and
+    manifest-plus-owner capability intersection. Reject wildcard command,
+    download, and npm defaults. All host effects decode to canonical typed
+    intents under deny-by-default grants, signed components, compatibility,
+    revocation, effective-containment evidence, and receipts.
+15. **Packaged IDE performance gets its own proof set.** Property-test paths,
+    coordinate conversion, stale generations, save/conflict/recovery, tree
+    projections, and Git index transitions. Benchmark cold open, large-tree
+    expansion, search, Monaco switching, diff rendering, LSP bursts, restore,
+    and remote latency, then gate the packaged app with accessibility and
+    p50/p95/p99 interaction budgets. Zed's benchmark numbers are evidence of
+    method, not OpenAgents thresholds.
+
+The combined target is therefore “Zed coherence with OpenAgents components and
+trust boundaries”: Effect Native owns product composition, Electron main owns
+the typed workspace capability graph, Monaco edits revisioned documents,
+Pierre renders tree and diff projections, HarnessAgent and external peers
+consume canonical project context, and every privileged effect still crosses
+ordinary authority, containment, and receipt planes. Zed is a behavior and
+architecture reference—not a dependency bundle, a GPL code-import plan, or a
+reason to weaken the existing main-owned workspace boundary.
