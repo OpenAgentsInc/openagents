@@ -113,6 +113,10 @@ export type MobileConversationHost = Readonly<{
     /** Exact persisted composer target for a brand-new coding turn. Ignored
      * while steering an already-confirmed active run, whose lane is fixed. */
     runtimeTarget?: RuntimeCommandTarget
+    /** Fires after the exact user-message intent is durably queued locally,
+     * before confirmation waiting begins. The UI uses this identity to keep
+     * one pending bubble across intermediate Sync snapshots. */
+    onMessageAdmitted?: (messageRef: string) => void
     onUpdate?: (thread: MobileConversationThread) => void
   }>) => Promise<MobileConversationMutationResult>
   interrupt?: (input: Readonly<{
@@ -837,6 +841,7 @@ export const makeMobileConversationHost = (
       } catch {
         return { ok: false, error: "Authoritative conversation Sync is unavailable." }
       }
+      input.onMessageAdmitted?.(messageRef)
       const thread = await confirmedThread(input.threadRef, messageRef)
       if (thread === null && options.runtime === undefined) {
         return {

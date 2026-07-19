@@ -238,7 +238,14 @@ the PowerSync scar tissue this design imports. So:
   `invalid_args` (a throwing `decodeArgs`). Both ack and are recorded —
   retrying identical bytes can never succeed, so blocking would be pure
   poison. `out_of_order` is the one rejection that acks NOTHING (no ledger
-  row, watermark unchanged) so the client can re-push the missing prefix.
+  row, watermark unchanged) so the client can re-push the missing prefix. If
+  an authenticated response proves that a preserved native queue starts above
+  `lastMutationId + 1` and the absent prefix no longer exists locally, the
+  shared client may atomically renumber only that still-unseen dense queue from
+  the server watermark. It must preserve FIFO order, exact args, and creation
+  times, refuse empty/non-dense/non-gap queues, rebuild the optimistic overlay,
+  and retry immediately. This is client recovery, not a relaxation of the
+  server ledger gate.
 - HTTP status codes belong to the ROUTE for whole-request failures only:
   401 unauthenticated, 400 undecodable body / unsupported protocol or
   schema version, 403 client group bound to another user, 503 storage

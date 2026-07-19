@@ -156,6 +156,20 @@ export interface KhalaSyncLocalStore {
     KhalaSyncClientStoreError
   >
   /**
+   * Repair a durable queue whose first local id is provably ahead of the
+   * authenticated server ledger watermark. The server's `out_of_order`
+   * response is the only caller authority for this operation. It preserves
+   * every intent and its FIFO order, atomically renumbers the pending rows to
+   * start at `serverLastMutationId + 1`, and resets the local counter to the
+   * repaired tail. It refuses when there is no actual gap.
+   */
+  readonly repairPendingMutationGap: (
+    serverLastMutationId: number,
+  ) => Effect.Effect<
+    ReadonlyArray<MutationEnvelope>,
+    KhalaSyncClientStoreError
+  >
+  /**
    * The durable `last_mutation_id` counter — the highest mutationId ever
    * enqueued or acked (acked ids stay burned); `null` before the first
    * enqueue/ack. The next enqueue must use exactly this + 1. Lets the

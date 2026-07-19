@@ -2495,7 +2495,7 @@ const withConfirmedThread = (
   thread: MobileConversationThread,
 ): HomeState => {
   const sameThread = state.activeThreadRef === thread.threadRef
-  const nextKhala = confirmedKhalaState(
+  const confirmedKhala = confirmedKhalaState(
     thread,
     state.khala.turnCounter,
     state.khala.interactionActionsAvailable,
@@ -2509,6 +2509,21 @@ const withConfirmedThread = (
         }
       : null,
   )
+  const confirmedKeys = new Set(confirmedKhala.entries.map(entry => entry.key))
+  const localDeliveryEntries = sameThread
+    ? state.khala.entries.filter(entry =>
+        entry.role === "user" &&
+        (entry.status === "pending" || entry.status === "failed") &&
+        !confirmedKeys.has(entry.key))
+    : []
+  const nextKhala: KhalaState = localDeliveryEntries.length === 0
+    ? confirmedKhala
+    : {
+        ...confirmedKhala,
+        entries: [...confirmedKhala.entries, ...localDeliveryEntries],
+        pending: confirmedKhala.pending ||
+          localDeliveryEntries.some(entry => entry.status === "pending"),
+      }
   const addedEntryCount = sameThread
     ? newlyConfirmedTranscriptEntryCount(state.khala.entries, nextKhala.entries)
     : 0
@@ -2585,22 +2600,30 @@ const khalaPinnedToLatest = (khala: KhalaState): KhalaState => ({
 const failedConversationState = (
   state: HomeState,
   error: string,
-): HomeState => ({
-  ...state,
-  khala: {
-    ...state.khala,
-    pending: false,
-    entries: [
-      ...state.khala.entries.filter(entry => entry.status !== "pending"),
-      {
-        key: `sync-error-${state.khala.turnCounter}`,
-        role: "system",
-        text: error,
-        status: "failed",
-      },
-    ],
-  },
-})
+): HomeState => {
+  const hasPendingUser = state.khala.entries.some(entry =>
+    entry.status === "pending" && entry.role === "user")
+  return {
+    ...state,
+    khala: {
+      ...state.khala,
+      pending: false,
+      entries: hasPendingUser
+        ? state.khala.entries.map(entry => entry.status === "pending" && entry.role === "user"
+            ? { ...entry, status: "failed" as const, deliveryLabel: error }
+            : entry)
+        : [
+            ...state.khala.entries,
+            {
+              key: `sync-error-${state.khala.turnCounter}`,
+              role: "system" as const,
+              text: error,
+              status: "failed" as const,
+            },
+          ],
+    },
+  }
+}
 
 const refreshComposerPathDiscovery = (
   state: SubscriptionRef.SubscriptionRef<HomeState>,
@@ -3178,6 +3201,7 @@ const makeSyncedConversationHandlers = (
             role: "user" as const,
             text: message.length > 4_000 ? `${message.slice(0, 4_000)}…` : message,
             status: "pending" as const,
+            deliveryLabel: "Sending…",
           },
         ],
       },
@@ -3225,6 +3249,22 @@ const makeSyncedConversationHandlers = (
           ? { runtimeTarget: { lane: "hosted_khala" as const } }
           : {}
         : { runtimeTarget: selectedExecutionTarget.runtimeTarget }),
+      onMessageAdmitted: messageRef => {
+        Effect.runFork(SubscriptionRef.update(state, current => ({
+          ...current,
+          khala: {
+            ...current.khala,
+            entries: current.khala.entries.map(entry =>
+              entry.key === pendingMessageKey
+                ? { ...entry, key: messageRef }
+                : entry),
+            transcriptScrollToKey:
+              current.khala.transcriptScrollToKey === pendingMessageKey
+                ? messageRef
+                : current.khala.transcriptScrollToKey,
+          },
+        })))
+      },
       onUpdate: thread => {
         Effect.runFork(SubscriptionRef.update(state, current => {
           if (current.activeThreadRef !== thread.threadRef) return current
@@ -3247,7 +3287,14 @@ const makeSyncedConversationHandlers = (
         ? current
         : result.ok
       ? (() => {
-          const confirmed = withConfirmedThread(current, result.thread)
+          const confirmed = withConfirmedThread({
+            ...current,
+            khala: {
+              ...current.khala,
+              entries: current.khala.entries.filter(entry =>
+                entry.status !== "pending" || entry.role !== "user"),
+            },
+          }, result.thread)
           return {
             ...confirmed,
             codingComposer: settledComposer,
@@ -3265,6 +3312,10 @@ const makeSyncedConversationHandlers = (
               ...current.khala,
               draft: "",
               pending: true,
+              entries: current.khala.entries.map(entry =>
+                entry.status === "pending" && entry.role === "user"
+                  ? { ...entry, deliveryLabel: "Still trying to send…" }
+                  : entry),
             },
           }
       : {

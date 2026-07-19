@@ -130,6 +130,7 @@ interface PendingRow {
   readonly mutation_id: number
   readonly name: string
   readonly args_json: string
+  readonly created_at: string
 }
 
 // ---------------------------------------------------------------------------
@@ -168,6 +169,9 @@ export interface KhalaSyncStoreCore {
   ) => ReadonlyArray<ConfirmedEntity>
   readonly enqueueMutation: (mutation: MutationEnvelope) => void
   readonly pendingMutations: () => ReadonlyArray<MutationEnvelope>
+  readonly repairPendingMutationGap: (
+    serverLastMutationId: number,
+  ) => ReadonlyArray<MutationEnvelope>
   readonly lastMutationId: () => MutationId | null
   readonly ackMutations: (throughMutationId: MutationId) => void
   readonly identity: () => ClientIdentity | null
@@ -427,7 +431,7 @@ export const createKhalaSyncStoreCore = (
     pendingMutations: () =>
       driver
         .all<PendingRow>(
-          `SELECT mutation_id, name, args_json
+          `SELECT mutation_id, name, args_json, created_at
            FROM pending_mutations ORDER BY mutation_id ASC`,
         )
         .map(
@@ -438,6 +442,75 @@ export const createKhalaSyncStoreCore = (
               argsJson: row.args_json,
             }),
         ),
+
+    repairPendingMutationGap: (serverLastMutationId) =>
+      driver.transaction(() => {
+        if (
+          !Number.isSafeInteger(serverLastMutationId) ||
+          serverLastMutationId < 0
+        ) {
+          throw new KhalaSyncClientStoreError(
+            "constraint_violation",
+            "pending mutation repair requires a nonnegative server watermark",
+          )
+        }
+        const rows = driver.all<PendingRow>(
+          `SELECT mutation_id, name, args_json, created_at
+           FROM pending_mutations ORDER BY mutation_id ASC`,
+        )
+        const first = rows[0]
+        if (first === undefined) {
+          throw new KhalaSyncClientStoreError(
+            "constraint_violation",
+            "pending mutation repair requires a non-empty queue",
+          )
+        }
+        const expectedFirst = serverLastMutationId + 1
+        if (!Number.isSafeInteger(expectedFirst + rows.length - 1)) {
+          throw new KhalaSyncClientStoreError(
+            "constraint_violation",
+            "pending mutation repair would exceed the safe mutation id range",
+          )
+        }
+        if (first.mutation_id <= expectedFirst) {
+          throw new KhalaSyncClientStoreError(
+            "constraint_violation",
+            "pending mutation repair refused because the local queue has no server-proven gap",
+          )
+        }
+        for (let index = 1; index < rows.length; index += 1) {
+          if (rows[index]!.mutation_id !== first.mutation_id + index) {
+            throw new KhalaSyncClientStoreError(
+              "constraint_violation",
+              "pending mutation repair refused a locally non-dense queue",
+            )
+          }
+        }
+
+        // Delete and reinsert inside one transaction so downward primary-key
+        // movement cannot collide with another still-unmoved pending row.
+        driver.run("DELETE FROM pending_mutations")
+        for (let index = 0; index < rows.length; index += 1) {
+          const row = rows[index]!
+          driver.run(
+            `INSERT INTO pending_mutations (mutation_id, name, args_json, created_at)
+             VALUES (?, ?, ?, ?)`,
+            [expectedFirst + index, row.name, row.args_json, row.created_at],
+          )
+        }
+        setMeta(
+          META_LAST_MUTATION_ID,
+          String(serverLastMutationId + rows.length),
+        )
+        return rows.map(
+          (row, index) =>
+            new MutationEnvelope({
+              mutationId: MutationId.make(expectedFirst + index),
+              name: MutatorName.make(row.name),
+              argsJson: row.args_json,
+            }),
+        )
+      }),
 
     lastMutationId: () => {
       const last = lastMutationIdRaw()
@@ -510,6 +583,8 @@ export const localStoreFromCore = (
       tryStore(() => core.readEntities(scope, entityType)),
     enqueueMutation: (mutation) => tryStore(() => core.enqueueMutation(mutation)),
     pendingMutations: () => tryStore(() => core.pendingMutations()),
+    repairPendingMutationGap: (serverLastMutationId) =>
+      tryStore(() => core.repairPendingMutationGap(serverLastMutationId)),
     lastMutationId: () => tryStore(() => core.lastMutationId()),
     ackMutations: (throughMutationId) =>
       tryStore(() => core.ackMutations(throughMutationId)),

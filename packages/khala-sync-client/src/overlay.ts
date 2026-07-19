@@ -195,6 +195,15 @@ export interface KhalaSyncOverlay {
   /** Still-unconfirmed queued mutations, ascending mutationId. */
   readonly pending: () => ReadonlyArray<MutationEnvelope>
   /**
+   * Rebase the durable FIFO onto an authenticated server watermark after the
+   * push loop receives a typed `out_of_order` proof for the queue head.
+   * Every intent and optimistic effect is preserved; only server-unseen
+   * mutation ids change.
+   */
+  readonly repairPendingMutationGap: (
+    serverLastMutationId: number,
+  ) => Effect.Effect<void, OverlayError>
+  /**
    * Change notifications: `listener(scope)` fires after a snapshot reveal
    * for each scope whose view content changed. Returns unsubscribe.
    */
@@ -558,6 +567,17 @@ export const createOverlay = (
         if (dropped) notify(yield* rebuild())
       })
 
+    const repairPendingMutationGap = (
+      serverLastMutationId: number,
+    ): Effect.Effect<void, OverlayError> =>
+      Effect.gen(function* () {
+        pendingList = [
+          ...(yield* store.repairPendingMutationGap(serverLastMutationId)),
+        ]
+        lastId = (yield* store.lastMutationId()) ?? 0
+        notify(yield* rebuild())
+      })
+
     const refetched = (scope: SyncScope): Effect.Effect<void, OverlayError> =>
       Effect.gen(function* () {
         tracked.add(scope)
@@ -574,6 +594,7 @@ export const createOverlay = (
       mutate,
       onConfirmed,
       onAck,
+      repairPendingMutationGap,
       refetched,
       pending: () => [...pendingList],
       subscribe: (listener) => {

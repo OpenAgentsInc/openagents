@@ -157,6 +157,12 @@ export interface KhalaSyncSessionOptions {
     error: unknown,
   ) => void
   /**
+   * Fires after an authenticated `out_of_order` response proves that the
+   * durable queue head is ahead of the server ledger and the client has
+   * atomically repaired the gap without dropping an intent.
+   */
+  readonly onMutationGapRepair?: (signal: MutationGapRepairSignal) => void
+  /**
    * ST-7 (#8513) connect-failure tripwire: fires when a scope has failed
    * `connectLive` `connectFailureThreshold` consecutive times without a
    * single successful connect in between (and again at every further
@@ -199,6 +205,13 @@ export interface ConnectFailureSignal {
   readonly reason: "network" | "http_status" | "decode_failure" | "sync_error" | "unknown"
   /** HTTP status when the transport error carried one (e.g. 401). */
   readonly status?: number
+}
+
+export interface MutationGapRepairSignal {
+  readonly serverLastMutationId: number
+  readonly previousFirstMutationId: number
+  readonly repairedFirstMutationId: number
+  readonly pendingMutationCount: number
 }
 
 export interface KhalaSyncSession {
@@ -1040,6 +1053,33 @@ export const createKhalaSyncSession = (
         // response from the revoked session must not publish rejections or
         // acknowledgements into the now-closed authority generation.
         if (closed) return "drained"
+        const firstMutation = batch[0]!
+        const firstResult = response.results.find(
+          (result) => result.mutationId === firstMutation.mutationId,
+        )
+        const serverLastMutationId = Number(response.lastMutationId)
+        const hasServerProvenGap =
+          firstResult?.status === "rejected" &&
+          firstResult.errorCode === "out_of_order" &&
+          Number(firstMutation.mutationId) > serverLastMutationId + 1
+        if (hasServerProvenGap) {
+          try {
+            await runEffect(
+              overlay.repairPendingMutationGap(serverLastMutationId),
+            )
+          } catch (error) {
+            onTransportError?.("session", error)
+            return "terminal"
+          }
+          options.onMutationGapRepair?.({
+            serverLastMutationId,
+            previousFirstMutationId: Number(firstMutation.mutationId),
+            repairedFirstMutationId: serverLastMutationId + 1,
+            pendingMutationCount: pending.length,
+          })
+          attempt = 0
+          continue
+        }
         for (const result of response.results) {
           if (result.status === "rejected") {
             options.onRejection?.(

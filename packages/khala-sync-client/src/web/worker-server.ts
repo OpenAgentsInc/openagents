@@ -137,6 +137,10 @@ const dispatch = (
       core.ackMutations(MutationId.make(request.through))
       return undefined
     }
+    case "repairPendingMutationGap":
+      return core
+        .repairPendingMutationGap(request.serverLastMutationId)
+        .map(encodeMutation)
     case "identity": {
       const identity = core.identity()
       return identity === null

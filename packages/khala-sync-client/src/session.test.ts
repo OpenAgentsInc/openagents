@@ -362,6 +362,17 @@ class FakeSyncServer {
         )
         continue
       }
+      if (mutation.mutationId > last + 1) {
+        results.push(
+          new MutationResultClass({
+            mutationId: mutation.mutationId,
+            status: "rejected",
+            errorCode: "out_of_order",
+            errorMessageSafe: "mutation id is ahead of the durable ledger",
+          }),
+        )
+        continue
+      }
       if (mutation.name === "task.reject") {
         results.push(
           new MutationResultClass({
@@ -942,6 +953,80 @@ describe("khala-sync session (fake transport, injected time)", () => {
       () => h.view(scopeA).get("task", "rej1") === undefined,
       "rejected optimistic effect dropped",
     )
+  })
+
+  // Behavior contract: openagents_mobile.conversation.send_delivery_visibility.v1
+  test("push: a server-proven restart gap is repaired without dropping queued intents", async () => {
+    const server = new FakeSyncServer()
+    const store = openKhalaSyncStore(":memory:")
+    cleanups.push(() => Effect.runSync(Effect.ignore(store.close())))
+    for (const [mutationId, id, value] of [
+      [1, "already-acked-1", 1],
+      [2, "already-acked-2", 2],
+      [3, "survivor-1", 3],
+      [4, "survivor-2", 4],
+    ] as const) {
+      Effect.runSync(
+        store.enqueueMutation(
+          new MutationEnvelope({
+            mutationId: MutationId.make(mutationId),
+            name: setTask.name,
+            argsJson: canonicalJson({ scope: scopeA, id, value }),
+          }),
+        ),
+      )
+    }
+    // Reproduce the preserved-device state: local durable rows 1-2 were
+    // removed, but this server has no ledger prefix for the surviving 3-4.
+    Effect.runSync(store.ackMutations(MutationId.make(2)))
+    const overlay = Effect.runSync(createOverlay(store, [setTask, rejectTask]))
+    const repairs: Array<{
+      serverLastMutationId: number
+      previousFirstMutationId: number
+      repairedFirstMutationId: number
+      pendingMutationCount: number
+    }> = []
+    const session = createKhalaSyncSession(
+      config,
+      store,
+      overlay,
+      transportOf(server),
+      {
+        sleep: () => tick(),
+        random: () => 0,
+        backoffBaseMs: 1,
+        backoffMaxMs: 4,
+        onMutationGapRepair: (signal) => repairs.push(signal),
+      },
+    )
+    cleanups.push(() => Effect.runSync(session.close()))
+
+    await Effect.runPromise(session.subscribe(scopeA))
+    await waitFor(() => overlay.pending().length === 0, "repaired queue drained")
+
+    expect(
+      server.pushCalls
+        .slice(0, 2)
+        .map((batch) =>
+          batch.map((mutation) => Number(mutation.mutationId)),
+        ),
+    ).toEqual([
+      [3, 4],
+      [1, 2],
+    ])
+    expect(repairs).toEqual([
+      {
+        serverLastMutationId: 0,
+        previousFirstMutationId: 3,
+        repairedFirstMutationId: 1,
+        pendingMutationCount: 2,
+      },
+    ])
+    expect(server.logOf(scopeA).map((entry) => entry.entityId)).toEqual([
+      "survivor-1",
+      "survivor-2",
+    ])
+    expect(Effect.runSync(store.lastMutationId())).toBe(MutationId.make(2))
   })
 
   test("lost push acknowledgement reconciles as one duplicate replay, never a second effect", async () => {

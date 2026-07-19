@@ -338,6 +338,11 @@ export const openKhalaSyncWasmStore = (
       ),
     ackMutations: (throughMutationId) =>
       rpcWrite({ op: "ackMutations", through: throughMutationId }),
+    repairPendingMutationGap: (serverLastMutationId) =>
+      rpc(
+        { op: "repairPendingMutationGap", serverLastMutationId },
+        decodeMutations,
+      ),
     identity: () => rpc({ op: "identity" }, decodeIdentity),
     setIdentity: (identity) =>
       rpcWrite({

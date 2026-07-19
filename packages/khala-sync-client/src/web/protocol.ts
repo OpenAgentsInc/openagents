@@ -86,6 +86,11 @@ export type StoreRequest =
       readonly op: "ackMutations"
       readonly through: number
     }
+  | {
+      readonly id: number
+      readonly op: "repairPendingMutationGap"
+      readonly serverLastMutationId: number
+    }
   | { readonly id: number; readonly op: "identity" }
   | {
       readonly id: number
@@ -111,6 +116,7 @@ const STORE_REQUEST_OPS: ReadonlySet<string> = new Set([
   "pendingMutations",
   "lastMutationId",
   "ackMutations",
+  "repairPendingMutationGap",
   "identity",
   "setIdentity",
 ] satisfies ReadonlyArray<StoreRequestOp>)

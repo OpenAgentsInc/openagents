@@ -1078,6 +1078,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(confirmedView).not.toContain('"label":"Cancel turn"')
   })
 
+  // Behavior contract: openagents_mobile.conversation.send_delivery_visibility.v1
   test("marks a submitted draft pending, then replaces it only with exact confirmed state", async () => {
     let resolveSend: ((value: Awaited<ReturnType<MobileConversationHost["sendMessage"]>>) => void) | undefined
     const confirmed: MobileConversationThread = {
@@ -1111,6 +1112,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       key: "pending-mobile-1",
       text: "Continue this",
       status: "pending",
+      deliveryLabel: "Sending…",
     })
     expect(JSON.stringify(renderContentView(pending))).not.toContain('"senderLabel":"YOU · PENDING"')
 
@@ -1126,7 +1128,7 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     })
   })
 
-  test("removes an unconfirmed draft and clears account-linked state on denial", async () => {
+  test("keeps a failed user message visible and clears account-linked state on denial", async () => {
     const host: MobileConversationHost = {
       listThreads: async () => [initialThread],
       newThread: async () => ({ ok: true, thread: initialThread }),
@@ -1139,11 +1141,13 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     await Effect.runPromise(settle)
     await Effect.runPromise(settle)
     const failed = await Effect.runPromise(lastState(program))
-    expect(failed.khala.entries.some(entry => entry.key.startsWith("pending-"))).toBe(false)
+    expect(failed.khala.entries.some(entry =>
+      entry.key.startsWith("pending-") && entry.status === "failed")).toBe(true)
     expect(failed.khala.entries.at(-1)).toMatchObject({
-      role: "system",
+      role: "user",
       status: "failed",
-      text: "Message is still pending reconciliation.",
+      text: "Never confirmed",
+      deliveryLabel: "Message is still pending reconciliation.",
     })
 
     program.sync.setPhase("denied")
@@ -1159,11 +1163,15 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
       listThreads: async () => [initialThread],
       newThread: async () => ({ ok: true, thread: initialThread }),
       openThread: async () => initialThread,
-      sendMessage: async () => ({
-        ok: false,
-        error: "Message and runtime command are queued pending reconciliation.",
-        queuedForReconciliation: true,
-      }),
+      sendMessage: async input => {
+        input.onMessageAdmitted?.("message.mobile.queued")
+        input.onUpdate?.(initialThread)
+        return {
+          ok: false,
+          error: "Message and runtime command are queued pending reconciliation.",
+          queuedForReconciliation: true,
+        }
+      },
     }
     const program = buildHomeProgram({ conversation: selection(host) })
 
@@ -1175,11 +1183,14 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1 Home", () =
     expect(pending.khala.pending).toBe(true)
     expect(pending.khala.draft).toBe("")
     expect(pending.khala.entries.at(-1)).toMatchObject({
+      key: "message.mobile.queued",
       role: "user",
       status: "pending",
       text: "Queued honestly",
+      deliveryLabel: "Still trying to send…",
     })
     expect(pending.khala.entries.some(entry => entry.role === "system")).toBe(false)
+    expect(JSON.stringify(renderContentView(pending))).toContain("Still trying to send…")
   })
 
   test("renders confirmed lifecycle controls and requires a second delete intent", async () => {

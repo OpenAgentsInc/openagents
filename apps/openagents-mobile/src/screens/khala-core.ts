@@ -120,6 +120,8 @@ export interface KhalaEntry {
   readonly work?: MobileWorkGroup
   /** Server-authored route identity shown separately from assistant prose. */
   readonly provenanceLabel?: string
+  /** Short local-only delivery state for an unconfirmed user message. */
+  readonly deliveryLabel?: string
 }
 
 export type KhalaInteractionStatus = "pending" | "resolved" | "expired" | "revoked"
@@ -312,13 +314,24 @@ const interactionBody = (
           variant: "body",
           color: entry.status === "failed" ? "danger" : "textPrimary",
         })]
-    return [...textViews, ...renderMobileTranscriptAttachments(
-      entry.key,
-      entry.attachments ?? [],
-      state.attachmentPreviewStates,
-      state.attachmentRetryEpochs,
-      accessibility,
-    )]
+    return [
+      ...textViews,
+      ...(entry.deliveryLabel === undefined
+        ? []
+        : [Text({
+            key: `${entry.key}-delivery`,
+            content: entry.deliveryLabel,
+            variant: "caption",
+            color: entry.status === "failed" ? "danger" : "textMuted",
+          })]),
+      ...renderMobileTranscriptAttachments(
+        entry.key,
+        entry.attachments ?? [],
+        state.attachmentPreviewStates,
+        state.attachmentRetryEpochs,
+        accessibility,
+      ),
+    ]
   }
   const submitting = state.interactionSubmittingRef === interaction.interactionRef
   const selections = state.interactionSelections[interaction.interactionRef] ?? {}

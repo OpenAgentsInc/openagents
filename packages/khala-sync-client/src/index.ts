@@ -336,5 +336,6 @@ export {
   type KhalaSyncSession,
   type KhalaSyncSessionConfig,
   type KhalaSyncSessionOptions,
+  type MutationGapRepairSignal,
   type ScopeSyncState,
 } from "./session.js"

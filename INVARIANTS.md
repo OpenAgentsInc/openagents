@@ -1206,6 +1206,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   omit owner identity and carry stable thread/message refs, server entity
   versions, scope cursor, phase, and pending count; optimistic content is never
   labeled confirmed, and denial/sign-out removes the conversation capability.
+  After Send, a local unconfirmed user message remains visible with an honest
+  delivery state across intermediate confirmed-only Sync projections. Local
+  admission replaces only its temporary key with the exact durable message
+  ref; only that exact confirmed ref clears the local delivery state. A typed
+  rejection or transport failure keeps the message visible, exposes the safe
+  error, and restores the draft instead of silently deleting the attempt.
+  An authenticated `out_of_order` result may repair only a server-proven
+  positive pending-ID gap: the client atomically renumbers the still-unseen,
+  locally dense queue from the server watermark plus one while preserving
+  FIFO order, exact intent bytes, and creation times, then rebuilds the
+  optimistic overlay. It refuses an empty, non-dense, or non-gap queue; the
+  server ledger's strict dense ordering is never weakened.
   Optional image bytes on `chat_message` remain inside the owner-private exact
   thread scope: at most four closed-type PNG/JPEG/GIF/WebP payloads, at most
   2 MiB decoded each, with decoded length, file signature, and SHA-256 checked

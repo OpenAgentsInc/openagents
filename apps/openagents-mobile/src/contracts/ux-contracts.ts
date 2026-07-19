@@ -5,7 +5,7 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-17.21",
+    version: "2026-07-18.1",
     contracts: [
       {
         contractId: "openagents_mobile.settings_connections_native_finish.v1",
@@ -1044,6 +1044,50 @@ export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocumen
         ],
         verification:
           "Mobile agent-graph oracle, shared presentation suite, mobile typecheck, and app test sweep; physical iOS/Android receipts remain open on #8692.",
+      },
+      {
+        contractId: "openagents_mobile.conversation.send_delivery_visibility.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "mobile conversation delivery and Sync recovery",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "owner-codex-session",
+          statedBy: "owner",
+          statedOn: "2026-07-18",
+        },
+        statement:
+          "After Send, the submitted user message remains visible with an honest local delivery state until its exact authoritative message is confirmed; a rejected or failed delivery stays visible with the error and restores the draft instead of silently disappearing.",
+        authorityBoundary:
+          "A local delivery bubble is explicitly unconfirmed and cannot impersonate server state. The exact durable message ref replaces its temporary key after local admission, and only that exact confirmed ref clears the local delivery state. An authenticated out_of_order response may repair only a server-proven positive gap by atomically renumbering the still-unseen dense pending queue from the server watermark while preserving FIFO intent bytes and timestamps; the server's strict ledger ordering is unchanged.",
+        evidenceRefs: [
+          "apps/openagents-mobile/src/conversation/mobile-conversation.ts",
+          "apps/openagents-mobile/src/screens/home-core.ts",
+          "apps/openagents-mobile/src/screens/khala-core.ts",
+          "packages/khala-sync-client/src/session.ts",
+          "packages/khala-sync-client/src/store-core.ts",
+        ],
+        oracles: [
+          {
+            id: "mobile_conversation_delivery_visibility",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/authoritative-home.test.ts",
+            description:
+              "Proves the submitted bubble survives intermediate confirmed-only Sync snapshots, exposes sending/retry/failure locally, retains the exact admitted message ref, restores the failed draft, and disappears only into exact confirmed history.",
+          },
+          {
+            id: "khala_sync_pending_gap_repair",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "packages/khala-sync-client/src/session.test.ts",
+            description:
+              "Proves an authenticated out_of_order response repairs a server-proven pending-ID gap, preserves queued intents, retries immediately in FIFO order, and leaves strict server ordering intact.",
+          },
+        ],
+        verification:
+          "Authoritative mobile Home, conversation adapter, shared client session/store semantics, web worker parity, mobile typecheck, and repository checks; build 123 provides the installed iOS migration proof.",
       },
     ],
   };

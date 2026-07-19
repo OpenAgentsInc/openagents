@@ -439,6 +439,43 @@ export const describeKhalaSyncStoreSemantics = (
         expect(await run(store.pendingMutations())).toHaveLength(0)
       })
 
+      test("repairs a server-proven pending gap atomically without dropping intents", async () => {
+        const store = await open()
+        for (const id of [1, 2, 3, 4, 5, 6]) {
+          await run(store.enqueueMutation(envelope(id)))
+        }
+        await run(store.ackMutations(MutationId.make(4)))
+
+        const repaired = await run(store.repairPendingMutationGap(2))
+        expect(
+          repaired.map((mutation) => Number(mutation.mutationId)),
+        ).toEqual([3, 4])
+        expect(repaired.map((mutation) => mutation.argsJson)).toEqual([
+          canonicalJson({ id: 5 }),
+          canonicalJson({ id: 6 }),
+        ])
+        expect(await run(store.lastMutationId())).toBe(MutationId.make(4))
+
+        await run(store.enqueueMutation(envelope(5)))
+        expect(
+          (await run(store.pendingMutations())).map((mutation) =>
+            Number(mutation.mutationId),
+          ),
+        ).toEqual([3, 4, 5])
+      })
+
+      test("refuses pending-gap repair without an actual server-proven gap", async () => {
+        const store = await open()
+        await run(store.enqueueMutation(envelope(1)))
+        const error = await runError(store.repairPendingMutationGap(0))
+        expect(error.reason).toBe("constraint_violation")
+        expect(
+          (await run(store.pendingMutations())).map((mutation) =>
+            Number(mutation.mutationId),
+          ),
+        ).toEqual([1])
+      })
+
       test("lastMutationId is null before the first enqueue and tracks acks", async () => {
         const store = await open()
         expect(await run(store.lastMutationId())).toBeNull()
