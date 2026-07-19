@@ -313,16 +313,24 @@ large/multi-cursor Monaco edits.
 IDE-00/03 should admit an event resembling:
 
 ```ts
-type EditorEditBatch = Readonly<{
-  documentRef: string
-  modelVersionBefore: number
-  modelVersionAfter: number
-  changes: ReadonlyArray<Readonly<{
-    rangeOffset: number
-    rangeLength: number
-    text: string
-  }>>
-}>
+import { Schema } from "effect"
+
+export const EditorIncrementalChange = Schema.Struct({
+  rangeOffset: Utf16Offset,
+  rangeLength: Utf16Length,
+  text: Schema.String,
+}).annotate({ identifier: "EditorIncrementalChange" })
+export interface EditorIncrementalChange
+  extends Schema.Schema.Type<typeof EditorIncrementalChange> {}
+
+export const EditorEditBatch = Schema.Struct({
+  documentRef: DocumentRef,
+  modelVersionBefore: DocumentModelVersion,
+  modelVersionAfter: DocumentModelVersion,
+  changes: Schema.Array(EditorIncrementalChange),
+}).annotate({ identifier: "EditorEditBatch" })
+export interface EditorEditBatch
+  extends Schema.Schema.Type<typeof EditorEditBatch> {}
 ```
 
 The Effect reducer applies a deterministic order and rejects stale model
@@ -358,15 +366,19 @@ network schemas or read arbitrary files.
 The adapter translates results into OpenAgents types:
 
 ```ts
-type DiagnosticProjection = Readonly<{
-  documentRef: string
-  documentGeneration: number
-  source: string
-  severity: "error" | "warning" | "information" | "hint"
-  range: VersionedTextRange
-  message: string
-  code?: string
-}>
+import { Schema } from "effect"
+
+export const DiagnosticProjection = Schema.Struct({
+  documentRef: DocumentRef,
+  documentGeneration: DocumentGeneration,
+  source: Schema.NonEmptyString,
+  severity: Schema.Literals(["error", "warning", "information", "hint"]),
+  range: VersionedTextRange,
+  message: Schema.String,
+  code: Schema.optionalKey(Schema.String),
+}).annotate({ identifier: "DiagnosticProjection" })
+export interface DiagnosticProjection
+  extends Schema.Schema.Type<typeof DiagnosticProjection> {}
 ```
 
 ### Third rung: real language-server host
@@ -485,14 +497,18 @@ specific.
 OpenAgents should keep at least:
 
 ```ts
-type CodingAttachment = Readonly<{
-  projectRef: string
-  projectGeneration: number
-  worktreeRef: string
-  runtimeRef: string
-  providerSessionRef: string
-  chatRef: string
-}>
+import { Schema } from "effect"
+
+export const CodingAttachment = Schema.Struct({
+  projectRef: IdeProjectRef,
+  projectGeneration: ProjectGeneration,
+  worktreeRef: WorktreeRef,
+  runtimeRef: RuntimeRef,
+  providerSessionRef: ProviderSessionRef,
+  chatRef: ChatRef,
+}).annotate({ identifier: "CodingAttachment" })
+export interface CodingAttachment
+  extends Schema.Schema.Type<typeof CodingAttachment> {}
 ```
 
 These identities must not collapse into a working directory or one URI. VS

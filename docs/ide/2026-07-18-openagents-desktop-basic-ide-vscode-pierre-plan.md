@@ -454,21 +454,31 @@ public “expanded, please fetch children” callback.
 Add a distinct, cancellable `workspaceTreeIndex` operation:
 
 ```ts
-type DesktopWorkspaceTreeIndexChunk = Readonly<{
-  grantRef: string
-  epoch: number
-  sequence: number
-  entries: ReadonlyArray<Readonly<{
-    pathRef: string
-    kind: "file" | "directory"
-  }>>
-  complete: boolean
-  truncated: boolean
-  omittedCount: number | null
-}>
+import { Schema } from "effect"
+
+export const DesktopWorkspaceTreeIndexEntry = Schema.Struct({
+  pathRef: WorkspacePathRef,
+  kind: Schema.Literals(["file", "directory"]),
+}).annotate({ identifier: "DesktopWorkspaceTreeIndexEntry" })
+export interface DesktopWorkspaceTreeIndexEntry
+  extends Schema.Schema.Type<typeof DesktopWorkspaceTreeIndexEntry> {}
+
+export const DesktopWorkspaceTreeIndexChunk = Schema.Struct({
+  grantRef: WorkspaceGrantRef,
+  epoch: WorkspaceEpoch,
+  sequence: WorkspaceTreeChunkSequence,
+  entries: Schema.Array(DesktopWorkspaceTreeIndexEntry),
+  complete: Schema.Boolean,
+  truncated: Schema.Boolean,
+  omittedCount: Schema.NullOr(OmittedEntryCount),
+}).annotate({ identifier: "DesktopWorkspaceTreeIndexChunk" })
+export interface DesktopWorkspaceTreeIndexChunk
+  extends Schema.Schema.Type<typeof DesktopWorkspaceTreeIndexChunk> {}
 ```
 
-The exact schema may differ, but these semantics must survive:
+The referenced scalar schemas are constrained branded values. Their exact
+constraints may differ, but Schema remains the contract authority and these
+semantics must survive:
 
 - main-process scan under the selected workspace grant;
 - the same hidden, Git-ignore, secret, symlink, and permission policy as tree
@@ -626,29 +636,48 @@ textarea but is the wrong long-term Monaco boundary.
 Extend the typed event contract with bounded incremental edits:
 
 ```ts
-type CodeEditorIncrementalChange = Readonly<{
-  rangeOffset: number
-  rangeLength: number
-  text: string
-}>
+import { Schema } from "effect"
 
-type CodeEditorEvent =
-  | Readonly<{
-      type: "content_changes"
-      documentRef: string
-      modelVersion: number
-      changes: ReadonlyArray<CodeEditorIncrementalChange>
-    }>
-  | Readonly<{
-      type: "selection"
-      documentRef: string
-      selections: ReadonlyArray<{
-        start: number
-        end: number
-        direction: "ltr" | "rtl"
-      }>
-    }>
-  | Readonly<{ type: "save_requested"; documentRef: string }>
+export const CodeEditorIncrementalChange = Schema.Struct({
+  rangeOffset: Utf16Offset,
+  rangeLength: Utf16Length,
+  text: Schema.String,
+}).annotate({ identifier: "CodeEditorIncrementalChange" })
+export interface CodeEditorIncrementalChange
+  extends Schema.Schema.Type<typeof CodeEditorIncrementalChange> {}
+
+export const CodeEditorSelection = Schema.Struct({
+  start: Utf16Offset,
+  end: Utf16Offset,
+  direction: Schema.Literals(["ltr", "rtl"]),
+}).annotate({ identifier: "CodeEditorSelection" })
+export interface CodeEditorSelection
+  extends Schema.Schema.Type<typeof CodeEditorSelection> {}
+
+const ContentChanges = Schema.Struct({
+  type: Schema.tag("content_changes"),
+  documentRef: DocumentRef,
+  modelVersion: DocumentModelVersion,
+  changes: Schema.Array(CodeEditorIncrementalChange),
+})
+
+const SelectionChanged = Schema.Struct({
+  type: Schema.tag("selection"),
+  documentRef: DocumentRef,
+  selections: Schema.Array(CodeEditorSelection),
+})
+
+const SaveRequested = Schema.Struct({
+  type: Schema.tag("save_requested"),
+  documentRef: DocumentRef,
+})
+
+export const CodeEditorEvent = Schema.Union([
+  ContentChanges,
+  SelectionChanged,
+  SaveRequested,
+]).pipe(Schema.toTaggedUnion("type")).annotate({ identifier: "CodeEditorEvent" })
+export type CodeEditorEvent = typeof CodeEditorEvent.Type
 ```
 
 Apply Monaco changes in a deterministic offset order to the bounded canonical

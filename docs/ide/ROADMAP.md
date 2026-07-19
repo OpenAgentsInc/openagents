@@ -135,6 +135,19 @@ Every packet follows these laws.
    supervision and bounded, revocable `CodeShareBundle` projections.
 8. **Parity is an acceptance result, not a package list.** Monaco plus Pierre
    is not Zed quality, and Zed quality alone is not Cursor feature parity.
+9. **Effect Schema is the contract authority.** Every persisted, IPC, wire,
+   helper, mobile/web, public-share, or otherwise boundary-crossing value is
+   defined once with `Schema.Struct`, `Schema.TaggedStruct`, or
+   `Schema.TaggedUnion`; TypeScript types are derived from the schema. Scalar
+   refs are constrained branded schemas, and codegen-facing schemas carry
+   stable identifiers. Raw interfaces/unions never become a parallel contract.
+   Internal-only state machines may use `Data.TaggedEnum`.
+10. **Effect services own lifecycle explicitly.** Application capabilities use
+    `Context.Service`; real implementations use `Layer.effect`; public and
+    non-trivial methods use named `Effect.fn`; errors use
+    `Schema.TaggedErrorClass`; untrusted inputs use Schema decoders; and
+    watchers, streams, and children are scoped and interrupted with their
+    owning project layer.
 
 ## Product shape and initial defaults
 
@@ -331,12 +344,22 @@ Separate attachment, disk revision, document generation, language generation,
 Git snapshot, and placement generation. Record current latency, memory, handle,
 tree, textarea, terminal, recovery, and startup behavior before replacement.
 
+Define boundary data in Effect Schema and derive every TypeScript type from
+that source. Use constrained branded schemas for refs and generations,
+`Schema.TaggedUnion` for projected lifecycle variants, `Data.TaggedEnum` only
+for internal reducer decisions, and `Schema.TaggedErrorClass` for expected
+service failures. Define application services with `Context.Service`, acquire
+them through explicit `Layer.effect` graphs, name operations with `Effect.fn`,
+and scope background work to the project layer. Generate helper fixtures/types
+from the Schema source; never mirror the contract by hand in Rust.
+
 Add behavior contracts for Editor entry/exit, editor-first Finder open, one
 document through every navigation origin, tree selection, edit/save/conflict,
 dirty restart, worktree isolation, grant revocation, and late-result fencing.
 The existing Files journey remains a required regression fixture.
 
-Exit: contracts and invariants are accepted; no widget is an authority; current
+Exit: contracts and invariants are accepted; a schema/type drift check rejects
+raw or hand-mirrored boundary contracts; no widget is an authority; current
 gaps have explicit ledger rows and baseline measurements.
 
 ### IDE-01 — De-risk packages, Tokyo Night, Vim, and packaging

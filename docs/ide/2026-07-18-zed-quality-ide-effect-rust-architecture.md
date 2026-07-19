@@ -191,6 +191,34 @@ and coordinate encoding. No tree, editor, LSP result, Git hunk, diagnostic,
 agent proposal, mobile deep link, or web share object invents its own path or
 line-number identity.
 
+### Effect implementation discipline
+
+“Effect-owned” has a concrete meaning throughout this architecture:
+
+- records use `Schema.Struct` plus a same-name interface derived from
+  `Schema.Schema.Type<typeof Value>`;
+- boundary-crossing variants use `Schema.TaggedStruct` or
+  `Schema.TaggedUnion`, and types are derived from `.Type`;
+- scalar IDs, generations, digests, relative paths, and refs use constrained
+  branded schemas rather than interchangeable strings/numbers;
+- schemas consumed by JSON Schema, protocol, documentation, or diagnostic
+  tooling carry stable `identifier` annotations;
+- internal-only decision algebras may use `Data.TaggedEnum`, but they do not
+  become persisted or wire contracts;
+- expected Effect failures use `Schema.TaggedErrorClass`;
+- unknown IPC, storage, helper, LSP/DAP, harness, mobile, and web inputs are
+  decoded with Schema at ingress; casts never substitute for validation;
+- application capabilities are `Context.Service` definitions with explicit
+  `Layer.effect` implementations and named `Effect.fn` operations;
+- watchers, event streams, workers, and process supervisors are scoped to the
+  owning project layer with `Effect.forkScoped`, `FiberSet`, `FiberMap`, or the
+  appropriate scoped primitive; layer acquisition never blocks on forever
+  work.
+
+Schema is also the only source for JSON Schema, fixtures, generated clients,
+and Rust helper types. A handwritten TypeScript union beside a handwritten
+Rust enum is an architecture failure even when their fields currently match.
+
 ## Desktop capability bar
 
 A Zed-quality first-party IDE means the following outcomes are product

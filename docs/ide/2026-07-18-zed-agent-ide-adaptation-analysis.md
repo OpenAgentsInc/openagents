@@ -258,40 +258,53 @@ IPC endpoints.
 ### 4.1 Proposed canonical identities
 
 The names below are proposals; exact schema names remain an implementation
-packet decision.
+packet decision. Every scalar identifier named in the example is itself a
+constrained branded Schema; none is a hand-authored string alias.
 
 ```ts
-type IdeProjectRef = {
-  projectId: IdeProjectId
-  workContextId: WorkContextId
-  attachmentGeneration: number
-}
+import { Schema } from "effect"
 
-type ProjectRootRef = {
-  project: IdeProjectRef
-  rootId: ProjectRootId
-  displayName: string
-  order: number
-}
+export const IdeProjectRef = Schema.Struct({
+  projectId: IdeProjectId,
+  workContextId: WorkContextId,
+  attachmentGeneration: AttachmentGeneration,
+}).annotate({ identifier: "IdeProjectRef" })
+export interface IdeProjectRef
+  extends Schema.Schema.Type<typeof IdeProjectRef> {}
 
-type ProjectFileRef = {
-  project: IdeProjectRef
-  rootId: ProjectRootId
-  relativePath: NormalizedRelativePath
-}
+export const ProjectRootRef = Schema.Struct({
+  project: IdeProjectRef,
+  rootId: ProjectRootId,
+  displayName: Schema.NonEmptyString,
+  order: ProjectRootOrder,
+}).annotate({ identifier: "ProjectRootRef" })
+export interface ProjectRootRef
+  extends Schema.Schema.Type<typeof ProjectRootRef> {}
 
-type DocumentSnapshotRef = {
-  documentId: DocumentId
-  file: ProjectFileRef
-  documentGeneration: number
-  diskRevision: DiskRevision
-}
+export const ProjectFileRef = Schema.Struct({
+  project: IdeProjectRef,
+  rootId: ProjectRootId,
+  relativePath: NormalizedRelativePath,
+}).annotate({ identifier: "ProjectFileRef" })
+export interface ProjectFileRef
+  extends Schema.Schema.Type<typeof ProjectFileRef> {}
 
-type ServiceResultRef = {
-  document: DocumentSnapshotRef
-  serviceId: ProjectCapabilityId
-  serviceGeneration: number
-}
+export const DocumentSnapshotRef = Schema.Struct({
+  documentId: DocumentId,
+  file: ProjectFileRef,
+  documentGeneration: DocumentGeneration,
+  diskRevision: DiskRevision,
+}).annotate({ identifier: "DocumentSnapshotRef" })
+export interface DocumentSnapshotRef
+  extends Schema.Schema.Type<typeof DocumentSnapshotRef> {}
+
+export const ServiceResultRef = Schema.Struct({
+  document: DocumentSnapshotRef,
+  serviceId: ProjectCapabilityId,
+  serviceGeneration: ProjectCapabilityGeneration,
+}).annotate({ identifier: "ServiceResultRef" })
+export interface ServiceResultRef
+  extends Schema.Schema.Type<typeof ServiceResultRef> {}
 ```
 
 **[Constraint]** Absolute roots remain in privileged host state. A renderer,
@@ -318,14 +331,23 @@ Zed models stores and language servers as capabilities with lifecycle. The
 OpenAgents graph should make that visible and general:
 
 ```ts
-type ProjectCapabilityState =
-  | { _tag: 'unconfigured' }
-  | { _tag: 'starting'; since: Timestamp }
-  | { _tag: 'ready'; generation: number; placement: PlacementRef }
-  | { _tag: 'degraded'; generation: number; reason: TypedLoss }
-  | { _tag: 'stopped'; reason: TypedReason }
-  | { _tag: 'failed'; reason: TypedFailure; retry: RetryPolicy }
+import { Schema } from "effect"
+
+export const ProjectCapabilityState = Schema.TaggedUnion({
+  Unconfigured: {},
+  Starting: { since: Schema.DateTimeUtc },
+  Ready: { generation: ProjectCapabilityGeneration, placement: PlacementRef },
+  Degraded: { generation: ProjectCapabilityGeneration, reason: TypedLoss },
+  Stopped: { reason: TypedReason },
+  Failed: { reason: TypedFailure, retry: RetryPolicy },
+}).annotate({ identifier: "ProjectCapabilityState" })
+export type ProjectCapabilityState = typeof ProjectCapabilityState.Type
 ```
+
+Because this state is persisted and projected across process/surface
+boundaries, `Schema.TaggedUnion` is the authority. An internal-only reducer
+algebra would instead use `Data.TaggedEnum`; it would not become a second wire
+contract.
 
 Capabilities include filesystem/index, documents, language, Git, search,
 terminal, tasks, debug, agent context, and persistence. The renderer asks for
@@ -356,6 +378,22 @@ Each service is scoped to an exact `IdeProjectRef`; attachment revocation or
 generation change invalidates the whole composed layer. This gives the user
 Zed-like coherence while preserving OpenAgents' typed process and authority
 boundaries.
+
+Implementation follows the repository Effect conventions, not merely
+TypeScript-shaped dependency injection:
+
+- boundary and persisted values are Effect Schemas with derived types;
+- application services are `Context.Service` definitions acquired through
+  explicit `Layer.effect` graphs;
+- public and non-trivial service methods are named `Effect.fn` operations;
+- expected failures are `Schema.TaggedErrorClass` values;
+- untrusted adapter/IPC/persistence payloads use Schema decoding rather than
+  casts;
+- watchers, streams, workers, and child supervisors are forked into the owning
+  layer scope and interrupted on project-generation disposal.
+
+The tree above names responsibilities; it is not permission to create raw
+interfaces, ad hoc singleton services, or an ambient mutable service locator.
 
 ### 4.4 Exact Effect/TypeScript versus Rust boundary
 
@@ -469,16 +507,20 @@ parent-session identity and project paths for grouping.
 **[Proposal]** Every coding session attaches to:
 
 ```ts
-type AgentProjectAttachment = {
-  sessionRef: SessionRef
-  threadRef: ThreadRef
-  runRef?: FullAutoRunRef
-  project: IdeProjectRef
-  worktreeRefs: ReadonlyArray<ProjectRootRef>
-  executionProfileRef: ExecutionProfileRef
-  placementRef: PlacementRef
-  attachmentGeneration: number
-}
+import { Schema } from "effect"
+
+export const AgentProjectAttachment = Schema.Struct({
+  sessionRef: SessionRef,
+  threadRef: ThreadRef,
+  runRef: Schema.optionalKey(FullAutoRunRef),
+  project: IdeProjectRef,
+  worktreeRefs: Schema.Array(ProjectRootRef),
+  executionProfileRef: ExecutionProfileRef,
+  placementRef: PlacementRef,
+  attachmentGeneration: AttachmentGeneration,
+}).annotate({ identifier: "AgentProjectAttachment" })
+export interface AgentProjectAttachment
+  extends Schema.Schema.Type<typeof AgentProjectAttachment> {}
 ```
 
 The attachment does not grant tools by itself. It says what project evidence
@@ -493,30 +535,35 @@ and project context show what good integration feels like. OpenAgents should
 make the resulting disclosure more explicit.
 
 ```ts
-type AgentContextItem = {
-  contextItemId: ContextItemId
-  source:
-    | 'explicit_file'
-    | 'explicit_selection'
-    | 'open_document'
-    | 'diagnostic'
-    | 'definition'
-    | 'search_result'
-    | 'git_change'
-    | 'recent_edit'
-    | 'project_rule'
-    | 'skill'
-    | 'retrieval_candidate'
-  file?: ProjectFileRef
-  documentGeneration?: number
-  range?: Utf16Range
-  reason: TypedContextReason
-  sensitivity: DataClassification
-  audience: ContextAudience
-  byteCost: number
-  tokenEstimate?: number
-  truncated: boolean
-}
+import { Schema } from "effect"
+
+export const AgentContextItem = Schema.Struct({
+  contextItemId: ContextItemId,
+  source: Schema.Literals([
+    "explicit_file",
+    "explicit_selection",
+    "open_document",
+    "diagnostic",
+    "definition",
+    "search_result",
+    "git_change",
+    "recent_edit",
+    "project_rule",
+    "skill",
+    "retrieval_candidate",
+  ]),
+  file: Schema.optionalKey(ProjectFileRef),
+  documentGeneration: Schema.optionalKey(DocumentGeneration),
+  range: Schema.optionalKey(Utf16Range),
+  reason: TypedContextReason,
+  sensitivity: DataClassification,
+  audience: ContextAudience,
+  byteCost: ByteCount,
+  tokenEstimate: Schema.optionalKey(TokenCountEstimate),
+  truncated: Schema.Boolean,
+}).annotate({ identifier: "AgentContextItem" })
+export interface AgentContextItem
+  extends Schema.Schema.Type<typeof AgentContextItem> {}
 ```
 
 The composer and inline edit surface should show a context tray with:
@@ -538,31 +585,36 @@ An agent must not mutate Monaco directly. It uses canonical file tools, or it
 returns a proposal that the same host authority can apply.
 
 ```ts
-type AgentEditProposal = {
-  proposalId: AgentEditProposalId
-  sessionRef: SessionRef
-  threadRef: ThreadRef
-  runRef?: FullAutoRunRef
-  project: IdeProjectRef
-  runtimeIdentity: EffectiveRuntimeIdentity
-  contextManifestRef: ContextManifestRef
-  operations: ReadonlyArray<
-    | CreateFileProposal
-    | UpdateDocumentProposal
-    | MoveFileProposal
-    | DeleteFileProposal
-  >
-  baseDocuments: ReadonlyArray<DocumentSnapshotRef>
-  validation: ProposalValidationState
-  status:
-    | 'streaming'
-    | 'ready'
-    | 'stale'
-    | 'partially_applied'
-    | 'applied'
-    | 'rejected'
-    | 'undone'
-}
+import { Schema } from "effect"
+
+export const AgentEditProposal = Schema.Struct({
+  proposalId: AgentEditProposalId,
+  sessionRef: SessionRef,
+  threadRef: ThreadRef,
+  runRef: Schema.optionalKey(FullAutoRunRef),
+  project: IdeProjectRef,
+  runtimeIdentity: EffectiveRuntimeIdentity,
+  contextManifestRef: ContextManifestRef,
+  operations: Schema.Array(Schema.Union([
+    CreateFileProposal,
+    UpdateDocumentProposal,
+    MoveFileProposal,
+    DeleteFileProposal,
+  ])),
+  baseDocuments: Schema.Array(DocumentSnapshotRef),
+  validation: ProposalValidationState,
+  status: Schema.Literals([
+    "streaming",
+    "ready",
+    "stale",
+    "partially_applied",
+    "applied",
+    "rejected",
+    "undone",
+  ]),
+}).annotate({ identifier: "AgentEditProposal" })
+export interface AgentEditProposal
+  extends Schema.Schema.Type<typeof AgentEditProposal> {}
 ```
 
 `UpdateDocumentProposal` uses typed operations or an exact patch against a
@@ -716,16 +768,26 @@ everything into one opaque index.
 choosing retrieval implementations:
 
 ```ts
-type ContextCandidate = {
-  item: AgentContextItem
-  sourceGeneration: number
-  freshness: FreshnessClass
-  selectionReason: TypedContextReason
-  score?: number
-  scoreKind?: 'semantic' | 'lexical' | 'recency' | 'structural' | 'explicit'
-  providerEligible: boolean
-  invalidationRefs: ReadonlyArray<GenerationRef>
-}
+import { Schema } from "effect"
+
+export const ContextCandidate = Schema.Struct({
+  item: AgentContextItem,
+  sourceGeneration: SourceGeneration,
+  freshness: FreshnessClass,
+  selectionReason: TypedContextReason,
+  score: Schema.optionalKey(Schema.Number),
+  scoreKind: Schema.optionalKey(Schema.Literals([
+    "semantic",
+    "lexical",
+    "recency",
+    "structural",
+    "explicit",
+  ])),
+  providerEligible: Schema.Boolean,
+  invalidationRefs: Schema.Array(GenerationRef),
+}).annotate({ identifier: "ContextCandidate" })
+export interface ContextCandidate
+  extends Schema.Schema.Type<typeof ContextCandidate> {}
 ```
 
 The central typed semantic selector or structured query planner chooses among
@@ -754,26 +816,31 @@ file.
 **[Proposal]** Reserve this contract now:
 
 ```ts
-type ExcerptRef = {
-  excerptId: ExcerptId
-  source: DocumentSnapshotRef
-  sourceRange: Utf16Range
-  projectionRange: Utf16Range
-  writable: boolean
-}
+import { Schema } from "effect"
 
-type ExcerptSet = {
-  excerptSetId: ExcerptSetId
-  purpose:
-    | 'workspace_search'
-    | 'references'
-    | 'problems'
-    | 'git_review'
-    | 'agent_context'
-    | 'agent_proposal'
-  excerpts: ReadonlyArray<ExcerptRef>
-  generation: number
-}
+export const ExcerptRef = Schema.Struct({
+  excerptId: ExcerptId,
+  source: DocumentSnapshotRef,
+  sourceRange: Utf16Range,
+  projectionRange: Utf16Range,
+  writable: Schema.Boolean,
+}).annotate({ identifier: "ExcerptRef" })
+export interface ExcerptRef extends Schema.Schema.Type<typeof ExcerptRef> {}
+
+export const ExcerptSet = Schema.Struct({
+  excerptSetId: ExcerptSetId,
+  purpose: Schema.Literals([
+    "workspace_search",
+    "references",
+    "problems",
+    "git_review",
+    "agent_context",
+    "agent_proposal",
+  ]),
+  excerpts: Schema.Array(ExcerptRef),
+  generation: ExcerptSetGeneration,
+}).annotate({ identifier: "ExcerptSet" })
+export interface ExcerptSet extends Schema.Schema.Type<typeof ExcerptSet> {}
 ```
 
 The first version should be read-only. Writable multi-file excerpt editing is
