@@ -311,13 +311,17 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "apps/ai-sdk-harness-poc/README.md",
@@ -441,26 +445,34 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "apps/oa-updates/docs/release-signing-runbook.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "apps/oa-updates/openagents-desktop-dist/README.md",
@@ -1583,13 +1595,17 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "apps/openagents.com/docs/2026-06-05-email-campaign-records.md",
@@ -2857,13 +2873,17 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "superseded",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": "apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "apps/openagents.com/docs/2026-06-16-private-project-invite-api-audit.md",
@@ -2883,13 +2903,17 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "apps/openagents.com/docs/2026-06-16-pylon-self-serve-install-to-earn-proof.md",
@@ -7735,13 +7759,17 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "apps/pylon/docs/codex-agent-task-smoke.md",
@@ -7943,13 +7971,17 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "apps/pylon/docs/operator-views-recovery.md",
@@ -13877,91 +13909,119 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "docs/deploy/agent-computer-production.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "docs/deploy/openagents-audio-retention.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "docs/deploy/openagents-desktop-cross-platform-release.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "docs/deploy/openagents-desktop-production-release.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "docs/deploy/openagents-desktop-release-coordinator.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "docs/deploy/openagents-mobile-production-release.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "docs/design/2026-06-16-foldkit-ui-component-library-roadmap.md",
@@ -22028,13 +22088,17 @@
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "migration",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
       "owner": "OpenAgents documentation",
       "risk": "high",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6"
+      ]
     },
     {
       "path": "docs/ops/2026-07-15-codex-app-server-upgrade-rollback-oncall.md",
@@ -29148,6 +29212,22 @@
       ]
     },
     {
+      "path": "docs/ste/p3-high-risk-procedure-conversion-receipt.md",
+      "ste_issue": 9,
+      "ste_mode": "mixed",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T20:10:00Z",
+      "owner": "OpenAgents documentation",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
+    {
       "path": "docs/ste/templates/audit.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
@@ -33283,6 +33363,19 @@
     },
     {
       "path": "docs/transcripts/258.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Preserved transcript archive",
+      "replacement": null
+    },
+    {
+      "path": "docs/transcripts/25X-fullauto.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
       "ste_glossary_revision": "openagents-ste-glossary-v1",

@@ -5,6 +5,19 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## High-risk operator procedures complete their STE conversion (#9051)
+
+- issues: #9051
+- commits: this change
+- contracts-specs: 15 current operator procedures, one superseded Worker deploy runbook
+- invariants: human procedures use base STE, protected commands and requirement tokens remain stable
+- evidence: docs/ste/p3-high-risk-procedure-conversion-receipt.md, docs/ste/control-semantic-baseline.v1.json
+- lane: codex/asd-ste100-migration-20260719-r2
+
+The current release, deployment, authentication, private workspace, and recovery controls now have checked human-facing STE profiles.
+The obsolete Worker deploy runbook now points to the current Google Cloud authority.
+The ledger keeps later-phase public, planning, evidence, and legacy documents in an explicit migration state.
+
 ## Active specifications complete their STE conversion (#9050)
 
 - issues: #9050

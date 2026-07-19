@@ -38,7 +38,7 @@ ref, label, and status.
 ## Live Agent-Assisted Connection Loop
 
 Use this loop when an operator says they need to connect several accounts now.
-The agent drives the CLI; the operator only completes each browser device-code
+The agent drives the CLI. The operator only completes each browser device-code
 ceremony and replies `done`.
 
 1. In `/Users/christopherdavid/work/openagents`, source
@@ -53,8 +53,8 @@ ceremony and replies `done`.
 6. When it is `connected`, run a single-account sanity check using the printed
    provider account ref.
 7. If sanity is healthy, start the next account. If sanity is not healthy,
-   keep the account connected for audit, mark it as not ready in the handoff,
-   and continue only if another account is available.
+   keep the account connected for audit. Mark it as not ready in the handoff.
+   Continue only if another account is available.
 8. After the final account, run the fleet dashboard, all-account sanity, and
    parallel sanity probe.
 
@@ -67,9 +67,9 @@ prep.
 The agent should preserve four local facts for the active ceremony until that
 account has passed sanity:
 
-- account label;
-- attempt ID;
-- provider account ref;
+- account label.
+- attempt ID.
+- provider account ref.
 - expiry timestamp.
 
 When the operator says `done`, do not start a new account first. Poll the
@@ -93,14 +93,14 @@ the loop moving:
 - `do another`, `one more`, or `I've got one more`: start exactly one more
   `--create-new` device-login attempt after the previous account has passed
   sanity.
-- final `done` after the last planned account: poll and sanity check the final
-  attempt, then run the fleet dashboard, all-account sanity, parallel sanity,
-  selector explanation, active leases, and failover history checks.
+- final `done` after the last planned account: poll the final attempt. Check its
+  sanity. Then, run the fleet dashboard, all-account sanity, and parallel
+  sanity. Check the selector explanation, active leases, and failover history.
 
 The agent should keep the current attempt ID and provider account ref in its
 working notes while the browser ceremony is pending. If context was compacted
-or the attempt ID is lost, recover with the fleet dashboard and recent terminal
-history before asking the operator to restart a ceremony.
+or the attempt ID is lost, use the fleet dashboard. Also use recent terminal
+history. Do this recovery before you ask the operator to restart a ceremony.
 
 If the CLI exits with `Missing OPENAGENTS_ADMIN_API_TOKEN`, the agent should
 source `/Users/christopherdavid/work/.secrets/vortex-admin.env` itself. Do not
@@ -132,9 +132,9 @@ workspace secret file yourself and continue.
 ## After The Final `done`
 
 When the operator finishes the last browser page and replies `done`, do not ask
-them for another token or tell them to find an admin token. Source the ignored
-workspace secret file yourself, poll the final attempt, run one sanity check for
-that final provider account ref, then run the fleet-level checks:
+for another token. Do not tell the operator to find an admin token. Source the
+ignored workspace secret file. Poll the final attempt. Run one sanity check for
+that final provider account ref. Then, run the fleet-level checks:
 
 ```bash
 cd /Users/christopherdavid/work/openagents
@@ -152,17 +152,17 @@ node scripts/provider-chatgpt-device-login.mjs explain-lease --email chris@opena
 
 Expected overnight-ready result:
 
-- every intended account is `connected/healthy`;
-- the all-account sanity summary reports all accounts healthy;
-- the parallel probe reports zero collisions;
-- the dashboard summary reports every intended account eligible;
+- every intended account is `connected/healthy`.
+- the all-account sanity summary reports all accounts healthy.
+- the parallel probe reports zero collisions.
+- the dashboard summary reports every intended account eligible.
 - `explain-lease` returns `Lease selector status: selected`.
 
-On June 5, 2026, the final closeout for the before-bed fleet reported six of
-six accounts healthy, zero collisions at parallelism five, six of six accounts
-eligible, zero active leases, zero low-credit flags, zero reauth blockers, and a
-selected lease candidate. Keep exact provider account refs and account labels
-in operator-only terminal output or issue comments; they are not needed in this
+On June 5, 2026, the final closeout reported six of six accounts healthy. It
+reported zero collisions at parallelism five and six of six accounts eligible.
+It also reported zero active leases, low-credit flags, and reauth blockers. A
+lease candidate was selected. Keep exact provider account refs and account labels
+in operator-only terminal output or issue comments. They are not needed in this
 tracked runbook.
 
 ### Replay The June 5 Before-Bed Flow
@@ -188,15 +188,15 @@ before sleeping:
    `dashboard`, `explain-lease`, `leases`, and `failover-history`.
 
 If context compaction happens mid-flow, recover from the current terminal
-transcript first: identify the most recent `attemptId`, public provider account
+transcript first. Identify the most recent `attemptId`, public provider account
 ref, and label that have not yet passed sanity. If the terminal transcript is
 not enough, run the dashboard and inspect recent connection attempts before
 asking the operator to restart a ceremony.
 
-The final operator-facing handoff should include only counts and statuses:
-number connected, number healthy, collision count, eligible count, active lease
-count, low-credit count, reauth blocker count, selector status, and whether any
-account needs operator action. Do not put raw provider refs, admin bearer token,
+The final operator-facing handoff should include only counts and statuses.
+Include the connected, healthy, collision, eligible, and active lease counts.
+Include the low-credit and reauth blocker counts. Include the selector status
+and whether an account needs operator action. Do not put raw provider refs, admin bearer token,
 grant refs, secret refs, auth JSON, or provider responses in tracked docs.
 
 ## Start One Account
@@ -210,11 +210,11 @@ node scripts/provider-chatgpt-device-login.mjs start \
 
 The command prints:
 
-- verification URL;
-- user code;
-- expiry;
-- attempt ID;
-- public provider account ref;
+- verification URL.
+- user code.
+- expiry.
+- attempt ID.
+- public provider account ref.
 - next poll command.
 
 Open the verification URL locally, enter the user code, and complete ChatGPT
@@ -270,27 +270,29 @@ fleet run:
 node scripts/provider-chatgpt-device-login.mjs sanity --all --parallel 5 --email chris@openagents.com
 ```
 
-The sanity check issues and resolves a short-lived provider-account grant
-through the server/runner boundary, validates that server-side auth material is
-available, performs a minimal OAuth refresh probe equivalent to the runner's
-Codex provider-auth path, records a durable sanity-check row, updates the
+The sanity check issues a short-lived provider-account grant through the server
+and runner boundary. It resolves the grant and confirms that server-side auth
+material is available. It performs a minimal OAuth refresh probe equivalent to
+the runner's Codex provider-auth path. It records a durable sanity-check row and updates the
 account's latest sanity timestamp/result, and records a provider account health
 event. A successful refresh probe stores the rotated OAuth material back into
-private KV before returning healthy. An invalidated, reused, expired, or
-otherwise rejected refresh token is normalized to `token_invalidated`, marks the
-account `requires_reauth`, and keeps it out of automatic leases until it is
-reconnected.
+private KV before returning healthy.
+
+The service normalizes an invalid, reused,
+expired, or rejected refresh token to `token_invalidated`. It marks the account
+as `requires_reauth`. It keeps the account out of automatic leases until a
+reconnect is complete.
 
 When `--parallel` is greater than `1`, OpenAgents product surface also creates a redacted
 simultaneous-probe receipt for each account with:
 
-- probe run ID;
-- per-account probe ID;
-- per-account lease ID;
-- public provider account ref;
-- start and finish timestamp;
-- terminal status;
-- health classification;
+- probe run ID.
+- per-account probe ID.
+- per-account lease ID.
+- public provider account ref.
+- start and finish timestamp.
+- terminal status.
+- health classification.
 - collision class.
 - redacted failure class, when the probe identified one.
 
@@ -317,7 +319,7 @@ Safe classifications:
 
 Safe failure classes may include `token_invalidated`, `rate_limited`,
 `provider_outage`, and other existing failover classes. They are redacted
-classes only; raw provider response bodies are not safe output.
+classes only. Raw provider response bodies are not safe output.
 
 Sanity output is safe for issue comments. It must not include access tokens,
 refresh tokens, raw auth JSON, grant secrets, provider raw responses, or secret
@@ -333,10 +335,10 @@ account:
 node scripts/provider-chatgpt-device-login.mjs dashboard --email chris@openagents.com
 ```
 
-The dashboard shows each ChatGPT/Codex account's public account ref, operator
-label, status, health, eligibility, eligibility blockers, operator priority,
-active leases, lease limit, last sanity check, last simultaneous probe, last
-selected timestamp, last successful/failed launch timestamp, recent failure
+The dashboard shows each account's public account ref, operator label, status,
+health, eligibility, and eligibility blockers. It shows operator priority,
+active leases, and the lease limit. It shows the last sanity check, simultaneous
+probe, and selection time. It also shows the last launch times and recent failure
 class, cooldown, low-credit flag, reauth/refill/operator notes, and safe
 sanity/reconnect commands.
 
@@ -366,10 +368,10 @@ The lease selector:
 5. Falls back to oldest successful use / oldest connection and then public
    provider account ref for deterministic ordering.
 
-Fleet metadata available to selection and failover includes operator label,
-operator priority, lease limit, active leases, low-credit flag, cooldown until,
-recent failure class, last sanity check, last simultaneous probe, last selected
-time, last successful/failed launch time, reauth-required reason, operator
+Fleet metadata includes the operator label, operator priority, lease limit, and
+active leases. It includes the low-credit flag, cooldown time, and recent
+failure class. It includes the last sanity check, simultaneous probe, and
+selection time. It also includes the launch times, reauth reason, and operator
 note, and refill note. Customer/public projections must continue to avoid
 private operator notes, secret refs, auth JSON, grant refs, and raw provider
 responses.
@@ -440,10 +442,11 @@ Failover effects:
   grant refs, secret refs, or provider material.
 - `runner_failure` records the failure but does not poison the account.
 
-Failover writes a redacted receipt with previous public account ref, next
-public account ref when available, failure class, account action, attempt
-number, max attempts, outcome, cooldown/quarantine action, policy version,
-operator summary, customer-safe summary, and customer-safe status. If attempts
+Failover writes a redacted receipt. The receipt gives the previous public
+account ref and the next public account ref when available. It gives the
+failure class, account action, attempt number, maximum attempts, and outcome.
+It gives the cooldown or quarantine action and policy version. It also gives
+the operator summary, customer-safe summary, and customer-safe status. If attempts
 are exhausted or no eligible account remains, the endpoint returns a blocked
 outcome suitable for an operator-visible blocker.
 
@@ -466,16 +469,17 @@ node scripts/provider-chatgpt-device-login.mjs failover-history \
   --email chris@openagents.com
 ```
 
-History output is safe for issue comments when it is limited to receipt ID,
-timestamps, public provider account refs, failure class, outcome, policy
-version, and redacted summaries. It must not include provider tokens, auth
+History output is safe for issue comments when it contains only approved data.
+This data includes the receipt ID, timestamps, and public provider account
+refs. It also includes the failure class, outcome, policy version, and redacted
+summaries. It must not include provider tokens, auth
 JSON, secret refs, grant refs, raw provider responses, or private operator
 notes.
 
 ## Connect A Fleet Of Accounts
 
 Repeat the start/poll ceremony with `--create-new` and a unique label. The
-labels do not need to match the ChatGPT account email; they are operator-facing
+labels do not need to match the ChatGPT account email. They are operator-facing
 fleet labels used in lease, sanity, and failover output.
 
 ```bash
@@ -572,9 +576,9 @@ node scripts/provider-chatgpt-device-login.mjs sanity --all --parallel 5 --email
 
 Expected result for a ready fleet:
 
-- every connected account reports `healthy`;
-- `collisionCount` is `0`;
-- each parallel probe has collision class `none`;
+- every connected account reports `healthy`.
+- `collisionCount` is `0`.
+- each parallel probe has collision class `none`.
 - no account is marked low-credit, reauth-required, denied, or disconnected.
 
 Then inspect the selector without consuming a lease:
@@ -585,9 +589,9 @@ node scripts/provider-chatgpt-device-login.mjs explain-lease --email chris@opena
 
 Expected selector result:
 
-- `Eligible: yes`;
+- `Eligible: yes`.
 - the selected account has the lowest active lease count among eligible
-  accounts;
+  accounts.
 - selection reason is redacted and does not expose secret refs, grant refs,
   auth JSON, tokens, or raw provider responses.
 
@@ -602,9 +606,9 @@ node scripts/provider-chatgpt-device-login.mjs lease \
 ```
 
 If the launch succeeds, release the lease as `succeeded`. If the selected
-account fails for account-specific reasons, call `failover` with the normalized
-failure class so OpenAgents product surface can retry the next eligible account and record a
-redacted receipt.
+account has an account-specific failure, call `failover` with the normalized
+failure class. Then, the OpenAgents product surface can try the next eligible
+account and record a redacted receipt.
 
 ## Fake Smoke Test
 
@@ -616,14 +620,14 @@ bunx vitest run scripts/provider-chatgpt-device-login.test.ts
 
 The smoke starts a local mocked operator API and exercises:
 
-- device-login start;
-- poll pending, connected, and expired states;
-- all-account sanity with `--parallel 5`;
-- selector explanation;
-- fleet dashboard;
-- lease acquire, active lease list, and release;
-- failover receipt creation;
-- failover history; and
+- device-login start.
+- poll pending, connected, and expired states.
+- all-account sanity with `--parallel 5`.
+- selector explanation.
+- fleet dashboard.
+- lease acquire, active lease list, and release.
+- failover receipt creation.
+- failover history.
 - redaction of token-like fields.
 
 This test does not prove live ChatGPT auth. Live auth is proven only by the
@@ -648,15 +652,16 @@ Go for overnight customer-order fulfillment only when all are true:
 - `failover-history --email chris@openagents.com` contains only redacted
   receipt fields.
 - Safe-to-paste outputs include public provider account refs, public lease
-  refs, receipt IDs, statuses, classifications, timestamps, policy versions,
-  redacted selector/failover summaries, and issue/order/assignment/run IDs.
+  refs, receipt IDs, statuses, classifications, and timestamps. They also
+  include policy versions, redacted selector or failover summaries, and public
+  work IDs.
 - Never paste provider tokens, refresh tokens, raw `auth.json`, secret refs,
   grant refs/secrets, raw provider responses, private runner payloads, or the
   admin API token.
 
-No-go if any intended account requires reconnect/refill, if parallel probing
-shows a collision, if no account is eligible for lease, or if the operator
-cannot inspect the fleet dashboard.
+Do not proceed if an intended account needs a reconnect or refill. Do not
+proceed if a parallel probe shows a collision. Do not proceed if no account is
+eligible for lease. Do not proceed if the operator cannot inspect the fleet dashboard.
 
 ## Operator API
 
@@ -709,6 +714,6 @@ All connected accounts for a target user:
 ```
 
 The operator API uses the same provider-account service as the browser settings
-flow, so completed attempts create/update provider account rows, login events,
-health, and server-side secret refs without exposing secret material in the
-response.
+flow. Thus, completed attempts create or update provider account rows, login
+events, health data, and server-side secret refs. The response does not expose
+secret material.

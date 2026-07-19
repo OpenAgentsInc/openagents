@@ -2,7 +2,7 @@
 
 - Date: 2026-07-14
 - Issue: [#8795](https://github.com/OpenAgentsInc/openagents/issues/8795)
-- Status: owner procedure; not executed by this document
+- Status: owner procedure. Not executed by this document
 - Scope: recover the retired OpenAgents treasury MDK and Spark wallet value
 - Last observed balance: approximately `9,274 sats` (`8,622` MDK and `652`
   Spark), before fees and subject to fresh wallet synchronization
@@ -14,7 +14,7 @@ not keep it serving while the cutover proceeds. `/treasury`,
 `/api/public/treasury`, launch-status, donation, operator, callback, and payout
 paths are retired with the typed `410 money_surface_retired` response. The
 wallet services stay stopped. Recovery is a separate, one-time owner operation
-using this runbook; it is not a reason to restart a public page or production
+using this runbook. It is not a reason to restart a public page or production
 wallet daemon.
 
 ## Safety boundary
@@ -40,15 +40,15 @@ against one wallet can corrupt state or duplicate a send.
 
 The owner records, using refs rather than secret values:
 
-1. the approved receiving wallet and a locally verified destination;
+1. the approved receiving wallet and a locally verified destination.
 2. the expected mainnet network and the last observed MDK/Spark balance
-   buckets;
-3. proof that every old treasury writer is at zero;
-4. the exact recovery-tool versions and their artifact hashes; and
+   buckets.
+3. proof that every old treasury writer is at zero.
+4. the exact recovery-tool versions and their artifact hashes.
 5. an encrypted, owner-controlled evidence location outside the repository.
 
 Secret Manager access should be granted only to the isolated recovery identity
-for the duration of the procedure. Inject secrets directly into that process;
+for the duration of the procedure. Inject secrets directly into that process.
 do not write an env file or command-line argument. Disable shell tracing,
 history, crash upload, and verbose SDK logging before secret injection.
 
@@ -63,25 +63,25 @@ MDK behavior could show a balance while lacking the channel monitor or
 outbound-capacity state required to send. Require the supported restore/sync
 path, original durable wallet state when available, and a positive outbound
 readiness result. If that evidence is unavailable, stop and record
-`mnemonic_restore_not_send_ready`; do not probe repeatedly with live sends.
+`mnemonic_restore_not_send_ready`. Do not probe repeatedly with live sends.
 
-For Spark, initialize from the preserved treasury mnemonic on mainnet, use a
-fresh private storage directory, complete SDK synchronization, and require the
-same stable wallet fingerprint on two consecutive reads. Do not create a new
+For Spark, initialize from the preserved treasury mnemonic on mainnet. Use a
+fresh private storage directory. Complete SDK synchronization. Require the same
+stable wallet fingerprint on two consecutive reads. Do not create a new
 mnemonic, register a new identity, or interpret an empty first read as proof
 that the historical wallet was empty.
 
 Before any send, require all of the following:
 
 - network, wallet fingerprint, and recovery-source refs match the retirement
-  record;
-- two consecutive synchronized balance reads agree for each rail;
+  record.
+- two consecutive synchronized balance reads agree for each rail.
 - transaction-history counts and redacted digests are stable across those
-  reads;
-- MDK reports usable outbound capacity, not merely a positive balance;
-- Spark reports a bounded maximum sendable amount;
+  reads.
+- MDK reports usable outbound capacity, not merely a positive balance.
+- Spark reports a bounded maximum sendable amount.
 - no new production ledger or wallet activity has appeared since the quiet
-  snapshot; and
+  snapshot.
 - the proposed amount leaves the fee/reserve margin required by the wallet.
 
 A parity mismatch, unknown wallet home, absent history, changing balance, or
@@ -91,7 +91,7 @@ review.
 ## Owner-controlled sweep
 
 The owner confirms the destination in the receiving wallet UI, then approves
-one rail at a time. Prefer the wallet's supported sweep/send-all operation; if
+one rail at a time. Prefer the wallet's supported sweep/send-all operation. If
 it requires an amount, compute it from the freshly synchronized maximum
 sendable value, not from the `9,274 sats` observation.
 
@@ -102,7 +102,7 @@ sendable value, not from the `9,274 sats` observation.
    remaining-balance bucket.
 3. Sweep MDK once (last observed near `8,622 sats`), only after its
    outbound-readiness gate passes. Do not retry an unknown result. Reconcile by
-   payment history and destination receipt first; retry only an identical
+   payment history and destination receipt first. Retry only an identical
    idempotent operation after proving the first attempt did not settle.
 4. Re-synchronize MDK and verify that the expected remainder is fee/reserve
    dust or zero. Any material remainder stays in recovery review.
@@ -117,13 +117,13 @@ path, SDK database, or daemon log.
 
 After both rails reconcile:
 
-1. stop the recovery process and verify no wallet process remains;
+1. stop the recovery process and verify no wallet process remains.
 2. securely remove its private wallet home, SDK storage, environment, and
-   temporary receipts after the encrypted evidence copy is verified;
-3. revoke the recovery identity's Secret Manager access;
+   temporary receipts after the encrypted evidence copy is verified.
+3. revoke the recovery identity's Secret Manager access.
 4. disable the preserved secret versions only after the owner confirms the
-   destination receipts and the encrypted recovery record is readable;
-5. retain only redacted receipt refs in the VP-1 closeout; and
+   destination receipts and the encrypted recovery record is readable.
+5. retain only redacted receipt refs in the VP-1 closeout.
 6. prove the retired Cloud Run/Cloudflare services and routes cannot restart or
    regain secret access.
 

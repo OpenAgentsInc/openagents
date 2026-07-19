@@ -4,7 +4,7 @@
 > first @openagentsinc workspace-dependency publishes and the 0.3.0-rc2
 > publish. Read this before publishing ANY package from this monorepo.
 > Owner decisions recorded here: the npm scope is `@openagentsinc`
-> (npm username `openagentsinc`); 0.3.0 ships as an **rc dist-tag only**
+> (npm username `openagentsinc`). 0.3.0 Ships as an **rc dist-tag only**
 > until the owner decides stable.
 
 ## Scope truth
@@ -19,7 +19,7 @@
 
 ## Auth
 
-- The account has 2FA; interactive `npm publish` fails with `EOTP`
+- The account has 2FA. Interactive `npm publish` fails with `EOTP`
   unless `--otp=CODE` is passed.
 - The unattended path is a **granular automation token** stored at
   workspace `.secrets/npm-publish.env` (`NPM_PUBLISH_TOKEN`) and in
@@ -68,7 +68,7 @@ pnpm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access public 
   onto the RC. `latest` stays 0.2.5 until the owner tags a stable.
 - Verify after: `npm view @openagentsinc/pylon dist-tags`.
 
-## Propagation gotchas (will look like failure; are not)
+## Propagation gotchas (will look like failure, are not)
 
 - Right after publish, `npm view` and direct installs can 404 for
   several minutes. The FULL registry doc
@@ -77,7 +77,7 @@ pnpm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access public 
   (`Accept: application/vnd.npm.install-v1+json`) does — and bun
   installs use the corgi endpoint. A passing curl with no Accept header
   does NOT mean `pnpm install` will resolve yet.
-- `bun pm cache rm` does not fix this; it is registry-CDN-side. Wait
+- `bun pm cache rm` does not fix this. It is registry-CDN-side. Wait
   and poll the corgi endpoint until 200 for every just-published
   package, then re-run the gate.
 
@@ -86,30 +86,30 @@ pnpm pack && npm publish ./openagentsinc-pylon-<v>.tgz --tag rc --access public 
 - `pnpm run release:gate` in apps/pylon runs unit/runtime tests, the
   bootstrap/status/inventory/operator smokes, dashboard smoke, package
   dry-run, and `scripts/smoke-local-package-install.sh` (packs pylon +
-  nip90 + tassadar-executor locally; resolves agent-runtime-schema from
+  nip90 + tassadar-executor locally. Resolves agent-runtime-schema from
   the registry — so that package must be published and corgi-propagated
   for the gate to pass).
 - Tarball filename patterns in the install smoke derive from the scope
-  without the `@` (`openagentsinc-<name>-<v>.tgz`); if a package is
+  without the `@` (`openagentsinc-<name>-<v>.tgz`). If a package is
   renamed, update the awk patterns in
   `scripts/smoke-local-package-install.sh`.
-- Known date-bomb class (fixed once, watch for recurrence): tests that
-  sign NIP-98 events with an injected fixed epoch but verify against
-  wall clock with a wide `maxSkewSeconds` will pass for exactly that
-  window after the epoch and then fail forever. Verify with the same
-  injected `now`.
+- Known date-bomb class: tests can sign NIP-98 events with an injected fixed
+  epoch. If they verify against wall time, they pass only during the wide
+  `maxSkewSeconds` window. Then, they fail permanently. Verify with the same
+  injected `now`. This defect occurred before and was corrected.
 
 ## Consumer install must work without bun (git-dep prepare hazard)
 
-`@openagentsinc/nip90` (a pylon dependency) pulls `nostr-effect` as a **git
-dependency**. npm runs the git dep's `prepare` lifecycle script on consumer
-install (registry tarballs do not), so a bun-requiring `prepare` in any
-transitive git dep breaks plain `npx @openagentsinc/pylon` / `npm install`
-on a clean Node/npm box with `code 127 (git dep preparation failed)` — even
-though `pnpm install`/`pnpm exec` work because bun blocks lifecycle scripts by
-default. This was the 2026-06-18 launch bug (fixed: `nostr-effect`'s
-`prepare` is now a Node-only guard; `nip90` repins to
-`nostr-effect#4c52847`). Before publishing, run the **npm + no-bun** consumer
+`@openagentsinc/nip90` pulls `nostr-effect` as a **git dependency**. npm runs
+the git dependency's `prepare` lifecycle script during consumer installation.
+Registry tarballs do not run this script. Thus, a `prepare` script that needs
+Bun breaks `npx @openagentsinc/pylon` and `npm install` on a clean Node system.
+The failure is `code 127 (git dep preparation failed)`. `pnpm install` and
+`pnpm exec` can still work because Bun blocks lifecycle scripts by default.
+
+This defect caused the 2026-06-18 launch failure. The `nostr-effect` `prepare`
+script now uses a Node-only guard. `nip90` now pins
+`nostr-effect#4c52847`. Before publishing, run the **npm + no-bun** consumer
 smoke in `release-install-smokes.md`. Repinning a git dep inside a published
 package (e.g. nip90) requires republishing that package AND pylon.
 

@@ -1,5 +1,9 @@
 # OpenAgents Web Deploy Runbook
 
+Status: superseded. Do not use these Worker deployment commands.
+Use `apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh` and the current
+deployment rules in `apps/openagents.com/AGENTS.md`.
+
 This runbook is the production guardrail for deploying `openagents.com` Worker
 code and web assets together.
 
@@ -27,7 +31,7 @@ npx wrangler deploy --containers-rollout=none --assets ../../apps/web/dist
 
 The `--assets ../../apps/web/dist` argument is mandatory. A deploy can otherwise
 publish a Worker version whose `ASSETS` binding returns 404 for `/` and the
-hashed web bundle, even though Wrangler reports a successful Worker upload.
+hashed web bundle. Wrangler can still report a successful Worker upload.
 
 ## Desktop Build Gate
 
@@ -47,26 +51,24 @@ cd ../..
 bun run verify:autopilot-desktop:deploy
 ```
 
-The desktop verifier runs the Foldkit regression tests, the Three/WebGL training
-scene smoke, the browser and Bun entrypoint builds, the full ElectroBun build,
-and a packaged-asset assertion for the shared `three-effect` Moksha GLB used by
-the desktop network scene. Do not deploy if this gate fails; fix the desktop
+The desktop verifier runs the Foldkit regression tests and the Three/WebGL
+training scene smoke. It runs the browser and Bun entrypoint builds. It runs
+the full ElectroBun build and a packaged-asset check for the shared
+`three-effect` Moksha GLB. Do not deploy if this gate fails. Fix the desktop
 failure first.
 
 ## Keep shared github-dependency pins consistent across workspaces
 
-`typecheck:web` (and therefore the deploy gate) can break for a reason that has
-nothing to do with the change you are shipping: a **shared github dependency
-pinned to different commits in two workspaces**. Bun installs one hoisted copy
-for the monorepo, so if two packages pin the same dep to different commits, the
-web import can resolve to the *other* workspace's older copy and fail to find
-symbols that exist only in the newer pin.
+`typecheck:web` can fail because a **shared GitHub dependency is pinned to
+different commits in two workspaces**. This failure also stops the deploy gate.
+Bun installs one hoisted copy for the monorepo. Thus, the web import can resolve
+to the older workspace copy and fail to find new symbols.
 
-This bit us with `@openagentsinc/three-effect` on 2026-06-16: `apps/web` pinned
-`#f1794af` (which exports `TrainingRunBeam/Burst/EntityDefinition`) while
-`apps/autopilot-desktop` still pinned the older `#0cce6ccd`, so `typecheck:web`
-failed with "`@openagentsinc/three-effect` has no exported member …" even though
-the web pin was correct.
+This failure occurred with `@openagentsinc/three-effect` on 2026-06-16.
+`apps/web` pinned `#f1794af`, which exports
+`TrainingRunBeam/Burst/EntityDefinition`.
+`apps/autopilot-desktop` pinned the older `#0cce6ccd`. Thus, `typecheck:web`
+reported that `@openagentsinc/three-effect` had no exported member.
 
 Rules:
 

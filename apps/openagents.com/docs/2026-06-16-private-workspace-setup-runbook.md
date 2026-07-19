@@ -4,18 +4,19 @@ Date: 2026-06-16
 Scope: same-day private team/project workspace setup, invite delivery,
 acceptance verification, and demo walkthrough.
 
-This runbook is for operator use only. It covers the current production path for
-setting up a new private project: create or select the private team/project D1
-rows, send a team/project invite, verify the transactional email ledger, confirm
-acceptance, and walk the teammate through what they can access.
+This runbook is for operator use only. It gives the current production procedure
+for a new private project. Create or select the private team and project D1
+rows. Send a team or project invite. Verify the transactional email ledger and
+acceptance. Then, show the teammate the available content.
 
 ## Safety Rules
 
-- Do not paste recipient emails, raw invite accept URLs, invite tokens, private
-  workspace material, provider request/response bodies, or partner-specific
-  source text into transcripts, issue comments, public docs, or public demos.
+- Do not paste recipient emails, accept URLs, invite tokens, or private
+  workspace material into a public surface. This rule also applies to provider
+  bodies and partner source text. Public surfaces include transcripts, issue
+  comments, public documents, and public demonstrations.
 - Keep raw invite responses in a private shell only. The response contains an
-  `acceptUrl`; treat it as bearer-like invite material.
+  `acceptUrl`. Treat it as bearer-like invite material.
 - When invite emails are copied to the operator, use BCC or a separate operator
   ledger/copy email. Do not visibly CC private recipient lists to customers,
   teammates, partners, or other invitees.
@@ -45,11 +46,11 @@ The setup path creates or uses these records:
 
 The invitee gets:
 
-- a transactional email with subject `Your private OpenAgents workspace invite`;
-- an `Accept invite` button/link;
-- the workspace label you provide;
-- the invite expiry;
-- instruction to sign in with the invited email address;
+- a transactional email with subject `Your private OpenAgents workspace invite`.
+- an `Accept invite` button/link.
+- the workspace label you provide.
+- the invite expiry.
+- instruction to sign in with the invited email address.
 - after acceptance, a redirect to the team/project chat if `projectId` was
   provided, otherwise the team chat.
 
@@ -62,12 +63,12 @@ surfaces or private workspace rows.
 Use this path first. It replaces the manual SQL setup for normal same-day
 operator work:
 
-- creates or reuses the private team/project from the project name and slugs;
-- creates or reuses a `private_team` prefilled workspace unless disabled;
-- sends multiple role-tagged invites in one request;
-- stores private participant kind metadata on each invite;
-- defaults invite email sending to on;
-- defaults operator email copies to on through separate ledger-copy emails;
+- creates or reuses the private team/project from the project name and slugs.
+- creates or reuses a `private_team` prefilled workspace unless disabled.
+- sends multiple role-tagged invites in one request.
+- stores private participant kind metadata on each invite.
+- defaults invite email sending to on.
+- defaults operator email copies to on through separate ledger-copy emails.
 - does not return raw accept URLs unless explicitly requested.
 
 ```http
@@ -111,17 +112,17 @@ Example request shape, with placeholder addresses only:
 
 API defaults:
 
-- `sendEmail: true` for each invite unless explicitly disabled;
+- `sendEmail: true` for each invite unless explicitly disabled.
 - `copyOperator: true` for API-created invite emails unless explicitly disabled
-  at the request or per-invite level;
-- operator copy is sent to `email.operatorCopyEmail` when present, otherwise the
-  configured Resend reply-to address; the current implementation uses a
-  separate ledger-backed copy email rather than visible CC, and the operator
-  copy redacts the invite token / accept URL so it is audit-only;
+  at the request or per-invite level.
+- The operator copy goes to `email.operatorCopyEmail` when that value is present.
+  Otherwise, it goes to the configured Resend reply-to address. The current
+  implementation uses a separate ledger-backed copy email instead of visible
+  CC. The operator copy redacts the invite token and accept URL.
 - no raw accept URLs or invite tokens in normal responses unless the operator
-  passes `"includeAcceptUrls": true`;
+  passes `"includeAcceptUrls": true`.
 - idempotent project/team selection and invite refresh so repeating the same
-  request does not create duplicate teams or uncontrolled duplicate emails;
+  request does not create duplicate teams or uncontrolled duplicate emails.
 - safe response fields only: team/project/workspace refs, invite refs, invite
   status, email status, and redacted delivery refs.
 
@@ -148,14 +149,14 @@ temporary private file or stdin for the invite request body, and delete it after
 the invite is created.
 
 Use stable ids and slugs containing only lowercase letters, numbers, `_`, and
-`-`. Keep display names safe for the app; they may be visible to invited
+`-`. Keep display names safe for the app. They may be visible to invited
 members. For the copy-paste SQL path below, avoid single quotes in display names
 or escape them manually before running the file.
 
 ## 1. Create Or Select The Private Team/Project
 
 If the team/project already exists, skip to preflight. If not, create both rows
-with a reviewed SQL file. This is now a fallback-only operator step; the API
+with a reviewed SQL file. This is now a fallback-only operator step. The API
 path above should be used for normal project creation and invite fanout.
 
 From `apps/openagents.com/workers/api`:
@@ -221,10 +222,10 @@ bunx wrangler d1 execute openagents-autopilot \
 
 Before running that SQL:
 
-- review `/tmp/private-project-setup.sql` locally;
-- do not paste it into public transcripts if the display names are private;
+- review `/tmp/private-project-setup.sql` locally.
+- do not paste it into public transcripts if the display names are private.
 - reuse the existing ids instead of creating new ids when the team/project
-  already exists;
+  already exists.
 - do not set `owner_user_id` unless you are intentionally binding an existing
   user id as owner.
 
@@ -255,10 +256,10 @@ Required readiness:
 - `email_config: ready`
 - `team_exists: ready`
 - `project_exists: ready`
-- `browser_session` can be `manual` before the teammate signs in; confirm it
+- `browser_session` can be `manual` before the teammate signs in. Confirm it
   before the call.
 
-If the project is not required for the call, omit `--project-id`; the invite will
+If the project is not required for the call, omit `--project-id`. The invite will
 be team-scoped.
 
 ## 3. Create Or Refresh The Invite
@@ -304,12 +305,12 @@ Do not paste `acceptUrl` into chat, issues, or transcripts.
 
 What the route does:
 
-- validates the active team exists;
-- validates `projectId` belongs to that active team when provided;
-- creates or refreshes the pending invite for that recipient/team/project target;
-- sends the invite email unless `sendEmail` is false;
+- validates the active team exists.
+- validates `projectId` belongs to that active team when provided.
+- creates or refreshes the pending invite for that recipient/team/project target.
+- sends the invite email unless `sendEmail` is false.
 - records the email attempt on the invite when the email service returns a
-  message id;
+  message id.
 - returns a safe invite projection plus the raw `acceptUrl`.
 
 ## 4. Verify Invite And Email Ledger
@@ -349,7 +350,7 @@ Acceptance behavior:
   first, then returned to the same invite link and email-login flow.
 - `POST /api/team-workspace-invites/accept` returns JSON for scripted checks.
 - A signed-in user with a different email still gets `403` on the scripted
-  `POST` accept API; browser `GET` links use the recovery redirect above.
+  `POST` accept API. Browser `GET` links use the recovery redirect above.
 - An expired invite gets `410`.
 - An already accepted invite is idempotent for the same accepted user.
 - A successful accept creates/reactivates `team_memberships` for the team with
@@ -393,18 +394,18 @@ Expected:
 
 At this point the teammate should be able to:
 
-- open the team chat route;
-- open the project chat route when `projectId` was included;
+- open the team chat route.
+- open the project chat route when `projectId` was included.
 - view private prefilled workspace projections only when those rows are
-  configured as `private_team` and scoped to the accepted team/project;
+  configured as `private_team` and scoped to the accepted team/project.
 - participate according to their role and whatever UI/API-specific role checks
   exist for that surface.
 
 They should not be able to:
 
-- see raw invite tokens or invite hashes;
-- accept the invite while signed in as a different email;
-- view private material in public demos or public-safe projections;
+- see raw invite tokens or invite hashes.
+- accept the invite while signed in as a different email.
+- view private material in public demos or public-safe projections.
 - access other partner teams unless they were separately invited there.
 
 ## Email Failure Fallback

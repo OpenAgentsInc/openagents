@@ -1,10 +1,13 @@
 # Release signing & GCP-only deploy runbook
 
-Date: 2026-06-15. The OpenAgents **release/provenance** key signs every artifact +
-authoritative manifest so Pylons/Autopilot/users can verify it came from our infra
-and **fail closed** otherwise (plan: `docs/ota/2026-06-15-ota-autoupdate-plan.md`
-§6b). This runbook is how the key is held, backed up, used to sign deploys, and
-rotated. **The signed artifacts publish only to our Google Cloud infra**
+Date: 2026-06-15. The OpenAgents **release/provenance** key signs each artifact
+and authoritative manifest. Thus, Pylons, Autopilot, and users can verify the
+OpenAgents source. They **fail closed** when verification fails. See
+`docs/ota/2026-06-15-ota-autoupdate-plan.md` §6b.
+
+This runbook gives the key
+custody, backup, signing, and rotation procedures. **The signed artifacts
+publish only to our Google Cloud infra**
 (`updates.openagents.com`, the `oa-updates` Cloud Run service, project
 `openagentsgemini`).
 
@@ -35,7 +38,7 @@ rotated. **The signed artifacts publish only to our Google Cloud infra**
     --project=openagentsgemini --data-file=~/work/.secrets/openagents-release-signing.env
   ```
 - **On device COMPROMISE:** the local key is burned — **rotate** (below). Backup
-  recovers from _loss_; rotation answers _theft_.
+  recovers from _loss_. Rotation answers _theft_.
 
 ## Sign a deploy
 
@@ -61,7 +64,7 @@ the baked release inputs instead of silently deploying an empty seed.
 
 Build → sign → publish the artifact **and** its `.sig.json`/signed manifest to
 `updates.openagents.com` (the `oa-updates` Cloud Run service, project
-`openagentsgemini`, `us-central1`; see `scripts/deploy-cloudrun.sh`). Nothing is
+`openagentsgemini`, `us-central1`. See `scripts/deploy-cloudrun.sh`). Nothing is
 served from anywhere but our GCP. Clients fetch over TLS, then **verify the
 signature against the pinned `release-pubkey.json` and fail closed** — host/TLS is
 never the trust boundary, the signature is. (Wiring the signature into the
@@ -71,12 +74,12 @@ published feed manifests is tracked in #5043 / the OTA epic #5039.)
 
 1. Generate a new keypair (new `kid`), write to `.secrets`, push to GCP Secret
    Manager (a new secret version or a new secret for the new kid).
-2. Add the new public key to the pinned key set (clients pin a long-lived **root**
-   that signs rotating subkeys — JWKS-style — so rotation doesn't require
-   reflashing every client; until that exists, ship the new `release-pubkey.json`
-   in the next client release).
-3. Re-sign the current `stable`/`canary` releases with the new key; publish.
-4. Mark the old `kid` revoked in the key set + transparency log; clients reject it.
+2. Add the new public key to the pinned key set. Clients pin a long-lived
+   **root** that signs rotating subkeys in the JWKS style. Thus, rotation does
+   not require a new image on each client. Until that system exists, ship the
+   new `release-pubkey.json` in the next client release.
+3. Re-sign the current `stable`/`canary` releases with the new key. Publish.
+4. Mark the old `kid` revoked in the key set + transparency log. Clients reject it.
 5. Never reuse a compromised key.
 
 ## Apple Developer ID (macOS code signing / notarization)
@@ -85,7 +88,7 @@ Separate from the ed25519 release key above. The **Developer ID Application**
 cert signs + notarizes the Autopilot Desktop and Khala Code Desktop
 `.app`/`.dmg` artifacts so Gatekeeper accepts them (#5048 / Autopilot v1.0-rc
 #5046, #8245 for Khala Code). It does **not** sign Pylon CLI binaries — those
-use the ed25519 release key; headless Pylon needs no Apple signing.
+use the ed25519 release key. Headless Pylon needs no Apple signing.
 
 - **Identity:** `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`, issued
   by Apple Developer ID CA (G2), team `HQWSG26L43`, valid 2026-06-15 → 2031.
@@ -133,16 +136,17 @@ security import ~/work/.secrets/developer-id/developerID_application.p12 \
 security find-identity -v -p codesigning | grep HQWSG26L43   # confirm
 ```
 
-On device **compromise**: revoke the cert in the Apple Developer portal, issue a
-new one from a fresh CSR, re-import, and rotate the GCP secret versions.
+After device **compromise**, revoke the certificate in the Apple Developer
+portal. Issue a new certificate from a fresh CSR. Import it and rotate the GCP
+secret versions.
 
 > The `.p12` was built with `openssl pkcs12 -export -legacy -certpbe
 PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1` — openssl 3 defaults produce
-> a `.p12` the macOS Security framework can't import ("MAC verification failed").
+> a `.p12` that the macOS Security framework cannot import ("MAC verification failed").
 
 ## Custody note
 
 Long-term the private key should live **only** in KMS/HSM and never touch a laptop
 (plan §6b). This local-`.secrets` + Secret-Manager-backup setup is the working
-bootstrap so deploys can be signed today; migrating signing into KMS (sign-via-API,
+bootstrap so deploys can be signed today. Migrating signing into KMS (sign-via-API,
 key never exported) is tracked under the OTA epic (#5044).

@@ -1,20 +1,21 @@
 # OpenAgents Desktop owned release coordinator
 
-Status: implemented coordinator core; production promotion remains blocked by
+Status: implemented coordinator core. Production promotion remains blocked by
 native-host, signing, and feed-integration evidence tracked in
 [#8917](https://github.com/OpenAgentsInc/openagents/issues/8917).
 
 This document describes the production boundary implemented by
 `scripts/desktop-release-coordinator.ts`. The root release command still uses
-fixture ports until the concrete owned-worker and `oa-updates` adapters are
-wired, so this module is not yet a live release path. It does not claim that
+fixture ports. It will use them until the owned-worker and `oa-updates` adapters
+are connected. Thus, this module is not yet a live release path. It does not claim that
 the current worker inventory can complete or promote a release.
 
 ## Authority and invariants
 
-The coordinator consumes one frozen release authority containing the source
-revision, version, channel, canonical five-target set, staging-ledger ref,
-toolchain profile, signing policy, and reviewed release-notes digest. The
+The coordinator consumes one frozen release authority. It contains the source
+revision, version, channel, and canonical five-target set. It contains the
+staging-ledger ref, toolchain profile, and signing policy. It also contains the
+reviewed release-notes digest. The
 authority is hashed once. Every dispatch, lease, worker receipt, candidate
 handoff, candidate-feed acceptance, and promotion is bound to that digest.
 
@@ -26,7 +27,7 @@ The normative target profile remains:
 - `linux-arm64`: AppImage, DEB, and RPM
 - `linux-x64`: AppImage, DEB, and RPM
 
-Windows is x64-only in the current ProductSpec; `win32-arm64` is not a
+Windows is x64-only in the current ProductSpec. `win32-arm64` is not a
 ReleaseSet target and cannot be promoted. Unavailable Intel Mac evidence,
 missing signing operation, duplicate worker, or mismatched toolchain profile produces a
 typed `worker_inventory_unavailable` refusal before worker bring-up.
@@ -35,31 +36,31 @@ typed `worker_inventory_unavailable` refusal before worker bring-up.
 
 `createOwnedReleaseCoordinator` implements the real `ReleaseCoordinatorPort`
 contract defined by `scripts/release.ts`. The release CLI does not construct it
-yet; wiring the following concrete capabilities is required before a real run:
+yet. Wiring the following concrete capabilities is required before a real run:
 
-1. worker inventory;
-2. worker start, health, heartbeat, dispatch, cancellation, and stop control;
-3. coordinator request signer and pinned worker receipt keyring;
-4. immutable candidate object HEAD verifier;
-5. verified-candidate publisher;
-6. external candidate-feed acceptance gate; and
+1. worker inventory.
+2. worker start, health, heartbeat, dispatch, cancellation, and stop control.
+3. coordinator request signer and pinned worker receipt keyring.
+4. immutable candidate object HEAD verifier.
+5. verified-candidate publisher.
+6. external candidate-feed acceptance gate.
 7. atomic channel-pointer compare-and-swap promoter.
 
 No build worker receives pointer authority. A worker may upload only immutable
 candidate objects and return their identities in its signed receipt.
 
-The worker dispatch request carries a bounded lease ID, monotonic attempt,
-expiry, exact target/formats, full frozen authority, plan digest, and detached
-coordinator signature. The result is accepted only when its pinned Ed25519
-signature verifies and it matches the live transaction, lease, attempt,
-worker, target, source, version, channel, staging ledger, toolchain, and signing
-policy.
+The worker dispatch request carries a bounded lease ID, monotonic attempt, and
+expiry. It carries the exact target and formats. It carries the frozen
+authority, plan digest, and detached coordinator signature. The result is
+accepted only when its pinned Ed25519 signature verifies. It must match the live
+transaction, lease, attempt, worker, target, source, version, and channel. It
+must also match the staging ledger, toolchain, and signing policy.
 
-Every target receipt must enumerate its canonical formats and provide unique
-immutable object keys, hashes, byte lengths, component-ledger refs, build refs,
-signing refs, and native proofs for clean install, launch, agent runtime,
-shutdown, update, interruption/resume, rollback-or-explicit-no-rollback,
-reinstall, and uninstall. Missing, stale, duplicated, noncanonical, unsigned,
+Every target receipt must list its canonical formats. It must provide unique
+immutable object keys, hashes, and byte lengths. It must provide component-ledger,
+build, and signing refs. It must provide native proofs for installation,
+launch, agent runtime, shutdown, and update. It must prove interruption and
+resume, the rollback boundary, reinstallation, and uninstallation. Missing, stale, duplicated, noncanonical, unsigned,
 or conflicting evidence is refused.
 
 ## Durability, retry, and cleanup
@@ -68,7 +69,7 @@ or conflicting evidence is refused.
 fsynced temporary file, atomic rename, and parent-directory fsync. Every write
 is a compare-and-swap against the prior revision. A one-minute-old lock is
 treated as a crash remnant because the guarded operation contains no network
-work and is synchronous; a fresh lock always refuses a competing writer.
+work and is synchronous. A fresh lock always refuses a competing writer.
 
 The five dispatches execute concurrently. State transitions are serialized
 through the durable CAS store. A failed attempt is cancelled and may retry only
@@ -103,11 +104,11 @@ themselves. The local Apple Silicon Mac is a Darwin arm64 candidate worker.
 The following prevent an honest production matrix today:
 
 - no accepted native Intel-mac receipt path (the intended Intel host is not
-  currently accessible; Rosetta is not a silent substitute);
-- no completed Windows Authenticode operation exposed to its worker;
-- no completed Apple signing/notarization operation exposed to its worker;
+  currently accessible. Rosetta is not a silent substitute).
+- no completed Windows Authenticode operation exposed to its worker.
+- no completed Apple signing/notarization operation exposed to its worker.
 - missing native Windows 10/11, Ubuntu 22.04 desktop, and RPM-family acceptance
-  receipts; and
+  receipts.
 - the real `#8922` candidate feed/acceptance/promotion adapters have not yet
   supplied a production candidate receipt to this coordinator.
 
@@ -123,8 +124,8 @@ The focused deterministic suite is:
 vp test --run scripts/desktop-release-coordinator.test.ts scripts/release.test.ts
 ```
 
-It covers exact convergence, concurrent fan-out, lost-worker retry,
-cancellation, restart resume, stale leases, wrong source, duplicate formats,
-invalid signing refs, unavailable native hosts, immutable-object byte drift,
-candidate acceptance refusal, promotion races, frozen-plan conflicts, and
-atomic store revision conflicts.
+It covers exact convergence, concurrent fan-out, lost-worker retry, and
+cancellation. It covers restart resume, stale leases, wrong source, and
+duplicate formats. It covers invalid signing refs, unavailable native hosts,
+and immutable-object byte drift. It covers candidate refusal, promotion races,
+frozen-plan conflicts, and atomic store revision conflicts.

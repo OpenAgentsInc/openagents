@@ -13,7 +13,7 @@ topology from Google Cloud and bearer material from Secret Manager.
 - The nested-virtualization host is running, has `/dev/kvm`, and can pull from
   the `oa-cloud` Artifact Registry repository.
 - Secret Manager has a current `oa-cloud-run-bridge-control-token` version.
-- Secret Manager has a current `provider-token-custody-aes-key-b64` version;
+- Secret Manager has a current `provider-token-custody-aes-key-b64` version.
   the monolith deploy mounts it as `PROVIDER_TOKEN_CUSTODY_AES_KEY_B64`.
 - The control URL is reachable from the production Cloud Run VPC connector.
 
@@ -88,17 +88,17 @@ Use a repository-bound coding thread. Confirm the mobile execution catalog
 advertises `Agent Computer`, enqueue one bounded turn, and verify:
 
 1. the repository branch/ref resolves server-side to an immutable 40-character
-   commit SHA before placement, and exactly one durable `turn.started` wins;
-2. the provider grant is issued only after that claim;
-3. the live microVM executes the request;
-4. a terminal `turn.finished` is synced to the thread; and
+   commit SHA before placement, and exactly one durable `turn.started` wins.
+2. the provider grant is issued only after that claim.
+3. the live microVM executes the request.
+4. a terminal `turn.finished` is synced to the thread.
 5. the microVM and host network resources are torn down.
 
 The 2026-07-12 production acceptance turn
-`turn.agent-computer-smoke.20260712T235107Z` exercised the literal `main`
-binding and completed with one consumed Postgres provider grant and one exact
-usage row (60,167 input, 294 output, 60,461 total tokens). The terminal control
-event reported exit code 0; no tap or runtime directory remained after cleanup.
+`turn.agent-computer-smoke.20260712T235107Z` exercised the literal `main` binding.
+It completed with one consumed Postgres provider grant. It produced one exact
+usage row with 60,167 input, 294 output, and 60,461 total tokens. The terminal control
+event reported exit code 0. No tap or runtime directory remained after cleanup.
 
 If any gate fails, remove `Agent Computer` from the catalog by disabling the
 cloud-coding flag or live provisioner setting before investigating. Never

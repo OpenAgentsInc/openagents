@@ -126,7 +126,7 @@ Record a semantic comparison before the new revision becomes authoritative.
 
 ### Semantic baseline
 
-The P1 control conversion and the P2 specification conversion have an additional semantic baseline.
+The P1 control conversion, P2 specification conversion, and P3 procedure conversion have an additional semantic baseline.
 The baseline protects normative keywords, code literals, URLs, issue references, and numeric values.
 Run `pnpm run check:ste-control-semantics` after each control document change.
 This comparison does not prove semantic equality.

@@ -13,7 +13,7 @@ is fixed:
 - OTA channel: `openagents-production`
 
 Builds and submissions are local. Do not use EAS Build, Submit, Update, or the
-Expo CDN. Native binary changes require a new store build; JavaScript-only
+Expo CDN. Native binary changes require a new store build. JavaScript-only
 changes may use the fingerprint-matched owned OTA path below.
 
 ## Clean-source and release preflight
@@ -33,7 +33,7 @@ pnpm --dir apps/openagents-mobile run typecheck
 ```
 
 Before a store upload, increase `expo.ios.buildNumber` in
-`apps/openagents-mobile/app.json`; Apple requires a unique increasing build.
+`apps/openagents-mobile/app.json`. Apple requires a unique increasing build.
 Change `expo.version` only for an intentional marketing-version release. Commit
 and push those release identities to `main` before archiving.
 
@@ -163,10 +163,11 @@ NODE_ENV=production ./gradlew app:assembleRelease
 
 Artifacts land under `app/build/outputs/bundle/release/` and
 `app/build/outputs/apk/release/`. A debug keystore is acceptable only for an
-emulator verification receipt; it is not a Play production signature. Before a
-Play upload, configure the owner-held production keystore outside Git, verify
-the AAB is signed by that key, and record its SHA-256 and Play Console release
-ID. Do not claim Play production distribution from an emulator/debug-signed
+emulator verification receipt. It is not a Play production signature. Before a
+Play upload, configure the owner-held production keystore outside Git. Verify
+that the key signed the AAB.
+
+Record its SHA-256 and Play Console release ID. Do not claim Play production distribution from an emulator/debug-signed
 APK.
 
 ## Owned OTA publication
@@ -174,10 +175,12 @@ APK.
 OTA is valid only when the exported update's fingerprint exactly matches the
 installed native runtime. Read the runtime from the archive and pass it as a
 fail-closed expectation. The publisher canonicalizes its repository path with
-`pwd -P` because Xcode does the same; this prevents macOS's `/tmp` →
+`pwd -P` because Xcode does the same. This prevents macOS's `/tmp` →
 `/private/tmp` alias from creating a different fingerprint for identical
-source. It also calls Expo's native build-time fingerprint implementation
-instead of the Expo 57 `fingerprint:generate` silent path, whose omitted
+source.
+
+It also calls Expo's native build-time fingerprint implementation. It does not
+use the Expo 57 `fingerprint:generate` silent path. The omitted
 dependency-directory hashes can disagree with the runtime embedded by Xcode.
 Publish iOS by default or set the platform explicitly for Android:
 
@@ -208,17 +211,19 @@ curl -fsS https://updates.openagents.com/openagents-mobile/manifest \
   -H 'expo-channel-name: openagents-production'
 ```
 
-Require HTTP 200 / Expo protocol v1, the exact runtime/channel/platform, a
-signed manifest, retrievable launch asset with matching byte length/hash, and a
-launch asset large enough to be a real bundle. A mismatched runtime must return
-`noUpdateAvailable`; never bypass fingerprint safety to force an OTA onto an
+Require HTTP 200 and Expo protocol v1. Require the exact runtime, channel, and
+platform. Require a signed manifest and a retrievable launch asset with the
+correct byte length and hash. Confirm that the launch asset is a real bundle.
+
+A mismatched runtime must return
+`noUpdateAvailable`. Never bypass fingerprint safety to force an OTA onto an
 older native build. Also verify the Desktop release feeds still resolve before
 promoting the revision, because `oa-updates` serves both products.
 
 ## Rollback and evidence
 
 - Native rollback: restore the previous TestFlight/Play build through the
-  store; never reuse a build number.
+  store. Never reuse a build number.
 - OTA rollback: route Cloud Run traffic to the previous ready revision or
   publish a newer corrective update for the same compatible runtime. Do not
   delete immutable release evidence.

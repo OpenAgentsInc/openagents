@@ -21,10 +21,10 @@ Until those adapters land:
 
 - the delegated release operator MAY publish an explicitly limited GitHub RC
   candidate whose manifest and release body disclose the missing signed-feed
-  boundary;
+  boundary.
 - operators MUST NOT synthesize missing native receipts, manually merge a
-  partial matrix into ReleaseSet current, or call an unproved target supported;
-- stable cross-platform promotion remains unavailable; and
+  partial matrix into ReleaseSet current, or call an unproved target supported.
+- stable cross-platform promotion remains unavailable.
 - the existing compatibility procedure remains fail-closed on signing and
   preserves the mobile feed exactly as before.
 
@@ -46,7 +46,7 @@ gates, and `--resume <transaction-ref>` resumes one durable transaction. The
 command prints bounded receipt lines and performs sections 1–9 without
 intermediate manual commands once its concrete worker ports replace the
 fixtures. `AUTHORITY.md` revision 2 delegates unattended RC release and its
-transaction communications; stable is the only release-channel owner gate.
+transaction communications. Stable is the only release-channel owner gate.
 
 The bounded supporting commands are:
 
@@ -61,7 +61,7 @@ pnpm release:feedback -- --manifest <publication-manifest.json> \
 
 Each defaults to dry-run without `--publish`, validates a closed schema, and
 emits no secret-bearing material. The GitHub publisher is idempotent only for
-identical published bytes; it refuses asset replacement or version reuse.
+identical published bytes. It refuses asset replacement or version reuse.
 
 ## Release roles
 
@@ -74,7 +74,7 @@ them:
 | Target worker     | Builds one target-specific staged closure and emits artifacts, component ledger, and build receipt                                                  |
 | Platform verifier | Verifies native package/signature/install/update behavior on the required native hosts                                                              |
 | ReleaseSet signer | Accepts only a complete policy-valid receipt set and signs canonical ReleaseSet bytes with the pinned Ed25519 authority                             |
-| Publisher         | Uploads immutable candidates and deploys `oa-updates`; cannot declare support                                                                       |
+| Publisher         | Uploads immutable candidates and deploys `oa-updates`. Cannot declare support                                                                       |
 | Promoter          | Atomically advances a channel only after candidate and public-surface verification                                                                  |
 
 For RCs, `AUTHORITY.md` revision 2 delegates Coordinator, Publisher,
@@ -95,7 +95,7 @@ lane and no unselected binary lane. In particular, web, mobile OTA,
 `oa-updates`, and release-infrastructure changes do not cause a Desktop build.
 Any Desktop or Desktop-consumed shared-runtime/lockfile change selects the
 entire five-target Desktop matrix. Unknown paths produce an operator-visible
-no-binary result; they do not silently trigger spend.
+no-binary result. They do not silently trigger spend.
 
 The current impact command is also the explicit guard against the old habit of
 rebuilding Windows and every other platform for unrelated updates. Desktop
@@ -114,13 +114,13 @@ test -z "$(git status --porcelain)"
 
 Record in the coordinator request:
 
-- exact semantic version and `stable` or `rc` channel;
-- exact 40-character source revision and lockfile digest;
-- ProductSpec version and ReleaseSet schema version;
-- all five required target keys and eleven formats;
-- expected package/product/publisher/signing-policy identities;
-- owned worker and native acceptance-host inventory revisions;
-- previous promoted version in the same channel;
+- exact semantic version and `stable` or `rc` channel.
+- exact 40-character source revision and lockfile digest.
+- ProductSpec version and ReleaseSet schema version.
+- all five required target keys and eleven formats.
+- expected package/product/publisher/signing-policy identities.
+- owned worker and native acceptance-host inventory revisions.
+- previous promoted version in the same channel.
 - release-notes ref and retention class.
 
 Reject a dirty checkout, non-main revision, reused/non-monotonic version,
@@ -129,14 +129,14 @@ identity before a build starts.
 
 ## 2. Run common gates once
 
-The coordinator runs the exact repository checks required by its release
-contract, including lock/generated-contract guards, unit/integration/type and
-format checks, Electron security/fuse assertions, ReleaseSet
-canonicalization/signature fixtures, update/rollback model checks, mobile-feed
-preservation tests, and the no-GitHub-Actions authority guard.
+The coordinator runs the exact repository checks that its release contract
+requires. These checks include lock and generated-contract guards. They include
+unit, integration, type, and format checks. They include Electron security and
+fuse checks. They include ReleaseSet, update, rollback, mobile-feed, and
+no-GitHub-Actions checks.
 
 The receipt binds the source revision and command manifest. A later code or
-lockfile change invalidates every downstream receipt; do not reuse green
+lockfile change invalidates every downstream receipt. Do not reuse green
 results across revisions.
 
 ## 3. Dispatch the owned five-target matrix
@@ -163,19 +163,21 @@ current channel pointer or public download catalog.
 ## 4. Verify platform packages natively
 
 For each target, verify the staged closure and every outer package against the
-component ledger. Then run clean install, first launch, provider/agent runtime
-startup, clean shutdown, N-1 update, interrupted update recovery, the
-format-specific rollback boundary, reinstall, uninstall, and diagnostics on
-the ProductSpec minimum/current native hosts.
+component ledger. Then, run a clean installation and first launch. Start the
+provider and agent runtime. Do a clean shutdown.
+
+Run the N-1 update and
+interrupted update recovery. Check the format-specific rollback boundary. Run
+reinstallation, uninstallation, and diagnostics on the ProductSpec native hosts.
 
 Mandatory trust boundaries:
 
 - macOS: Developer ID `OpenAgents, Inc. (HQWSG26L43)`, Team ID
   `HQWSG26L43`, notarization, staples, Gatekeeper, hardened runtime,
-  entitlements, bundle/architecture/fuse/ASAR checks on downloaded bytes;
+  entitlements, bundle/architecture/fuse/ASAR checks on downloaded bytes.
 - Windows: Windows trust and Authenticode `Valid` with publisher
   `OpenAgents, Inc.` for installer, application, uninstaller, bundled CLIs,
-  and native helpers before publication and before install;
+  and native helpers before publication and before install.
 - Linux: signed ReleaseSet digest/length for every package, architecture and
   payload/metadata oracles, plus native DEB/RPM package-manager lifecycle and
   AppImage retained-image update/rollback.
@@ -185,10 +187,11 @@ DEB/RPM receipts explicitly say `appOwnedRollback: false`. ZIP receipts say
 
 ## 5. Converge, generate changelogs, and sign ReleaseSet v2
 
-The finalizer rejects unless all matrix cells agree on version, channel,
-source revision, ProductSpec/schema/signing policy, target/format identity,
-artifact basename, digest/length, component-ledger digest, and required native
-receipts. Missing, duplicate, extra, stale, quarantined, or conflicting cells
+The finalizer rejects unless all matrix cells agree on the version, channel,
+and source revision. They must agree on the ProductSpec, schema, and signing
+policy. They must agree on target and format identity. They must agree on the
+artifact name, digest, and length. They must agree on the component-ledger
+digest and required native receipts. Missing, duplicate, extra, stale, quarantined, or conflicting cells
 fail closed.
 
 After convergence and before signing, the command consumes
@@ -215,10 +218,10 @@ A Desktop metadata-only directory cannot replace the service image. Before any
 traffic move, GET and validate:
 
 - every target resolution document and immutable artifact through the tagged
-  candidate;
+  candidate.
 - ReleaseSet signature, target selection, SHA-256, byte length, and content
-  type;
-- the retained OpenAgents mobile manifest using its required Expo headers;
+  type.
+- the retained OpenAgents mobile manifest using its required Expo headers.
 - unavailable/wrong-channel/wrong-architecture and signature/hash failure
   behavior.
 
@@ -235,7 +238,7 @@ its limitations, and never be described as feed-promoted or supported.
 
 Run the GitHub publisher. It creates a draft, uploads immutable bytes, compares
 GitHub's reported size and `sha256:` digest with the local manifest, then makes
-the prerelease public. Any existing tag with different bytes fails closed;
+the prerelease public. Any existing tag with different bytes fails closed.
 never delete/re-upload an asset or reuse the version. Publish the `candidate`
 communication to every linked source issue and Forum `release-candidates`,
 naming only the requested testers and asking for the structured result block.
@@ -243,14 +246,17 @@ Closed source issues are still valid feedback conversations.
 
 The feedback intake reads only replies after the candidate marker from the
 requested tester identities. A structured `PASS` creates an idempotent receipt
-comment. `BLOCKED` or an unstructured result creates one linked Full Auto issue
-with P0/P1 severity when supplied, comments the source conversation, and hands
-the new issue back to the normal implementation loop. It never infers broad
+comment. `BLOCKED` or an unstructured result creates one linked Full Auto issue.
+It uses P0 or P1 severity when the tester supplies it. It comments on the
+source conversation. It gives the new issue to the normal implementation loop.
+
+It never infers broad
 intent from comment text and never messages unrelated users. If a requested
-tester files a direct issue instead, intake may additively restore
-`bug`/`area:release`/`area:desktop` only when the issue was created strictly
-after the candidate marker and contains an exact linked source-issue shorthand
-or canonical OpenAgents issue URL. This compensates for GitHub dropping labels
+tester files a direct issue, intake may add only `bug`, `area:release`, and
+`area:desktop`. The issue must occur strictly after the candidate marker. It
+must contain an exact source-issue shorthand or canonical OpenAgents issue URL.
+
+This compensates for GitHub dropping labels
 from non-collaborator API issue creation without granting tester repository
 permissions or relabeling unrelated reports.
 
@@ -272,19 +278,19 @@ the atomic promotion in the next step.
 
 ## 8. Promote atomically
 
-The promoter compares the candidate with the still-current channel, rechecks
-monotonicity and all receipt refs, and advances one signed channel pointer (or
-equivalent atomic selection) to the already-uploaded immutable ReleaseSet. It
+The promoter compares the candidate with the still-current channel. It checks
+monotonicity and all receipt refs again. It advances one signed channel pointer
+or equivalent atomic selection to the uploaded immutable ReleaseSet. It
 does not rebuild or copy artifacts.
 
 After promotion, repeat through production origins:
 
-- all five target resolutions and downloaded hash/length checks;
-- native update check for stable/RC identity isolation;
-- `/download` default and alternatives;
-- homepage download CTAs and `/changelog` version/channel/release-notes truth;
-- mobile OTA manifest and representative retained asset;
-- download telemetry admission/redaction;
+- all five target resolutions and downloaded hash/length checks.
+- native update check for stable/RC identity isolation.
+- `/download` default and alternatives.
+- homepage download CTAs and `/changelog` version/channel/release-notes truth.
+- mobile OTA manifest and representative retained asset.
+- download telemetry admission/redaction.
 - old/invalid client fail-closed fixtures.
 
 Archive the promotion receipt, both changelogs, release notes, exact source revision, signed
@@ -309,9 +315,9 @@ If the `oa-updates` service deployment is unhealthy, move Cloud Run traffic
 back to the previous ready revision immediately. Service traffic rollback does
 not change the signed Desktop channel pointer or overwrite artifacts.
 
-If a promoted release is defective, follow the ProductSpec revocation path:
-publish a signed typed revocation/unavailable state, remove it from
-`/download`, and produce a strictly newer fixed release. Never repoint current
+If a promoted release is defective, follow the ProductSpec revocation path.
+Publish a signed typed revocation or unavailable state. Remove the release from
+`/download`. Produce a strictly newer fixed release. Never repoint current
 to an older version or enable downgrade. Installed clients may use only their
 locally retained previous slot under the applicable format claim.
 
@@ -324,10 +330,10 @@ MUST be retired by the v1 migration close rule in #8915.
 
 Prerequisites:
 
-- Apple identity `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`;
-- scoped `ASC_API_*` and `OA_DEVELOPER_ID_APPLICATION` environment values;
+- Apple identity `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`.
+- scoped `ASC_API_*` and `OA_DEVELOPER_ID_APPLICATION` environment values.
 - production Ed25519 manifest key through
-  `OPENAGENTS_RELEASE_SECRETS_PATH` or its documented private JWK seam;
+  `OPENAGENTS_RELEASE_SECRETS_PATH` or its documented private JWK seam.
 - sanctioned automation gcloud config outside the repository.
 
 Run the existing focused contract gates and build:
@@ -349,7 +355,7 @@ pnpm --dir apps/openagents-desktop run make:mac
 ```
 
 `make:mac` rebuilds the DMG native addons and refuses without signing/notary
-credentials. `OA_ALLOW_UNSIGNED_DEV=1` is local development only; its
+credentials. `OA_ALLOW_UNSIGNED_DEV=1` is local development only. Its
 `UNSIGNED-DEV` output cannot pass preflight or publication.
 
 Re-run preflight against final post-staple bytes, then hash only those bytes:
@@ -394,11 +400,13 @@ curl -fsS <candidate>/openagents-mobile/manifest \
   -o /tmp/mobile-manifest
 ```
 
-After traffic promotion, download the public DMG to a fresh path, verify its
-signed SHA-256/length, mount it, and run the packaged smoke from pristine
-temporary user data. Require `[openagents-desktop smoke] OK`, lifecycle
-teardown `{"ok":true,"active":0}`, the unpacked renderer and worker boundary,
-and the external Codex integration oracle:
+After traffic promotion, download the public DMG to a fresh path. Verify its
+signed SHA-256 and length. Mount it. Run the packaged smoke from clean temporary
+user data. Require `[openagents-desktop smoke] OK` and lifecycle teardown
+`{"ok":true,"active":0}`.
+
+Require the unpacked renderer and worker boundary.
+Require the external Codex integration oracle:
 
 ```sh
 pnpm exec vp test --run apps/openagents-desktop/tests/package-macos.test.ts \

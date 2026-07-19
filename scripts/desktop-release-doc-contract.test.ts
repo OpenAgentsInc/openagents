@@ -31,7 +31,7 @@ describe("Desktop cross-platform release documentation contract", () => {
       expect(index).toContain(`(${target})`);
       expect(existsSync(path.resolve(root, "docs/deploy", target))).toBe(true);
     }
-    expect(index).toContain("never Desktop signing or update authority");
+    expect(index).toContain("Never Desktop signing or update authority");
   });
 
   test("keeps every relative deployment-document link dereferenceable", () => {
@@ -41,8 +41,8 @@ describe("Desktop cross-platform release documentation contract", () => {
   });
 
   test("freezes the complete identity, target, package, trust, and support boundary", () => {
-    expect(spec).toContain("ProductSpec version: 1.1.0");
-    expect(spec).toContain("Date: 2026-07-17");
+    expect(spec).toContain("ProductSpec version: 1.2.0");
+    expect(spec).toContain("Date: 2026-07-18");
     expect(normalized(spec)).toContain(
       "none of the five target keys is admitted as cross-platform supported",
     );
@@ -110,7 +110,7 @@ describe("Desktop cross-platform release documentation contract", () => {
       "ProductSpec owns identities, targets, formats, trust, support, and rollback claims",
     );
     expect(runbook).toContain("Current macOS arm64 v1 compatibility procedure");
-    expect(runbook).toContain("MUST NOT synthesize missing target commands");
+    expect(runbook).toContain("MUST NOT synthesize missing native receipts");
     expect(runbook).toContain("complete known-good mobile export");
     expect(runbook).toContain("strictly newer fixed release");
   });

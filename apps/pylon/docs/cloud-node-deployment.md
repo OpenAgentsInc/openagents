@@ -2,14 +2,14 @@
 
 Status: M4 product runbook for Pylon v0.3 source RC cloud nodes.
 
-This path runs a Pylon on a Linux VM the owner controls. The VM uses the
-owner's OpenAgents identity and BYOK provider credentials, registers and
-heartbeats like a local Pylon, and can pick up the owner's no-spend Autopilot
-work while the laptop is closed.
+This path runs a Pylon on a Linux VM that the owner controls. The VM uses the
+owner's OpenAgents identity and BYOK provider credentials. It registers and
+sends heartbeats like a local Pylon. It can accept the owner's no-spend
+Autopilot work while the laptop is closed.
 
-It does not make the VM an OpenAgents-hosted runner, does not install platform
-provider credentials, and does not grant settlement, payout, deploy, spend, or
-Forum publication authority.
+This procedure does not make the VM an OpenAgents-hosted runner. It does not
+install platform provider credentials. It does not grant settlement, payout,
+deploy, spend, or Forum publication authority.
 
 ## Prerequisites
 
@@ -127,9 +127,9 @@ send-readiness path explicitly proves readiness.
 
 This is the cloud form of the M3 free own-Pylon lane:
 
-- owner work placed on this Pylon is free and writes no buyer debit rows;
+- owner work placed on this Pylon is free and writes no buyer debit rows.
 - Google Cloud managed capacity is the only hosted fallback when this Pylon is
-  offline, stale, or ineligible; the retired SHC pilot is never selected;
+  offline, stale, or ineligible. The retired SHC pilot is never selected.
 - browser `/autopilot/work` and `pylon work status` read the same work-order
   projection.
 
@@ -171,7 +171,7 @@ sudo systemctl restart openagents-pylon
 ## Security Posture
 
 - The VM belongs to the owner. OpenAgents does not control it.
-- Use owner BYOK credentials only; no platform provider credentials.
+- Use owner BYOK credentials only. No platform provider credentials.
 - Keep `/etc/openagents-pylon.env` root-owned and `0600`.
 - Keep the Pylon control API on loopback.
 - Do not run a production treasury or payout mnemonic on this VM.
@@ -191,12 +191,12 @@ On compromise:
 
 A complete M4 evidence bundle should include public-safe refs for:
 
-- the cloud Pylon registration and fresh heartbeat;
-- `capability.pylon.local_claude_agent` readiness;
-- at least one owner work order selected for `requester_pylon`;
-- an assignment lease accepted and closed by the cloud Pylon;
+- the cloud Pylon registration and fresh heartbeat.
+- `capability.pylon.local_claude_agent` readiness.
+- at least one owner work order selected for `requester_pylon`.
+- an assignment lease accepted and closed by the cloud Pylon.
 - the same work order visible through browser `/autopilot/work` and
-  `pylon work status`;
+  `pylon work status`.
 - a no-debit funding projection for the own-Pylon lane.
 
 The 24h unattended run is operational evidence, not a new authority surface.

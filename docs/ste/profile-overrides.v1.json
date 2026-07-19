@@ -81,6 +81,12 @@
       "ste_reviewed_at": "2026-07-19T19:10:00Z",
       "ste_accepted_screening_rules": ["STE-2.4"]
     },
+    "docs/ste/p3-high-risk-procedure-conversion-receipt.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T20:10:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4"]
+    },
     "docs/ste/templates/receipt.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
@@ -378,6 +384,119 @@
       "ste_audience": "agent",
       "ste_agent_compact_revision": "openagents-agent-compact-v1",
       "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "apps/acceptance-runner/docs/DEPLOY.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "apps/oa-updates/docs/release-set-v2-feed-runbook.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "apps/oa-updates/docs/release-signing-runbook.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "apps/openagents.com/docs/2026-06-05-chatgpt-device-login-operator-runbook.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "apps/openagents.com/docs/2026-06-15-openagents-web-deploy-runbook.md": {
+      "ste_mode": "mixed",
+      "ste_status": "superseded",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"],
+      "replacement": "apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh"
+    },
+    "apps/openagents.com/docs/2026-06-16-private-workspace-setup-runbook.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "apps/pylon/docs/cloud-node-deployment.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "apps/pylon/docs/npm-publishing-runbook.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/deploy/README.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/deploy/agent-computer-production.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/deploy/openagents-audio-retention.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/deploy/openagents-desktop-cross-platform-release.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/deploy/openagents-desktop-production-release.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/deploy/openagents-desktop-release-coordinator.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/deploy/openagents-mobile-production-release.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
+    },
+    "docs/ops/2026-07-14-vp1-treasury-wallet-recovery-runbook.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:30:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6"]
     }
   }
 }
