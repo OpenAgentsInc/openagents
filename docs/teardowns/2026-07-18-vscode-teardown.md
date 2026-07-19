@@ -95,9 +95,10 @@ It includes `AGENTS.md`, `INVARIANTS.md`, `FASTFOLLOW.md`, the Desktop and
 Effect Native package/renderer/document surfaces, and the prior VS Code,
 Cursor, Pierre, and Zed analyses.
 
-VS Code is not presently registered as a source in `FASTFOLLOW.md`. This is an
-owner-directed source study using the Fast Follow evidence discipline, not a
-new formal source registration or implementation candidate.
+At authoring, VS Code was not registered as a source in `FASTFOLLOW.md`. The
+2026-07-19 catalog reconciliation registered this already-completed teardown
+as a formal research source; that registration does not make it an
+implementation candidate or change the accepted IDE packet order.
 
 ### Evidence labels
 

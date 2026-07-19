@@ -120,7 +120,7 @@ const capacityTotal = (capacity: Capacity): number =>
 
 describe("OpenAgents FastFollowSpec 0.1 seed", () => {
   test("binds the owner-admitted expansion plan without weakening packet gates", () => {
-    expect(readFrontmatterInteger("fast_follow_revision")).toBe(3);
+    expect(readFrontmatterInteger("fast_follow_revision")).toBe(4);
     expect(source).toContain("docs/sol/2026-07-16-fast-follow-expansion-accepted-plan.md");
     expect(source).toContain(
       "docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md",
@@ -156,7 +156,7 @@ describe("OpenAgents FastFollowSpec 0.1 seed", () => {
 
     expect(schema.$id).toBe("https://openagents.com/schemas/fast-follow-spec-projection-0.1.json");
     expect(projection.format_version).toBe("0.1");
-    expect(projection.revision).toBe(3);
+    expect(projection.revision).toBe(4);
     expect(projection.lifecycle_state).toBe("admitted");
     expect(Object.keys(projection).toSorted()).toEqual([...(schema.required ?? [])].toSorted());
   });

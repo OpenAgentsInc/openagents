@@ -1,14 +1,14 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 3
+fast_follow_revision: 4
 title: "OpenAgents Amp Thread-Fabric Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-19T04:02:17Z"
+updated_at: "2026-07-19T06:05:00Z"
 ---
 
 # OpenAgents Fast Follow
@@ -911,6 +911,43 @@ policy, or turn Fable prose into target authority.
     ]
   },
   {
+    "id": "microsoft.vscode",
+    "title": "Visual Studio Code",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/microsoft/vscode",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-18-vscode-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "public_package_vs_workbench_boundary",
+        "kind": "architecture",
+        "summary": "Consume deliberately public Monaco, language, terminal, tokenization, and protocol packages while adapting Code-OSS workbench behavior without importing its internal application framework.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "agent_sessions_above_editor",
+        "kind": "architecture",
+        "summary": "Keep provider-neutral agent sessions, worktrees, checkpoints, changesets, approvals, and remote hosts as a typed plane above the editor substrate rather than merging agent authority into editor widgets.",
+        "stance": "adapt"
+      },
+      {
+        "id": "capability_first_document_lifecycle",
+        "kind": "reliability",
+        "summary": "Model provider capabilities, revisions, dirty state, save and revert, backup, conflict, watchers, and document generations independently from rendered trees and Monaco views.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "code_oss_fork_and_internal_imports",
+        "kind": "architecture",
+        "summary": "Reject a Code-OSS fork, internal vs/* imports, extension-host clone, or second workbench authority plane beside Effect Native, WorkContext, and the generated engine protocol.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "zed_industries.zed",
     "title": "Zed",
     "role": "upstream",
@@ -973,6 +1010,43 @@ policy, or turn Fable prose into target authority.
         "id": "gpui_editor_and_scm_wholesale",
         "kind": "architecture",
         "summary": "Reject adopting GPUI, Zed's Rust editor and CRDT, Project Panel, or mutable SCM wholesale; reproduce the coherent behavior with the target's Effect Native, Monaco, Pierre, WorkContext, authority, and receipt boundaries.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
+    "id": "ascii.box_optibox",
+    "title": "Ascii Box and Optibox",
+    "role": "upstream",
+    "access": "mixed",
+    "canonical_ref": "https://github.com/ariana-dot-dev/optibox",
+    "tracking_policy": "release_or_commit",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-19-ascii-box-optibox-openagents-gcp-analysis.md"
+    ],
+    "lessons": [
+      {
+        "id": "configurable_box_api_contract",
+        "kind": "protocol",
+        "summary": "Study a compact sandbox lifecycle, prompt, cursor-event, file, command, artifact, desktop, and snapshot API whose MIT SDK can target an OpenAgents-owned base URL.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "stop_resume_fork_lifecycle",
+        "kind": "reliability",
+        "summary": "Separate durable filesystem checkpoints, runtime processes, agent sessions, ingress, and billing leases across explicit stop, resume, and fork transitions.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "prewarm_and_structural_completion",
+        "kind": "architecture",
+        "summary": "Adapt eager private-runtime readiness, durable lifecycle locks, native harness-session resume, and idle-stop only after structural harness settlement rather than visible-text silence.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "raw_env_and_hidden_routing",
+        "kind": "security",
+        "summary": "Reject raw provider-key injection, ungated desktop exposure, or an unaudited hidden model route as substitutes for capability brokers, typed semantic selection, placement truth, and receipts.",
         "stance": "reject"
       }
     ]
