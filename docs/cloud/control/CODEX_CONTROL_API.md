@@ -26,6 +26,7 @@ POST /v1/artanis/bootstrap
 POST /v1/artanis/bootstrap/start
 POST /v1/managed-sandbox/runtime/operations
 POST /v1/managed-sandbox/runtime/turns
+POST /v1/managed-sandbox/runtime/io
 GET /v1/codex-runs/{runId}
 GET /v1/codex-runs/{runId}/events?cursor=0
 GET /v1/codex-runs/{runId}/stream?cursor=0
@@ -167,6 +168,28 @@ Turn completion is not the HTTP request lifetime: callers reconnect with
 See
 `docs/cloud/bootstrap/SBX-04-managed-sandbox-turn-runtime.md` for the driver
 contract, event model, verification, and live-proof boundary.
+
+## Managed-sandbox guest I/O
+
+`POST /v1/managed-sandbox/runtime/io` is the SBX-05 private adapter for
+`read_file`, `write_file`, `execute_command`, and `read_artifact`.
+
+The route accepts one exact owner, tenant, work unit, sandbox generation,
+operation, capability, and quota envelope. It invokes only the absolute
+`OA_MANAGED_SANDBOX_IO_DRIVER` executable and does not use a control-host
+shell.
+
+The driver must prove beneath-root no-follow path use, closed process trees,
+clean scratch, closed ingress, denied egress, secret scan, and exact resource
+use. Artifact success also requires exact content digest, byte count, source
+generation, source path digest, retention, content type, and evidence refs.
+
+The adapter kills the driver process group after the declared command limit
+plus a short control margin. It publishes no driver stderr, guest path,
+credential, auth home, PID, provider topology, or cloud identity.
+
+See `docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md` for policy,
+configuration, tests, and the live-proof boundary.
 
 ## Durable Unattended Queue (`/v1/queue`, cloud#97)
 

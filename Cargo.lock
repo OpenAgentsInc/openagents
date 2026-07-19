@@ -891,6 +891,8 @@ dependencies = [
 name = "oa-codex-control"
 version = "0.1.0"
 dependencies = [
+ "base64",
+ "libc",
  "openagents-cloud-contract",
  "reqwest",
  "serde",

@@ -10,9 +10,11 @@ receipts.
 program (`docs/ide/`), the surface specs (`specs/desktop/`, `specs/mobile/`,
 `specs/web/`), and the Sol master roadmap.
 **Companion:** [`2026-07-19-some-simple-economics-of-agi-deepdive.md`](./2026-07-19-some-simple-economics-of-agi-deepdive.md)
-— a standalone deep dive on Catalini, Hui & Wu's *Some Simple Economics of
-AGI* (arXiv:2602.20946), the macroeconomic theory behind the verification-gap
-argument this essay builds on.
+— a standalone deep dive on Catalini, Hui & Wu's _Some Simple Economics of
+AGI_ (arXiv:2602.20946), the macroeconomic theory behind the verification-gap
+argument this essay builds on. Addendum II additionally draws on the market
+and wallet transcript arc (episodes 141–147, 153, 200, 207, 212–215, 223,
+230, 235, 237) and a code audit of the current Nostr/Lightning surface.
 
 ---
 
@@ -22,16 +24,16 @@ During a recording prep session earlier this month, an agent told the owner to
 run a `start` script. The script did not exist. The real one was called `dev`.
 Every neighboring word in the instruction was true — the directory, the tool,
 the framing — and the one load-bearing token was fiction. The after-action
-report named the failure class precisely: an *unverified operational
-directive*. A wrong schema fails to decode. A wrong import fails to typecheck.
+report named the failure class precisely: an _unverified operational
+directive_. A wrong schema fails to decode. A wrong import fails to typecheck.
 A wrong sentence to the owner has no compiler. It surfaces at the most
 expensive possible location: a human's attention.
 
 That small failure is the whole problem in miniature. The cost of producing
 software is collapsing — agents generate plausible code, plausible
 instructions, and plausible summaries at near-zero marginal cost. The cost of
-*verifying* those outputs remains stubbornly linear. This is the asymmetry
-Catalini, Hui, and Wu formalize in *Some Simple Economics of AGI* as the
+_verifying_ those outputs remains stubbornly linear. This is the asymmetry
+Catalini, Hui, and Wu formalize in _Some Simple Economics of AGI_ as the
 **Measurability Gap**: an exponentially falling cost to automate racing a
 biologically bottlenecked cost to verify, with hidden risk accumulating in
 the widening space between them (see the
@@ -64,8 +66,8 @@ of the last eleven build episodes and the specs behind them converge on a
 short, brutal taxonomy.
 
 **False greens.** A passing suite is not proof. The named modes: the test
-asserts the fixture; the test mirrors the implementation; the real seam is
-never exercised; coverage stands in for behavior; and everything rounds up —
+asserts the fixture, the test mirrors the implementation, the real seam is
+never exercised, coverage stands in for behavior, and everything rounds up —
 skipped, stale, flaky, and inconclusive results quietly vanish from the
 summary. Activity dressed up as evidence.
 
@@ -76,8 +78,8 @@ work is in question. A compaction summary is not evidence. Tool calls are
 attempts, not outcomes.
 
 **Silent substitution.** A UI chip said one model's name while a different
-model actually ran the turn, because the label reflected the *selected* brand
-rather than the *observed* execution. Identity must be observed, not asserted
+model actually ran the turn, because the label reflected the _selected_ brand
+rather than the _observed_ execution. Identity must be observed, not asserted
 — requested and effective are two different facts, and merging them into one
 indicator is the lie.
 
@@ -105,7 +107,7 @@ commitments.
 **1. Intent is typed and content-addressed.** Before implementation, the
 product states what it intends in a falsifiable form: a ProductSpec with
 acceptance criteria written as "when X, then Y." Before verification, a
-companion AssuranceSpec states how anyone would *know* — the oracle, the
+companion AssuranceSpec states how anyone would _know_ — the oracle, the
 falsifier, the environment, the evidence policy, and who is allowed to review.
 The AssuranceSpec binds to the ProductSpec's exact bytes by SHA-256 digest, so
 intent cannot drift out from under its proof silently: revise the spec and the
@@ -113,7 +115,7 @@ proof design goes stale until explicitly reconciled. The separation is the
 point. ProductSpec declares product intent. AssuranceSpec declares proof
 intent. Stating an outcome can never certify it.
 
-**2. Evidence is observed, not claimed.** After work happens, the *host*
+**2. Evidence is observed, not claimed.** After work happens, the _host_
 observes the results through its own authorities: diagnostics through the
 language service, repository state through the workspace service, delivery
 through actual Git evidence. A process saying "tests passed" or "pushed"
@@ -126,7 +128,7 @@ so.
 run leaves a pair of records: the authority manifest — what policy admitted —
 and the execution receipt — what containment actually enforced. Status lights
 derive only from decoded, fresh receipts. No receipt means no light. Absent or
-stale evidence renders as *unknown*, never as green. And the interface
+stale evidence renders as _unknown_, never as green. And the interface
 practices loss accounting: when history, identity, or evidence is missing, it
 says what was not observed instead of inventing completeness.
 
@@ -138,13 +140,13 @@ passing observation. An owner receipt is not independent admission. Sharing
 identity and evidence must never imply sharing privilege.
 
 **5. Whole failure classes are removed by construction.** When an incident
-happens, the response is not a patch and an apology; it is a set of gates that
+happens, the response is not a patch and an apology. It is a set of gates that
 make the category structurally unreachable. When a competitor's desktop app
 was killed by an unbounded repository scan in an unisolated worker, the
 after-action produced sixteen named controls — file limits, byte limits, queue
 limits, cancel fences, circuit breakers, process isolation, typed degradation,
 durable session state — each treated as a mandatory, testable release
-requirement. The claim was deliberately narrow: this *category* of error
+requirement. The claim was deliberately narrow: this _category_ of error
 becomes impossible in the new architecture, conditional on the named controls
 and the incident-scale evidence. Honest conditionality is part of the
 discipline. To have errors is fine: you have the error, you learn from it, you
@@ -171,20 +173,20 @@ file, document, language result, Git snapshot, agent attachment, proposal, and
 piece of evidence has a stable ref plus an explicit generation. No tree
 widget, LSP result, diff hunk, agent proposal, or deep link invents its own
 path or line-number identity. The editor (Monaco) and the review plane
-(Pierre) are deliberately admitted as *projections only* — they receive no
+(Pierre) are deliberately admitted as _projections only_ — they receive no
 filesystem, Git, mutation, or policy authority. Even the packages themselves
 went through admission: exact versions, registry integrity hashes, license
 audits, and explicit no-authority audits, with rollback and substitution tests
-required for every external library. The graph is the authority; the widgets
+required for every external library. The graph is the authority. The widgets
 paint it.
 
-**Agents propose; the project applies.** This is the load-bearing law for
+**Agents propose, and the project applies.** This is the load-bearing law for
 agentic change. A harness never mutates the editor and never guesses current
 line numbers. It submits a proposal bound to an exact base version, with
 SHA-256 equality checked between claimed and actual bytes. Reusing a ref for
 different content fails closed. There is no fuzzy apply. If the document moved
 on — if the human typed, if another agent's change landed — the stale base
-*refuses* rather than patching by position, and the system offers a typed
+_refuses_ rather than patching by position, and the system offers a typed
 rebase or a regenerated proposal. Apply itself is transactional: a retained
 checkpoint before, sequential execution through canonical authority, exact
 post-image digests after, and reverse-order rollback on any mid-transaction
@@ -194,7 +196,7 @@ success.
 **Disclosure is a manifest, not a vibe.** What did the agent actually see?
 The context tray answers exactly: eleven named source slots, each row showing
 inclusion or omission reason, selector, generation, freshness, byte and token
-cost, and truncation. Fixed budgets; over-budget items become explicit
+cost, and truncation. With fixed budgets, over-budget items become explicit
 omissions rather than silent expansion. Project attachment, instruction trust,
 context disclosure, and tool authority are four separate decisions that never
 collapse into one switch. Trusting a project does not grant all four.
@@ -210,11 +212,11 @@ typed tag that free-form labels cannot forge: renaming "HEAD" to "proposal"
 changes nothing about its authority.
 
 **Acceptance is a deterministic oracle.** The basic-IDE milestone was not
-declared; it was *decoded*. One exact application tree (named by SHA-256 over
+declared. It was _decoded_. One exact application tree (named by SHA-256 over
 360 files), one reachable `main` commit, one public-safe evidence bundle, and
 a deterministic repository oracle that recomputes facts from the artifact and
 exposes no producer override. The schema has no permissive `pending` or
-`warning` state; missing evidence fails decoding. And the oracle knows its own
+`warning` state. Missing evidence fails decoding. And the oracle knows its own
 bounds — it does not impersonate human owner acceptance, and the admitted
 claim is deliberately narrow. Parity is an acceptance result, not a package
 list: no parity claim from dependency presence, screenshots, or agent
@@ -223,23 +225,23 @@ self-report.
 **Even the founding requirement is a regression oracle.** The IDE program
 began with the simplest broken promise in the market: rival tools that cannot
 reliably open a file. So the base contract is blunt — open a file, and the
-file is visibly open in a real editor, immediately; no chat, provider, index,
+file is visibly open in a real editor, immediately. No chat, provider, index,
 or language-server hydration may hold the first paint hostage — and every
 packaged release journey re-proves it. A stated UX expectation lands verbatim
 in a typed behavior-contract registry with an executable oracle in the normal
 test sweep. A claim about how the product behaves cannot exist solely in
-prose; it must carry a test that can fail.
+prose. It must carry a test that can fail.
 
 For the developer, the net effect is that verification stops being a virtue
 and becomes a substrate. You do not remember to check whether the agent's diff
-still applies; stale bases refuse. You do not wonder what context leaked; the
-manifest says. You do not take "pushed" on faith; the Git evidence service
+still applies. Stale bases refuse. You do not wonder what context leaked. The
+manifest says. You do not take "pushed" on faith. The Git evidence service
 either shows the commit or shows `Unavailable`. The IDE is not an editor with
 an agent bolted on. It is a verification instrument that happens to edit text.
 
 ## V. Resilient under rapid agentic change
 
-The objection writes itself: doesn't all this ceremony slow you down? The
+The objection writes itself: does all this ceremony slow you down? The
 evidence from this repository says the opposite, and the strongest single
 sentence in the corpus says why:
 
@@ -256,13 +258,13 @@ fencing everywhere, so a hundred late results produce one committed fact and
 ninety-nine suppressed ones. The laws are not a tax on speed. The laws are
 what make the sprint short.
 
-The same structure is what lets agents change the software *while you are not
-watching*. Full Auto — press play and walk away — is only a sane product
+The same structure is what lets agents change the software _while you are not
+watching_. Full Auto — press play and walk away — is only a sane product
 because the run is a bounded, receipted object: an owner-bound routing policy
-whose failover happens only inside the human's grant; guardrails with a
+whose failover happens only inside the human's grant, guardrails with a
 non-overridable core that has no config surface at all, proven immune by
-test; exactly-once dispatch under a durable lease; a restart-survivable state
-machine with actor and reason attribution on every transition; and a
+test, exactly-once dispatch under a durable lease, a restart-survivable state
+machine with actor and reason attribution on every transition, and a
 "Completed" state the product refuses to present as verified truth, because
 provider prose cannot prove completion. A deterministic no-progress detector
 pauses durably instead of continuing blind. The overnight failure mode that
@@ -280,10 +282,10 @@ regression. The codebase can absorb a firehose of machine-generated change
 because the change never touches authority directly — it touches a proposal
 plane whose every transition is checked.
 
-There is a quieter benefit, too. When verification is structural, *trust
-compounds instead of depleting*. Each accepted outcome adds a receipt, a
+There is a quieter benefit, too. When verification is structural, _trust
+compounds instead of depleting_. Each accepted outcome adds a receipt, a
 behavior contract, an oracle to the standing suite. Legacy software rots as it
-grows because every change spends trust; verifiable software hardens as it
+grows because every change spends trust. Verifiable software hardens as it
 grows because every change deposits it.
 
 ## VI. The economics of proof
@@ -291,18 +293,18 @@ grows because every change deposits it.
 Why build all of this now? Because the verification gap is not just an
 engineering problem — it is the market.
 
-Generation cost is collapsing; verification cost is not. The gap between them
+Generation cost is collapsing. Verification cost is not. The gap between them
 is where value concentrates. When anyone can generate a plausible pull
 request, a plausible benchmark, or a plausible "all tests green," the scarce
 good is the ability to know which claims are true. The macro theory behind
-this is worked out in Catalini, Hui & Wu's *Some Simple Economics of AGI*:
-only the *verifiable share* of agentic output creates real economic capacity,
+this is worked out in Catalini, Hui & Wu's _Some Simple Economics of AGI_:
+only the _verifiable share_ of agentic output creates real economic capacity,
 while the unverified remainder circulates as "counterfeit utility" — output
 that passes every measurable proxy while silently violating unmeasured intent
-— and the market pays a measurable *provenance premium* for output whose
+— and the market pays a measurable _provenance premium_ for output whose
 process can be cheaply checked. Their policy levers — observability tooling
 (they name AI-powered IDEs explicitly), cryptographic provenance, and priced
-liability — map one-for-one onto the mechanisms described in this essay; the
+liability — map one-for-one onto the mechanisms described in this essay. The
 [companion deep dive](./2026-07-19-some-simple-economics-of-agi-deepdive.md)
 draws the full correspondence. The atomic unit of the
 agent economy is not generated output. It is an accepted outcome with a
@@ -323,9 +325,9 @@ cohorts instead of blending into a marketing number. Live counters must
 reconcile to exact receipted rows, so an auditor summing the ledger arrives at
 the displayed value.
 
-And openness is not a licensing preference here; it is the verification
+And openness is not a licensing preference here. It is the verification
 strategy. One hundred percent of the shipped code is public, which means the
-claims about it are *checkable* — by users filing strict-form bugs, by
+claims about it are _checkable_ — by users filing strict-form bugs, by
 independent audits of green promises, by anyone reading the acceptance oracle.
 A public trust ledger is structurally hard for closed-custody vendors to copy,
 because their business models depend on the opacity it removes. When a closed
@@ -346,7 +348,7 @@ release authority, their unexecuted obligations are `INCONCLUSIVE`, and their
 own text says so in exactly those words. A designed oracle is not a passing
 observation. Reconciliation never converts `planned` into `implemented`.
 
-That candor is not a caveat appended to the thesis. It *is* the thesis. A
+That candor is not a caveat appended to the thesis. It _is_ the thesis. A
 system that could not distinguish its proven claims from its intended ones
 would have failed at the only thing it exists to do. The gap between what is
 specified and what is observed is tracked in the same typed machinery as
@@ -359,7 +361,7 @@ The pitch for most developer tools is capability: more completions, more
 context, more agents. The pitch here is different. Predictability is the
 feature. "When I open a file, it actually opens the file" is the feature. A
 green that means what it claims is the feature. In 2025 the differentiator was
-a feature list; in 2026 it is a trust and openness list, because the features
+a feature list. In 2026 it is a trust and openness list, because the features
 are now table stakes.
 
 The IDE is where this has to live, because the IDE is where claims are born.
@@ -377,3 +379,343 @@ Ten agents running is activity. One accepted criterion with a complete proof
 chain is progress. Verifiable software is the discipline of never confusing
 the two — and the OpenAgents IDE is that discipline, compiled into the place
 where software gets made.
+
+---
+
+## Addendum: Gap Analysis — Full Delivery vs. Current State (2026-07-19)
+
+Section VII stated the honest boundary in one paragraph. This addendum
+expands it into a working gap analysis: what the OpenAgents IDE would need
+for verifiable software to be _fully delivered_ — every claim in this essay
+backed by a live, observed, independently admitted mechanism — measured
+against what is implemented, designed, or only spec'd today. Statuses below
+reflect `docs/ide/ROADMAP.md`, the `specs/` corpus, and
+`docs/sol/MASTER_ROADMAP.md` (rev 122) as of this date. Those documents, plus
+live issue state, remain the factual authorities.
+
+### 1. Editing and proposal authority — largely delivered
+
+**Have (implemented, receipted):** IDE-00 through IDE-08 are delivered and
+closed with exact issue receipts (#9015–#9022, #9036). That covers the typed
+project graph with generation fencing, admitted packages with no-authority
+audits, the complete Pierre path index, real Monaco lifecycle, the daily
+workbench, versioned review with staleness refusal, generation-safe language
+intelligence, the deterministic basic-IDE acceptance oracle, and the
+agent-native code graph: hash-bound proposals, transactional apply with
+checkpoint rollback, the context-tray disclosure manifest, and host-observed
+evidence. The "agents propose, and the project applies" law is running code.
+
+**Gap:** the delivered evidence plane deliberately reports several facts as
+`Unavailable` rather than observed. Tests are unobservable unless an exact
+test command was admitted. Commit, push, PR, and delivery are `Unavailable`
+in IDE-08 by design. Full delivery needs IDE-10 (terminal, tasks, tests,
+output), IDE-11 (debug), and IDE-12 (safe SCM mutation, worktrees,
+delivery) so that "tested," "committed," and "pushed" become host-observed
+facts instead of honest absences. IDE-09 (AI editing) through IDE-19 (the
+maintained parity ledger and owner acceptance) remain open. The accepted
+claim today is exactly "OpenAgents basic IDE" plus the agent code graph, and
+no broader rung may be spoken.
+
+### 2. Proof machinery — designed and validated, not yet admitted
+
+**Have:** the ProductSpec and AssuranceSpec formats exist with validators,
+CLIs, and digest binding. The desktop trust workbench spec carries 52
+acceptance criteria with per-criterion obligations, and the MVP precedent
+shows the completed form — 18 obligations mapped, executable, CONFIRMED,
+independently reviewed, and accepted, with no blended score.
+
+**Gap:** both surface-wide AssuranceSpecs
+(`desktop-trust-complete-workbench` and `full-auto`) remain
+`lifecycle_state: proposed`. Their obligations are _designed_, not
+_observed_: gates are empty, environments unselected, every authority flag
+false, and unexecuted evidence decodes as `INCONCLUSIVE`. Full delivery
+requires the whole ladder the formats already name: reviewer-authored risk
+models, executable oracles per obligation, falsifier observations,
+environment bindings to signed packaged builds, and — the scarcest input —
+_independent_ review and admission that no producer can self-grant. A
+designed oracle is not a passing observation, and today most of the surface
+corpus sits one rung below observation.
+
+### 3. Full Auto — core proven, closure gates open
+
+**Have:** the durable-run core is landed and proven in real owner
+development: exactly-once dispatch, restart-survivable state, routing
+rotation inside the owner's grant, non-overridable guardrail cores, and
+run reports with replayable failure fixtures.
+
+**Gap:** the flagship's two closure gates are exactly the verification
+story: #8978 (independent AssuranceSpec admission) and #8979 (binding the
+proof to a signed packaged release with owner observation). And by explicit
+cut, automatic done-condition verification is out of scope — "Completed" is
+self-reported, never presented as verified truth. Full delivery of the
+essay's thesis eventually needs that cut restored as a separately admitted
+contract: machine-checked objective completion, not just honest labeling of
+its absence.
+
+### 4. Trust-complete execution — spec'd, not landed
+
+**Gap (the largest):** the authority-manifest/execution-receipt pair at run
+level, named OS-enforced execution profiles that fail closed, hermetic mode
+with a complete admitted-input manifest, delivery and confidence tiers
+(draft / verified / reviewed / bonded) as visible product states, and the
+signed release-set chain with proven rollback are the heart of "authority is
+compiled, not narrated" — and they are currently Wave 2 acceptance criteria
+in the desktop ProductSpec, not shipped behavior. Today's containment story
+is real but narrower than the spec's. Until manifest/receipt pairing exists
+for every run, the essay's claim that "every consequential run leaves a
+pair of records" describes the contract, not yet the product.
+
+### 5. The public trust surface — partial
+
+**Have:** the promise registry with its full state machine, exact-only
+public counters reconciled to receipted rows, the restored `/trace/{uuid}`
+evidence viewer, Forum-first report intake, and signed desktop release
+artifacts.
+
+**Gap:** the dereferenceable trust ledger (release manifests, component
+compatibility, mechanical pass/fail receipt-verification endpoints),
+per-request routing disclosure, the audited data-flow matrix, benchmark
+cohorts bound to full effective tuples, and the public `CodeShareBundle`
+with verifier manifests (IDE-14) are spec'd in the web trust-surface
+ProductSpec (31 ACs) but not served. "The only place where an agent
+vendor's claims can be checked instead of believed" is today a design with
+partial coverage, not a live guarantee.
+
+### 6. The economics of proof — thesis, not product
+
+**Gap:** priced confidence tiers, bonded outcomes, liability underwriting,
+content-addressed study-packet reuse, and provenance-coupled settlement are
+the essay's economic endgame and remain almost entirely forward-looking —
+FastFollow defines the study-packet unit, the specs name the tiers, but no
+customer today buys a "bonded" outcome or pays a provenance premium through
+the product. This is acceptable sequencing (proof machinery must exist
+before proof can be priced), but it is the widest gap between essay and
+inventory.
+
+### 7. Independence — the structural risk to watch
+
+The companion deep dive's sharpest warning is the correlated-verifier trap:
+AI checking AI shares blind spots. Our architecture separates producer from
+verifier _by role_, but most oracles are still authored and executed inside
+the same toolchain and mostly by agents. Full delivery needs standing
+independent verification capacity — distinct reviewers for admission,
+community falsification through the open promise/audit loop, and where
+stakes warrant it, verification diversity that does not share the
+generator's priors. The AssuranceSpec format already refuses
+producer-admission. The gap is filling those reviewer roles with genuinely
+independent capacity at the cadence the pipeline needs.
+
+### Summary (Addendum I)
+
+What exists today is the _authority skeleton_ of verifiable software — the
+typed graph, the proposal plane, observed evidence, digest-bound specs, one
+fully-proven MVP precedent, and a deterministic acceptance oracle — with the
+discipline to label everything beyond it `Unavailable`, `proposed`, or
+`INCONCLUSIVE` rather than green. What full delivery still requires, in
+rough dependency order: observed execution evidence for tests, delivery, and
+debug (IDE-10/11/12), run-level manifest/receipt pairing and enforced
+profiles (Wave 2), independent admission of the standing AssuranceSpecs
+(#8978 first), the public trust ledger and receipt-verification endpoints,
+restored machine-checked completion for autonomous runs, and finally the
+priced tiers that turn proof into product. The gap is large, but it is
+enumerated, typed, and issue-addressed — which is exactly the state this
+essay argues a verifiable system should be able to report about itself.
+
+---
+
+## Addendum II: The Verification Economy — a Keypair and a Wallet in Every Editor (2026-07-19)
+
+Addendum I ended at priced proof: confidence tiers that turn verification
+into a product. This addendum asks what infrastructure that actually
+requires, and answers with a design thesis: **every editor carries a Nostr
+keypair and a Lightning wallet, so every editor — and every agent working
+inside one — can participate directly in a verification economy.** Buying
+proof, selling proof, signing proof, and settling against proof, from the
+place where claims are born.
+
+This is not a new idea for this project. It is the project's oldest idea,
+now aimed at its newest surface.
+
+### 1. The lineage: this network was already built once
+
+The transcript archive shows the thesis maturing across three product
+generations. Onyx (episode 153) shipped a mobile app with a Breeze-SDK
+Bitcoin wallet and a Nostr client, on the argument that "our AI agents…
+are going to pay each other in Bitcoin." Autopilot (episodes 207–215) moved
+it to the desktop and made it structural: "there will be a key pair
+generated automatically for you when you open the app for the first time,"
+with one BIP-39 seed phrase deriving *both* the Lightning wallet and the
+Nostr keypair — money and identity from the same root, stored locally,
+self-custodied. Pylon (episodes 235–237) made it a property of every node:
+"Every Pylon also ships a free, self-custodial Bitcoin Lightning wallet via
+MoneyDevKit, so a brand-new node — even one on an old GPU — can set up an
+identity and start earning sats the moment it comes online," with receive
+liquidity spliced in at wallet creation so a fresh participant can be paid
+immediately.
+
+Around those clients grew an open protocol inventory, all on Nostr and
+Lightning: NIP-89 service discovery, NIP-90 data vending machines (job
+kinds requested, fulfilled, and paid competitively — "the freest market of
+data processing AIs in the world"), NIP-DS dataset listings with canonical
+content digests, a Skills NIP whose trust signal is paid-workflow history,
+a Sovereign Agents draft using Frostr key-splitting so an agent can hold
+keys its owner cannot exfiltrate, and NIP-LBR — the labor rail — whose
+lifecycle runs request → quote → acceptance → result with provider *bonds*
+and a content-addressed closeout receipt. Five markets were named and two
+were launched on camera: compute, data, labor, liquidity, risk. Episode
+213's Economy Kernel ported Catalini's cost curves directly into the
+codebase; episode 237 named the atomic unit (the accepted outcome), the
+load-bearing wall (the clearing layer), and this essay's borrowed axiom:
+"money only travels across a gap it can verify."
+
+Episode 207 even priced the editor-to-editor case exactly: "you discover
+some gotcha… maybe they just want to pay you three cents and save that
+time." That sentence is the verification economy at the scale of one
+keystroke.
+
+### 2. What the keypair does: claims get an author
+
+Everything in this essay's first half is about making claims *checkable*.
+A keypair makes them *attributable* — and attribution is what lets a claim
+travel beyond the machine that produced it.
+
+Concretely: every object the IDE already mints — proposal admissions,
+apply receipts, host-observed evidence, behavior-contract oracle results,
+acceptance-oracle decodes, CodeShareBundle manifests — is a typed,
+digest-bound record. Signed with the editor's Nostr key, each becomes a
+portable attestation: *this* editor, under *this* identity, observed *this*
+fact at *this* generation. A second editor can verify the signature and the
+digest without trusting the transport, the platform, or the author's prose.
+The deep dive's provenance premium — P(π=1) > P(π=0) — becomes a concrete
+product feature: a diff that arrives with a signed evidence chain is worth
+more than an identical diff without one, and the difference is the
+verification labor a stranger no longer has to repeat.
+
+Identity also accumulates. A keypair that has signed a thousand receipts
+that later survived independent falsification *is* a verification track
+record — the "cryptographically verifiable career track record" Catalini's
+playbook prescribes for individuals, except it works identically for
+agents. Reputation stops being a platform database row and becomes a
+portable, checkable history of survived claims. This is the paper's
+verified network scale (N_V = ρN) built bottom-up: the authenticated share
+ρ is not asserted by a platform, it is computed from signatures.
+
+The authority discipline carries over unchanged: a signature is
+provenance, never privilege. Signing a receipt grants no write, merge,
+acceptance, or spend authority — exactly as the IDE's laws already hold
+that sharing identity and evidence must not imply sharing authority. And
+for agent-held keys, the Sovereign Agents/Frostr design keeps custody
+honest: an agent can sign without its key being copyable.
+
+### 3. What the wallet does: proof gets a price
+
+The wallet turns the essay's economic section from thesis into mechanism.
+Four flows, all denominated in the objects the IDE already produces:
+
+**Buying verification.** The structural risk named in Addendum I §7 is
+verifier correlation — AI checking AI shares blind spots (κ_corr ≫ 1). A
+market is the cleanest decorrelator we know of. An editor that wants
+independent proof posts a NIP-90-style job — "falsify this claim; here is
+the signed evidence bundle and the oracle" — and *strangers'* editors,
+running different models, different toolchains, different priors, compete
+to break it for sats. Paid independent falsification is not a nice-to-have
+on top of the assurance pipeline; it is the only scalable source of the
+independence the AssuranceSpec format already demands. The reviewer roles
+Addendum I could not fill by hire, a market fills by price.
+
+**Selling verification.** The same editor, idle overnight, is supply. It
+re-runs oracles, reproduces builds, executes falsifiers, reviews diffs
+against behavior contracts — and every accepted verification is itself an
+accepted outcome: scoped, executed, graded, receipted, settled. This is
+episode 213's labor market with verification as the first product, and it
+answers the deep dive's rationing problem (expert verification triaged and
+sampled) with elastic supply: verification bandwidth stops being a fixed
+human pool and becomes a priced network resource. The Codifier's Curse
+still applies — every sold verification teaches the network to automate
+that check — but here that is the flywheel working as intended: checks that
+become mechanical get cheap, and human attention migrates up to designing
+the next falsifier.
+
+**Bonding outcomes.** NIP-LBR's provider bonds already model the top
+confidence tier: a verifier stakes sats on its verdict, forfeited if an
+accepted claim is later refuted. That is Liability-as-a-Service at
+keystroke scale — "the product is no longer the agent; it is the
+indemnified outcome" — and it makes draft / verified / reviewed / bonded
+literal price points on one diff rather than marketing language.
+
+**Selling evidence.** Study packets, teardown findings, edge-case
+libraries, adjudicated false greens — verification-grade ground truth, the
+K_IP^ver the paper says makes risk insurable — become sellable as NIP-DS
+bundles with canonical digests: pay, receive, verify the digest, reuse the
+proof. Verification amortizes across the network instead of being re-run
+inside every editor. Money in, *checked* data out.
+
+Settlement and provenance ride the same rails — the deep dive's
+observation that "the same rails that settle payments can also carry the
+receipts" is literally the design: a Lightning payment resolving against a
+signed closeout receipt is one object, not a payment plus an invoice plus
+a claim in prose. And the essay's own discipline applies to money most of
+all: episode 237's formulation — "a payment the recipient cannot
+dereference is not a payment, it is a bug wearing money."
+
+### 4. Current state, honestly
+
+Following this essay's rules, the inventory:
+
+**Live today:** every Pylon derives a real Nostr identity — NIP-06 HD keys
+from a locally stored BIP-39 mnemonic (`packages/pylon-core/src/shared/nostr-identity.ts`)
+— and authenticates its control surfaces with NIP-98 signed events. The
+keypair half of the vision is running code in the node runtime today; the
+editor inherits it the moment the IDE binds to Pylon identity.
+
+**Protocol-complete, settlement-free:** `packages/nip90` implements the
+market grammar — job kinds, the labor lifecycle, provider bonds,
+content-addressed closeout receipts, dataset kinds — with tests and proof
+scripts, and *by explicit design* "moves no sats, opens no escrow, grants
+no settlement authority." The receipts are real; the money is not.
+
+**Deliberately retired or inert:** Pylon's wallet actions return
+`money_capability_retired`; the Spark/MDK scaffolding (wallet panes,
+control commands, payout targets) is present but unwired; the
+openagents.com MDK sidecar/treasury/tips services are emptied and the
+Lightning invoice rail is flag-gated inert; the Nostr relay app is
+stripped; `docs/nostr/` is marked postponed (2026-07-08) behind the
+current product focus. The network described in §1 was built, ran, paid
+real sats on camera — and its money paths are currently, intentionally,
+off.
+
+So the honest statement is symmetric with Addendum I: the *identity* half
+is live, the *market grammar* is implemented and tested, and the
+*settlement* half is a deliberate zero awaiting a product decision, not a
+technical unknown. Re-activation is a bounded list — bind IDE identity to
+the existing Pylon keypair; sign the evidence objects the IDE already
+mints; re-enable a wallet path on the MDK stack that episode 235 proved
+end-to-end; wire NIP-LBR closeouts to settlement — and every item on it is
+an owner-gated authority change under `AUTHORITY.md` and the payment
+invariants, not a research problem. This essay flips none of those
+switches; it argues they are worth flipping.
+
+### 5. Why this completes the argument
+
+The essay's core claim was that verification must be structural, not
+voluntary. The deep dive added that it must also be *economic*: markets
+under-supply verification unless it is priced, and "durable advantage
+belongs not to those who generate output but to those who can certify it,
+insure it, and absorb the liability when it fails." A keypair and a wallet
+in every editor is where those two claims meet. The keypair makes every
+receipt attributable and portable; the wallet makes every receipt
+priceable and settleable; the IDE makes both ambient, because it already
+mints the receipts as a side effect of ordinary work.
+
+Reed's Law then does the rest. Editors that can pay each other for proof
+form verification coalitions at machine speed — micro-markets around a
+single falsifier, standing guilds around a test suite, bonded underwriters
+around a release. The group-forming network the transcripts describe was
+always, at bottom, a network of parties who can *check each other's work
+and settle on it*. The editor is simply the right terminal for it: the
+place where the claims are born is the place where they should be signed,
+priced, verified, and paid for.
+
+One market, cleared in receipts, settled in sats — reaching all the way
+down to a three-cent gotcha and all the way up to a bonded release. That
+is the verification economy, and the editor is its exchange floor.

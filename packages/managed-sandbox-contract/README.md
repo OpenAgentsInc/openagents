@@ -2,7 +2,7 @@
 
 Canonical, runtime-neutral contracts for OpenAgents-managed agent sandboxes.
 The package owns sandbox identity, lifecycle, lease, budget, command, event,
-receipt, runtime-turn identity/usage/events, and Box-v1 compatibility schemas.
+receipt, runtime-turn, guest-I/O, artifact, and Box-v1 compatibility schemas.
 It does not provision infrastructure or own provider-private SDK sessions.
 
 The Box compatibility surface is a deliberately bounded projection over the
@@ -20,3 +20,8 @@ topology. It delegates durable replay and cursor state to
 `501 capability_not_implemented` responses. Only the conformance tests import
 the exact SDK. Production code decodes and encodes the Effect Schema types in
 this package.
+
+SBX-04 adds exact Codex and Claude turn identity, ordered events, usage
+receipts, and exact interrupt. SBX-05 adds the closed guest I/O request,
+public-safe operation receipt, and content-addressed artifact receipt. The Box
+objects remain projections over these native contracts.

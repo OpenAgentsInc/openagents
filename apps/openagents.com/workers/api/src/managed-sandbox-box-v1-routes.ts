@@ -23,10 +23,13 @@ import {
   BoxV1ProjectedEventPageSchema,
   BoxV1PromptResponseSchema,
   BoxV1PromptRunResponseSchema,
+  type ManagedSandboxArtifactReceipt,
   type ManagedSandboxCommand,
   ManagedSandboxCommandSchema,
   type ManagedSandboxEvent,
   ManagedSandboxEventSchema,
+  type ManagedSandboxGuestIoLimits,
+  type ManagedSandboxGuestIoReceipt,
   type ManagedSandboxReceipt,
   type ManagedSandboxResource,
   ManagedSandboxResourceSchema,
@@ -209,19 +212,50 @@ export type BoxV1Runtime = Readonly<{
   readFile: (input: {
     principal: BoxV1Principal
     resource: ManagedSandboxResource
+    operationRef: string
+    idempotencyRef: string
+    capabilityRef: string
+    capabilityState: 'active'
+    capabilityExpiresAt: string
+    requestedAt: string
+    limits: ManagedSandboxGuestIoLimits
     path: string
     encoding: 'utf8' | 'base64'
-  }) => Effect.Effect<{ content: string; size: number }, BoxV1FacadeError>
+  }) => Effect.Effect<
+    {
+      content: string
+      size: number
+      receipt: ManagedSandboxGuestIoReceipt
+    },
+    BoxV1FacadeError
+  >
   writeFile: (input: {
     principal: BoxV1Principal
     resource: ManagedSandboxResource
+    operationRef: string
+    idempotencyRef: string
+    capabilityRef: string
+    capabilityState: 'active'
+    capabilityExpiresAt: string
+    requestedAt: string
+    limits: ManagedSandboxGuestIoLimits
     path: string
     encoding: 'utf8' | 'base64'
     content: string
-  }) => Effect.Effect<{ size: number }, BoxV1FacadeError>
+  }) => Effect.Effect<
+    { size: number; receipt: ManagedSandboxGuestIoReceipt },
+    BoxV1FacadeError
+  >
   command: (input: {
     principal: BoxV1Principal
     resource: ManagedSandboxResource
+    operationRef: string
+    idempotencyRef: string
+    capabilityRef: string
+    capabilityState: 'active'
+    capabilityExpiresAt: string
+    requestedAt: string
+    limits: ManagedSandboxGuestIoLimits
     command: string
     cwd: string
     timeoutSeconds: number
@@ -237,15 +271,29 @@ export type BoxV1Runtime = Readonly<{
       timedOut: boolean
       startedAt: string
       finishedAt: string
+      receipt: ManagedSandboxGuestIoReceipt
     },
     BoxV1FacadeError
   >
   artifact: (input: {
     principal: BoxV1Principal
     resource: ManagedSandboxResource
+    operationRef: string
+    idempotencyRef: string
+    capabilityRef: string
+    capabilityState: 'active'
+    capabilityExpiresAt: string
+    requestedAt: string
+    limits: ManagedSandboxGuestIoLimits
     path: string
+    retentionUntil: string
   }) => Effect.Effect<
-    { bytes: Uint8Array; contentType: string },
+    {
+      bytes: Uint8Array
+      contentType: string
+      receipt: ManagedSandboxGuestIoReceipt
+      artifact: ManagedSandboxArtifactReceipt
+    },
     BoxV1FacadeError
   >
 }>
@@ -563,7 +611,15 @@ const assertPath = (value: string): Effect.Effect<string, BoxV1FacadeError> => {
     value.length < 1 ||
     value.length > 1_024 ||
     value.startsWith('/') ||
-    value.split('/').some(segment => segment === '..')
+    value.endsWith('/') ||
+    value.includes('\\') ||
+    value.includes('\0') ||
+    (value !== 'workspace' && !value.startsWith('workspace/')) ||
+    value
+      .split('/')
+      .some(
+        segment => segment.length === 0 || segment === '.' || segment === '..',
+      )
   ) {
     return Effect.fail(
       validationError('path must be a bounded root-relative path'),
@@ -571,6 +627,18 @@ const assertPath = (value: string): Effect.Effect<string, BoxV1FacadeError> => {
   }
   return Effect.succeed(value)
 }
+
+const contentByteLength = (
+  content: string,
+  encoding: 'utf8' | 'base64',
+): Effect.Effect<number, BoxV1FacadeError> =>
+  Effect.try({
+    try: () =>
+      encoding === 'utf8'
+        ? new TextEncoder().encode(content).byteLength
+        : atob(content).length,
+    catch: () => validationError('file content is not valid base64'),
+  })
 
 const makeBoxCompatibilityService = (input: {
   principal: BoxV1Principal
@@ -586,6 +654,81 @@ const makeBoxCompatibilityService = (input: {
 
   const inspect = (sandboxRef: string) =>
     input.store.inspect({ ...scope, sandboxRef })
+
+  const admitGuestIo = (
+    resource: ManagedSandboxResource,
+    capabilityKind: 'file_read' | 'file_write' | 'command' | 'artifact_read',
+    operation: string,
+    key: string,
+    timeoutMillis: number,
+  ) =>
+    Effect.gen(function* () {
+      const now = input.now()
+      if (
+        !['ready', 'idle', 'running'].includes(resource.facts.lifecycle) ||
+        resource.facts.guestState !== 'present' ||
+        !['attached', 'durable'].includes(resource.facts.filesystemState) ||
+        resource.lease.state !== 'active' ||
+        Date.parse(resource.lease.expiresAt) <= now.getTime()
+      ) {
+        return yield* conflictError(
+          'guest I/O requires a ready exact sandbox generation and active lease',
+        )
+      }
+      const capability = resource.capabilities.find(
+        candidate =>
+          candidate.kind === capabilityKind &&
+          candidate.state === 'active' &&
+          Date.parse(candidate.expiresAt) > now.getTime(),
+      )
+      if (capability === undefined) {
+        return yield* new BoxV1FacadeError({
+          code: 'permission_denied',
+          status: 403,
+          message: `sandbox generation has no active ${capabilityKind} capability`,
+          retryable: false,
+        })
+      }
+      const identity = yield* makeCommandIdentity(
+        input.principal,
+        operation,
+        key,
+      )
+      const maxDurationMillis = Math.min(
+        Math.max(1, timeoutMillis),
+        resource.budget.maxLifetimeSeconds * 1_000,
+        3_600_000,
+      )
+      const limits: ManagedSandboxGuestIoLimits = {
+        workspaceRootRef: 'workspace.managed-sandbox',
+        maxFileBytes: Math.min(
+          1_048_576,
+          Math.max(1, resource.budget.maxArtifactBytes),
+        ),
+        maxArtifactBytes: Math.min(
+          16 * 1_024 * 1_024,
+          Math.max(1, resource.budget.maxArtifactBytes),
+        ),
+        maxOutputBytes: 131_072,
+        maxDurationMillis,
+        maxCpuMillis: Math.min(
+          maxDurationMillis,
+          Math.max(1, resource.budget.maxCpuMillis),
+        ),
+        maxProcesses: 32,
+        maxNetworkBytes: 0,
+        networkPolicyRef: 'network-policy.managed-sandbox.deny-all',
+      }
+      return {
+        operationRef: identity.commandRef,
+        idempotencyRef: identity.idempotencyRef,
+        capabilityRef: capability.capabilityRef,
+        capabilityState: 'active' as const,
+        capabilityExpiresAt: capability.expiresAt,
+        requestedAt: now.toISOString(),
+        limits,
+      }
+    })
 
   const materializeRuntimeEvents = (
     resource: ManagedSandboxResource,
@@ -1409,13 +1552,26 @@ const makeBoxCompatibilityService = (input: {
           projection: projectionCursor,
         })
       }),
-    readFile: (sandboxRef: string, path: string, encoding: 'utf8' | 'base64') =>
+    readFile: (
+      sandboxRef: string,
+      path: string,
+      encoding: 'utf8' | 'base64',
+      key: string,
+    ) =>
       Effect.gen(function* () {
         const safePath = yield* assertPath(path)
         const resource = yield* inspect(sandboxRef)
+        const admission = yield* admitGuestIo(
+          resource,
+          'file_read',
+          'file_read',
+          key,
+          30_000,
+        )
         const result = yield* input.runtime.readFile({
           principal: input.principal,
           resource,
+          ...admission,
           path: safePath,
           encoding,
         })
@@ -1427,17 +1583,32 @@ const makeBoxCompatibilityService = (input: {
           encoding,
           size: result.size,
           content: result.content,
+          openagents: result.receipt,
         })
       }),
-    writeFile: (sandboxRef: string, raw: unknown) =>
+    writeFile: (sandboxRef: string, raw: unknown, key: string) =>
       Effect.gen(function* () {
         const body = yield* decode(fileWriteInputSchema, raw)
         const path = yield* assertPath(body.path)
         const encoding = body.encoding ?? 'utf8'
         const resource = yield* inspect(sandboxRef)
+        const admission = yield* admitGuestIo(
+          resource,
+          'file_write',
+          'file_write',
+          key,
+          30_000,
+        )
+        const byteLength = yield* contentByteLength(body.content, encoding)
+        if (byteLength > admission.limits.maxFileBytes) {
+          return yield* validationError(
+            'file content exceeds the admitted per-operation byte limit',
+          )
+        }
         const result = yield* input.runtime.writeFile({
           principal: input.principal,
           resource,
+          ...admission,
           path,
           encoding,
           content: body.content,
@@ -1449,9 +1620,10 @@ const makeBoxCompatibilityService = (input: {
           path,
           encoding,
           size: result.size,
+          openagents: result.receipt,
         })
       }),
-    command: (sandboxRef: string, raw: unknown) =>
+    command: (sandboxRef: string, raw: unknown, key: string) =>
       Effect.gen(function* () {
         const body = yield* decode(commandInputSchema, raw)
         if (body.command.trim().length === 0 || body.command.length > 16_384) {
@@ -1469,9 +1641,17 @@ const makeBoxCompatibilityService = (input: {
           )
         }
         const resource = yield* inspect(sandboxRef)
+        const admission = yield* admitGuestIo(
+          resource,
+          'command',
+          'command',
+          key,
+          timeoutSeconds * 1_000,
+        )
         const result = yield* input.runtime.command({
           principal: input.principal,
           resource,
+          ...admission,
           command: body.command,
           cwd,
           timeoutSeconds,
@@ -1481,16 +1661,26 @@ const makeBoxCompatibilityService = (input: {
           type: 'command.finished',
           ...result,
           cwd,
+          openagents: result.receipt,
         })
       }),
-    artifact: (sandboxRef: string, path: string) =>
+    artifact: (sandboxRef: string, path: string, key: string) =>
       Effect.gen(function* () {
         const safePath = yield* assertPath(path)
         const resource = yield* inspect(sandboxRef)
+        const admission = yield* admitGuestIo(
+          resource,
+          'artifact_read',
+          'artifact_read',
+          key,
+          30_000,
+        )
         return yield* input.runtime.artifact({
           principal: input.principal,
           resource,
+          ...admission,
           path: safePath,
+          retentionUntil: isoTimestampAfter(input.now(), 24 * 60 * 60 * 1_000),
         })
       }),
   }
@@ -1790,6 +1980,7 @@ export const makeBoxV1Routes = <Bindings>(
                 yield* decode(SandboxRef, matched.boxId),
                 path,
                 encoding,
+                idempotencyKey(request),
               ),
             )
           }
@@ -1798,6 +1989,7 @@ export const makeBoxV1Routes = <Bindings>(
               yield* service.writeFile(
                 yield* decode(SandboxRef, matched.boxId),
                 yield* jsonBody(request),
+                idempotencyKey(request),
               ),
             )
           case 'command':
@@ -1805,6 +1997,7 @@ export const makeBoxV1Routes = <Bindings>(
               yield* service.command(
                 yield* decode(SandboxRef, matched.boxId),
                 yield* jsonBody(request),
+                idempotencyKey(request),
               ),
             )
           case 'artifact': {
@@ -1813,12 +2006,23 @@ export const makeBoxV1Routes = <Bindings>(
             const artifact = yield* service.artifact(
               yield* decode(SandboxRef, matched.boxId),
               path,
+              idempotencyKey(request),
             )
             return new Response(artifact.bytes as BodyInit, {
               status: 200,
               headers: {
                 'cache-control': 'no-store',
                 'content-type': artifact.contentType,
+                'content-length': String(artifact.artifact.byteLength),
+                digest: `sha-256=${artifact.artifact.contentDigest.slice('sha256:'.length)}`,
+                etag: `"${artifact.artifact.contentDigest}"`,
+                'x-openagents-artifact-ref': artifact.artifact.artifactRef,
+                'x-openagents-source-generation': String(
+                  artifact.artifact.sourceGeneration,
+                ),
+                'x-openagents-retention-until':
+                  artifact.artifact.retentionUntil,
+                'x-openagents-receipt-ref': artifact.receipt.receiptRef,
               },
             })
           }

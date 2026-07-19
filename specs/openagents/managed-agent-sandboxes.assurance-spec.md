@@ -370,7 +370,9 @@ or observations exist today.
     "technique": "liveness_fault_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "docs/sol/evidence/2026-07-19-sbx05-managed-sandbox-guest-io.json"
+    ],
     "criterion_refs": [
       "MSB-AC-08"
     ],
@@ -389,17 +391,19 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "cross_generation_or_secret_capability",
-      "ref": "packages/managed-sandbox-contract/src/capability.test.ts"
+      "ref": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "packages/managed-sandbox-contract/src/capability.test.ts",
+      "evaluator_ref": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
       "statement": "Redeem only generation-bound, unexpired capability refs and scan all payload, event, checkpoint, issue, log, and receipt projections for forbidden material."
     },
     "technique": "security_fault_matrix"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "docs/sol/evidence/2026-07-19-sbx05-managed-sandbox-guest-io.json"
+    ],
     "criterion_refs": [
       "MSB-AC-09"
     ],
@@ -418,11 +422,11 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "adapter_bypasses_workspace_policy",
-      "ref": "crates/oa-workroomd/tests/managed_sandbox_io_policy.rs"
+      "ref": "crates/oa-codex-control/src/managed_sandbox_guest_io.rs"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "crates/oa-workroomd/tests/managed_sandbox_io_policy.rs",
+      "evaluator_ref": "crates/oa-codex-control/src/managed_sandbox_guest_io.rs",
       "statement": "Generate path, symlink, binary, size, duration, output, concurrency, egress, and quota violations below native and compatibility adapters and verify digest-bound artifacts."
     },
     "technique": "property_and_boundary_test"

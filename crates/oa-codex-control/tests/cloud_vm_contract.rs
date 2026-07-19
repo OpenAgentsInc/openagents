@@ -234,6 +234,59 @@ fn managed_sandbox_route_is_authenticated_and_default_off_without_fake_readiness
     assert!(!daemon.state_dir.join("managed-sandbox-runtime").exists());
 }
 
+#[test]
+fn managed_sandbox_guest_io_route_requires_authentication_and_a_private_driver() {
+    let daemon = start_daemon("managed-sandbox-guest-io-default-off");
+    let request = serde_json::json!({
+        "schemaVersion": "openagents.managed_sandbox_guest_io.v1",
+        "action": "read_file",
+        "operationRef": "operation.sbx05.contract",
+        "idempotencyRef": "idempotency.sbx05.contract",
+        "actorRef": "agent.sbx05.contract",
+        "ownerRef": "owner.sbx05.contract",
+        "tenantRef": "tenant.sbx05.contract",
+        "programRef": "program.managed_agent_sandboxes",
+        "workUnitRef": "work.sbx05.contract",
+        "sandboxRef": "sandbox.sbx05.contract",
+        "resourceGeneration": 1,
+        "capabilityRef": "capability.sbx05.file-read",
+        "capabilityState": "active",
+        "capabilityExpiresAt": "2026-07-19T21:00:00.000Z",
+        "requestedAt": "2026-07-19T20:00:00.000Z",
+        "path": "workspace/README.md",
+        "encoding": "utf8",
+        "limits": {
+            "workspaceRootRef": "workspace.managed-sandbox",
+            "maxFileBytes": 1048576,
+            "maxArtifactBytes": 10000000,
+            "maxOutputBytes": 131072,
+            "maxDurationMillis": 30000,
+            "maxCpuMillis": 30000,
+            "maxProcesses": 32,
+            "maxNetworkBytes": 0,
+            "networkPolicyRef": "network-policy.managed-sandbox.deny-all"
+        }
+    });
+    let body = serde_json::to_vec(&request).expect("encode request");
+    let (unauthorized, _) = http_request(
+        &daemon.addr,
+        "POST",
+        "/v1/managed-sandbox/runtime/io",
+        Some(&body),
+        None,
+    )
+    .expect("unauthorized request");
+    assert_eq!(unauthorized, 401);
+
+    let (status, response) = post_json(&daemon, "/v1/managed-sandbox/runtime/io", &request);
+    assert_eq!(status, 503, "default-off guest I/O response: {response}");
+    assert_eq!(
+        response.pointer("/reasonRef").and_then(Value::as_str),
+        Some("guest_io_driver_not_configured")
+    );
+    assert!(!response.to_string().contains("workspace/README.md"));
+}
+
 /// The headline contract test: the route fulfils the full
 /// provision -> exec -> copyOut -> teardown lifecycle in one call, in the exact
 /// wire shape the qa-runner `CloudVmProvisionerV2` sends.

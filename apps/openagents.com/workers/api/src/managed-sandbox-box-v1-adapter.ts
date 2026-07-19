@@ -4,6 +4,9 @@ import {
 } from '@openagentsinc/khala-sync-server'
 import {
   BOX_V1_TRANSLATOR_REF,
+  type ManagedSandboxGuestIoAction,
+  type ManagedSandboxGuestIoResponse,
+  ManagedSandboxGuestIoResponseSchema,
   ManagedSandboxResourceSchema,
   ManagedSandboxRuntimeEventInputSchema,
 } from '@openagentsinc/managed-sandbox-contract'
@@ -285,6 +288,133 @@ const managedSandboxTurnResponseSchema = S.Struct({
   events: S.Array(ManagedSandboxRuntimeEventInputSchema),
 })
 
+const guestIoBytes = (
+  encoding: 'utf8' | 'base64',
+  content: string,
+): Effect.Effect<Uint8Array, BoxV1FacadeError> =>
+  Effect.try({
+    try: () => {
+      if (encoding === 'utf8') return new TextEncoder().encode(content)
+      const decoded = atob(content)
+      return Uint8Array.from(decoded, character => character.charCodeAt(0))
+    },
+    catch: () =>
+      new BoxV1FacadeError({
+        code: 'validation_failed',
+        status: 400,
+        message: 'base64 guest I/O content is invalid',
+        retryable: false,
+      }),
+  })
+
+const guestIoDigest = (
+  bytes: Uint8Array,
+): Effect.Effect<string, BoxV1FacadeError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const digest = await crypto.subtle.digest(
+        'SHA-256',
+        Uint8Array.from(bytes).buffer,
+      )
+      return `sha256:${[...new Uint8Array(digest)]
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('')}`
+    },
+    catch: () => upstreamUnavailable('guest_io_digest'),
+  })
+
+const managedSandboxGuestIoRequest = (
+  env: OpenAgentsWorkerEnv,
+  body: Readonly<Record<string, unknown>>,
+) =>
+  Effect.gen(function* () {
+    const baseUrl = env.OA_CLOUD_CONTROL_URL?.trim()
+    const bearerToken = env.OA_CLOUD_CONTROL_TOKEN?.trim()
+    if (!baseUrl || !bearerToken) return yield* upstreamUnavailable('guest_io')
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(`${baseUrl.replace(/\/$/, '')}/v1/managed-sandbox/runtime/io`, {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${bearerToken}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            schemaVersion: 'openagents.managed_sandbox_guest_io.v1',
+            ...body,
+          }),
+        }),
+      catch: () => upstreamUnavailable('guest_io'),
+    })
+    const text = yield* Effect.tryPromise({
+      try: () => response.text(),
+      catch: () => upstreamUnavailable('guest_io_response'),
+    })
+    if (!response.ok) {
+      const status = response.status
+      return yield* new BoxV1FacadeError({
+        code:
+          status === 400
+            ? 'validation_failed'
+            : status === 403
+              ? 'permission_denied'
+              : status === 409
+                ? 'conflict'
+                : status === 429
+                  ? 'rate_limited'
+                  : 'upstream_unavailable',
+        status: [400, 403, 409, 429].includes(status) ? status : 503,
+        message: 'managed-sandbox guest I/O control refused the operation',
+        retryable: status === 429 || status >= 500,
+      })
+    }
+    return yield* Effect.try({
+      try: () =>
+        S.decodeUnknownSync(ManagedSandboxGuestIoResponseSchema)(
+          parseJsonUnknown(text),
+        ),
+      catch: () => upstreamUnavailable('guest_io_contract'),
+    })
+  })
+
+type GuestIoResponseFor<Action extends ManagedSandboxGuestIoAction> = Extract<
+  ManagedSandboxGuestIoResponse,
+  { action: Action }
+>
+
+const exactGuestIoResponse = <Action extends ManagedSandboxGuestIoAction>(
+  response: ManagedSandboxGuestIoResponse,
+  action: Action,
+  input: {
+    operationRef: string
+    capabilityRef: string
+    resource: { sandboxRef: string; resourceGeneration: number }
+  },
+): Effect.Effect<GuestIoResponseFor<Action>, BoxV1FacadeError> => {
+  if (
+    response.action !== action ||
+    response.operationRef !== input.operationRef ||
+    response.sandboxRef !== input.resource.sandboxRef ||
+    response.resourceGeneration !== input.resource.resourceGeneration ||
+    response.receipt.operationRef !== input.operationRef ||
+    response.receipt.sandboxRef !== input.resource.sandboxRef ||
+    response.receipt.resourceGeneration !== input.resource.resourceGeneration ||
+    response.receipt.capabilityRef !== input.capabilityRef ||
+    response.receipt.action !== action ||
+    response.receipt.outcome !== 'succeeded'
+  ) {
+    return Effect.fail(
+      new BoxV1FacadeError({
+        code: 'conflict',
+        status: 409,
+        message: 'guest I/O response does not bind the exact request scope',
+        retryable: false,
+      }),
+    )
+  }
+  return Effect.succeed(response as GuestIoResponseFor<Action>)
+}
+
 const managedSandboxRuntimeRequest = (
   env: OpenAgentsWorkerEnv,
   body: Readonly<Record<string, unknown>>,
@@ -371,6 +501,33 @@ const runtimeScope = (
   runtime: input.turn.runtime,
 })
 
+const guestIoScope = (input: {
+  principal: Parameters<BoxV1Runtime['readFile']>[0]['principal']
+  resource: Parameters<BoxV1Runtime['readFile']>[0]['resource']
+  operationRef: string
+  idempotencyRef: string
+  capabilityRef: string
+  capabilityState: 'active'
+  capabilityExpiresAt: string
+  requestedAt: string
+  limits: Parameters<BoxV1Runtime['readFile']>[0]['limits']
+}): Readonly<Record<string, unknown>> => ({
+  operationRef: input.operationRef,
+  idempotencyRef: input.idempotencyRef,
+  actorRef: input.principal.actorRef,
+  ownerRef: input.principal.ownerRef,
+  tenantRef: input.principal.tenantRef,
+  programRef: input.resource.programRef,
+  workUnitRef: input.resource.workUnitRef,
+  sandboxRef: input.resource.sandboxRef,
+  resourceGeneration: input.resource.resourceGeneration,
+  capabilityRef: input.capabilityRef,
+  capabilityState: input.capabilityState,
+  capabilityExpiresAt: input.capabilityExpiresAt,
+  requestedAt: input.requestedAt,
+  limits: input.limits,
+})
+
 export const managedSandboxBoxV1RuntimeForEnv = (
   env: OpenAgentsWorkerEnv,
 ): Effect.Effect<BoxV1Runtime, BoxV1FacadeError> =>
@@ -396,4 +553,119 @@ export const managedSandboxBoxV1RuntimeForEnv = (
         reasonRef: input.reasonRef,
         idempotencyRef: input.idempotencyRef,
       }).pipe(Effect.map(response => response.events)),
+    readFile: input =>
+      managedSandboxGuestIoRequest(env, {
+        action: 'read_file',
+        ...guestIoScope(input),
+        path: input.path,
+        encoding: input.encoding,
+      }).pipe(
+        Effect.flatMap(response =>
+          exactGuestIoResponse(response, 'read_file', input),
+        ),
+        Effect.map(response => ({
+          content: response.content,
+          size: response.byteLength,
+          receipt: response.receipt,
+        })),
+      ),
+    writeFile: input =>
+      Effect.gen(function* () {
+        const bytes = yield* guestIoBytes(input.encoding, input.content)
+        const contentDigest = yield* guestIoDigest(bytes)
+        const response = yield* managedSandboxGuestIoRequest(env, {
+          action: 'write_file',
+          ...guestIoScope(input),
+          path: input.path,
+          encoding: input.encoding,
+          content: input.content,
+          contentDigest,
+        })
+        const exact = yield* exactGuestIoResponse(response, 'write_file', input)
+        if (
+          exact.contentDigest !== contentDigest ||
+          exact.byteLength !== bytes.byteLength
+        ) {
+          return yield* new BoxV1FacadeError({
+            code: 'conflict',
+            status: 409,
+            message: 'guest file write receipt does not match request bytes',
+            retryable: false,
+          })
+        }
+        return {
+          size: exact.byteLength,
+          receipt: exact.receipt,
+        }
+      }),
+    command: input =>
+      Effect.gen(function* () {
+        const commandDigest = yield* guestIoDigest(
+          new TextEncoder().encode(input.command),
+        )
+        const response = yield* managedSandboxGuestIoRequest(env, {
+          action: 'execute_command',
+          ...guestIoScope(input),
+          command: input.command,
+          commandDigest,
+          cwd: input.cwd,
+          timeoutMillis: input.timeoutSeconds * 1_000,
+        })
+        const exact = yield* exactGuestIoResponse(
+          response,
+          'execute_command',
+          input,
+        )
+        return {
+          success: exact.success,
+          exitCode: exact.exitCode,
+          signal: exact.signal,
+          stdout: exact.stdout,
+          stderr: exact.stderr,
+          stdoutTruncated: exact.stdoutTruncated,
+          stderrTruncated: exact.stderrTruncated,
+          timedOut: exact.timedOut,
+          startedAt: exact.receipt.startedAt,
+          finishedAt: exact.receipt.finishedAt,
+          receipt: exact.receipt,
+        }
+      }),
+    artifact: input =>
+      Effect.gen(function* () {
+        const response = yield* managedSandboxGuestIoRequest(env, {
+          action: 'read_artifact',
+          ...guestIoScope(input),
+          path: input.path,
+          retentionUntil: input.retentionUntil,
+        })
+        const exact = yield* exactGuestIoResponse(
+          response,
+          'read_artifact',
+          input,
+        )
+        const bytes = yield* guestIoBytes('base64', exact.contentBase64)
+        const contentDigest = yield* guestIoDigest(bytes)
+        if (
+          exact.artifact.contentDigest !== contentDigest ||
+          exact.artifact.artifactRef !==
+            `artifact.sha256.${contentDigest.slice('sha256:'.length)}` ||
+          exact.artifact.byteLength !== bytes.byteLength ||
+          exact.artifact.sourceGeneration !==
+            input.resource.resourceGeneration ||
+          exact.artifact.retentionUntil !== input.retentionUntil
+        ) {
+          return yield* new BoxV1FacadeError({
+            code: 'conflict',
+            status: 409,
+            message: 'guest artifact receipt does not match returned bytes',
+            retryable: false,
+          })
+        }
+        return {
+          bytes,
+          contentType: exact.artifact.contentType,
+          receipt: exact.receipt,
+          artifact: exact.artifact,
+        }
+      }),
   })

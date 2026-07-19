@@ -31,6 +31,7 @@ mod gce_capacity;
 use gce_capacity::{provisioner_for, CapacityRequest, GceLease, ProvisionerKind, ReleaseReason};
 
 mod cloud_vm;
+mod managed_sandbox_guest_io;
 mod managed_sandbox_runtime;
 mod managed_sandbox_turn_runtime;
 mod portable_agent_computer;
@@ -728,6 +729,31 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
                 }
             };
             match managed_sandbox_turn_runtime::execute(operation) {
+                Ok(response) => write_response(
+                    &mut stream,
+                    200,
+                    &serde_json::to_value(response).map_err(|error| error.to_string())?,
+                ),
+                Err(error) => write_response(&mut stream, error.status(), &error.response()),
+            }
+        }
+        "/v1/managed-sandbox/runtime/io" => {
+            if request.body.len() > 2 * 1024 * 1024 {
+                return write_invalid_request(
+                    &mut stream,
+                    "invalid_request: managed-sandbox guest I/O body exceeds 2 MiB".to_string(),
+                );
+            }
+            let operation = match serde_json::from_slice::<
+                managed_sandbox_guest_io::ManagedSandboxGuestIoRequest,
+            >(&request.body)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    return write_invalid_request(&mut stream, format!("invalid_request: {error}"))
+                }
+            };
+            match managed_sandbox_guest_io::execute(operation) {
                 Ok(response) => write_response(
                     &mut stream,
                     200,

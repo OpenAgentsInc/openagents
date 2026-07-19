@@ -141,7 +141,11 @@ admission, reconnect, ordered text/tool/usage events, exact-turn interrupt,
 and structural terminal receipts are implemented. Silence does not cause
 completion.
 
-Guest file, command, and artifact I/O remains typed unavailable until SBX-05.
+SBX-05 connects guest file, command, and artifact calls through a private,
+default-off control adapter. Root confinement, symlink proof, secret scans,
+quotas, process-tree closure, deny-all egress, and content-addressed artifact
+receipts remain below the facade.
+
 The facade is lossy compatibility only:
 native Effect Schema contracts, authorization, event cursors, private
 evidence, usage, cost, artifact, and cleanup receipts remain authoritative.
