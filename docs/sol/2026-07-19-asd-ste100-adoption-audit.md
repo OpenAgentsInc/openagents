@@ -23,6 +23,22 @@ An expert must also examine each important document.
 This audit starts the conversion.
 It does not show that the document estate is compliant now.
 
+## Implementation status
+
+Issue #9048 owns the P0 control system.
+The repository policy is in [`docs/ste/README.md`](../ste/README.md).
+The repository has a versioned glossary, profile schema, ledger, baseline, checker, and test corpus.
+
+The migration check is a baseline ratchet.
+It prevents a new structural defect in a file that is not converted.
+The strict check does not use the baseline.
+It requires an authorized Issue 9 dictionary outside Git.
+
+The root fast check and the deploy check run the migration ratchet.
+Thus, local hooks and OpenAgents-owned runners use the same checker.
+This control does not show full conformance.
+The P1 through P6 conversions and inspections are still necessary.
+
 ## Standard authority
 
 [ASD-STE100 Issue 9](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf) is the standard now.
@@ -114,18 +130,18 @@ OpenAgents does not yet have an approved company glossary.
 This audit uses a temporary set of technical nouns.
 The conversion program must replace this set with a controlled glossary.
 
-| Group | Technical nouns |
-| --- | --- |
-| Standard | ASD-STE100, STE, Issue 9 |
-| Company | OpenAgents, Sol |
-| Document types | ProductSpec, AssuranceSpec, roadmap, runbook, receipt, audit, transcript |
-| Formats | Markdown, MDX, AsciiDoc, reStructuredText, JSON, YAML, TLA+, CFG, OpenAPI |
-| Repository | Git, GitHub, repository, monorepo, main, commit, push, SHA-256, path, URL |
-| Source text | source data, code block, inline code, identifier, protocol literal, documentation comment |
-| Controls | glossary, profile, parser, checker, linter, gate, manifest, schema, baseline, ratchet, STE inspection |
-| Audit terms | conversion, screening signal, word token, document estate, conformance receipt, semantic comparison, normative keyword |
-| Shared controls | company-wide inventory, checker package, control document, API portal |
-| Automation | agent, subagent, CI, GCE, pre-commit check, pre-push check |
+| Group           | Technical nouns                                                                                                        |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Standard        | ASD-STE100, STE, Issue 9                                                                                               |
+| Company         | OpenAgents, Sol                                                                                                        |
+| Document types  | ProductSpec, AssuranceSpec, roadmap, runbook, receipt, audit, transcript                                               |
+| Formats         | Markdown, MDX, AsciiDoc, reStructuredText, JSON, YAML, TLA+, CFG, OpenAPI                                              |
+| Repository      | Git, GitHub, repository, monorepo, main, commit, push, SHA-256, path, URL                                              |
+| Source text     | source data, code block, inline code, identifier, protocol literal, documentation comment                              |
+| Controls        | glossary, profile, parser, checker, linter, gate, manifest, schema, baseline, ratchet, STE inspection                  |
+| Audit terms     | conversion, screening signal, word token, document estate, conformance receipt, semantic comparison, normative keyword |
+| Shared controls | company-wide inventory, checker package, control document, API portal                                                  |
+| Automation      | agent, subagent, CI, GCE, pre-commit check, pre-push check                                                             |
 
 The glossary must also control technical verbs.
 For example, OpenAgents must decide if `lint` is an approved technical verb.
@@ -161,12 +177,12 @@ Tables and unusual Markdown can cause false results.
 
 ## Inventory now
 
-| Measure | Result |
-| --- | ---: |
-| Tracked prose files | 2,732 |
-| Preserved transcript files | 268 |
-| Prose candidates now | 2,464 |
-| TLA+ and CFG specification files | 15 |
+| Measure                           |    Result |
+| --------------------------------- | --------: |
+| Tracked prose files               |     2,732 |
+| Preserved transcript files        |       268 |
+| Prose candidates now              |     2,464 |
+| TLA+ and CFG specification files  |        15 |
 | Approximate prose word tokens now | 3,419,269 |
 
 The prose set does not contain the preserved transcript files.
@@ -175,15 +191,15 @@ The conversion inventory must put each file in a category before conversion.
 
 ## Divergence signals
 
-| Signal | Result | Related STE control |
-| --- | ---: | --- |
+| Signal                                  |                Result | Related STE control                 |
+| --------------------------------------- | --------------------: | ----------------------------------- |
 | Possible sentences longer than 25 words | 39,895 in 2,346 files | Descriptions have a 25-word maximum |
-| Possible sentences longer than 20 words | 54,911 | Procedures have a 20-word maximum |
-| Semicolons | 48,794 in 2,019 files | STE does not permit semicolons |
-| Contractions | 3,892 in 1,120 files | STE does not permit contractions |
-| `should` or `shall` | 8,158 in 995 files | The dictionary controls modal verbs |
-| Possible passive voice | 23,145 in 2,172 files | STE uses active voice by default |
-| Words with an `-ing` form | 83,237 in 2,394 files | STE restricts the `-ing` form |
+| Possible sentences longer than 20 words |                54,911 | Procedures have a 20-word maximum   |
+| Semicolons                              | 48,794 in 2,019 files | STE does not permit semicolons      |
+| Contractions                            |  3,892 in 1,120 files | STE does not permit contractions    |
+| `should` or `shall`                     |    8,158 in 995 files | The dictionary controls modal verbs |
+| Possible passive voice                  | 23,145 in 2,172 files | STE uses active voice by default    |
+| Words with an `-ing` form               | 83,237 in 2,394 files | STE restricts the `-ing` form       |
 
 The sentence scanner does not know the document type.
 Thus, the 20-word result is an upper limit for possible procedure defects.
@@ -201,16 +217,16 @@ This absence is the largest conformance gap.
 The sample shows the scale in high-authority documents.
 The values are screening results after the basic Markdown removal.
 
-| Document | Words | Sentences over 25 words | Semicolons | `should` or `shall` |
-| --- | ---: | ---: | ---: | ---: |
-| `AGENTS.md` | 7,225 | 100 | 95 | 14 |
-| `INVARIANTS.md` | 20,265 | 291 | 251 | 1 |
-| `AUTHORITY.md` | 666 | 7 | 2 | 0 |
-| `docs/sol/MASTER_ROADMAP.md` | 6,273 | 67 | 124 | 1 |
-| `docs/sol/OPERATING_MODEL.md` | 1,292 | 13 | 54 | 2 |
-| Workroom ProductSpec | 3,278 | 40 | 24 | 1 |
-| Workroom AssuranceSpec | 381 | 5 | 3 | 0 |
-| `specs/CONVENTIONS.md` | 1,068 | 8 | 21 | 0 |
+| Document                      |  Words | Sentences over 25 words | Semicolons | `should` or `shall` |
+| ----------------------------- | -----: | ----------------------: | ---------: | ------------------: |
+| `AGENTS.md`                   |  7,225 |                     100 |         95 |                  14 |
+| `INVARIANTS.md`               | 20,265 |                     291 |        251 |                   1 |
+| `AUTHORITY.md`                |    666 |                       7 |          2 |                   0 |
+| `docs/sol/MASTER_ROADMAP.md`  |  6,273 |                      67 |        124 |                   1 |
+| `docs/sol/OPERATING_MODEL.md` |  1,292 |                      13 |         54 |                   2 |
+| Workroom ProductSpec          |  3,278 |                      40 |         24 |                   1 |
+| Workroom AssuranceSpec        |    381 |                       5 |          3 |                   0 |
+| `specs/CONVENTIONS.md`        |  1,068 |                       8 |         21 |                   0 |
 
 These documents have effects on many subsequent documents.
 Their conversion has a high multiplier.
@@ -325,14 +341,14 @@ Keep the set of technical terms as small as possible.
 Add machine-readable front matter to each governed document.
 Use fields that have these meanings:
 
-| Field | Purpose |
-| --- | --- |
-| `ste_issue` | Select the ASD-STE100 issue |
-| `ste_mode` | Select descriptive, procedural, mixed, or source-data text |
-| `ste_glossary_revision` | Select the company terms |
-| `ste_status` | Show migration, checked, inspected, or source-data state |
-| `ste_reviewer` | Identify the inspection role |
-| `ste_reviewed_at` | Give the inspection date |
+| Field                   | Purpose                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| `ste_issue`             | Select the ASD-STE100 issue                                |
+| `ste_mode`              | Select descriptive, procedural, mixed, or source-data text |
+| `ste_glossary_revision` | Select the company terms                                   |
+| `ste_status`            | Show migration, checked, inspected, or source-data state   |
+| `ste_reviewer`          | Identify the inspection role                               |
+| `ste_reviewed_at`       | Give the inspection date                                   |
 
 The last schema can use different field names.
 It must keep these meanings.
@@ -536,17 +552,17 @@ Each temporary exception must have an owner, reason, and end date.
 
 ## Risks and controls
 
-| Risk | Control |
-| --- | --- |
-| A simple text change modifies technical meaning | Use a subject expert and semantic comparison |
-| A keyword change changes requirement strength | Treat normative keywords as controlled technical terms |
-| A conversion breaks a digest or signature | Make a new revision and keep the source bytes |
-| The glossary becomes an uncontrolled second dictionary | Limit it to OpenAgents technical terms |
-| The checker gives false confidence | Use an STE inspector |
-| The checker reports too many false defects | Use document profiles and accurate source-data marks |
-| Bulk churn breaks links and provenance | Change bounded groups to STE and make new manifests |
-| A local bypass defeats the gate | Use an owned infrastructure receipt |
-| Copyrighted standard text enters the repository | Refer to the official standard and keep only company terms |
+| Risk                                                   | Control                                                    |
+| ------------------------------------------------------ | ---------------------------------------------------------- |
+| A simple text change modifies technical meaning        | Use a subject expert and semantic comparison               |
+| A keyword change changes requirement strength          | Treat normative keywords as controlled technical terms     |
+| A conversion breaks a digest or signature              | Make a new revision and keep the source bytes              |
+| The glossary becomes an uncontrolled second dictionary | Limit it to OpenAgents technical terms                     |
+| The checker gives false confidence                     | Use an STE inspector                                       |
+| The checker reports too many false defects             | Use document profiles and accurate source-data marks       |
+| Bulk churn breaks links and provenance                 | Change bounded groups to STE and make new manifests        |
+| A local bypass defeats the gate                        | Use an owned infrastructure receipt                        |
+| Copyrighted standard text enters the repository        | Refer to the official standard and keep only company terms |
 
 ## Success measures
 

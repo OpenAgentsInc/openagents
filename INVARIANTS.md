@@ -3,6 +3,27 @@
 This is the root invariant ledger for the rebuilt `openagents` Effect workspace.
 More specific invariant ledgers apply inside imported apps and packages.
 
+## ASD-STE100 documentation invariant
+
+- All OpenAgents documentation and specifications must use ASD-STE100 Issue 9
+  Simplified Technical English.
+- [`docs/ste/README.md`](docs/ste/README.md) owns the repository policy. The
+  versioned OpenAgents glossary owns approved company technical terms.
+- The repository must not contain a copy of the ASD dictionary without written
+  permission from the copyright owner.
+- A checker result is not proof of full conformance. Important text requires a
+  technical review and an STE inspection.
+- Code, commands, identifiers, protocol values, legal quotations, third-party
+  text, and immutable evidence are source data. An STE frame must identify
+  source data when the context is not clear.
+- A migration baseline is temporary. It cannot authorize a new defect or a
+  permanent exception.
+- A conversion must not reduce authority, safety, privacy, payment, release,
+  or acceptance requirements. Keep semantic comparison evidence for these
+  changes.
+- Local hooks and OpenAgents-owned runners must use the same versioned checker.
+  GitHub-hosted CI remains prohibited.
+
 ## Google Cloud Production Authority
 
 - Google Cloud is the sole production infrastructure authority: Cloud Run and

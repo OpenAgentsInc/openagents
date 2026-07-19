@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "1fbff00cb9cfdc69571a77a056f837873da14fe0deed657f2c6e5a20536fcfba",
+  "sourceTreeSha256": "bfe772a7e2c2c65373db3702d1030d5c24097b99c277afde007d717edbdb2f67",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2273,14 +2273,16 @@
       "owner": "OpenAgents documentation",
       "disposition": "retain-active-audit",
       "dispatch": false,
-      "sha256": "b3affc14c2c49890ad7471dadea12504cb2e2614b3ef8a8c57487b36609a771a",
+      "sha256": "af3ad980c201578089f2775d4ed30c26f51695fda3a885b51fbf7961c46bcccf",
       "status": "active company requirement with incomplete repository enforcement",
       "snapshot": "`030754d52632673f17cdd7b2a71a93866dd34800`",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [],
       "inboundSourceCount": 0,
-      "issueLinks": []
+      "issueLinks": [
+        9048
+      ]
     },
     {
       "path": "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md",

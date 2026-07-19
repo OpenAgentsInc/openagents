@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/ste-document-profile-v1.json",
+  "title": "OpenAgents STE document profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "ste_issue",
+    "ste_mode",
+    "ste_glossary_revision",
+    "ste_status",
+    "owner",
+    "risk"
+  ],
+  "properties": {
+    "path": { "type": "string", "minLength": 1 },
+    "ste_issue": { "const": 9 },
+    "ste_mode": { "enum": ["descriptive", "procedural", "mixed", "source-data"] },
+    "ste_glossary_revision": { "type": "string", "minLength": 1 },
+    "ste_status": { "enum": ["migration", "checked", "inspected", "source-data", "superseded"] },
+    "ste_reviewer": { "type": ["string", "null"] },
+    "ste_reviewed_at": { "type": ["string", "null"], "format": "date-time" },
+    "owner": { "type": "string", "minLength": 1 },
+    "risk": { "enum": ["control", "high", "public", "active", "legacy", "source-data"] },
+    "source": { "type": ["string", "null"] },
+    "replacement": { "type": ["string", "null"] }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "revision": "openagents-ste-glossary-v1",
+  "steIssue": 9,
+  "terms": [
+    {
+      "id": "OA-STE-0001",
+      "term": "OpenAgents",
+      "partOfSpeech": "proper-noun",
+      "meaning": "The OpenAgents company or its owned product system, as the context specifies.",
+      "permittedForms": ["OpenAgents"],
+      "approvedShortForm": null,
+      "prohibitedSynonyms": [],
+      "owner": "OpenAgents documentation",
+      "source": "Company name",
+      "status": "approved",
+      "revision": 1
+    },
+    {
+      "id": "OA-STE-0002",
+      "term": "ASD-STE100",
+      "partOfSpeech": "proper-noun",
+      "meaning": "The international specification for Simplified Technical English.",
+      "permittedForms": ["ASD-STE100"],
+      "approvedShortForm": "STE",
+      "prohibitedSynonyms": ["Simplified English standard"],
+      "owner": "OpenAgents documentation",
+      "source": "ASD-STE100 Issue 9",
+      "status": "approved",
+      "revision": 1
+    },
+    {
+      "id": "OA-STE-0003",
+      "term": "ProductSpec",
+      "partOfSpeech": "technical-noun",
+      "meaning": "A versioned specification that defines product intent and acceptance boundaries.",
+      "permittedForms": ["ProductSpec", "ProductSpecs"],
+      "approvedShortForm": null,
+      "prohibitedSynonyms": ["product spec"],
+      "owner": "OpenAgents contracts",
+      "source": "Repository contract",
+      "status": "approved",
+      "revision": 1
+    },
+    {
+      "id": "OA-STE-0004",
+      "term": "AssuranceSpec",
+      "partOfSpeech": "technical-noun",
+      "meaning": "A versioned specification that defines required assurance evidence.",
+      "permittedForms": ["AssuranceSpec", "AssuranceSpecs"],
+      "approvedShortForm": null,
+      "prohibitedSynonyms": ["assurance spec"],
+      "owner": "OpenAgents contracts",
+      "source": "Repository contract",
+      "status": "approved",
+      "revision": 1
+    },
+    {
+      "id": "OA-STE-0005",
+      "term": "MUST",
+      "partOfSpeech": "normative-keyword",
+      "meaning": "A normative requirement when a document explicitly invokes RFC 2119 and RFC 8174.",
+      "permittedForms": ["MUST", "MUST NOT"],
+      "approvedShortForm": null,
+      "prohibitedSynonyms": [],
+      "owner": "OpenAgents contracts",
+      "source": "RFC 2119 and RFC 8174",
+      "status": "approved",
+      "revision": 1
+    },
+    {
+      "id": "OA-STE-0006",
+      "term": "SHOULD",
+      "partOfSpeech": "normative-keyword",
+      "meaning": "A normative recommendation when a document explicitly invokes RFC 2119 and RFC 8174.",
+      "permittedForms": ["SHOULD", "SHOULD NOT"],
+      "approvedShortForm": null,
+      "prohibitedSynonyms": [],
+      "owner": "OpenAgents contracts",
+      "source": "RFC 2119 and RFC 8174",
+      "status": "approved",
+      "revision": 1
+    },
+    {
+      "id": "OA-STE-0007",
+      "term": "MAY",
+      "partOfSpeech": "normative-keyword",
+      "meaning": "A normative permission when a document explicitly invokes RFC 2119 and RFC 8174.",
+      "permittedForms": ["MAY"],
+      "approvedShortForm": null,
+      "prohibitedSynonyms": [],
+      "owner": "OpenAgents contracts",
+      "source": "RFC 2119 and RFC 8174",
+      "status": "approved",
+      "revision": 1
+    }
+  ]
+}

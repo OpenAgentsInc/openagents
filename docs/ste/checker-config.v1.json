@@ -1,0 +1,26 @@
+{
+  "policyRevision": "openagents-ste-policy-v1",
+  "steIssue": 9,
+  "glossaryRevision": "openagents-ste-glossary-v1",
+  "governedExtensions": [".md", ".mdx", ".rst", ".adoc", ".txt", ".tla", ".cfg"],
+  "sourceDataPrefixes": ["docs/transcripts/", "docs/reference/"],
+  "proceduralPathSignals": [
+    "runbook",
+    "playbook",
+    "procedure",
+    "recovery",
+    "deploy",
+    "release",
+    "incident"
+  ],
+  "controlPaths": [
+    "AGENTS.md",
+    "INVARIANTS.md",
+    "AUTHORITY.md",
+    "docs/sol/README.md",
+    "docs/sol/MASTER_ROADMAP.md",
+    "docs/sol/OPERATING_MODEL.md",
+    "docs/sol/CLAIM_PROTOCOL.md",
+    "specs/CONVENTIONS.md"
+  ]
+}

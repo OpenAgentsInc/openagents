@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/ste-glossary-v1.json",
+  "title": "OpenAgents STE glossary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["revision", "steIssue", "terms"],
+  "properties": {
+    "revision": { "type": "string", "minLength": 1 },
+    "steIssue": { "const": 9 },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "term",
+          "partOfSpeech",
+          "meaning",
+          "permittedForms",
+          "prohibitedSynonyms",
+          "owner",
+          "source",
+          "status",
+          "revision"
+        ],
+        "properties": {
+          "id": { "type": "string", "pattern": "^OA-STE-[0-9]{4}$" },
+          "term": { "type": "string", "minLength": 1 },
+          "partOfSpeech": {
+            "enum": [
+              "technical-noun",
+              "technical-verb",
+              "proper-noun",
+              "normative-keyword",
+              "literal"
+            ]
+          },
+          "meaning": { "type": "string", "minLength": 1 },
+          "permittedForms": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "minItems": 1
+          },
+          "approvedShortForm": { "type": ["string", "null"] },
+          "prohibitedSynonyms": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "owner": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["approved", "proposed", "retired"] },
+          "revision": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

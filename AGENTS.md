@@ -9,6 +9,22 @@ toolchain.
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
 previous repository shape.
 
+## Simplified Technical English
+
+- Write all new documentation and specification text in ASD-STE100 Issue 9
+  Simplified Technical English (STE).
+- Follow [`docs/ste/README.md`](docs/ste/README.md) for profiles, source data,
+  inspections, and migration states.
+- Use the approved OpenAgents terms in the versioned glossary.
+- Do not copy the ASD dictionary into the repository. Use an authorized local
+  dictionary for strict lexical checks.
+- Run the STE check for each document change. Do not add a structural defect
+  to a file that is in the migration state.
+- Do not use an automatic text change for normative requirements, commands,
+  identifiers, evidence values, or quoted source data.
+- Keep the technical meaning during a conversion. Record a semantic comparison
+  for authority, safety, privacy, payment, release, and acceptance text.
+
 ## Proactive Subagent Delegation (owner mandate)
 
 **Delegate to sub agents proactively.** In the rest of this contract they are
