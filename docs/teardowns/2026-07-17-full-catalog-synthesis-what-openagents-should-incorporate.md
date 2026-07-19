@@ -21,14 +21,15 @@ build/update), Cursor, Executor, OpenChamber, Crabbox, T3 Code (whole product,
 mobile app, ACP implementation, Electron build/update, desktop full gap,
 desktop UI gap, mobile controller gap), Codex app-server client support, Grok
 Build, Command Code, Factory Desktop/Droid, Amp Code, Open Interpreter's
-in-process harness-emulation architecture, and the prior
+in-process harness-emulation architecture, multAIplayer's encrypted
+single-host collaboration architecture, and the prior
 cross-teardown adaptation analysis.
 
 ---
 
 ## 1. The market has converged on a shape; the trust half is unclaimed
 
-Read together, twenty-nine documents describe one striking fact: every
+Read together, thirty documents describe one striking fact: every
 serious product in this space — OpenAI's Codex desktop, Anthropic's Claude
 desktop and Claude Code, Cursor, Factory, Amp, Grok Build, OpenCode, T3 Code,
 OpenChamber — has independently converged on the same architecture:
@@ -47,6 +48,11 @@ OpenChamber — has independently converged on the same architecture:
    workbench, OpenChamber's relay, Codex's drive-my-Mac pairing).
 5. A workbench that **grows beyond chat without becoming an IDE** — diff
    review, terminals, file trees, previews as projections over engine state.
+6. **Collaboration and execution are separate relationships** — multAIplayer
+   lets several authenticated people discuss, propose, inspect, and review
+   while one explicit host device owns the repository, Codex process,
+   credentials, and native approvals; host transfer is an explicit epoch
+   transition, not ambient shared-shell access.
 
 That convergence is validation: the one-engine/many-clients thesis is no
 longer a bet, it is table stakes. But the same documents record, with unusual
@@ -182,6 +188,18 @@ depends on it.
   provider/model/wire, auxiliary title/compaction calls, translator
   generations, semantic losses, and effective containment. A foreign-shaped
   prompt or tool surface is not evidence that the foreign runtime executed.
+- **Collaboration scope is not a second engine.** Attach membership, device,
+  visibility, room-safe projection, retention, and current execution attachment
+  to the canonical Thread/Work Unit. A participant proposal enters durable
+  admission; only the current generation-fenced attachment can resolve it
+  through WorkContext, policy, containment, approval, and effects. multAIplayer
+  proves the interaction while OpenAgents keeps Sync and receipts as truth.
+- **Handoff changes attachment, not ambient state.** Bind outgoing and incoming
+  owner/device, runtime, WorkContext, generation, offer, and optional portable
+  materialization. Fence the old attachment, revalidate the new one, and
+  reauthorize every pending effect. Credentials, processes, terminals,
+  browsers, MCP servers, approvals, secrets, and environment never transfer
+  implicitly.
 
 **Refuse:** two query owners (Claude Code's duplicated loop), two protocol
 generations without deletion gates (OpenCode Desktop still embedding V1 while
@@ -189,7 +207,9 @@ V2 exists), 92-flag compatibility accretion (Codex), whole-transcript rewrite
 as durability (Command Code), a durable "running" status that a crash makes
 into a lie (OpenCode V2 explicitly refuses to persist one), and a string named
 `harness` that can silently select native/generic behavior while the UI retains
-the foreign label (Open Interpreter).
+the foreign label (Open Interpreter), or a collaborative message/presence flag
+treated as execution attachment or effect completion (multAIplayer's stronger
+protocol shows why those facts differ).
 
 ---
 
@@ -221,6 +241,13 @@ refusal are the honest references.
   effective enforcement is never rendered as one green shield — Grok Build's
   candid documentation of its own security holes is the posture to keep, with
   receipts instead of prose.
+- **Proposal rights never imply effect rights.** In a collaborative scope,
+  every participant proposal is durably attributable and reviewable, but only
+  the exact current execution attachment may admit it through policy. A
+  handoff fences the prior generation and invalidates unconsumed approvals.
+  multAIplayer's native request-bound positive confirmations are the useful
+  reference; its host-user shell remains permission plus confinement, not
+  complete containment.
 - **Approval taxonomy as behavior contracts.** The Codex computer-use skill
   ships a four-tier consent model worth porting nearly verbatim: hand-off
   required (passwords, security interstitials), always-confirm (deleting
@@ -294,6 +321,11 @@ of section 3.
 
 ### 4.2 The workbench
 
+- **Collaboration chrome names the current attachment.** Show room members,
+  proposer, active execution host/device/runtime/WorkContext, pending proposal
+  state, handoff state, projection privacy, and the distinction between relay
+  delivery and executed/accepted effects. Do not reduce this to an online dot
+  or a shared composer.
 - **Right-panel surface manager** (T3's strongest UI mechanism): a tab strip
   hosting `review-summary | diff-file | files | file | terminal | plan |
   preview` surfaces with real tab mechanics, maximize, and inline/sheet
@@ -681,6 +713,12 @@ The catalog is as much a record of what not to build. Consolidated:
 15. Harness identity theater: duplicated catalogs, arbitrary-string admission,
     model-name substring routing, silent native fallback, or branding an
     emulated prompt/tool dialect as the real foreign runtime.
+16. Collaboration authority theater: room membership, chat delivery, presence,
+    an “accepted” UI event, or possession of a relay token presented as the
+    right to execute, mutate, publish, spend, or accept.
+17. E2EE theater: hiding relay metadata, retained-history tradeoffs, endpoint
+    compromise, unaudited integration status, or removal/recovery behavior
+    behind an undifferentiated lock icon.
 
 ---
 
@@ -697,7 +735,11 @@ essay's operational conclusion:
   portability; then platform breadth (macOS x64 → Windows/Linux x64 →
   arm64, channels last); then split real runtime-adapter conformance from
   in-process emulation-policy conformance and evaluate a pinned Open
-  Interpreter peer before owning any branded emulation; additional providers
+  Interpreter peer before owning any branded emulation; then add collaboration
+  projection and proposal semantics over the canonical thread before any
+  remote effect rights, prove generation-fenced attachment handoff and fresh
+  authorization before group encryption, and treat private group messaging as
+  a separately admitted security lane; additional providers
   or policies only after one exact runtime × policy × model × provider × wire
   tuple is
   complete by the eleven-predicate closure definition (Known, Decoded,

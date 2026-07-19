@@ -21,6 +21,7 @@ Evidence base:
 - [Factory Desktop and Droid CLI teardown](./2026-07-16-factory-desktop-cli-teardown.md)
 - [Amp Code teardown](./2026-07-16-amp-code-teardown.md)
 - [Open Interpreter harness-emulation teardown](./2026-07-18-open-interpreter-teardown.md)
+- [multAIplayer teardown](./2026-07-18-multaiplayer-teardown.md)
 - [Sol master roadmap](../sol/MASTER_ROADMAP.md), especially Desktop D0–D6
 - [OpenAgents Desktop enforced guarantees](../../apps/openagents-desktop/GUARANTEES.md)
 
@@ -2427,3 +2428,102 @@ policy emulation** separately typed, visible, versioned, tested, and
 receipted. As with every teardown, the owning roadmap gate, schemas, issue,
 tests, and receipts determine whether the experimental peer or an owned policy
 ever ships.
+
+## multAIplayer collaboration addendum (2026-07-18)
+
+The
+[multAIplayer teardown](./2026-07-18-multaiplayer-teardown.md)
+adds a relationship the prior analyses only implied: several authenticated
+humans collaborating around one coding-agent thread while exactly one device
+owns the current local runtime and repository. This is not ordinary remote
+control, a shared shell, process migration, or several equal writers. Members
+propose and review; the active host's native policy and confirmations authorize
+effects; the room receives a bounded projection; an explicit MLS Commit and
+relay epoch can transfer future hosting without transferring credentials,
+processes, or stale approvals.
+
+This changes the analysis in the following exact ways.
+
+1. **Collaboration is an optional scope over a canonical thread.** Add a
+   `CollaborationScope` generation containing members, devices, visibility,
+   projection policy, current execution attachment, retention, and—when
+   separately admitted—group-encryption identity. Do not create a second room
+   transcript, claim registry, runtime state, or acceptance authority. Khala
+   Sync and the canonical Thread/Work Unit/receipt planes remain authoritative.
+2. **Proposal and execution are different intents.** A member may durably
+   propose a turn, follow-up, file change, review, or action. Proposal rights
+   never imply shell, file, Git, publication, spend, secret, or acceptance
+   authority. The current execution attachment resolves the proposal through
+   the ordinary semantic selector, policy compiler, WorkContext, containment,
+   approval, and receipt path.
+3. **Execution attachment becomes independently visible.** Thread identity,
+   current device/runtime attachment, portable checkpoint, worktree
+   materialization, and host credentials are separate records. The current
+   `attachmentGeneration` and cursor discipline in `agent-runtime-schema`
+   already supplies a useful stale-delta law; extend that idea to the human/
+   device execution attachment rather than treating a presence flag as
+   authority.
+4. **Handoff is a fenced state transition.** Bind outgoing and candidate
+   owner/device, exact runtime and WorkContext, prior and target generation,
+   offer, checkpoint/materialization, and authorization. Fence stale writes
+   before admitting the new attachment. The recipient independently validates
+   repository/root, runtime compatibility, credentials, MCP, Git/GitHub,
+   network, containment, policy, and every pending action. No process, token,
+   terminal, browser, environment, approval, or grant transfers implicitly.
+5. **A room event is not handoff completion.** multAIplayer correctly treats
+   its MLS Commit as completion and a later application event as informational.
+   OpenAgents' equivalent is the canonical attachment transition plus receipt;
+   UI presence, chat text, relay delivery, or a copied checkpoint is only
+   evidence around that transition.
+6. **Native and collaborator event planes separate by audience.** Preserve the
+   exact runtime event envelope privately. Generate a bounded room-safe
+   projection with allowlisted fields, audience, retention, size, redaction,
+   source refs, projection version, and declared losses. Raw provider
+   reasoning, host paths, account state, environment changes, secrets, MCP
+   params, arbitrary reverse requests, terminal input, and browser credentials
+   do not cross merely because a teammate can see the thread.
+7. **Persist-before-publish extends to collaboration delivery.** multAIplayer
+   atomically stores MLS evolution and exact ciphertext before sending, then
+   reconciles exact-digest relay acceptance. Khala Sync already treats local
+   rows and optimistic overlays as caches/offline queues rather than accepted
+   authority. Extend the existing FIFO, idempotency, cursor, and repair laws to
+   proposals and room projections; distinguish local admission, relay
+   acceptance, recipient delivery, application, effect, review, and acceptance.
+8. **Group privacy is a separate product promise.** Owner-private Sync does
+   not automatically imply multi-member E2EE, and E2EE does not imply metadata
+   privacy, endpoint security, forward-secret retained history, or private host
+   effects. If the lane is admitted, use a reviewed group-messaging
+   implementation and publish exact account/device/member removal, relay
+   metadata, history, archive, backup, lost-device, and deletion behavior.
+   Never copy or overclaim an explicitly unaudited MLS integration.
+9. **Native confirmation is valuable but not containment.** multAIplayer's
+   request-bound OS confirmations for positive Codex, shell, and PTY-input
+   decisions are worth adapting. Its trusted webview and host-user
+   `sandbox-exec` process are not sufficient plugin isolation or managed-tenant
+   containment. Keep WorkContext grants, renderer separation, environment and
+   secret brokering, named containment profiles, and effective-enforcement
+   receipts.
+10. **Workbench parity stays projection-only.** multAIplayer's lazy Monaco,
+    offline workers, bounded file reads, verified image previews, expected-
+    content saves, atomic rename, and tracked/untracked diffs strengthen the
+    Desktop editor plan. They do not replace the Pierre tree/diff adapter,
+    Effect Native product theme, main-owned workspace grants, canonical Git
+    state, or review and mutation receipts.
+11. **Continuity failure must be explicit.** multAIplayer falls back from a
+    failed Codex `thread/resume` to a new thread. OpenAgents should instead
+    return a classified resume failure or create an explicit recovery fork
+    with lineage, lost native state, and user/authority acknowledgement. A new
+    provider thread cannot silently inherit the old thread's continuity claim.
+12. **Signed collaboration becomes a release journey.** Extend packaged proof
+    beyond one-device launch: two real clients, cold and warm enrollment links,
+    proposal/admission, exact native approval, bounded projection, offline
+    outbox repair, reconnect, handoff, fresh host authorization, member removal,
+    restart/restore, and leakage scans. The immutable candidate and emitted
+    receipts—not test prose—decide whether the capability shipped.
+
+This addendum preserves the standing target boundaries. OpenAgents does not
+need multAIplayer's relay, room database, broad GitHub scope, quick tunnel,
+automatic `git add -A`, trusted-webview assumptions, or macOS-only product
+contract. It needs the protocol-level idea the source makes concrete:
+**collaboration can be broad while execution authority remains singular,
+explicit, generation-fenced, locally reauthorized, and receipted.**

@@ -8,7 +8,7 @@ lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-19T01:06:17Z"
+updated_at: "2026-07-19T03:22:07Z"
 ---
 
 # OpenAgents Fast Follow
@@ -850,6 +850,67 @@ policy, or turn Fable prose into target authority.
     ]
   },
   {
+    "id": "maddiedreese.multaiplayer",
+    "title": "multAIplayer",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/maddiedreese/multAIplayer",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-18-multaiplayer-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "proposal_execution_authority_split",
+        "kind": "architecture",
+        "summary": "Keep collaborative proposal, observation, and review rights distinct from the one current generation-fenced execution attachment that may admit effects through ordinary policy.",
+        "stance": "adapt"
+      },
+      {
+        "id": "cryptographic_host_handoff",
+        "kind": "security",
+        "summary": "Bind host transfer to exact candidate user, device, membership leaf, epoch or generation, offer, and outgoing authorization; fence the old host and freshly authorize the new host without transferring credentials, processes, or approvals.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "persist_before_publish_room_outbox",
+        "kind": "reliability",
+        "summary": "Commit group or event evolution and the exact outbound record before network publication, then reconcile idempotent exact-digest acceptance separately from recipient application and effect completion.",
+        "stance": "adapt"
+      },
+      {
+        "id": "bounded_room_runtime_projection",
+        "kind": "protocol",
+        "summary": "Project allowlisted bounded runtime activity to collaborators while retaining private native events, source references, projection identity, semantic losses, and authoritative effect evidence.",
+        "stance": "adapt"
+      },
+      {
+        "id": "fail_stop_relay_durability",
+        "kind": "reliability",
+        "summary": "Poison readiness and stop traffic when durable writes fail instead of continuing from divergent process memory; keep relay acceptance below canonical Sync and effect authority.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "group_e2ee_metadata_truth",
+        "kind": "security",
+        "summary": "State group-content encryption separately from relay metadata, local retained-history keys, endpoint compromise, membership removal, recovery, archive, backup, and unaudited-integration limits.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "signed_collaboration_journey",
+        "kind": "evaluation",
+        "summary": "Gate release on the signed product completing cold and warm invite, authenticated relay, native approval, two-client collaboration, handoff, reauthorization, restart, and leakage-oriented journeys.",
+        "stance": "adapt"
+      },
+      {
+        "id": "trusted_webview_and_host_shell",
+        "kind": "security",
+        "summary": "Reject a trusted main webview, room identifier, native confirmation, or host-user shell profile as plugin isolation, tenant containment, or proof that a remote effect was safe.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "openagents.synthesis",
     "title": "OpenAgents Teardown Synthesis",
     "role": "local_synthesis",
@@ -1074,7 +1135,10 @@ policy, or turn Fable prose into target authority.
       "amp.code#thread_as_product",
       "openclaw.crabbox#lease_state_machine",
       "openchamber#mobile_attention",
-      "pingdotgg.t3code#dpop_environment_access"
+      "pingdotgg.t3code#dpop_environment_access",
+      "maddiedreese.multaiplayer#proposal_execution_authority_split",
+      "maddiedreese.multaiplayer#cryptographic_host_handoff",
+      "maddiedreese.multaiplayer#persist_before_publish_room_outbox"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1162,7 +1226,8 @@ policy, or turn Fable prose into target authority.
       "openinterpreter.openinterpreter#generated_policy_manifest",
       "openinterpreter.openinterpreter#fail_closed_policy_admission",
       "openinterpreter.openinterpreter#canonical_tool_authority",
-      "openinterpreter.openinterpreter#runtime_policy_receipt"
+      "openinterpreter.openinterpreter#runtime_policy_receipt",
+      "maddiedreese.multaiplayer#bounded_room_runtime_projection"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1272,7 +1337,11 @@ policy, or turn Fable prose into target authority.
       "pierrecomputer.pierre#virtualized_diff_review",
       "pierrecomputer.pierre#shared_editor_theme_plane",
       "pierrecomputer.pierre#executable_editor_accessibility",
-      "pierrecomputer.pierre#projection_not_authority"
+      "pierrecomputer.pierre#projection_not_authority",
+      "maddiedreese.multaiplayer#proposal_execution_authority_split",
+      "maddiedreese.multaiplayer#cryptographic_host_handoff",
+      "maddiedreese.multaiplayer#bounded_room_runtime_projection",
+      "maddiedreese.multaiplayer#group_e2ee_metadata_truth"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1307,7 +1376,9 @@ policy, or turn Fable prose into target authority.
       "xai.grok_build#session_actor",
       "amp.code#thread_as_product",
       "anomalyco.opencode#durable_admission_execution",
-      "cursor.cursor#startup_restore_oracle"
+      "cursor.cursor#startup_restore_oracle",
+      "maddiedreese.multaiplayer#persist_before_publish_room_outbox",
+      "maddiedreese.multaiplayer#fail_stop_relay_durability"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1390,7 +1461,11 @@ policy, or turn Fable prose into target authority.
       "openai.chatgpt_desktop#ambient_memory_default",
       "openinterpreter.openinterpreter#canonical_tool_authority",
       "openinterpreter.openinterpreter#fail_closed_policy_admission",
-      "openinterpreter.openinterpreter#moving_computer_use_installers"
+      "openinterpreter.openinterpreter#moving_computer_use_installers",
+      "maddiedreese.multaiplayer#proposal_execution_authority_split",
+      "maddiedreese.multaiplayer#cryptographic_host_handoff",
+      "maddiedreese.multaiplayer#group_e2ee_metadata_truth",
+      "maddiedreese.multaiplayer#trusted_webview_and_host_shell"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1425,7 +1500,8 @@ policy, or turn Fable prose into target authority.
     "source_refs": [
       "anomalyco.opencode#six_target_release",
       "anthropic.claude_desktop#component_update_planes",
-      "factory.droid#extension_supply_chain"
+      "factory.droid#extension_supply_chain",
+      "maddiedreese.multaiplayer#signed_collaboration_journey"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
@@ -1460,7 +1536,9 @@ policy, or turn Fable prose into target authority.
       "xai.grok_build#terminal_proof",
       "openagents.synthesis#target_native_adaptation",
       "openinterpreter.openinterpreter#pinned_peer_before_ownership",
-      "openinterpreter.openinterpreter#runtime_policy_receipt"
+      "openinterpreter.openinterpreter#runtime_policy_receipt",
+      "maddiedreese.multaiplayer#signed_collaboration_journey",
+      "maddiedreese.multaiplayer#bounded_room_runtime_projection"
     ],
     "target_scopes": [
       "apps/qa-runner",
