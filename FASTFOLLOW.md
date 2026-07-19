@@ -709,6 +709,49 @@ policy, or turn Fable prose into target authority.
     ]
   },
   {
+    "id": "pierrecomputer.pierre",
+    "title": "Pierre",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/pierrecomputer/pierre",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-18-pierre-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "path_first_virtualized_tree",
+        "kind": "architecture",
+        "summary": "Use a canonical path-first public tree boundary over a private slice-first numeric and typed-array engine, with projection-only flattening, semantic mutations, incremental status, explicit loading, virtualization, and accessible navigation.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "virtualized_diff_review",
+        "kind": "product_ux",
+        "summary": "Use a framework-neutral virtualized diff renderer with thin React, SSR, and worker adapters for syntax-highlighted multi-file review, stable scroll anchoring, annotations, merge conflicts, and consumer-owned review controls.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "shared_editor_theme_plane",
+        "kind": "architecture",
+        "summary": "Resolve one lazy, cacheable Shiki and VS Code editor theme into diff, tree, worker, and adjacent chrome projections while retaining the target's canonical whole-product theme and settings authority.",
+        "stance": "adapt"
+      },
+      {
+        "id": "executable_editor_accessibility",
+        "kind": "evaluation",
+        "summary": "Gate diff, conflict, terminal, syntax, focus, and Git colors with color-vision simulation, perceptual separation, contrast, and non-color cues, then verify the actual packaged editor surface.",
+        "stance": "adapt"
+      },
+      {
+        "id": "projection_not_authority",
+        "kind": "security",
+        "summary": "Keep tree and diff packages as replaceable DOM projections: canonical workspace, Git, review, approval, mutation, and receipt state stays in the target engine, and UI callbacks emit typed generation-bound intents.",
+        "stance": "adapt_with_stronger_boundaries"
+      }
+    ]
+  },
+  {
     "id": "vercel.ai_sdk_v7_harnesses",
     "title": "AI SDK v7 Harnesses",
     "role": "upstream",
@@ -1164,7 +1207,12 @@ policy, or turn Fable prose into target authority.
       "openchamber#mobile_attention",
       "amp.code#thread_as_product",
       "factory.droid#one_engine_many_clients",
-      "anthropic.claude_desktop#stock_electron_host"
+      "anthropic.claude_desktop#stock_electron_host",
+      "pierrecomputer.pierre#path_first_virtualized_tree",
+      "pierrecomputer.pierre#virtualized_diff_review",
+      "pierrecomputer.pierre#shared_editor_theme_plane",
+      "pierrecomputer.pierre#executable_editor_accessibility",
+      "pierrecomputer.pierre#projection_not_authority"
     ],
     "target_scopes": [
       "apps/openagents-desktop",
