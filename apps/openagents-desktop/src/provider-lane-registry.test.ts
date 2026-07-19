@@ -86,7 +86,7 @@ describe("provider lane registry", () => {
     const { registry } = setup()
     expect(registry.switchThread({
       threadRef: "thread.one", laneRef: "claude", lanes: [lane("claude", "missing")], thread: thread(),
-    })).toMatchObject({ ok: false, reason: "missing_auth" })
+    })).toMatchObject({ ok: false, reason: "missing_auth", message: "claude has no verified authentication." })
     expect(registry.switchThread({
       threadRef: "thread.one",
       laneRef: "peer.cursor",

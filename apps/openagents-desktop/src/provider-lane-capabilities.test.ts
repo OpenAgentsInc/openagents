@@ -118,6 +118,9 @@ describe("provider lane composer capability projection", () => {
   test("preload decoder refuses malformed projections", () => {
     const valid = projectProviderLaneCapabilities(report())
     expect(decodeProviderLaneComposerProjections([valid])).toEqual([valid])
+    expect(decodeProviderLaneComposerProjections([{ ...valid, authentication: "ready" }]))
+      .toEqual([{ ...valid, authentication: "ready" }])
+    expect(decodeProviderLaneComposerProjections([{ ...valid, authentication: "authenticated" }])).toBeNull()
     expect(decodeProviderLaneComposerProjections([{ ...valid, fullAuto: "yes" }])).toBeNull()
     expect(decodeProviderLaneComposerProjections([{
       ...valid,

@@ -3757,13 +3757,17 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
     expect(nextSelectableProviderLane(state, "fable-local")?.laneRef).toBe("codex-local")
   })
 
-  test("nextSelectableProviderLane still respects HarnessLanes probe-verified unavailability for the native pair", () => {
+  test("#8998: live authentication overrides a stale boot snapshot and skips unauthenticated ACP dead ends", () => {
     const state = withHarnessLanes(
-      withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok]),
-      { fable: { available: false, reason: "Fable — unavailable: no linked Claude account" }, codex: { available: true, reason: null } },
+      withProviderLaneCapabilities(baseState, [
+        { ...codexCapability, authentication: "ready" },
+        { ...fableCapability, authentication: "ready" },
+        { ...admittedGrok, authentication: "missing" },
+      ]),
+      { fable: { available: true, reason: null }, codex: { available: false, reason: "stale boot result" } },
     )
-    // fable-local is unavailable, so codex cycles straight to the admitted ACP peer.
-    expect(nextSelectableProviderLane(state, "codex-local")?.laneRef).toBe("acp:grok-cli")
+    expect(selectableProviderLanes(state).map(lane => lane.laneRef)).toEqual(["codex-local", "fable-local"])
+    expect(nextSelectableProviderLane(state, "fable-local")?.laneRef).toBe("codex-local")
   })
 
   test("capabilityForActiveLane resolves the REAL bound lane, including an admitted ACP peer", () => {

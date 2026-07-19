@@ -3958,7 +3958,14 @@ const providerLaneEntries = async (): Promise<ReadonlyArray<ProviderLaneRegistry
 // probe fails; no lane is silently omitted because it is unavailable.
 ipcMain.handle(ProviderLaneCapabilitiesChannel, async event =>
   isTrustedRuntimeGatewaySender(event)
-    ? (await providerLaneEntries()).map(entry => entry.capabilities)
+    ? (await providerLaneEntries()).map(entry => ({
+        ...entry.capabilities,
+        // #8998 continuation: the picker must consume the same fresh auth
+        // result as selectLane. Admission alone does not make a lane
+        // selectable, and hiding this bit can strand Codex behind an
+        // unauthenticated ACP lane in the cycle.
+        authentication: entry.authentication,
+      }))
     : [])
 ipcMain.handle(ProviderLaneRegistryListChannel, async event =>
   isTrustedRuntimeGatewaySender(event)
@@ -4028,13 +4035,18 @@ ipcMain.handle(ProviderLaneRegistrySelectChannel, async (event, value: unknown) 
     }
   }
   if (!result.ok && thread !== null) {
-    const updated = threads().append(thread.id, {
-      key: randomUUID(),
-      role: "system",
-      text: `Provider switch refused (${result.reason}): ${result.message}`,
-      timestamp: new Date().toISOString(),
-      meta: { lane: providerLaneRegistry.selection(thread.id) },
-    })
+    const refusalText = `Provider switch refused (${result.reason}): ${result.message}`
+    // One refusal is useful evidence. Repeated clicks against the same
+    // unchanged lane must not flood the conversation with identical notes.
+    const updated = thread.notes.at(-1)?.text === refusalText
+      ? thread
+      : threads().append(thread.id, {
+          key: randomUUID(),
+          role: "system",
+          text: refusalText,
+          timestamp: new Date().toISOString(),
+          meta: { lane: providerLaneRegistry.selection(thread.id) },
+        })
     if (updated !== null && !event.sender.isDestroyed()) {
       event.sender.send(DesktopLocalTurnRecoveryUpdateChannel, updated)
     }

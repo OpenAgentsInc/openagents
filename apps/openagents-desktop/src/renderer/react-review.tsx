@@ -87,8 +87,11 @@ export const projectReactStatusNotices = (state: DesktopShellState): ReadonlyArr
   if (lane !== null) notices.push(lane)
   const runtimeFailure = state.runtimeFailure
   if (runtimeFailure !== null && !notices.some(notice => notice.kind === runtimeFailure)) {
+    const activeProvider = state.providerLaneCapabilities
+      .find(candidate => candidate.laneRef === state.activeLaneRef)?.displayName
+      ?? (state.selectedHarness === "fable" ? "Claude" : "Codex")
     const copy: Record<typeof runtimeFailure, Readonly<{ title: string; detail: string }>> = {
-      signed_out: { title: "Codex sign-in required", detail: "The admitted turn reported that its Codex account is unavailable. No alternate account was selected." },
+      signed_out: { title: `${activeProvider} sign-in required`, detail: `The admitted turn reported that its ${activeProvider} account is unavailable. No alternate account was selected.` },
       incompatible: { title: "Codex workflow incompatible", detail: "The installed runtime cannot perform this workflow. The turn was not rerouted." },
       offline: { title: "Conversation connection offline", detail: "The local conversation subscription is unavailable. No provider failure is being claimed." },
       quota_exhausted: { title: "Codex quota exhausted", detail: "The admitted account reported exhausted quota. No alternate account was selected." },

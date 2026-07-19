@@ -66,6 +66,9 @@ export type ProviderLaneComposerProjection = Readonly<{
   displayName: string
   admission: "admitted" | "quarantined"
   reason: string | null
+  /** Main's latest live lane-authentication result. Optional only for
+   * compatibility with an older preload during a rolling dev restart. */
+  authentication?: "ready" | "missing" | "unknown"
   models: ReadonlyArray<string>
   modelOptions?: ProviderLaneComposerCapabilities["modelOptions"]
   reasoningEfforts: ReadonlyArray<string>
@@ -164,6 +167,10 @@ export const decodeProviderLaneComposerProjections = (
       typeof candidate.displayName !== "string" ||
       (candidate.admission !== "admitted" && candidate.admission !== "quarantined") ||
       !(candidate.reason === null || typeof candidate.reason === "string") ||
+      !(candidate.authentication === undefined ||
+        candidate.authentication === "ready" ||
+        candidate.authentication === "missing" ||
+        candidate.authentication === "unknown") ||
       !Array.isArray(candidate.models) || !candidate.models.every(item => typeof item === "string") ||
       !(candidate.modelOptions === undefined || (
         Array.isArray(candidate.modelOptions) && candidate.modelOptions.every(option =>

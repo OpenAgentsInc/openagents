@@ -1589,7 +1589,11 @@ export const selectableProviderLanes = (state: DesktopShellState): ReadonlyArray
   const displayNameFor = (laneRef: string, fallback: string): string =>
     state.providerLaneCapabilities.find(lane => lane.laneRef === laneRef)?.displayName ?? fallback
   const admittedAcpLanes = state.providerLaneCapabilities.filter(
-    lane => lane.laneRef.startsWith("acp:") && lane.admission === "admitted",
+    lane => lane.laneRef.startsWith("acp:") && lane.admission === "admitted" &&
+      // Older preloads did not project authentication; retain their existing
+      // behavior during a rolling dev restart. Current main always provides
+      // this field and unavailable lanes never become dead-end picker items.
+      (lane.authentication === undefined || lane.authentication === "ready"),
   )
   return [
     { laneRef: "codex-local", harness: "codex" as const, displayName: displayNameFor("codex-local", "Codex") },
@@ -1600,9 +1604,13 @@ export const selectableProviderLanes = (state: DesktopShellState): ReadonlyArray
 
 const selectableProviderLaneAvailable = (state: DesktopShellState, lane: SelectableProviderLane): boolean => {
   if (lane.laneRef === "codex-local" || lane.laneRef === "fable-local") {
-    if (!state.harnessLanes[lane.harness].available) return false
     const capability = state.providerLaneCapabilities.find(entry => entry.laneRef === lane.laneRef)
-    return capability === undefined || capability.admission === "admitted"
+    if (capability?.authentication !== undefined) {
+      return capability.admission === "admitted" && capability.authentication === "ready"
+    }
+    // Compatibility fallback for an older preload during a dev restart.
+    return state.harnessLanes[lane.harness].available &&
+      (capability === undefined || capability.admission === "admitted")
   }
   // ACP entries in `selectableProviderLanes` are already admission-filtered;
   // authentication/thread-bind failures still surface honestly through the
@@ -3294,11 +3302,26 @@ export const makeDesktopShellHandlers = (
     const current = yield* SubscriptionRef.get(state)
     if (current.selectedHarness === harness) return
     const laneRef = harness === "codex" ? "codex-local" : "fable-local"
+    const liveSelectionVerified = current.activeThreadId !== null && chat.selectLane !== undefined
     if (current.activeThreadId !== null && chat.selectLane !== undefined) {
       const selected = yield* Effect.promise(() => chat.selectLane!(current.activeThreadId!, laneRef))
       if (!selected.ok) return
     }
-    yield* SubscriptionRef.update(state, value => ({ ...value, selectedHarness: harness, activeLaneRef: laneRef }))
+    yield* SubscriptionRef.update(state, value => ({
+      ...value,
+      selectedHarness: harness,
+      activeLaneRef: laneRef,
+      // A successful main-process switch just passed the live native-lane
+      // authentication check. Replace any stale boot snapshot so submission
+      // is enabled immediately without requiring a renderer restart.
+      ...(liveSelectionVerified ? {
+          harnessLanes: {
+            ...value.harnessLanes,
+            [harness]: { available: true, reason: null },
+          },
+        }
+        : {}),
+    }))
   }),
   /**
    * Selects an admitted provider lane by ref (#8977) -- the composer picker's

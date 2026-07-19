@@ -227,7 +227,9 @@ export const makeProviderLaneRegistry = (input: Readonly<{
         ok: false, reason: "unadmitted_peer", message: lane.reason ?? "That provider peer is not admitted.", missingCapabilities: [],
       }
       if (lane.authentication !== "ready") return {
-        ok: false, reason: "missing_auth", message: "That provider lane has no verified authentication.", missingCapabilities: [],
+        ok: false, reason: "missing_auth",
+        message: `${lane.capabilities.displayName} has no verified authentication.`,
+        missingCapabilities: [],
       }
       if (request.thread === null) return {
         ok: false, reason: "thread_not_found", message: "That thread does not exist.", missingCapabilities: [],

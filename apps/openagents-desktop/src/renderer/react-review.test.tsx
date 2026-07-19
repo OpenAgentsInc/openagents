@@ -191,6 +191,21 @@ describe("React status projection", () => {
       expect(projectReactStatusNotices(fixtureState({ runtimeFailure: kind }))[0]?.kind).toBe(kind)
     }
   })
+
+  test("#8998: a Claude signed-out turn never asks the owner to sign in to Codex", async () => {
+    const { projectReactStatusNotices } = await import("./react-review.tsx")
+    const notice = projectReactStatusNotices(fixtureState({
+      selectedHarness: "fable",
+      activeLaneRef: "fable-local",
+      runtimeFailure: "signed_out",
+    }))[0]
+    expect(notice).toMatchObject({
+      kind: "signed_out",
+      title: "Claude sign-in required",
+      detail: "The admitted turn reported that its Claude account is unavailable. No alternate account was selected.",
+    })
+    expect(`${notice?.title} ${notice?.detail}`).not.toContain("Codex")
+  })
 })
 
 describe("React repository review", () => {
