@@ -87,7 +87,7 @@ describe("revision 3 conversation-first assurance gates", () => {
       "Authored messages are primary",
       "The transcript is not an event ledger",
       "Internal work is compact",
-      "Settled work folds; active work stays legible",
+      "Settled work folds. Active work stays legible",
       "Streaming is stable",
       "The session rail scrolls at its real boundary",
       "Khala color authority is preserved",

@@ -6,7 +6,7 @@ description: Refine an admitted ProductSpec, decompose its acceptance criteria i
 # ProductSpec Work
 
 Use this skill only when OpenAgents supplies an admitted ProductSpec context
-through its typed host tools. The ProductSpec is the intent authority. This
+through its typed host tools. The ProductSpec is the intent authority; this
 skill is a method for proposing and reporting work, never an authority source.
 
 The compatible host exposes the `product_spec` dynamic-tool namespace with
@@ -15,18 +15,18 @@ exactly these proposal/report operations: `get_run`, `propose_edit`,
 run with `get_run` before consequential work, use the proposal tools instead
 of editing host state through prose, and close an admitted lease with
 `report_blocked` or `record_evidence`. If this namespace or any required
-operation is absent, stop with `incompatible_workflow`. Never replace it with
+operation is absent, stop with `incompatible_workflow`; never replace it with
 shell commands, ambient tools, or an untyped completion claim.
 
 ## Required identity
 
 Before proposing or executing work, read the exact host-provided identity:
 
-- repository-relative ProductSpec path.
-- positive `spec_revision`.
-- immutable SHA-256 ProductSpec digest.
-- stable author-visible acceptance-criterion IDs.
-- accepted plan and work-packet ref, when one exists.
+- repository-relative ProductSpec path;
+- positive `spec_revision`;
+- immutable SHA-256 ProductSpec digest;
+- stable author-visible acceptance-criterion IDs;
+- accepted plan and work-packet ref, when one exists;
 - active execution-lease ref and dependency dispositions, before mutation.
 
 Refer to a criterion as `path@revision+digest#criterion-id`. Never shorten that
@@ -52,11 +52,11 @@ repair authority from prose.
 
 Build small, independently verifiable work packets. Every packet must include:
 
-- exact ProductSpec path, revision, digest, and one or more criterion refs.
-- bounded outcome and owned paths or contracts.
-- dependency packet refs and their required dispositions.
-- mutation or read-only mode.
-- verification commands or oracle refs.
+- exact ProductSpec path, revision, digest, and one or more criterion refs;
+- bounded outcome and owned paths or contracts;
+- dependency packet refs and their required dispositions;
+- mutation or read-only mode;
+- verification commands or oracle refs;
 - evidence and terminal close rules.
 
 Reject cycles, duplicate packet identities, unmapped executable criteria, and
@@ -72,7 +72,7 @@ one active execution lease matching the exact packet, spec revision, digest,
 criterion refs, repository context, and executor.
 
 At most one mutation lease may be active for a work packet. A retry with the
-same identity reconciles to durable state. Conflicting reuse refuses. Do not
+same identity reconciles to durable state; conflicting reuse refuses. Do not
 start replacement work while an earlier attempt is active, unknown-pending,
 recovering, or awaiting authoritative reconciliation. Read-only reviewers may
 run concurrently only when the accepted plan permits it.
@@ -97,10 +97,10 @@ commit, pull request, or plausible diff is not completion authority by itself.
 
 For every report, distinguish:
 
-- work performed and repository post-image.
-- checks run and their exact outcome.
-- evidence refs attached.
-- criteria still unverified or blocked.
+- work performed and repository post-image;
+- checks run and their exact outcome;
+- evidence refs attached;
+- criteria still unverified or blocked;
 - terminal packet disposition proposed to the host.
 
 ## Authority boundary
@@ -108,12 +108,12 @@ For every report, distinguish:
 This skill may propose refinement, decomposition, allocation, reconciliation,
 and evidence reports. It must never:
 
-- approve or apply a ProductSpec edit.
-- admit a plan or work packet.
-- grant repository, tool, credential, spend, or mutation authority.
-- mint, transfer, or extend an execution lease.
-- change the pinned revision or digest.
-- mark a criterion verified, accepted, or waived.
+- approve or apply a ProductSpec edit;
+- admit a plan or work packet;
+- grant repository, tool, credential, spend, or mutation authority;
+- mint, transfer, or extend an execution lease;
+- change the pinned revision or digest;
+- mark a criterion verified, accepted, or waived;
 - declare launch, release, public promise, settlement, or payout authority.
 
 Only typed host transitions plus the required user or owner decision can take

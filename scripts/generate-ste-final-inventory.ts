@@ -133,7 +133,15 @@ export const p6Disposition = (
   };
 };
 
-const profiles = new Map(ledger.profiles.map((profile) => [profile.path, profile]));
+// An explicit profile override can reclassify an already inventoried path.
+// Apply it before final disposition so receipt-bound source data cannot be
+// forced back to a mutable inspected profile by the previous inventory.
+const profiles = new Map(
+  ledger.profiles.map((profile) => [
+    profile.path,
+    { ...profile, ...overrides.profiles[profile.path], path: profile.path },
+  ]),
+);
 for (const path of tracked) {
   if (profiles.has(path)) continue;
   profiles.set(path, {

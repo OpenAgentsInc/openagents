@@ -30,7 +30,7 @@ describe("built-in productspec-work compatibility asset", () => {
     expect(assurance.sha256).toBe(AssuranceSpecWorkSkillSha256)
     expect(verified.manifest).toEqual({
       schema: "openagents.desktop.builtin_skill_manifest.v1",
-      compatibilitySetVersion: 4,
+      compatibilitySetVersion: 5,
       skills: [{
         name: "productspec-work",
         version: "0.2.0",

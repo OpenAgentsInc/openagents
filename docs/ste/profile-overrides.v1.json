@@ -14,6 +14,30 @@
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
       "ste_reviewed_at": "2026-07-19T15:36:00Z"
     },
+    "apps/openagents-desktop/resources/builtin-skills/productspec-work/SKILL.md": {
+      "ste_mode": "source-data",
+      "ste_status": "source-data",
+      "risk": "source-data",
+      "source": "Receipt-bound signed compatibility source data",
+      "ste_reviewer": "codex/immutable-receipt-recovery-20260719",
+      "ste_reviewed_at": "2026-07-19T21:50:00Z"
+    },
+    "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md": {
+      "ste_mode": "source-data",
+      "ste_status": "source-data",
+      "risk": "source-data",
+      "source": "Receipt-bound accepted AssuranceSpec source data",
+      "ste_reviewer": "codex/immutable-receipt-recovery-20260719",
+      "ste_reviewed_at": "2026-07-19T21:50:00Z"
+    },
+    "docs/mvp/openagents-codex-workroom-mvp.product-spec.md": {
+      "ste_mode": "source-data",
+      "ste_status": "source-data",
+      "risk": "source-data",
+      "source": "Receipt-bound accepted ProductSpec source data",
+      "ste_reviewer": "codex/immutable-receipt-recovery-20260719",
+      "ste_reviewed_at": "2026-07-19T21:50:00Z"
+    },
     "docs/afteraction/2026-07-19-codex-desktop-git-review-oom-incident-afteraction.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",

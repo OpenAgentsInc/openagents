@@ -980,12 +980,12 @@
     },
     {
       "path": "apps/openagents-desktop/resources/builtin-skills/productspec-work/SKILL.md",
-      "sha256": "799b618a1144129568d15c7c926d3d4dd2783036d7d3df18c028557f18bc6269",
-      "reason": "Final review of a converted document",
+      "sha256": "610f2171cce162ce0da79d7ef17445277744f16d202dfd90872dff215497294b",
+      "reason": "Receipt-bound signed compatibility source data",
       "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Receipt-bound signed compatibility source data",
         "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
@@ -995,9 +995,7 @@
           "STE-5.1",
           "STE-8.2"
         ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+        "ste_status": "source-data"
       }
     },
     {
@@ -31797,12 +31795,12 @@
     },
     {
       "path": "docs/mvp/openagents-codex-workroom-mvp.assurance-spec.md",
-      "sha256": "3769a0c57c2173c2966ebb7eb5df2ff5ac659c27573391764eadf7871c1b05f3",
-      "reason": "Final review of a converted document",
+      "sha256": "66e1b49d3089b141a9bd5fb6221d002a0d364259ab719a46a254a507fb0dee72",
+      "reason": "Receipt-bound accepted AssuranceSpec source data",
       "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Receipt-bound accepted AssuranceSpec source data",
         "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
@@ -31812,19 +31810,17 @@
           "STE-5.1",
           "STE-8.2"
         ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+        "ste_status": "source-data"
       }
     },
     {
       "path": "docs/mvp/openagents-codex-workroom-mvp.product-spec.md",
-      "sha256": "ca4518658facefc42fc0e2967b97820f1940d6624a8597334d5afda4d7a7874d",
-      "reason": "Final review of a converted document",
+      "sha256": "fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1",
+      "reason": "Receipt-bound accepted ProductSpec source data",
       "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Receipt-bound accepted ProductSpec source data",
         "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
@@ -31834,9 +31830,7 @@
           "STE-5.1",
           "STE-8.2"
         ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+        "ste_status": "source-data"
       }
     },
     {

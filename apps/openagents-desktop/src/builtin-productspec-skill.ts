@@ -9,7 +9,7 @@ export const ProductSpecWorkSkillVersion = "0.2.0" as const
 export const ProductSpecWorkSkillSha256 = "610f2171cce162ce0da79d7ef17445277744f16d202dfd90872dff215497294b" as const
 export const AssuranceSpecWorkSkillName = "assurancespec-work" as const
 export const AssuranceSpecWorkSkillVersion = "0.1.0" as const
-export const AssuranceSpecWorkSkillSha256 = "9f1d8753ef06ae92db1bd571f3a757df634d0afbc118a181b9ffdb19a66495e6" as const
+export const AssuranceSpecWorkSkillSha256 = "162a663150ceeadc939feaa4420e8981c81d5db225e4bf9405a7ddbc7ec53aa1" as const
 export const BuiltinSkillManifestFilename = "manifest.json" as const
 
 const Sha256 = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
@@ -19,7 +19,7 @@ const RelativeSkillPath = Schema.String.check(
 
 export const BuiltinSkillManifestSchema = Schema.Struct({
   schema: Schema.Literal("openagents.desktop.builtin_skill_manifest.v1"),
-  compatibilitySetVersion: Schema.Literal(4),
+  compatibilitySetVersion: Schema.Literal(5),
   skills: Schema.Array(Schema.Struct({
     name: Schema.Literals([ProductSpecWorkSkillName, AssuranceSpecWorkSkillName]),
     version: Schema.Literals([ProductSpecWorkSkillVersion, AssuranceSpecWorkSkillVersion]),
