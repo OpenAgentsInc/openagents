@@ -155,6 +155,6 @@ Managed-sandbox bridge
   control:      $control_ip:8787
   allowed path: /v1/managed-sandbox/runtime/*
   firewall:     $firewall ($bridge_tag -> $control_tag tcp:8787)
-  auth:         application bearer from Secret Manager; Cloud Run IAM is edge-open
+  auth:         dedicated application header from Secret Manager; Cloud Run IAM is edge-open
   mode apply:   $apply
 SUMMARY
