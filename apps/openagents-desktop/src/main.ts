@@ -29,6 +29,7 @@ import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.t
 import { openDesktopUpdateStagingHost, updateRecoveryRequiresStartupExit } from "./update-staging-host.ts"
 import { resolveDesktopUpdateFeedConfig } from "./update-feed-config.ts"
 import { openMacOSUpdateApplier } from "./macos-update-applier.ts"
+import { resolveMacOSDocumentOpenTarget } from "./macos-document-open.ts"
 import { drainChildRuntimes } from "./update-runtime-drain.ts"
 import { evaluateNoMigrationInvariant } from "./update-migration-evidence.ts"
 import {
@@ -756,6 +757,22 @@ const focusDesktopCommandWindow = (): void => {
   window.show()
   window.focus()
 }
+
+// Finder may deliver `open-file` before Electron's ready event. Retain only a
+// small main-owned queue until local workspace authority is initialized; the
+// eventual renderer command carries a validated relative filename, never this
+// absolute OS path.
+let macOSDocumentOpenHandler: ((selectedPath: string) => void) | null = null
+let pendingMacOSDocumentOpenPaths: string[] = []
+app.on("open-file", (event, selectedPath) => {
+  event.preventDefault()
+  focusDesktopCommandWindow()
+  if (macOSDocumentOpenHandler === null) {
+    pendingMacOSDocumentOpenPaths = [...pendingMacOSDocumentOpenPaths, selectedPath].slice(-8)
+  } else {
+    macOSDocumentOpenHandler(selectedPath)
+  }
+})
 
 for (const command of desktopCommandsFromArgv(process.argv, "deep_link")) {
   desktopCommandHost.enqueue(command)
@@ -1762,6 +1779,43 @@ const activateCodingCatalogRoot = () => {
     rebindWorkspaceChangeSubscriptions()
   }
 }
+const systemDocumentOpenCommand = desktopCanonicalCommandRegistry.find(
+  command => command.id === "workspace.open_file",
+)
+const admitMacOSDocumentOpen = (selectedPath: string): void => {
+  const target = resolveMacOSDocumentOpenTarget(selectedPath, candidate => {
+    try { return statSync(candidate).isFile() } catch { return false }
+  })
+  if (target === null || systemDocumentOpenCommand === undefined) return
+  const catalog = hostLifecycle.sync()?.codingCatalog()
+  if (catalog === null || catalog === undefined) {
+    pendingMacOSDocumentOpenPaths = [...pendingMacOSDocumentOpenPaths, selectedPath].slice(-8)
+    return
+  }
+  try {
+    revokeOutgoingWorkspaceTerminals()
+    catalog.selectWorkspace(target.workspaceRoot)
+    activateCodingCatalogRoot()
+    publishCodingCatalog()
+    app.addRecentDocument(selectedPath)
+    desktopCommandHost.enqueue(deferredDesktopCommand(
+      systemDocumentOpenCommand,
+      "open_file",
+      `command.open-file.${randomUUID()}`,
+      { kind: "path", pathRef: target.pathRef },
+    ))
+    focusDesktopCommandWindow()
+  } catch {
+    // A stale, unreadable, or revoked OS selection does not widen workspace
+    // authority and never reaches renderer state.
+  }
+}
+const flushPendingMacOSDocumentOpens = (): void => {
+  const pending = pendingMacOSDocumentOpenPaths
+  pendingMacOSDocumentOpenPaths = []
+  for (const selectedPath of pending) admitMacOSDocumentOpen(selectedPath)
+}
+macOSDocumentOpenHandler = admitMacOSDocumentOpen
 const chooseCodingWorkspace = async (registerCatalog = true) => {
   const currentRoot = workspaceSnapshot()?.root
   const result = await dialog.showOpenDialog({
@@ -7623,6 +7677,7 @@ void app.whenReady().then(async () => {
       if (restoredRoot !== null && !installAdmittedCodingWorkspace(restoredRoot)) {
         hostLifecycle.replaceWorkspace(openSelectedWorkspace(restoredRoot))
       }
+      flushPendingMacOSDocumentOpens()
     } catch {
       console.error("[openagents-desktop] local Sync persistence unavailable")
     }

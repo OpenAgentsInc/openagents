@@ -28,6 +28,7 @@ import {
   decodeDesktopTargetBuildDescriptor,
   desktopTargets,
 } from "./src/release-staging-contract.ts";
+import { macOSCodeDocumentTypes } from "./src/macos-document-open.ts";
 
 /**
  * DIST-03 (#8916, repaired): packaging entrypoints require an EXPLICIT typed
@@ -256,6 +257,8 @@ const config: ForgeConfig = {
     extendInfo: {
       NSMicrophoneUsageDescription:
         "OpenAgents uses the microphone only while you explicitly run a voice session.",
+      CFBundleDocumentTypes: macOSCodeDocumentTypes,
+      LSSupportsOpeningDocumentsInPlace: true,
     },
     asar: {
       // The Claude provider package resolves and spawns native executables

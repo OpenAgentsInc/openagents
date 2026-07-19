@@ -148,6 +148,7 @@ import {
 import { idleVoiceModeState, voiceActive, voiceIndicatorText, withVoiceHostState, type VoiceModeState } from "./voice-mode.ts"
 import type { DesktopVoiceState } from "../voice-host.ts"
 import type { GitDiffResult } from "../git-github-contract.ts"
+import { DesktopWorkspacePathRefSchema } from "../workspace-contract.ts"
 import {
   emptyWorkspaceBrowserState,
   makeWorkspaceBrowserHandlers,
@@ -896,6 +897,7 @@ export const DesktopWorkspaceSelected = defineIntent(
   Schema.Literals(desktopWorkspaceNames),
 )
 export const DesktopFilesModeToggled = defineIntent("DesktopFilesModeToggled", Schema.Null)
+export const DesktopSystemDocumentOpened = defineIntent("DesktopSystemDocumentOpened", DesktopWorkspacePathRefSchema)
 export const DesktopWorkspacePickerRequested = defineIntent("DesktopWorkspacePickerRequested", Schema.Null)
 export const DesktopNavigationBackRequested = defineIntent("DesktopNavigationBackRequested", Schema.Null)
 export const DesktopNavigationForwardRequested = defineIntent("DesktopNavigationForwardRequested", Schema.Null)
@@ -993,6 +995,7 @@ export const desktopShellIntents = [
   DesktopUpdateRolledBack,
   DesktopWorkspaceSelected,
   DesktopFilesModeToggled,
+  DesktopSystemDocumentOpened,
   DesktopWorkspacePickerRequested,
   DesktopNavigationBackRequested,
   DesktopNavigationForwardRequested,
@@ -3822,6 +3825,24 @@ export const makeDesktopShellHandlers = (
     const before = yield* SubscriptionRef.get(state)
     const open = before.workspace !== "files"
     yield* selectSurfaceWorkspace(open ? "files" : "chat")
+  }),
+  DesktopSystemDocumentOpened: (pathRef) => Effect.gen(function* () {
+    // Main has already replaced the WorkContext from the explicit macOS file
+    // selection. Refresh only the public-safe catalog projection, then reuse
+    // the canonical Files/browser/editor intents with the relative path.
+    const codingCatalog = yield* Effect.promise(codingCatalogHost.snapshot)
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      codingCatalog,
+      workspaceEditor: emptyWorkspaceEditorState(),
+    }))
+    yield* selectSurfaceWorkspace("files")
+    const current = yield* SubscriptionRef.get(state)
+    if (current.workspaceBrowser.grantRef === null) return
+    yield* workspaceEditorHandlers.WorkspaceEditorOpenRequested({
+      grantRef: current.workspaceBrowser.grantRef,
+      pathRef,
+    })
   }),
   DesktopWorkspacePickerRequested: () =>
     Effect.gen(function* () {

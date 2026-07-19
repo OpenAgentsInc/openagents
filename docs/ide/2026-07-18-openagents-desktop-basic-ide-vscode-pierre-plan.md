@@ -66,12 +66,20 @@ The ordered implementation ledger is:
    the right-sidebar composition: Files replaces the existing primary rail,
    reuses the existing top bar and main region, is removed from the right-panel
    catalog, and restores Sessions plus Chat on exit.
+5. [#9010](https://github.com/OpenAgentsInc/openagents/issues/9010) adds the
+   first OS-level editor integration: the packaged macOS bundle is an
+   Alternate-ranked editor for Markdown and bounded common source/text types,
+   and Finder `open-file` delivery enters the same Files mode and existing
+   document bridge with only a validated relative filename crossing renderer.
 
 Implementation status: #9006 and #9007 landed the contract, typed toggle, and
 mounted current-worktree surface. #9008 upgrades that surface to the real
 Pierre tree and closes the empty-tree regression exposed by a leading-colon
 filename in the owner's working directory. #9009 makes the final owner-directed
 shell composition explicit without changing the workspace authority boundary.
+#9010 extends the explicit-authority set to a user-selected macOS document,
+bounded to its containing directory, and makes the association release-build
+only so a dev-server process cannot masquerade as an installed editor.
 
 This quick-files slice is a prerequisite interaction rung, not a substitute
 for IDE-00 through IDE-07. IDE-02 still owns the complete indexed, watched,

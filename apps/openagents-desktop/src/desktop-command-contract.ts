@@ -1,5 +1,7 @@
 import { Schema } from "effect"
 
+import { DesktopWorkspacePathRefSchema } from "./workspace-contract.ts"
+
 export const DesktopCommandId = Schema.Literals([
   "chat.new",
   "chat.send",
@@ -20,6 +22,7 @@ export const DesktopCommandId = Schema.Literals([
   "settings.open",
   "workspace.choose",
   "workspace.files",
+  "workspace.open_file",
   "workspace.review",
   "full-auto.launch",
 ])
@@ -35,6 +38,7 @@ export type DesktopCommandChord = typeof DesktopCommandChord.Type
 export const DesktopCommandArguments = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("none") }),
   Schema.Struct({ kind: Schema.Literal("workspace"), workspace: Schema.Literals(["chat", "files", "home", "review"]) }),
+  Schema.Struct({ kind: Schema.Literal("path"), pathRef: DesktopWorkspacePathRefSchema }),
 ])
 export type DesktopCommandArguments = typeof DesktopCommandArguments.Type
 
@@ -74,6 +78,10 @@ export const desktopCanonicalCommandRegistry: ReadonlyArray<DesktopCommandDefini
   { id: "navigation.forward", label: "Forward", intentName: "DesktopNavigationForwardRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: [], palette: false },
   { id: "chat.open", label: "Open chat", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "chat" }, result: "workspace_selected", scope: "session", availability: "always", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "workspace.files", label: "Toggle Files", intentName: "DesktopFilesModeToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: ["Meta+E", "Control+E"], palette: true },
+  // Host-only macOS Open With delivery. Main replaces the workspace authority
+  // before dispatch and supplies the selected relative path; the placeholder
+  // default is never registered as a menu, palette, restore, or deep-link action.
+  { id: "workspace.open_file", label: "Open system file", intentName: "DesktopSystemDocumentOpened", arguments: "path", defaultArguments: { kind: "path", pathRef: "README.md" }, result: "workspace_selected", scope: "workspace", availability: "always", authorization: "local_user", defaultBindings: [], palette: false },
   { id: "workspace.review", label: "Review changes", intentName: "DesktopWorkspaceSelected", arguments: "workspace", defaultArguments: { kind: "workspace", workspace: "review" }, result: "workspace_selected", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: false },
   { id: "workspace.choose", label: "Choose workspace folder", intentName: "DesktopWorkspacePickerRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "workspace_picker_requested", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+O", "Control+O"], palette: true },
   { id: "settings.open", label: "Open Settings", intentName: "DesktopSettingsToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+,", "Control+,"], palette: true },
@@ -152,7 +160,7 @@ export const DesktopDeferredCommand = Schema.Struct({
   requestRef: Schema.String.check(Schema.isPattern(/^command\.[A-Za-z0-9._:-]+$/)),
   commandId: DesktopCommandId,
   arguments: DesktopCommandArguments,
-  source: Schema.Literals(["deep_link", "native_menu", "second_instance", "restore"]),
+  source: Schema.Literals(["deep_link", "native_menu", "second_instance", "restore", "open_file"]),
   delivery: Schema.Literals(["dispatch", "duplicate_rejected"]),
 })
 export type DesktopDeferredCommand = typeof DesktopDeferredCommand.Type

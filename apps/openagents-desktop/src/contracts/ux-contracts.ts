@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-18.4",
+    version: "2026-07-18.5",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
@@ -5006,6 +5006,52 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Issues #9006 through #9009 land the registry, guarded effective-binding matcher, Effect workspace state, primary-rail/top-bar takeover, right-panel exclusion, literal-path ignore classification, audited Pierre projection, current-worktree boundary proof, and built Electron enter/expand/open/exit-restoration smoke in the normal Desktop verification gate.",
+      },
+      {
+        contractId: "openagents_desktop.macos.code_document_open_with.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Desktop macOS system integration",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-18" },
+        statement:
+          "Register OpenAgents with macOS so Finder recommends it in Open With for Markdown and common code files, and make the packaged result locally testable.",
+        authorityBoundary:
+          "Only the packaged macOS bundle advertises document support through CFBundleDocumentTypes. It claims the Editor role at Alternate rank for a bounded source/text UTI and extension set, so it is recommended without silently replacing the user's default application. Electron main subscribes to open-file before ready. The explicit OS-selected regular file may admit only its containing directory as the WorkContext; main reduces the selection to one validated relative filename before the deferred typed command crosses into the renderer. The renderer reuses the existing Files mode, workspace browser grant, and document-open intent. Unsupported, relative, directory, revoked, secret-shaped, binary, oversized, or invalid selections remain rejected by main or the existing workspace service.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/macos-document-open.ts",
+          "apps/openagents-desktop/forge.config.ts",
+          "github:OpenAgentsInc/openagents#9010",
+        ],
+        oracles: [
+          {
+            id: "openagents_desktop.macos.code_document_open_with.bundle",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/tests/package-macos.test.ts",
+            description:
+              "Proves Forge emits Editor/Alternate document declarations, supports Markdown/JavaScript/JSX/TypeScript/TSX, and installs the open-file listener before Electron ready.",
+          },
+          {
+            id: "openagents_desktop.macos.code_document_open_with.reduction",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/macos-document-open.test.ts",
+            description:
+              "Proves an explicit absolute selection reduces to its containing directory and one validated relative path while unsupported, relative, and non-file inputs fail closed.",
+          },
+          {
+            id: "openagents_desktop.macos.code_document_open_with.editor_transition",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
+            description:
+              "Proves the typed system-document intent enters Files, resolves the current workspace grant, and opens the relative document through the existing editor bridge.",
+          },
+        ],
+        verification:
+          "Issue #9010 owns Forge configuration, pre-ready Electron delivery, relative-path reduction, the existing Files/editor transition, and inspection of a real packaged macOS Info.plist before Launch Services registration.",
       },
     ],
   };

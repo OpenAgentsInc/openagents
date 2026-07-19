@@ -1284,13 +1284,21 @@ More specific invariant ledgers apply inside imported apps and packages.
   `packages/khala-sync-client/src/sqlite-store.test.ts`, and
   `apps/openagents-desktop/tests/native-timeline-fault-convergence.e2e.test.ts`.
 - A Desktop workspace exists after the owner explicitly launches the app from
-  a directory or chooses one with the directory picker, and remains one
+  a directory, chooses one with the directory picker, or asks macOS to open one
+  bounded supported code document with the packaged application, and remains one
   WorkContext-owned main-process capability. A managed launcher preserves its
   original directory through `OPENAGENTS_DESKTOP_LAUNCH_CWD`; Electron main
   validates and admits that root on every ordinary startup, superseding stale
   persisted navigation. Direct executable launches use their captured
-  `process.cwd()`. Neither path gives the renderer absolute-path selection
-  authority. The new recursive
+  `process.cwd()`. A macOS `open-file` selection admits only the selected
+  regular file's containing directory, and main reduces it to a validated
+  relative filename before typed renderer delivery. Unsupported extensions,
+  relative inputs, directories, and invalid paths fail closed. None of these
+  paths gives the renderer absolute-path selection authority. The packaged
+  macOS bundle advertises only the bounded source/text formats the UTF-8 editor
+  can represent, with `CFBundleTypeRole=Editor` and `LSHandlerRank=Alternate`;
+  development launches make no system-registration claim and the app never
+  silently replaces the owner's default handler. The new recursive
   tree/search projections carry the opaque grant ref, relative path refs,
   bounded page/result counts, and a declared cache key/epoch/freshness fact;
   they never carry the selected absolute root, a native handle, or an ambient

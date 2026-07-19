@@ -56,6 +56,7 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
       "https://command/workspace.files",
       "openagents://command/shell.exec",
       "openagents://command/workspace.files?path=/private",
+      "openagents://command/workspace.open_file",
       "openagents://user:pass@command/workspace.files",
       "openagents://command/workspace.files/extra",
     ]) expect(parseDesktopCommandUrl(invalid)).toBeNull()
@@ -153,5 +154,19 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
       verifiedOwner: true,
       workspaceReady: true,
     })).toEqual({ state: "rejected", reason: "duplicate" })
+  })
+
+  test("resolves a main-admitted system file command to one relative-path intent", () => {
+    const openFile = deferredDesktopCommand(
+      desktopCanonicalCommandRegistry.find(value => value.id === "workspace.open_file")!,
+      "open_file",
+      "command.open-file.test",
+      { kind: "path", pathRef: "App.tsx" },
+    )
+    expect(resolveDesktopDeferredCommandIntent(openFile, {
+      sessionReady: false,
+      verifiedOwner: false,
+      workspaceReady: false,
+    })).toEqual({ state: "ready", intentName: "DesktopSystemDocumentOpened", payload: "App.tsx" })
   })
 })

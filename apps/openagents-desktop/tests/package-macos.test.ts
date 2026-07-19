@@ -8,6 +8,7 @@ import config, {
   canonicalArtifactPath,
 } from "../forge.config.ts";
 import { desktopReleaseArtifactName } from "../scripts/release-artifact-name.ts";
+import { macOSCodeDocumentExtensions, macOSCodeDocumentTypes } from "../src/macos-document-open.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
 const mainSource = readFileSync(path.join(root, "src", "main.ts"), "utf8");
@@ -106,6 +107,30 @@ describe("CUT-26 macOS artifact contract", () => {
     const icon = readFileSync(path.join(root, "resources", "openagents-icon.icns"));
     expect(icon.subarray(0, 4).toString("ascii")).toBe("icns");
     expect(icon.byteLength).toBeGreaterThan(1_000_000);
+  });
+
+  test("registers the packaged app as an alternate editor for code documents", () => {
+    expect(config.packagerConfig?.extendInfo).toMatchObject({
+      CFBundleDocumentTypes: macOSCodeDocumentTypes,
+      LSSupportsOpeningDocumentsInPlace: true,
+    });
+    expect(macOSCodeDocumentExtensions).toEqual(
+      expect.arrayContaining(["md", "js", "jsx", "ts", "tsx"]),
+    );
+    expect(macOSCodeDocumentTypes.every(type =>
+      type.CFBundleTypeRole === "Editor" && type.LSHandlerRank === "Alternate",
+    )).toBe(true);
+  });
+
+  test("captures macOS open-file delivery before ready and dispatches only a relative path", () => {
+    const openFileListener = mainSource.indexOf('app.on("open-file"');
+    const readyHandler = mainSource.indexOf("void app.whenReady().then");
+    expect(openFileListener).toBeGreaterThan(0);
+    expect(openFileListener).toBeLessThan(readyHandler);
+    expect(mainSource).toContain("event.preventDefault()");
+    expect(mainSource).toContain("resolveMacOSDocumentOpenTarget(selectedPath");
+    expect(mainSource).toContain('{ kind: "path", pathRef: target.pathRef }');
+    expect(mainSource).toContain('"open_file"');
   });
 
   test("integrates the macOS traffic lights into the blue application chrome", () => {

@@ -17,7 +17,9 @@ export const desktopCommandRegistry = desktopCanonicalCommandRegistry
     intentName: command.intentName,
     payload: command.defaultArguments.kind === "none"
       ? null
-      : command.defaultArguments.workspace,
+      : command.defaultArguments.kind === "workspace"
+        ? command.defaultArguments.workspace
+        : command.defaultArguments.pathRef,
     /** Canonical chords, for the palette's keybinding caption (⌘N). */
     chords: command.defaultBindings,
   }))
@@ -67,6 +69,10 @@ export const resolveDesktopDeferredCommandIntent = (
   return {
     state: "ready",
     intentName: definition.intentName,
-    payload: command.arguments.kind === "none" ? null : command.arguments.workspace,
+    payload: command.arguments.kind === "none"
+      ? null
+      : command.arguments.kind === "workspace"
+        ? command.arguments.workspace
+        : command.arguments.pathRef,
   }
 }

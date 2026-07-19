@@ -16,11 +16,12 @@ export const deferredDesktopCommand = (
   command: DesktopCommandDefinition,
   source: DesktopDeferredCommand["source"],
   requestRef = `command.${randomUUID()}`,
+  commandArguments = command.defaultArguments,
 ): DesktopDeferredCommand => ({
   schema: "openagents.desktop.deferred_command.v1",
   requestRef,
   commandId: command.id,
-  arguments: command.defaultArguments,
+  arguments: commandArguments,
   source,
   delivery: "dispatch",
 })
@@ -43,7 +44,10 @@ export const parseDesktopCommandUrl = (
     ) return null
     const commandId = Schema.decodeUnknownSync(DesktopCommandId)(decodeURIComponent(segments[0]!))
     const command = desktopCanonicalCommandRegistry.find(value => value.id === commandId)
-    return command === undefined
+    // Finder delivery is admitted from Electron's main-process `open-file`
+    // event only. A URL must never manufacture a file-open request using the
+    // registry's harmless placeholder relative path.
+    return command === undefined || command.id === "workspace.open_file"
       ? null
       : deferredDesktopCommand(command, source, requestRefFor(url.href))
   } catch {

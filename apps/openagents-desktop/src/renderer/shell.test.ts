@@ -2618,7 +2618,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     }))
   })
 
-  test("Files selection and picker route through the relative browser bridge", async () => {
+  test("system document open, Files selection, and picker route through the relative browser bridge", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       let chooseCalls = 0
       const treeCalls: unknown[] = []
@@ -2675,9 +2675,13 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           documents,
         }),
       )
-      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspaceSelected", StaticPayload("files"))))
-      expect((yield* SubscriptionRef.get(state)).workspaceBrowser.grantRef).toBe("workspace.grant.test")
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopSystemDocumentOpened", StaticPayload("README.md"))))
+      const systemOpened = yield* SubscriptionRef.get(state)
+      expect(systemOpened.workspace).toBe("files")
+      expect(systemOpened.workspaceBrowser.grantRef).toBe("workspace.grant.test")
+      expect(systemOpened.workspaceEditor.activePathRef).toBe("README.md")
       expect(treeCalls).toEqual([{ directoryRef: "", offset: 0, limit: 200 }])
+      expect(documentCalls).toEqual([{ grantRef: "workspace.grant.test", pathRef: "README.md" }])
 
       yield* registry.dispatch(resolveIntentRef(IntentRef("WorkspaceBrowserEntrySelected", StaticPayload("README.md"))))
       expect(documentCalls).toEqual([{ grantRef: "workspace.grant.test", pathRef: "README.md" }])
