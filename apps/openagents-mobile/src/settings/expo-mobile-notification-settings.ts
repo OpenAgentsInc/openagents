@@ -1,9 +1,11 @@
 import {
   defaultMobileNotificationPreferences,
+  mapNotificationPermission,
   type MobileNotificationPreferences,
   type MobileNotificationSettingsPort,
   type MobileNotificationSnapshot,
 } from "./mobile-settings"
+import { readPushDeviceRegistrationRecord } from "../push/expo-push-device-registration"
 
 const PREFERENCES_KEY = "openagents.mobile.notification.preferences.v1"
 
@@ -34,9 +36,7 @@ export const openExpoMobileNotificationSettings = (): MobileNotificationSettings
     const preferences = await loadPreferences(SecureStore)
     try {
       const permissions = await Notifications.getPermissionsAsync()
-      const permission = permissions.granted
-        ? "granted" as const
-        : permissions.canAskAgain ? "undetermined" as const : "denied" as const
+      const permission = mapNotificationPermission(permissions)
       if (permission !== "granted") {
         return {
           permission,
@@ -47,15 +47,32 @@ export const openExpoMobileNotificationSettings = (): MobileNotificationSettings
             : "Notifications stay off until you explicitly enable them.",
         }
       }
-      try {
-        const token = await Notifications.getDevicePushTokenAsync()
-        const registered = typeof token.data === "string" ? token.data.length > 0 : token.data != null
+      // `registered` here means the server's Expo push relay actually holds
+      // this installation's Expo push token
+      // (`../push/expo-push-device-registration.ts` registers it on sign-in
+      // and permission grant, SARAH-PUSH-1 #9062) — NOT merely that the OS
+      // handed the app a native APNs/FCM token via
+      // `getDevicePushTokenAsync()`, which the server's Expo relay cannot
+      // send through. That native probe is now only a secondary, clearly
+      // labeled signal for the "not yet server-registered" case below.
+      const registered = await readPushDeviceRegistrationRecord(SecureStore)
+      if (registered !== null) {
         return {
           permission,
-          registration: registered ? "registered" : "unregistered",
+          registration: "registered",
           preferences,
-          detail: registered
-            ? "This installation has a native push registration. Token material remains in the native host."
+          detail: "This installation is registered for OpenAgents push notifications.",
+        }
+      }
+      try {
+        const token = await Notifications.getDevicePushTokenAsync()
+        const nativeRegistered = typeof token.data === "string" ? token.data.length > 0 : token.data != null
+        return {
+          permission,
+          registration: "unregistered",
+          preferences,
+          detail: nativeRegistered
+            ? "Permission is granted and this installation has a native push channel, but it has not registered an Expo push token with OpenAgents yet. Sign in (or reopen the app) to finish registration."
             : "Permission is granted, but this installation has no native push registration yet.",
         }
       } catch {

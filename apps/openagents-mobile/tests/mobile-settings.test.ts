@@ -13,6 +13,7 @@ import {
   decodeMobileEnvironmentDirectory,
   decodeMobileEnvironmentReceipt,
   decodeMobileShareUrl,
+  mapNotificationPermission,
   mobileShareComposerText,
   type MobileEnvironmentDirectory,
   type MobileNotificationSnapshot,
@@ -164,5 +165,14 @@ describe("T3M-F1 mobile settings, connections, notifications, and share intake",
     expect(state.khala.entries).toEqual(transcript)
     expect(state.settings.incomingShare).toBeNull()
     expect(consumed).toBe(1)
+  })
+})
+
+describe("mapNotificationPermission (shared by notification-settings and push registration, SARAH-PUSH-1 #9062)", () => {
+  test("maps expo-notifications getPermissionsAsync results to the three snapshot states", () => {
+    expect(mapNotificationPermission({ granted: true, canAskAgain: true })).toBe("granted")
+    expect(mapNotificationPermission({ granted: true, canAskAgain: false })).toBe("granted")
+    expect(mapNotificationPermission({ granted: false, canAskAgain: true })).toBe("undetermined")
+    expect(mapNotificationPermission({ granted: false, canAskAgain: false })).toBe("denied")
   })
 })

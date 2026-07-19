@@ -54,6 +54,16 @@ export type MobileNotificationSnapshot = Readonly<{
   detail: string
 }>
 
+/** Pure `expo-notifications` `getPermissionsAsync()` result mapper, shared by
+ * `../settings/expo-mobile-notification-settings.ts` (health snapshot) and
+ * `../push/expo-push-device-registration.ts` (push-token registration gate,
+ * SARAH-PUSH-1 #9062) so both read the SAME permission state instead of
+ * drifting via two separately-maintained ternaries. */
+export const mapNotificationPermission = (
+  permissions: Readonly<{ granted: boolean; canAskAgain: boolean }>,
+): MobileNotificationSnapshot["permission"] =>
+  permissions.granted ? "granted" : permissions.canAskAgain ? "undetermined" : "denied"
+
 export type MobileNotificationSettingsPort = Readonly<{
   snapshot: () => Promise<MobileNotificationSnapshot>
   requestPermission: () => Promise<MobileNotificationSnapshot>

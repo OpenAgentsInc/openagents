@@ -39,6 +39,7 @@ import type { MobileRepositoryTerminalPort } from "./coding/mobile-repository-te
 import type { MobileEnvironmentConnectionsPort, MobileShareIntake } from "./settings/mobile-settings"
 import { decodeMobileShareUrl } from "./settings/mobile-settings"
 import { openExpoMobileNotificationSettings } from "./settings/expo-mobile-notification-settings"
+import { openExpoPushDeviceRegistration } from "./push/expo-push-device-registration"
 import {
   buildMobilePortableSessionCommand,
   projectMobilePortableSessionControl,
@@ -421,7 +422,24 @@ export const App = () => {
   const targetDeliveryRef = useRef<NativeCodingTargetDelivery | null>(null)
   const attentionDeliveryRef = useRef<NativeAttentionTargetDelivery | null>(null)
   const pendingAttentionTargetRef = useRef<MobileAttentionTarget | null>(null)
-  const notificationSettings = useMemo(() => openExpoMobileNotificationSettings(), [])
+  // SARAH-PUSH-1 (#9062): a stable native port that registers/rotates/
+  // removes this device's Expo push token with the server. Wired at three
+  // trigger points below — sign-in, permission newly granted, and (as a
+  // deliberate addition beyond those two, since it is the most common
+  // real-world trigger for an already-signed-in owner) recovering an
+  // existing verified session on relaunch — plus removal on sign-out.
+  const pushRegistration = useMemo(() => openExpoPushDeviceRegistration(), [])
+  const notificationSettings = useMemo(() => {
+    const port = openExpoMobileNotificationSettings()
+    return {
+      ...port,
+      requestPermission: async () => {
+        const result = await port.requestPermission()
+        if (result.permission === "granted") void pushRegistration.syncOnPermissionGranted()
+        return result
+      },
+    }
+  }, [pushRegistration])
   const portableSubscriptionRef = useRef<(() => void) | null>(null)
   const attentionSubscriptionRef = useRef<(() => void) | null>(null)
   const syncPhaseRef = useRef<MobileSyncPhase>(syncPhase)
@@ -526,6 +544,10 @@ export const App = () => {
       setSyncPhase("authenticating")
       const result = await signInNativeSession()
       if (result.state === "verified") {
+        // SARAH-PUSH-1 (#9062): fire-and-forget — the sync itself no-ops
+        // typed `skipped` when permission is not yet granted or no EAS
+        // project id is configured, and never throws.
+        void pushRegistration.syncOnSignIn()
         const connected = await syncHostRef.current?.connectStoredVerifiedSession()
         if (connected !== "connected") {
           setConversationSelection({ mode: "local" })
@@ -559,6 +581,9 @@ export const App = () => {
       setFullAutoRun(null)
       setManagedSandboxes(null)
       setSarah(null)
+      // SARAH-PUSH-1 (#9062): deregister BEFORE the credential is revoked and
+      // cleared below — the DELETE call needs a still-valid bearer token.
+      await pushRegistration.removeOnSignOut()
       const result = await signOutNativeSession()
       if (result.state === "signed_out") {
         setConversationSelection({ mode: "local" })
@@ -566,7 +591,7 @@ export const App = () => {
       }
       setSyncPhase(result.state === "signed_out" ? "local_ready" : "unavailable")
     },
-  }), [])
+  }), [pushRegistration])
 
   // OTA: poll the owned OpenAgents Updates server (updates.openagents.com,
   // channel openagents-production) on the TEMPORARY aggressive 3s cadence —
@@ -695,6 +720,11 @@ export const App = () => {
             setConversationSelection({ mode: "local" })
             break
           case "verified":
+            // SARAH-PUSH-1 (#9062): relaunching into an already-verified
+            // session is functionally "already signed in" for an owner who
+            // never explicitly re-runs the sign-in flow — the most common
+            // real-world trigger. Fire-and-forget, same as the signIn path.
+            void pushRegistration.syncOnSignIn()
             if (await syncHost?.connectStoredVerifiedSession() !== "connected") {
               setSyncPhase("unavailable")
               setConversationSelection({ mode: "local" })
