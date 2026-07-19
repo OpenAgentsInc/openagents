@@ -1,7 +1,7 @@
 {
   "schemaVersion": "openagents.desktop.ide-language-benchmark.v1",
   "issue": "IDE-06",
-  "generatedAt": "2026-07-19T13:45:01.640Z",
+  "generatedAt": "2026-07-19T14:02:46.803Z",
   "runtime": {
     "node": "v24.13.1",
     "platform": "darwin",
@@ -35,18 +35,18 @@
     ]
   },
   "latency": {
-    "firstDiagnosticsMs": 200.012792,
+    "firstDiagnosticsMs": 209.05304200000003,
     "diagnostics": {
-      "p50Ms": 0.43579200000004903,
-      "p95Ms": 1.114291000000037,
-      "p99Ms": 1.114291000000037,
-      "maxMs": 1.718999999999994
+      "p50Ms": 0.6022500000000264,
+      "p95Ms": 0.8589580000000296,
+      "p99Ms": 0.8589580000000296,
+      "maxMs": 1.2867499999999836
     },
     "documentSymbols": {
-      "p50Ms": 0.38145900000000665,
-      "p95Ms": 0.7777080000000183,
-      "p99Ms": 0.7777080000000183,
-      "maxMs": 6.389374999999973
+      "p50Ms": 0.6558749999999804,
+      "p95Ms": 1.7641670000000431,
+      "p99Ms": 1.7641670000000431,
+      "maxMs": 7.138582999999983
     }
   },
   "cancellationFence": {
@@ -57,7 +57,7 @@
   "restart": {
     "crashObserved": true,
     "recoveredServiceGeneration": 2,
-    "restartLatencyMs": 192.37650000000008
+    "restartLatencyMs": 198.41029200000003
   },
   "resources": {
     "workersStarted": 2,

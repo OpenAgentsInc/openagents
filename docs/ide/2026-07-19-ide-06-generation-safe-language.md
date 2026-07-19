@@ -204,16 +204,27 @@ The checked receipt is
 - Node 24.13.1, Darwin arm64;
 - TypeScript 6.0.3 via `typescript/lib/tsserverlibrary`;
 - 151 files / 21,712 source bytes / 12 warm samples;
-- first diagnostics: 198.24 ms in the latest gate run;
-- warm diagnostics p50/p95/p99: 0.49 / 0.81 / 0.81 ms;
-- document symbols p50/p95/p99: 0.43 / 1.57 / 1.57 ms;
+- first diagnostics: 209.05 ms in the latest gate run;
+- warm diagnostics p50/p95/p99: 0.60 / 0.86 / 0.86 ms;
+- document symbols p50/p95/p99: 0.66 / 1.76 / 1.76 ms;
 - 100 scheduled superseding requests: 1 committed, 99 suppressed;
-- forced worker crash recovered at service generation 2 in 191.53 ms; and
+- forced worker crash recovered at service generation 2 in 198.41 ms; and
 - 2 workers started across crash/recovery, 0 workers and 0 pending requests
   after stop.
 
 Budgets are 4,000 ms first diagnostics, 750 ms warm p95 diagnostics/symbols,
 and 4,000 ms restart. The receipt records zero remote requests.
+
+The independent packaged macOS arm64 journey is recorded in
+`apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-packaged-language.json`
+and its paired PNG. It launched the staged application through LaunchServices
+at commit `189edaf75b4a6053ea39557bc0cf6ed5813ad20a` and proved the actual Monaco
+TypeScript worker, project-local TypeScript 6.0.3 service generation, current
+Problems receipt, populated Outline, offline private renderer scheme, and
+root-redacted UI. The journey also caught and fixed a real startup race: the
+TypeScript basic-language registration must be present before Monaco can
+activate its richer contribution, and readiness is not published until the
+worker answers for the current model.
 
 ## Honest remaining gaps
 

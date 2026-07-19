@@ -182,6 +182,9 @@ const main = async (): Promise<void> => {
     }, undefined, { timeout: 30_000 })
     const outlineButtons = page.locator('.oa-react-editor-outline ol button')
     await outlineButtons.first().waitFor({ state: "visible", timeout: 30_000 })
+    const documentLocalTierReady = (await localTier.textContent() ?? "").includes("worker ready")
+    const problemsReceiptReady = !((await problemsReceipt.textContent() ?? "").includes("No current diagnostic receipt"))
+    const outlineReady = await outlineButtons.count() > 0
     const editorReady = await primary.getAttribute("aria-label") === `Editor for ${pathRef}`
     const legacyTextareaAbsent = await page.locator('.oa-react-editor-textarea, .oa-react-file-editor > textarea').count() === 0
     const rootWithheld = !(await page.locator('body').innerText()).includes(workspaceRoot)
@@ -226,6 +229,12 @@ const main = async (): Promise<void> => {
     await page.getByRole("button", { name: "Split", exact: true }).click()
     await page.locator('.oa-react-monaco-pane [data-monaco-phase="ready"]').nth(1).waitFor({ state: "visible", timeout: 10_000 })
     const splitViews = await page.locator('.oa-react-monaco-pane').count()
+    await page.waitForFunction(() => {
+      const project = document.querySelector('[data-language-tier="project-local"]')?.textContent ?? ""
+      const problems = document.querySelector('.oa-react-language-panel > header > span')?.textContent ?? ""
+      return !project.includes("no current evidence") && !problems.includes("No current diagnostic receipt")
+    }, undefined, { timeout: 30_000 })
+    await page.locator('.oa-react-editor-outline ol button').first().waitFor({ state: "visible", timeout: 30_000 })
     await page.screenshot({ path: screenshotPath, fullPage: true })
 
     const offlinePrivateScheme = await page.evaluate(async () => {
@@ -305,11 +314,11 @@ const main = async (): Promise<void> => {
       architecture: process.arch,
       packaged: true,
       pathRef,
-      documentLocalTierReady: (await localTier.textContent() ?? "").includes("worker ready"),
+      documentLocalTierReady,
       projectTierReady: projectStatusText.includes("Project 6.0.3"),
       projectServiceGeneration,
-      problemsReceiptReady: !((await problemsReceipt.textContent() ?? "").includes("No current diagnostic receipt")),
-      outlineReady: await outlineButtons.count() > 0,
+      problemsReceiptReady,
+      outlineReady,
       rootWithheld,
       offlineLocalWorkers: offlinePrivateScheme,
       screenshotRef,

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "openagents.desktop.ide-language-packaged-journey.v1",
+  "capturedAt": "2026-07-19T14:02:27.897Z",
+  "commitSha": "189edaf75b4a6053ea39557bc0cf6ed5813ad20a",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "packaged": true,
+  "pathRef": "ide03.ts",
+  "documentLocalTierReady": true,
+  "projectTierReady": true,
+  "projectServiceGeneration": 1,
+  "problemsReceiptReady": true,
+  "outlineReady": true,
+  "rootWithheld": true,
+  "offlineLocalWorkers": true,
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-packaged-language.png"
+}
