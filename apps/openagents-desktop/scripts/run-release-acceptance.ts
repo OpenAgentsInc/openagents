@@ -9,6 +9,8 @@ import { isExportSafe } from "../src/diagnostics-contract.ts"
 import { makeDiagnosticsHost } from "../src/diagnostics-host.ts"
 import { openMacOSUpdateApplier } from "../src/macos-update-applier.ts"
 import { computeDesktopReleasePublish } from "../src/release-publish.ts"
+import { evaluateNoMigrationInvariant } from "../src/update-migration-evidence.ts"
+import { childRuntimeKinds, type ChildRuntimeDrainReceipt } from "../src/update-platform-applier.ts"
 import { openDesktopUpdateStagingHost } from "../src/update-staging-host.ts"
 
 type Step = Readonly<{ step: string; ok: boolean; detail: string }>
@@ -32,6 +34,7 @@ const root = mkdtempSync(path.join(tmpdir(), "openagents-release-acceptance-"))
 const installedApp = "/Applications/OpenAgents Release Update Proof.app"
 const updateRoot = path.join(root, "update")
 const diagnosticsDir = path.join(root, "diagnostics")
+const ownerStateRoot = path.join(root, "owner-state")
 const journal: Step[] = []
 
 mkdirSync(outDir, { recursive: true, mode: 0o700 })
@@ -59,8 +62,10 @@ const mountedCopy = (dmg: string, destination: string): void => {
   // of the same immutable DMG fail during reinstall acceptance.
   const device = attach.match(/^(\/dev\/disk\d+)\b/m)?.[1] ?? mount
   try {
+    const appBundles = readdirSync(mount).filter(name => name.endsWith(".app"))
+    assert(appBundles.length === 1, `mounted DMG must contain exactly one app bundle; observed ${appBundles.length}`)
     rmSync(destination, { recursive: true, force: true })
-    command("/usr/bin/ditto", ["--rsrc", "--extattr", path.join(mount, "OpenAgents.app"), destination])
+    command("/usr/bin/ditto", ["--rsrc", "--extattr", path.join(mount, appBundles[0]!), destination])
   } finally {
     try {
       command("/usr/bin/hdiutil", ["detach", device])
@@ -71,10 +76,16 @@ const mountedCopy = (dmg: string, destination: string): void => {
   }
 }
 const appVersion = (): string => command("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", path.join(installedApp, "Contents", "Info.plist")])
+const verifyDmg = (dmg: string): void => {
+  command("/usr/bin/xcrun", ["stapler", "validate", dmg])
+}
 const verifyInstalled = (expected: string): void => {
   assert(appVersion() === expected, `installed version is not ${expected}`)
   command("/usr/bin/codesign", ["--verify", "--deep", "--strict", installedApp])
-  command("/usr/bin/xcrun", ["stapler", "validate", installedApp])
+  // Forge staples the distributed DMG. The copied app proves notarization
+  // through Gatekeeper's execution assessment; requiring a second app-bundle
+  // ticket rejects valid notarized DMGs such as rc.19 and rc.20.
+  command("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=4", installedApp])
 }
 
 try {
@@ -87,9 +98,11 @@ try {
   const kid = secrets.OPENAGENTS_RELEASE_SIGNING_KID
   assert(typeof d === "string" && d !== "" && typeof kid === "string" && kid !== "", "release signing key unavailable")
 
+  verifyDmg(previousDmg)
+  verifyDmg(candidateDmg)
   mountedCopy(previousDmg, installedApp)
   verifyInstalled(previousVersion)
-  record("install-previous", `stapled ${previousVersion} installed as the reversible update source`)
+  record("install-previous", `stapled DMG ${previousVersion} installed as the reversible update source`)
 
   const artifactBytes = new Uint8Array(readFileSync(candidateDmg))
   const publish = computeDesktopReleasePublish({
@@ -127,19 +140,43 @@ try {
     channel: "rc",
     packaged: true,
   })
-  const host = () => openDesktopUpdateStagingHost({
+  const settingsRoot = path.join(ownerStateRoot, "settings")
+  const draftsFile = path.join(ownerStateRoot, "drafts.sqlite")
+  mkdirSync(settingsRoot, { recursive: true, mode: 0o700 })
+  writeFileSync(draftsFile, "release acceptance fixture", { mode: 0o600 })
+  const migrationEvidence = () => evaluateNoMigrationInvariant({
+    installedApplicationRoot: installedApp,
+    categoryRoots: {
+      sessions: path.join(ownerStateRoot, "sessions"),
+      vaultRefs: path.join(ownerStateRoot, "native-session.enc"),
+      settings: settingsRoot,
+      drafts: draftsFile,
+    },
+    categoryKinds: { sessions: "directory", vaultRefs: "file", settings: "directory", drafts: "file" },
+    absentDispositions: { sessions: "no_sessions", vaultRefs: "signed_out" },
+  })
+  const drained: ChildRuntimeDrainReceipt = {
+    ok: true,
+    drained: [...childRuntimeKinds],
+    timedOut: [],
+    elapsedMs: 0,
+  }
+  const host = (installedVersion: string, applier: typeof applier7) => openDesktopUpdateStagingHost({
     root: updateRoot,
-    installedVersion: previousVersion,
+    installedVersion,
     channel: "rc",
     fetch: fetchImpl as typeof globalThis.fetch,
     openPath: async () => "",
-    applier: applier7,
+    applier,
     baseUrl: feedBase,
+    migrationEvidence,
+    drainChildren: async () => drained,
+    restart: () => undefined,
   })
-  const first = host()
+  const first = host(previousVersion, applier7)
   assert((await first.check()).phase === "available", `signed feed did not expose ${candidateVersion}`)
   assert((await first.download()).phase === "staged", `${candidateVersion} did not stage`)
-  const recovered = host()
+  const recovered = host(previousVersion, applier7)
   assert(recovered.snapshot().phase === "staged", "staged update did not survive process interruption")
   record("interrupted-update", `digest-verified staged ${candidateVersion} survived host destruction and reopen`)
   const applied = await recovered.apply()
@@ -154,6 +191,12 @@ try {
     channel: "rc",
     packaged: true,
   })
+  const launched = host(candidateVersion, applier8)
+  const readyAt = new Date().toISOString()
+  assert((await launched.recordHealthyLaunch({ rendererReadyAt: readyAt, providerReadyAt: readyAt })).phase === "restarting", "healthy launch was not recorded")
+  assert(launched.recordCleanShutdown(drained), "clean shutdown launch receipt was not committed")
+  assert((await launched.reconcile()).phase === "current", "launch receipt did not finalize the update")
+  record("launch-receipt", `${candidateVersion} committed renderer, provider, and clean child-runtime shutdown evidence`)
   const downgrade = await applier8.install(previousDmg, previousVersion)
   assert(!downgrade.ok && downgrade.reason === "candidate_not_monotonic", "downgrade was not refused")
   record("downgrade-refused", `${candidateVersion} refused ${previousVersion} as a candidate outside the rollback slot`)

@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
-import { attachedDiskDevice, MACOS_ATOMIC_REPLACE_JXA, MACOS_FSYNC_JXA, MACOS_UPDATE_TRANSACTION_SCHEMA, openMacOSUpdateApplier, type UpdateCommandRunner } from "./macos-update-applier.ts"
+import { attachedDiskDevice, isSafeMacOSBundleExecutable, MACOS_ATOMIC_REPLACE_JXA, MACOS_FSYNC_JXA, MACOS_UPDATE_TRANSACTION_SCHEMA, mountedMacOSCandidateApp, openMacOSUpdateApplier, type UpdateCommandRunner } from "./macos-update-applier.ts"
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -34,7 +34,7 @@ const fixture = (fail: string | null = null) => {
     }
     if (name === "PlistBuddy") {
       const app = path.dirname(path.dirname(args[2]!))
-      return { exitCode: 0, stdout: args[1]?.includes("CFBundleIdentifier") ? "com.openagents.desktop\n" : args[1]?.includes("CFBundleExecutable") ? "OpenAgents\n" : `${existsSync(path.join(app, "Contents", "candidate")) ? "0.1.0-rc.6" : "0.1.0-rc.5"}\n`, stderr: "" }
+      return { exitCode: 0, stdout: args[1]?.includes("CFBundleIdentifier") ? "com.openagents.desktop.rc\n" : args[1]?.includes("CFBundleExecutable") ? "OpenAgents\n" : `${existsSync(path.join(app, "Contents", "candidate")) ? "0.1.0-rc.6" : "0.1.0-rc.5"}\n`, stderr: "" }
     }
     if (name === "lipo") return { exitCode: 0, stdout: "arm64\n", stderr: "" }
     if (name === "codesign" && args[0] === "-dv") return { exitCode: 0, stdout: "", stderr: "Authority=Developer ID Application: OpenAgents, Inc. (HQWSG26L43)\nTeamIdentifier=HQWSG26L43\n" }
@@ -92,13 +92,28 @@ describe("macOS signed update applier", () => {
     expect(attachedDiskDevice({ exitCode: 0, stdout: "attached without a device receipt", stderr: "" })).toBeNull()
   })
 
+  test("selects one channel-named app bundle and rejects an ambiguous mounted image", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-mounted-candidate-")); roots.push(root)
+    const rc = path.join(root, "OpenAgents RC.app")
+    mkdirSync(rc)
+    expect(mountedMacOSCandidateApp(root)).toBe(rc)
+    mkdirSync(path.join(root, "Unexpected.app"))
+    expect(mountedMacOSCandidateApp(root)).toBeNull()
+  })
+
+  test("accepts a channel executable display name without allowing a path", () => {
+    expect(isSafeMacOSBundleExecutable("OpenAgents RC")).toBe(true)
+    expect(isSafeMacOSBundleExecutable("../OpenAgents")).toBe(false)
+    expect(isSafeMacOSBundleExecutable("OpenAgents/RC")).toBe(false)
+  })
+
   test("restart discovers and consumes exactly one retained rollback slot", async () => {
     const h = fixture()
     expect((await h.applier().install(h.artifact, "0.1.0-rc.6")).ok).toBe(true)
     const restarted = openMacOSUpdateApplier({ root: path.join(h.root, "updates"), installedAppPath: h.installed, installedVersion: "0.1.0-rc.6", channel: "rc", platform: "darwin", packaged: true, run: async (executable, args) => {
       const name = path.basename(executable)
       h.calls.push(`${name} ${args.join(" ")}`)
-      if (name === "PlistBuddy") return { exitCode: 0, stdout: args[1]?.includes("CFBundleIdentifier") ? "com.openagents.desktop\n" : "0.1.0-rc.5\n", stderr: "" }
+      if (name === "PlistBuddy") return { exitCode: 0, stdout: args[1]?.includes("CFBundleIdentifier") ? "com.openagents.desktop.rc\n" : "0.1.0-rc.5\n", stderr: "" }
       if (name === "codesign" && args[0] === "-dv") return { exitCode: 0, stdout: "", stderr: "Authority=Developer ID Application: OpenAgents, Inc. (HQWSG26L43)\nTeamIdentifier=HQWSG26L43\n" }
       if (name === "ditto") {
         const destination = args.at(-1)!; mkdirSync(path.join(destination, "Contents"), { recursive: true }); writeFileSync(path.join(destination, "Contents", "current"), "rc5")

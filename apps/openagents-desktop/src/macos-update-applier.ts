@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { spawn } from "node:child_process"
 
@@ -111,6 +111,25 @@ const output = (result: UpdateCommandResult): string => `${result.stdout}\n${res
  */
 export const attachedDiskDevice = (result: UpdateCommandResult): string | null => output(result).match(/^\/dev\/(disk\d+)\b/m)?.[0] ?? null
 
+/**
+ * Forge may give prerelease bundles a channel-specific display name (for
+ * example `OpenAgents RC.app`). The signed bundle identity—not that display
+ * name—is the authority. Require exactly one ordinary app directory so a DMG
+ * with no candidate or an ambiguous second bundle still fails closed.
+ */
+export const mountedMacOSCandidateApp = (mountpoint: string): string | null => {
+  try {
+    const candidates = readdirSync(mountpoint, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && entry.name.endsWith(".app"))
+    return candidates.length === 1 ? path.join(mountpoint, candidates[0]!.name) : null
+  } catch {
+    return null
+  }
+}
+
+export const isSafeMacOSBundleExecutable = (value: string): boolean =>
+  /^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$/.test(value)
+
 export type MacOSUpdateApplier = DesktopPlatformUpdateApplier & Readonly<{
   rollbackAvailable: () => boolean
   rollbackVersion: () => string | null
@@ -137,7 +156,7 @@ export const openMacOSUpdateApplier = (
 ): MacOSUpdateApplier => {
   const run = input.run ?? defaultRunner
   const platform = input.platform ?? process.platform
-  const bundleId = input.bundleId ?? "com.openagents.desktop"
+  const bundleId = input.bundleId ?? (input.channel === "rc" ? "com.openagents.desktop.rc" : "com.openagents.desktop")
   const teamId = input.teamId ?? "HQWSG26L43"
   const targetArchitecture = input.targetArchitecture ?? (process.arch === "arm64" ? "arm64" : "x64")
   const transactionFile = path.join(input.root, "apply-transaction.json")
@@ -162,7 +181,7 @@ export const openMacOSUpdateApplier = (
     if (version === null || version.stdout.trim() !== expectedVersion) return "version_mismatch"
     if (expectedArchitecture !== undefined) {
       const executable = await commandOk("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleExecutable", path.join(appPath, "Contents", "Info.plist")])
-      if (executable === null || !/^[A-Za-z0-9._-]+$/.test(executable.stdout.trim())) {
+      if (executable === null || !isSafeMacOSBundleExecutable(executable.stdout.trim())) {
         return "architecture_mismatch"
       }
       const architectures = await commandOk("/usr/bin/lipo", ["-archs", path.join(appPath, "Contents", "MacOS", executable.stdout.trim())])
@@ -255,7 +274,8 @@ export const openMacOSUpdateApplier = (
     if (mounted === null) return { ok: false, reason: "mount_failed" }
     const detachTarget = attachedDiskDevice(mounted) ?? mountpoint
     try {
-      const candidateApp = path.join(mountpoint, "OpenAgents.app")
+      const candidateApp = mountedMacOSCandidateApp(mountpoint)
+      if (candidateApp === null) return { ok: false, reason: "candidate_missing" }
       const verification = await verifyApp(candidateApp, candidateVersion, expectedApplicationArchitecture)
       if (verification !== null) return { ok: false, reason: verification }
       const currentVerification = await verifyApp(input.installedAppPath, input.installedVersion)

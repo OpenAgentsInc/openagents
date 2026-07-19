@@ -13,6 +13,7 @@ import {
   assertGatekeeperGreen,
   gatekeeperAppChecks,
   gatekeeperImageChecks,
+  notarizeAndStapleApp,
   notarizeAndStapleDmg,
   unsignedDevArtifactName,
 } from "./scripts/macos-gatekeeper.ts";
@@ -430,6 +431,8 @@ const config: ForgeConfig = {
         `${activeProductIdentity.displayName}.app`,
       );
       await signAsync(macSignOptions(appPath));
+      notarizeAndStapleApp(appPath, notarizeCredentials);
+      assertGatekeeperGreen(gatekeeperAppChecks(appPath));
       process.stderr.write(`[forge] signed verified app before makers: ${appPath}\n`);
     },
     /**
@@ -502,7 +505,7 @@ const config: ForgeConfig = {
           `${activeProductIdentity.displayName}.app`,
         );
         for (const artifact of result.artifacts.filter((file) => file.endsWith(".dmg"))) {
-          notarizeAndStapleDmg(artifact, appPath, notarizeCredentials);
+          notarizeAndStapleDmg(artifact, notarizeCredentials);
           assertGatekeeperGreen([
             ...gatekeeperImageChecks(artifact),
             ...gatekeeperAppChecks(appPath),

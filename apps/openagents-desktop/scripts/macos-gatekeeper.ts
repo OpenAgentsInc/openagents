@@ -34,6 +34,7 @@
  * Bun preflight CLI and the jiti-loaded `forge.config.ts`).
  */
 import { spawnSync } from "node:child_process"
+import { rmSync } from "node:fs"
 import path from "node:path"
 
 // ---------------------------------------------------------------------------
@@ -293,15 +294,43 @@ const runInherit = (command: string, args: ReadonlyArray<string>, label: string)
 }
 
 /**
- * Submit the DMG itself for notarization (Apple's ticket then covers the
- * nested app) and staple the ticket to BOTH the app and the image. If the
- * submission comes back Invalid, `stapler staple` has no ticket to attach
- * and fails — and the Gatekeeper oracle sweep after this call fails closed
- * regardless, so a bad notarization can never produce a publishable make.
+ * Notarize and staple the signed app BEFORE any maker snapshots it. A ticket
+ * stapled to the out/ app after MakerDMG runs does not alter the app already
+ * captured inside the immutable DMG.
  */
+export const notarizeAndStapleApp = (
+  appPath: string,
+  credentials: NotaryCredentials,
+): void => {
+  const archivePath = `${appPath}.notarization.zip`
+  rmSync(archivePath, { force: true })
+  try {
+    runInherit("/usr/bin/ditto", ["-c", "-k", "--keepParent", appPath, archivePath], `archive ${path.basename(appPath)} for notarization`)
+    runInherit(
+      "xcrun",
+      [
+        "notarytool",
+        "submit",
+        archivePath,
+        "--key",
+        credentials.appleApiKey,
+        "--key-id",
+        credentials.appleApiKeyId,
+        "--issuer",
+        credentials.appleApiIssuer,
+        "--wait",
+      ],
+      `notarytool submit ${path.basename(appPath)}`,
+    )
+    runInherit("xcrun", ["stapler", "staple", appPath], `stapler staple ${path.basename(appPath)}`)
+  } finally {
+    rmSync(archivePath, { force: true })
+  }
+}
+
+/** Submit and staple the finished DMG after it captured the stapled app. */
 export const notarizeAndStapleDmg = (
   dmgPath: string,
-  appPath: string,
   credentials: NotaryCredentials,
 ): void => {
   runInherit(
@@ -320,7 +349,6 @@ export const notarizeAndStapleDmg = (
     ],
     `notarytool submit ${path.basename(dmgPath)}`,
   )
-  runInherit("xcrun", ["stapler", "staple", appPath], `stapler staple ${path.basename(appPath)}`)
   runInherit("xcrun", ["stapler", "staple", dmgPath], `stapler staple ${path.basename(dmgPath)}`)
 }
 

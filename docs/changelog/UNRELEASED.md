@@ -5,6 +5,21 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## macOS updates recognize real RC bundles and preserve offline notarization (#8993)
+
+- issues: #8993
+- commits: this change
+- contracts-specs: native macOS update applier; two-phase app and DMG notarization pipeline; packaged release acceptance
+- invariants: channel-specific signed identity and offline app-ticket verification remain fail-closed
+- evidence: docs/sol/receipts/2026-07-19-issue-8993-staging-update-rehearsal.md
+- lane: codex-open-issue-sweep-20260719
+
+The Desktop updater now recognizes the signed name and identity used by real
+release-candidate apps instead of rejecting them as missing or mismatched.
+Future macOS DMGs also capture an already-notarized, already-stapled app before
+the image itself is notarized, preserving offline Gatekeeper protection rather
+than weakening it to accept older malformed release bytes.
+
 ## Full Auto accepts installed non-default Codex models (#9003)
 
 - issues: #9003
