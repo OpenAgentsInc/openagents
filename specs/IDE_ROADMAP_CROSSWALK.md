@@ -67,7 +67,7 @@ authorized to execute and cannot be used as release evidence.
 | IDE-00 — project graph/baseline                   | Desktop AC-39..47, AC-50..52; Cursor CP-AC-19..23, CP-AC-26..27                                                                 | Desktop and Cursor proposed companions                                                                                     | Stable generation-fenced refs, explicit baseline, one Schema-first contract graph, and no status promotion from design prose                                                                        |
 | IDE-01 — dependency/theme/Vim/native spikes       | Desktop AC-47..49, AC-52; Cursor CP-AC-23..25, CP-AC-27                                                                         | Desktop and Cursor proposed companions                                                                                     | License/package/worker/CSP/offline proof, Tokyo Night mapping, Vim engine decision/fallback, and Rust necessity/reversal evidence                                                                   |
 | IDE-02 — complete Pierre path index               | Desktop AC-39..40; Cursor CP-AC-19                                                                                              | Desktop and Cursor proposed companions                                                                                     | Delivered by #9017: complete generation-fenced tree behavior, cancellation/staleness, multi-root/worktree isolation, honest partial/degraded states, typed operations, accessibility, scale/resource and packaged-journey receipts; does not close the broader criteria |
-| IDE-03 — Monaco/Tokyo Night/Vim                   | Desktop AC-39..41, AC-48..51; Cursor CP-AC-19, CP-AC-24..26                                                                     | Desktop and Cursor proposed companions                                                                                     | Canonical document authority outside Monaco, one theme projection, first-party Vim, derived contracts, scoped teardown, and packaged/offline proof                                                  |
+| IDE-03 — Monaco/Tokyo Night/Vim                   | Desktop AC-39..41, AC-48..51; Cursor CP-AC-19, CP-AC-24..26                                                                     | Desktop and Cursor proposed companions                                                                                     | Delivered by #9018: opaque model/view lifecycle, Effect-owned draft/revision/recovery truth, fixed Tokyo Night, first-party persistent Vim, gap/resync fences, lazy private-scheme package, and resource/Finder receipts; does not close broader criteria |
 | IDE-04 — navigation/groups/settings/keymaps       | Desktop AC-11, AC-12, AC-39..41, AC-48; Cursor CP-AC-03, CP-AC-19, CP-AC-24                                                     | Desktop and Cursor proposed companions                                                                                     | One command graph, stable navigation and group state, typed setting precedence, and visible keybinding/Vim conflicts                                                                                |
 | IDE-05 — Pierre review classes                    | Desktop AC-5, AC-6, AC-41, AC-43; Cursor CP-AC-04, CP-AC-20                                                                     | Desktop and Cursor proposed companions                                                                                     | Versioned diff sources remain distinct; stale bases refuse; review/apply/undo uses canonical authority                                                                                              |
 | IDE-06 — language/Problems                        | Desktop AC-42; Cursor CP-AC-19..20                                                                                              | Desktop and Cursor proposed companions                                                                                     | Document/service generations, cancellation, restart, placement/evidence tier, and unavailable truth are observable                                                                                  |
@@ -128,6 +128,41 @@ that result. This evidence supports only the IDE-01 foundation row. It does not
 promote either proposed AssuranceSpec, mount Monaco/Tokyo Night/Vim in the
 production workbench, satisfy IDE-02–07, or authorize a daily-use basic-IDE,
 Zed-quality, or Cursor-parity claim.
+
+### IDE-03 implementation evidence
+
+IDE-03 is implemented by the exact receipt in
+[#9018](https://github.com/OpenAgentsInc/openagents/issues/9018) and the full
+delivery record in
+`docs/ide/2026-07-19-ide-03-monaco-vim-tokyo-night.md`. Its observed evidence
+includes:
+
+- one lazy packaged Monaco island keyed by branded opaque document refs, with
+  paths kept mutable and roots/grants/bridges withheld;
+- schema-derived generation, sequence, model-version, view, selection, edit,
+  Vim-status, resource, benchmark, and packaged-journey contracts;
+- Effect-owned draft, disk revision, conflict, dirty, selection, and version-3
+  restart recovery with stale-generation refusal and sequence-gap resync;
+- fixed Tokyo Night from native-window/first-paint through React/Effect Native,
+  Pierre, and Monaco, with no model recreation;
+- a persistent, off-by-default app-owned Vim controller that routes save/close
+  through typed authority and finalizes mappings on disable, blur, and scope
+  disposal;
+- p50/p95/p99 1 MB open/edit/gap and 12-tab recovery measurements, ordinary-
+  boot/editor/worker byte accounting, zero active-resource delta, and an
+  explicit TypeScript-over-Rust placement decision; and
+- a packaged macOS LaunchServices/Finder journey proving editable Monaco,
+  recovery, two split views, Vim toggle, private-scheme assets, root
+  withholding, production-textarea absence, and zero stopped resources.
+
+Behavior contract `openagents_desktop.ide_monaco_document_runtime.v1` and the
+schema-decoded receipts under `apps/openagents-desktop/benchmarks/ide/` guard
+that result. This evidence supports only the IDE-03 delivery row. It does not
+promote either proposed AssuranceSpec, satisfy IDE-04–07, establish the daily-
+use basic-IDE rung, or authorize Zed-quality or Cursor-parity language. The
+ProductSpec bytes and both AssuranceSpec exact subjects remain unchanged;
+therefore their revisions, digests, and `proposed` lifecycles are not rebound
+by this implementation receipt.
 
 ## Cross-surface defaults and non-authorities
 

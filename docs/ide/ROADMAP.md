@@ -95,12 +95,12 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 
 | Surface                     | Current truth                                                                                                                 | First packet that closes the core gap      |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| source editor               | ordinary React surface renders a controlled `<textarea>`                                                                      | IDE-03                                     |
-| Effect Native editor seam   | compatibility renderer installs `makeStubCodeEditorDriver()`                                                                  | IDE-03                                     |
+| source editor               | IDE-03 ships lazy packaged Monaco over the canonical Effect document/recovery service; no production React textarea route       | IDE-04 deepens navigation and groups       |
+| Effect Native editor seam   | production uses the app-local React Monaco host; `makeStubCodeEditorDriver()` is an explicitly selected compatibility renderer only | later renderer convergence                 |
 | repository tree             | IDE-02 ships a complete Effect-owned, generation-fenced, watched Pierre projection with typed operations and honest incomplete states | IDE-02 delivered; IDE-04 deepens navigation |
 | review                      | `@pierre/diffs@1.2.12` and a projection-only virtualized adapter are admitted; production still uses the custom hunk renderer | IDE-05                                     |
-| themes                      | one owned Tokyo Night projection is admitted; production workbench still renders the fixed Khala theme                        | IDE-03 mounts Tokyo Night from first paint |
-| Vim                         | the complete first-party public-Monaco fallback contract is selected; no runtime key controller or setting is mounted         | IDE-03                                     |
+| themes                      | IDE-03 mounts owned Tokyo Night from native window/first paint through chrome, Pierre, and Monaco                             | IDE-18 adds broader theme modes            |
+| Vim                         | IDE-03 ships the persistent, off-by-default first-party controller with visible modes and scoped teardown                     | IDE-04 adds keymap/conflict inspection     |
 | language intelligence       | no project tsserver/LSP lifecycle or Problems graph                                                                           | IDE-06                                     |
 | terminal screen             | typed child-process terminal exists; no admitted xterm/PTY projection                                                         | IDE-10                                     |
 | tasks/tests/debug           | useful substrate is fragmented; no one project evidence graph                                                                 | IDE-10/11                                  |
@@ -471,7 +471,8 @@ generation badges, typed expected-version operations, accessibility journeys,
 scope teardown, a 10,000-file percentile/resource receipt, and a packaged
 large-repository pointer/keyboard journey are recorded in
 `docs/ide/2026-07-19-ide-02-complete-pierre-explorer.md`. This delivery closes
-the Explorer packet only; IDE-03 remains the next release-rung blocker.
+the Explorer packet only; IDE-03 subsequently closed the editor-runtime
+dependency and IDE-04 is now the next release-rung blocker.
 
 ### IDE-03 — Replace the textarea with Monaco and ship Tokyo Night/Vim
 
@@ -490,6 +491,19 @@ save/save-all, conflict, close, and restart paths.
 Exit: Finder and every current Files route open an input-ready Tokyo Night
 Monaco document first; Vim can be toggled and survives restart; textarea/stub
 paths remain only named compatibility/test fallbacks.
+
+Delivered 2026-07-19 in `#9018`. The production React document route now uses
+one lazy packaged Monaco island keyed by opaque document refs, while Effect
+retains draft/revision/conflict/recovery authority and generation/sequence-gap
+fencing. Tokyo Night initializes at the native window and first HTML paint and
+projects through chrome, Pierre, and Monaco. The persistent built-in Vim
+controller is off by default, exposes modal status, shares document-scoped
+register/mark/repeat state across split views, routes save/close through typed
+authority, suspends during composition, and finalizes its handlers. Full
+architecture, percentile/resource measurements, packaged LaunchServices
+journey, and scope limits are recorded in
+`docs/ide/2026-07-19-ide-03-monaco-vim-tokyo-night.md`. This closes IDE-03
+only; the daily-use basic-IDE rung still requires IDE-04 through IDE-07.
 
 ### IDE-04 — Make the workbench navigable and configurable
 
@@ -750,8 +764,8 @@ It maps every required Cursor family to its main closure packets.
 
 | Cursor capability family    | Current OpenAgents footing                                                                       | Closure packets           |
 | --------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------- |
-| product shells              | agent-first Desktop exists; classic Editor is partial                                            | IDE-03/04/07/17           |
-| editor core                 | typed file/recovery substrate and Pierre tree; textarea, partial navigation                      | IDE-02–07/10–12/18        |
+| product shells              | agent-first Desktop plus an IDE-03 Monaco Editor exist; navigation/configuration remain partial   | IDE-04/07/17              |
+| editor core                 | Effect documents/recovery, complete Pierre tree, Monaco, Tokyo Night, and built-in Vim; navigation/language/review remain partial | IDE-04–07/10–12/18        |
 | AI editing                  | harness editing exists outside a complete editor-native loop                                     | IDE-08/09                 |
 | repository intelligence     | bounded path/content search; no complete symbol/semantic custody stack                           | IDE-02/06/09/18           |
 | conversations               | durable multi-provider/session substrate; parity search/branch/export lifecycle remains ledgered | IDE-17/18                 |
@@ -839,18 +853,21 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Immediate next work
 
-After IDE-00 through IDE-02's exact issue receipts, the next admitted
-implementation work is IDE-03 over the now-fixed package, project, path-index,
-document, theme, and Vim contracts. The first visible destination remains
-deliberately narrow:
+After IDE-00 through IDE-03's exact issue receipts, the next admitted
+implementation work is IDE-04 over the fixed project, Explorer, document,
+Monaco, theme, and Vim contracts. The next visible destination is one coherent
+navigation/configuration graph:
 
-1. preserve the current Command-E/Finder/Pierre Files behavior;
-2. replace the main-region textarea with one canonical Monaco controller;
-3. apply Tokyo Night to the entire workbench from first paint;
-4. let the user toggle built-in Vim mode and retain it across restart;
-5. preserve typed save/conflict/recovery and prove no authority moved into the
-   editor or Vim engine.
+1. quick open, workspace results, breadcrumbs, outline states, and reveal all
+   resolve the same opaque document identity;
+2. preview/pin/reorder/reopen tabs and durable split groups share canonical
+   bytes while retaining view-scoped state;
+3. file operations continue through expected-version typed commands;
+4. settings and keybindings gain typed default/user/workspace precedence,
+   conflict disclosure, reset, import, and export; and
+5. Vim mapping precedence becomes inspectable without introducing an extension
+   host or Monaco-owned command authority.
 
-That slice creates the editor the owner is asking for. The remaining packets
-then deepen it into a Zed-quality agent IDE and finally close the entire Cursor
-ledger without confusing the first successful editor paint for the finish line.
+IDE-04 deepens the successful editor paint into an ordinary navigable
+workbench. IDE-05 through IDE-07 still own review, language intelligence, and
+the packaged daily-use acceptance gate; none may be inferred from IDE-03 alone.

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "openagents.desktop.ide-monaco-benchmark.v1",
+  "capturedAt": "2026-07-19T09:15:13.427Z",
+  "commitSha": "53ca9a3413f11f5517ec6c134a84c637556f2c83",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "nodeVersion": "24.13.1",
+  "fixtureBytes": 1000000,
+  "fixtureTabs": 12,
+  "metrics": [
+    {
+      "metric": "document.open-1mb",
+      "unit": "milliseconds",
+      "repetitions": 12,
+      "p50": 0.128,
+      "p95": 0.243,
+      "p99": 0.319,
+      "minimum": 0.118,
+      "maximum": 0.338,
+      "thresholdP95": 10,
+      "passed": true
+    },
+    {
+      "metric": "document.incremental-edit-1mb",
+      "unit": "milliseconds",
+      "repetitions": 101,
+      "p50": 0.049,
+      "p95": 0.059,
+      "p99": 0.063,
+      "minimum": 0.047,
+      "maximum": 0.071,
+      "thresholdP95": 10,
+      "passed": true
+    },
+    {
+      "metric": "document.sequence-gap-resync-1mb",
+      "unit": "milliseconds",
+      "repetitions": 31,
+      "p50": 0.001,
+      "p95": 0.003,
+      "p99": 0.02,
+      "minimum": 0.001,
+      "maximum": 0.027,
+      "thresholdP95": 15,
+      "passed": true
+    },
+    {
+      "metric": "document.recovery-12-tabs",
+      "unit": "milliseconds",
+      "repetitions": 101,
+      "p50": 13.539,
+      "p95": 14.691,
+      "p99": 14.862,
+      "minimum": 12.924,
+      "maximum": 15.256,
+      "thresholdP95": 40,
+      "passed": true
+    }
+  ],
+  "resources": {
+    "heapDeltaBytes": 105414504,
+    "activeResourcesBefore": 6,
+    "activeResourcesAfter": 6,
+    "activeResourceDelta": 0,
+    "ordinaryBootJavaScriptBytes": 1964887,
+    "editorJavaScriptBytes": 4689027,
+    "editorCssBytes": 487927,
+    "workerBytes": 9359261,
+    "ordinaryBootContainsMonacoGraph": false,
+    "stoppedResourceSnapshot": {
+      "models": 0,
+      "views": 0,
+      "workers": 0,
+      "listeners": 0
+    }
+  },
+  "placement": {
+    "selected": "typescript",
+    "rejected": "rust",
+    "rationale": "The schema-first Effect reducer and lazy Monaco island meet the document-state budgets while keeping one in-process canonical state and one package boundary.",
+    "replacementGate": "Move only a measured bounded text or language hot path after production corpora breach p95/p99 or memory budgets and a Rust prototype wins after serialization, cancellation, packaging, observability, and teardown."
+  },
+  "assertions": [
+    "Twelve one-megabyte grant-scoped documents keep separate opaque model identities.",
+    "Incremental edits and explicit sequence-gap resynchronization remain within written p95 budgets.",
+    "Version-3 recovery encodes and schema-decodes every document identity, draft, revision, selection, and sequence.",
+    "The ordinary boot artifact contains no Monaco implementation graph; the editor and language workers remain a separately fetched private-scheme island.",
+    "The headless state controller owns no workers, views, models, listeners, roots, filesystem grants, or process resources."
+  ]
+}

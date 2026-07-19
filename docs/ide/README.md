@@ -8,12 +8,13 @@ grant implementation authority by themselves.
 Canonical roadmap:
 
 - [OpenAgents IDE roadmap](./ROADMAP.md) — the single dependency-ordered build
-  sequence from the current Files/textarea foundation through Monaco, the
+  sequence from the delivered IDE-00..03 project/Explorer/Monaco foundation through the
   complete Pierre tree/diff plane, built-in toggleable Vim mode, one initial
   Tokyo Night theme, Zed-quality agent integration, and full Cursor parity.
 
 Supporting evidence and architecture (not independent roadmaps):
 
+- [IDE-03 delivery: Monaco, built-in Vim, and Tokyo Night](./2026-07-19-ide-03-monaco-vim-tokyo-night.md) — the authority map, opaque model lifecycle, built-in Vim boundary, theme projection, percentile/resource evidence, and packaged Finder/LaunchServices journey for issue `#9018`.
 - [OpenAgents Desktop basic IDE: VS Code outcomes with Monaco and Pierre](./2026-07-18-openagents-desktop-basic-ide-vscode-pierre-plan.md) — the detailed
   basic-editor component and adapter design; its packet order is superseded by
   the canonical roadmap.
