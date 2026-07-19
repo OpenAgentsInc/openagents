@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 Issue: [#9022](https://github.com/OpenAgentsInc/openagents/issues/9022)
-Status: candidate gate implemented; exact packaged receipts are required before acceptance
+Status: accepted for exact candidate `48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec`
 
 ## Claim boundary
 
@@ -66,11 +66,17 @@ Git worktree proves:
 9. private-scheme/offline editor assets with no legacy textarea; and
 10. zero Monaco models, views, workers, and listeners after disposal.
 
-The separate chat-only journey performs seven fresh packaged cold launches.
+The separate chat-only journey performs seven fresh packaged cold launches on
+the same deterministic React fixture wiring as the IDE-00 startup baseline.
 It waits only for the ordinary chat workspace and never imports the editor
 runtime to inspect it. Chromium resource entries, workers, and mounted DOM
-surfaces must prove zero IDE activation. It also records shell-ready
-p50/p95/p99 and confirms every launched app process stops.
+surfaces must prove zero IDE activation. The shell-ready measurement uses the
+renderer `shellMounted` mark relative to the renderer time origin, avoiding
+LaunchServices/CDP/catalog-hydration overhead that is not present in the
+IDE-00 mark. The disposable `/var/empty` launch root and OS-temporary profile
+prevent owner data from entering the corpus; only host home/repository root
+withholding is asserted, and no temporary root is serialized. Every launched
+app process must stop.
 
 The packaged journey is complemented, not replaced, by the child corpora:
 
@@ -149,7 +155,7 @@ pnpm --dir apps/openagents-desktop run typecheck
 pnpm --dir apps/openagents-desktop run package:mac
 OPENAGENTS_DESKTOP_IDE07_ACCEPTANCE=1 pnpm --dir apps/openagents-desktop run ide:monaco-packaged-journey -- <disposable fixture>
 pnpm --dir apps/openagents-desktop run ide:chat-only-packaged-journey
-pnpm --dir apps/openagents-desktop run ide-baseline -- --out apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-current-baseline.json
+node --import tsx apps/openagents-desktop/scripts/ide-baseline.ts --out apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-current-baseline.json
 pnpm --dir apps/openagents-desktop run verify:ide-07
 ```
 
@@ -160,6 +166,33 @@ The final checked evidence bundle consists of:
 - `2026-07-19-ide-07-current-baseline.json` and raw samples;
 - `2026-07-19-ide-07-acceptance.json`; and
 - every referenced IDE-00 through IDE-06 receipt.
+
+## Accepted exact result
+
+The deterministic repository oracle accepted the exact macOS arm64 candidate
+`48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec` and only that candidate as
+**OpenAgents basic IDE**. The Forge app tree is SHA-256
+`023a0c16e72378ca4f5393a604b1d9af7e7ad3c09c9b17e63c0f02fc9c917e61`:
+360 files, 602,225,469 bytes, Desktop `0.1.0-rc.24`, Electron `43.1.0`,
+macOS 26.4 / Darwin 25.4.0, Apple M5 Max.
+
+All 15 daily-use matrix rows and all 27 p50/p95/p99 metric rows passed. The
+seven packaged chat-only launches measured 1,976.8 ms p50, 2,311.33 ms p95,
+and 2,348.506 ms p99 against frozen 2,696.04/2,704.545 ms p95/p99 ceilings.
+They mounted zero editor assets, renderer workers, Monaco hosts, Pierre trees,
+language placements, or project-index surfaces and left zero app processes.
+The integrated editor journey passed Finder open, Tokyo Night, Explorer,
+Monaco edit/recovery, built-in Vim, two groups, quick open, TypeScript 6.0.3,
+Problems, Outline, Pierre review, offline private-scheme loading, host-root
+withholding, legacy-textarea absence, and zero models/views/workers/listeners
+after close.
+
+`verify:ide-07` passed Desktop typecheck, all 274 test files (2,658 passed,
+39 skipped; 2,697 total), the Effect boundary oracle, closed IDE-00..06 issue
+checks, artifact/SHA recomputation, matrix/metric thresholds, architecture,
+rollback, public-safety, target, and no-overclaim gates. The deterministic
+oracle is non-overridable by the producer; epic #9014 still requires its
+separate human owner disposition.
 
 ## Explicit residual gaps
 

@@ -1,0 +1,704 @@
+{
+  "schemaVersion": "openagents.desktop.ide-basic-ide-acceptance.v1",
+  "generatedAt": "2026-07-19T14:40:25.909Z",
+  "claim": "OpenAgents basic IDE",
+  "candidate": {
+    "target": "darwin-arm64",
+    "candidateCommitSha": "48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec",
+    "packageVersion": "0.1.0-rc.24",
+    "electronVersion": "43.1.0",
+    "artifactRef": "apps/openagents-desktop/out/OpenAgents RC-darwin-arm64/OpenAgents RC.app",
+    "artifactTreeSha256": "023a0c16e72378ca4f5393a604b1d9af7e7ad3c09c9b17e63c0f02fc9c917e61",
+    "artifactFiles": 360,
+    "artifactBytes": 602225469,
+    "platform": "darwin",
+    "architecture": "arm64",
+    "osRelease": "26.4 (25.4.0)",
+    "hardwareClass": "Apple M5 Max",
+    "packaged": true
+  },
+  "childEvidence": [
+    {
+      "packet": "IDE-00",
+      "issue": 9015,
+      "state": "CLOSED",
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-00-baseline.json"
+      ]
+    },
+    {
+      "packet": "IDE-01",
+      "issue": 9016,
+      "state": "CLOSED",
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-01-package-audit.json"
+      ]
+    },
+    {
+      "packet": "IDE-02",
+      "issue": 9017,
+      "state": "CLOSED",
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-path-index.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-journey.json"
+      ]
+    },
+    {
+      "packet": "IDE-03",
+      "issue": 9018,
+      "state": "CLOSED",
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-monaco.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-packaged-journey.json"
+      ]
+    },
+    {
+      "packet": "IDE-04",
+      "issue": 9019,
+      "state": "CLOSED",
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-04-workbench.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-04-packaged-workbench.json"
+      ]
+    },
+    {
+      "packet": "IDE-05",
+      "issue": 9020,
+      "state": "CLOSED",
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-05-review.json"
+      ]
+    },
+    {
+      "packet": "IDE-06",
+      "issue": 9021,
+      "state": "CLOSED",
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-language.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-packaged-language.json"
+      ]
+    }
+  ],
+  "matrix": [
+    {
+      "matrixId": "finder_cold_open",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json"
+      ],
+      "disposition": "LaunchServices opened the supported TypeScript file into the primary packaged Monaco editor."
+    },
+    {
+      "matrixId": "explorer_at_scale",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-path-index.json"
+      ],
+      "disposition": "Packaged pointer/keyboard Explorer evidence is paired with the complete 10k-node cached, uncached, watcher, and teardown corpus."
+    },
+    {
+      "matrixId": "rapid_switching",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-04-workbench.json",
+        "apps/openagents-desktop (complete local test corpus)"
+      ],
+      "disposition": "Preview/pin, split, navigation-generation, and stale-result churn gates pass."
+    },
+    {
+      "matrixId": "editing_and_recovery",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-monaco.json",
+        "apps/openagents-desktop (complete local test corpus)"
+      ],
+      "disposition": "Real Monaco edit, split, reload recovery, save/recovery/encoding/EOL corpora, and zero-resource close pass."
+    },
+    {
+      "matrixId": "conflict",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop (complete local test corpus)"
+      ],
+      "disposition": "Ordinary and Vim saves use the same typed conflict reducer and refuse silent overwrite."
+    },
+    {
+      "matrixId": "search_and_navigation",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-04-workbench.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-path-index.json"
+      ],
+      "disposition": "Quick open, preview pin, workspace search, history, breadcrumbs, Outline, definitions, and references pass their bounded paths."
+    },
+    {
+      "matrixId": "versioned_review",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-05-review.json",
+        "apps/openagents-desktop (complete local test corpus)"
+      ],
+      "disposition": "The packaged worktree renders Pierre Diffs; all eight source classes and refusal/selection/accessibility corpora pass."
+    },
+    {
+      "matrixId": "language_bursts",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-language.json"
+      ],
+      "disposition": "Both worker tiers, all 17 capabilities, 100-request supersession, crash/restart, and stale fences pass."
+    },
+    {
+      "matrixId": "vim_on_off",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-monaco.json",
+        "apps/openagents-desktop (complete local test corpus)"
+      ],
+      "disposition": "The packaged toggle, first-party command corpus, persistence, split isolation, conflict, and teardown pass."
+    },
+    {
+      "matrixId": "keyboard_and_assistive_tech",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-path-index.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-05-review.json",
+        "apps/openagents-desktop (complete local test corpus)"
+      ],
+      "disposition": "Keyboard, screen-reader roles/announcements/focus, and non-color cues pass the complete local accessibility corpus."
+    },
+    {
+      "matrixId": "visual_and_accessibility",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.png",
+        "apps/openagents-desktop (complete local test corpus)"
+      ],
+      "disposition": "Tokyo Night is present before editor readiness with explicit contrast/focus/reduced-motion/zoom/minimum-window gates."
+    },
+    {
+      "matrixId": "offline_and_failure",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-language.json",
+        "apps/openagents-desktop (complete local test corpus)"
+      ],
+      "disposition": "Private-scheme editor/review/language stay local; typed unavailable/degraded/corrupt-state recovery remains explicit."
+    },
+    {
+      "matrixId": "resource_disposal",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-chat-only.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-path-index.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-monaco.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-05-review.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-language.json"
+      ],
+      "disposition": "Models, views, workers, listeners, subscriptions, and pending requests return to their admitted zero/delta bounds."
+    },
+    {
+      "matrixId": "rollback",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop (complete local test corpus)",
+        "docs/ide/2026-07-19-ide-01-package-admission.md"
+      ],
+      "disposition": "Retained-slot update rollback and schema-compatible dependency/theme/Vim/worker source rollback gates pass."
+    },
+    {
+      "matrixId": "chat_only_launch",
+      "passed": true,
+      "evidenceRefs": [
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-chat-only.json"
+      ],
+      "disposition": "Seven packaged cold launches requested zero editor assets and mounted zero Monaco/Pierre/language/index surfaces or renderer workers."
+    }
+  ],
+  "metrics": [
+    {
+      "metric": "workspace.tree.first-page",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 14.979,
+      "p95": 19.256,
+      "p99": 21.668,
+      "thresholdP95": 45.202,
+      "thresholdP99": 49.068,
+      "baselineP95": 22.601,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Warm filesystem cache is not flushed; the first sample is retained in raw results. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "workspace.tree.large-repository-traversal",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 463.668,
+      "p95": 561.351,
+      "p99": 601.197,
+      "thresholdP95": 991.178,
+      "thresholdP99": 992.238,
+      "baselineP95": 495.589,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Traverses every fixture directory page; filesystem cache and directory enumeration vary by host. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "workspace.search.path",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 214.86,
+      "p95": 227.098,
+      "p99": 230.23,
+      "thresholdP95": 474.4,
+      "thresholdP99": 474.52,
+      "baselineP95": 237.2,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Bounded deterministic fixture; filesystem cache is uncontrolled. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "workspace.search.content",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 38.154,
+      "p95": 46.12,
+      "p99": 51.663,
+      "thresholdP95": 95.718,
+      "thresholdP99": 107.284,
+      "baselineP95": 47.859,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Git candidate enumeration and filesystem cache are host-dependent. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "workspace.document.open",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 16.506,
+      "p95": 18.178,
+      "p99": 18.602,
+      "thresholdP95": 40.648,
+      "thresholdP99": 40.922,
+      "baselineP95": 20.324,
+      "method": "linear interpolation over ascending samples",
+      "noise": "4 KiB-or-smaller UTF-8 fixture on local temporary storage. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "workspace.document.save",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 67.394,
+      "p95": 69.522,
+      "p99": 69.529,
+      "thresholdP95": 172.642,
+      "thresholdP99": 177.752,
+      "baselineP95": 86.321,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Atomic local file replacement; preparation writes are excluded. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "workspace.document.conflict-detection",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 50.491,
+      "p95": 52.213,
+      "p99": 52.509,
+      "thresholdP95": 120.964,
+      "thresholdP99": 122.6,
+      "baselineP95": 60.482,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Conflict is detected against an intentionally stale revision. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "editor.recovery-snapshot",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 0.002,
+      "p95": 0.022,
+      "p99": 0.035,
+      "thresholdP95": 0.032,
+      "thresholdP99": 0.048,
+      "baselineP95": 0.016,
+      "method": "linear interpolation over ascending samples",
+      "noise": "In-memory schema-ready recovery projection; persistence flush is excluded. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "git.status",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 11.719,
+      "p95": 12.648,
+      "p99": 12.848,
+      "thresholdP95": 31.286,
+      "thresholdP99": 31.986,
+      "baselineP95": 15.643,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Spawns fixed git porcelain command against a 2,000-file fixture. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "git.diff",
+      "unit": "milliseconds",
+      "repetitions": 11,
+      "p50": 19.531,
+      "p95": 20.25,
+      "p99": 20.423,
+      "thresholdP95": 41.608,
+      "thresholdP99": 41.632,
+      "baselineP95": 20.804,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Spawns bounded numstat and unified diff commands. IDE-07 freezes a 2x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "resource.node-rss",
+      "unit": "bytes",
+      "repetitions": 11,
+      "p50": 235175936,
+      "p95": 235175936,
+      "p99": 235175936,
+      "thresholdP95": 338411520,
+      "thresholdP99": 338411520,
+      "baselineP95": 225607680,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Process-wide Node harness observation after repeated fixture operations; not split by Electron renderer/main. IDE-07 freezes a 1.5x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "resource.open-file-descriptors",
+      "unit": "count",
+      "repetitions": 11,
+      "p50": 18,
+      "p95": 18,
+      "p99": 18,
+      "thresholdP95": 30,
+      "thresholdP99": 30,
+      "baselineP95": 20,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Process-wide Node harness observation after repeated fixture operations; not split by Electron renderer/main. IDE-07 freezes a 1.5x IDE-00 non-regression envelope; the receipt cannot expand it.",
+      "passed": true
+    },
+    {
+      "metric": "packaged.chat-only.shell-ready",
+      "unit": "milliseconds",
+      "repetitions": 7,
+      "p50": 1976.8,
+      "p95": 2311.33,
+      "p99": 2348.506,
+      "thresholdP95": 2696.04,
+      "thresholdP99": 2704.545,
+      "baselineP95": 1797.36,
+      "method": "linear interpolation over ascending samples",
+      "noise": "LaunchServices, Chromium connection, and shell mount include uncontrolled macOS scheduler and filesystem-cache noise.",
+      "passed": true
+    },
+    {
+      "metric": "explorer.path-index.complete-10k-scan",
+      "unit": "milliseconds",
+      "repetitions": 7,
+      "p50": 112.338,
+      "p95": 122.283,
+      "p99": 123.653,
+      "thresholdP95": 1500,
+      "thresholdP99": 1875,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Packet-owned threshold from 2026-07-19-ide-02-path-index.json; IDE-07 does not modify it.",
+      "passed": true
+    },
+    {
+      "metric": "explorer.path-index.cached-pierre-projection",
+      "unit": "milliseconds",
+      "repetitions": 101,
+      "p50": 9.282,
+      "p95": 11.089,
+      "p99": 13.698,
+      "thresholdP95": 40,
+      "thresholdP99": 50,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Packet-owned threshold from 2026-07-19-ide-02-path-index.json; IDE-07 does not modify it.",
+      "passed": true
+    },
+    {
+      "metric": "explorer.path-index.keyboard-target-traversal",
+      "unit": "milliseconds",
+      "repetitions": 101,
+      "p50": 9.228,
+      "p95": 9.678,
+      "p99": 10.643,
+      "thresholdP95": 40,
+      "thresholdP99": 50,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Packet-owned threshold from 2026-07-19-ide-02-path-index.json; IDE-07 does not modify it.",
+      "passed": true
+    },
+    {
+      "metric": "explorer.path-index.incremental-watcher-update",
+      "unit": "milliseconds",
+      "repetitions": 31,
+      "p50": 24.967,
+      "p95": 27.918,
+      "p99": 30.598,
+      "thresholdP95": 150,
+      "thresholdP99": 187.5,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Packet-owned threshold from 2026-07-19-ide-02-path-index.json; IDE-07 does not modify it.",
+      "passed": true
+    },
+    {
+      "metric": "monaco.document.open-1mb",
+      "unit": "milliseconds",
+      "repetitions": 12,
+      "p50": 0.128,
+      "p95": 0.243,
+      "p99": 0.319,
+      "thresholdP95": 10,
+      "thresholdP99": 12.5,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Packet-owned threshold from 2026-07-19-ide-03-monaco.json; IDE-07 does not modify it.",
+      "passed": true
+    },
+    {
+      "metric": "monaco.document.incremental-edit-1mb",
+      "unit": "milliseconds",
+      "repetitions": 101,
+      "p50": 0.049,
+      "p95": 0.059,
+      "p99": 0.063,
+      "thresholdP95": 10,
+      "thresholdP99": 12.5,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Packet-owned threshold from 2026-07-19-ide-03-monaco.json; IDE-07 does not modify it.",
+      "passed": true
+    },
+    {
+      "metric": "monaco.document.sequence-gap-resync-1mb",
+      "unit": "milliseconds",
+      "repetitions": 31,
+      "p50": 0.001,
+      "p95": 0.003,
+      "p99": 0.02,
+      "thresholdP95": 15,
+      "thresholdP99": 18.75,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Packet-owned threshold from 2026-07-19-ide-03-monaco.json; IDE-07 does not modify it.",
+      "passed": true
+    },
+    {
+      "metric": "monaco.document.recovery-12-tabs",
+      "unit": "milliseconds",
+      "repetitions": 101,
+      "p50": 13.539,
+      "p95": 14.691,
+      "p99": 14.862,
+      "thresholdP95": 40,
+      "thresholdP99": 50,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Packet-owned threshold from 2026-07-19-ide-03-monaco.json; IDE-07 does not modify it.",
+      "passed": true
+    },
+    {
+      "metric": "workbench.quick-open",
+      "unit": "milliseconds",
+      "repetitions": 32,
+      "p50": 2.950917000000004,
+      "p95": 3.1669169999999554,
+      "p99": 3.2973329999999805,
+      "thresholdP95": 250,
+      "thresholdP99": 312.5,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Deterministic bounded IDE-04 state benchmark.",
+      "passed": true
+    },
+    {
+      "metric": "workbench.navigation-push",
+      "unit": "milliseconds",
+      "repetitions": 10000,
+      "p50": 0.1462500000000091,
+      "p95": 0.17300000000000182,
+      "p99": 0.2961249999998472,
+      "thresholdP95": 2,
+      "thresholdP99": 2.5,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "Deterministic bounded IDE-04 state benchmark.",
+      "passed": true
+    },
+    {
+      "metric": "review.source-projection",
+      "unit": "milliseconds",
+      "repetitions": 30,
+      "p50": 0.11508300000002691,
+      "p95": 0.17737500000004047,
+      "p99": 0.23141700000002174,
+      "thresholdP95": 20,
+      "thresholdP99": 25,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "IDE-05 eight-source-class and 500-file aggregate corpus.",
+      "passed": true
+    },
+    {
+      "metric": "review.aggregate-parse",
+      "unit": "milliseconds",
+      "repetitions": 30,
+      "p50": 8.465708000000063,
+      "p95": 8.765625,
+      "p99": 9.999167,
+      "thresholdP95": 250,
+      "thresholdP99": 312.5,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "IDE-05 eight-source-class and 500-file aggregate corpus.",
+      "passed": true
+    },
+    {
+      "metric": "language.diagnostics",
+      "unit": "milliseconds",
+      "repetitions": 12,
+      "p50": 0.6022500000000264,
+      "p95": 0.8589580000000296,
+      "p99": 0.8589580000000296,
+      "thresholdP95": 750,
+      "thresholdP99": 937.5,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "IDE-06 persistent real TypeScript 6.0.3 worker corpus.",
+      "passed": true
+    },
+    {
+      "metric": "language.document-symbols",
+      "unit": "milliseconds",
+      "repetitions": 12,
+      "p50": 0.6558749999999804,
+      "p95": 1.7641670000000431,
+      "p99": 1.7641670000000431,
+      "thresholdP95": 750,
+      "thresholdP99": 937.5,
+      "baselineP95": null,
+      "method": "linear interpolation over ascending samples",
+      "noise": "IDE-06 persistent real TypeScript 6.0.3 worker corpus.",
+      "passed": true
+    }
+  ],
+  "chatOnly": {
+    "schemaVersion": "openagents.desktop.ide-chat-only-packaged.v1",
+    "capturedAt": "2026-07-19T14:37:54.995Z",
+    "candidateCommitSha": "48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec",
+    "artifactTreeSha256": "023a0c16e72378ca4f5393a604b1d9af7e7ad3c09c9b17e63c0f02fc9c917e61",
+    "repetitions": 7,
+    "shellReadyMs": {
+      "p50": 1976.8,
+      "p95": 2311.33,
+      "p99": 2348.506
+    },
+    "editorAssetsRequested": 0,
+    "rendererWorkers": 0,
+    "monacoHosts": 0,
+    "pierreTrees": 0,
+    "languagePlacements": 0,
+    "projectIndexSurfaces": 0,
+    "rootWithheld": true,
+    "appProcessesAfter": 0
+  },
+  "architecture": {
+    "oneSchemaSourcePerBoundary": true,
+    "contextServiceAndLayerEffect": true,
+    "namedEffectFunctions": true,
+    "taggedSchemaErrors": true,
+    "decodedRendererInputs": true,
+    "scopedLifecycle": true,
+    "rendererOwnsNoAuthority": true,
+    "nativeOwnsNoAuthority": true,
+    "tokyoNightOnly": true,
+    "vimFirstPartyOffByDefaultDisposable": true,
+    "noRemoteIndexOrUploadOrTelemetryExpansion": true,
+    "publicSafeEvidence": true
+  },
+  "rollback": {
+    "targetCommitSha": "9bbe09766e1cccf32a38e39c2cce7308873eb817",
+    "settingsSchemaCompatible": true,
+    "recoverySchemaCompatible": true,
+    "dependencyRemovalDocumented": true,
+    "updateRollbackCorpusPassed": true
+  },
+  "targets": {
+    "claimed": [
+      "darwin-arm64"
+    ],
+    "unavailable": [
+      {
+        "target": "darwin-x64",
+        "reason": "No IDE-07 packaged candidate was evaluated for this target."
+      },
+      {
+        "target": "win32-arm64",
+        "reason": "No IDE-07 packaged candidate was evaluated for this target."
+      },
+      {
+        "target": "win32-x64",
+        "reason": "No IDE-07 packaged candidate was evaluated for this target."
+      },
+      {
+        "target": "linux-arm64",
+        "reason": "No IDE-07 packaged candidate was evaluated for this target."
+      },
+      {
+        "target": "linux-x64",
+        "reason": "No IDE-07 packaged candidate was evaluated for this target."
+      }
+    ]
+  },
+  "review": {
+    "reviewerClass": "deterministic_repository_oracle",
+    "oracleRef": "apps/openagents-desktop/scripts/ide-basic-ide-acceptance.ts",
+    "producerCanOverride": false,
+    "disposition": "pass"
+  },
+  "laterGaps": [
+    "IDE-08 inspectable agent context and proposal loop remain incomplete.",
+    "IDE-09 AI completion and version-bound multi-file editing remain incomplete.",
+    "IDE-10 terminal, PTY, tasks, tests, and debug integration remain incomplete.",
+    "IDE-11 broader SCM delivery and repository workflows remain incomplete.",
+    "IDE-12 light, high-contrast, system, and marketplace themes remain incomplete.",
+    "IDE-13 portable host placement remains incomplete.",
+    "IDE-14 mobile supervision of portable IDE capabilities remains incomplete.",
+    "IDE-15 isolated extensions and component ABI remain incomplete.",
+    "IDE-16 data inventory, migration, export, and deletion breadth remains incomplete.",
+    "IDE-17 Cursor parity closure remains incomplete.",
+    "IDE-18 full accessibility and platform matrix remains incomplete.",
+    "IDE-19 full-IDE and parity release gate remains incomplete."
+  ],
+  "assertions": [
+    "This receipt admits only the exact phrase OpenAgents basic IDE.",
+    "No Zed-quality, full-IDE, Cursor-parity, drop-in-replacement, or later-rung claim is implied.",
+    "Only the packaged macOS arm64 target is claimed; every other target remains visibly unavailable.",
+    "The deterministic oracle rejects missing child evidence, metric regressions, artifact/SHA disagreement, root leakage, or a non-zero chat-only IDE cost.",
+    "No cloud language service, embeddings, remote semantic index, repository upload, telemetry expansion, AI editing, terminal expansion, or extension runtime was enabled.",
+    "Issue #9014 still requires owner acceptance; IDE-07 closure alone does not close the epic or create a broader promise."
+  ]
+}

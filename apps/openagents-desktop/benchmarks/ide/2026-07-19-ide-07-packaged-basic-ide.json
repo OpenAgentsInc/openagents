@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "openagents.desktop.ide-basic-ide-packaged-journey.v1",
+  "capturedAt": "2026-07-19T14:36:54.072Z",
+  "candidateCommitSha": "48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec",
+  "artifactTreeSha256": "023a0c16e72378ca4f5393a604b1d9af7e7ad3c09c9b17e63c0f02fc9c917e61",
+  "target": "darwin-arm64",
+  "finderColdOpen": true,
+  "tokyoNightBeforeEditorReady": true,
+  "editorReady": true,
+  "explorerReady": true,
+  "quickOpenReady": true,
+  "edited": true,
+  "recoveryReloaded": true,
+  "vimToggled": true,
+  "splitViews": 2,
+  "reviewReady": true,
+  "documentLocalWorkerReady": true,
+  "projectLanguageReady": true,
+  "problemsReady": true,
+  "outlineReady": true,
+  "offlinePrivateScheme": true,
+  "rootWithheld": true,
+  "legacyTextareaAbsent": true,
+  "resourcesAfterClose": {
+    "models": 0,
+    "views": 0,
+    "workers": 0,
+    "listeners": 0
+  },
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-07-packaged-basic-ide.png"
+}

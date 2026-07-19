@@ -20,8 +20,6 @@ const repositoryRoot = path.resolve(appRoot, "../..")
 const benchmarkRoot = path.join(appRoot, "benchmarks", "ide")
 const outputPath = path.join(benchmarkRoot, "2026-07-19-ide-07-acceptance.json")
 const readJson = (name: string): unknown => JSON.parse(readFileSync(path.join(benchmarkRoot, name), "utf8"))
-const candidateCommitSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "utf8" }).trim()
-const candidate = packagedArtifactReceipt(candidateCommitSha)
 
 const assert: (condition: unknown, message: string) => asserts condition = (condition, message) => {
   if (!condition) throw new Error(`IDE-07 acceptance refused: ${message}`)
@@ -41,9 +39,19 @@ const currentBaseline = Schema.decodeUnknownSync(IdeBaselineReceiptSchema)(readJ
 const ide00Baseline = Schema.decodeUnknownSync(IdeBaselineReceiptSchema)(readJson("2026-07-19-ide-00-baseline.json"))
 const chatOnly = Schema.decodeUnknownSync(IdeBasicIdeChatOnlyReceiptSchema)(readJson("2026-07-19-ide-07-chat-only.json"))
 const packaged = Schema.decodeUnknownSync(IdeBasicIdePackagedJourneyReceiptSchema)(readJson("2026-07-19-ide-07-packaged-basic-ide.json"))
+const candidateCommitSha = packaged.candidateCommitSha
+const candidate = packagedArtifactReceipt(candidateCommitSha)
+const currentCommitSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repositoryRoot, encoding: "utf8" }).trim()
+try {
+  execFileSync("git", ["merge-base", "--is-ancestor", candidateCommitSha, currentCommitSha], {
+    cwd: repositoryRoot,
+    stdio: "ignore",
+  })
+} catch {
+  throw new Error("IDE-07 acceptance refused: packaged candidate is not an ancestor of the evaluating commit")
+}
 
 assert(chatOnly.candidateCommitSha === candidateCommitSha, "chat-only receipt does not bind the candidate SHA")
-assert(packaged.candidateCommitSha === candidateCommitSha, "packaged editor receipt does not bind the candidate SHA")
 assert(chatOnly.artifactTreeSha256 === candidate.artifactTreeSha256, "chat-only artifact digest differs")
 assert(packaged.artifactTreeSha256 === candidate.artifactTreeSha256, "packaged editor artifact digest differs")
 
@@ -243,7 +251,7 @@ const themeSource = readFileSync(path.join(appRoot, "src", "ide", "tokyo-night-t
 const vimSource = readFileSync(path.join(appRoot, "src", "ide", "vim-mode-contract.ts"), "utf8")
 const languageSource = readFileSync(path.join(appRoot, "src", "ide", "language-service.ts"), "utf8")
 assert(themeSource.includes('id: "tokyo-night"') && themeSource.includes("initializedBeforeEditorPaint"), "Tokyo Night projection is not frozen")
-assert(vimSource.includes("offByDefault") && vimSource.includes("first_party"), "first-party Vim policy is not frozen")
+assert(vimSource.includes("defaultEnabled: Schema.Literal(false)") && vimSource.includes("first_party_public_monaco_controller"), "first-party Vim policy is not frozen")
 for (const token of ["Context.Service", "Layer.effect", "Effect.fn", "Schema.TaggedErrorClass"]) assert(languageSource.includes(token), `language authority is missing ${token}`)
 for (const file of ["2026-07-19-ide-07-chat-only.json", "2026-07-19-ide-07-packaged-basic-ide.json"]) {
   const source = readFileSync(path.join(benchmarkRoot, file), "utf8")
@@ -255,10 +263,19 @@ const rollbackTarget = execFileSync("git", ["rev-list", "-n", "1", "HEAD", "--",
   cwd: repositoryRoot,
   encoding: "utf8",
 }).trim()
+const generatedAt = (() => {
+  try {
+    const previous = Schema.decodeUnknownSync(IdeBasicIdeAcceptanceReceiptSchema)(readJson("2026-07-19-ide-07-acceptance.json"))
+    if (previous.candidate.candidateCommitSha === candidateCommitSha) return previous.generatedAt
+  } catch {
+    // The first successful exact candidate evaluation establishes the timestamp.
+  }
+  return new Date().toISOString()
+})()
 
 const receipt = Schema.decodeUnknownSync(IdeBasicIdeAcceptanceReceiptSchema)({
   schemaVersion: "openagents.desktop.ide-basic-ide-acceptance.v1",
-  generatedAt: new Date().toISOString(),
+  generatedAt,
   claim: "OpenAgents basic IDE",
   candidate,
   childEvidence: childEvidence.map(([packet, issue, refs]) => ({ packet, issue, state: issueState(issue), evidenceRefs: refs })),

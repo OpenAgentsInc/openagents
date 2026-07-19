@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "openagents.desktop.ide-chat-only-packaged.v1",
+  "capturedAt": "2026-07-19T14:37:54.995Z",
+  "candidateCommitSha": "48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec",
+  "artifactTreeSha256": "023a0c16e72378ca4f5393a604b1d9af7e7ad3c09c9b17e63c0f02fc9c917e61",
+  "repetitions": 7,
+  "shellReadyMs": {
+    "p50": 1976.8,
+    "p95": 2311.33,
+    "p99": 2348.506
+  },
+  "editorAssetsRequested": 0,
+  "rendererWorkers": 0,
+  "monacoHosts": 0,
+  "pierreTrees": 0,
+  "languagePlacements": 0,
+  "projectIndexSurfaces": 0,
+  "rootWithheld": true,
+  "appProcessesAfter": 0
+}

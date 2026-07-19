@@ -70,8 +70,8 @@ authorized to execute and cannot be used as release evidence.
 | IDE-03 — Monaco/Tokyo Night/Vim                   | Desktop AC-39..41, AC-48..51; Cursor CP-AC-19, CP-AC-24..26                                                                     | Desktop and Cursor proposed companions                                                                                     | Delivered by #9018: opaque model/view lifecycle, Effect-owned draft/revision/recovery truth, fixed Tokyo Night, first-party persistent Vim, gap/resync fences, lazy private-scheme package, and resource/Finder receipts; does not close broader criteria |
 | IDE-04 — navigation/groups/settings/keymaps       | Desktop AC-11, AC-12, AC-39..41, AC-48; Cursor CP-AC-03, CP-AC-19, CP-AC-24                                                     | Desktop and Cursor proposed companions                                                                                     | Delivered by #9019: one command graph, stable navigation/groups, bounded Quick Open, typed settings/keymaps and visible Vim precedence; broader criteria remain open                                |
 | IDE-05 — Pierre review classes                    | Desktop AC-5, AC-6, AC-41, AC-43; Cursor CP-AC-04, CP-AC-20                                                                     | Desktop and Cursor proposed companions                                                                                     | Delivered by #9020: eight versioned diff classes remain distinct, stale bases refuse, Pierre stays projection-only, and mutation authority remains deferred to its owning packet                     |
-| IDE-06 — language/Problems                        | Desktop AC-42; Cursor CP-AC-19..20                                                                                              | Desktop and Cursor proposed companions                                                                                     | Delivered by #9021: visible local/project tiers, full first TypeScript capability corpus, document/service generations, cancellation, supervised restart, placement/evidence, shared projections, and unavailable truth; IDE-07 still gates the rung |
-| IDE-07 — daily-use basic IDE gate                 | Desktop AC-39..42, AC-48..52; Cursor CP-AC-18..19, CP-AC-24..27                                                                 | Desktop and Cursor proposed companions                                                                                     | Packaged integrated corpus passes; release says only “daily-use basic IDE”; all later gaps stay visible                                                                                             |
+| IDE-06 — language/Problems                        | Desktop AC-42; Cursor CP-AC-19..20                                                                                              | Desktop and Cursor proposed companions                                                                                     | Delivered by #9021: visible local/project tiers, full first TypeScript capability corpus, document/service generations, cancellation, supervised restart, placement/evidence, shared projections, and unavailable truth; IDE-07 subsequently accepted the integrated rung |
+| IDE-07 — daily-use basic IDE gate                 | Desktop AC-39..42, AC-48..52; Cursor CP-AC-18..19, CP-AC-24..27                                                                 | Desktop and Cursor proposed companions                                                                                     | Delivered by #9022 for exact macOS arm64 candidate `48c32a1d4c`: 15/15 matrix rows and 27/27 metrics pass; release says only “OpenAgents basic IDE”; every later gap and epic owner disposition stay visible |
 | IDE-08 — agent context/proposals/backlinks        | Desktop AC-17, AC-43; Cursor CP-AC-20                                                                                           | Desktop and Cursor proposed companions                                                                                     | Inspectable disclosure, exact proposal base, review/apply/undo receipts, post-apply evidence, and no harness editor authority                                                                       |
 | IDE-09 — AI completion/inline/multi-file editing  | Desktop AC-26, AC-28; Cursor CP-AC-04, CP-AC-12..13                                                                             | Desktop and Cursor proposed companions                                                                                     | Quality/latency corpus, exact effective model/harness/placement/data disclosure, and canonical accept/reject/undo                                                                                   |
 | IDE-10 — terminal/tasks/tests/Output              | Desktop AC-42, AC-44, AC-47; Cursor CP-AC-19, CP-AC-23                                                                          | Desktop and Cursor proposed companions                                                                                     | Effect-owned identity/retention/evidence; xterm projection; narrowly admitted PTY helper; restart/gap/late-event proof                                                                              |
@@ -185,8 +185,25 @@ root-redacted and apply edits only through exact canonical document authority.
 
 This implementation evidence does not change either AssuranceSpec from
 `proposed`, satisfy the complete Desktop AC-42 or Cursor parity criteria by
-itself, admit another language/LSP, or promote the Daily-use basic IDE rung.
-Only IDE-07's integrated packaged gate can close that first rung.
+itself, or admit another language/LSP. IDE-07 subsequently accepted only the
+narrow integrated basic-IDE rung.
+
+### IDE-07 implementation evidence
+
+IDE-07 is implemented by the exact closing receipt in
+[#9022](https://github.com/OpenAgentsInc/openagents/issues/9022) and the full
+record in `docs/ide/2026-07-19-ide-07-basic-ide-acceptance.md`. Candidate
+`48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec` binds one 360-file macOS arm64
+Forge app tree by SHA-256. Its schema-first, non-overridable evaluator checks
+all seven closed child packets, all 15 daily-use matrix rows, all 27 frozen
+p50/p95/p99 metric rows, the packaged Finder/editor/review/language/Vim/
+offline/disposal journey, seven zero-IDE-cost chat launches, Effect custody,
+rollback, public safety, target unavailability, and exact claim language.
+
+That receipt admits only **OpenAgents basic IDE**. It does not promote either
+AssuranceSpec from `proposed`, satisfy the full Desktop or Cursor criteria,
+claim another platform, imply Zed quality, close IDE-08..19, close epic #9014,
+or replace its human owner disposition.
 
 ## Cross-surface defaults and non-authorities
 

@@ -95,13 +95,13 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 
 | Surface                     | Current truth                                                                                                                 | First packet that closes the core gap      |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| source editor               | IDE-03/04 ship lazy packaged Monaco over the canonical Effect document/recovery service; IDE-06 adds exact-generation local language intelligence and shared editor/Problems/Outline projections | IDE-07 certifies the integrated daily journey |
+| source editor               | IDE-03/04 ship lazy packaged Monaco over the canonical Effect document/recovery service; IDE-06 adds exact-generation local language intelligence; IDE-07 accepts the integrated packaged daily journey | IDE-08+ adds agent/run/SCM/platform breadth |
 | Effect Native editor seam   | production uses the app-local React Monaco host; `makeStubCodeEditorDriver()` is an explicitly selected compatibility renderer only | later renderer convergence                 |
 | repository tree             | IDE-02/04 ship the complete Effect-owned, generation-fenced Pierre projection plus mouse/keyboard navigation, reveal, and durable workbench integration | IDE-02 and IDE-04 delivered                |
 | review                      | IDE-05 ships one eight-variant versioned review source and both production React surfaces render through the projection-only `@pierre/diffs@1.2.12` adapter | IDE-08 adds real proposals; IDE-12 adds safe SCM mutation |
 | themes                      | IDE-03 mounts owned Tokyo Night from native window/first paint through chrome, Pierre, and Monaco                             | IDE-18 adds broader theme modes            |
-| Vim                         | IDE-03/04 ship the persistent, off-by-default first-party controller with visible modes, durable keymap inspection, conflict reporting, and scoped teardown | IDE-07 certifies the packaged journey      |
-| language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared Problems/Outline/breadcrumb/location/editor evidence, cancellation, restart, and stale-result refusal | IDE-07 integrated gate; later languages remain explicit gaps |
+| Vim                         | IDE-03/04 ship the persistent, off-by-default first-party controller with visible modes, durable keymap inspection, conflict reporting, scoped teardown, and IDE-07 packaged acceptance | later mapping breadth remains ledgered     |
+| language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared projections, cancellation, restart, and stale-result refusal; IDE-07 accepts the integrated path | later languages remain explicit gaps       |
 | terminal screen             | typed child-process terminal exists; no admitted xterm/PTY projection                                                         | IDE-10                                     |
 | tasks/tests/debug           | useful substrate is fragmented; no one project evidence graph                                                                 | IDE-10/11                                  |
 | integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph  | IDE-00 onward                              |
@@ -504,8 +504,8 @@ authority, suspends during composition, and finalizes its handlers. Full
 architecture, percentile/resource measurements, packaged LaunchServices
 journey, and scope limits are recorded in
 `docs/ide/2026-07-19-ide-03-monaco-vim-tokyo-night.md`. This closes IDE-03
-only; IDE-04 and IDE-05 subsequently closed, while the daily-use basic-IDE
-rung still requires IDE-06 and IDE-07.
+only; IDE-04 through IDE-07 subsequently closed and accepted the narrow basic-
+IDE rung while leaving every later capability gap visible.
 
 ### IDE-04 — Make the workbench navigable and configurable
 
@@ -549,8 +549,8 @@ document-local Monaco workers distinct from the persistent Effect-supervised
 project TypeScript service; all seventeen initial capabilities, shared
 Problems/Outline/breadcrumb/location/editor projections, exact generation
 fences, cancellation, crash recovery, measurements, and zero-resource stop are
-implemented. IDE-07 remains the release-rung gate, and the documented
-TypeScript-only/cross-file-edit limits remain honest gaps.
+implemented. IDE-07 subsequently accepted the integrated packaged rung, while
+the documented TypeScript-only/cross-file-edit limits remain honest gaps.
 
 Start with Monaco-local workers for immediate syntax/JSON/CSS/HTML/TypeScript
 help, clearly labeled as document-local. Add an Effect-owned tsserver/LSP host
@@ -571,7 +571,12 @@ The schema-first exact-artifact gate, packaged editor/chat-only journeys,
 frozen percentile/resource evaluator, custody audit, rollback binding, target
 limits, and claim boundary are implemented in
 [the IDE-07 acceptance dossier](2026-07-19-ide-07-basic-ide-acceptance.md).
-The packet is not accepted until its exact candidate receipts decode and pass.
+Candidate `48c32a1d4c2f9ff84d8e92fe1c9ab074096b1fec` is accepted for the exact
+macOS arm64 app-tree digest recorded there. All 15 matrix rows, 27 checked
+metrics, the complete Desktop corpus, Effect boundary oracle, seven chat-only
+launches, integrated packaged editor journey, rollback, target, and
+no-overclaim gates pass. The admitted language is only “OpenAgents basic IDE”;
+the epic's separate owner acceptance and every IDE-08..19 gap remain open.
 
 Run packaged journeys for Finder cold open, large/multi-root Explorer, rapid
 file switching, split dirty recovery, conflict, search, navigation, Git review,
@@ -787,8 +792,8 @@ It maps every required Cursor family to its main closure packets.
 
 | Cursor capability family    | Current OpenAgents footing                                                                       | Closure packets           |
 | --------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------- |
-| product shells              | agent-first Desktop plus Monaco, complete navigation/configuration, and versioned Pierre review exist; packaged daily acceptance remains | IDE-07/17                 |
-| editor core                 | Effect documents/recovery, complete Pierre tree, Monaco, Tokyo Night, built-in Vim, daily workbench, eight-class Pierre review, and IDE-06 generation-safe TypeScript project intelligence; integrated daily acceptance and later run/SCM/theme breadth remain | IDE-07/10–12/18           |
+| product shells              | agent-first Desktop plus Monaco, complete navigation/configuration, versioned Pierre review, and the IDE-07 packaged basic-IDE gate exist | IDE-17                    |
+| editor core                 | Effect documents/recovery, complete Pierre tree, Monaco, Tokyo Night, built-in Vim, daily workbench, eight-class review, TypeScript intelligence, and integrated IDE-07 acceptance exist; later run/SCM/theme breadth remains | IDE-10–12/18              |
 | AI editing                  | harness editing exists outside a complete editor-native loop                                     | IDE-08/09                 |
 | repository intelligence     | bounded path/content search; no complete symbol/semantic custody stack                           | IDE-02/06/09/18           |
 | conversations               | durable multi-provider/session substrate; parity search/branch/export lifecycle remains ledgered | IDE-17/18                 |
@@ -806,9 +811,9 @@ It maps every required Cursor family to its main closure packets.
 | models and accounts         | multi-harness/provider/account system is a strength; editor intelligence disclosure remains      | IDE-09/17                 |
 | teams and enterprise        | policy/receipt foundations exist; editor bundles/admin/platform proof remain                     | IDE-15/18                 |
 | security and privacy        | explicit authority/sandbox/receipt laws are stronger; IDE-wide data-flow proof remains           | every packet, IDE-18 gate |
-| distribution                | packaged Desktop exists; complete platform/editor/update matrix remains                          | IDE-01/07/18              |
+| distribution                | exact macOS arm64 basic-IDE package is accepted; complete platform/editor/update matrix remains  | IDE-18                    |
 | data lifecycle              | typed stores exist but not one complete inspect/export/delete product                            | IDE-18                    |
-| quality and accessibility   | strong guarantees and tests exist; full IDE matrix and broader themes remain                     | IDE-07/18                 |
+| quality and accessibility   | IDE-07 integrated macOS arm64 gates pass; full platform/accessibility matrix and broader themes remain | IDE-18                |
 
 ## Release rungs and names
 
@@ -876,14 +881,15 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Immediate next work
 
-IDE-00 through IDE-06 are implemented with exact issue receipts. The next and
-final packet in the first release rung is IDE-07: one integrated packaged gate
-over Finder cold open, complete/multi-root Explorer, rapid file/language
-bursts, splits and recovery, conflict, navigation, eight-class review, Vim
-on/off, keyboard/screen-reader/reduced-motion/zoom/contrast behavior, offline
-launch, rollback, and zero-resource disposal.
+IDE-00 through IDE-07 are implemented and closed with exact issue receipts.
+IDE-07 accepted only the “OpenAgents basic IDE” rung for its exact macOS arm64
+candidate; it preserved the TypeScript-only project-language limit, every
+IDE-08..19 gap, and the epic's separate owner-acceptance boundary.
 
-IDE-07 may ratify only the “OpenAgents basic IDE” rung. It must preserve the
-explicit TypeScript-only project-language limit and every IDE-08..19 gap; it
-cannot promote Zed quality or Cursor parity from dependency presence, isolated
-benchmarks, or screenshots.
+The next packet is IDE-08: make agents native to the existing project,
+document, language, and review graph through inspectable context manifests,
+exact version-bound proposals, backlinks, apply/reject/undo receipts, and
+post-apply evidence without granting a harness editor authority. IDE-09 and
+IDE-10 may proceed only at their documented dependency boundaries; neither may
+smuggle proposal or project authority into Monaco, xterm, a harness, or a
+native helper.
