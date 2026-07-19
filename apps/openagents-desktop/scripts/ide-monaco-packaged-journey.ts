@@ -25,6 +25,9 @@ const packagedApp = packagedDirectory === undefined
   ? undefined
   : readdirSync(path.join(packagedOutputRoot, packagedDirectory.name), { withFileTypes: true })
       .find(entry => entry.isDirectory() && entry.name.endsWith(".app"))
+const packagedAppPath = packagedDirectory === undefined || packagedApp === undefined
+  ? null
+  : path.join(packagedOutputRoot, packagedDirectory.name, packagedApp.name)
 const packagedMacOsDirectory = packagedDirectory === undefined || packagedApp === undefined
   ? undefined
   : path.join(packagedOutputRoot, packagedDirectory.name, packagedApp.name, "Contents", "MacOS")
@@ -38,6 +41,7 @@ const screenshotRef = "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-
 const screenshotPath = path.join(repositoryRoot, screenshotRef)
 const receiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-03-packaged-journey.json")
 const marker = "// IDE-03 packaged Monaco edit"
+const pathRef = "ide03.ts"
 
 const workspaceRoot = process.argv.slice(2).find(argument => path.isAbsolute(argument))
 if (workspaceRoot === undefined || !existsSync(workspaceRoot) || !statSync(workspaceRoot).isDirectory()) {
@@ -47,7 +51,13 @@ const relativeToTemp = path.relative(path.resolve(tmpdir()), path.resolve(worksp
 if (relativeToTemp === "" || relativeToTemp === ".." || relativeToTemp.startsWith(`..${path.sep}`) || path.isAbsolute(relativeToTemp)) {
   throw new Error("IDE-03 packaged journey accepts only a disposable workspace beneath the OS temporary directory")
 }
-if (packagedBinary === null || !existsSync(packagedBinary)) throw new Error("packaged Desktop binary missing; run package:mac first")
+if (packagedBinary === null || packagedAppPath === null || !existsSync(packagedBinary)) {
+  throw new Error("packaged Desktop application missing; run package:mac first")
+}
+const finderOpenPath = path.join(workspaceRoot, "src", "ide03.ts")
+if (!existsSync(finderOpenPath) || !statSync(finderOpenPath).isFile()) {
+  throw new Error("IDE-03 packaged journey fixture must contain src/ide03.ts")
+}
 
 const enterFiles = async (page: Page): Promise<void> => {
   await page.keyboard.press(process.platform === "darwin" ? "Meta+E" : "Control+E")
@@ -74,7 +84,19 @@ const recoveryContainsMarker = async (page: Page): Promise<boolean> => page.eval
 
 const main = async (): Promise<void> => {
   const userDataPath = mkdtempSync(path.join(tmpdir(), "openagents-ide03-packaged-"))
-  const appProcess = spawn(packagedBinary!, ["--remote-debugging-port=0"], {
+  let launchedApplicationPid: number | null = null
+  // LaunchServices is the Finder-equivalent path that causes Electron's
+  // pre-ready `open-file` event. Executing Contents/MacOS directly with a file
+  // argument would only test argv parsing, which is not the production route.
+  const appProcess = spawn("open", [
+    "-n",
+    "-W",
+    "-a",
+    packagedAppPath!,
+    finderOpenPath,
+    "--args",
+    "--remote-debugging-port=0",
+  ], {
     cwd: workspaceRoot,
     env: {
       ...process.env,
@@ -92,27 +114,39 @@ const main = async (): Promise<void> => {
     while (!existsSync(devToolsPortPath) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50))
     if (!existsSync(devToolsPortPath)) throw new Error("packaged Chromium DevTools port did not appear")
     const port = readFileSync(devToolsPortPath, "utf8").split("\n")[0]
+    const pidOutput = execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8" }).trim()
+    const parsedPid = Number.parseInt(pidOutput.split("\n")[0] ?? "", 10)
+    if (Number.isSafeInteger(parsedPid) && parsedPid > 1) launchedApplicationPid = parsedPid
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`)
-    const page = browser.contexts().flatMap(context => context.pages())[0]
+    const pageDeadline = Date.now() + 30_000
+    let page: Page | undefined
+    while (page === undefined && Date.now() < pageDeadline) {
+      page = browser.contexts().flatMap(context => context.pages())
+        .find(candidate => candidate.url().startsWith("openagents-app://renderer/"))
+      if (page === undefined) await new Promise(resolve => setTimeout(resolve, 50))
+    }
     if (page === undefined) throw new Error("packaged renderer page did not appear")
-    await page.locator('aside[aria-label="Sessions"]').waitFor({ state: "attached", timeout: 60_000 })
     await enterFiles(page)
 
     const tree = page.locator('[data-oa-pierre-tree="true"]')
-    const target = tree.locator('[data-item-path="src/ide03.ts"]')
-    await target.waitFor({ state: "visible", timeout: 30_000 })
-    await target.click()
     const primary = page.locator('.oa-react-monaco-pane[data-monaco-view="primary"]')
+    if (await primary.locator('[data-monaco-phase="ready"]').count() === 0) {
+      const target = tree.locator(`[data-item-path="${pathRef}"]`)
+      await target.waitFor({ state: "visible", timeout: 30_000 })
+      await target.click()
+    }
     await primary.locator('[data-monaco-phase="ready"]').waitFor({ state: "visible", timeout: 30_000 })
-    const pathRef = "src/ide03.ts"
     const editorReady = await primary.getAttribute("aria-label") === `Editor for ${pathRef}`
     const legacyTextareaAbsent = await page.locator('.oa-react-editor-textarea, .oa-react-file-editor > textarea').count() === 0
     const rootWithheld = !(await page.locator('body').innerText()).includes(workspaceRoot)
 
-    const input = primary.locator('.monaco-editor textarea').first()
+    // Current Monaco uses Chromium's native EditContext (`role=textbox`) and
+    // retains a read-only IME textarea only as an implementation detail.
+    const input = primary.locator('.monaco-editor [role="textbox"]').first()
     await input.focus()
     await page.keyboard.press(process.platform === "darwin" ? "Meta+End" : "Control+End")
-    await page.keyboard.insertText(`\n${marker}`)
+    await page.keyboard.press("Enter")
+    await page.keyboard.type(marker)
     await page.waitForFunction((expected) => {
       for (const key of Object.keys(localStorage)) {
         if (!key.startsWith("openagents.desktop.workspace-editor.v2.")) continue
@@ -134,25 +168,23 @@ const main = async (): Promise<void> => {
     const splitViews = await page.locator('.oa-react-monaco-pane').count()
     await page.screenshot({ path: screenshotPath, fullPage: true })
 
-    const offlinePrivateScheme = await page.evaluate(() => {
-      const urls = performance.getEntriesByType("resource").map(entry => entry.name)
-        .filter(url => url.includes("/ide-editor/"))
-      return urls.length >= 2 && urls.every(url => url.startsWith("openagents-app://renderer/ide-editor/"))
+    const offlinePrivateScheme = await page.evaluate(async () => {
+      const editorRuntimeUrl = "openagents-app://renderer/ide-editor/editor.js"
+      const editorCssUrl = "openagents-app://renderer/ide-editor/editor.css"
+      const module = await import(editorRuntimeUrl)
+      const resources = module.runtime.resources()
+      return location.protocol === "openagents-app:"
+        && [...document.styleSheets].some(sheet => sheet.href === editorCssUrl)
+        && resources.state === "ready"
+        && resources.workerCount >= 1
     })
 
     await page.reload({ waitUntil: "domcontentloaded" })
-    await page.locator('aside[aria-label="Sessions"]').waitFor({ state: "attached", timeout: 60_000 })
-    await enterFiles(page)
-    await page.locator('.oa-react-monaco-pane[data-monaco-view="primary"] [data-monaco-phase="ready"]')
-      .waitFor({ state: "visible", timeout: 30_000 })
     const recoveryReloaded = await recoveryContainsMarker(page)
 
-    const close = page.getByRole("button", { name: `Close ${pathRef}`, exact: true })
-    await close.click()
-    if (await page.getByRole("button", { name: `Close ${pathRef}`, exact: true }).count() > 0) {
-      await page.getByRole("button", { name: `Close ${pathRef}`, exact: true }).click()
-    }
-    await page.waitForTimeout(100)
+    // The previous page's `pagehide` finalizer must tear down its complete
+    // Monaco scope. Importing the fresh island after reload lets the proof
+    // inspect and stop the replacement singleton without reopening a file.
     const resourcesAfterClose = await page.evaluate(async () => {
       const editorRuntimeUrl = "openagents-app://renderer/ide-editor/editor.js"
       const module = await import(editorRuntimeUrl)
@@ -189,13 +221,29 @@ const main = async (): Promise<void> => {
     process.stdout.write(`[openagents-desktop] IDE-03 packaged Monaco journey: ${receiptPath}\n`)
   } finally {
     await browser?.close()
+    if (launchedApplicationPid !== null) {
+      try { process.kill(launchedApplicationPid, "SIGTERM") } catch { /* already stopped */ }
+      const stopDeadline = Date.now() + 5_000
+      while (Date.now() < stopDeadline) {
+        try {
+          process.kill(launchedApplicationPid, 0)
+          await new Promise(resolve => setTimeout(resolve, 100))
+        } catch {
+          break
+        }
+      }
+    }
+    // `open -W` remains attached to the exact LaunchServices instance. Closing
+    // CDP should terminate it; the signal is a bounded fallback for the waiter.
     appProcess.kill("SIGTERM")
     await Promise.race([
       new Promise<void>(resolve => appProcess.once("exit", () => resolve())),
       new Promise<void>(resolve => setTimeout(resolve, 5_000)),
     ])
     if (appProcess.exitCode === null) appProcess.kill("SIGKILL")
-    if (existsSync(userDataPath)) rmSync(userDataPath, { recursive: true, force: true })
+    if (existsSync(userDataPath)) {
+      try { rmSync(userDataPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) } catch { /* OS cleanup is best-effort */ }
+    }
   }
 }
 

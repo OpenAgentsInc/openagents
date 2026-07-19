@@ -68,6 +68,7 @@ monaco.editor.setTheme("openagents-tokyo-night")
 type ModelEntry = {
   readonly model: monaco.editor.ITextModel
   readonly views: Set<string>
+  readonly vimState: VimSharedState
   generation: number
   sequence: number
   syncing: boolean
@@ -91,32 +92,39 @@ const rangeText = (editor: monaco.editor.IStandaloneCodeEditor): string => {
   return model === null || selection === null ? "" : model.getValueInRange(selection)
 }
 
+type VimSharedState = {
+  readonly marks: Map<string, monaco.Position>
+  readonly registers: Map<string, string>
+  lastEdit: string | null
+}
+
 class VimModeController {
   readonly #editor: monaco.editor.IStandaloneCodeEditor
   readonly #onProjection: (projection: IdeVimProjection) => void
   readonly #onSave: () => void
   readonly #onClose: (force: boolean) => void
-  readonly #marks = new Map<string, monaco.Position>()
-  readonly #registers = new Map<string, string>()
+  readonly #shared: VimSharedState
   #enabled = false
   #mode: IdeVimMode = "normal"
   #pending: string | null = null
   #count = ""
   #register = "\""
-  #lastEdit: string | null = null
   #disposed = false
   #subscription: monaco.IDisposable | null = null
+  #blurSubscription: monaco.IDisposable | null = null
 
   constructor(
     editor: monaco.editor.IStandaloneCodeEditor,
     onProjection: (projection: IdeVimProjection) => void,
     onSave: () => void,
     onClose: (force: boolean) => void,
+    shared: VimSharedState,
   ) {
     this.#editor = editor
     this.#onProjection = onProjection
     this.#onSave = onSave
     this.#onClose = onClose
+    this.#shared = shared
   }
 
   #project(): void {
@@ -150,16 +158,16 @@ class VimModeController {
     const operator = this.#pending?.slice(0, 1)
     if (operator === "y") {
       const value = rangeText(this.#editor)
-      this.#registers.set(this.#register, value)
-      this.#registers.set("\"", value)
+      this.#shared.registers.set(this.#register, value)
+      this.#shared.registers.set("\"", value)
       const position = this.#editor.getSelection()?.getStartPosition() ?? this.#editor.getPosition()
       if (position !== null) this.#editor.setPosition(position)
     } else if (operator === "d" || operator === "c") {
       const value = rangeText(this.#editor)
-      this.#registers.set(this.#register, value)
-      this.#registers.set("\"", value)
+      this.#shared.registers.set(this.#register, value)
+      this.#shared.registers.set("\"", value)
       this.#trigger("editor.action.clipboardCutAction")
-      this.#lastEdit = operator
+      this.#shared.lastEdit = operator
     }
     this.#setMode(operator === "c" ? "insert" : "normal")
   }
@@ -171,13 +179,13 @@ class VimModeController {
   }
 
   #insertRegister(after: boolean): void {
-    const text = this.#registers.get(this.#register) ?? this.#registers.get("\"") ?? ""
+    const text = this.#shared.registers.get(this.#register) ?? this.#shared.registers.get("\"") ?? ""
     const model = this.#editor.getModel()
     const position = this.#editor.getPosition()
     if (model === null || position === null || text === "") return
     const offsetPosition = after ? position.delta(0, 1) : position
     this.#editor.executeEdits("openagents.vim", [{ range: new monaco.Range(offsetPosition.lineNumber, offsetPosition.column, offsetPosition.lineNumber, offsetPosition.column), text }])
-    this.#lastEdit = after ? "p" : "P"
+    this.#shared.lastEdit = after ? "p" : "P"
   }
 
   #find(character: string, before: boolean): void {
@@ -220,13 +228,13 @@ class VimModeController {
     }
     if (this.#pending === "mark_set") {
       const position = this.#editor.getPosition()
-      if (key.length === 1 && position !== null) this.#marks.set(key, position)
+      if (key.length === 1 && position !== null) this.#shared.marks.set(key, position)
       this.#pending = null
       this.#project()
       return true
     }
     if (this.#pending === "mark_go") {
-      const mark = this.#marks.get(key)
+      const mark = this.#shared.marks.get(key)
       if (mark !== undefined) this.#editor.setPosition(mark)
       this.#pending = null
       this.#project()
@@ -267,7 +275,7 @@ class VimModeController {
     if (["d", "c", "y", ">", "<"].includes(key)) {
       if (key === ">" || key === "<") {
         this.#trigger(key === ">" ? "editor.action.indentLines" : "editor.action.outdentLines")
-        this.#lastEdit = key
+        this.#shared.lastEdit = key
         return true
       }
       this.#setMode("operator_pending", key)
@@ -279,15 +287,15 @@ class VimModeController {
     else if (key === "A") { this.#trigger("cursorEnd"); this.#setMode("insert") }
     else if (key === "o" || key === "O") { this.#trigger(key === "o" ? "editor.action.insertLineAfter" : "editor.action.insertLineBefore"); this.#setMode("insert") }
     else if (key === "R") { this.#trigger("editor.action.toggleOvertypeInsertMode"); this.#setMode("replace") }
+    else if (event.ctrlKey && key.toLocaleLowerCase() === "v") this.#setMode("visual_block")
     else if (key === "v") this.#setMode("visual")
     else if (key === "V") { this.#trigger("expandLineSelection"); this.#setMode("visual_line") }
-    else if (event.ctrlKey && key.toLocaleLowerCase() === "v") this.#setMode("visual_block")
     else if (key === "u") this.#trigger("undo")
     else if (event.ctrlKey && key.toLocaleLowerCase() === "r") this.#trigger("redo")
-    else if (key === "x") { this.#trigger("deleteRight"); this.#lastEdit = "x" }
-    else if (key === "J") { this.#trigger("editor.action.joinLines"); this.#lastEdit = "J" }
+    else if (key === "x") { this.#trigger("deleteRight"); this.#shared.lastEdit = "x" }
+    else if (key === "J") { this.#trigger("editor.action.joinLines"); this.#shared.lastEdit = "J" }
     else if (key === "p" || key === "P") this.#insertRegister(key === "p")
-    else if (key === "." && this.#lastEdit !== null) this.#normalKey(event, this.#lastEdit)
+    else if (key === "." && this.#shared.lastEdit !== null) this.#normalKey(event, this.#shared.lastEdit)
     else if (key === '"') { this.#pending = "register"; this.#project() }
     else if (key === "m") { this.#pending = "mark_set"; this.#project() }
     else if (key === "'") { this.#pending = "mark_go"; this.#project() }
@@ -299,7 +307,7 @@ class VimModeController {
       if (model !== null && position !== null) {
         const character = model.getValueInRange(new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 1))
         this.#editor.executeEdits("openagents.vim", [{ range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column + 1), text: character === character.toLocaleUpperCase() ? character.toLocaleLowerCase() : character.toLocaleUpperCase() }])
-        this.#trigger("cursorRight"); this.#lastEdit = "~"
+        this.#trigger("cursorRight"); this.#shared.lastEdit = "~"
       }
     } else return false
     return true
@@ -327,12 +335,17 @@ class VimModeController {
     this.#enabled = enabled
     if (enabled) {
       this.#subscription = this.#editor.onKeyDown(this.#onKey)
-      vimHandlerCount += 1
+      this.#blurSubscription = this.#editor.onDidBlurEditorWidget(() => {
+        if (this.#enabled && !this.#disposed) this.#setMode("normal")
+      })
+      vimHandlerCount += 2
       this.#setMode("normal")
     } else {
+      if (this.#subscription !== null) vimHandlerCount = Math.max(0, vimHandlerCount - 2)
       this.#subscription?.dispose()
+      this.#blurSubscription?.dispose()
       this.#subscription = null
-      vimHandlerCount = Math.max(0, vimHandlerCount - 1)
+      this.#blurSubscription = null
       this.#setMode("insert")
     }
   }
@@ -340,9 +353,11 @@ class VimModeController {
   dispose(): void {
     if (this.#disposed) return
     this.#disposed = true
-    if (this.#subscription !== null) vimHandlerCount = Math.max(0, vimHandlerCount - 1)
+    if (this.#subscription !== null) vimHandlerCount = Math.max(0, vimHandlerCount - 2)
     this.#subscription?.dispose()
+    this.#blurSubscription?.dispose()
     this.#subscription = null
+    this.#blurSubscription = null
   }
 }
 
@@ -363,6 +378,7 @@ const modelFor = (input: IdeMonacoAttachInput): ModelEntry => {
   const entry: ModelEntry = {
     model,
     views: new Set(),
+    vimState: { marks: new Map(), registers: new Map(), lastEdit: null },
     generation: input.generation as number,
     sequence: input.sequence as number,
     syncing: false,
@@ -451,6 +467,7 @@ const attach: IdeMonacoRuntime["attach"] = (host, rawInput, onEvent, onVim) => {
     onVim,
     () => emit(IdeMonacoDocumentEventSchema.cases.Save.make({ documentRef: input.documentRef, generation: input.generation })),
     force => emit(IdeMonacoDocumentEventSchema.cases.Close.make({ documentRef: input.documentRef, generation: input.generation, force })),
+    modelEntry.vimState,
   )
   vim.setEnabled(input.vimEnabled)
   const subscriptions = [content, selection]
