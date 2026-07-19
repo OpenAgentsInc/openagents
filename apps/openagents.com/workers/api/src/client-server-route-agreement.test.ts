@@ -41,6 +41,7 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
     '/terms',
     '/tanstack',
     '/agents/artanis',
+    '/trace/448644bd-f2ce-4ad4-bfad-e4e898ed12ef',
     '/training/runs/run-1',
   ])('retained Start document %s is admitted by the Worker', pathname => {
     expect(isKnownStartDocumentPath(pathname)).toBe(true)

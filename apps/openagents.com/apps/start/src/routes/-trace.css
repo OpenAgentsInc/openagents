@@ -1,0 +1,10 @@
+[data-route='trace'] [data-en-role='code-block'] {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+[data-route='trace'] [data-en-role='code-block'] pre {
+  min-width: 100%;
+  width: max-content;
+}

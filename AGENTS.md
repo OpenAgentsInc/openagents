@@ -893,7 +893,9 @@ and deterministic Effect tests. Do not skip it merely because
   are renderer adapters and serving hosts only — never the architecture.
   Effect remains the services/logic substrate everywhere. Existing Foldkit
   surfaces in `apps/openagents.com/apps/web` are legacy; retained routes are
-  converted under #8634/#8635 and all other public pages retired. The
+  converted under #8634/#8635 and all other public pages retired, except for
+  the owner-directed 2026-07-18 restoration of the read-only
+  `/trace/{uuid}` ATIF evidence viewer in `apps/start`. The
   OpenAgents Desktop target is **Effect Native on Electron** (#8574 on the
   effect-native Phase 4 epic #20/#21–#43); the previously planned
   React+Tailwind and Electrobun destination shells are cancelled. Retained web

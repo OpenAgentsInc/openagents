@@ -42,7 +42,8 @@ This is the invariant ledger for `openagents`.
   routes to the built Start SSR handler. API, auth, and unknown paths remain
   owned by the Cloud Run API.
 - `/`, `/app`, `/forum` and supported descendants, the compatibility `/promises`
-  route, legal/auth documents, and companion agent files remain available.
+  route, the read-only `/trace/{uuid}` evidence viewer, legal/auth documents,
+  and companion agent files remain available.
   Legacy Sites, billing, credits, checkout, and other non-MVP Foldkit
   documents are not Start-owned.
 
@@ -483,6 +484,15 @@ This is the invariant ledger for `openagents`.
 
 ## Agent Trace Store (shareable ATIF traces)
 
+- Owner direction on 2026-07-18 restores `/trace/{uuid}` as a TanStack Start
+  document route backed only by the existing visibility-gated
+  `GET /api/traces/{uuid}` and blob reads. The viewer must decode the trajectory
+  with the canonical `@openagentsinc/atif/trace` Effect schema, preserve the
+  owner read-scope `?token=` only on those read paths, keep owner-only absence
+  indistinguishable from not-found, and render the all-false authority meaning
+  explicitly. This route restoration grants no feed, compare, ingest,
+  publication, accepted-work, payout, settlement, or public-claim authority.
+
 - The trace store (`workers/api/src/trace-store-d1.ts`, migration
   `0228_agent_traces.sql`) persists only the PUBLIC-SAFE projection of an
   ATIF-v1.7 agent trajectory, keyed by a uuid, so `/trace/{uuid}` can
@@ -543,12 +553,14 @@ This is the invariant ledger for `openagents`.
   accepted-work, payout, settlement, provider-account, spend, or public-claim
   authority by themselves; read projections always carry the explicit
   all-false `authority` block.
-- The in-repo ATIF schema mirrors the public-safe contract agreed with the
-  qa-runner producer and the `/trace` page consumer; the shared package (#6207)
-  will canonicalize it later and the swap must keep this exact subset.
+- The canonical in-repo ATIF Effect schema is
+  `packages/atif/src/trace-schema.ts`, imported as
+  `@openagentsinc/atif/trace`. The worker re-exports that schema and the Start
+  viewer decodes it directly; neither may maintain a route-local duplicate.
 - Regression coverage for this policy lives in
   `workers/api/src/atif-trace-schema.test.ts` and
-  `workers/api/src/trace-store-routes.test.ts`.
+  `workers/api/src/trace-store-routes.test.ts`, plus the Start trace fetch/view
+  tests and the Start/Worker document-route agreement test.
 
 ## Khala Backing Model Precedence
 

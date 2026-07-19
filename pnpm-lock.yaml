@@ -798,6 +798,9 @@ importers:
       '@effect-native/tokens':
         specifier: workspace:*
         version: link:../../packages/effect-native-tokens
+      '@openagentsinc/atif':
+        specifier: workspace:*
+        version: link:../../../../packages/atif
       '@openagentsinc/effect-start':
         specifier: workspace:*
         version: link:../../../../packages/effect-start

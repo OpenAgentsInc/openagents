@@ -23,6 +23,7 @@
     "@effect-native/render-canvas": "workspace:*",
     "@effect-native/render-dom": "workspace:*",
     "@effect-native/tokens": "workspace:*",
+    "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/effect-start": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",

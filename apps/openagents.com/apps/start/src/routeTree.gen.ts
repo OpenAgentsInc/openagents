@@ -47,6 +47,7 @@ import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
 import { Route as ArtanisIndexRouteImport } from './routes/artanis/index'
 import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces/$workspaceId'
+import { Route as TraceTraceUuidRouteImport } from './routes/trace/$traceUuid'
 import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
 import { Route as PreviewSalesLandingRouteImport } from './routes/preview/sales-landing'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
@@ -257,6 +258,11 @@ const WorkspacesWorkspaceIdRoute = WorkspacesWorkspaceIdRouteImport.update({
   path: '/workspaces/$workspaceId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TraceTraceUuidRoute = TraceTraceUuidRouteImport.update({
+  id: '/trace/$traceUuid',
+  path: '/trace/$traceUuid',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ShareShareIdRoute = ShareShareIdRouteImport.update({
   id: '/share/$shareId',
   path: '/share/$shareId',
@@ -396,6 +402,7 @@ export interface FileRoutesByFullPath {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
+  '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis/': typeof ArtanisIndexRoute
   '/autopilot/': typeof AutopilotIndexRoute
@@ -454,6 +461,7 @@ export interface FileRoutesByTo {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
+  '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis': typeof ArtanisIndexRoute
   '/autopilot': typeof AutopilotIndexRoute
@@ -514,6 +522,7 @@ export interface FileRoutesById {
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
   '/share/$shareId': typeof ShareShareIdRoute
+  '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/artanis/': typeof ArtanisIndexRoute
   '/autopilot/': typeof AutopilotIndexRoute
@@ -575,6 +584,7 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
+    | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
     | '/artanis/'
     | '/autopilot/'
@@ -633,6 +643,7 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
+    | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
     | '/artanis'
     | '/autopilot'
@@ -692,6 +703,7 @@ export interface FileRouteTypes {
     | '/preview/landing'
     | '/preview/sales-landing'
     | '/share/$shareId'
+    | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
     | '/artanis/'
     | '/autopilot/'
@@ -751,6 +763,7 @@ export interface RootRouteChildren {
   PreviewLandingRoute: typeof PreviewLandingRoute
   PreviewSalesLandingRoute: typeof PreviewSalesLandingRoute
   ShareShareIdRoute: typeof ShareShareIdRoute
+  TraceTraceUuidRoute: typeof TraceTraceUuidRoute
   WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
   ArtanisIndexRoute: typeof ArtanisIndexRoute
   AutopilotIndexRoute: typeof AutopilotIndexRoute
@@ -1037,6 +1050,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspacesWorkspaceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/trace/$traceUuid': {
+      id: '/trace/$traceUuid'
+      path: '/trace/$traceUuid'
+      fullPath: '/trace/$traceUuid'
+      preLoaderRoute: typeof TraceTraceUuidRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/share/$shareId': {
       id: '/share/$shareId'
       path: '/share/$shareId'
@@ -1225,6 +1245,7 @@ const rootRouteChildren: RootRouteChildren = {
   PreviewLandingRoute: PreviewLandingRoute,
   PreviewSalesLandingRoute: PreviewSalesLandingRoute,
   ShareShareIdRoute: ShareShareIdRoute,
+  TraceTraceUuidRoute: TraceTraceUuidRoute,
   WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
   ArtanisIndexRoute: ArtanisIndexRoute,
   AutopilotIndexRoute: AutopilotIndexRoute,

@@ -16,7 +16,8 @@ applied migrations, withdraw promises, and revoke authority before deletion.
 This directory is converging on the single OpenAgents web app described by
 [`docs/sol/MASTER_ROADMAP.md`](../../docs/sol/MASTER_ROADMAP.md). Retained
 human-facing product routes are `/`, `/forum`, and required Forum descendants,
-plus the compatibility `/promises` route (`/sarah` was removed at owner
+plus the compatibility `/promises` route and the read-only evidence route
+`/trace/{uuid}` (`/sarah` was removed at owner
 direction 2026-07-10, epic #8610 — it and all `/sarah/api/*` routes are 404
 tombstones). Product promises are agent-facing evidence, not human top-level
 navigation. Preserve `/docs/product-promises` as a stable alias into the
@@ -25,6 +26,10 @@ report, receipt, verification, and evidence chain required to substantiate
 product promises and service deliverables. Legal, auth, other API, asset,
 health, manifest, and receipt routes are infrastructure exceptions. Other
 human-facing pages are retirement sources, not surfaces to grow or port.
+Owner direction on 2026-07-18 explicitly restored `/trace/{uuid}` so stored
+public, unlisted, or owner-authorized ATIF evidence can be dereferenced again.
+This exception does not restore the deleted Foldkit app, `/trace/compare`, a
+public trace feed, marketplace UI, or any acceptance/payout authority.
 
 New and converted retained UI is authored in Effect Native. As of #8813 the
 former `apps/web` Foldkit/Tailwind application is deleted; `apps/start` owns
@@ -32,6 +37,13 @@ retained web documents and its built server/client artifacts are staged into
 the Cloud Run monolith. Do not recreate an SPA fallback or a Foldkit route.
 React, TanStack Start, and DOM remain renderer/host machinery, not the product
 architecture.
+
+The restored trace viewer consumes `@openagentsinc/atif/trace` at its network
+boundary and authors its goal, metadata, transcript, tool, observation, and
+screenshot presentation as Effect Native views. Recorded URL video playback is
+a narrow renderer-host exception because the current Effect Native
+`media-video` host accepts live stream attachment only; do not generalize that
+exception into route-local component architecture.
 
 ## 2026-07-15 unified TanStack Start public and authenticated surfaces
 
