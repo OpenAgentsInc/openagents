@@ -97,8 +97,28 @@ SUMMARY
 fi
 
 if gcloud compute images describe "$image_name" --project "$project" >/dev/null 2>&1; then
-  echo "immutable image already exists: $image_name" >&2
-  exit 2
+  read -r existing_revision existing_status existing_id < <(
+    gcloud compute images describe "$image_name" \
+      --project "$project" \
+      --format='value(labels.openagents-source-revision,status,id)'
+  )
+  if [[ "$existing_revision" != "$revision" || "$existing_status" != "READY" || \
+        -z "$existing_id" ]]; then
+    echo "immutable image exists but does not match this source revision in READY state: $image_name" >&2
+    exit 2
+  fi
+  existing_digest="$(printf '%s' "${project}|${image_name}|${existing_id}" | \
+    shasum -a 256 | awk '{print $1}')"
+  cat <<SUMMARY
+Managed-sandbox guest image already admitted
+  project:       $project
+  imageName:     $image_name
+  imageId:       $existing_id
+  imageDigest:   sha256:$existing_digest
+  sourceRevision:$revision
+  SDKs:          codex 0.144.3; claude-agent 0.3.172
+SUMMARY
+  exit 0
 fi
 
 gcloud compute instances create "$builder" \

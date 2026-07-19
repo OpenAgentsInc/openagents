@@ -208,6 +208,8 @@ design context only.
   priority 1000. The control VM has no external IP. No public/provider
   endpoint is reachable from the guest. Only run-scoped capability refs pass
   admission.
+- The dedicated Cloud Run bridge uses Direct VPC egress and a source tag. Its
+  control-port firewall does not admit the enclosing subnet.
 - Provider credentials remain in the Worker. After native turn admission, the
   Worker mints one HMAC-signed capability. It binds actor, owner, tenant,
   sandbox, generation, turn, and capability ref. It also binds provider,

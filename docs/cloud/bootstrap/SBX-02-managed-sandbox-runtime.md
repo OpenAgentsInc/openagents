@@ -89,9 +89,9 @@ guest can present that capability only through the private control broker.
 The control bearer token and broker signing key live in Secret Manager and do
 not appear in VM metadata. The dedicated control VM also has no external IP.
 Persistent priority-900 rules admit only the managed-sandbox guest tag to TCP
-8790 and the Cloud Run connector or IAP to TCP 8787. Priority-1000 rules deny
-every other source on those ports, including traffic otherwise admitted by a
-default-VPC internal rule.
+8790, the dedicated Direct VPC Cloud Run bridge tag to TCP 8787, and IAP to
+TCP 8787. Priority-1000 rules deny every other source on those ports,
+including traffic otherwise admitted by a default-VPC internal rule.
 
 ## Isolation controls
 

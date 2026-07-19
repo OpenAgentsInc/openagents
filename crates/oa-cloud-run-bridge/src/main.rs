@@ -32,8 +32,8 @@ struct Config {
     /// var by Cloud Run), never hardcoded, never logged.
     control_token: Option<String>,
     /// Internal base URL of `oa-codex-control-1`, e.g.
-    /// `http://10.128.0.8:8787`. Reachable only via the Serverless VPC
-    /// Access connector attached to the `default` network.
+    /// `http://10.128.0.8:8787`. Reachable only through the dedicated Direct
+    /// VPC network tag attached to the `default` network.
     control_url: Option<String>,
     allowed_path_prefixes: Vec<String>,
     upstream_timeout: Duration,
@@ -45,6 +45,7 @@ impl Config {
         let bind = env::var("OA_BRIDGE_BIND").unwrap_or_else(|_| format!("0.0.0.0:{port}"));
         let control_token = env::var("OA_BRIDGE_CONTROL_TOKEN")
             .ok()
+            .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty());
         let control_url = env::var("OA_BRIDGE_CONTROL_URL")
             .ok()
