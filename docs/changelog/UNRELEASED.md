@@ -5,6 +5,20 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Desktop restart failures no longer repeat (#9012)
+
+- issues: #9012
+- commits: aaccf71781
+- contracts-specs: Desktop Development Restart Authority in INVARIANTS.md
+- invariants: restart coordination is one-shot and failure notices are claimed once per request
+- evidence: apps/openagents-desktop/tests/oa-dev-supervisor.test.ts; apps/openagents-desktop/tests/electron-boundary.test.ts
+- lane: codex.root.restart-notification-loop
+
+A failed Desktop development restart now produces at most one notification and
+stays stopped until a new restart is explicitly requested. The running app is
+preserved when a handoff fails, so a port conflict cannot become a repeating
+macOS notification loop.
+
 ## Sarah shows verified tool activity in chat
 
 - issues: none (direct owner request)
