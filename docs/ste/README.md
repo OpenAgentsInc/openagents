@@ -51,7 +51,7 @@ A tool result is not proof of full STE conformance.
 Run `pnpm run check:ste` before you commit a document change.
 The check uses the migration baseline for files in the `migration` state.
 It rejects a new structural defect.
-The normal ledger command keeps the existing baseline counts.
+The normal ledger command keeps the prior baseline counts.
 Only `generate:ste-baseline` replaces all baseline counts.
 Use that command only for an approved baseline reset or migration start.
 
@@ -92,6 +92,12 @@ A subject expert must review normative and safety text.
 Create a new revision when a conversion changes stable document bytes.
 Keep the old revision as source data when another record identifies its bytes.
 Record a semantic comparison before the new revision becomes authoritative.
+
+The P1 control conversion has an additional semantic baseline.
+The baseline protects normative keywords, code literals, URLs, issue references, and numeric values.
+Run `pnpm run check:ste-control-semantics` after each control document change.
+This comparison does not prove semantic equality.
+The technical reviewer must also examine the change.
 
 ## Copyright
 

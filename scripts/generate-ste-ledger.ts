@@ -7,12 +7,16 @@ import {
   inspectStructure,
   isGovernedPath,
   readCheckerConfig,
+  type SteProfile,
 } from "./ste-core";
 
 const root = resolve(import.meta.dirname, "..");
 const check = process.argv.includes("--check");
 const refreshBaseline = process.argv.includes("--refresh-baseline");
 const config = readCheckerConfig(root);
+const overrides = JSON.parse(
+  readFileSync(`${root}/docs/ste/profile-overrides.v1.json`, "utf8"),
+) as { profiles: Record<string, Partial<SteProfile>> };
 const paths = execFileSync(
   "git",
   ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
@@ -23,7 +27,15 @@ const paths = execFileSync(
   .filter(Boolean)
   .filter((path) => isGovernedPath(path, config))
   .toSorted();
-const profiles = paths.map((path) => deriveProfile(path, config));
+const profiles = paths.map((path) => ({
+  ...deriveProfile(path, config),
+  ...overrides.profiles[path],
+  path,
+}));
+for (const path of Object.keys(overrides.profiles)) {
+  if (!paths.includes(path))
+    throw new Error(`STE profile override does not match a governed file: ${path}`);
+}
 let previousBaseline: Record<string, Record<string, number>> = {};
 try {
   previousBaseline =

@@ -91,6 +91,7 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   { name: "sol-docs", command: ["pnpm", "run", "check:sol-docs"] },
   { name: "sol-doc-tests", command: ["pnpm", "run", "test:sol-docs"] },
   { name: "ste", command: ["pnpm", "run", "check:ste:all"] },
+  { name: "ste-control-semantics", command: ["pnpm", "run", "check:ste-control-semantics"] },
   { name: "ste-tests", command: ["pnpm", "run", "test:ste"] },
   { name: "node-vp-freeze", command: ["node", "scripts/node-vp-cutover-inventory.mjs", "--check"] },
   { name: "zero-supported-bun", command: ["node", "scripts/zero-supported-bun-guard.mjs", "."] },
