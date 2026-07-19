@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx05_guest_io_component.v1",
+  "capturedAt": "2026-07-19T20:30:00Z",
+  "passed": true,
+  "issueRef": "https://github.com/OpenAgentsInc/openagents/issues/9026",
+  "proofRung": "policy_property_and_boundary_test",
+  "contract": {
+    "requestSchema": "openagents.managed_sandbox_guest_io.v1",
+    "receiptSchema": "openagents.managed_sandbox_guest_io_receipt.v1",
+    "artifactReceiptSchema": "openagents.managed_sandbox_artifact_receipt.v1",
+    "actions": ["read_file", "write_file", "execute_command", "read_artifact"],
+    "defaultEnabled": false,
+    "workspaceRoot": "workspace",
+    "networkPolicy": "deny_all"
+  },
+  "limits": {
+    "maxFileBytes": 1048576,
+    "maxArtifactBytes": 16777216,
+    "maxOutputBytes": 262144,
+    "maxDurationMillis": 3600000,
+    "maxProcesses": 64,
+    "maxNetworkBytes": 0
+  },
+  "proof": {
+    "managedSandboxContractTestsPassed": 16,
+    "boxSdkRouteTestsPassed": 7,
+    "rustGuestIoTestsPassed": 3,
+    "rustGuestIoHttpContractTestsPassed": 1,
+    "rootRelativePathFault": true,
+    "dotAndEmptySegmentFault": true,
+    "symlinkProofRequired": true,
+    "secretPatternFault": true,
+    "binaryEncodingBound": true,
+    "fileAndArtifactQuotaFault": true,
+    "outputAndDurationBound": true,
+    "processTreeClosureRequired": true,
+    "driverProcessGroupKilledOnDeadline": true,
+    "egressDenied": true,
+    "staleGenerationDenied": true,
+    "revokedCapabilityDenied": true,
+    "artifactContentAddressVerified": true,
+    "artifactSourceGenerationBound": true,
+    "artifactRetentionBound": true,
+    "privateBearerAbsentFromBody": true
+  },
+  "cleanup": {
+    "guestIoReceiptRequiresZeroDescendants": true,
+    "guestIoReceiptRequiresScratchClean": true,
+    "guestIoReceiptRequiresIngressClosed": true,
+    "providerDeleteOwnsComputeFirewallDiskLeaseAndGrantCleanup": true,
+    "unknownCleanupBecomesRecoveryRequired": true
+  },
+  "limitations": [
+    "The private guest I/O driver is a configured deployment dependency and was not armed in live GCP by this packet.",
+    "The unmodified SDK journey uses the deterministic component runtime, not a live guest.",
+    "No public Worker flag was enabled and no production deployment was changed.",
+    "SBX-09 remains the only independent live GCP, isolation, cleanup, cost, rollback, and rollout gate."
+  ]
+}

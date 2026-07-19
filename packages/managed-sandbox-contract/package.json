@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./box-v1": "./src/box-v1.ts",
+    "./guest-io": "./src/guest-io.ts",
     "./lifecycle": "./src/lifecycle.ts",
     "./provenance": "./src/provenance.ts"
   },

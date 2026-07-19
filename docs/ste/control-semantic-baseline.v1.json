@@ -2881,7 +2881,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "c36300a80a67bdadeaf2fc34e7001fbd30b95d86b7a7b91994dd985fe44cfcfc",
+      "sourceSha256": "aa8b5ed2e333460bb3b9a4a0305ade01aea8dc523a4012e6d9f90381fe3a7661",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -3200,6 +3200,7 @@
         "OA_CLOUD_CONTROL_URL",
         "OA_CLOUD_CONTROL_URL",
         "OA_CODEX_GCE_PROVISIONER=live",
+        "OA_MANAGED_SANDBOX_IO_DRIVER",
         "OA_MANAGED_SANDBOX_TURN_DRIVER",
         "OFFERED_DISPATCH_SLOT_CLAIM_WINDOW_MS",
         "OMNI_CLIENT_DELIVERY_PROJECTION_ENABLED",
@@ -3807,6 +3808,7 @@
         "multi_earning_settlement_refs_missing",
         "mutationRefFor(clientGroupId, clientId, mutationId)",
         "never",
+        "no-store",
         "no-store",
         "no-store",
         "no_payout_destination",
@@ -4663,6 +4665,7 @@
         "workflow",
         "workroom_*",
         "workrooms.omni_client_delivery_workrooms.v1",
+        "workspace",
         "writeback.permission.<reason>",
         "writeback.recorded",
         "writeback.recorded",
@@ -4811,7 +4814,8 @@
         "#8522",
         "#8600",
         "#9024",
-        "#9025"
+        "#9025",
+        "#9026"
       ],
       "numericValues": [
         "0",
@@ -4850,7 +4854,9 @@
         "04",
         "05",
         "05",
+        "05",
         "06",
+        "09",
         "09",
         "09",
         "096",
@@ -4956,6 +4962,7 @@
         "25",
         "25",
         "25",
+        "256",
         "256",
         "256",
         "26",
@@ -5171,7 +5178,8 @@
         "9",
         "9.3",
         "9024",
-        "9025"
+        "9025",
+        "9026"
       ]
     },
     "apps/openagents.com/apps/start/public/AGENTS.md": {
@@ -5292,7 +5300,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "db75ee3c214bc417b0f3a0c1f0788f785085eea9af3a3b518c6f0f6aeebb80e8",
+      "sourceSha256": "204a6b127e4e7cd293f545475142c59009ea368d969982d62a0414fdc2dbdb58",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -5304,7 +5312,6 @@
         "0067",
         "200",
         "501 capability_not_implemented",
-        "503 upstream_unavailable",
         "@asciidev/box-sdk@0.0.24",
         "Auto",
         "CODEX_HOME",
@@ -5414,7 +5421,8 @@
         "tokensServedDelta: 0",
         "unavailable",
         "usageRef",
-        "vm_seconds"
+        "vm_seconds",
+        "workspace"
       ],
       "urls": [],
       "issueRefs": [
@@ -5463,7 +5471,6 @@
         "2026-07",
         "3",
         "501",
-        "503",
         "503",
         "8547",
         "8636",
@@ -8969,7 +8976,7 @@
       ]
     },
     "specs/openagents/managed-agent-sandboxes.assurance-spec.md": {
-      "sourceSha256": "9f5eb2952c067cf324804d2cfbc4e0d75717c610927b0649f51c3bbf70e7638f",
+      "sourceSha256": "0ffef46cb4e5d1e89ebd22c647c156807a774c83b58b40b1235f18b5bab1d830",
       "normativeKeywords": [],
       "inlineCode": [
         "501\\ncapability_not_implemented",
@@ -9080,7 +9087,11 @@
         "19",
         "19",
         "19",
+        "19",
+        "19",
         "2",
+        "2026-07",
+        "2026-07",
         "2026-07",
         "2026-07",
         "2026-07",

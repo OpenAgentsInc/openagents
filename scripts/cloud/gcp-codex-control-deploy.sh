@@ -32,7 +32,8 @@ Usage:
       --managed-sandbox-image-id IMMUTABLE_ID \
       --managed-sandbox-image-digest sha256:HEX \
       --managed-sandbox-profile-digest sha256:HEX \
-      [--managed-sandbox-turn-driver /absolute/path]] \
+      [--managed-sandbox-turn-driver /absolute/path] \
+      [--managed-sandbox-io-driver /absolute/path]] \
     [--apply]
 
 Required:
@@ -64,6 +65,7 @@ managed_sandbox_image_id=""
 managed_sandbox_image_digest=""
 managed_sandbox_profile_digest=""
 managed_sandbox_turn_driver=""
+managed_sandbox_io_driver=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -83,6 +85,7 @@ while [[ $# -gt 0 ]]; do
     --managed-sandbox-image-digest) managed_sandbox_image_digest="${2:-}"; shift 2 ;;
     --managed-sandbox-profile-digest) managed_sandbox_profile_digest="${2:-}"; shift 2 ;;
     --managed-sandbox-turn-driver) managed_sandbox_turn_driver="${2:-}"; shift 2 ;;
+    --managed-sandbox-io-driver) managed_sandbox_io_driver="${2:-}"; shift 2 ;;
     --apply) apply="true"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -101,6 +104,14 @@ if [[ -n "$managed_sandbox_turn_driver" && "$managed_sandbox_turn_driver" != /* 
 fi
 if [[ -n "$managed_sandbox_turn_driver" && "$enable_managed_sandbox" != "true" ]]; then
   echo "managed-sandbox turn driver requires --enable-managed-sandbox" >&2
+  exit 2
+fi
+if [[ -n "$managed_sandbox_io_driver" && "$managed_sandbox_io_driver" != /* ]]; then
+  echo "managed-sandbox I/O driver must be an absolute container path" >&2
+  exit 2
+fi
+if [[ -n "$managed_sandbox_io_driver" && "$enable_managed_sandbox" != "true" ]]; then
+  echo "managed-sandbox I/O driver requires --enable-managed-sandbox" >&2
   exit 2
 fi
 
@@ -156,10 +167,18 @@ container_decl="$(mktemp)"
 trap 'rm -f "$container_decl"' EXIT
 managed_sandbox_env_yaml=""
 managed_sandbox_turn_driver_env_yaml=""
+managed_sandbox_io_driver_env_yaml=""
 if [[ -n "$managed_sandbox_turn_driver" ]]; then
   managed_sandbox_turn_driver_env_yaml="$(cat <<ENVYAML
         - name: OA_MANAGED_SANDBOX_TURN_DRIVER
           value: "${managed_sandbox_turn_driver}"
+ENVYAML
+)"
+fi
+if [[ -n "$managed_sandbox_io_driver" ]]; then
+  managed_sandbox_io_driver_env_yaml="$(cat <<ENVYAML
+        - name: OA_MANAGED_SANDBOX_IO_DRIVER
+          value: "${managed_sandbox_io_driver}"
 ENVYAML
 )"
 fi
@@ -196,6 +215,7 @@ if [[ "$enable_managed_sandbox" == "true" ]]; then
         - name: OA_MANAGED_SANDBOX_CONTROL_IDENTITY_REF
           value: "identity-ref://openagents/managed-sandbox/control"
 ${managed_sandbox_turn_driver_env_yaml}
+${managed_sandbox_io_driver_env_yaml}
 ENVYAML
 )"
 fi

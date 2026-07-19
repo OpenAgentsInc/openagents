@@ -7,6 +7,8 @@ import {
 } from 'node:http'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
+import type { OpenAgentsWorkerEnv } from './bindings'
+import { managedSandboxBoxV1RuntimeForEnv } from './managed-sandbox-box-v1-adapter'
 import {
   BoxV1FacadeError,
   type BoxV1Principal,
@@ -531,6 +533,248 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
       503,
       'upstream_unavailable',
     )
+  })
+
+  test('enforces SBX-05 guest I/O admission and projects bounded receipts', async () => {
+    const harness = makeHandler()
+    const api = apiFor(
+      'https://local-box.test/v1',
+      'test-token',
+      fetchFor(harness.handle),
+    )
+    const boxId = (
+      await api.create(
+        { createBoxRequest: { noEnv: true } },
+        retryHeaders('sbx05-create'),
+      )
+    ).box.id
+
+    const writeResponse = await harness.handle(
+      new Request(`https://local-box.test/v1/boxes/${boxId}/files`, {
+        method: 'PUT',
+        headers: {
+          authorization: 'Bearer test-token',
+          'content-type': 'application/json',
+          'idempotency-key': 'sbx05-write',
+        },
+        body: JSON.stringify({
+          path: 'workspace/result.txt',
+          content: 'sdk-compatible',
+        }),
+      }),
+    )
+    expect(writeResponse.status).toBe(200)
+    expect(await writeResponse.json()).toMatchObject({
+      type: 'file.written',
+      size: 14,
+      openagents: {
+        action: 'write_file',
+        outcome: 'succeeded',
+        resourceGeneration: 1,
+        processTerminated: true,
+        descendantsRemaining: 0,
+        scratchCleaned: true,
+        ingressClosed: true,
+        egressDenied: true,
+        pathPolicy: 'resolved_beneath_workspace_root',
+        symlinkTraversal: false,
+        secretScan: 'clean',
+      },
+    })
+
+    const artifact = await api.artifact({
+      boxId,
+      path: 'workspace/result.txt',
+    })
+    expect(await artifact.text()).toBe('sdk-compatible')
+    const rawArtifact = await harness.handle(
+      new Request(
+        `https://local-box.test/v1/boxes/${boxId}/artifacts?path=workspace%2Fresult.txt`,
+        { headers: { authorization: 'Bearer test-token' } },
+      ),
+    )
+    expect(rawArtifact.headers.get('x-openagents-artifact-ref')).toMatch(
+      /^artifact\.sha256\.[a-f0-9]{64}$/,
+    )
+    expect(rawArtifact.headers.get('x-openagents-source-generation')).toBe('1')
+    expect(rawArtifact.headers.get('x-openagents-retention-until')).toBe(
+      '2026-07-20T18:30:00.000Z',
+    )
+    expect(rawArtifact.headers.get('x-openagents-receipt-ref')).toMatch(
+      /^receipt\./,
+    )
+
+    for (const path of [
+      '/etc/passwd',
+      'workspace/../etc/passwd',
+      'workspace//secret',
+      'workspace/./secret',
+      'workspace\\secret',
+    ]) {
+      await expectResponseError(
+        api.readFile({ boxId, path }),
+        400,
+        'validation_failed',
+      )
+    }
+
+    await expectResponseError(
+      api.writeFile({
+        boxId,
+        fileWriteRequest: {
+          path: 'workspace/oversized.txt',
+          content: 'x'.repeat(1_048_577),
+        },
+      }),
+      400,
+      'validation_failed',
+    )
+
+    const resource = harness.authority.resources.get(boxId)
+    if (resource === undefined) throw new Error('expected managed sandbox')
+    harness.authority.resources.set(boxId, {
+      ...resource,
+      capabilities: resource.capabilities.map(capability =>
+        capability.kind === 'command'
+          ? { ...capability, state: 'revoked' as const }
+          : capability,
+      ),
+    })
+    await expectResponseError(
+      api.command({ boxId, commandRequest: { command: 'pwd' } }),
+      403,
+      'permission_denied',
+    )
+  })
+
+  test('validates the production private artifact response against exact returned bytes', async () => {
+    const harness = makeHandler()
+    const api = apiFor(
+      'https://local-box.test/v1',
+      'test-token',
+      fetchFor(harness.handle),
+    )
+    const boxId = (
+      await api.create(
+        { createBoxRequest: { noEnv: true } },
+        retryHeaders('sbx05-adapter-create'),
+      )
+    ).box.id
+    const resource = harness.authority.resources.get(boxId)
+    if (resource === undefined) throw new Error('expected managed sandbox')
+
+    const originalFetch = globalThis.fetch
+    let capturedUrl = ''
+    let capturedAuthorization = ''
+    let capturedBody: Record<string, unknown> = {}
+    globalThis.fetch = (async (input, init) => {
+      capturedUrl = String(input)
+      capturedAuthorization =
+        new Headers(init?.headers).get('authorization') ?? ''
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(
+        JSON.stringify({
+          schemaVersion: 'openagents.managed_sandbox_guest_io.v1',
+          action: 'read_artifact',
+          operationRef: 'operation.sbx05.adapter',
+          sandboxRef: resource.sandboxRef,
+          resourceGeneration: resource.resourceGeneration,
+          contentBase64: 'YXJ0aWZhY3Q=',
+          receipt: {
+            schemaVersion: 'openagents.managed_sandbox_guest_io_receipt.v1',
+            receiptRef: 'receipt.sbx05.adapter',
+            operationRef: 'operation.sbx05.adapter',
+            sandboxRef: resource.sandboxRef,
+            resourceGeneration: resource.resourceGeneration,
+            capabilityRef: 'capability.sbx05.adapter',
+            action: 'read_artifact',
+            outcome: 'succeeded',
+            pathDigest: `sha256:${'c'.repeat(64)}`,
+            startedAt: '2026-07-19T18:30:00.000Z',
+            finishedAt: '2026-07-19T18:30:01.000Z',
+            bytesRead: 8,
+            bytesWritten: 0,
+            cpuMillis: 1,
+            networkBytes: 0,
+            processTerminated: true,
+            descendantsRemaining: 0,
+            scratchCleaned: true,
+            ingressClosed: true,
+            egressDenied: true,
+            pathPolicy: 'resolved_beneath_workspace_root',
+            symlinkTraversal: false,
+            secretScan: 'clean',
+            evidenceRefs: ['evidence.sbx05.adapter'],
+          },
+          artifact: {
+            schemaVersion: 'openagents.managed_sandbox_artifact_receipt.v1',
+            artifactRef:
+              'artifact.sha256.c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c',
+            contentDigest:
+              'sha256:c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c',
+            byteLength: 8,
+            sourceGeneration: resource.resourceGeneration,
+            sourcePathDigest: `sha256:${'c'.repeat(64)}`,
+            retentionUntil: '2026-07-20T18:30:00.000Z',
+            contentType: 'application/octet-stream',
+            evidenceRefs: ['evidence.sbx05.adapter'],
+          },
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      )
+    }) as typeof fetch
+
+    try {
+      const runtime = await Effect.runPromise(
+        managedSandboxBoxV1RuntimeForEnv({
+          OA_CLOUD_CONTROL_URL: 'https://control.test',
+          OA_CLOUD_CONTROL_TOKEN: 'private-test-bearer',
+        } as unknown as OpenAgentsWorkerEnv),
+      )
+      const result = await Effect.runPromise(
+        runtime.artifact({
+          principal: boxV1TestPrincipal,
+          resource,
+          operationRef: 'operation.sbx05.adapter',
+          idempotencyRef: 'idempotency.sbx05.adapter',
+          capabilityRef: 'capability.sbx05.adapter',
+          capabilityState: 'active',
+          capabilityExpiresAt: '2026-07-19T21:00:00.000Z',
+          requestedAt: '2026-07-19T18:30:00.000Z',
+          limits: {
+            workspaceRootRef: 'workspace.managed-sandbox',
+            maxFileBytes: 1_048_576,
+            maxArtifactBytes: 10_000_000,
+            maxOutputBytes: 131_072,
+            maxDurationMillis: 30_000,
+            maxCpuMillis: 30_000,
+            maxProcesses: 32,
+            maxNetworkBytes: 0,
+            networkPolicyRef: 'network-policy.managed-sandbox.deny-all',
+          },
+          path: 'workspace/result.bin',
+          retentionUntil: '2026-07-20T18:30:00.000Z',
+        }),
+      )
+      expect(new TextDecoder().decode(result.bytes)).toBe('artifact')
+      expect(result.artifact.contentDigest).toBe(
+        'sha256:c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c',
+      )
+      expect(capturedUrl).toBe(
+        'https://control.test/v1/managed-sandbox/runtime/io',
+      )
+      expect(capturedAuthorization).toBe('Bearer private-test-bearer')
+      expect(capturedBody).toMatchObject({
+        schemaVersion: 'openagents.managed_sandbox_guest_io.v1',
+        action: 'read_artifact',
+        sandboxRef: resource.sandboxRef,
+        resourceGeneration: resource.resourceGeneration,
+        path: 'workspace/result.bin',
+      })
+      expect(JSON.stringify(capturedBody)).not.toContain('private-test-bearer')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   test('streams Codex and Claude turn events through the unmodified SDK cursor helpers', async () => {

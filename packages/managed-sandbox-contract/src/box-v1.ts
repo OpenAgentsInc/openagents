@@ -7,6 +7,7 @@ import {
   SandboxRef,
   type ManagedSandboxResource,
 } from "./schemas.ts";
+import { ManagedSandboxGuestIoReceiptSchema } from "./guest-io.ts";
 
 export type BoxV1Operation = Readonly<{
   sdkMethod: string;
@@ -337,6 +338,7 @@ export const BoxV1FileReadResponseSchema = S.Struct({
   encoding: S.Literals(["utf8", "base64"]),
   size: NonNegativeInt,
   content: S.String,
+  openagents: ManagedSandboxGuestIoReceiptSchema,
 });
 
 export const BoxV1FileWriteResponseSchema = S.Struct({
@@ -346,6 +348,7 @@ export const BoxV1FileWriteResponseSchema = S.Struct({
   path: S.String,
   encoding: S.Literals(["utf8", "base64"]),
   size: NonNegativeInt,
+  openagents: ManagedSandboxGuestIoReceiptSchema,
 });
 
 export const BoxV1CommandResponseSchema = S.Struct({
@@ -362,6 +365,7 @@ export const BoxV1CommandResponseSchema = S.Struct({
   cwd: S.String,
   startedAt: S.String,
   finishedAt: S.String,
+  openagents: ManagedSandboxGuestIoReceiptSchema,
 });
 
 const boxStateForLifecycle = (

@@ -40,13 +40,17 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
   [SBX-02 runtime runbook](./bootstrap/SBX-02-managed-sandbox-runtime.md)
   defines its exact profile and live component harness. The
   [SBX-03 facade runbook](../../apps/openagents.com/docs/2026-07-19-managed-sandbox-box-v1-facade.md)
-  defines authentication, configuration, tests, and current typed-unavailable
+  defines authentication, configuration, tests, and the default-off boundary.
 - [SBX-04 turn runtime](./bootstrap/SBX-04-managed-sandbox-turn-runtime.md) —
   implements the native Codex/Claude turn authority,
   ordered reconnect, exact-turn interrupt, and the private default-off guest
   driver adapter. The runbook records the component proof and live boundary.
   I/O safeguards, consumers, independent live rollout, and production
-  availability remain gated by SBX-05 through SBX-10
+  availability remain gated by SBX-06 through SBX-10
+- [SBX-05 guest I/O](./bootstrap/SBX-05-managed-sandbox-guest-io.md) —
+  defines the default-off file, command, process, artifact, quota, path,
+  secret, egress, and cleanup receipt boundary. Consumer work and independent
+  live acceptance remain gated by SBX-06 through SBX-10
 - [Remote-first portable session pathway](../sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md)
   — planned product/roadmap additions for owner-managed and managed-provider
   targets, cross-host checkpoints, general brokered capabilities, and mobile

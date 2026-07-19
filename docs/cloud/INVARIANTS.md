@@ -147,8 +147,8 @@ design context only.
   desktop endpoints, snapshot availability, subdomains, raw topology, or
   credentials. SBX-04 runtime calls use the private control URL and an
   explicitly configured absolute SDK-driver path. Without either dependency,
-  prompt/status/events/interrupt fail typed and closed. File, command, and
-  artifact calls remain typed `503 upstream_unavailable` until SBX-05.
+  prompt/status/events/interrupt fail typed and closed. SBX-05 file, command,
+  and artifact calls use the same private URL plus an absolute I/O driver.
 - A runtime turn binds the exact scope, command, capability, prompt digest,
   provider, model, harness, and optional reasoning effort before provider
   dispatch. A provider event page must use the same turn and generation with
@@ -158,7 +158,19 @@ design context only.
   `RuntimeInterrupted`, or `RuntimeFailed` creates a terminal turn receipt.
   `RuntimeInterruptRequested` remains visible and interrupting until the
   provider emits its terminal event. Service restart may restart the helper.
-  no receipt claims provider-private process or session state was snapshotted.
+  No receipt claims provider-private process or session state was snapshotted.
+- Guest I/O admits only file read, file write, command, and artifact read. Each
+  private request binds the exact owner, tenant, work unit, sandbox generation,
+  active capability, retry identity, time, and resource limits.
+- Guest paths stay beneath `workspace` through no-follow resolution. Absolute,
+  dot, empty, backslash, NUL, parent, or unproven symlink paths refuse.
+- A command success requires a closed process tree and zero descendants. It
+  also requires clean scratch, closed ingress, and denied egress. CPU,
+  duration, output, process count, and network use must remain within bounds.
+  The control adapter kills an overdue driver process group.
+- Artifact receipts bind content digest, size, source generation, source path
+  digest, retention, content type, and evidence refs. Secret or credential
+  markers refuse before public projection.
 - Sarah's closed managed-sandbox action vocabulary grants no raw `gcloud`,
   shell, database, topology, guest address, service-account, credential,
   filesystem-path, or generic container administration. Runtime mutation must

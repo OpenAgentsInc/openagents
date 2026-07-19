@@ -49,11 +49,13 @@ generation data. A cursor from a prior generation returns `409` after resume.
 
 ## Current runtime boundary
 
-SBX-03 does not fabricate guest execution. The production runtime adapter is
-deliberately unavailable for prompts, files, commands, and artifacts. It
-returns typed `503 upstream_unavailable` until SBX-04 and SBX-05 connect the
-admitted native services. Lifecycle calls still use the native Postgres
-authority, but the public flag remains off.
+SBX-03 does not fabricate guest execution. SBX-04 connects prompt, status,
+events, and interrupt to the private turn adapter. SBX-05 connects files,
+commands, and artifacts to the private guest I/O adapter.
+
+Both adapters require an exact configured private control dependency. They
+fail typed and closed when it is absent. Lifecycle calls still use the native
+Postgres authority, and the public flag remains off through SBX-09.
 
 ## Verification
 

@@ -1,8 +1,8 @@
 # `openagents.managed_sandbox.v1`
 
 Status: **the contract, lifecycle store, turn store, default-off GCE runtime,
-Box facade, and private turn driver are admitted. Guest I/O, consumers, the
-independent live gate, and production availability remain gated by SBX-05
+Box facade, private turn driver, and private guest I/O are admitted. Consumers,
+the independent live gate, and production availability remain gated by SBX-06
 through SBX-10**.
 
 Owning package: `packages/managed-sandbox-contract`
@@ -140,6 +140,35 @@ The helper may restart after sandbox resume, but memory, process handles, and
 hidden provider session state are not checkpoint claims. Durable filesystem
 and OpenAgents turn/event state are the only resumable facts until a later
 provider-specific continuation is independently proven.
+
+## Guest I/O authority
+
+`ManagedSandboxGuestIoRequestSchema` admits only `read_file`, `write_file`,
+`execute_command`, and `read_artifact`. It binds the exact scope, generation,
+operation, retry identity, active capability, request time, and limits.
+
+The only admitted root is `workspace`. The Worker rejects absolute paths, dot
+or empty segments, backslashes, NUL bytes, and paths above that root. The
+private driver must also prove a no-follow beneath-root resolution.
+
+File bytes have a one MiB component cap. Artifact bytes, output, duration,
+CPU, process count, and network use have explicit request caps. The Box command
+projection uses zero network bytes and the deny-all network policy.
+
+`ManagedSandboxGuestIoReceiptSchema` proves scope, byte use, CPU, network,
+closed process state, and zero descendants. It also proves clean scratch,
+closed ingress, denied egress, path policy, symlink refusal, secret scan, and
+evidence refs.
+
+`ManagedSandboxArtifactReceiptSchema` binds an `artifact.sha256.<hex>` ref to
+the exact digest, byte count, source generation, source path digest, retention,
+content type, and evidence refs. The Worker verifies returned bytes again and
+uses bounded no-store response headers.
+
+The private endpoint is `POST /v1/managed-sandbox/runtime/io`. The control
+service invokes only the absolute `OA_MANAGED_SANDBOX_IO_DRIVER` executable.
+It uses no shell, drops stderr, caps response size, and kills the driver process
+group after the declared command deadline plus a short control margin.
 
 ## Lifecycle invariants
 
@@ -285,6 +314,10 @@ Box facade remain default-off. The component tests do not prove a live GCP
 SDK helper, provider account, or target image. SBX-09 owns that independent
 proof and rollout decision.
 
+SBX-05 adds the private guest I/O adapter described in
+`docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md`. The driver and Box
+facade remain default-off. SBX-09 owns live guest and GCP acceptance.
+
 ## Verification
 
 ```bash
@@ -295,6 +328,7 @@ pnpm --filter @openagentsinc/khala-sync-server typecheck
 pnpm exec vp test --run packages/khala-sync-server/src/managed-sandbox-store.test.ts
 cargo test -p oa-codex-control managed_sandbox_runtime --no-fail-fast
 cargo test -p oa-codex-control managed_sandbox_turn_runtime --no-fail-fast
+cargo test -p oa-codex-control managed_sandbox_guest_io --no-fail-fast
 cargo test -p oa-codex-control --no-fail-fast
 bash -n scripts/cloud/gcp-codex-control-deploy.sh
 ```
@@ -308,6 +342,8 @@ component harness. The accepted refs-only component receipt is
 SBX-04 proves the default-off turn-driver protocol and durable event authority
 at the deterministic component rung. Its bounded receipt is
 `docs/sol/evidence/2026-07-19-sbx04-managed-sandbox-turns.json`.
+SBX-05 proves the guest I/O policy and artifact receipt component. Its receipt
+is `docs/sol/evidence/2026-07-19-sbx05-managed-sandbox-guest-io.json`.
 The independent live release gate, IDE, mobile, and Sarah dogfood receipts
 belong to later SBX work.
 This contract does not claim them early.

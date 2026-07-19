@@ -4271,8 +4271,8 @@ scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
   generations fail closed. Compatibility cursor state never replaces native
   event order.
 - Box projections expose no provider URL, guest IP, desktop endpoint,
-  snapshot, subdomain, topology, path, or credential. Unwired runtime and guest
-  I/O return typed unavailability rather than fixture or optimistic success.
+  snapshot, subdomain, topology, private path, or credential. Absent private
+  control dependencies return typed unavailability.
 - The route/service split remains Effect-native with tagged errors and one HTTP
   mapper. It introduces no production `Effect.runPromise` bridge or Promise
   dependency adapter. Deterministic coverage is
@@ -4303,3 +4303,29 @@ scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
 - Box runtime events are bounded projections. Native events and terminal
   receipts remain canonical, and provider-private sessions, handles, auth
   homes, diagnostics, and paths never enter them.
+
+## Managed Sandbox Guest I/O (SBX-05, #9026)
+
+- File, command, and artifact calls require a ready exact generation, active
+  lease, present guest, attached filesystem, and unexpired operation
+  capability before the private effect.
+- The only file root is `workspace`. Absolute paths, dot or empty segments,
+  backslashes, NUL bytes, paths above the root, and unproven symlink access
+  refuse.
+- The private request binds exact owner, tenant, work unit, sandbox,
+  generation, operation, retry identity, capability, time, and quotas.
+  Credentials and provider topology are absent.
+- The control adapter uses only an absolute
+  `OA_MANAGED_SANDBOX_IO_DRIVER` executable. It invokes no control-host shell,
+  drops stderr, limits response bytes, and kills the driver process group
+  after its deadline.
+- A success receipt requires no process descendants, clean scratch, closed
+  ingress, denied egress, a clean secret scan, and a beneath-root no-follow
+  path proof. File, artifact, output, CPU, duration, process, and network use
+  must stay within the exact request limits.
+- Artifact bytes bind a SHA-256 content ref, exact size, source generation,
+  source path digest, retention time, content type, and evidence refs. Public
+  download responses are `no-store` and publish only bounded receipt headers.
+- Guest I/O has no wallet, payment, settlement, broad host, raw cloud, generic
+  shell, or service-account authority. The facade remains default-off until
+  SBX-09 accepts the live gate.

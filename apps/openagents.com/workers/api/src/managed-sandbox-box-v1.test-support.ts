@@ -11,6 +11,7 @@ import {
   type ManagedSandboxCommand,
   type ManagedSandboxEvent,
   ManagedSandboxEventSchema,
+  type ManagedSandboxGuestIoReceipt,
   type ManagedSandboxReceipt,
   ManagedSandboxReceiptSchema,
   type ManagedSandboxResource,
@@ -822,6 +823,46 @@ export const boxV1TestPrincipal: BoxV1Principal = {
 export const makeBoxV1MemoryRuntime = (): BoxV1Runtime => {
   const files = new Map<string, string>()
   files.set('workspace/README.md', 'OpenAgents staging sandbox')
+  const guestIoReceipt = (
+    input: {
+      operationRef: string
+      resource: ManagedSandboxResource
+      capabilityRef: string
+      path?: string
+      cwd?: string
+    },
+    action: ManagedSandboxGuestIoReceipt['action'],
+    bytesRead: number,
+    bytesWritten: number,
+  ): ManagedSandboxGuestIoReceipt => ({
+    schemaVersion: 'openagents.managed_sandbox_guest_io_receipt.v1',
+    receiptRef: `receipt.${input.operationRef}`,
+    operationRef: input.operationRef,
+    sandboxRef: input.resource.sandboxRef,
+    resourceGeneration: input.resource.resourceGeneration,
+    capabilityRef: input.capabilityRef,
+    action,
+    outcome: 'succeeded',
+    pathDigest: `sha256:${'c'.repeat(64)}`,
+    startedAt: '2026-07-19T18:30:00.000Z',
+    finishedAt: '2026-07-19T18:30:01.000Z',
+    bytesRead,
+    bytesWritten,
+    cpuMillis: 1,
+    networkBytes: 0,
+    ...(action === 'execute_command'
+      ? { processRef: `process.${input.operationRef}` }
+      : {}),
+    processTerminated: true,
+    descendantsRemaining: 0,
+    scratchCleaned: true,
+    ingressClosed: true,
+    egressDenied: true,
+    pathPolicy: 'resolved_beneath_workspace_root',
+    symlinkTraversal: false,
+    secretScan: 'clean',
+    evidenceRefs: [`evidence.${input.operationRef}`],
+  })
   return {
     dispatch: input =>
       Effect.succeed([
@@ -860,12 +901,22 @@ export const makeBoxV1MemoryRuntime = (): BoxV1Runtime => {
         : Effect.succeed({
             content,
             size: new TextEncoder().encode(content).length,
+            receipt: guestIoReceipt(
+              input,
+              'read_file',
+              new TextEncoder().encode(content).length,
+              0,
+            ),
           })
     },
     writeFile: input =>
       Effect.sync(() => {
         files.set(input.path, input.content)
-        return { size: new TextEncoder().encode(input.content).length }
+        const size = new TextEncoder().encode(input.content).length
+        return {
+          size,
+          receipt: guestIoReceipt(input, 'write_file', 0, size),
+        }
       }),
     command: input =>
       Effect.succeed({
@@ -879,6 +930,12 @@ export const makeBoxV1MemoryRuntime = (): BoxV1Runtime => {
         timedOut: false,
         startedAt: '2026-07-19T18:30:00.000Z',
         finishedAt: '2026-07-19T18:30:01.000Z',
+        receipt: guestIoReceipt(
+          input,
+          'execute_command',
+          0,
+          input.command === 'pwd' ? 10 : 3,
+        ),
       }),
     artifact: input => {
       const content = files.get(input.path)
@@ -887,6 +944,23 @@ export const makeBoxV1MemoryRuntime = (): BoxV1Runtime => {
         : Effect.succeed({
             bytes: new TextEncoder().encode(content),
             contentType: 'text/plain; charset=utf-8',
+            receipt: guestIoReceipt(
+              input,
+              'read_artifact',
+              new TextEncoder().encode(content).length,
+              0,
+            ),
+            artifact: {
+              schemaVersion: 'openagents.managed_sandbox_artifact_receipt.v1',
+              artifactRef: `artifact.sha256.${'d'.repeat(64)}`,
+              contentDigest: `sha256:${'d'.repeat(64)}`,
+              byteLength: new TextEncoder().encode(content).length,
+              sourceGeneration: input.resource.resourceGeneration,
+              sourcePathDigest: `sha256:${'c'.repeat(64)}`,
+              retentionUntil: input.retentionUntil,
+              contentType: 'text/plain; charset=utf-8',
+              evidenceRefs: [`evidence.${input.operationRef}`],
+            },
           })
     },
   }

@@ -1070,7 +1070,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "acb9f3e094ee9cad76654f991bb46a650adb808a3aab6d5231dbb09ba9e3b16b",
+      "sha256": "aa8b5ed2e333460bb3b9a4a0305ade01aea8dc523a4012e6d9f90381fe3a7661",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -4324,7 +4324,7 @@
     },
     {
       "path": "apps/openagents.com/docs/2026-07-19-managed-sandbox-box-v1-facade.md",
-      "sha256": "0ad60da2dd0e07e7fe9e0a1d92117c1f902a71a968c96e196ee24249dcc3f418",
+      "sha256": "30d2e6a968f7c2b0cf448eb1030a73222e1b5313ec7a8fee727c6602a8610c81",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -18962,7 +18962,7 @@
     },
     {
       "path": "docs/cloud/ARCHITECTURE.md",
-      "sha256": "4e0770e482c3918964fc455b3fef7d0ce29b19cf7d17d67e252eebbbdf5b124c",
+      "sha256": "e6002f72ac772b320f5331c9155fa43983e263e287d95c3d4f82ec892b55866e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19006,7 +19006,7 @@
     },
     {
       "path": "docs/cloud/INVARIANTS.md",
-      "sha256": "f7a4d9e0761af418dce8bd904699c10125929b6d69c43871662a833324c85ef9",
+      "sha256": "7c9be383b0591956fd99897dac3d2710cc5a3e25f59f7c72de7ac41395c85eda",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19067,7 +19067,7 @@
     },
     {
       "path": "docs/cloud/README.md",
-      "sha256": "781a564241f3f3e79c591ddfa524eb2d3b55795f8a83959dc5edb8f83be7db3b",
+      "sha256": "daf15416ede7854ac420091fa8b527b0608e397bb0fe2996bfbf4ab68f8bb91a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19650,6 +19650,24 @@
       }
     },
     {
+      "path": "docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md",
+      "sha256": "39c432f6b07b9e7c5d930e11fc729f154b76028ee5f3869ec3db58def0895277",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/cloud/contracts/openagents.artanis_bootstrap_assignment.v1.md",
       "sha256": "83fa42a0f4d252d52c9f9176162e205fc73eba2f4aeb7b718d3b8cf9102c7055",
       "reason": "Final review of a converted document",
@@ -19893,7 +19911,7 @@
     },
     {
       "path": "docs/cloud/contracts/openagents.managed_sandbox.v1.md",
-      "sha256": "00fd1d922aa2bf4a479f0a338a9c05e2d4463d2e2b784d44e122305ea1122b9f",
+      "sha256": "add40d74188ae20d3e16927a3ce0d2277c40e4cbae81db0d33120828fe1cb7cf",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -20069,7 +20087,7 @@
     },
     {
       "path": "docs/cloud/control/CODEX_CONTROL_API.md",
-      "sha256": "2b0d362a433abc6a045444bbeb8dbe03845e993bcf93c7ba0d9144fa27c0cd7d",
+      "sha256": "c1a07e4039f9aac492588a8effddaf15e4dd2794db398ea2c62cc71a138c69b7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -23358,6 +23376,42 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-19-some-simple-economics-of-agi-deepdive.md",
+      "sha256": "6367746371cbd4361f1a1c4d7d654feb78e9e88bc6cdf0eb94cd1608644f7834",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
+      "path": "docs/fable/2026-07-19-verifiable-software.md",
+      "sha256": "093830083e451d5c11cdedb4d786bab4afb3a9ac2a06b519d97097c555da259f",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/fable/EXECUTION.md",
       "sha256": "fcbc4954cb55d3d2185a95ae814d1656e542406feb748167031a2abfcab2a69c",
       "reason": "Final review of a converted document",
@@ -26469,7 +26523,51 @@
     },
     {
       "path": "docs/ide/ROADMAP.md",
-      "sha256": "c7e21af448bb5767de8b4d963204138e66e9806e0dac2b506d5d572683be2846",
+      "sha256": "f805d07bae8ceab727512f6cdb347f38e17fb4ccdafc56d6366fa8896f203569",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/ide/ROADMAP.md",
+      "sha256": "f805d07bae8ceab727512f6cdb347f38e17fb4ccdafc56d6366fa8896f203569",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/ide/ROADMAP.md",
+      "sha256": "f805d07bae8ceab727512f6cdb347f38e17fb4ccdafc56d6366fa8896f203569",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39805,7 +39903,7 @@
     },
     {
       "path": "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md",
-      "sha256": "ea981ea116abb82c738a1b137eea007964a9470f9d2e291b2e31201c9ed5dac3",
+      "sha256": "a7fecc957983d018947b403b73be9981a86542ff92adf07c398a4f47df06ece0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46744,7 +46842,7 @@
     },
     {
       "path": "packages/managed-sandbox-contract/README.md",
-      "sha256": "7b7e2034565e8e486f8f274b03a644f517fe84d2fc19268115c82de8d4e3e911",
+      "sha256": "72896fbd09039538921f75f1df31a104047e352987c4f73e149df0e0adb765aa",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48641,7 +48739,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
-      "sha256": "9f5eb2952c067cf324804d2cfbc4e0d75717c610927b0649f51c3bbf70e7638f",
+      "sha256": "0ffef46cb4e5d1e89ebd22c647c156807a774c83b58b40b1235f18b5bab1d830",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
