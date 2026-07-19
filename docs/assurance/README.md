@@ -109,6 +109,38 @@ This dogfood validates the companion system alongside MVP development. It does
 not expand MVP product scope, declare any criterion passed, make Observer a
 release prerequisite, or change a public promise.
 
+## IDE proof-design proposals
+
+The canonical IDE roadmap now has two proposed umbrella companions:
+
+- `specs/desktop/desktop-trust-complete-workbench.assurance-spec.md` binds the
+  exact Desktop ProductSpec revision-7 bytes and AC-1..AC-52; and
+- `specs/openagents/cursor-capability-parity.assurance-spec.md` binds the exact
+  Cursor parity ProductSpec revision-3 bytes and CP-AC-01..CP-AC-27.
+
+Both remain `lifecycle_state: proposed`. They provide complete criterion
+coverage but zero ready obligations: environments, techniques, oracles,
+falsifiers, evidence policy, independent review, and gates remain
+`needs_design`. No repository candidate, Environment Profile, proof technique,
+oracle, falsifier, reviewer, or gate is selected. Neither proposal proves an
+IDE packet, admits execution, changes a release rung, or
+supports a Cursor-parity claim. `specs/IDE_ROADMAP_CROSSWALK.md` maps each
+IDE-00..19 packet to its owning criteria and states which unchanged specs—most
+notably Full Auto revision 14 and AssuranceSpec revision 4—are dependencies
+rather than subjects to rewrite.
+
+There is one explicit tooling gap. The Desktop ProductSpec uses the validated
+upstream-style `productspec-acceptance-criteria` block, while the current
+AssuranceSpec proposal/session executable-profile helper extracts only top-
+level Markdown criterion bullets. The Desktop companion was therefore
+mechanically built from the ProductSpec parser's validated structured item
+list and rebound to the SHA-256 of the unchanged original bytes. Its own
+Objective and Subject disclose that bridge. Structural validation works; a
+future tooling change must teach proposal/session handling to consume the
+structured list directly before that companion can use the ordinary session-
+pin path. This limitation is not permission to downgrade the ProductSpec,
+ignore its digest, or treat the proposal as admitted.
+
 ## Directory boundaries
 
 - `docs/assurance/` owns current proof-design standards, architecture, and
@@ -144,6 +176,7 @@ release prerequisite, or change a public promise.
 | MVP AssuranceSpec | Revision 2 reviewed and admitted; 18/18 candidates `CONFIRMED`, 18/18 falsifiers `REFUTED`, 18 sensitivity receipts, and the full Desktop gate green |
 | Proposal schema/parser/serializer/validation | Implemented with conformance corpus, custom-section preservation, review annotations, and schema/parser parity tests |
 | ProductSpec-to-AssuranceSpec proposal | Implemented deterministic coverage skeleton plus a typed, injected Observer semantic-planner boundary; every result remains a separately reviewed `proposed` AssuranceSpec and the deterministic tool never infers proof semantics |
+| IDE AssuranceSpec proposals | Desktop rev 7: 52/52 criteria represented, 0 ready; Cursor parity rev 3: 27/27 represented, 0 ready; both proposed and execution-unauthorized. Desktop structured-item proposal/session extraction remains an explicit tooling gap |
 | Environment Profile and adapter lock | Implemented and digest-bound in the admitted MVP manifest |
 | Deterministic Assurance Manifest compiler | Implemented with golden-byte and binding tests |
 | Native Vite Plus test adapter and normalized receipt | Implemented; native output remains private and reviewed projections are digest-bound |

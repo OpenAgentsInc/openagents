@@ -31,17 +31,52 @@ proof; the parity spec prevents stronger trust architecture from being used as
 an excuse for missing capability. It does not claim the capabilities have
 shipped or replace roadmap, assurance, acceptance, or release authority.
 
-Revision 2 of that parity contract and revision 6 of the Desktop workbench
+Revision 3 of that parity contract and revision 7 of the Desktop workbench
 contract define the IDE bar as Zed-quality integration over one generation-
-fenced project/evidence graph. The canonical implementation boundary lives in
-[Zed-quality IDE Effect/Rust architecture](../docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md):
-Effect/TypeScript owns application authority and persistence; Rust is limited
-to supervised authority-free native helpers. Mobile receives bounded review
-projections, and web/public links receive allowlisted verifiable code-share
-bundles without editor or execution authority.
+fenced project/evidence graph. Portable Sessions revision 4 owns IDE-13;
+mobile revision 7 and web revision 7 own their bounded IDE-14 projections.
+The canonical dependency sequence, built-in Vim contract, initial Tokyo Night
+theme contract, and release-rung vocabulary live in
+[the IDE roadmap](../docs/ide/ROADMAP.md). The exhaustive ProductSpec/
+AssuranceSpec/packet mapping lives in
+[`IDE_ROADMAP_CROSSWALK.md`](IDE_ROADMAP_CROSSWALK.md).
+
+Effect/TypeScript owns application authority and persistence; every boundary
+contract is Effect Schema-first with derived types; capability lifecycle uses
+Effect services/layers/scopes; Rust is limited to supervised authority-free
+native helpers. Mobile receives bounded review projections, and web/public
+links receive allowlisted verifiable code-share bundles without editor or
+execution authority. Tokyo Night is the one initial owned Desktop IDE theme;
+Vim is built in and off by default. Broader light/high-contrast/system theme
+support remains required before the complete-accessibility/full-parity gate.
+
+Two exact-subject proposed proof-design companions now cover the reconciled IDE
+contracts:
+
+- [`desktop/desktop-trust-complete-workbench.assurance-spec.md`](desktop/desktop-trust-complete-workbench.assurance-spec.md)
+  binds Desktop ProductSpec revision 7; and
+- [`openagents/cursor-capability-parity.assurance-spec.md`](openagents/cursor-capability-parity.assurance-spec.md)
+  binds Cursor parity ProductSpec revision 3.
+
+Both are deterministic proposal skeletons: every criterion is represented,
+but proof design remains `needs_design`; neither is admitted, authorized to
+execute, observed, owner-accepted, or release evidence. The existing Full Auto
+AssuranceSpec revision 4 remains exactly bound to unchanged Full Auto
+ProductSpec revision 14 and supplies the independent IDE-17 dependency. Frozen
+MVP ProductSpecs and AssuranceSpecs remain historical exact-byte subjects and
+are not rewritten as IDE proof.
 
 ```sh
 node --import tsx packages/product-spec/src/cli.ts validate --specs-root specs
+```
+
+Validate either proposed IDE AssuranceSpec structurally with:
+
+```sh
+node --import tsx packages/assurance-spec/src/cli.ts validate \
+  specs/desktop/desktop-trust-complete-workbench.assurance-spec.md
+node --import tsx packages/assurance-spec/src/cli.ts validate \
+  specs/openagents/cursor-capability-parity.assurance-spec.md
 ```
 
 ## Formal model tier

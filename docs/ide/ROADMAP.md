@@ -13,10 +13,17 @@ independently define order or completion.
 
 The product contracts remain authoritative for intent:
 
-- `specs/desktop/desktop-trust-complete-workbench.product-spec.md`;
-- `specs/openagents/cursor-capability-parity.product-spec.md`;
-- `specs/openagents/portable-coding-sessions.product-spec.md`;
-- the mobile and web ProductSpecs for supervision and public sharing.
+- `specs/desktop/desktop-trust-complete-workbench.product-spec.md` revision 7;
+- `specs/openagents/cursor-capability-parity.product-spec.md` revision 3;
+- `specs/openagents/portable-coding-sessions.product-spec.md` revision 4;
+- mobile revision 7 and web revision 7 for supervision and public sharing.
+
+`specs/IDE_ROADMAP_CROSSWALK.md` is the exhaustive traceability index from
+IDE-00..19 to those ProductSpec criteria, the unchanged Full Auto and Fast
+Follow dependencies, and the exact-subject Desktop/Cursor AssuranceSpec
+proposals. The proposals are structurally valid but remain `proposed` with
+every obligation `needs_design`; they are not implementation, proof, release,
+or parity evidence.
 
 `docs/sol/MASTER_ROADMAP.md`, current code, live work packets, tests, and
 receipts remain the status and dispatch authorities. A row here being next does

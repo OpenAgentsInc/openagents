@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Mobile: Any-Host Agent Fleet Controller"
 artifact_type: "prd"
-spec_revision: 6
+spec_revision: 7
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-18T00:00:00.000Z"
+updated_at: "2026-07-19T00:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-mobile/"
@@ -28,7 +28,10 @@ tool_metadata:
   openagents_revision_4_note: "Rev 4 makes Cursor mobile and Remote Control breadth a floor: launch and supervise local or background/cloud sessions, voice, notifications/live status, search/history, changes and artifacts, and workstation handback, while retaining the stronger any-host, no-credential, exactly-once command, portable-session, and receipt laws."
   openagents_revision_5_note: "Rev 5 incorporates MemoHarness strictly as safe remote supervision. Mobile may select only released compatible harness bundles/adaptation policies exposed by the host, and projects a run's base/effective bundle digests, adaptation state, frozen bank-snapshot ref, effective execution tuple, candidate/release state, and redacted receipts. It never receives raw experiences, prompts, transcripts, tool output, embeddings, retrieval queries or scores, secrets, credentials, or paths; never runs retrieval/optimization; and cannot mutate the bank, edit modules, promote candidates, or expand run authority."
   openagents_revision_6_note: "Rev 6 adds the mobile projection needed for a Zed-quality Desktop IDE: exact generation-bound project/worktree/file/document/proposal/evidence vocabulary; safe multi-root tree, file/symbol/search, Problems, diffs, test/task/artifact evidence, review/comment and Desktop handoff; and explicit stale/unavailable truth. Mobile remains a controller, not a Monaco/LSP/PTY/Git/native-helper host, and general code editing stays cut. Adds AC-21 through AC-24 and SM-9."
+  openagents_revision_7_note: "Rev 7 binds mobile explicitly to IDE-14 of docs/ide/ROADMAP.md and the shared IDE release-rung vocabulary. Mobile renders the same bounded generation-fenced code evidence through shared Effect Schema DTOs and the Tokyo Night semantic review token subset, but it neither hosts a full editor nor owns or toggles Desktop Vim state. Raw type/interface duplicates are forbidden at the projection boundary; lifecycle stays in Effect Native services. Adds AC-25 through AC-27 and SM-10 through SM-11."
   openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
+  openagents_ide_roadmap: "docs/ide/ROADMAP.md (mobile ownership: IDE-14; projection dependency: IDE-13)"
+  openagents_ide_spec_crosswalk: "specs/IDE_ROADMAP_CROSSWALK.md"
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
@@ -78,6 +81,7 @@ desk-bound.
 ```productspec-scope
 in:
   - Meet the mobile and Remote Control rows of `specs/openagents/cursor-capability-parity.product-spec.md`: no Cursor mobile workflow is omitted merely because OpenAgents supports more hosts or stronger custody.
+  - Own the mobile projection and review half of `docs/ide/ROADMAP.md` IDE-14 over IDE-13 portable capabilities. The phone may report the source release rung and remaining gaps, but Files foundation, daily-use basic IDE, agent IDE, portable IDE platform, parity candidate, and full parity remain distinct Desktop/system claims rather than states mobile can promote.
   - Launch new bounded agent work and resume existing work on an explicitly selected owner-local, owner-managed, OpenAgents-managed, or compatible audited-provider target; managed cloud is an option, not the identity or mandatory custody layer.
   - Match Cursor-class mobile continuity with searchable session history, side conversations, voice input/control, privacy-generic push, lock-screen/live run status, questions and approvals, changes/diff/artifact review, rerun, and one-action workstation handback under the same session refs.
   - Operate strictly as a remote control: the phone issues the same typed commands as Desktop and web against the same durable session refs (steer, queue, stop, approve, answer), never executes agent work, holds no desktop token or raw provider credential, and never receives raw filesystem paths.
@@ -95,6 +99,8 @@ in:
   - Treat the portable session as the stable object: a session moves owner-local to managed cloud and back through quiesce, checkpoint, detach, attach, resume, and failback verbs, with exclusive attachment generations so exactly one host executes, secret-free checkpoints, and source-cleanup receipts.
   - Ship the workbench mode graph, supervision-first: Attention, Recent, Repositories, and Hosts entry points; per-session Thread, Files, Changes, Terminal, Preview, and Artifacts modes; routes and sheets on phone, list-plus-detail-plus-inspector on tablet, from one adaptive app.
   - Project the Zed-quality IDE graph safely: multi-root project/worktree display identity, bounded relative-ref Files tree, quick file and symbol lookup, workspace-search results, Problems, changed files, version-bound proposal diffs, comments, test/task outcomes, artifacts, and bounded syntax-highlighted excerpts all carry exact attachment/document/service/evidence generations and explicit stale, omitted, cached, degraded, revoked, or unavailable state.
+  - Decode those project/review projections from the shared Effect Schema sources used by Desktop and web; derive mobile TypeScript types from those schemas, use constrained opaque refs, and reject raw mobile interfaces or handwritten unions as a second contract. Effect Native services own decode, cache, outbox, projection, and teardown lifecycle through scoped layers rather than component-local authority.
+  - Render syntax, diff, diagnostic, selection, focus, and status evidence from the safe Tokyo Night semantic token subset supplied by the shared IDE theme contract so the initial review vocabulary is coherent across Desktop/mobile/web. Mobile does not ingest executable theme code, expose a theme marketplace, or claim the deferred Desktop light/high-contrast/system theme corpus has passed.
   - Make every code/evidence object continuable: Open on Desktop carries only opaque session/project/file/range/proposal/evidence refs; Desktop reauthorizes and resolves the current generation, while a missing historical generation opens a snapshot/diff or explicit unavailable state instead of a guessed current line.
   - Keep bounded review and mutation distinct. Mobile can inspect, comment, approve/reject where policy permits, rerun, and issue a small staged edit only through the existing exactly-once command/outcome path with a base generation, explicit preview, conflict refusal, and post-image receipt; it never turns review text or a screen projection into direct filesystem mutation.
   - Provide a durable per-environment offline outbox built on durable admission: commands queued with client-chosen idempotent IDs, admission acknowledged before the UI shows accepted, explicit steer-versus-queue choice surfaced, and the queue visible, editable, and cancellable.
@@ -114,6 +120,7 @@ out:
   - Mobile authoring of ProductSpecs and full workroom authoring flows are deferred; supervision precedes authoring on this surface, per the multiplayer contract's explicit exclusion.
   - No raw MemoHarness experience or pattern content, prompt/transcript/tool output, embedding, retrieval query or private score, secret, credential, filesystem path, experience-bank mutation, optimization start, module editing, candidate verification/promotion, or cross-tenant retrieval on mobile.
   - No Monaco, language-server/tsserver/DAP host, Git or shell process, PTY, Rust native helper, unsaved-buffer/undo-stack custody, raw terminal stream, or general project editor on mobile; Files, Problems, Terminal, and Debug are bounded host projections and controls only.
+  - No mobile ownership or mutation of Desktop `editor.vim.enabled`, Vim mappings, modal state, Monaco key handlers, editor settings, or editor-release-rung admission. A handoff may display a non-authoritative effective-mode hint, but Desktop reauthorizes and resolves its own current setting.
 cut:
   - CUT-MOB-01: Pixel-streaming remote desktop is cut; the phone renders typed projections, not screen mirrors.
   - CUT-MOB-02: General on-phone code editing is cut to bounded review comments and small staged edits; full editing remains a desktop concern.
@@ -172,6 +179,12 @@ cut:
   criterion: When mobile comments, approves, rejects, reruns, or submits an admitted small staged edit, the action uses the same exactly-once outbox and typed command as other controls, binds the exact base generation, previews the effect, refuses conflict, and completes only from a durable outcome and post-image receipt; the app exposes no general editor or direct filesystem mutation path.
 - id: AC-24
   criterion: When Files, Problems, Terminal, task/test, or debug evidence is viewed on mobile, schema and capability audits prove the phone hosts no Monaco, LSP/tsserver/DAP, Git/shell process, PTY, Rust helper, raw environment, unsaved-buffer/undo custody, or raw terminal stream; host execution and private state remain on the authoritative target.
+- id: AC-25
+  criterion: When mobile decodes an IDE tree, excerpt, Problem, change, proposal, test, task, artifact, or continuation, it uses the same identified Effect Schema contract and constrained opaque refs as Desktop/web, derives its TypeScript types from that schema, rejects unknown or forbidden fields at entry, and has no raw interface or handwritten union acting as a parallel projection contract.
+- id: AC-26
+  criterion: When bounded code evidence renders on phone or tablet, syntax, diff, diagnostic, selection, focus, and status roles come from the allowlisted Tokyo Night semantic review projection, pass the applicable contrast/non-color checks, and contain no executable theme contribution; the UI neither claims broader Desktop theme parity nor stores or mutates Desktop Vim settings or modal state.
+- id: AC-27
+  criterion: When a mobile release describes IDE support, it identifies its role as IDE-14 bounded supervision/review over an admitted IDE-13 capability and links exact project-generation, acceptance, and assurance state; it never promotes Files foundation, a basic Desktop editor, or an agent-IDE packet into portable/full Cursor parity by inference.
 ```
 
 ## Success Metrics
@@ -227,6 +240,16 @@ cut:
   target: "100% across the maintained Zed-quality mobile projection corpus"
   target_status: committed
   window: every release candidate
+- id: SM-10
+  metric: mobile_ide_projection_contracts_decoded_from_shared_effect_schemas_with_derived_types
+  target: "100%; zero mobile-local parallel boundary contracts"
+  target_status: committed
+  window: continuously and every release candidate
+- id: SM-11
+  metric: mobile_code_review_roles_using_the_allowlisted_tokyo_night_semantic_projection
+  target: "100% of initially supported code-evidence surfaces"
+  target_status: committed
+  window: every release candidate
 ```
 
 ## Solution
@@ -260,6 +283,11 @@ host owns Monaco, document recovery, language/Git/task/debug services,
 external runtimes, and any Rust PTY/containment helper. Mobile keeps no shadow
 IDE database: it renders typed snapshots, sends exactly-once commands, and
 hands opaque refs back to Desktop for fresh authorization and resolution.
+The Effect Native projection service decodes the same identified schemas and
+derives its TypeScript types rather than restating DTO interfaces. Scoped
+layers own cache, stream, outbox, and teardown lifetimes. An allowlisted Tokyo
+Night semantic subset colors code evidence consistently; it conveys no theme
+code or Desktop Vim/editor authority.
 
 ## Strategic Positioning
 
@@ -338,6 +366,9 @@ position no one else can copy without rebuilding their custody model.
   `docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md`
 - Zed-quality IDE projection and Effect/Rust boundary:
   `docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md`
+- Canonical IDE roadmap and mobile IDE-14 boundary: `docs/ide/ROADMAP.md`
+- Roadmap-to-spec and assurance traceability:
+  `specs/IDE_ROADMAP_CROSSWALK.md`
 
 ## Owner Gates
 

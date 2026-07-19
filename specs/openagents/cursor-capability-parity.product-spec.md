@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Cursor-Class Capability Parity and Beyond"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00.000Z"
-updated_at: "2026-07-18T00:00:00.000Z"
+updated_at: "2026-07-19T00:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-desktop/"
@@ -31,7 +31,11 @@ tool_metadata:
   openagents_parity_rule: "Every user-observable Cursor capability needs an implemented, admitted, or explicitly owner-dispositioned OpenAgents row; trust advantages do not excuse capability loss."
   openagents_sibling_specs: "specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md, specs/openagents/portable-coding-sessions.product-spec.md, specs/openagents/fast-follow.product-spec.md"
   openagents_revision_2_note: "Rev 2 defines full IDE parity as Zed-quality integration, not a checklist of adjacent Cursor features. It adds one generation-fenced project/document/language/Git/terminal/task/debug/agent evidence graph, editor-first cold open, version-bound proposals and backlinks, local/remote symmetry, and review-quality public code-share bundles. It fixes the implementation split: Effect/TypeScript owns all application authority and persistence; Rust is limited to process-opaque PTY/containment and benchmark-admitted native kernels behind generated contracts. Adds CP-AC-19 through CP-AC-23 and SM-7."
+  openagents_revision_3_note: "Rev 3 binds the canonical docs/ide/ROADMAP.md closure contract. The daily-use editor starts with one owned Tokyo Night semantic theme and first-party persistent off-by-default Vim, while light/high-contrast/system themes remain mandatory before complete accessibility/full parity. Boundary contracts are Effect Schema-first and application lifecycles use Context.Service, Layer.effect, named Effect.fn, Schema.TaggedErrorClass, and scoped resources; Rust remains an authority-free rind. IDE-00..19 and release rungs become traceability vocabulary, not implementation or release claims. Adds CP-AC-24 through CP-AC-27 and SM-8 through SM-10."
   openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
+  openagents_ide_roadmap: "docs/ide/ROADMAP.md (IDE-00 through IDE-19; sequencing and release-rung vocabulary only)"
+  openagents_ide_spec_crosswalk: "specs/IDE_ROADMAP_CROSSWALK.md"
+  openagents_assurance_companion: "specs/openagents/cursor-capability-parity.assurance-spec.md (proposed; no admission or execution authority)"
 ---
 
 ## Problem
@@ -79,7 +83,10 @@ in:
   - Define parity as equivalent supported user outcomes and workflow depth, not copied code, identical visual design, or identical internal architecture; OpenAgents may exceed or safely reshape an interaction only when the original outcome remains available without material extra friction.
   - Ship both a complete coding workbench and an agent-first operations window, with one session and command system underneath rather than separate products or divergent transcript stores.
   - Define complete coding-workbench parity as a Zed-quality integrated project graph, not the presence of editor widgets: multi-root/worktree identity, editor-first file opening, revisioned documents and recovery, language/navigation, Git/review, terminal/tasks/tests/debug, agent context/proposals/backlinks, persistence, and local/remote capability lifecycle share exact generation-fenced identities and evidence.
+  - Use `docs/ide/ROADMAP.md` IDE-00..19 and its release rungs as the maintained closure vocabulary: Files foundation, daily-use basic IDE, agent IDE, portable IDE platform/parity candidate, and full parity are distinct states, and no dependency, package, screenshot, architecture document, or agent report upgrades a row without its own current acceptance, assurance, and owner disposition.
+  - Make built-in Vim and Tokyo Night part of the parity baseline rather than optional polish. Vim is a packaged first-party, persistent, off-by-default mode controlled through OpenAgents commands and document authority, not a trusted extension. Tokyo Night is the single initial semantic IDE/workbench projection; first-party light, high-contrast dark/light, and system-following themes remain required before complete accessibility/full parity but do not block the first useful basic-IDE rung.
   - Preserve the architecture split while reaching that breadth: Effect/TypeScript owns project, document, language, Git, terminal/task/debug, agent, command, policy, placement, persistence, recovery, export/delete, share, and receipt authority; Monaco, Pierre, xterm, focused VS Code packages, LSP/tsserver/DAP/Git/harness processes, and any Rust child are replaceable mechanics behind generated Effect-owned contracts.
+  - Define every persisted, IPC, wire, helper, surface-projection, and public-share contract once with `Schema.Struct`, `Schema.TaggedStruct`, or `Schema.TaggedUnion`; derive its TypeScript type, constrain scalar refs with branded schemas, identify codegen-facing schemas, and reject raw interfaces or handwritten unions as parallel boundary authority. Application capabilities use `Context.Service` plus `Layer.effect`; named `Effect.fn` operations return `Schema.TaggedErrorClass` failures; untrusted inputs decode at entry; watchers, processes, streams, and subscriptions are scoped to their owning layer.
   - Admit Rust only as a process-opaque authority-free helper for PTY/process groups, OS containment/spawn, optional local inference, or a native kernel proven necessary by cross-platform benchmarks after TypeScript optimization. Every helper has bounded frames, generation fencing, failure semantics, conformance fixtures, and a reversal test; it never owns a project/session/policy/credential/database/receipt.
   - Match Cursor's editor intelligence, agent runtime, parallelism, context, browser/computer control, remote/background execution, automations, mobile/web supervision, CLI/protocol, ecosystem, enterprise administration, and platform distribution breadth described in the capability ledger below.
   - Unbundle six independently selectable planes: editor/workbench surface, agent harness, model/provider, execution placement, sync/relay, and persistence/indexing; no adapter may become the hidden owner of the canonical session, workspace, authority, or receipt graph.
@@ -112,7 +119,7 @@ Fast Follow keeps the rows current.
 | Capability family           | Cursor-class outcome OpenAgents must cover                                                                                                                                                          | OpenAgents form and advantage                                                                                                                                        |
 | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Product shells              | Classic project IDE plus a dedicated agent-first multi-session window, project/repository opening, recent work, settings, updates, and account entry                                                | One canonical session graph rendered as workbench, agents window, mobile, web, and terminal densities                                                                |
-| Editor core                 | Files, tabs/splits, search, symbols, navigation, diagnostics, source control, diffs, terminal, tasks/tests/debug, keymaps, themes, settings, recovery, remote workspaces, and extension-driven language support | Zed-quality generation-fenced Effect project graph with Monaco/Pierre/xterm as replaceable mechanics; full dark/light/high-contrast and accessible themes             |
+| Editor core                 | Files, tabs/splits, search, symbols, navigation, diagnostics, source control, diffs, terminal, tasks/tests/debug, keymaps, themes, settings, recovery, remote workspaces, and extension-driven language support | Zed-quality generation-fenced Effect project graph with Monaco/Pierre/xterm as replaceable mechanics; built-in persistent Vim and one initial owned Tokyo Night semantic projection; light/high-contrast/system themes before full parity |
 | AI editing                  | Low-latency single- and multi-line completion, next-edit prediction, inline ask/edit/generate, selection transforms, fast multi-file apply, review, accept, reject, and undo                        | Model/provider-selectable editing with exact patch provenance, checkpoints, receipts, and local or managed execution                                                 |
 | Repository intelligence     | Codebase chat, semantic search, file/symbol/path context, explicit mentions, docs/web context, ignore rules, and continuously refreshed repository knowledge                                        | Hybrid local lexical/symbol/path index plus optional selectable embedding backends; visible scope, freshness, cost, custody, export, and deletion                    |
 | Conversation system         | Durable threads, side chats, branching, searchable past conversations, titles, attachments, mentions, reasoning, tool activity, usage, export, and deletion                                         | Host-independent session identity, complete object graph, honest gaps, full-text search, portable custody, no cloud-only canonical history                           |
@@ -152,6 +159,11 @@ flows without learning which internal service owns them. They can autocomplete
 and edit in place, ask and plan, launch parallel agents in worktrees, browse and
 test the result, compare candidates, run an automation, leave it running on a
 chosen host, supervise it from mobile or web, and return to the same session.
+The initial editor is deliberately opinionated rather than incomplete: Tokyo
+Night is already coherent across chrome, source, tree, review, terminal, and
+agent evidence, and Vim is a built-in toggle that survives restart without
+requiring or trusting an extension marketplace. Broader theme choice remains a
+visible later parity item rather than a hidden prerequisite for ordinary use.
 
 Before any task starts, the placement disclosure answers: where the harness
 runs, where the model runs, what repository material can leave the host, what
@@ -186,6 +198,16 @@ remain replaceable. Rust child processes may supply OS PTY or containment
 facts, but never application state; optional native acceleration enters only
 after a measured cross-platform gate and can be removed without changing
 canonical project or session identity.
+
+The contract graph is schema-first: `Schema.Struct`, `Schema.TaggedStruct`, and
+`Schema.TaggedUnion` own boundary shapes and their TypeScript types are derived;
+branded schemas own stable refs; `Schema.TaggedErrorClass` owns typed failures.
+`Context.Service` and `Layer.effect` own capability construction, named
+`Effect.fn` operations own observable behavior, and project scopes interrupt
+their watchers, processes, streams, and subscriptions. One
+`DesktopThemeProjection` maps the pinned Tokyo Night palette into every
+initial IDE adapter; one app-owned `VimModeController` translates a
+replaceable Monaco Vim engine into the canonical command/document graph.
 
 The repository knowledge service has explicit tiers: always-available local
 path/text/symbol search; optional local embeddings where a compatible model is
@@ -303,6 +325,31 @@ move or adapter replacement cannot silently remove a supported workflow.
   process-opaque bounded primitive with generated conformance fixtures,
   explicit failure behavior and reversal threshold, and no credential,
   project/session/policy/database/receipt authority.
+- **CP-AC-24:** The maintained daily-editor corpus enables and disables Vim
+  from Settings, command palette, and status control; proves persistent
+  off-by-default mode, core Normal/Insert/Visual operations, counts, operators,
+  text objects, registers, repeat, search, supported colon commands, clipboard,
+  conflict-safe save/close, split/worktree isolation, IME/accessibility,
+  restart, and complete listener teardown; and finds no extension-host or
+  direct-Monaco authority path.
+- **CP-AC-25:** Every initially supported Desktop IDE projection renders from
+  one provenance-pinned Tokyo Night semantic token plane before first paint,
+  passes checked contrast and non-color-state journeys, works offline, and
+  retains document/terminal/review state across theme initialization. A full-
+  parity claim additionally requires the deferred first-party light, high-
+  contrast dark/light, and system-following corpus; Tokyo Night alone is never
+  reported as complete theme/accessibility parity.
+- **CP-AC-26:** An architecture audit finds a single Effect Schema source and
+  derived TypeScript type for every persisted, IPC, helper, mobile/web, and
+  public-share boundary; constrained branded refs and stable codegen schema
+  identifiers where applicable; no raw interface or handwritten union acting
+  as a parallel contract; and every untrusted input decoded before use.
+- **CP-AC-27:** A lifecycle and release audit finds IDE capabilities composed
+  as Context.Service/Layer.effect services with named Effect.fn operations,
+  Schema.TaggedErrorClass failures, and scoped resource interruption, and maps
+  every Cursor ledger row to the exact IDE-00..19 packet, release rung,
+  acceptance ref, proposed/admitted assurance state, remaining gap, and owner
+  disposition without promoting a narrower rung by inference.
 
 ## Success Metrics
 
@@ -343,6 +390,21 @@ move or adapter replacement cannot silently remove a supported workflow.
   target: "100% before a full IDE, Zed-quality, or Cursor-parity claim"
   target_status: committed
   window: every release candidate
+- id: SM-8
+  metric: built_in_vim_daily_editor_journeys_passing_without_extension_or_authority_bypass
+  target: "100% before the daily-use basic-IDE or later claim"
+  target_status: committed
+  window: every release candidate
+- id: SM-9
+  metric: initial_ide_surfaces_using_the_owned_tokyo_night_semantic_projection
+  target: "100%, with zero unreviewed executable theme contributions"
+  target_status: committed
+  window: every packaged release candidate
+- id: SM-10
+  metric: cursor_ledger_rows_with_exact_ide_packet_rung_acceptance_assurance_gap_and_owner_disposition
+  target: "100% before any parity-candidate or full-parity claim"
+  target_status: committed
+  window: every ledger refresh and release candidate
 ```
 
 ## Risks
@@ -373,9 +435,21 @@ move or adapter replacement cannot silently remove a supported workflow.
 - Choosing Rust because the reference IDE uses Rust would create a second
   application core and cross-language drift. Native helpers require measured
   necessity, generated contracts, authority-free state, and reversal tests.
+- Treating Vim or a theme as library configuration would let adapter state
+  bypass the command, document, focus, accessibility, and teardown laws. Both
+  remain app-owned projections with explicit packaged journeys.
+- Shipping only Tokyo Night can be mislabeled as accessibility/theme parity.
+  It is the admitted initial default; the broader first-party theme corpus
+  stays a visible parity gap until separately proven.
 
 ## Related Artifacts
 
+- Canonical IDE roadmap, packet definitions, release rungs, Vim contract, and
+  Tokyo Night contract: `docs/ide/ROADMAP.md`
+- Roadmap-to-ProductSpec/AssuranceSpec traceability:
+  `specs/IDE_ROADMAP_CROSSWALK.md`
+- Proposed proof-design companion bound to this exact revision:
+  `specs/openagents/cursor-capability-parity.assurance-spec.md`
 - Cursor product and local-state evidence:
   `docs/teardowns/2026-07-11-cursor-product-teardown.md`
 - Zed-quality integrated IDE and Effect/Rust architecture:

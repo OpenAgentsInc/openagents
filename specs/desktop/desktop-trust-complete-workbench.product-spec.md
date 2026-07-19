@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Desktop: Trust-Complete Coding Workbench"
 artifact_type: "prd"
-spec_revision: 6
+spec_revision: 7
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-18T00:00:00.000Z"
+updated_at: "2026-07-19T00:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents-desktop/"
@@ -27,7 +27,11 @@ tool_metadata:
   openagents_revision_4_note: "Rev 4 makes complete Cursor-class capability parity explicit rather than assuming trust advantages compensate for missing breadth. It binds the exhaustive parity ledger, restores editor depth, computer use, voice, automation, remote/background, marketplace, light/high-contrast themes, and agent-first/classic workbench outcomes to scope, and requires an unbundled harness/model/provider/placement/index architecture with inspectable local and remote data lifecycle."
   openagents_revision_5_note: "Rev 5 incorporates MemoHarness as the optimization layer for the already-unbundled harness plane. Desktop owns released six-dimension HarnessPolicyBundle selection, run-start adaptation from a frozen private experience-bank snapshot, selected-versus-effective provenance, adaptation receipts, private experience-bank lifecycle controls, and candidate/shadow/production release states. It forbids per-turn self-modification, current-run evaluation leakage, authority expansion, raw-memory projection to mobile/web, and candidate self-promotion. The Effect application/control plane owns schemas, retrieval, optimization, policy, storage, and release; Rust remains an isolated native-helper boundary for containment, PTY, and local-inference primitives only."
   openagents_revision_6_note: "Rev 6 turns the prior editor capability nouns into a Zed-quality integrated IDE contract. One generation-fenced Effect project graph now binds multi-root worktrees, documents, language, Git, terminals/tasks/debug, agents, proposals, evidence, local/remote placement, recovery, mobile/web continuation, and public code-share projections. Monaco, Pierre, xterm, and focused VS Code packages remain replaceable mechanics. Effect/TypeScript owns every identity, policy, state machine, database, projection, and receipt; Rust is limited to process-opaque authority-free PTY/containment and benchmark-admitted native kernels behind generated contracts and reversal tests. Adds AC-39 through AC-47 and SM-17 through SM-18."
+  openagents_revision_7_note: "Rev 7 binds the canonical docs/ide/ROADMAP.md contract and makes its previously implicit first-editor decisions executable intent: Tokyo Night is the one initial Desktop IDE/workbench theme; built-in, persistent, off-by-default Vim is a first-party capability rather than an extension; broader light/high-contrast/system theme parity remains required before full parity but does not block the daily-use basic-IDE rung. Every boundary DTO is Effect Schema-first, types derive from schemas, capabilities use Context.Service and Layer.effect, public/non-trivial methods use named Effect.fn, typed failures use Schema.TaggedErrorClass, and process/watch/stream lifetimes are scoped. Adds AC-48 through AC-52 and SM-19 through SM-22 while preserving IDE-00..19 as roadmap sequencing rather than claiming implementation."
   openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
+  openagents_ide_roadmap: "docs/ide/ROADMAP.md (IDE-00 through IDE-19; sequencing and release-rung vocabulary only)"
+  openagents_ide_spec_crosswalk: "specs/IDE_ROADMAP_CROSSWALK.md"
+  openagents_assurance_companion: "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md (proposed; no admission or execution authority)"
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md, specs/web/openagents-com-trust-surface.product-spec.md"
 ---
 
@@ -96,13 +100,18 @@ in:
   - Satisfy `specs/openagents/cursor-capability-parity.product-spec.md` as the exhaustive breadth contract: every current Cursor capability is present, admitted, or visibly tracked as a gap, and no trust advantage excuses a missing user outcome.
   - Ship two complete densities over one canonical state graph: a classic coding workbench with editor, files, symbols, search, diagnostics, source control, diff, terminal, preview, extensions, settings, themes, and keymaps; and an agent-first operations window optimized for concurrent sessions, plans, worktrees, subagents, attention, and review.
   - Meet a Zed-quality integrated-IDE bar rather than assembling adjacent widgets: one generation-fenced `IdeProjectRef` graph owns multi-root projects, roots, files, documents, capability lifecycles, worktrees, language results, Git evidence, terminals/tasks/debug, agent attachments, proposals, persistence, and safe cross-surface projections; every tree, editor, search, symbol, diagnostic, hunk, test, terminal, and agent backlink resolves through that graph.
+  - Bind the complete IDE outcome to the canonical `docs/ide/ROADMAP.md` packet and release-rung vocabulary without turning that roadmap into product or dispatch authority: Files foundation, daily-use basic IDE, agent IDE, portable IDE platform, and full parity remain visibly different claims, and every unopened IDE-00..19 dependency remains an explicit gap.
   - Keep file opening editor-first and provider-independent: Finder/Open With, Explorer activation, quick open, workspace search, Problems, symbols, Git hunks, recent restore, and agent backlinks target the primary main-region Monaco document immediately, while chat, provider, Git, index, LSP, and remote hydration continue asynchronously; refusal or unsupported content renders a typed editor state in that same region, never a small side pane or no-op.
   - Deliver complete document behavior: stable opaque document identity, multi-view editor groups and splits, preview/pin/reorder/reopen, multi-cursor and native editing, find/replace and navigation, encoding/BOM/EOL/large/binary/read-only truth, atomic save/save-all, explicit autosave, external-change conflict, dirty close, hot-exit recovery, and generation-bound stale refusal or an explicit rebase flow.
+  - Ship Vim as an app-owned, first-party editor capability that is built in, packaged offline, off by default, and toggleable from Settings, the command palette, and the editor status control. Persist `editor.vim.enabled`; project NORMAL/INSERT/VISUAL/VISUAL LINE/VISUAL BLOCK/REPLACE/operator-pending state where the selected engine supports it; route `:write`, `:quit`, undo/redo, clipboard, search, and every mutation through the canonical command/document graph; and prove key-precedence, IME, accessibility, split/worktree isolation, conflict, restart, disable, and teardown behavior without a trusted extension host.
+  - Ship Tokyo Night as the only initial Desktop IDE/workbench theme through one owned `DesktopThemeProjection` spanning Effect Native/app chrome, Monaco, Pierre tree/diffs, xterm, Problems/Output/debug, review, agent, browser, and status surfaces. Pin palette provenance and semantic-token mappings, apply accessibility adjustments explicitly, initialize before first editor paint, and prohibit executable theme code. Light, high-contrast dark/light, and system-following modes remain required at the complete-accessibility/parity rung rather than blocking the first useful editor.
   - Treat language intelligence as a project capability with visible lifecycle and placement. Monaco-local workers, tsserver, and LSP may provide different evidence tiers, but diagnostics, completion, hover, definitions, references, document/workspace symbols, rename, formatting, code actions, semantic tokens, inlay hints, folds, Problems, Outline, breadcrumbs, and excerpt views carry exact document/service generations, cancellation, supersession, restart, and unsupported/degraded truth.
   - Make terminal, tasks, tests, output, and debug first-class project evidence: xterm is the screen projection; named tasks, problem matchers, test discovery/results, DAP breakpoints/launch/attach/stack/variables, logs, and terminal sessions bind exact project/worktree/runtime generations and become agent-usable evidence under declared retention and disclosure policy.
   - Make the agent/code loop native to the IDE: a session attaches to an exact project without gaining implicit authority; the context tray discloses selected files/ranges/symbols/diagnostics/changes/rules/skills/retrieval reasons and provider destination; agents produce version-bound proposals rather than mutating Monaco; Pierre review supports safe file/hunk accept/reject/apply/undo; code and turns backlink; post-apply diagnostics/tests/format/Git/delivery attach as evidence.
   - Keep local and remote projects behind the same typed capability interface and stable project/file identities. Effective placement, component version, attachment generation, latency class, cached-versus-live evidence, disconnection, revocation, incompatibility, and recovery are explicit; Desktop never silently uploads a project, downloads a helper, changes custody, or substitutes a managed capability.
   - Use Effect/TypeScript as the authoritative IDE and control plane: it owns project/document/language/Git/terminal/task/debug/agent identities, commands, policy, admission, persistence, recovery, placement, projections, export/delete, and receipts; Monaco, Pierre, xterm, LSP/tsserver/DAP/Git/harness processes, and focused VS Code packages remain supervised mechanics behind Effect-owned services.
+  - Define every persisted, IPC, wire, helper, mobile/web, public-share, and other boundary value once with Effect Schema (`Schema.Struct`, `Schema.TaggedStruct`, or `Schema.TaggedUnion`) and derive TypeScript types from that schema. Use constrained branded schemas for scalar refs and stable schema identifiers for codegen-facing contracts; raw interfaces or handwritten unions cannot become parallel wire or persistence authority, while internal-only state machines may use `Data.TaggedEnum`.
+  - Model application capabilities with `Context.Service`, compose implementations with `Layer.effect`, wrap public and non-trivial operations in named `Effect.fn`, model domain failures with `Schema.TaggedErrorClass`, decode all untrusted input at the boundary, and scope/interrupt project watchers, language servers, terminal children, streams, and subscriptions with their owning layer.
   - Limit Rust to separately admitted process-opaque helpers for OS containment, PTY/process-group byte mechanics, optional local inference, and only benchmark-proven native kernels. Helpers receive generated versioned bounded contracts, no project/session/policy/credential/database/receipt authority, fail closed for required enforcement, degrade honestly when optional, and carry explicit necessity and reversal tests; file/index/search/Git/LSP/DAP remain Effect/Node or supervised external-process paths by default.
   - Match Cursor-class AI editing and repository intelligence: low-latency completion and next-edit prediction, inline ask/edit/generate, multi-file apply/review/undo, explicit file/symbol/path/docs/web context, and hybrid local lexical/symbol/path search plus selectable local or remote semantic embeddings with visible scope, freshness, custody, cost, export, rebuild, and deletion.
   - Unbundle workbench/editor, harness runtime, model/provider, execution placement, sync/relay, and persistence/indexing so each can be replaced independently without changing canonical session identity; support owner-local, owner-managed, OpenAgents-managed, and compatible audited-provider execution where the selected capability permits it.
@@ -167,7 +176,7 @@ out:
   - No third-party plugin execution inside the trusted engine or shell process; extensions run under declared isolation profiles with signatures and receipts or they do not run.
   - No ambient personal-memory product, cross-tenant experience retrieval, raw transcript synchronization for optimization, continuous per-turn self-rewriting harness, or automatic candidate promotion; MemoHarness is bounded run optimization over explicit evidence and release policy, not a new authority or surveillance mode.
 cut:
-  - CUT-DSK-01: Arbitrary unreviewed theme code is cut; first-party dark, light, high-contrast, system-following, and accessible theme switching are required, and portable declarative themes may be admitted through the extension isolation path.
+  - CUT-DSK-01: Arbitrary unreviewed theme code is cut. Tokyo Night is the only initially supported IDE/workbench theme; first-party light, high-contrast dark/light, system-following, and accessible theme switching are still required before the complete-accessibility or full-parity gate, and portable declarative themes may later be admitted only through the extension-isolation path.
   - CUT-DSK-02: Simultaneous token-by-token mirroring of every child agent is cut; the roster shows live typed lifecycle and any child transcript opens on demand.
   - CUT-DSK-03: Forking and owning a proprietary editor runtime is cut; complete editing workflow parity is still required through replaceable, typed editor components.
   - CUT-DSK-04: Unsigned or trusted-process marketplace execution is cut; public discovery and signed ingestion of extensions, MCP/MCPB, skills, rules, hooks, and plugins with provenance, compatibility, permissions, isolation, rollback, and receipts are required.
@@ -272,6 +281,16 @@ cut:
   criterion: When Desktop hands a file, range, diagnostic, proposal, test, artifact, or run to mobile, web supervision, or a public share compiler, the projection uses opaque generation-bound safe refs and an explicit allowlist; Desktop reauthorizes every continuation, and no raw root, environment, credential, private context, terminal, embedding, or unselected repository content crosses the boundary.
 - id: AC-47
   criterion: When an IDE implementation proposes Rust beyond PTY or required containment, its admission evidence names the missed cross-platform Effect/Node budget, optimized baseline, smallest authority-free protocol, failure behavior, generated conformance fixtures, and reversal threshold; without that evidence the capability remains in Effect/TypeScript or a supervised external process.
+- id: AC-48
+  criterion: When a user enables Vim from Settings, the command palette, or the editor status control, every Editor-mode Monaco view uses the same persistent off-by-default first-party setting; supported modes, motions, counts, operators, text objects, registers, repeat, search, supported colon commands, clipboard, undo/redo, and status are visible and operate through canonical commands, and restart, split, equal-relative-path worktree, conflict, IME, accessibility, disable, and listener-teardown journeys neither bypass document authority nor lose state.
+- id: AC-49
+  criterion: When any initially supported Desktop IDE surface mounts, one provenance-pinned Tokyo Night semantic projection controls app chrome, Monaco syntax and chrome, Pierre tree and diff, xterm, Problems, Output, debug, proposal/review, browser, and status colors before first paint; checked contrast and non-color cues pass, no executable or raw unreviewed theme code runs, theme initialization does not recreate canonical models or sessions, and no broader theme claim is made until the deferred light/high-contrast/system corpus passes.
+- id: AC-50
+  criterion: When an IDE contract crosses persistence, IPC, helper, renderer, mobile, web, or public-share boundaries, a contract audit finds one identified Effect Schema source using Struct, TaggedStruct, or TaggedUnion, derives its TypeScript type from that source, constrains scalar refs, and rejects untrusted input through the schema; the audit finds no raw interface or handwritten union acting as a parallel boundary contract.
+- id: AC-51
+  criterion: When a project, document, language, Git, terminal, task, debug, agent, projection, or storage capability starts and stops, its application service is a Context.Service implementation composed with Layer.effect; named Effect.fn operations expose Schema.TaggedErrorClass failures; watchers, processes, subscriptions, and streams are scoped to and interrupted with the owning project generation; and no renderer package or native helper becomes lifecycle authority.
+- id: AC-52
+  criterion: When a release or product surface describes IDE readiness, it names exactly one roadmap rung—Files foundation, daily-use basic IDE, agent IDE, portable IDE platform/parity candidate, or full parity—and the IDE-00..19 crosswalk shows current acceptance and assurance refs plus every remaining gap; Monaco, Pierre, Tokyo Night, Vim, or a Zed-quality architecture alone can never satisfy a broader rung or Cursor-parity claim.
 ```
 
 ## Success Metrics
@@ -374,6 +393,26 @@ cut:
   target: "0"
   target_status: committed
   window: continuously and every architecture/release audit
+- id: SM-19
+  metric: built_in_vim_acceptance_journeys_passing_without_document_or_command_divergence
+  target: "100% across the maintained Vim-on, Vim-off, restart, split, conflict, IME, accessibility, and teardown corpus before the daily-use basic-IDE claim"
+  target_status: committed
+  window: every basic-IDE and later release candidate
+- id: SM-20
+  metric: initially_supported_ide_surfaces_rendered_from_the_owned_tokyo_night_semantic_projection
+  target: "100%, with zero first-paint fallback-theme flashes and zero executable theme contributions"
+  target_status: committed
+  window: every packaged basic-IDE and later release candidate
+- id: SM-21
+  metric: boundary_contracts_with_a_single_effect_schema_source_and_derived_types
+  target: "100%; zero raw interface or handwritten-union boundary authorities"
+  target_status: committed
+  window: continuously and every IDE architecture audit
+- id: SM-22
+  metric: ide_release_claims_with_exact_rung_complete_crosswalk_and_no_hidden_required_packet_gap
+  target: "100%"
+  target_status: committed
+  window: every candidate, release, and public-copy review
 ```
 
 ## Solution
@@ -427,6 +466,18 @@ document journal, session store, policy, credential, approval, or receipt key.
 Effect Schema is the source for any cross-language contract; absence or drift
 fails closed, and optional native acceleration must be removable without
 changing canonical identities.
+
+That service graph is schema-first rather than type-first. Boundary contracts
+are `Schema.Struct`, `Schema.TaggedStruct`, or `Schema.TaggedUnion` values with
+derived TypeScript types; stable refs are branded schemas; domain failures are
+`Schema.TaggedErrorClass` values. Capabilities are `Context.Service`s composed
+with `Layer.effect`, non-trivial operations are named `Effect.fn`s, and the
+project scope owns interruption of watchers, language/debug processes,
+terminals, streams, and listeners. `DesktopThemeProjection` supplies one
+Tokyo Night semantic token plane to every initial IDE surface, while an
+app-owned `VimModeController` translates a replaceable Monaco-compatible key
+engine into the canonical command/document graph. Neither adapter receives
+project, persistence, mutation, or policy authority.
 
 ## Strategic Positioning
 
@@ -486,6 +537,14 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   planes, weaken Effect Schema authority, and make cross-surface behavior
   harder to prove. Native helpers therefore require empirical necessity,
   authority-free contracts, failure semantics, and reversal tests.
+- Vim packages can bypass focus, command, dirty/conflict, accessibility, and
+  teardown laws if treated as editor glue. The app-owned controller, canonical
+  command translation, precedence table, and Vim-on/Vim-off corpus are the
+  admission boundary.
+- A fixed dark palette can masquerade as accessibility completion. Tokyo Night
+  is the explicit initial product choice; checked semantic contrast and
+  non-color cues are immediate gates, while light, high-contrast, and system
+  modes remain visible IDE-18/full-parity gaps until their own evidence passes.
 
 ## Open Questions
 
@@ -510,6 +569,12 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
 
 ## Related Artifacts
 
+- Canonical IDE implementation roadmap, packet definitions, release rungs,
+  Vim contract, and Tokyo Night contract: `docs/ide/ROADMAP.md`
+- Roadmap-to-ProductSpec/AssuranceSpec traceability:
+  `specs/IDE_ROADMAP_CROSSWALK.md`
+- Proposed proof-design companion bound to this exact revision:
+  `specs/desktop/desktop-trust-complete-workbench.assurance-spec.md`
 - Cursor parity contract and exact capability ledger:
   `specs/openagents/cursor-capability-parity.product-spec.md`
 - Cursor product and local-state evidence:
@@ -581,8 +646,12 @@ fan-out comparison records, account/model/provider rotation records, Full
 Auto run reports, handoff acceptance-test records, packet evidence links,
 HarnessAdaptationReceipts, harness release/promotion/rollback receipts,
 experience-compilation receipts, deletion tombstones, and assurance receipts
-rendered from the resident proof layer. This section plans kinds; the evidence
-ledger lives in the assurance and receipt systems, not in this spec.
+rendered from the resident proof layer. IDE-specific planned records include
+the IDE-00 baseline, package/license and fallback decisions, Tokyo Night token/
+contrast/visual evidence, Vim precedence/restart/teardown evidence, Schema and
+service-lifecycle architecture audits, integrated packaged journey results,
+and exact release-rung/capability-ledger closure. This section plans kinds; the
+evidence ledger lives in the assurance and receipt systems, not in this spec.
 
 ## Promise Links
 

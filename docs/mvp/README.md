@@ -7,6 +7,27 @@ proof chain. Phase 2 narrows the next intent to a React-backed basic Codex
 workbench without rewriting that history. The package keeps intent,
 supporting audits, and evidence boundaries separate and easy to read.
 
+## Current IDE follow-on boundary
+
+The canonical IDE program now lives outside this frozen MVP package:
+
+- `docs/ide/ROADMAP.md` owns the IDE-00..19 dependency sequence, built-in Vim
+  contract, initial Tokyo Night theme contract, and honest release rungs;
+- `specs/desktop/desktop-trust-complete-workbench.product-spec.md` revision 7
+  owns the complete Desktop IDE outcome;
+- `specs/openagents/cursor-capability-parity.product-spec.md` revision 3 owns
+  the full Cursor breadth and closure gate; and
+- `specs/IDE_ROADMAP_CROSSWALK.md` maps the roadmap to ProductSpec criteria and
+  proposed AssuranceSpecs.
+
+Those are follow-on contracts, not retroactive interpretations of this
+package. The Phase 1 and Phase 2 ProductSpecs, exact digests, admissions,
+AssuranceSpecs, RC receipts, and closure decisions remain byte- and revision-
+stable historical subjects. A Files or React workbench receipt does not prove
+Monaco, Vim, Tokyo Night, a daily-use basic IDE, Zed-quality integration, or
+Cursor parity unless the later exact ProductSpec and assurance/release gates
+are independently satisfied.
+
 ## Read in this order
 
 1. [`openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md`](./openagents-desktop-mvp-phase-2-react-codex-workbench.product-spec.md)

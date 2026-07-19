@@ -16,6 +16,16 @@ criterion, exact source-claim snapshots, and explicit `needs_design`
 diagnostics for every unresolved proof-design field. Optional repository
 inventory is pinned to committed Git `HEAD`.
 
+Current limitation: `propose`, semantic-planner preparation, and
+`session begin` use the legacy executable-profile extractor, which recognizes
+stable top-level Markdown criterion bullets. They do not yet consume the validated
+upstream-style `productspec-acceptance-criteria` item list even though
+`@openagentsinc/product-spec` parses and validates that list. Do not rewrite or
+downgrade a structured ProductSpec to work around this. The IDE reconciliation
+records the bounded mechanical bridge for Desktop revision 7 in that proposed
+AssuranceSpec and `docs/assurance/README.md`; direct structured-item support is
+a tooling follow-up, not an assurance or admission shortcut.
+
 Observer's semantic-planning boundary is also available as an injected Effect
 program. The caller supplies an explicit accepted ProductSpec identity pin;
 the request builder checks its path, revision, document digest, and ordered
@@ -63,6 +73,13 @@ criterion `needs_design`; it grants no review, admission, or execution
 authority. Library callers inject their provider implementation through
 `runSemanticPlannerProposal`; model calls do not occur inside parsing or
 compilation.
+
+For a ProductSpec whose Acceptance Criteria section uses only a
+`productspec-acceptance-criteria` block, the current `propose` command fails
+closed with `product_spec_not_executable` / `missing_acceptance_criteria`.
+Structural ProductSpec validity does not waive that limitation, and callers
+must not interpret it as permission to invent IDs, alter exact subject bytes,
+or admit a hand-built proposal.
 
 ### Agent tooling (AT-1)
 

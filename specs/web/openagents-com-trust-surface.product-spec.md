@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "openagents.com: Public Trust Surface and Remote Supervision Client"
 artifact_type: "prd"
-spec_revision: 6
+spec_revision: 7
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
-updated_at: "2026-07-18T00:00:00.000Z"
+updated_at: "2026-07-19T00:00:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "apps/openagents.com/"
@@ -28,7 +28,10 @@ tool_metadata:
   openagents_revision_4_note: "Rev 4 binds Cursor web/cloud-agent and Remote Control parity: start and supervise background work, search history, review changes and artifacts, intervene, rerun, and hand back to Desktop across optional local, owner-managed, or managed placement, without making the browser or cloud the canonical runtime or transcript owner."
   openagents_revision_5_note: "Rev 5 incorporates MemoHarness where web has legitimate authority: public verification and safe remote projection. Benchmark and comparison claims must bind provider, model, harness bundle, toolset, evaluator, environment, static/global/adapted class, and cache state. The trust ledger verifies harness release, adaptation, promotion, and rollback receipts; the data-flow matrix discloses experience capture, storage, retention, retrieval/training eligibility, deletion, and visibility. The browser may select only released compatible bundles/policies for remote launch and never receives raw bank contents, runs retrieval/optimization, mutates modules, promotes candidates, or gains execution authority."
   openagents_revision_6_note: "Rev 6 specifies the web projection for a Zed-quality IDE and the public code-share link contract. Signed-in supervision gains safe project tree/search/Problems/diff/proposal/test/task/artifact evidence. A versioned CodeShareBundle provides audience-scoped or deliberate public snapshot/live review with manifest verification, omissions/staleness, expiry/revocation/access audit, noindex-by-default public policy, and Desktop continuation, while excluding host paths, secrets, environments, raw terminals, private context/retrieval data, unselected repository content, and all mutation authority. Adds AC-22 through AC-28 and SM-10."
+  openagents_revision_7_note: "Rev 7 binds signed-in supervision and CodeShareBundle rendering explicitly to IDE-14 of docs/ide/ROADMAP.md. Public and private code evidence uses shared Effect Schema contracts plus an allowlisted Tokyo Night semantic review projection, never a web-local DTO or executable Desktop theme. Web has no Monaco/Vim/editor authority and cannot promote a Desktop release rung. Adds AC-29 through AC-31 and SM-11 through SM-12."
   openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
+  openagents_ide_roadmap: "docs/ide/ROADMAP.md (web ownership: IDE-14 CodeShareBundle and authenticated review projection)"
+  openagents_ide_spec_crosswalk: "specs/IDE_ROADMAP_CROSSWALK.md"
   openagents_sibling_specs: "specs/openagents/cursor-capability-parity.product-spec.md, specs/desktop/desktop-trust-complete-workbench.product-spec.md, specs/mobile/mobile-any-host-fleet-controller.product-spec.md"
 ---
 
@@ -74,11 +77,14 @@ instead of believed.
 ```productspec-scope
 in:
   - Meet the web, background-agent, automation-review, and Remote Control rows of `specs/openagents/cursor-capability-parity.product-spec.md`; Cursor cloud breadth is the floor while local-first custody and optional placement remain the stronger contract.
+  - Own the authenticated-web and CodeShareBundle half of `docs/ide/ROADMAP.md` IDE-14 over IDE-13 portable project capabilities. Web may display the exact source release rung and gap state, but it cannot promote Files foundation, daily-use basic IDE, agent IDE, parity-candidate, or full-parity claims.
   - Launch bounded work or automations onto an explicitly selected reachable owner-local, owner-managed, OpenAgents-managed, or compatible audited-provider target, then search, monitor, inspect logs/diffs/artifacts, answer, approve, steer, queue, pause, stop, rerun, and hand the same session back to Desktop or mobile.
   - Present the thread as a durable, addressable, cross-surface work object: stable IDs and URLs, search across text, file, repository, author, and date, cross-references between threads, and remote control — while local-first custody holds and the web renders synced typed facts, never becoming the canonical transcript authority.
   - Make every visibility transition explicit and receipted: changing a thread or trace from private to shared shows the exact before and after audiences, requires confirmation, and records a receipt; no silent visibility expansion on workspace join, no ambiguous unlisted state, and an irreversible-copy warning before any public disclosure.
   - Ship remote supervision parity: an attention inbox, fleet and agent-graph views, approvals, questions, steer-and-queue controls, and continuation links that hand a session to Desktop or mobile without forking identity, history, or authority — deepening the same work rather than starting another chat.
   - Project the Zed-quality IDE safely for signed-in supervision: bounded multi-root tree, file/symbol/search, Problems, changed files, version-bound proposals/diffs, test/task outcomes, artifacts, bounded logs/excerpts, and code-to-agent causal links carry exact attachment/document/service/evidence generations, effective placement, staleness, omissions, and cached/degraded/unavailable truth without giving the browser a project process or raw root.
+  - Decode every signed-in and public IDE projection from shared identified Effect Schema sources and derive web TypeScript types from them; constrained opaque refs, TaggedStruct/TaggedUnion variants, and entry decoding replace web-local raw interfaces or handwritten unions. Effect services and scoped layers own bundle compilation, audience policy, storage, verification, stream/cache lifetime, revocation, and teardown.
+  - Render code, diff, diagnostic, selection, focus, staleness, omission, and verification roles through an allowlisted Tokyo Night semantic review projection derived from the initial Desktop theme contract. No executable Desktop/VS Code theme contribution crosses the boundary, and a public page never implies that deferred light/high-contrast/system Desktop theme parity or built-in Vim/editor authority exists in the browser.
   - Ship a first-class `CodeShareBundle` for deliberate code-work sharing, rendered initially as a typed code-evidence variant of the retained `/trace/{uuid}` grammar rather than a new top-level product route or second transcript surface. Each immutable revision names snapshot-versus-bounded-live mode, audience, creator, created/expiry/revoked times, safe session/project/run refs, an allowlisted tree subset, bounded syntax-highlighted excerpts, diffs/proposals/checkpoints/commits, Problems, tests/tasks, artifacts, bounded logs, agent causal links, effective runtime facts, receipt refs, content/evidence digests, omissions, staleness, and verifier metadata.
   - Make share visibility precise: private is default; named authenticated audiences, organization/team policy, expiring link access, and deliberate public publication are distinct receipted states. Public publication warns that copied content cannot be revoked, defaults to `noindex` until separately made discoverable, supports revocation of future access and access auditing, and never treats an unlisted URL as privacy.
   - Compile every share through a structural allowlist and source policy before publication. Absolute roots, filesystem topology outside selected display refs, environment variables, credentials, secrets, ignored/private files, raw terminals, raw prompts/transcripts/provider events, private context manifests, embeddings, retrieval queries/scores, private harness evidence, unselected repository content, and mutable capability tokens are forbidden; truncation and omitted counts are visible rather than silently dropped.
@@ -117,6 +123,7 @@ out:
   - Pays-you economics copy (plugin royalties, trace monetization, paid free-tier usage) renders only per the promise registry's recorded states; planned promises are presented as planned.
   - No raw private experiences or patterns, prompts, transcript text, provider tool output, embeddings, retrieval queries or private scores, secrets, credentials, or filesystem paths in public-safe MemoHarness projections; no browser-side experience-bank mutation, retrieval/optimization execution, module editing, candidate self-verification/promotion, or authority expansion.
   - No Monaco, LSP/tsserver/DAP, Git/shell process, PTY, Rust helper, unsaved-buffer/undo custody, raw terminal stream, or general code editor in signed-in supervision or public shares; every IDE fact is a bounded host-produced projection.
+  - No browser ownership or mutation of Desktop Vim enablement, mappings, modal state, editor settings, Monaco key handlers, theme selection, or editor-release-rung admission; Open on Desktop carries opaque refs and Desktop reauthorizes its own current editor configuration.
 cut:
   - CUT-WEB-01: Public thread discovery feeds and leaderboards are cut; threads are shared deliberately or not at all.
   - CUT-WEB-02: An in-browser IDE or editor surface is cut; the web workbench is supervision and review, not editing.
@@ -183,6 +190,12 @@ cut:
   criterion: When a recipient selects Open on Desktop from a shared file/range/hunk/Problem/test/artifact/agent link, the URL carries only opaque safe refs, Desktop reauthorizes and resolves the current generation, and a missing historical generation opens an exact snapshot/diff or explicit unavailable state without granting the browser or link any workspace authority.
 - id: AC-28
   criterion: When a share expires or is revoked, future access converges to a non-disclosing unavailable response and records the revocation while retained access-audit and public-copy limitations remain explicit; the share page has no edit, apply, Git, terminal, model, harness, browser-control, or other mutation path before or after revocation.
+- id: AC-29
+  criterion: When authenticated supervision or a CodeShareBundle decodes a tree, excerpt, Problem, diff, proposal, test, task, artifact, log, causal link, runtime fact, or receipt ref, web uses the same identified Effect Schema and constrained opaque refs as the authoritative project graph, derives its TypeScript types from that schema, rejects unknown/forbidden fields at entry, and has no web-local raw interface or handwritten union acting as a parallel contract.
+- id: AC-30
+  criterion: When code evidence renders in a private, audience-scoped, or public web view, syntax, diff, diagnostic, selection, focus, omission, stale, and verification roles come only from the allowlisted Tokyo Night semantic review projection, pass applicable contrast and non-color checks, and include no executable theme contribution; the page exposes no Desktop Vim state, key handling, theme selection, Monaco model, or editor mutation authority.
+- id: AC-31
+  criterion: When a web page or public statement describes IDE support, it identifies the projection as IDE-14 supervision or a versioned CodeShareBundle over exact admitted IDE-13 refs and displays source rung/staleness/verification facts; it never promotes a Desktop Files/basic-IDE/agent-IDE state into parity-candidate or full-parity status by inference.
 ```
 
 ## Success Metrics
@@ -244,6 +257,16 @@ cut:
   target: "100%"
   target_status: committed
   window: every publication and continuously for bounded-live shares
+- id: SM-11
+  metric: web_ide_projection_contracts_decoded_from_shared_effect_schemas_with_derived_types
+  target: "100%; zero web-local parallel boundary contracts"
+  target_status: committed
+  window: continuously and every release candidate
+- id: SM-12
+  metric: authenticated_and_shared_code_evidence_roles_using_the_allowlisted_tokyo_night_semantic_projection
+  target: "100% of initially supported review surfaces"
+  target_status: committed
+  window: every release candidate and publication
 ```
 
 ## Solution
@@ -282,6 +305,12 @@ only the allowed manifest/artifacts, enforces audience/expiry/revocation, and
 serves verification metadata. Monaco, LSP, Git, PTY, external runtimes, and
 Rust helpers remain on the authoritative host. Desktop continuation treats
 share refs as requests to reauthorize, not capabilities.
+Those DTOs remain the shared identified Effect Schemas, with derived web types
+and constrained refs rather than a browser-owned mirror. Effect services and
+scoped layers own compilation, storage, verification, bounded-live streams,
+revocation, and teardown. A safe Tokyo Night semantic subset renders review
+evidence consistently without transferring theme code, Vim state, editor
+settings, or any authority-bearing Desktop behavior.
 
 ## Strategic Positioning
 
@@ -362,6 +391,10 @@ dividends — rather than pooling value at the top.
   `docs/teardowns/2026-07-11-cursor-product-teardown.md`
 - Zed-quality IDE projection, public share contract, and Effect/Rust boundary:
   `docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md`
+- Canonical IDE roadmap and web IDE-14/CodeShareBundle boundary:
+  `docs/ide/ROADMAP.md`
+- Roadmap-to-spec and assurance traceability:
+  `specs/IDE_ROADMAP_CROSSWALK.md`
 
 - Roadmap reconciliation and AC-by-AC gap crosswalk:
   `docs/sol/MASTER_ROADMAP.md` revision 119 and
