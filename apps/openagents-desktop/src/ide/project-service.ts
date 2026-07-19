@@ -783,9 +783,9 @@ export const makeIdeProjectLayer = (
                     navigation: current.navigation.filter((target) => target._tag !== "Review"),
                     reviewSources: current.reviewSources.filter(
                       (source) =>
-                        source._tag !== "WorkingTree" &&
-                        source._tag !== "Index" &&
-                        source._tag !== "CommitRange",
+                        source._tag !== "GitHeadIndex" &&
+                        source._tag !== "GitIndexWorktree" &&
+                        source._tag !== "GitHeadWorktree",
                     ),
                   }
                 : {}),

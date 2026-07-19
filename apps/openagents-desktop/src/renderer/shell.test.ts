@@ -1886,6 +1886,7 @@ describe("pure transitions", () => {
         path: "src/review.ts",
         source: "unstaged" as const,
         content: "@@ -1 +1 @@\n-old\n+new\n",
+        selection: null,
         hunkCount: 1,
         causalItemRef: "timeline.item.file-change.1",
       }

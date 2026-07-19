@@ -4,12 +4,12 @@ import { act, StrictMode, type ReactNode } from "react"
 import type { Root } from "react-dom/client"
 import { createRoot } from "react-dom/client"
 import { resolveIntentRef, type IntentReporter } from "@effect-native/core"
-import { Effect } from "@effect-native/core/effect"
+import { Effect, Schema } from "@effect-native/core/effect"
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts"
 import { WorkbenchShell, projectReactSessionRows, projectSidebarMeter } from "./react-primitive-adapters.tsx"
 import { RedactedSensitiveText, redactedSensitivePlaceholder } from "./react-sensitive-text.tsx"
 import { IdePathIndexGenerationSchema } from "../ide/project-contract.ts"
-import { IdePathNodeRefSchema, IdePathScanRefSchema, IdePierreTreeProjectionSchema } from "../ide/path-index-contract.ts"
+import { IdePathIndexSnapshotSchema, IdePathNodeRefSchema, IdePathScanRefSchema, IdePierreTreeProjectionSchema } from "../ide/path-index-contract.ts"
 
 // Behavior oracle: openagents_desktop.ide_monaco_document_runtime.v1
 
@@ -922,6 +922,22 @@ describe("React workbench shell", () => {
         ...base.workspaceBrowser,
         phase: "ready",
         grantRef: "grant-1",
+        pathIndexSnapshot: Schema.decodeUnknownSync(IdePathIndexSnapshotSchema)({
+          schemaVersion: "openagents.desktop.ide-path-index.v1",
+          identity: {
+            projectRef: "ide.project.react-review",
+            rootRef: "ide.root.react-review",
+            worktreeRef: "ide.worktree.react-review",
+            attachmentRef: "ide.attachment.react-review",
+            attachmentGeneration: 1,
+            pathIndexGeneration: 1,
+          },
+          state: { _tag: "Ready", sourceEpoch: 1, nodeCount: 0 },
+          nodes: [],
+          interaction: { expandedNodeRefs: [], selectedNodeRef: null, focusedNodeRef: null, scrollAnchorNodeRef: null, revealNodeRef: null, stickyAncestorNodeRefs: [] },
+          filter: { _tag: "None" },
+          resources: { nodeCount: 0, loadedDirectoryCount: 0, pendingDirectoryCount: 0, sourceSubscriptionCount: 1, estimatedBytes: 0 },
+        }),
         pages: { "": { state: "available", grantRef: "grant-1", directoryRef: "", entries: [
           { name: "src", pathRef: "src", kind: "directory", expandable: true, sizeBytes: null, revisionRef: "revision-src" },
           { name: "README.md", pathRef: "README.md", kind: "file", expandable: false, sizeBytes: 32, revisionRef: "revision-readme" },
@@ -993,7 +1009,12 @@ describe("React workbench shell", () => {
     const indexRow = expandedTree?.shadowRoot?.querySelector('[data-item-path="src/index.ts"]') as HTMLButtonElement
     expect(indexRow).not.toBeNull()
     await interact(() => indexRow.click())
-    expect(received).toContainEqual({ name: "WorkspaceEditorOpenRequested", payload: { grantRef: "grant-1", pathRef: "src/index.ts" } })
+    expect(received).toContainEqual({ name: "WorkspaceEditorOpenRequested", payload: {
+      grantRef: "grant-1",
+      pathRef: "src/index.ts",
+      source: "explorer",
+      identity: filesState.workspaceBrowser.pathIndexSnapshot!.identity,
+    } })
     await interact(() => expandedSrcRow.click())
     expect(expandedTree?.shadowRoot?.querySelector('[data-item-path="src/index.ts"]')).toBeNull()
 
@@ -1001,18 +1022,17 @@ describe("React workbench shell", () => {
     const reviewState: DesktopShellState = {
       ...filesState,
       workspace: "review",
-      git: { ...base.git, phase: "ready", status, diff: { ok: true, op: "diff", repositoryRef: "repository-1", statusRef: "status-1", path: "src/app.ts", source: "staged", causalItemRef: null, content: "@@ -1 +1 @@\n-export const app = false\n+export const app = true", hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, content: "-export const app = false\n+export const app = true" }], truncated: false } },
+      git: { ...base.git, phase: "ready", status, diff: { ok: true, op: "diff", repositoryRef: "repository-1", statusRef: "status-1", path: "src/app.ts", source: "staged", causalItemRef: null, content: "diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-export const app = false\n+export const app = true\n", hunks: [{ header: "@@ -1 +1 @@", oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, content: "-export const app = false\n+export const app = true" }], truncated: false } },
     }
     await render(root, <WorkbenchShell state={reviewState} report={report} />)
+    await act(settle)
     expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain("src/app.ts")
-    expect(container.querySelector('[aria-label="Rich diff"]')?.textContent).toContain("-export const app = false")
-    expect(container.querySelector('[aria-label="Rich diff"]')?.textContent).toContain("+export const app = true")
-    const addContext = [...container.querySelectorAll(".oa-react-rich-diff button")].find(button => button.textContent === "Add to composer") as HTMLButtonElement
+    expect(container.querySelector('[aria-label="Versioned review"]')?.textContent).toContain("HEAD → Index (staged)")
+    expect(container.querySelector('[data-oa-pierre-review="GitHeadIndex"]')).not.toBeNull()
+    expect([...container.querySelectorAll('.oa-react-review-toolbar button')].map(button => button.textContent)).toEqual(expect.arrayContaining(["Unified", "Split", "Less context", "More context", "Open in editor"]))
+    const addContext = [...container.querySelectorAll(".oa-react-rich-diff button")].find(button => button.textContent === "Add diff") as HTMLButtonElement
     await interact(() => addContext.click())
     expect(received).toContainEqual({ name: "GitPanelContextAttached", payload: null })
-    const annotate = container.querySelector('[aria-label="Annotate line 1"]') as HTMLButtonElement
-    await interact(() => annotate.click())
-    expect(container.querySelector('[aria-label="Comment on line 1"]')).not.toBeNull()
   })
 
   test("mounts generation-owned persistent terminal tabs and typed PTY controls", async () => {

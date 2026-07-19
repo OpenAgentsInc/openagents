@@ -18,6 +18,9 @@ import {
 import type { GitFileEntry, GitGithubErrorCode } from "../git-github-contract.ts"
 import type { GitPanelState } from "./git-panel.ts"
 import type { DesktopShellState } from "./shell.ts"
+import { PierreReviewAdapter } from "../ide/pierre-diffs-adapter.tsx"
+import type { IdeReviewIntent, IdeReviewSelection } from "../ide/review-contract.ts"
+import { activeGitReviewSource } from "./ide/review-source.ts"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
@@ -186,9 +189,27 @@ const fileRows = (git: GitPanelState): ReadonlyArray<Readonly<{ entry: GitFileEn
   ]
 }
 
-const ReviewBody = ({ git, report }: { readonly git: GitPanelState; readonly report: IntentReporter }): ReactElement => {
+const ReviewBody = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
+  const git = state.git
   const rows = fileRows(git)
   const failure = reviewFailurePresentation(git.reviewFailure)
+  const [layout, setLayout] = useState<"unified" | "split">("unified")
+  const [contextLines, setContextLines] = useState(20)
+  const [selection, setSelection] = useState<IdeReviewSelection | null>(null)
+  const reviewSource = activeGitReviewSource(state)
+  const onReviewIntent = (intent: IdeReviewIntent): void => {
+    if (intent.action === "select") setSelection(intent.selection)
+  }
+  const openInEditor = (): void => {
+    const identity = state.workspaceBrowser.pathIndexSnapshot?.identity
+    if (reviewSource === null || reviewSource.pathRef === null || state.workspaceBrowser.grantRef === null || identity === undefined) return
+    dispatch(report, "WorkspaceEditorOpenRequested", {
+      grantRef: state.workspaceBrowser.grantRef,
+      pathRef: reviewSource.pathRef,
+      source: "review",
+      identity,
+    })
+  }
   return <div className="oa-react-review-scroll">
     <p className="oa-react-readonly-boundary">Read-only review · no stage, discard, commit, branch, push, or terminal authority</p>
     {git.phase === "loading" || git.diffLoading ? <p role="status">Loading exact repository snapshot…</p> : null}
@@ -201,14 +222,22 @@ const ReviewBody = ({ git, report }: { readonly git: GitPanelState; readonly rep
           onClick={() => dispatch(report, "GitPanelDiffRequested", { path: entry.path, source })}>Review</Button>}
       </div>)}
     </section> : <section className="oa-react-exact-diff" aria-label={`Read-only diff for ${git.diff.path}`}>
-      <header><strong>{git.diff.path}</strong><Badge variant="secondary">{git.diff.source}</Badge>
+      <header><strong>{git.diff.path}</strong><Badge variant="secondary">{reviewSource?._tag ?? git.diff.source}</Badge>
         <span>{git.diff.hunks.length} {git.diff.hunks.length === 1 ? "hunk" : "hunks"}</span></header>
       <p>{git.diff.causalItemRef === null ? "No timeline item correlation" : `Timeline item ${git.diff.causalItemRef}`}</p>
-      <pre>{git.diff.content.split("\n").map((line, index) => {
-        const kind = line.startsWith("+") && !line.startsWith("+++") ? "addition"
-          : line.startsWith("-") && !line.startsWith("---") ? "deletion" : "context"
-        return <code key={index} data-diff-kind={kind}><span className="oa-react-sr-only">{kind}. </span>{line}{"\n"}</code>
-      })}</pre>
+      {reviewSource === null ? <Alert variant="destructive"><AlertTitle>Version identity unavailable</AlertTitle><AlertDescription>Refresh Files and Git status before rendering this exact diff.</AlertDescription></Alert> : <>
+        <p className="oa-react-review-source-label"><strong>{reviewSource.base.label}</strong><span aria-hidden="true"> → </span><strong>{reviewSource.target.label}</strong></p>
+        <div className="oa-react-review-toolbar" role="toolbar" aria-label="Diff layout and context">
+          <Button type="button" size="sm" variant={layout === "unified" ? "secondary" : "ghost"} aria-pressed={layout === "unified"} onClick={() => setLayout("unified")}>Unified</Button>
+          <Button type="button" size="sm" variant={layout === "split" ? "secondary" : "ghost"} aria-pressed={layout === "split"} onClick={() => setLayout("split")}>Split</Button>
+          <Button type="button" size="sm" variant="ghost" disabled={contextLines <= 5} onClick={() => setContextLines(value => Math.max(5, value - 5))}>Less context</Button>
+          <span aria-live="polite">{contextLines} context lines</span>
+          <Button type="button" size="sm" variant="ghost" disabled={contextLines >= 100} onClick={() => setContextLines(value => Math.min(100, value + 5))}>More context</Button>
+          <Button type="button" size="sm" variant="ghost" disabled={reviewSource.pathRef === null || state.workspaceBrowser.grantRef === null} onClick={openInEditor}>Open in editor</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => dispatch(report, "GitPanelContextAttached", selection)}>Add {selection === null ? "diff" : "selection"} to composer</Button>
+        </div>
+        <PierreReviewAdapter source={reviewSource} options={{ mode: layout, contextLines, selection: null, annotations: [] }} onIntent={onReviewIntent} />
+      </>}
     </section>}
     <div className="oa-react-review-actions">
       <Button type="button" variant="outline" onClick={() => dispatch(report, "GitPanelRefreshRequested")}>Refresh status</Button>
@@ -247,12 +276,12 @@ export const ReviewSurface = ({ state, report, open, onOpenChange, triggerRef }:
   if (wide) return <aside className="oa-react-review-drawer" aria-label="Repository review">
     <header><div><h2>Repository review</h2><p>{state.git.currentBranch ?? state.git.status?.branch ?? "Current WorkContext"}</p></div>
       <Button type="button" variant="ghost" size="sm" onClick={close}>Close</Button></header>
-    <ReviewBody git={state.git} report={report} />
+    <ReviewBody state={state} report={report} />
   </aside>
   return <Sheet open={open} onOpenChange={onOpenChange}>
     <SheetContent className="oa-react-review-sheet" side="right">
       <SheetHeader><SheetTitle>Repository review</SheetTitle><SheetDescription>Exact bounded status and diff for the current WorkContext.</SheetDescription></SheetHeader>
-      <ReviewBody git={state.git} report={report} />
+      <ReviewBody state={state} report={report} />
     </SheetContent>
   </Sheet>
 }

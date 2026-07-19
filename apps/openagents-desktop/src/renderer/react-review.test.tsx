@@ -36,6 +36,7 @@ const installDom = (wide: boolean) => {
     window,
     document: window.document,
     navigator: window.navigator,
+    customElements: window.customElements,
     Node: window.Node,
     Element: window.Element,
     HTMLElement: window.HTMLElement,

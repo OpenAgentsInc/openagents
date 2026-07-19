@@ -74,10 +74,14 @@ button:focus-visible,
   overflow: auto;
   contain: strict;
 }
-[data-oa-pierre-annotation="true"] {
+[data-oa-pierre-annotation] {
   display: block;
   padding: 6px 10px;
   color: var(--oa-ide-fg);
   background: #24283b;
   border-left: 3px solid var(--oa-ide-accent);
+}
+.oa-ide-review-source-corpus {
+  display: grid;
+  gap: 8px;
 }

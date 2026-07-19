@@ -14,6 +14,7 @@ import {
   IdeReviewSourceSchema,
 } from "./project-contract.ts";
 import { makeIdeDocumentFixture, makeIdeProjectFixture } from "./project-fixture.ts";
+import { ideReviewSourceFixtures } from "./review-fixture.ts";
 
 describe("IDE project boundary contract", () => {
   test("decodes one schema-first project graph and tagged capability lifecycle", async () => {
@@ -104,43 +105,17 @@ describe("IDE project boundary contract", () => {
   });
 
   test("keeps review classes distinct instead of collapsing diff authority", () => {
-    const project = makeIdeProjectFixture("reviews");
-    const common = {
-      reviewRef: "ide.review.reviews.source",
-      projectRef: project.identity.projectRef,
-      worktreeRef: project.identity.worktreeRef,
-    };
-    const sources = [
-      { _tag: "WorkingTree", ...common, gitSnapshotGeneration: 1 },
-      { _tag: "Index", ...common, gitSnapshotGeneration: 1 },
-      {
-        _tag: "CommitRange",
-        ...common,
-        baseCommitRef: "ide.commit.reviews.base",
-        headCommitRef: "ide.commit.reviews.head",
-        gitSnapshotGeneration: 1,
-      },
-      {
-        _tag: "Checkpoint",
-        ...common,
-        checkpointRef: "ide.checkpoint.reviews.one",
-        attachmentGeneration: 1,
-      },
-      {
-        _tag: "Proposal",
-        ...common,
-        proposalRef: "ide.proposal.reviews.one",
-        attachmentGeneration: 1,
-      },
-      {
-        _tag: "Conflict",
-        ...common,
-        documentRef: "ide.document.reviews.one",
-        documentGeneration: 1,
-        expectedDiskRevisionRef: null,
-        actualDiskRevisionRef: "ide.disk-revision.reviews.actual",
-      },
-    ];
+    const sources = ideReviewSourceFixtures();
+    expect(sources.map((source) => source._tag)).toEqual([
+      "GitHeadIndex",
+      "GitIndexWorktree",
+      "GitHeadWorktree",
+      "SavedDraft",
+      "DraftExternalConflict",
+      "CheckpointCurrent",
+      "AgentProposal",
+      "CandidateComparison",
+    ]);
     expect(
       sources.every((source) =>
         Exit.isSuccess(Schema.decodeUnknownExit(IdeReviewSourceSchema)(source)),

@@ -169,7 +169,7 @@ const GitFileEntrySchema = Schema.Struct({
 })
 export type GitFileEntry = Schema.Schema.Type<typeof GitFileEntrySchema>
 
-const StatusResultSchema = Schema.Struct({
+export const GitStatusResultSchema = Schema.Struct({
   ok: Schema.Literal(true),
   op: Schema.Literal("status"),
   branch: Schema.NullOr(Schema.String),
@@ -187,7 +187,7 @@ const StatusResultSchema = Schema.Struct({
   statusRef: GitReviewIdentitySchema,
   headRef: Schema.NullOr(GitReviewIdentitySchema),
 })
-export type GitStatusResult = Schema.Schema.Type<typeof StatusResultSchema>
+export type GitStatusResult = Schema.Schema.Type<typeof GitStatusResultSchema>
 
 const GitDiffHunkSchema = Schema.Struct({
   header: Schema.String.check(Schema.isMaxLength(400)),
@@ -199,7 +199,7 @@ const GitDiffHunkSchema = Schema.Struct({
 })
 export type GitDiffHunk = Schema.Schema.Type<typeof GitDiffHunkSchema>
 
-const DiffResultSchema = Schema.Struct({
+export const GitDiffResultSchema = Schema.Struct({
   ok: Schema.Literal(true),
   op: Schema.Literal("diff"),
   repositoryRef: GitReviewIdentitySchema,
@@ -211,7 +211,7 @@ const DiffResultSchema = Schema.Struct({
   hunks: Schema.Array(GitDiffHunkSchema).check(Schema.isMaxLength(500)),
   truncated: Schema.Literal(false),
 })
-export type GitDiffResult = Schema.Schema.Type<typeof DiffResultSchema>
+export type GitDiffResult = Schema.Schema.Type<typeof GitDiffResultSchema>
 
 const DiscardResultSchema = Schema.Struct({
   ok: Schema.Literal(true),
@@ -354,8 +354,8 @@ const ErrorResultSchema = Schema.Struct({
 export type GitGithubErrorResult = Schema.Schema.Type<typeof ErrorResultSchema>
 
 export const GitGithubResultSchema = Schema.Union([
-  StatusResultSchema,
-  DiffResultSchema,
+  GitStatusResultSchema,
+  GitDiffResultSchema,
   DiscardResultSchema,
   PathsResultSchema,
   CommitResultSchema,

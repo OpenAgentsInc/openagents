@@ -12,6 +12,9 @@ import type { DesktopShellState } from "./shell.ts"
 import { workspaceEditorTabDirty } from "./workspace-editor.ts"
 import { MonacoEditorHost } from "./monaco-editor-host.tsx"
 import { resolveIdeMonacoEditorOptions } from "../ide/workbench-contract.ts"
+import { PierreReviewAdapter, type PierreDiffAnnotation } from "../ide/pierre-diffs-adapter.tsx"
+import type { IdeReviewIntent, IdeReviewSelection } from "../ide/review-contract.ts"
+import { activeGitReviewSource } from "./ide/review-source.ts"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
@@ -208,11 +211,12 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
   </section>
 }
 
-type AnnotationDraft = Readonly<{ key: string; text: string }>
-
 export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
-  const [annotation, setAnnotation] = useState<AnnotationDraft | null>(null)
-  const [annotations, setAnnotations] = useState<Readonly<Record<string, string>>>({})
+  const [layout, setLayout] = useState<"unified" | "split">("unified")
+  const [contextLines, setContextLines] = useState(20)
+  const [selection, setSelection] = useState<IdeReviewSelection | null>(null)
+  const [annotationDraft, setAnnotationDraft] = useState("")
+  const [annotations, setAnnotations] = useState<ReadonlyArray<PierreDiffAnnotation>>([])
   const status = state.git.status
   const changed = status === null ? [] : [
     ...status.staged.map(entry => ({ ...entry, source: "staged" as const })),
@@ -220,6 +224,20 @@ export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopS
     ...status.untracked.map(entry => ({ ...entry, source: "unstaged" as const })),
   ]
   const diff = state.git.diff
+  const reviewSource = activeGitReviewSource(state)
+  const onReviewIntent = (intent: IdeReviewIntent): void => {
+    if (intent.action === "select") setSelection(intent.selection)
+  }
+  const openInEditor = (): void => {
+    const identity = state.workspaceBrowser.pathIndexSnapshot?.identity
+    if (reviewSource === null || reviewSource.pathRef === null || state.workspaceBrowser.grantRef === null || identity === undefined) return
+    dispatch(report, "WorkspaceEditorOpenRequested", {
+      grantRef: state.workspaceBrowser.grantRef,
+      pathRef: reviewSource.pathRef,
+      source: "review",
+      identity,
+    })
+  }
   return <div className="oa-react-review-workbench" aria-label="Review surface">
     <aside className="oa-react-changed-files" aria-label="Changed files">
       <header><div><GitBranchLabel branch={status?.branch ?? null} /></div><Button size="icon-sm" variant="ghost" aria-label="Refresh changes" onClick={() => dispatch(report, "GitPanelRefreshRequested")}><RefreshCw aria-hidden="true" /></Button></header>
@@ -229,23 +247,35 @@ export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopS
             <span data-file-status={entry.status}>{entry.status.slice(0, 1).toLocaleUpperCase()}</span><strong>{entry.path}</strong><small>{entry.source}</small>
           </button>)}
     </aside>
-    <section className="oa-react-rich-diff" aria-label="Rich diff">
+    <section className="oa-react-rich-diff" aria-label="Versioned review">
       {diff === null ? <div className="oa-react-editor-empty"><FileDiff aria-hidden="true" /><h3>Select a changed file</h3><p>Review exact host-projected hunks without Git mutation controls.</p></div> : <>
-        <header><div><strong>{diff.path}</strong><small>{diff.source} · {diff.hunks.length} {diff.hunks.length === 1 ? "hunk" : "hunks"}</small></div><div><Button size="sm" onClick={() => dispatch(report, "GitPanelContextAttached")}>Add to composer</Button><Button size="icon-sm" variant="ghost" aria-label="Close diff" onClick={() => dispatch(report, "GitPanelDiffClosed")}><X aria-hidden="true" /></Button></div></header>
-        <div className="oa-react-diff-scroll">
-          {diff.hunks.map((hunk, hunkIndex) => <section className="oa-react-diff-hunk" key={`${hunk.header}:${hunkIndex}`}>
-            <h4>{hunk.header}</h4>
-            {hunk.content.split("\n").map((line, lineIndex) => {
-              const kind = line.startsWith("+") && !line.startsWith("+++") ? "add" : line.startsWith("-") && !line.startsWith("---") ? "remove" : "context"
-              const key = `${hunkIndex}:${lineIndex}`
-              return <div className="oa-react-diff-line-group" key={key}>
-                <div className="oa-react-diff-line" data-kind={kind}><button aria-label={`Annotate line ${lineIndex + 1}`} onClick={() => setAnnotation({ key, text: annotations[key] ?? "" })} type="button">+</button><span>{lineIndex + 1}</span><code>{line || " "}</code></div>
-                {annotations[key] === undefined ? null : <p className="oa-react-diff-annotation">{annotations[key]}</p>}
-                {annotation?.key !== key ? null : <form className="oa-react-diff-annotation-form" onSubmit={event => { event.preventDefault(); if (annotation.text.trim() !== "") setAnnotations(current => ({ ...current, [key]: annotation.text.trim() })); setAnnotation(null) }}><Input autoFocus aria-label={`Comment on line ${lineIndex + 1}`} value={annotation.text} onChange={event => setAnnotation({ key, text: event.currentTarget.value })} /><Button size="sm" type="submit">Save note</Button><Button size="sm" variant="ghost" type="button" onClick={() => setAnnotation(null)}>Cancel</Button></form>}
-              </div>
-            })}
-          </section>)}
-        </div>
+        <header><div><strong>{diff.path}</strong><small>{reviewSource?._tag ?? diff.source} · {diff.hunks.length} {diff.hunks.length === 1 ? "hunk" : "hunks"}</small></div><div><Button size="sm" disabled={reviewSource === null} onClick={() => dispatch(report, "GitPanelContextAttached", selection)}>Add {selection === null ? "diff" : "selection"}</Button><Button size="icon-sm" variant="ghost" aria-label="Close diff" onClick={() => dispatch(report, "GitPanelDiffClosed")}><X aria-hidden="true" /></Button></div></header>
+        {reviewSource === null ? <div className="oa-react-editor-empty" role="alert"><h3>Version identity unavailable</h3><p>Refresh Files and Git status before rendering this exact diff.</p></div> : <>
+          <div className="oa-react-review-source-label"><strong>{reviewSource.base.label}</strong><span aria-hidden="true"> → </span><strong>{reviewSource.target.label}</strong><small>{reviewSource.lifecycle._tag}</small></div>
+          <div className="oa-react-review-toolbar" role="toolbar" aria-label="Diff layout and context">
+            <Button size="sm" variant={layout === "unified" ? "secondary" : "ghost"} aria-pressed={layout === "unified"} onClick={() => setLayout("unified")}>Unified</Button>
+            <Button size="sm" variant={layout === "split" ? "secondary" : "ghost"} aria-pressed={layout === "split"} onClick={() => setLayout("split")}>Split</Button>
+            <Button size="sm" variant="ghost" disabled={contextLines <= 5} onClick={() => setContextLines(value => Math.max(5, value - 5))}>Less context</Button>
+            <span aria-live="polite">{contextLines} context lines</span>
+            <Button size="sm" variant="ghost" disabled={contextLines >= 100} onClick={() => setContextLines(value => Math.min(100, value + 5))}>More context</Button>
+            <Button size="sm" variant="ghost" onClick={openInEditor}>Open in editor</Button>
+          </div>
+          {selection === null ? <p className="oa-react-review-selection-hint">Select a line or range to annotate or attach bounded context.</p> : <form className="oa-react-diff-annotation-form" onSubmit={event => {
+            event.preventDefault()
+            const label = annotationDraft.trim()
+            if (label === "") return
+            setAnnotations(current => [...current, {
+              kind: "comment",
+              side: selection.startSide === "base" ? "deletions" : "additions",
+              lineNumber: selection.startLine,
+              label,
+            }])
+            setAnnotationDraft("")
+          }}><Input aria-label={`Comment on selected line ${selection.startLine}`} maxLength={240} value={annotationDraft} onChange={event => setAnnotationDraft(event.currentTarget.value)} /><Button size="sm" type="submit">Add annotation</Button></form>}
+          <div className="oa-react-diff-scroll">
+            <PierreReviewAdapter source={reviewSource} options={{ mode: layout, contextLines, selection: null, annotations }} onIntent={onReviewIntent} />
+          </div>
+        </>}
       </>}
     </section>
   </div>

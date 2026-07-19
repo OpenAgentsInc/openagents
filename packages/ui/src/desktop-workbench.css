@@ -1150,7 +1150,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-rich-diff { display: grid; min-width: 0; min-height: 0; background: var(--en-color-background); }
 .oa-react-file-editor { grid-template-rows: auto auto minmax(0, 1fr); }
 .oa-react-file-editor:has(> .oa-react-editor-save-as) { grid-template-rows: auto auto auto minmax(0, 1fr); }
-.oa-react-rich-diff { grid-template-rows: auto minmax(0, 1fr); }
+.oa-react-rich-diff { display: flex; flex-direction: column; }
 .oa-react-file-tabs { display: flex; min-width: 0; min-height: 34px; overflow-x: auto; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceRaised); }
 .oa-react-file-tabs [role="tab"] { display: flex; min-width: 110px; max-width: 180px; border-right: 1px solid var(--en-color-borderSubtle); }
 .oa-react-file-tabs [role="tab"][aria-selected="true"] { box-shadow: inset 0 -2px var(--en-color-accent); background: var(--en-color-background); }
@@ -1205,25 +1205,21 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-changed-files > button > span[data-file-status="added"] { color: var(--en-color-success); }
 .oa-react-changed-files > button > span[data-file-status="deleted"] { color: var(--en-color-danger); }
 
-.oa-react-rich-diff > header { grid-row: 1; }
 .oa-react-rich-diff > header > div:first-child { display: grid; }
 .oa-react-rich-diff > header strong { min-width: 0; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .oa-react-rich-diff > header small { color: var(--en-color-textMuted); font-size: 9px; }
-.oa-react-diff-scroll { min-width: 0; min-height: 0; grid-row: 2 / -1; overflow: auto; padding: 8px; background: var(--en-color-surfaceSunken); }
-.oa-react-diff-hunk { min-width: max-content; margin: 0 0 10px; border: 1px solid var(--en-color-borderSubtle); background: var(--en-color-background); }
-.oa-react-diff-hunk h4 { position: sticky; left: 0; margin: 0; padding: 5px 8px; color: var(--en-color-accentText); background: color-mix(in srgb, var(--en-color-accent) 15%, var(--en-color-surfaceRaised)); font-family: var(--oa-font-mono); font-size: 9px; line-height: 1.4; }
-.oa-react-diff-line { display: grid; grid-template-columns: 20px 36px minmax(400px, 1fr); min-height: 20px; font-family: var(--oa-font-mono); font-size: 10px; line-height: 20px; }
-.oa-react-diff-line[data-kind="add"] { background: color-mix(in srgb, var(--en-color-success) 12%, transparent); }
-.oa-react-diff-line[data-kind="remove"] { background: color-mix(in srgb, var(--en-color-danger) 12%, transparent); }
-.oa-react-diff-line > button { visibility: hidden; padding: 0; border: 0; color: var(--en-color-accentText); background: transparent; cursor: pointer; }
-.oa-react-diff-line:hover > button,
-.oa-react-diff-line > button:focus-visible { visibility: visible; }
-.oa-react-diff-line > span { color: var(--en-color-textMuted); border-right: 1px solid var(--en-color-borderSubtle); text-align: right; padding-right: 7px; user-select: none; }
-.oa-react-diff-line code { padding: 0 8px; color: var(--en-color-textPrimary); white-space: pre; }
-.oa-react-diff-annotation { margin: 3px 8px 5px 56px; padding: 6px 8px; border-left: 2px solid var(--en-color-accent); color: var(--en-color-textSecondary); background: var(--en-color-surfaceRaised); font-size: 10px; }
+.oa-react-diff-scroll { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: auto; padding: 8px; background: var(--en-color-surfaceSunken); }
+.oa-react-diff-scroll [data-oa-pierre-review],
+.oa-react-exact-diff [data-oa-pierre-review] { min-width: 0; border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); overflow: hidden; }
 .oa-react-diff-annotation-form { display: flex; gap: 4px; margin: 4px 8px 6px 56px; }
 .oa-react-diff-annotation-form input { width: 320px; height: 27px; }
 .oa-react-diff-annotation-form button { height: 27px; font-size: 10px; }
+.oa-react-review-source-label { display: flex; min-width: 0; align-items: center; gap: var(--en-spacing-2); margin: 0; padding: 5px 8px; border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textSecondary); background: var(--en-color-surfaceRaised); font-size: 10px; }
+.oa-react-review-source-label strong { color: var(--en-color-textPrimary); }
+.oa-react-review-source-label small { margin-left: auto; color: var(--en-color-textMuted); text-transform: uppercase; }
+.oa-react-review-toolbar { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 3px; padding: 4px 8px; border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textMuted); background: var(--en-color-background); font-size: 9px; }
+.oa-react-review-toolbar button { height: 25px; font-size: 9px; }
+.oa-react-review-selection-hint { margin: 0; padding: 4px 8px; color: var(--en-color-textMuted); font-size: 9px; }
 
 .oa-react-terminal-workbench { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: var(--en-color-surfaceSunken); }
 .oa-react-terminal-tabs { display: flex; min-width: 0; min-height: 34px; align-items: stretch; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceRaised); }
@@ -1544,34 +1540,6 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   margin: 0;
   color: var(--en-color-textMuted);
   font-size: 11px;
-}
-
-.oa-react-exact-diff pre {
-  margin: 0;
-  overflow: auto;
-  border: 1px solid var(--en-color-borderSubtle);
-  border-radius: var(--en-radius-md);
-  background: var(--en-color-surfaceRaised);
-  font-family: var(--oa-font-mono);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.oa-react-exact-diff code {
-  display: block;
-  min-height: 1.55em;
-  padding: 0 var(--en-spacing-2);
-  white-space: pre;
-}
-
-.oa-react-exact-diff code[data-diff-kind="addition"] {
-  border-left: 3px solid var(--en-color-success);
-  background: color-mix(in srgb, var(--en-color-success) 10%, transparent);
-}
-
-.oa-react-exact-diff code[data-diff-kind="deletion"] {
-  border-left: 3px solid var(--en-color-danger);
-  background: color-mix(in srgb, var(--en-color-danger) 10%, transparent);
 }
 
 .oa-react-review-actions {

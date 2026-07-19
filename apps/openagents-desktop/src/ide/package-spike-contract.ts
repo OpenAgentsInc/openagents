@@ -35,6 +35,16 @@ export const IdePackageSpikeSnapshotSchema = Schema.Struct({
     virtualized: Schema.Boolean,
     scaleItems: NonNegativeIntegerSchema,
     renderedScaleItems: NonNegativeIntegerSchema,
+    reviewSourceClasses: Schema.Array(Schema.Literals([
+      "GitHeadIndex",
+      "GitIndexWorktree",
+      "GitHeadWorktree",
+      "SavedDraft",
+      "DraftExternalConflict",
+      "CheckpointCurrent",
+      "AgentProposal",
+      "CandidateComparison",
+    ])).check(Schema.isMaxLength(8)),
   }),
   resources: Schema.Struct({
     activeWorkers: NonNegativeIntegerSchema,

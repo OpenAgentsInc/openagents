@@ -71,7 +71,8 @@ const assertProbe = (receipt: IdePackageSpikeProbeReceipt): void => {
       !ready.pierre.workerInitialized ||
       !ready.pierre.virtualized ||
       ready.pierre.scaleItems !== 200 ||
-      ready.pierre.renderedScaleItems >= ready.pierre.scaleItems
+      ready.pierre.renderedScaleItems >= ready.pierre.scaleItems ||
+      ready.pierre.reviewSourceClasses.join(",") !== "GitHeadIndex,GitIndexWorktree,GitHeadWorktree,SavedDraft,DraftExternalConflict,CheckpointCurrent,AgentProposal,CandidateComparison"
     )
       throw new Error(`${receipt.layout}: Pierre fixture did not fully render`);
     if (ready.resources.externalUrls.length !== 0 || ready.resources.loadedUrls.length < 5)
@@ -122,6 +123,7 @@ const main = async (): Promise<void> => {
         "Monaco editor, JSON, CSS, HTML, and TypeScript workers initialize from private-scheme assets.",
         "Pierre renders unified/split diffs, a controlled selection, an annotation, and its worker pool.",
         "Pierre CodeView virtualizes a 200-file review collection rather than mounting every file.",
+        "All eight versioned review source classes render through the same app-owned Pierre adapter.",
         "Every observed request stays on openagents-app:; the fixture requires no network.",
         "Every disposal reaches zero Monaco models and zero tracked workers.",
         "An injected TypeScript-worker construction failure disposes every model and tracked worker.",

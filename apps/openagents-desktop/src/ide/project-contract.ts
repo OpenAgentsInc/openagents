@@ -82,6 +82,15 @@ export type IdeCommitRef = typeof IdeCommitRefSchema.Type;
 export const IdeCheckpointRefSchema = boundedRef("IdeCheckpointRef", "ide.checkpoint.");
 export type IdeCheckpointRef = typeof IdeCheckpointRefSchema.Type;
 
+export const IdeReviewVersionRefSchema = boundedRef(
+  "IdeReviewVersionRef",
+  "ide.review-version.",
+);
+export type IdeReviewVersionRef = typeof IdeReviewVersionRefSchema.Type;
+
+export const IdeCandidateRefSchema = boundedRef("IdeCandidateRef", "ide.candidate.");
+export type IdeCandidateRef = typeof IdeCandidateRefSchema.Type;
+
 export const IdeEditorGroupRefSchema = boundedRef("IdeEditorGroupRef", "ide.editor-group.");
 export type IdeEditorGroupRef = typeof IdeEditorGroupRefSchema.Type;
 
@@ -385,49 +394,184 @@ export const IdeProposalSchema = Schema.Struct({
 }).annotate({ identifier: "IdeProposal" });
 export type IdeProposal = typeof IdeProposalSchema.Type;
 
+export const IdeReviewActionSchema = Schema.Literals([
+  "open",
+  "reveal",
+  "select",
+  "expand_context",
+  "collapse_context",
+  "change_layout",
+  "copy",
+  "add_context",
+  "refresh",
+  "accept",
+  "reject",
+  "apply",
+  "undo",
+]);
+export type IdeReviewAction = typeof IdeReviewActionSchema.Type;
+
+export const IdeReviewContentStateSchema = Schema.TaggedUnion({
+  Available: {
+    redacted: Schema.Boolean,
+    bytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+  },
+  Binary: {
+    mediaType: Schema.NullOr(
+      Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+    ),
+  },
+  Secret: {
+    reason: Schema.Literals(["path_policy", "content_policy", "redaction_failed"]),
+  },
+  TooLarge: {
+    observedBytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+    limitBytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  },
+  Truncated: {
+    includedBytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
+    omittedBytes: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)),
+  },
+  Unavailable: {
+    reason: Schema.Literals([
+      "invalid_path",
+      "missing",
+      "permission_denied",
+      "grant_revoked",
+      "generation_replaced",
+      "source_stopped",
+    ]),
+  },
+}).annotate({ identifier: "IdeReviewContentState" });
+export type IdeReviewContentState = typeof IdeReviewContentStateSchema.Type;
+
+export const IdeReviewEndpointSchema = Schema.Struct({
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  versionRef: IdeReviewVersionRefSchema,
+  generation: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)),
+  encoding: Schema.Literals(["utf-8", "utf-8-bom", "binary", "unknown"]),
+  lineEnding: Schema.Literals(["lf", "crlf", "mixed", "none", "unknown"]),
+  content: IdeReviewContentStateSchema,
+}).annotate({ identifier: "IdeReviewEndpoint" });
+export type IdeReviewEndpoint = typeof IdeReviewEndpointSchema.Type;
+
+export const IdeReviewLifecycleSchema = Schema.TaggedUnion({
+  Ready: {},
+  Stale: {
+    reason: Schema.Literals([
+      "base_moved",
+      "target_moved",
+      "git_snapshot_replaced",
+      "document_generation_replaced",
+      "attachment_replaced",
+    ]),
+    refreshable: Schema.Boolean,
+  },
+  Unavailable: {
+    reason: Schema.Literals([
+      "invalid_path",
+      "missing",
+      "binary",
+      "secret",
+      "too_large",
+      "truncated",
+      "permission_denied",
+      "grant_revoked",
+      "generation_replaced",
+      "source_stopped",
+    ]),
+    refreshable: Schema.Boolean,
+  },
+}).annotate({ identifier: "IdeReviewLifecycle" });
+export type IdeReviewLifecycle = typeof IdeReviewLifecycleSchema.Type;
+
+const reviewSourceFields = {
+  schemaVersion: Schema.Literal("openagents.desktop.ide-review-source.v1"),
+  reviewRef: IdeReviewRefSchema,
+  projectRef: IdeProjectRefSchema,
+  rootRef: IdeRootRefSchema,
+  worktreeRef: IdeWorktreeRefSchema,
+  fileRef: Schema.NullOr(IdeFileRefSchema),
+  documentRef: Schema.NullOr(IdeDocumentRefSchema),
+  pathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  scope: Schema.Literals(["single_file", "aggregate"]),
+  base: IdeReviewEndpointSchema,
+  target: IdeReviewEndpointSchema,
+  patch: Schema.NullOr(
+    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4 * 1024 * 1024)),
+  ),
+  language: Schema.NullOr(
+    Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80)),
+  ),
+  origin: Schema.Literals([
+    "git",
+    "editor",
+    "external_change",
+    "checkpoint",
+    "agent",
+    "comparison",
+  ]),
+  allowedActions: Schema.Array(IdeReviewActionSchema).check(Schema.isMaxLength(16)),
+  lifecycle: IdeReviewLifecycleSchema,
+};
+
+/**
+ * One versioned source domain for every review plane. A variant is authority,
+ * not display copy: callers cannot infer Git/document/proposal capability from
+ * labels or patch text.
+ */
 export const IdeReviewSourceSchema = Schema.TaggedUnion({
-  WorkingTree: {
-    reviewRef: IdeReviewRefSchema,
-    projectRef: IdeProjectRefSchema,
-    worktreeRef: IdeWorktreeRefSchema,
+  GitHeadIndex: {
+    ...reviewSourceFields,
+    gitSnapshotRef: IdeGitSnapshotRefSchema,
+    headRef: Schema.NullOr(IdeCommitRefSchema),
+    indexRef: IdeReviewVersionRefSchema,
     gitSnapshotGeneration: IdeGitSnapshotGenerationSchema,
   },
-  Index: {
-    reviewRef: IdeReviewRefSchema,
-    projectRef: IdeProjectRefSchema,
-    worktreeRef: IdeWorktreeRefSchema,
+  GitIndexWorktree: {
+    ...reviewSourceFields,
+    gitSnapshotRef: IdeGitSnapshotRefSchema,
+    indexRef: IdeReviewVersionRefSchema,
+    worktreeStateRef: IdeReviewVersionRefSchema,
     gitSnapshotGeneration: IdeGitSnapshotGenerationSchema,
   },
-  CommitRange: {
-    reviewRef: IdeReviewRefSchema,
-    projectRef: IdeProjectRefSchema,
-    worktreeRef: IdeWorktreeRefSchema,
-    baseCommitRef: IdeCommitRefSchema,
-    headCommitRef: IdeCommitRefSchema,
+  GitHeadWorktree: {
+    ...reviewSourceFields,
+    gitSnapshotRef: IdeGitSnapshotRefSchema,
+    headRef: Schema.NullOr(IdeCommitRefSchema),
+    worktreeStateRef: IdeReviewVersionRefSchema,
     gitSnapshotGeneration: IdeGitSnapshotGenerationSchema,
   },
-  Checkpoint: {
-    reviewRef: IdeReviewRefSchema,
-    projectRef: IdeProjectRefSchema,
-    worktreeRef: IdeWorktreeRefSchema,
+  SavedDraft: {
+    ...reviewSourceFields,
+    diskRevisionRef: IdeDiskRevisionRefSchema,
+    documentGeneration: IdeDocumentGenerationSchema,
+  },
+  DraftExternalConflict: {
+    ...reviewSourceFields,
+    expectedDiskRevisionRef: IdeDiskRevisionRefSchema,
+    actualDiskRevisionRef: IdeDiskRevisionRefSchema,
+    draftDocumentGeneration: IdeDocumentGenerationSchema,
+  },
+  CheckpointCurrent: {
+    ...reviewSourceFields,
     checkpointRef: IdeCheckpointRefSchema,
     attachmentGeneration: IdeAttachmentGenerationSchema,
+    currentDocumentGeneration: Schema.NullOr(IdeDocumentGenerationSchema),
   },
-  Proposal: {
-    reviewRef: IdeReviewRefSchema,
-    projectRef: IdeProjectRefSchema,
-    worktreeRef: IdeWorktreeRefSchema,
+  AgentProposal: {
+    ...reviewSourceFields,
     proposalRef: IdeProposalRefSchema,
     attachmentGeneration: IdeAttachmentGenerationSchema,
+    proposalBaseDocumentGeneration: Schema.NullOr(IdeDocumentGenerationSchema),
+    currentDocumentGeneration: Schema.NullOr(IdeDocumentGenerationSchema),
   },
-  Conflict: {
-    reviewRef: IdeReviewRefSchema,
-    projectRef: IdeProjectRefSchema,
-    worktreeRef: IdeWorktreeRefSchema,
-    documentRef: IdeDocumentRefSchema,
-    documentGeneration: IdeDocumentGenerationSchema,
-    expectedDiskRevisionRef: Schema.NullOr(IdeDiskRevisionRefSchema),
-    actualDiskRevisionRef: Schema.NullOr(IdeDiskRevisionRefSchema),
+  CandidateComparison: {
+    ...reviewSourceFields,
+    candidateARef: IdeCandidateRefSchema,
+    candidateBRef: IdeCandidateRefSchema,
+    candidateAGeneration: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)),
+    candidateBGeneration: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1)),
   },
 }).annotate({ identifier: "IdeReviewSource" });
 export type IdeReviewSource = typeof IdeReviewSourceSchema.Type;

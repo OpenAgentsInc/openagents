@@ -238,7 +238,7 @@ describe("React Codex composer", () => {
     await render(root, <ReactComposer state={fixtureState({
       composerReviewContext: {
         repositoryRef: "repo-1", statusRef: "status-1", path: "src/review.ts", source: "staged",
-        content: "@@ bounded", hunkCount: 2, causalItemRef: "item-1",
+        content: "@@ bounded", selection: null, hunkCount: 2, causalItemRef: "item-1",
       },
       composerFileContext: {
         path: "src/active.ts", revisionRef: "rev-1", languageMode: "typescript", content: "export {}", dirty: true,

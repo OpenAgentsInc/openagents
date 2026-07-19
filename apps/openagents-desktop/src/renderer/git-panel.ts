@@ -47,6 +47,7 @@ import {
   type GitHubPrRef,
   type GitStatusResult,
 } from "../git-github-contract.ts"
+import { IdeReviewSelectionSchema, type IdeReviewSelection } from "../ide/review-contract.ts"
 
 // ---------------------------------------------------------------------------
 // State
@@ -63,6 +64,8 @@ export type GitPanelReceipt = Readonly<{
 export type GitPanelState = Readonly<{
   phase: "idle" | "loading" | "ready" | "unavailable"
   status: GitStatusResult | null
+  /** Monotonic renderer fence for the exact opaque statusRef snapshot. */
+  statusGeneration: number
   reason: string | null
   branches: ReadonlyArray<GitBranch>
   currentBranch: string | null
@@ -96,6 +99,7 @@ export type GitPanelState = Readonly<{
 export const emptyGitPanelState = (): GitPanelState => ({
   phase: "idle",
   status: null,
+  statusGeneration: 1,
   reason: null,
   branches: [],
   currentBranch: null,
@@ -156,7 +160,16 @@ const ghAvailabilityFrom = (
 
 export const withStatusResult = (git: GitPanelState, result: GitGithubResult): GitPanelState => {
   if (result.ok && result.op === "status") {
-    return { ...git, phase: "ready", status: result, reason: null }
+    const replaced = git.status?.statusRef !== result.statusRef
+    return {
+      ...git,
+      phase: "ready",
+      status: result,
+      statusGeneration: replaced ? git.statusGeneration + 1 : git.statusGeneration,
+      diff: replaced ? null : git.diff,
+      reviewFailure: replaced ? null : git.reviewFailure,
+      reason: null,
+    }
   }
   if (!result.ok) {
     return { ...git, phase: "unavailable", reason: result.message }
@@ -198,7 +211,10 @@ export const GitPanelDiffClosed = defineIntent("GitPanelDiffClosed", Schema.Null
 export const GitPanelDiscardRequested = defineIntent("GitPanelDiscardRequested", Schema.String)
 export const GitPanelDiscardConfirmed = defineIntent("GitPanelDiscardConfirmed", Schema.Null)
 export const GitPanelDiscardCancelled = defineIntent("GitPanelDiscardCancelled", Schema.Null)
-export const GitPanelContextAttached = defineIntent("GitPanelContextAttached", Schema.Null)
+export const GitPanelContextAttached = defineIntent(
+  "GitPanelContextAttached",
+  Schema.NullOr(IdeReviewSelectionSchema),
+)
 
 export const gitPanelIntents = [
   GitPanelRefreshRequested,
@@ -242,7 +258,10 @@ export const refreshGitPanel = <S extends GitPanelCapableState>(
 export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
   state: SubscriptionRef.SubscriptionRef<S>,
   bridge: GitGithubBridge = unavailableGitGithubBridge,
-  attachContext?: (diff: GitDiffResult) => Effect.Effect<void, unknown>,
+  attachContext?: (
+    diff: GitDiffResult,
+    selection: IdeReviewSelection | null,
+  ) => Effect.Effect<void, unknown>,
 ) => {
   const setGit = (mut: (git: GitPanelState) => GitPanelState) =>
     SubscriptionRef.update(state, (next) => ({ ...next, git: mut(next.git) }))
@@ -456,9 +475,9 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
       yield* refreshGitPanel(state, bridge)
     }),
 
-    GitPanelContextAttached: () => Effect.gen(function* () {
+    GitPanelContextAttached: (selection: IdeReviewSelection | null) => Effect.gen(function* () {
       const diff = (yield* SubscriptionRef.get(state)).git.diff
-      if (diff !== null && attachContext !== undefined) yield* attachContext(diff)
+      if (diff !== null && attachContext !== undefined) yield* attachContext(diff, selection)
     }),
   }
 }
@@ -555,7 +574,11 @@ const changesSection = (git: GitPanelState): ReadonlyArray<View> => {
   return [Stack({ key: "git-changes", direction: "column", gap: "1", style: { width: "full", minWidth: 0 } }, rows)]
 }
 
-const diffRows = (content: string): ReadonlyArray<{ kind: "context" | "add" | "remove"; tokens: ReadonlyArray<{ kind: "plain"; text: string }> }> =>
+/**
+ * Named compatibility fallback for the non-React Effect Native catalog test
+ * projection. The shipped React review surfaces exclusively use Pierre.
+ */
+const legacyEffectNativeReviewRows = (content: string): ReadonlyArray<{ kind: "context" | "add" | "remove"; tokens: ReadonlyArray<{ kind: "plain"; text: string }> }> =>
   content.split("\n").map(line => ({
     kind: line.startsWith("+") && !line.startsWith("+++")
       ? "add" as const
@@ -583,7 +606,7 @@ const reviewSection = (git: GitPanelState): ReadonlyArray<View> => {
         key: "git-review-diff-view",
         language: diff.path.split(".").at(-1) ?? "text",
         layout: "unified",
-        hunks: diff.hunks.map(hunk => ({ header: hunk.header, rows: diffRows(hunk.content) })),
+        hunks: diff.hunks.map(hunk => ({ header: hunk.header, rows: legacyEffectNativeReviewRows(hunk.content) })),
         style: { width: "full", minWidth: 0 },
       }),
     ],

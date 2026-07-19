@@ -339,6 +339,69 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This contract owns review source identity, lifecycle, version fencing, bounded disclosure, and projection into @pierre/diffs. Git review remains read-only; IDE-08 owns real agent proposal generation and application. Pierre receives patch/display data and emits bounded intent only: it never receives a root, grant, preload bridge, Git/filesystem/process function, document mutation, policy, approval, persistence, or durable-success authority. Accept/reject/apply/undo dispositions are typed canonical commands that still require the owning document/workspace/checkpoint/proposal service to revalidate and execute.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_versioned_pierre_review.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/project-contract.ts",
+        "apps/openagents-desktop/src/ide/review-contract.ts",
+        "apps/openagents-desktop/src/ide/pierre-diffs-adapter.tsx",
+        "apps/openagents-desktop/src/renderer/react-review.tsx",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-05-review.json",
+        "docs/ide/2026-07-19-ide-05-versioned-pierre-review.md",
+        "github:OpenAgentsInc/openagents#9020",
+      ],
+      oracles: [
+        {
+          description:
+            "Decodes eight distinct HEAD/index/worktree, saved/draft, conflict, checkpoint, proposal, and candidate schema variants with exact refs, generations, content safety, lifecycle, and allowed actions; proves stale and unavailable refusals plus exact-generation canonical command routing.",
+          id: "openagents_desktop.ide_versioned_pierre_review.contract",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/review-contract.test.ts",
+        },
+        {
+          description:
+            "Exercises exact host repository/status fences, binary/secret/large/invalid-path refusals, stale refresh, selected bounded composer disclosure, and monotonic renderer snapshot replacement through the Git contract/host/panel corpus.",
+          id: "openagents_desktop.ide_versioned_pierre_review.git_fencing",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/git-review-corpus.node.test.ts",
+        },
+        {
+          description:
+            "Mounts the production review workspace through the owned Pierre adapter with explicit base/target/source labels, unified/split controls, context bounds, line selection, annotations, open-in-editor, disclosure actions, non-color semantics, Tokyo Night, and no custom React hunk renderer.",
+          id: "openagents_desktop.ide_versioned_pierre_review.dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+        },
+        {
+          description:
+            "Projects and parses every source class plus 500 files at p50/p95/p99, proves 99 superseded updates cannot commit, repeats 200 open/close cycles with workers disabled and zero listener/worker residue, and records an offline schema-decoded receipt.",
+          id: "openagents_desktop.ide_versioned_pierre_review.scale",
+          kind: "script",
+          mode: "headless",
+          ref: "apps/openagents-desktop/scripts/ide-review-benchmark.ts",
+        },
+      ],
+      productArea: "Desktop IDE review",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "Desktop renders every admitted comparison through one app-owned @pierre/diffs adapter over a schema-first versioned source: Git HEAD/index/worktree, saved/draft, external conflict, checkpoint/current, exact-base agent proposal, and candidate A/B remain semantically distinct; explicit project/root/worktree/file/document refs, base/target versions and generations, encoding/EOL/content-safety state, origin, actions, and ready/stale/unavailable lifecycle prevent text-label authority; selected bounded context and annotations are keyboard/screen-reader legible; and any mutating action revalidates exact generations before dispatching a canonical typed command, while stale or unavailable bases refuse.",
+      surface: "openagents-desktop",
+      verification:
+        "verify:ide-05 builds Desktop, emits and decodes the 500-file benchmark/teardown receipt, typechecks, runs review/project/Git/host/refusal/Pierre/DOM/accessibility/behavior/boundary suites, and checks IDE boundaries. The packaged offline journey renders the eight-source fixture corpus from the ASAR with Tokyo Night and no remote theme/code dependency before recording source-class and teardown evidence.",
+    },
+    {
+      authorityBoundary:
         "This binds the visible activity indicator to the renderer's existing working phase and valid browser animation state. It does not redefine turn, queue, retry, or completion authority, and reduced-motion preference intentionally replaces motion with a stable visible indicator.",
       blockerRefs: [],
       contractId: "openagents_desktop.working_indicator_continuous_motion.v1",

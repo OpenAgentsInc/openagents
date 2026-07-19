@@ -16,8 +16,10 @@ import { createRoot } from "react-dom/client";
 import {
   PierreDiffAdapter,
   PierreDiffCollectionAdapter,
+  PierreReviewAdapter,
   type PierreDiffScaleObservation,
 } from "../pierre-diffs-adapter.tsx";
+import { ideReviewSourceFixtures } from "../review-fixture.ts";
 import type { IdePackageSpikeSnapshot } from "../package-spike-contract.ts";
 import {
   tokyoNightDesktopThemeProjection,
@@ -82,6 +84,7 @@ let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 let reactRoot: ReturnType<typeof createRoot> | null = null;
 let disposed = false;
 let scaleObservation: PierreDiffScaleObservation | null = null;
+let lastReviewSourceClasses: IdePackageSpikeSnapshot["pierre"]["reviewSourceClasses"] = [];
 
 const queryDeep = (root: Document | Element | ShadowRoot, selector: string): Element | null => {
   const direct = root.querySelector(selector);
@@ -104,7 +107,14 @@ const snapshot = (
   phase: IdePackageSpikeSnapshot["phase"],
   languageWorkersReady: ReadonlyArray<"editor" | "json" | "css" | "html" | "typescript">,
   pierreWorkerInitialized: boolean,
-): IdePackageSpikeSnapshot => ({
+): IdePackageSpikeSnapshot => {
+  const observedSourceClasses = [...document.querySelectorAll<HTMLElement>("[data-oa-pierre-review]")]
+    .map((element) => element.dataset.oaPierreReview)
+    .filter((value): value is NonNullable<typeof value> => value !== undefined);
+  if (observedSourceClasses.length > 0) {
+    lastReviewSourceClasses = observedSourceClasses as IdePackageSpikeSnapshot["pierre"]["reviewSourceClasses"];
+  }
+  return ({
   schemaVersion: "openagents.desktop.ide-package-spike.v1",
   phase,
   cycle,
@@ -122,7 +132,7 @@ const snapshot = (
     split:
       queryFixtureDeep("split", "[data-code][data-deletions]") !== null &&
       queryFixtureDeep("split", "[data-code][data-additions]") !== null,
-    annotation: document.querySelector("[data-oa-pierre-annotation='true']") !== null,
+    annotation: document.querySelector("[data-oa-pierre-annotation='comment']") !== null,
     selectedRange: queryFixtureDeep("unified", "[data-selected-line]") !== null,
     workerInitialized: pierreWorkerInitialized,
     virtualized:
@@ -131,6 +141,7 @@ const snapshot = (
       scaleObservation.renderedItems < scaleObservation.totalItems,
     scaleItems: scaleObservation?.totalItems ?? 0,
     renderedScaleItems: scaleObservation?.renderedItems ?? 0,
+    reviewSourceClasses: lastReviewSourceClasses,
   },
   resources: {
     activeWorkers: trackedWorkers.size,
@@ -139,7 +150,8 @@ const snapshot = (
     loadedUrls: loadedUrls(),
   },
   domNodes: document.querySelectorAll("*").length,
-});
+  });
+};
 
 const waitForPaint = async (): Promise<void> => {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -235,6 +247,7 @@ const run = async (): Promise<void> => {
       ].join("\n"),
     };
   });
+  const reviewSources = ideReviewSourceFixtures();
   reactRoot.render(
     <div className="oa-ide-diff-pair">
       <div data-oa-diff-mode="unified">
@@ -247,7 +260,7 @@ const run = async (): Promise<void> => {
             mode: "unified",
             contextLines: 3,
             selection: { start: 1, side: "additions", end: 2, endSide: "additions" },
-            annotations: [{ side: "additions", lineNumber: 2, label: "Owned review annotation" }],
+            annotations: [{ kind: "comment", side: "additions", lineNumber: 2, label: "Owned review annotation" }],
           }}
         />
       </div>
@@ -264,6 +277,22 @@ const run = async (): Promise<void> => {
             annotations: [],
           }}
         />
+      </div>
+      <div className="oa-ide-review-source-corpus" data-oa-review-source-corpus="true">
+        {reviewSources.map((source) => <PierreReviewAdapter
+          key={source.reviewRef}
+          source={source}
+          options={{
+            mode: source._tag === "CandidateComparison" ? "split" : "unified",
+            contextLines: 3,
+            selection: null,
+            annotations: source._tag === "DraftExternalConflict"
+              ? [{ kind: "conflict", side: "additions", lineNumber: 1, label: "External change" }]
+              : source._tag === "AgentProposal"
+                ? [{ kind: "proposal_rationale", side: "additions", lineNumber: 1, label: "Fixture rationale" }]
+                : [],
+          }}
+        />)}
       </div>
       <div className="oa-ide-scale-fixture" data-oa-pierre-scale="true">
         <PierreDiffCollectionAdapter

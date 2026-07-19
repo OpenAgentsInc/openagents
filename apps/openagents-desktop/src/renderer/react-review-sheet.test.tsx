@@ -19,7 +19,7 @@ beforeAll(() => {
     matches: false, media: "(min-width: 1120px)", addEventListener: () => {}, removeEventListener: () => {},
   }) })
   const values = {
-    window, document: window.document, navigator: window.navigator, Node: window.Node,
+    window, document: window.document, navigator: window.navigator, customElements: window.customElements, Node: window.Node,
     Element: window.Element, HTMLElement: window.HTMLElement, HTMLButtonElement: window.HTMLButtonElement,
     Event: window.Event, KeyboardEvent: window.KeyboardEvent, MouseEvent: window.MouseEvent,
     MutationObserver: window.MutationObserver, ResizeObserver: ResizeObserverStub,
