@@ -3807,3 +3807,42 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   .oa-react-language-panel-grid { grid-template-columns: minmax(0, 1fr); }
   .oa-react-language-actions { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+ * Tool-card typography (owner direction, 2026-07-19).
+ *
+ * The tool cards (command / file-change / tool-call / sub-agent) previously set
+ * the UI monospace face on their CHROME too — titles, [TAG] badges, status
+ * chips, KEY labels, meta, and the agent group's role/prompt/operation lines —
+ * which made every card read like a terminal dump. Those are prose/labels, so
+ * they now use the UI sans face. Mono is reserved for content that is actually
+ * CODE: command text + output, unified diffs, tool-result bodies, file paths,
+ * arg VALUES, and the code/terminal panes (all untouched above). Appended so
+ * source order overrides the earlier same-specificity mono rules.
+ * ------------------------------------------------------------------------- */
+.oa-react-event-heading > strong,
+.oa-react-event-title > strong,
+.oa-react-protocol-card > summary > small,
+.oa-react-event-status,
+.oa-react-command-meta span,
+.oa-react-command-cap,
+.oa-react-file-change > summary > span,
+.oa-react-file-change > summary > small,
+.oa-react-diff-cap,
+.oa-react-tool-arg-row span,
+.oa-react-tool-progress,
+.oa-react-tool-empty,
+.oa-react-tool-badge,
+.oa-react-agent-operation,
+.oa-react-agent-prompt > span,
+.oa-react-agent-heading small,
+.oa-react-agent-activity-tag,
+.oa-react-agent-interrupt,
+.oa-react-agent-transcript strong {
+  font-family: var(--oa-font-sans);
+}
+
+/* The command PREVIEW in a card heading is a shell command — keep it mono
+ * (the base rule sets `font: inherit`, which would fall back to the sans
+ * heading face). */
+.oa-react-event-heading code { font-family: var(--oa-font-mono); }
