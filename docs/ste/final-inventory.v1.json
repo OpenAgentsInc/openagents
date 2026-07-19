@@ -16294,7 +16294,7 @@
     },
     {
       "path": "docs/assure-repo/README.md",
-      "sha256": "777032447433b4683d27b4b134dd9474b134f3cb5a5998f7302e5b5d15e58851",
+      "sha256": "f35bafd0154b5671765099cec987342b713e8f89a32ca6d12cdc2e88054a43d3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
