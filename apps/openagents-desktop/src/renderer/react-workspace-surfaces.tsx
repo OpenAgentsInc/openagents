@@ -122,12 +122,6 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
         <Button size="sm" disabled={editor.saveAsPathRef.trim() === ""} onClick={() => dispatch(report, "WorkspaceEditorSaveAsSubmitted")}>Create copy</Button>
         <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorSaveAsCancelled")}>Cancel</Button>
       </div>}
-      <div className="oa-react-editor-find">
-        <Input aria-label={`Find in ${tab.pathRef}`} placeholder="Find" value={tab.findQuery} onChange={event => dispatch(report, "WorkspaceEditorFindChanged", event.currentTarget.value)} />
-        <small>{tab.findMatches.length === 0 ? "No matches" : `${tab.findIndex + 1} of ${tab.findMatches.length}`}</small>
-        <Button size="sm" variant="ghost" disabled={tab.findMatches.length === 0} onClick={() => dispatch(report, "WorkspaceEditorFindPrevious")}>Previous</Button>
-        <Button size="sm" variant="ghost" disabled={tab.findMatches.length === 0} onClick={() => dispatch(report, "WorkspaceEditorFindNext")}>Next</Button>
-      </div>
       {editor.closeConfirmRef !== tab.pathRef ? null : <div className="oa-react-editor-conflict" role="alert"><span>Discard unsaved changes?</span><Button size="sm" onClick={() => dispatch(report, "WorkspaceEditorTabCloseConfirmed", tab.pathRef)}>Discard</Button><Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorTabCloseCancelled")}>Keep editing</Button></div>}
       {tab.phase !== "conflict" ? null : <div className="oa-react-editor-conflict" role="alert"><span>{tab.externalDocument === null ? "The file is no longer available. Your draft is retained." : "Changed outside the editor."}</span>{tab.externalDocument === null ? null : <><Button size="sm" variant="outline" onClick={() => dispatch(report, "WorkspaceEditorConflictReload")}>Reload theirs</Button><Button size="sm" onClick={() => dispatch(report, "WorkspaceEditorConflictKeepMine")}>Save mine</Button></>}</div>}
       {tab.phase === "loading" ? <p role="status">Opening document…</p>

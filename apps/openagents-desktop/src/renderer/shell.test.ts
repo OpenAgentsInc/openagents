@@ -4651,7 +4651,7 @@ describe("theme parity (one OpenAgents product theme, many hosts)", () => {
     expect(openagentsDesktopTheme.radius).toEqual({ none: 0, sm: 2, md: 4, lg: 6, xl: 8, full: 9999 })
     // Chrome-language roles are present for the state-overlay engine.
     expect(openagentsDesktopTheme.color.stateHover).toBe("#c0caf514")
-    expect(openagentsDesktopTheme.color.stateSelected).toBe("#515c7e4d")
+    expect(openagentsDesktopTheme.color.stateSelected).toBe("#7aa2f729")
     expect(openagentsDesktopTheme.color.textFaint).toBe("#8990ad")
     expect(openagentsDesktopTheme.color.surfaceOverlay).toBe("#24283b")
     expect(openagentsDesktopTheme.motion.durationFastMs).toBe(150)

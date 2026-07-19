@@ -333,6 +333,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
   const reactHostFiles = new Set([
     "boot.ts",
     "lexical-composer-editor.tsx",
+    "monaco-editor-host.tsx",
     "react-composer.tsx",
     "react-primitive-adapters.tsx",
     "react-review.tsx",
@@ -370,13 +371,17 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     const sharedOrSibling =
       /^(@effect-native\/(core|core\/effect|render-dom(?:\/react)?|tokens)|(\.\.\/|\.\/)[a-z-]+\.(?:ts|tsx|css))$/;
     const reactHostImport =
-      /^(react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|@lexical\/react\/[A-Za-z]+|lexical|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/;
+      /^(effect|react(?:-dom\/client)?|@base-ui\/react(?:\/[a-z-]+)?|@lexical\/react\/[A-Za-z]+|lexical|cmdk|lucide-react|#components\/ui\/[a-z-]+)$/;
     const sharedReactWorkbenchImport = "@openagentsinc/ui/desktop-workbench";
     const ownedPierreAdapterImport = "./ide/pierre-tree-adapter.tsx";
     const ownedIdePathIndexImports = new Set([
       "../ide/project-contract.ts",
       "../ide/path-index-contract.ts",
       "../ide/path-index-service.ts",
+    ]);
+    const ownedMonacoHostImports = new Set([
+      "../ide/monaco-document-contract.ts",
+      "../ide/monaco-runtime-loader.ts",
     ]);
     for (const { name, source } of rendererSources) {
       const specifiers = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!);
@@ -385,6 +390,8 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
         expect(
           sharedOrSibling.test(specifier) ||
             (name === "ide-path-index.ts" && ownedIdePathIndexImports.has(specifier)) ||
+            (name === "monaco-editor-host.tsx" && ownedMonacoHostImports.has(specifier)) ||
+            (name === "workspace-editor.ts" && specifier === "../ide/monaco-document-contract.ts") ||
             (reactHostFiles.has(name) &&
               (reactHostImport.test(specifier) ||
                 specifier === sharedReactWorkbenchImport ||

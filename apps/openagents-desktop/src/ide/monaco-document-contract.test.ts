@@ -101,5 +101,6 @@ describe("IDE-03 schema-first Monaco document boundary", () => {
     expect(runtime).not.toContain("saveWorkspaceDocument")
     expect(react).toContain("<MonacoEditorHost")
     expect(react).not.toContain("<textarea")
+    expect(react).not.toContain("oa-react-editor-find")
   })
 })

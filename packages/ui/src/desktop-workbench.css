@@ -1148,7 +1148,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-file-editor,
 .oa-react-rich-diff { display: grid; min-width: 0; min-height: 0; background: var(--en-color-background); }
-.oa-react-file-editor { grid-template-rows: auto auto auto minmax(0, 1fr); }
+.oa-react-file-editor { grid-template-rows: auto auto minmax(0, 1fr); }
+.oa-react-file-editor:has(> .oa-react-editor-save-as) { grid-template-rows: auto auto auto minmax(0, 1fr); }
 .oa-react-rich-diff { grid-template-rows: auto minmax(0, 1fr); }
 .oa-react-file-tabs { display: flex; min-width: 0; min-height: 34px; overflow-x: auto; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceRaised); }
 .oa-react-file-tabs [role="tab"] { display: flex; min-width: 110px; max-width: 180px; border-right: 1px solid var(--en-color-borderSubtle); }
@@ -1159,7 +1160,6 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-file-tabs svg { width: 12px; height: 12px; flex: 0 0 auto; }
 
 .oa-react-editor-toolbar,
-.oa-react-editor-find,
 .oa-react-rich-diff > header,
 .oa-react-changed-files > header {
   display: flex;
@@ -1175,10 +1175,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-editor-toolbar > div,
 .oa-react-rich-diff > header > div { display: flex; min-width: 0; align-items: center; gap: 2px; }
 .oa-react-editor-toolbar button,
-.oa-react-editor-find button,
 .oa-react-rich-diff > header button { height: 26px; font-size: 10px; }
-.oa-react-editor-find input { min-width: 100px; height: 26px; flex: 1 1 auto; }
-.oa-react-editor-find small { color: var(--en-color-textMuted); font-size: 9px; white-space: nowrap; }
 .oa-react-code-editor { width: 100%; min-width: 0; min-height: 0; resize: none; padding: 12px; border: 0; outline: 0; color: var(--en-color-textPrimary); background: var(--en-color-codeBackground); font-family: var(--oa-font-mono); font-size: 11px; line-height: 1.55; tab-size: 2; }
 .oa-react-editor-save-as { display: flex; flex: 0 0 auto; gap: var(--en-spacing-2); align-items: center; padding: 0 var(--en-spacing-2) var(--en-spacing-2); border-bottom: 1px solid var(--en-color-borderSubtle); }
 .oa-react-editor-save-as input { min-width: 0; flex: 1 1 auto; }
