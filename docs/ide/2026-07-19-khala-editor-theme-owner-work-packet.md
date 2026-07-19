@@ -1,7 +1,7 @@
 # Khala editor theme owner work packet
 
 - Date: 2026-07-19
-- Status: implemented and verified; delivery pending
+- Status: delivered to `main`
 - Authority: current owner direction in the initiating Codex task
 - Scope: OpenAgents Desktop IDE/workbench theme projection only
 
@@ -72,3 +72,11 @@ theme re-import, model migration, or persisted-data migration.
 - Contrast on `#05070d`: primary 18.13:1, muted 9.54:1, faint 6.38:1,
   energy blue 5.48:1; retained Tokyo syntax roles range from 7.61:1 to 11.74:1.
 - `vp lint --quiet` and `git diff --check`: pass.
+
+## CLAIM-RELEASE
+
+```text
+landed: 9d89d663c51affef94bb826f90610cf33bb49b85
+verification: post-rebase typecheck; 274 Desktop files / 2,658 assertions passed with 39 intentional skips; 36 behavior-contract assertions; production and lazy-editor builds; compatibility and React Electron smokes; IDE boundary, lint, contrast, and visual gates all green.
+residual: user-selectable theme switching, light/high-contrast/system modes, and external theme import remain IDE-18 work; Tokyo Night is retained as the local built-in fallback now.
+```
