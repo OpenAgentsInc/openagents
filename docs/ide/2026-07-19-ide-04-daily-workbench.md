@@ -164,8 +164,8 @@ The public-safe benchmark receipt is
 
 | Fixture / observation | p50 | p95 | p99 |
 | --- | ---: | ---: | ---: |
-| Quick Open, 50,000 indexed paths, 32 queries | 2.965 ms | 3.324 ms | 3.403 ms |
-| navigation push, 10,000 pushes, retained 100 | 0.148 ms | 0.170 ms | 0.288 ms |
+| Quick Open, 50,000 indexed paths, 32 queries | 2.951 ms | 3.167 ms | 3.297 ms |
+| navigation push, 10,000 pushes, retained 100 | 0.146 ms | 0.173 ms | 0.296 ms |
 
 Admission envelopes are 250 ms Quick Open p95, 2 ms navigation-push p95, and
 exactly 100 retained history entries. The benchmark stays intentionally
@@ -179,7 +179,7 @@ and zero resource teardown. It writes
 `2026-07-19-ide-04-packaged-workbench.json` beside the benchmark and updates the
 IDE-03 screenshot with the daily-workbench chrome.
 
-The packaged receipt from core commit `a21e68b39fc781ac4b16e5a5fa151c01f6f02905`
+The packaged receipt from hardened core commit `78ac9e74fe26505ef94e72ed8d8e892abf7ab996`
 records `quickOpenReady`, `previewOpened`, `previewPinned`, recovery version 4,
 two split views, and absolute-root withholding as true. The paired Monaco
 receipt records edit, Vim, recovery reload, private-scheme/offline assets, no

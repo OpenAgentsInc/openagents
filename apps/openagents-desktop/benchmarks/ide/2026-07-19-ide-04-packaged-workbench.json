@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "openagents.desktop.ide-workbench-packaged-journey.v1",
+  "capturedAt": "2026-07-19T09:46:47.610Z",
+  "commitSha": "78ac9e74fe26505ef94e72ed8d8e892abf7ab996",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "packaged": true,
+  "quickOpenReady": true,
+  "previewOpened": true,
+  "previewPinned": true,
+  "recoveryVersion": 4,
+  "splitViews": 2,
+  "rootWithheld": true,
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-packaged-editor.png"
+}

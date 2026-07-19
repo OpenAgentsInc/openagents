@@ -1,21 +1,21 @@
 {
   "schemaVersion": "openagents.desktop.ide-workbench-benchmark.v1",
-  "capturedAt": "2026-07-19T09:40:34.555Z",
-  "commitSha": "31d7d7c37b9229e0efa339c594e1a8f5bc6e9370",
+  "capturedAt": "2026-07-19T09:47:25.070Z",
+  "commitSha": "78ac9e74fe26505ef94e72ed8d8e892abf7ab996",
   "fixture": {
     "indexedPaths": 50000,
     "quickOpenIterations": 32,
     "navigationPushes": 10000
   },
   "quickOpenMs": {
-    "p50": 2.9815830000000005,
-    "p95": 3.6116250000000036,
-    "p99": 3.686333999999988
+    "p50": 2.950917000000004,
+    "p95": 3.1669169999999554,
+    "p99": 3.2973329999999805
   },
   "navigationPushMs": {
-    "p50": 0.1453750000000582,
-    "p95": 0.17262499999992542,
-    "p99": 0.2822089999999662
+    "p50": 0.1462500000000091,
+    "p95": 0.17300000000000182,
+    "p99": 0.2961249999998472
   },
   "retainedHistoryEntries": 100,
   "thresholds": {
