@@ -102,7 +102,7 @@ design context only.
 - Ingress, token minting, public exposure, custom-domain binding, capability
   attachment, artifact upload, and closeout are receipt-bearing events.
 
-## Managed Agent Sandbox Contract (SBX-00/01/02, #9029/#9034/#9028)
+## Managed Agent Sandbox Contract (SBX-00/01/02/03, #9029/#9034/#9028/#9025)
 
 - `openagents.managed_sandbox.v1` is the sole managed-sandbox domain identity.
   GCE, Firecracker, Box-v1, IDE, mobile, and Sarah records are projections or
@@ -136,6 +136,18 @@ design context only.
   `501 capability_not_implemented`. Projection cursor/omission metadata is
   preserved. The SDK is not a production domain dependency and conveys no OCI,
   Docker, Kubernetes, generic GCP, or generic container-admin claim.
+- The Worker `/v1` Box facade is default-off. When enabled, it requires a
+  programmatic bearer. The route also resolves the linked owner, derived
+  tenant, exact sandbox, and current resource generation before each native
+  operation.
+- Command retries replay the durable reservation. Changed bytes conflict. Box
+  list and event cursors are bounded. Event pages use native order, and a
+  cursor from an old generation refuses.
+- The compatibility response never publishes provider URLs, IP addresses,
+  desktop endpoints, snapshot availability, subdomains, raw topology, or
+  credentials. Until SBX-04 and SBX-05 connect native runtime and guest-I/O
+  services, those admitted calls return typed `503 upstream_unavailable` in
+  production rather than fixture success.
 - Sarah's closed managed-sandbox action vocabulary grants no raw `gcloud`,
   shell, database, topology, guest address, service-account, credential,
   filesystem-path, or generic container administration. Runtime mutation must
@@ -144,6 +156,9 @@ design context only.
 - Deterministic enforcement lives in
   `packages/managed-sandbox-contract/src/{schemas,lifecycle,box-v1}.test.ts`
   and `packages/khala-sync-server/src/managed-sandbox-store.test.ts`.
+  Exact SDK facade, authorization, retry, cursor, unsupported-operation, local
+  fake, and loopback HTTP coverage lives in
+  `apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts`.
   Authority denial tests live in
   `packages/authority/src/managed-sandbox-authority.test.ts`. Live target
   evidence is separately required by SBX-09 and must not be inferred from

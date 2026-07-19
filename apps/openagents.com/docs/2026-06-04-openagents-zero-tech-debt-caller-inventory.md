@@ -228,6 +228,24 @@ Deletion condition: remove each `Effect.runPromise` call when that runtime owns
 the corresponding callback, then remove or lower its allowlist entry in the
 same change.
 
+## Managed Sandbox Box-v1 Boundary
+
+Date: 2026-07-19
+
+SBX-03 adds a deliberate external compatibility boundary at
+`workers/api/src/managed-sandbox-box-v1-routes.ts`. It is not a temporary
+domain facade. The native Effect Schema resource and Postgres lifecycle and
+event store remain authoritative. The same rule applies to scope checks and
+tagged errors. The route module maps the admitted Box-v1 HTTP surface once.
+
+The exact `@asciidev/box-sdk@0.0.24` package appears only as a dev dependency
+and test import. The production adapter adds no `Effect.runPromise`,
+`Effect.promise`, raw JSON parse, string error classifier, or lower-level HTTP
+response helper. `managed-sandbox-box-v1-routes.test.ts` owns the black-box SDK
+and loopback transport boundary. `check:architecture` continues to enforce the
+current zero-growth budgets. Therefore this adapter creates no
+compatibility-debt inventory row or deletion budget.
+
 ## Historical Kept Compatibility Paths From Initial Pass
 
 The table below records the original caller inventory from the zero-debt pass.

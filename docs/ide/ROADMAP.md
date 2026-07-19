@@ -369,7 +369,9 @@ The post-basic-IDE implementation program is epic
 | SBX packet | IDE relationship |
 | --- | --- |
 | [SBX-00 #9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | freezes sandbox, authority, event, receipt, and Box compatibility contracts before the IDE consumes them |
-| [SBX-01 #9034](https://github.com/OpenAgentsInc/openagents/issues/9034) through [SBX-05 #9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | supply durable lifecycle, real GCP execution, long-running turns, files, commands, artifacts, and hardening below the project graph |
+| [SBX-01 #9034](https://github.com/OpenAgentsInc/openagents/issues/9034) and [SBX-02 #9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | implemented durable lifecycle authority and the default-off real GCP execution component below the project graph |
+| [SBX-03 #9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | implemented the default-off `/v1` Box compatibility adapter and exact SDK local/loopback HTTP conformance without a second IDE or lifecycle authority |
+| [SBX-04 #9024](https://github.com/OpenAgentsInc/openagents/issues/9024) and [SBX-05 #9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | next supply structural long agent turns, resumable runtime events, interrupt, files, commands, artifacts, quota, and guest safeguards |
 | [SBX-06 #9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | after IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040, supplies the managed target consumed by IDE-13 #9041 and IDE-17 #9045 |
 | [SBX-07 #9030](https://github.com/OpenAgentsInc/openagents/issues/9030) and [SBX-08 #9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | make Sarah and mobile/web consumers of the same lifecycle authority; they do not create client-local runtime models |
 | [SBX-09 #9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independently proves live GCP, SDK, Desktop, Sarah, isolation, cleanup, cost, and rollback before a release claim |

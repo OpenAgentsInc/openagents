@@ -94,8 +94,8 @@ or cleanup truth.
 | SBX-00 | [#9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | contract, authority, AssuranceSpec, model, and SDK conformance freeze | this plan                                                   | complete                                               |
 | SBX-01 | [#9034](https://github.com/OpenAgentsInc/openagents/issues/9034) | durable lifecycle and generation-fenced store                         | SBX-00                                                      | complete                                               |
 | SBX-02 | [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028) | real GCP runtime layer and image admission                            | SBX-00/01                                                   | complete; default-off live component accepted          |
-| SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof                       | SBX-00/01                                                   | next                                                   |
-| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | not started                                            |
+| SBX-03 | [#9025](https://github.com/OpenAgentsInc/openagents/issues/9025) | admitted Box v1 facade and unmodified SDK proof                       | SBX-00/01                                                   | complete, default-off facade accepted                  |
+| SBX-04 | [#9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | long-running Codex/Claude turns, events, and interrupt                | SBX-01/02/03                                                | next                                                   |
 | SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | not started                                            |
 | SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration                                   | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | not started                                            |
 | SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker                                   | SBX-00/04/05                                                | not started                                            |
@@ -192,6 +192,14 @@ acceptance.
 Screenshots, Cloud resource existence, and successful guest commands also
 cannot prove it.
 Live isolation, runtime, cleanup, and owner acceptance require direct evidence.
+
+SBX-03 proves the exact pinned SDK against both an in-process fake and a real
+loopback HTTP service using the production route handler. The facade is wired
+at `/v1`, remains default-off, and uses programmatic bearer authentication plus
+the native Postgres owner/tenant/generation authority. This is staged HTTP
+conformance, not the SBX-09 owner-gated public deployment or live-GCP SDK
+acceptance claim. Runtime turns and bounded guest I/O remain typed unavailable
+until SBX-04 and SBX-05 connect their native services.
 
 ## Hot contracts
 

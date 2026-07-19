@@ -860,6 +860,17 @@ import { handleLander2Page } from './lander2-routes'
 import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
 import { handleLander5Page } from './lander5-routes'
+import {
+  isManagedSandboxBoxV1Enabled,
+  makeBoxV1Principal,
+  managedSandboxBoxV1PolicyForEnv,
+  managedSandboxBoxV1RuntimeForEnv,
+  managedSandboxBoxV1StoreForEnv,
+} from './managed-sandbox-box-v1-adapter'
+import {
+  BoxV1FacadeError,
+  makeBoxV1Routes,
+} from './managed-sandbox-box-v1-routes'
 import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from './marketing-agency-claim-upgrade'
 import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import { makeInMemoryMarketingAgencySelfServeClaimStore } from './marketing-agency-self-serve-claim-upgrade'
@@ -13638,6 +13649,56 @@ export const exactRoutePathManifest = exactRouteRegistry.paths
 export const exactRouteHandlerForPath = (path: string) =>
   exactRouteRegistry.routes.find(route => route.path === path)?.handler
 
+const boxV1Routes = makeBoxV1Routes<OpenAgentsWorkerEnv>({
+  enabled: env =>
+    isManagedSandboxBoxV1Enabled(env.MANAGED_SANDBOX_BOX_V1_ENABLED),
+  authenticate: (request, env) =>
+    Effect.gen(function* () {
+      const token = readBearerToken(request)
+      if (token === undefined) {
+        return yield* new BoxV1FacadeError({
+          code: 'authentication_required',
+          status: 401,
+          message: 'a programmatic OpenAgents bearer token is required',
+          retryable: false,
+        })
+      }
+      const session = yield* Effect.tryPromise({
+        try: () =>
+          authenticateProgrammaticAgent(
+            makeAgentRegistrationStoreForEnv(env),
+            token,
+          ),
+        catch: () =>
+          new BoxV1FacadeError({
+            code: 'upstream_unavailable',
+            status: 503,
+            message: 'programmatic bearer authentication is unavailable',
+            retryable: true,
+          }),
+      })
+      if (session === undefined) {
+        return yield* new BoxV1FacadeError({
+          code: 'authentication_required',
+          status: 401,
+          message: 'the programmatic OpenAgents bearer token is invalid',
+          retryable: false,
+        })
+      }
+      return yield* makeBoxV1Principal({
+        actorUserId: session.user.id,
+        ...(session.credential.openauthUserId === undefined
+          ? {}
+          : { linkedOwnerUserId: session.credential.openauthUserId }),
+        login: session.user.displayName,
+        email: session.user.primaryEmail,
+      })
+    }),
+  policy: managedSandboxBoxV1PolicyForEnv,
+  store: env => Effect.succeed(managedSandboxBoxV1StoreForEnv(env)),
+  runtime: managedSandboxBoxV1RuntimeForEnv,
+})
+
 const routeRequest = makeWorkerRouteRequest({
   cleanProductRouteRedirectLocation,
   exactRoutes: exactRouteRegistry.routes,
@@ -13877,6 +13938,8 @@ const routeRequest = makeWorkerRouteRequest({
       ),
       enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
     }),
+  routeBoxV1Request: (request, env) =>
+    boxV1Routes.routeBoxV1Request(request, env),
   routeSandboxRequest: (request, env) =>
     routeSandboxRequest(request, {
       authenticate: async authRequest => {

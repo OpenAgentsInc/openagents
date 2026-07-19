@@ -242,7 +242,12 @@ or observations exist today.
     "technique": "target_readiness_fault_matrix"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
+      "docs/sol/evidence/2026-07-19-sbx03-box-v1-conformance.json",
+      "packages/managed-sandbox-contract/src/box-v1.test.ts",
+      "packages/managed-sandbox-contract/src/provenance.ts"
+    ],
     "criterion_refs": [
       "MSB-AC-04"
     ],
@@ -253,7 +258,7 @@ or observations exist today.
     "title": "Assure MSB-AC-04",
     "activation_gate": "GATE-SBX-CONTRACT",
     "domains": ["contract", "provenance", "regression"],
-    "environment_refs": ["ENV-SBX-LOCAL-CONTRACT"],
+    "environment_refs": ["ENV-SBX-LOCAL-CONTRACT", "ENV-SBX-STAGED-RUNTIME"],
     "evidence": {
       "proof_rung": "pinned_dependency_conformance",
       "required_kinds": ["sdk_execution_trace", "provenance_receipt", "lockfile_audit"]
@@ -261,17 +266,20 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "sdk_or_openapi_drift",
-      "ref": "packages/managed-sandbox-contract/src/box-v1.test.ts"
+      "ref": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "packages/managed-sandbox-contract/src/box-v1.test.ts",
-      "statement": "Import the exact unmodified SDK, prove basePath and bearer behavior, compare the admitted request corpus, and bind package/OpenAPI/license/translator provenance."
+      "evaluator_ref": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
+      "statement": "Import the exact unmodified SDK, run the same admitted corpus against the in-process fake and loopback HTTP service, prove basePath, bearer, retry, fault, and cursor behavior, and bind package/OpenAPI/license/translator provenance."
     },
     "technique": "black_box_sdk_conformance"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
+      "packages/managed-sandbox-contract/src/box-v1.test.ts"
+    ],
     "criterion_refs": [
       "MSB-AC-05"
     ],
@@ -290,12 +298,12 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "unsupported_operation_succeeds",
-      "ref": "packages/managed-sandbox-contract/src/box-v1.test.ts"
+      "ref": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "packages/managed-sandbox-contract/src/box-v1.test.ts",
-      "statement": "Partition every upstream SDK method into the 17 admitted operations or 14 typed 501 refusals with no omitted or optimistic method."
+      "evaluator_ref": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
+      "statement": "Partition every upstream SDK method into the 17 admitted operations or 14 typed 501 refusals, then exercise the admitted and refused HTTP paths with no omitted or optimistic method."
     },
     "technique": "exhaustive_api_partition"
   },
@@ -416,7 +424,11 @@ or observations exist today.
     "technique": "property_and_boundary_test"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
+      "packages/khala-sync-server/src/managed-sandbox-store.test.ts",
+      "packages/managed-sandbox-contract/src/box-v1.test.ts"
+    ],
     "criterion_refs": [
       "MSB-AC-10"
     ],
@@ -435,12 +447,12 @@ or observations exist today.
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "projection_claims_native_authority",
-      "ref": "packages/managed-sandbox-contract/src/box-v1.test.ts"
+      "ref": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "packages/managed-sandbox-contract/src/box-v1.test.ts",
-      "statement": "Every compatibility page identifies translator, native sequence, cursor, and omissions while native authority, private evidence, usage, and cleanup remain unprojected truth."
+      "evaluator_ref": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
+      "statement": "Every compatibility page identifies translator, native sequence, generation-fenced cursor, and omissions while the Postgres native event and projection stores retain authority and private evidence, usage, and cleanup remain unprojected truth."
     },
     "technique": "projection_loss_conformance"
   },

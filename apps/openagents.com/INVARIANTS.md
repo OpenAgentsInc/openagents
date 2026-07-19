@@ -4255,3 +4255,25 @@ name the blocking issue instead of claiming enforcement.
 Operational procedures (Cloud SQL monitoring, migrations, compaction
 scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
 `docs/khala-sync/RUNBOOK.md`.
+## Managed Sandbox Box-v1 Facade (SBX-03, #9025)
+
+- `/v1` is a compatibility route over the native managed-sandbox authority,
+  not a second lifecycle, event, runtime, or cleanup owner. It remains
+  default-off through `MANAGED_SANDBOX_BOX_V1_ENABLED` until SBX-09.
+- Every admitted request authenticates a programmatic OpenAgents bearer and
+  resolves the linked owner, derived tenant, sandbox, and current generation.
+  The Box ID and bearer alone do not grant cross-owner access.
+- Production route code imports only OpenAgents Effect Schema contracts. Exact
+  `@asciidev/box-sdk@0.0.24` bytes are a development-only black-box test client
+  and must not enter the Worker production dependency graph.
+- Mutation retry identity is byte-bound before effects and replays the native
+  durable command reservation. Changed bytes, foreign scope, and stale event
+  generations fail closed. Compatibility cursor state never replaces native
+  event order.
+- Box projections expose no provider URL, guest IP, desktop endpoint,
+  snapshot, subdomain, topology, path, or credential. Unwired runtime and guest
+  I/O return typed unavailability rather than fixture or optimistic success.
+- The route/service split remains Effect-native with tagged errors and one HTTP
+  mapper. It introduces no production `Effect.runPromise` bridge or Promise
+  dependency adapter. Deterministic coverage is
+  `workers/api/src/managed-sandbox-box-v1-routes.test.ts`.

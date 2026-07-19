@@ -345,6 +345,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeForgeControlPlaneRequest: noRoute,
       routeForumRequest: noRoute,
       routeFineTuningJobRequest: noRoute,
+      routeBoxV1Request: noRoute,
       routeSandboxRequest: noRoute,
       routeImageGenerationRequest: noRoute,
       routeModelRetrieveRequest,

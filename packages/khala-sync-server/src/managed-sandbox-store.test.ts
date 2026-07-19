@@ -207,6 +207,20 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
     expect(replay).toMatchObject({ disposition: "replayed", status: "pending" });
     expect(replay.resource).toEqual(first.resource);
 
+    const durableReplay = await store.reservation({
+      ownerRef,
+      tenantRef,
+      commandRef: command.commandRef,
+    });
+    expect(durableReplay).toEqual(replay);
+    await expect(
+      store.reservation({
+        ownerRef: "owner.sbx01.other",
+        tenantRef,
+        commandRef: command.commandRef,
+      }),
+    ).rejects.toMatchObject({ code: "permission_denied" });
+
     const conflictingBytes = {
       ...command,
       commandRef: `${command.commandRef}.other`,
@@ -547,6 +561,15 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
     });
     expect(page2.events.map((item) => item.sequence)).toEqual([3, 4, 5, 6]);
 
+    expect(
+      await store.readProjection({
+        ownerRef,
+        tenantRef,
+        sandboxRef: `sandbox.sbx01.${suffix}`,
+        translatorRef: "openagents.box_v1_translator.v1",
+      }),
+    ).toBeUndefined();
+
     const projection = await store.advanceProjection({
       ownerRef,
       tenantRef,
@@ -561,6 +584,14 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
       observedAt: observed(8),
     });
     expect(projection.projectionVersion).toBe(1);
+    expect(
+      await store.readProjection({
+        ownerRef,
+        tenantRef,
+        sandboxRef: `sandbox.sbx01.${suffix}`,
+        translatorRef: "openagents.box_v1_translator.v1",
+      }),
+    ).toEqual(projection);
     await expect(
       store.advanceProjection({
         ownerRef,

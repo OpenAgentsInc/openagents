@@ -128,14 +128,21 @@ that isolation unit honestly. It is not necessarily an OCI container. A live
 managed request cannot fall back to fake/local execution, and readiness or
 cleanup requires observed target evidence rather than a control-plane label.
 
-OpenAgents may serve a bounded Box v1 facade from an OpenAgents-owned URL so
-the unmodified pinned TypeScript SDK can exercise lifecycle, prompt/events,
-files, commands, and artifacts. That facade is lossy compatibility only:
+OpenAgents serves a default-off bounded Box v1 facade at `/v1` from the Worker
+so the unmodified pinned TypeScript SDK can exercise the admitted lifecycle,
+prompt/events, files, commands, and artifacts surface. The adapter
+authenticates an OpenAgents programmatic bearer. It resolves the linked owner
+and derived tenant. It delegates each lifecycle and cursor operation to the
+native Postgres authority.
+
+Runtime turns and guest I/O remain typed unavailable until their later native
+packets land. The facade is lossy compatibility only:
 native Effect Schema contracts, authorization, event cursors, private
 evidence, usage, cost, artifact, and cleanup receipts remain authoritative.
 Unsupported methods fail explicitly. No Box type enters the canonical Cloud
 contract, and no client receives GCP credentials or vendor control-plane
-authority.
+authority. Local fake plus loopback HTTP SDK conformance is implementation
+evidence. Only SBX-09 may arm or claim owner-gated live acceptance.
 
 Desktop and Sarah consume the same managed-sandbox broker. Mobile and web
 receive bounded projections only. This boundary does not admit portable host

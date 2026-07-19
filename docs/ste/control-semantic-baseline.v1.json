@@ -4,7 +4,11 @@
   "files": {
     "AGENTS.md": {
       "sourceSha256": "0ee5472c798f8ed8fbf19aeab8cd94c12179ff650746d79e2992494e0532c3b1",
-      "normativeKeywords": ["NEVER", "NEVER", "ONLY"],
+      "normativeKeywords": [
+        "NEVER",
+        "NEVER",
+        "ONLY"
+      ],
       "inlineCode": [
         " + Xcode/Gradle); ",
         "$PYLON",
@@ -599,7 +603,13 @@
     },
     "INVARIANTS.md": {
       "sourceSha256": "23a8bd1ff73002f76ed7196c4da5365ed4528363f370e950afee472edc9d32c5",
-      "normativeKeywords": ["MAY", "MUST", "ONLY", "ONLY", "ONLY"],
+      "normativeKeywords": [
+        "MAY",
+        "MUST",
+        "ONLY",
+        "ONLY",
+        "ONLY"
+      ],
       "inlineCode": [
         "$HOME",
         "--account-ref",
@@ -2469,7 +2479,9 @@
       "urls": [
         "https://github.com/OpenAgentsInc/backroom/blob/dec8ae52/archive/openagents-sol-docs-2026-07-12/july9/2026-07-09-codex-parallelism-and-sarah-fleet-cutover.md"
       ],
-      "issueRefs": ["#8640"],
+      "issueRefs": [
+        "#8640"
+      ],
       "numericValues": [
         "09",
         "1",
@@ -2523,7 +2535,17 @@
       ],
       "urls": [],
       "issueRefs": [],
-      "numericValues": ["09", "1", "10", "10", "2", "2026-07", "2026-07", "2026-07", "90"]
+      "numericValues": [
+        "09",
+        "1",
+        "10",
+        "10",
+        "2",
+        "2026-07",
+        "2026-07",
+        "2026-07",
+        "90"
+      ]
     },
     "specs/CONVENTIONS.md": {
       "sourceSha256": "ce8205c250d1f08daf6e0f9e50a983d1e944b8748dcdb82a575361a339e6aaec",
@@ -2570,8 +2592,20 @@
         "tool_metadata"
       ],
       "urls": [],
-      "issueRefs": ["#8593"],
-      "numericValues": ["0.19.0", "08", "1", "1", "2026-07", "5", "5", "8", "8593"]
+      "issueRefs": [
+        "#8593"
+      ],
+      "numericValues": [
+        "0.19.0",
+        "08",
+        "1",
+        "1",
+        "2026-07",
+        "5",
+        "5",
+        "8",
+        "8593"
+      ]
     },
     "apps/openagents.com/AGENTS.md": {
       "sourceSha256": "c020d7d74771bc3afca988a3cdac8ab7b5916dc44b2a4d1e037b7a84827e3a49",
@@ -2795,8 +2829,15 @@
         "~/.local/share/effect-solutions/effect",
         "~/.local/share/effect-solutions/effect"
       ],
-      "urls": ["https://openagents.com/`", "https://openagents.com/new`."],
-      "issueRefs": ["#5058", "#8610", "#8813"],
+      "urls": [
+        "https://openagents.com/`",
+        "https://openagents.com/new`."
+      ],
+      "issueRefs": [
+        "#5058",
+        "#8610",
+        "#8813"
+      ],
       "numericValues": [
         "0",
         "04",
@@ -2838,7 +2879,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "c0d6b302c043aa64af3db1e6b0f39e85a0bdd121bfd397485c7d0c185e833cf8",
+      "sourceSha256": "e69a17567d7c3252daed6d5030a05fb934dc983b59eeee6b20940a84df64a879",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -2955,6 +2996,7 @@
         "/trace/{uuid}",
         "/trace/{uuid}",
         "/trace/{uuid}",
+        "/v1",
         "/v1/agent-definitions/:id/event-ledger",
         "/v1/chat/completions",
         "/v1/chat/completions",
@@ -2986,6 +3028,7 @@
         "?token=",
         "?token=",
         "?workClass=",
+        "@asciidev/box-sdk@0.0.24",
         "@autopilot",
         "@breeztech/breez-sdk-spark",
         "@moneydevkit/*",
@@ -3014,6 +3057,7 @@
         "DebtReceiptKey",
         "DebtReceiptKey",
         "EVENT_LEDGER_OWNER",
+        "Effect.runPromise",
         "EmailService",
         "FLEET_PROJECTION_SYSTEM_REF",
         "GET",
@@ -3142,6 +3186,7 @@
         "KHALA_SYNC_DB",
         "KHALA_SYNC_DB",
         "KHALA_SYNC_LIVE_HUB_URL",
+        "MANAGED_SANDBOX_BOX_V1_ENABLED",
         "MARKETPLACE_COMPOSE_AND_LIST_ENABLED",
         "MDK_SIDECAR",
         "MDK_SIDECAR_SERVICE_URL",
@@ -4481,6 +4526,7 @@
         "workers/api/src/labor-escrow.test.ts",
         "workers/api/src/labor-live-rehearsal.test.ts",
         "workers/api/src/lane-c-fanout-policy.test.ts",
+        "workers/api/src/managed-sandbox-box-v1-routes.test.ts",
         "workers/api/src/market-provider-policy.test.ts",
         "workers/api/src/mdk-agent-wallet-smoke-fixture.test.ts",
         "workers/api/src/mdk-agent-wallet-smoke-fixture.test.ts",
@@ -4626,7 +4672,9 @@
         "{}",
         "~/.codex"
       ],
-      "urls": ["https://openagents.com`"],
+      "urls": [
+        "https://openagents.com`"
+      ],
       "issueRefs": [
         "#1",
         "#1",
@@ -4754,7 +4802,8 @@
         "#8519",
         "#8519",
         "#8522",
-        "#8600"
+        "#8600",
+        "#9025"
       ],
       "numericValues": [
         "0",
@@ -4775,6 +4824,7 @@
         "0",
         "0",
         "0",
+        "0.0.24",
         "00",
         "00",
         "000",
@@ -4786,11 +4836,13 @@
         "0052",
         "0053",
         "03",
+        "03",
         "0304",
         "0306",
         "05",
         "05",
         "06",
+        "09",
         "09",
         "096",
         "1",
@@ -5108,7 +5160,8 @@
         "9",
         "9",
         "9",
-        "9.3"
+        "9.3",
+        "9025"
       ]
     },
     "apps/openagents.com/apps/start/public/AGENTS.md": {
@@ -5225,15 +5278,19 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "6c554bed6ec2b184e4881f97088fc33616a08088f069bf29931d24d55f64fc5d",
-      "normativeKeywords": ["ONLY"],
+      "sourceSha256": "40c424a7ad1421b0476c98ca20bccf42ef566a29f4676e062e0362fcff648c55",
+      "normativeKeywords": [
+        "ONLY"
+      ],
       "inlineCode": [
         "*_RAW_PER_VM_SEC_NANOUSD",
         "/dev/kvm",
         "/opt/agent/portable-session-control",
+        "/v1",
         "0067",
         "200",
         "501 capability_not_implemented",
+        "503 upstream_unavailable",
         "@asciidev/box-sdk@0.0.24",
         "Auto",
         "CODEX_HOME",
@@ -5254,6 +5311,7 @@
         "PostgresManagedSandboxStore",
         "apps/openagents.com",
         "apps/openagents.com/workers/api/src/khala-cloud-runtime-usage-routes.ts",
+        "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
         "apps/pylon",
         "apps/pylon/deploy/agent-computer/turn-runner.ts",
         "canReplayCodexProviderGrantAfterReclaim",
@@ -5341,7 +5399,16 @@
         "vm_seconds"
       ],
       "urls": [],
-      "issueRefs": ["#8547", "#8636", "#8748", "#8748", "#9028", "#9029", "#9034"],
+      "issueRefs": [
+        "#8547",
+        "#8636",
+        "#8748",
+        "#8748",
+        "#9025",
+        "#9028",
+        "#9029",
+        "#9034"
+      ],
       "numericValues": [
         "0",
         "0",
@@ -5356,9 +5423,12 @@
         "02",
         "03",
         "03",
+        "03",
+        "04",
         "042",
         "042",
         "042",
+        "05",
         "09",
         "09",
         "1",
@@ -5376,10 +5446,12 @@
         "3",
         "501",
         "503",
+        "503",
         "8547",
         "8636",
         "8748",
         "8748",
+        "9025",
         "9028",
         "9029",
         "9034",

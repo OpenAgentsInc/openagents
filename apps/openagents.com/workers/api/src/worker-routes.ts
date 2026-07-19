@@ -63,6 +63,7 @@ type WorkerRouteDependencies = Readonly<{
   routeForumRequest: OptionalEffectRoute
   routeImageGenerationRequest: OptionalEffectRoute
   routeFineTuningJobRequest: OptionalEffectRoute
+  routeBoxV1Request: OptionalEffectRoute
   routeSandboxRequest: OptionalEffectRoute
   routeModelRetrieveRequest: OptionalEffectRoute
   // MirrorCode demo single-run read GET /api/gym/mirrorcode/runs/{id} (#6378 —
@@ -309,6 +310,12 @@ export const makeWorkerRouteRequest =
 
       if (fineTuningJobResponse !== undefined) {
         return yield* fineTuningJobResponse
+      }
+
+      const boxV1Response = dependencies.routeBoxV1Request(request, env, ctx)
+
+      if (boxV1Response !== undefined) {
+        return yield* boxV1Response
       }
 
       const sandboxResponse = dependencies.routeSandboxRequest(

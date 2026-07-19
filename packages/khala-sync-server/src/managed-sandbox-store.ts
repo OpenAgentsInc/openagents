@@ -616,6 +616,44 @@ const settledCommand = async (
 export class PostgresManagedSandboxStore {
   constructor(private readonly sql: SyncSql) {}
 
+  async reservation(
+    input: Readonly<{
+      ownerRef: string;
+      tenantRef: string;
+      commandRef: string;
+    }>,
+  ): Promise<ManagedSandboxCommandReservation | undefined> {
+    const ownerRef = decodeRef(input.ownerRef);
+    const tenantRef = decodeRef(input.tenantRef);
+    const commandRef = decodeRef(input.commandRef);
+    const rows: ReadonlyArray<CommandRow> = await this.sql`
+      SELECT command_ref, sandbox_ref, owner_user_id, tenant_ref,
+             idempotency_ref, command_fingerprint, settlement_fingerprint, command_json,
+             resource_generation, claimed_version, status, receipt_ref
+      FROM khala_sync_managed_sandbox_commands
+      WHERE command_ref = ${commandRef}
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (row === undefined) return undefined;
+    if (row.owner_user_id !== ownerRef || row.tenant_ref !== tenantRef) {
+      throw new ManagedSandboxStoreError("permission_denied", "command scope does not match");
+    }
+    const resourceRow = await selectResource(this.sql, row.sandbox_ref);
+    if (resourceRow === undefined) {
+      throw new ManagedSandboxStoreError("corrupt_store", "command lost its managed sandbox");
+    }
+    const command = commandFromRow(row);
+    return {
+      disposition: "replayed",
+      status: row.status,
+      command,
+      resource: resourceFromRow(resourceRow),
+      receipt: await receiptForCommand(this.sql, commandRef),
+      turnSequence: await turnForCommand(this.sql, commandRef),
+    };
+  }
+
   async reserve(raw: ReserveManagedSandboxCommandInput): Promise<ManagedSandboxCommandReservation> {
     const command = publicSafe(decodeCommand(raw.command));
     const commandFingerprint = fingerprint(command);
@@ -1124,6 +1162,30 @@ export class PostgresManagedSandboxStore {
       LIMIT ${limit}
     `;
     return rows.map(resourceFromRow);
+  }
+
+  async readProjection(
+    input: Readonly<{
+      ownerRef: string;
+      tenantRef: string;
+      sandboxRef: string;
+      translatorRef: string;
+    }>,
+  ): Promise<ManagedSandboxProjectionState | undefined> {
+    const resource = await this.inspect(input);
+    const translatorRef = decodeRef(input.translatorRef);
+    const rows: ReadonlyArray<ProjectionRow> = await this.sql`
+      SELECT projection_version, native_event_sequence, cursor_json
+      FROM khala_sync_managed_sandbox_projection_cursors
+      WHERE sandbox_ref = ${resource.sandboxRef} AND translator_ref = ${translatorRef}
+    `;
+    const row = rows[0];
+    return row === undefined
+      ? undefined
+      : {
+          projectionVersion: integer(row.projection_version, "projection version"),
+          cursor: publicSafe(decodeProjectionCursor(row.cursor_json)),
+        };
   }
 
   async advanceProjection(

@@ -35,10 +35,15 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
   [`openagents.managed_sandbox.v1`](./contracts/openagents.managed_sandbox.v1.md)
   contract and Box-v1 corpus are admitted by SBX-00, the durable store is
   implemented by SBX-01, and the default-off GCE runtime component is
-  implemented by SBX-02. The [SBX-02 runtime runbook](./bootstrap/SBX-02-managed-sandbox-runtime.md)
-  defines its exact profile and live component harness. Facade, consumers,
-  independent live rollout, and production availability remain gated by
-  SBX-03 through SBX-10
+  implemented by SBX-02. The default-off `/v1` compatibility facade and exact
+  SDK local/loopback HTTP conformance are implemented by SBX-03. The
+  [SBX-02 runtime runbook](./bootstrap/SBX-02-managed-sandbox-runtime.md)
+  defines its exact profile and live component harness. The
+  [SBX-03 facade runbook](../../apps/openagents.com/docs/2026-07-19-managed-sandbox-box-v1-facade.md)
+  defines authentication, configuration, tests, and current typed-unavailable
+  runtime boundary. Long agent turns, I/O safeguards, consumers, independent
+  live rollout, and production availability remain gated by SBX-04 through
+  SBX-10
 - [Remote-first portable session pathway](../sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md)
   — planned product/roadmap additions for owner-managed and managed-provider
   targets, cross-host checkpoints, general brokered capabilities, and mobile

@@ -1133,6 +1133,9 @@ importers:
       '@openagentsinc/khala-sync-server':
         specifier: workspace:*
         version: link:../../../../packages/khala-sync-server
+      '@openagentsinc/managed-sandbox-contract':
+        specifier: workspace:*
+        version: link:../../../../packages/managed-sandbox-contract
       '@openagentsinc/mcp-contract':
         specifier: workspace:*
         version: link:../../../../packages/mcp-contract
@@ -1203,6 +1206,9 @@ importers:
         specifier: 19.2.7
         version: 19.2.7(react@19.2.7)
     devDependencies:
+      '@asciidev/box-sdk':
+        specifier: 0.0.24
+        version: 0.0.24
       '@openagentsinc/khala-sync-client':
         specifier: workspace:*
         version: link:../../../../packages/khala-sync-client

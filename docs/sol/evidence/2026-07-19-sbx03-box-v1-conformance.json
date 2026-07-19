@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx03_conformance.v1",
+  "capturedAt": "2026-07-19T18:40:56Z",
+  "passed": true,
+  "issueRef": "https://github.com/OpenAgentsInc/openagents/issues/9025",
+  "translatorRef": "openagents.box_v1_translator.v1",
+  "sdk": {
+    "package": "@asciidev/box-sdk",
+    "version": "0.0.24",
+    "license": "MIT",
+    "integrity": "sha512-w77vTWA+yrJ5O+FmchCkurjux1UZkQ5yeurnzX/FJTlQulEtj1xp0g/2cSh/GZWLXrgCV0exU99E+NyiilBeHA==",
+    "tarballSha256": "51ac532981c4791ab8662d800cd70b6f18d9a8a01abbd097c627bae3ae45aeb0"
+  },
+  "openApiSha256": "9ae1e0b7ded4a2d537bfa076f8e047baa2bdf7e3736de2cc397d349457c3cbac",
+  "surface": {
+    "basePath": "/v1",
+    "admittedMethodCount": 17,
+    "unsupportedMethodCount": 14,
+    "defaultEnabled": false,
+    "productionRuntimeConnected": false
+  },
+  "proof": {
+    "rung": "local_fake_and_loopback_staging_http",
+    "testFile": "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
+    "testsPassed": 4,
+    "testsFailed": 0,
+    "sameSdkCorpusAcrossTransports": true,
+    "normalSdkFetchOverLoopbackHttp": true,
+    "allAdmittedMethodsRetried": true,
+    "allAdmittedMethodsAuthenticationErrorCovered": true,
+    "allAdmittedMethodsAuthenticationFaultCovered": true,
+    "crossOwnerDenied": true,
+    "changedBytesDenied": true,
+    "ascendingPaginationPassed": true,
+    "staleGenerationCursorDenied": true,
+    "unsupportedOperationTyped501": true,
+    "unwiredRuntimeTypedUnavailable": true
+  },
+  "authority": {
+    "nativeStore": "PostgresManagedSandboxStore",
+    "ownerTenantGenerationScoped": true,
+    "durableCommandReplay": true,
+    "separateProjectionCursor": true,
+    "vendorSdkProductionDependency": false
+  },
+  "limitations": [
+    "No external staging or public Worker deployment was armed by SBX-03.",
+    "No live GCP SDK journey is claimed; SBX-09 owns that gate.",
+    "Long-running turns and guest I/O remain typed unavailable until SBX-04 and SBX-05."
+  ]
+}

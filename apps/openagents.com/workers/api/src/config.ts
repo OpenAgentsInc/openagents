@@ -260,6 +260,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // related promises stay red until a dereferenceable paid receipt exists.
   CLOUD_FINE_TUNING_ENABLED?: string | undefined
   CLOUD_SANDBOX_COMPUTE_ENABLED?: string | undefined
+  // SBX-03 (#9025): bounded Box-v1 compatibility facade. Default OFF until
+  // SBX-09 independently proves and arms the complete managed-sandbox graph.
+  MANAGED_SANDBOX_BOX_V1_ENABLED?: string | undefined
+  OA_MANAGED_SANDBOX_IMAGE_DIGEST?: string | undefined
   // Agent Computer launch surface flag (autopilot.cloud_coding_sessions.v1, red).
   // Default OFF: the `/v1/cloud-coding-sessions` launch + lifecycle routes are
   // inert on the live Worker until the Firecracker/GCE runtime is wired. Set

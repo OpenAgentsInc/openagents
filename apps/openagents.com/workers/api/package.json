@@ -49,6 +49,7 @@
     "@openagentsinc/forge-protocol": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-server": "workspace:*",
+    "@openagentsinc/managed-sandbox-contract": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/mullet-schema": "workspace:*",
     "@openagentsinc/mullet-sim": "workspace:*",
@@ -74,6 +75,7 @@
     "react-dom": "19.2.7"
   },
   "devDependencies": {
+    "@asciidev/box-sdk": "0.0.24",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@types/react": "^19.2.14",
     "@types/react-dom": "19.2.3",
