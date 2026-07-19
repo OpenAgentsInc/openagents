@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "openagents.desktop.ide-path-index-packaged-journey.v1",
+  "capturedAt": "2026-07-19T08:05:33.344Z",
+  "commitSha": "546dca5320a4e04b13de8b7b1ed937a65ec62741",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "packaged": true,
+  "sourceCorpus": "tracked-openagents-archive",
+  "sourceEntries": 10862,
+  "indexedNodes": 10697,
+  "indexState": "ready",
+  "pointerActivation": true,
+  "keyboardHomeEnd": true,
+  "keyboardContextMenu": true,
+  "screenReaderTree": true,
+  "rootWithheld": true,
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-explorer.png"
+}

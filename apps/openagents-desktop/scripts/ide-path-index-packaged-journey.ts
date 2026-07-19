@@ -1,7 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -10,22 +11,29 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { _electron as electron } from "playwright";
+import { chromium, type Browser } from "playwright";
 import { Schema } from "effect";
 
 import { IdePathIndexPackagedJourneyReceiptSchema } from "../src/ide/index-benchmark-contract.ts";
 
 const appRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(appRoot, "../..");
-const packagedBinary = path.join(
-  appRoot,
-  "out",
-  "OpenAgents-darwin-arm64",
-  "OpenAgents.app",
-  "Contents",
-  "MacOS",
-  "OpenAgents",
-);
+const packagedOutputRoot = path.join(appRoot, "out");
+const packagedDirectory = readdirSync(packagedOutputRoot, { withFileTypes: true })
+  .find(entry => entry.isDirectory() && entry.name.endsWith("-darwin-arm64"));
+const packagedApp = packagedDirectory === undefined
+  ? undefined
+  : readdirSync(path.join(packagedOutputRoot, packagedDirectory.name), { withFileTypes: true })
+      .find(entry => entry.isDirectory() && entry.name.endsWith(".app"));
+const packagedMacOsDirectory = packagedDirectory === undefined || packagedApp === undefined
+  ? undefined
+  : path.join(packagedOutputRoot, packagedDirectory.name, packagedApp.name, "Contents", "MacOS");
+const packagedExecutable = packagedMacOsDirectory === undefined
+  ? undefined
+  : readdirSync(packagedMacOsDirectory, { withFileTypes: true }).find(entry => entry.isFile());
+const packagedBinary = packagedMacOsDirectory === undefined || packagedExecutable === undefined
+  ? null
+  : path.join(packagedMacOsDirectory, packagedExecutable.name);
 const screenshotRef = "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-explorer.png";
 const screenshotPath = path.join(repositoryRoot, screenshotRef);
 const receiptPath = path.join(
@@ -35,7 +43,7 @@ const receiptPath = path.join(
   "2026-07-19-ide-02-packaged-journey.json",
 );
 
-const workspaceRoot = process.argv[2];
+const workspaceRoot = process.argv.slice(2).find(argument => path.isAbsolute(argument));
 if (workspaceRoot === undefined || !path.isAbsolute(workspaceRoot) || !existsSync(workspaceRoot)) {
   throw new Error("usage: pnpm run ide:path-index-packaged-journey -- <absolute disposable tracked-source archive>");
 }
@@ -43,8 +51,8 @@ const relativeToTemp = path.relative(path.resolve(tmpdir()), path.resolve(worksp
 if (relativeToTemp === "" || relativeToTemp === ".." || relativeToTemp.startsWith(`..${path.sep}`) || path.isAbsolute(relativeToTemp)) {
   throw new Error("IDE-02 packaged journey accepts only a disposable corpus beneath the OS temporary directory");
 }
-if (!existsSync(packagedBinary)) {
-  throw new Error(`packaged Desktop binary missing at ${packagedBinary}`);
+if (packagedBinary === null || !existsSync(packagedBinary)) {
+  throw new Error(`packaged Desktop binary missing beneath ${packagedOutputRoot}`);
 }
 
 const countEntries = (root: string): number => {
@@ -65,8 +73,7 @@ const main = async (): Promise<void> => {
   const sourceEntries = countEntries(workspaceRoot);
   if (sourceEntries < 5_000) throw new Error(`large-repository corpus too small: ${sourceEntries}`);
   const userDataPath = mkdtempSync(path.join(tmpdir(), "openagents-ide02-packaged-"));
-  const app = await electron.launch({
-    executablePath: packagedBinary,
+  const appProcess = spawn(packagedBinary, ["--remote-debugging-port=0"], {
     cwd: workspaceRoot,
     env: {
       ...process.env,
@@ -75,15 +82,33 @@ const main = async (): Promise<void> => {
       OPENAGENTS_DESKTOP_LAUNCH_CWD: workspaceRoot,
       OA_DESKTOP_SKIP_DEV_VOICE_HELPER: "1",
     },
+    stdio: "ignore",
   });
+  let cdpBrowser: Browser | null = null;
   try {
-    const page = await app.firstWindow();
+    const devToolsPortPath = path.join(userDataPath, "DevToolsActivePort");
+    const devToolsDeadline = Date.now() + 20_000;
+    while (!existsSync(devToolsPortPath) && Date.now() < devToolsDeadline) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    if (!existsSync(devToolsPortPath)) throw new Error("packaged Chromium DevTools port did not appear");
+    const port = readFileSync(devToolsPortPath, "utf8").split("\n")[0];
+    cdpBrowser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+    const page = cdpBrowser.contexts().flatMap(context => context.pages())[0];
+    if (page === undefined) throw new Error("packaged renderer page did not appear");
     await page.waitForSelector('aside[aria-label="Sessions"]', {
+      state: "attached",
       timeout: 60_000,
     });
+    process.stdout.write("[openagents-desktop] packaged shell attached\n");
     await page.keyboard.press(process.platform === "darwin" ? "Meta+E" : "Control+E");
+    await page.waitForTimeout(500);
+    if (await page.locator('[data-react-workspace="files"]').count() === 0) {
+      await page.getByRole("button", { name: "Files", exact: true }).click();
+    }
     const tree = page.locator('[data-oa-pierre-tree="true"]');
     await tree.waitFor({ state: "visible", timeout: 60_000 });
+    process.stdout.write("[openagents-desktop] packaged Pierre tree visible\n");
     const status = page.locator("#oa-workspace-index-status");
     await status.waitFor({ state: "visible", timeout: 60_000 });
     await page.waitForFunction(() => /indexed paths ready\./u.test(
@@ -151,7 +176,13 @@ const main = async (): Promise<void> => {
     }
     process.stdout.write(`[openagents-desktop] IDE-02 packaged journey: ${receiptPath}\n`);
   } finally {
-    await app.close();
+    await cdpBrowser?.close();
+    appProcess.kill("SIGTERM");
+    await Promise.race([
+      new Promise<void>(resolve => appProcess.once("exit", () => resolve())),
+      new Promise<void>(resolve => setTimeout(resolve, 5_000)),
+    ]);
+    if (appProcess.exitCode === null) appProcess.kill("SIGKILL");
     if (existsSync(userDataPath) && statSync(userDataPath).isDirectory()) {
       rmSync(userDataPath, { recursive: true, force: true });
     }

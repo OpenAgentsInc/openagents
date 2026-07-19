@@ -162,13 +162,13 @@ all percentiles rather than one favorable sample.
 
 | Metric | Repetitions | p50 | p95 | p99 | Written p95 budget |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| complete 10k scan | 7 | 112.035 ms | 126.366 ms | 127.347 ms | 1,500 ms |
-| cached Pierre projection | 101 | 9.272 ms | 9.896 ms | 13.128 ms | 40 ms |
-| keyboard target traversal | 101 | 9.221 ms | 9.524 ms | 9.746 ms | 40 ms |
-| incremental watcher update | 31 | 25.924 ms | 32.271 ms | 33.319 ms | 150 ms |
+| complete 10k scan | 7 | 113.059 ms | 116.525 ms | 116.898 ms | 1,500 ms |
+| cached Pierre projection | 101 | 9.698 ms | 10.733 ms | 14.345 ms | 40 ms |
+| keyboard target traversal | 101 | 9.665 ms | 10.003 ms | 11.381 ms | 40 ms |
+| incremental watcher update | 31 | 26.432 ms | 28.285 ms | 32.081 ms | 150 ms |
 
 The final snapshot contains 10,100 nodes and estimates 2,966,000 bytes of
-index data. Forced-GC retained heap delta is 7,028,904 bytes. Active resource
+index data. Forced-GC retained heap delta is 5,977,192 bytes. Active resource
 count falls from six to two during the process, the service reports zero owned
 source subscriptions after stop, and access after stop refuses.
 
@@ -183,11 +183,17 @@ The packaged large-repository receipt and screenshot are:
 - `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-journey.json`;
 - `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-02-packaged-explorer.png`.
 
-That journey launches the packaged arm64 app against a disposable archive of
-the tracked OpenAgents corpus, enters Files through the canonical shortcut,
-waits for ready, traverses with pointer and Home/End, opens the keyboard context
-menu, activates a file, checks screen-reader relationships, checks that the
-absolute corpus root is absent, and captures the rendered result.
+The archive contains 10,862 filesystem entries and the ready index contains
+10,697 admitted nodes. The journey launches packaged commit
+`546dca5320a4e04b13de8b7b1ed937a65ec62741`, attempts the canonical Files
+shortcut and falls back to the same visible Files command when the isolated
+CDP driver does not deliver that application chord, waits for ready, traverses
+with pointer and Home/End, opens the keyboard context menu, activates a file,
+checks screen-reader relationships, checks that the absolute corpus root is
+absent, and captures the rendered result. The fallback is disclosed because
+the screenshot is evidence of the packaged Explorer, not evidence that this
+isolated packaged driver validated global shortcut delivery; the ordinary
+React smoke owns that separate command-binding journey.
 
 ## Verification map
 
