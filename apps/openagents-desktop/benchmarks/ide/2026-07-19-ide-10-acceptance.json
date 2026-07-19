@@ -1,0 +1,173 @@
+{
+  "schemaVersion": "openagents.desktop.ide-run-acceptance.v1",
+  "issue": "IDE-10",
+  "generatedAt": "2026-07-19T23:20:51.684Z",
+  "candidateCommitSha": "5aa1ea199da6e0f406275ae6451ba280e05cf48a",
+  "mainEvaluationSha": "5aa1ea199da6e0f406275ae6451ba280e05cf48a",
+  "artifactTreeSha256": "9c974c288876da15f4978f518a680e11c412ecf74345cec2f3e2433029f491c3",
+  "benchmarkRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-run.json",
+  "packagedRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.json",
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.png",
+  "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run-trace.json",
+  "evidenceRefs": [
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-run.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.png",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run-trace.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-acceptance.json",
+    "apps/openagents-desktop/src/ide/run-contract.ts",
+    "apps/openagents-desktop/src/ide/run-service.ts",
+    "apps/openagents-desktop/src/ide/run-host.ts",
+    "apps/openagents-desktop/src/ide/run-contract.test.ts",
+    "apps/openagents-desktop/src/ide/run-service.test.ts",
+    "apps/openagents-desktop/src/ide/run-host.test.ts",
+    "apps/openagents-desktop/src/terminal-host.test.ts",
+    "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+    "apps/openagents-desktop/tests/electron-boundary.test.ts + apps/openagents-desktop/scripts/check-ide-boundaries.ts"
+  ],
+  "faultMatrix": [
+    {
+      "fault": "missing shell and spawn failure settle as typed refusal or failed outcome",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-host.test.ts + apps/openagents-desktop/src/terminal-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "invalid cwd or revoked workspace generation cannot reuse a process",
+      "evidenceRef": "apps/openagents-desktop/src/terminal-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "complete host environment and secret-named values are never inherited",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "renderer schemas reject executable, argv, and raw environment injection",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-contract.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "huge output stays byte-bounded and publishes an explicit gap",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run-trace.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.png",
+      "passed": true
+    },
+    {
+      "fault": "token-shaped and private-key output is redacted before projection",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-host.test.ts + apps/openagents-desktop/src/terminal-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "invalid UTF-8 is an explicit output fact",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-run.json + apps/openagents-desktop/src/ide/run-service.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "output sequence remains monotonic across retention eviction",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "late output cannot revive a disposed channel",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "terminal close and host disposal terminate the owned process group",
+      "evidenceRef": "apps/openagents-desktop/src/terminal-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "resize uses bounded dimensions and refuses an absent session",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts + apps/openagents-desktop/src/terminal-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "declared task dependencies execute in graph order",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-host.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run-trace.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.png",
+      "passed": true
+    },
+    {
+      "fault": "cyclic or missing task dependencies fail discovery",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "background readiness cannot be inferred without the declared pattern",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts + apps/openagents-desktop/src/ide/run-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "task timeout and cancellation remain distinct semantic outcomes",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts + apps/openagents-desktop/src/ide/run-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "zero task exit cannot fabricate success when readiness or artifacts are incomplete",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "test discovery is generation-bound and duplicate items refuse",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts + apps/openagents-desktop/src/ide/run-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "zero test exit cannot fabricate success without assertion evidence",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "test retry references must bind a settled run in the same controller",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "output export is mode-0600 and records an actor-bound public-safe receipt",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "human and agent actors use the same command, budget, output, and receipt schemas",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-contract.test.ts + apps/openagents-desktop/src/ide/run-service.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "xterm, task, test, and Output surfaces stay decoded projections",
+      "evidenceRef": "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx + apps/openagents-desktop/tests/electron-boundary.test.ts + apps/openagents-desktop/scripts/check-ide-boundaries.ts",
+      "passed": true
+    },
+    {
+      "fault": "announced links remain localhost-only and policy-confirmed",
+      "evidenceRef": "apps/openagents-desktop/src/terminal-host.test.ts",
+      "passed": true
+    },
+    {
+      "fault": "Khala default and Tokyo Night fallback retain contrast and non-color cues",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run-trace.json + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.png",
+      "passed": true
+    },
+    {
+      "fault": "scope teardown closes subscriptions, output channels, tasks, tests, and terminals",
+      "evidenceRef": "apps/openagents-desktop/src/ide/run-service.test.ts + apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-run.json",
+      "passed": true
+    }
+  ],
+  "architecture": {
+    "oneSchemaGraph": true,
+    "effectAuthority": true,
+    "xtermProjectionOnly": true,
+    "explicitEnvironment": true,
+    "semanticSuccess": true,
+    "actorParity": true,
+    "rustAdmitted": false
+  },
+  "ownerDisposition": "unreviewed",
+  "assuranceLifecycle": "proposed",
+  "rollbackTargetSha": "c83c8d52aef066e89ae3eadb2b29c1dc581c7009",
+  "laterGaps": [
+    "IDE-11 adds the DAP debugger authority; IDE-10 does not infer debugger success from test or process state.",
+    "Windows and Linux packaged target receipts remain release-lane work. The six-target native-helper table records no Rust admission or native claim.",
+    "Independent owner acceptance for the proposed ProductSpec and AssuranceSpec criteria remains unreviewed."
+  ],
+  "passed": true
+}

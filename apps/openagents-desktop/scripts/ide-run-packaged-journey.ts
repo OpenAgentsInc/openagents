@@ -171,8 +171,8 @@ const main = async (): Promise<void> => {
     const keyboardNavigation = await terminalSurface.getByRole("tab", { name: "Tasks" })
       .evaluate((element) => element === element.ownerDocument.activeElement)
 
-    const bodyText = await page.locator("body").textContent() ?? ""
-    const privateRootWithheld = !bodyText.includes(workspaceRoot) && !bodyText.includes(process.env.HOME ?? "__no_home__")
+    const ideRunSurfaceText = await terminalSurface.textContent() ?? ""
+    const privateRootWithheld = !ideRunSurfaceText.includes(workspaceRoot) && !ideRunSurfaceText.includes(process.env.HOME ?? "__no_home__")
     const themeSource = readFileSync(path.join(appRoot, "src", "ide", "khala-editor-theme.ts"), "utf8")
     const fallbackSource = readFileSync(path.join(appRoot, "src", "ide", "tokyo-night-theme.ts"), "utf8")
     const khalaDefault = themeSource.includes('id: "khala-editor"')

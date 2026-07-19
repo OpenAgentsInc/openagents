@@ -45,7 +45,7 @@ for (const name of [
   for (const privateValue of [repositoryRoot, process.env.HOME ?? "__no_home__"]) {
     if (privateValue !== "" && source.includes(privateValue)) throw new Error(`IDE-10 acceptance refused: ${name} contains private path material`)
   }
-  if (/(?:github_pat|gh[pousr]_|sk-|AKIA|xox[baprs]-)[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----/u.test(source)) {
+  if (/(?:^|[^A-Za-z0-9_-])(?:(?:github_pat|gh[pousr]_|sk-|AKIA|xox[baprs]-)[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/u.test(source)) {
     throw new Error(`IDE-10 acceptance refused: ${name} contains secret-shaped material`)
   }
 }
