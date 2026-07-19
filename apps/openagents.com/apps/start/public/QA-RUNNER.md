@@ -25,7 +25,7 @@ MIT-licensed package `@openagentsinc/qa-runner`. Khala / OpenAgents Cloud /
 
 This proves the whole pipeline (drive → record → distill) with **zero
 credentials and zero hosted dependency**. It drives a canned `/login` scenario
-against a fake page with a deterministic decision-maker, and still produces a
+against a fake page with a deterministic decision-maker. It still produces a
 real `result.json`, a video artifact, and a committed e2e test.
 
 ```sh
@@ -40,16 +40,16 @@ pnpm --dir apps/qa-runner run demo:byo
 # emitted committed test: .../generated/<slug>.e2e.test.ts
 ```
 
-This is the exact code path a real run takes; only the model and browser are
+This is the exact code path a real run takes. Only the model and browser are
 swapped for fakes.
 
 ---
 
 ## 1. Install
 
-The shipped `qa` CLI is a **single self-contained bundle** (`dist/qa.js`) — the
-workspace deps are inlined at build time, so a standalone install needs **no
-monorepo, no workspace, and no OpenAgents login**. The only runtime dependency
+The shipped `qa` CLI is a **single self-contained bundle** (`dist/qa.js`). The
+build puts the workspace dependencies in the bundle. Thus, a standalone install
+needs **no monorepo, no workspace, and no OpenAgents login**. The only runtime dependency
 that stays external is `playwright`, which downloads its own browser.
 
 ### From a local tarball (works today, before npm publish)
@@ -201,7 +201,7 @@ qa run --url https://example.com         --goal "verify the sign-in flow" --out 
 ```
 
 The `qa` exit code is honest: `0` only on a clean pass **and** an admissible
-distilled test; a failed assertion, an unreachable verdict, or a config error is
+distilled test. A failed assertion, an unreachable verdict, or a config error is
 a non-zero exit (never a fake green). So the CI check goes red on a real failure
 and only on a real failure.
 
@@ -209,9 +209,9 @@ and only on a real failure.
 
 GitHub's REST API cannot natively attach media to a comment.
 [`ain3sh/gh-attach`](https://github.com/ain3sh/gh-attach) drives the web upload
-path that can, and prints embeddable markdown — so a CI job can post the run
-video + screenshots into the PR comment alongside the distilled-test ref. When
-the upload is unavailable or unauthenticated, fall back to a relative video ref;
+path that can. It prints embeddable Markdown. A CI job can post the run
+video and screenshots in the PR comment with the distilled-test ref. When
+the upload is unavailable or unauthenticated, fall back to a relative video ref.
 never a broken or fake embed.
 
 ---

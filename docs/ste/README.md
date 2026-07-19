@@ -126,11 +126,21 @@ Record a semantic comparison before the new revision becomes authoritative.
 
 ### Semantic baseline
 
-The P1 control conversion, P2 specification conversion, and P3 procedure conversion have an additional semantic baseline.
+The P1 control conversion, P2 specification conversion, P3 procedure conversion, and P4 public control conversion have an additional semantic baseline.
 The baseline protects normative keywords, code literals, URLs, issue references, and numeric values.
 Run `pnpm run check:ste-control-semantics` after each control document change.
 This comparison does not prove semantic equality.
 The technical reviewer must also examine the change.
+
+### Generated public documents
+
+The source for the public `/docs` site is `apps/openagents.com/apps/start/content/docs`.
+Write those files with the human base profile.
+
+The generator writes Markdown mirrors, `llms` files, search data, a sitemap, and compiled site modules.
+The ledger identifies the governed public mirrors as generated source data.
+Do not edit a generated mirror.
+Change the source and run the generator.
 
 When ProductSpec bytes change, update each exact AssuranceSpec subject digest.
 Increment the assurance revision when this binding changes.

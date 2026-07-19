@@ -22,7 +22,11 @@ const config: CheckerConfig = {
   steIssue: 9,
   glossaryRevision: "test-v1",
   governedExtensions: [".md"],
-  sourceDataPrefixes: ["docs/transcripts/", "docs/reference/"],
+  sourceDataPrefixes: [
+    "docs/transcripts/",
+    "docs/reference/",
+    "apps/openagents.com/apps/start/public/docs/",
+  ],
   proceduralPathSignals: ["runbook"],
   controlPaths: ["AGENTS.md"],
 };
@@ -76,6 +80,13 @@ describe("STE profiles and glossary", () => {
     expect(deriveProfile("AGENTS.md", config).risk).toBe("control");
     expect(deriveProfile("docs/release-runbook.md", config).ste_mode).toBe("mixed");
     expect(deriveProfile("docs/transcripts/a.md", config).ste_status).toBe("source-data");
+    expect(
+      deriveProfile("apps/openagents.com/apps/start/public/docs/index.md", config),
+    ).toMatchObject({
+      source: "Generated from apps/openagents.com/apps/start/content/docs",
+      ste_mode: "source-data",
+      ste_status: "source-data",
+    });
     expect(deriveProfile("docs/changelog/2026-07-19-desktop-0.1.0-rc.25.md", config)).toMatchObject(
       {
         ste_audience: "dual",

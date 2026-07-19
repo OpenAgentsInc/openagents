@@ -1,7 +1,7 @@
 ---
 title: Getting started
 description: Run the current OpenAgents Desktop candidate from source.
-lastModified: 2026-07-15
+lastModified: 2026-07-19
 sidebar:
   order: 2
 ---
@@ -29,7 +29,7 @@ The canonical package gate runs typechecking, tests, the production build, and E
 pnpm --dir apps/openagents-desktop run verify
 ```
 
-That gate uses privacy-safe fixtures rather than ambient Codex history. A successful test run is engineering evidence; it is not release publication.
+That gate uses privacy-safe fixtures rather than ambient Codex history. A successful test run is engineering evidence. It is not release publication.
 
 ## Start a conversation
 

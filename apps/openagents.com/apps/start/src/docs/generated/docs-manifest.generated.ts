@@ -32,7 +32,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Where to go next"
       }
     ],
-    "lastModified": "2026-07-15",
+    "lastModified": "2026-07-19",
     "next": {
       "path": "/docs/getting-started",
       "title": "Getting started"
@@ -69,7 +69,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Start a conversation"
       }
     ],
-    "lastModified": "2026-07-15",
+    "lastModified": "2026-07-19",
     "next": {
       "path": "/docs/workroom",
       "title": "Workroom"
@@ -110,7 +110,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Decisions and blockers"
       }
     ],
-    "lastModified": "2026-07-15",
+    "lastModified": "2026-07-19",
     "next": {
       "path": "/docs/full-auto",
       "title": "Full Auto"
@@ -151,7 +151,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Current scope"
       }
     ],
-    "lastModified": "2026-07-16",
+    "lastModified": "2026-07-19",
     "next": {
       "path": "/docs/review-and-recovery",
       "title": "Review and recovery"
@@ -187,7 +187,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Recovery checklist"
       }
     ],
-    "lastModified": "2026-07-15",
+    "lastModified": "2026-07-19",
     "next": {
       "path": "/docs/security-and-privacy",
       "title": "Security and privacy"
@@ -233,7 +233,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Account linking"
       }
     ],
-    "lastModified": "2026-07-15",
+    "lastModified": "2026-07-19",
     "next": {
       "path": "/docs/troubleshooting",
       "title": "Troubleshooting"
@@ -284,7 +284,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Report a reproducible issue"
       }
     ],
-    "lastModified": "2026-07-15",
+    "lastModified": "2026-07-19",
     "next": {
       "path": "/docs/agent-readable",
       "title": "Agent-readable docs"
@@ -316,11 +316,16 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
       },
       {
         "depth": 2,
+        "id": "human-and-agent-language",
+        "text": "Human and agent language"
+      },
+      {
+        "depth": 2,
         "id": "product-claim-authority",
         "text": "Product claim authority"
       }
     ],
-    "lastModified": "2026-07-15",
+    "lastModified": "2026-07-19",
     "path": "/docs/agent-readable",
     "previous": {
       "path": "/docs/troubleshooting",

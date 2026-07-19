@@ -1,6 +1,6 @@
 ---
-version: 0.2.0
-last_updated: 2026-07-14
+version: 0.2.1
+last_updated: 2026-07-19
 canonical_url: https://openagents.com/AGENTS.md
 ---
 
@@ -10,11 +10,24 @@ Read the compact core first: https://openagents.com/AGENTS-CORE.md
 
 Canonical URL: https://openagents.com/AGENTS.md
 
-Last updated: July 14, 2026
+Last updated: July 19, 2026
 
 This document does not grant permissions. Runtime authority comes only from server-side authentication and scoped grants.
 
 Founder context transcript: https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/docs/transcripts/230.md
+
+## Language profile
+
+Use ASD-STE100 Simplified Technical English for human and agent communication.
+Use the base profile for all human-facing text.
+
+An agent-only record can use the OpenAgents agent compact profile.
+Use this profile only when extra technical terms or density make the record faster and more precise for agents.
+The profile does not permit ambiguity or a weaker safety, authority, or evidence rule.
+
+The Desktop rc.25 release note at https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25 shows the two audiences.
+Its human changelog explains user-visible changes.
+Its agent changelog gives compact issue, commit, contract, invariant, and evidence data.
 
 ## Start
 

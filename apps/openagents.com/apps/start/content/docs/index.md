@@ -1,14 +1,14 @@
 ---
 title: OpenAgents Desktop
 description: A local-first workroom for durable, reviewable Codex work.
-lastModified: 2026-07-15
+lastModified: 2026-07-19
 sidebar:
   order: 1
 ---
 
 OpenAgents Desktop is a local-first workroom around your ordinary Codex session. It keeps the active conversation central while session navigation, tools, decisions, and repository review remain close and legible.
 
-The current macOS ARM64 build is a release candidate. A public download will follow release approval; this documentation does not turn candidate evidence into a release claim.
+The current macOS ARM64 build is a release candidate. A public download will follow release approval. This documentation does not turn candidate evidence into a release claim.
 
 ## What the workroom does
 

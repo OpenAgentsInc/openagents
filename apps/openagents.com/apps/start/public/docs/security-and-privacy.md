@@ -1,7 +1,7 @@
 ---
 title: Security and privacy
 description: The local authority, credential, and renderer boundaries of OpenAgents Desktop.
-lastModified: 2026-07-15
+lastModified: 2026-07-19
 sidebar:
   order: 5
 ---
@@ -12,7 +12,7 @@ The ordinary Desktop workroom remains useful without an OpenAgents account. Repo
 
 ## Renderer boundary
 
-The renderer receives schema-checked projections and typed intent keys. It does not receive raw bearer tokens, provider credentials, Pylon control tokens, Node handles, process handles, arbitrary IPC channels, raw runtime events, or unrestricted filesystem access.
+The renderer receives schema-checked projections and typed intent keys. It does not receive raw bearer tokens or provider credentials. It also does not receive control tokens, process handles, or unrestricted filesystem access.
 
 Electron runs with context isolation, no renderer Node integration, sandboxing, deny-by-default permissions, restricted navigation, and a closed preload bridge.
 

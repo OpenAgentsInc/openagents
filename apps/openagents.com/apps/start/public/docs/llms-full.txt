@@ -7,7 +7,7 @@ Source: https://openagents.com/docs
 
 OpenAgents Desktop is a local-first workroom around your ordinary Codex session. It keeps the active conversation central while session navigation, tools, decisions, and repository review remain close and legible.
 
-The current macOS ARM64 build is a release candidate. A public download will follow release approval; this documentation does not turn candidate evidence into a release claim.
+The current macOS ARM64 build is a release candidate. A public download will follow release approval. This documentation does not turn candidate evidence into a release claim.
 
 ## What the workroom does
 
@@ -56,7 +56,7 @@ The canonical package gate runs typechecking, tests, the production build, and E
 pnpm --dir apps/openagents-desktop run verify
 ```
 
-That gate uses privacy-safe fixtures rather than ambient Codex history. A successful test run is engineering evidence; it is not release publication.
+That gate uses privacy-safe fixtures rather than ambient Codex history. A successful test run is engineering evidence. It is not release publication.
 
 ## Start a conversation
 
@@ -115,13 +115,13 @@ Full Auto lets Codex keep choosing and completing the next useful task in the cu
 1. Open the Codex session and workspace you want to use.
 2. Select **Full Auto** in the composer. It is off by default.
 
-Full Auto starts immediately. On a new empty session, selecting the toggle asks Codex to inspect the repository's README, documentation, and open issues, choose one concrete useful action, complete it, and stop. If Full Auto is still enabled, the next continuation begins automatically.
+Full Auto starts immediately. On a new empty session, select the toggle. Codex then inspects the README, documentation, and open issues. It selects one useful action, completes it, and stops. If Full Auto is still enabled, the next continuation begins automatically.
 
-The setting belongs to the session. OpenAgents stores it locally, binds it to the workspace and execution profile you selected, and can resume the loop after a renderer reload or application restart.
+The setting belongs to the session. OpenAgents stores it locally. OpenAgents binds it to the selected workspace and execution profile. The loop can continue after a renderer reload or application restart.
 
 ## Stop or steer the loop
 
-Select **Full Auto** again to turn it off. Turning it off prevents the next automatic continuation; it does not cancel the turn already in progress. Use the normal stop control when you need to interrupt the active turn.
+Select **Full Auto** again to turn it off. Turning it off prevents the next automatic continuation. It does not cancel the turn already in progress. Use the normal stop control when you need to interrupt the active turn.
 
 You can still review the conversation, plans, tools, subagents, file changes, and outcomes in the same causal timeline. Full Auto does not create a hidden background workroom.
 
@@ -160,7 +160,7 @@ Review fails visibly when output is stale, revoked, secret-shaped, binary, overs
 
 Renderer reload and application restart reconcile against durable session and run identity.
 
-- Confirmed work is restored from its authoritative record.
+- The application restores confirmed work from its authoritative record.
 - An incomplete stream remains interrupted or pending reconciliation.
 - A proven history gap triggers an authoritative refetch.
 - No restart silently reruns provider work.
@@ -187,7 +187,7 @@ The ordinary Desktop workroom remains useful without an OpenAgents account. Repo
 
 ## Renderer boundary
 
-The renderer receives schema-checked projections and typed intent keys. It does not receive raw bearer tokens, provider credentials, Pylon control tokens, Node handles, process handles, arbitrary IPC channels, raw runtime events, or unrestricted filesystem access.
+The renderer receives schema-checked projections and typed intent keys. It does not receive raw bearer tokens or provider credentials. It also does not receive control tokens, process handles, or unrestricted filesystem access.
 
 Electron runs with context isolation, no renderer Node integration, sandboxing, deny-by-default permissions, restricted navigation, and a closed preload bridge.
 
@@ -218,7 +218,7 @@ pnpm --dir apps/openagents-desktop run verify
 
 ## Codex is unavailable or incompatible
 
-Open **Settings** and use the Codex-specific maintenance action. Desktop checks the app-owned bundled runtime; installing another global binary does not repair that authority. A failed update or re-probe remains failed until the exact bundled runtime passes.
+Open **Settings** and use the Codex-specific maintenance action. Desktop checks the app-owned bundled runtime. Installing another global binary does not repair that authority. A failed update or re-probe remains failed until the exact bundled runtime passes.
 
 ## A turn appears interrupted
 
@@ -254,9 +254,23 @@ These artifacts contain only the curated public content under this docs package.
 
 ## Authority boundary
 
-Instruction files and documentation help tools understand the system; they do not grant authentication, repository, deployment, payment, moderation, or operator authority. Server-side policy remains authoritative for every action.
+Instruction files and documentation help tools understand the system. They do not grant authentication, repository, deployment, payment, moderation, or operator authority. Server-side policy remains authoritative for every action.
 
 Ask AI and hosted MCP are disabled. Search is a local static Orama index built with the site.
+
+## Human and agent language
+
+OpenAgents uses ASD-STE100 Simplified Technical English for public technical text.
+Human-facing text uses the base profile.
+
+Agent-facing text also uses the base profile when the result is clear and short.
+An agent-only record can use the controlled agent compact profile.
+Use that profile only when extra technical terms or density improve speed and precision for agents.
+It does not permit ambiguity or a weaker safety, authority, or evidence rule.
+
+The [Desktop rc.25 release note](https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25) shows this separation.
+The human changelog explains user-visible changes.
+The agent changelog gives compact issue, commit, contract, invariant, and evidence data.
 
 ## Product claim authority
 

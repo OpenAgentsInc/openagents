@@ -1,7 +1,7 @@
 ---
 title: Workroom
 description: Understand sessions, the causal timeline, and composer actions.
-lastModified: 2026-07-15
+lastModified: 2026-07-19
 sidebar:
   order: 3
 ---

@@ -126,7 +126,9 @@ export const deriveProfile = (path: string, config: CheckerConfig): SteProfile =
     source: sourceData
       ? path.startsWith("docs/transcripts/")
         ? "Preserved transcript archive"
-        : "Third-party reference material"
+        : path.startsWith("apps/openagents.com/apps/start/public/docs/")
+          ? "Generated from apps/openagents.com/apps/start/content/docs"
+          : "Third-party reference material"
       : null,
     replacement: null,
     ...(dualChangelog

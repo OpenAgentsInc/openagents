@@ -1,7 +1,7 @@
 ---
 title: Full Auto
 description: Let Codex continue bounded local work, turn after turn.
-lastModified: 2026-07-16
+lastModified: 2026-07-19
 sidebar:
   order: 4
 ---
@@ -13,13 +13,13 @@ Full Auto lets Codex keep choosing and completing the next useful task in the cu
 1. Open the Codex session and workspace you want to use.
 2. Select **Full Auto** in the composer. It is off by default.
 
-Full Auto starts immediately. On a new empty session, selecting the toggle asks Codex to inspect the repository's README, documentation, and open issues, choose one concrete useful action, complete it, and stop. If Full Auto is still enabled, the next continuation begins automatically.
+Full Auto starts immediately. On a new empty session, select the toggle. Codex then inspects the README, documentation, and open issues. It selects one useful action, completes it, and stops. If Full Auto is still enabled, the next continuation begins automatically.
 
-The setting belongs to the session. OpenAgents stores it locally, binds it to the workspace and execution profile you selected, and can resume the loop after a renderer reload or application restart.
+The setting belongs to the session. OpenAgents stores it locally. OpenAgents binds it to the selected workspace and execution profile. The loop can continue after a renderer reload or application restart.
 
 ## Stop or steer the loop
 
-Select **Full Auto** again to turn it off. Turning it off prevents the next automatic continuation; it does not cancel the turn already in progress. Use the normal stop control when you need to interrupt the active turn.
+Select **Full Auto** again to turn it off. Turning it off prevents the next automatic continuation. It does not cancel the turn already in progress. Use the normal stop control when you need to interrupt the active turn.
 
 You can still review the conversation, plans, tools, subagents, file changes, and outcomes in the same causal timeline. Full Auto does not create a hidden background workroom.
 

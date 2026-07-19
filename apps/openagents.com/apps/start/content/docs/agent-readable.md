@@ -1,7 +1,7 @@
 ---
 title: Agent-readable docs
 description: Static Markdown and discovery artifacts for tools and coding agents.
-lastModified: 2026-07-15
+lastModified: 2026-07-19
 sidebar:
   order: 8
 ---
@@ -19,9 +19,23 @@ These artifacts contain only the curated public content under this docs package.
 
 ## Authority boundary
 
-Instruction files and documentation help tools understand the system; they do not grant authentication, repository, deployment, payment, moderation, or operator authority. Server-side policy remains authoritative for every action.
+Instruction files and documentation help tools understand the system. They do not grant authentication, repository, deployment, payment, moderation, or operator authority. Server-side policy remains authoritative for every action.
 
 Ask AI and hosted MCP are disabled. Search is a local static Orama index built with the site.
+
+## Human and agent language
+
+OpenAgents uses ASD-STE100 Simplified Technical English for public technical text.
+Human-facing text uses the base profile.
+
+Agent-facing text also uses the base profile when the result is clear and short.
+An agent-only record can use the controlled agent compact profile.
+Use that profile only when extra technical terms or density improve speed and precision for agents.
+It does not permit ambiguity or a weaker safety, authority, or evidence rule.
+
+The [Desktop rc.25 release note](https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25) shows this separation.
+The human changelog explains user-visible changes.
+The agent changelog gives compact issue, commit, contract, invariant, and evidence data.
 
 ## Product claim authority
 

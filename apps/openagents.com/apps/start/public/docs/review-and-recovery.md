@@ -1,7 +1,7 @@
 ---
 title: Review and recovery
 description: Review exact changes and understand restart behavior.
-lastModified: 2026-07-15
+lastModified: 2026-07-19
 sidebar:
   order: 4
 ---
@@ -18,7 +18,7 @@ Review fails visibly when output is stale, revoked, secret-shaped, binary, overs
 
 Renderer reload and application restart reconcile against durable session and run identity.
 
-- Confirmed work is restored from its authoritative record.
+- The application restores confirmed work from its authoritative record.
 - An incomplete stream remains interrupted or pending reconciliation.
 - A proven history gap triggers an authoritative refetch.
 - No restart silently reruns provider work.

@@ -1,7 +1,7 @@
 ---
 title: Troubleshooting
 description: Diagnose common development and workroom states without widening authority.
-lastModified: 2026-07-15
+lastModified: 2026-07-19
 sidebar:
   order: 6
 ---
@@ -16,7 +16,7 @@ pnpm --dir apps/openagents-desktop run verify
 
 ## Codex is unavailable or incompatible
 
-Open **Settings** and use the Codex-specific maintenance action. Desktop checks the app-owned bundled runtime; installing another global binary does not repair that authority. A failed update or re-probe remains failed until the exact bundled runtime passes.
+Open **Settings** and use the Codex-specific maintenance action. Desktop checks the app-owned bundled runtime. Installing another global binary does not repair that authority. A failed update or re-probe remains failed until the exact bundled runtime passes.
 
 ## A turn appears interrupted
 
