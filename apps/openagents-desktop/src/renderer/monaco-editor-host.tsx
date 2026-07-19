@@ -18,6 +18,7 @@ import {
   type IdeMonacoMountedView,
 } from "../ide/monaco-runtime-loader.ts"
 import type { WorkspaceEditorTab } from "./workspace-editor.ts"
+import type { IdeMonacoEditorOptions } from "../ide/workbench-contract.ts"
 
 export interface MonacoEditorHostProps {
   readonly tab: WorkspaceEditorTab
@@ -25,6 +26,7 @@ export interface MonacoEditorHostProps {
   readonly wordWrap: boolean
   readonly minimap: boolean
   readonly vimEnabled: boolean
+  readonly editorOptions: IdeMonacoEditorOptions
   readonly onEvent: (event: IdeMonacoDocumentEvent) => void
 }
 
@@ -48,6 +50,7 @@ const inputFor = (props: MonacoEditorHostProps): IdeMonacoAttachInput =>
     wordWrap: props.wordWrap,
     minimap: props.minimap,
     vimEnabled: props.vimEnabled,
+    editorOptions: props.editorOptions,
     readOnly: props.tab.saveState === "saving" || props.tab.phase === "unavailable",
   })
 

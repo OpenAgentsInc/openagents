@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from "react"
-import { ArrowLeft, ArrowRight, Camera, CircleStop, ExternalLink, File, FileDiff, Globe2, Monitor, MousePointer2, Plus, RefreshCw, RotateCcw, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
+import { ArrowLeft, ArrowRight, Camera, ChevronLeft, ChevronRight, CircleStop, Columns2, ExternalLink, File, FileDiff, Globe2, Monitor, MousePointer2, Pin, PinOff, Plus, RefreshCw, RotateCcw, Search, Settings2, Smartphone, Tablet, TerminalSquare, X } from "lucide-react"
 import type { IntentError, IntentReporter, JsonPayload } from "@effect-native/core"
 import { ComponentValueBinding, IntentRef } from "@effect-native/core"
 import { Effect } from "@effect-native/core/effect"
@@ -11,6 +11,7 @@ import { PierreWorkspaceTree, pierreWorkspacePaths } from "./ide/pierre-tree-ada
 import type { DesktopShellState } from "./shell.ts"
 import { workspaceEditorTabDirty } from "./workspace-editor.ts"
 import { MonacoEditorHost } from "./monaco-editor-host.tsx"
+import { resolveIdeMonacoEditorOptions } from "../ide/workbench-contract.ts"
 
 const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = null): void => {
   void Effect.runPromise(report(
@@ -37,13 +38,14 @@ const tablistKey = (
 
 export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const browser = state.workspaceBrowser
+  const [createKind, setCreateKind] = useState<"file" | "directory" | null>(null)
   const projection = browser.pathIndexProjection
   const pierrePaths = pierreWorkspacePaths(projection)
   const searchMatches = browser.searchPage?.state === "available" ? browser.searchPage.matches : []
-  const openEntry = (pathRef: string, kind: "file" | "directory"): void => {
+  const openEntry = (pathRef: string, kind: "file" | "directory", source: "explorer" | "workspace_search" = "explorer"): void => {
     dispatch(report, "WorkspaceBrowserEntrySelected", pathRef)
     if (kind === "file" && browser.grantRef !== null) {
-      dispatch(report, "WorkspaceEditorOpenRequested", { grantRef: browser.grantRef, pathRef })
+      dispatch(report, "WorkspaceEditorOpenRequested", { grantRef: browser.grantRef, pathRef, ...(browser.pathIndexSnapshot === null ? {} : { source, identity: browser.pathIndexSnapshot.identity }) })
     } else if (kind === "directory") {
       dispatch(report, "WorkspaceBrowserTreeToggled", pathRef)
     }
@@ -53,7 +55,7 @@ export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopSh
     if (intent._tag !== "Open") return
     const node = projection?.nodes.find(candidate => candidate.nodeRef === intent.nodeRef)
     if (node?.kind === "file" && browser.grantRef !== null) {
-      dispatch(report, "WorkspaceEditorOpenRequested", { grantRef: browser.grantRef, pathRef: node.pathRef })
+      dispatch(report, "WorkspaceEditorOpenRequested", { grantRef: browser.grantRef, pathRef: node.pathRef, ...(browser.pathIndexSnapshot === null ? {} : { source: "explorer", identity: browser.pathIndexSnapshot.identity }) })
     } else if (node?.kind === "directory") {
       dispatch(report, "WorkspaceBrowserTreeToggled", node.pathRef)
     }
@@ -62,8 +64,14 @@ export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopSh
   return <section className="oa-react-files-tree" aria-label="Workspace files">
     <header className="oa-react-files-tree-toolbar">
       <strong>Explorer</strong>
+      <Button size="sm" variant="ghost" onClick={() => { setCreateKind("file"); dispatch(report, "WorkspaceBrowserCreateStarted", { parentRef: "", kind: "file" }) }}>New file</Button>
+      <Button size="sm" variant="ghost" onClick={() => { setCreateKind("directory"); dispatch(report, "WorkspaceBrowserCreateStarted", { parentRef: "", kind: "directory" }) }}>New folder</Button>
       <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceBrowserExplorerCommandRequested", { _tag: "Rescan" })}>Rescan</Button>
     </header>
+    {createKind === null ? null : <form className="oa-react-files-create" onSubmit={event => { event.preventDefault(); dispatch(report, "WorkspaceBrowserEditorSubmitted"); setCreateKind(null) }}>
+      <Input autoFocus aria-label={`New ${createKind} name`} placeholder={createKind === "file" ? "new-file.ts" : "new-folder"} value={browser.editor?.value ?? ""} onChange={event => dispatch(report, "WorkspaceBrowserEditorChanged", event.currentTarget.value)} />
+      <Button size="sm" type="submit">Create</Button><Button size="sm" variant="ghost" type="button" onClick={() => { setCreateKind(null); dispatch(report, "WorkspaceBrowserEditorCancelled") }}>Cancel</Button>
+    </form>}
     <p id="oa-workspace-index-status" role="status">
       {indexStatus === undefined ? "Path index unavailable."
         : indexStatus._tag === "Scanning" ? `Indexing ${indexStatus.progress.admittedNodes} files; ${indexStatus.progress.pendingDirectories} folders remain.`
@@ -82,7 +90,7 @@ export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopSh
         : browser.phase === "unavailable" ? <p role="alert">{browser.reason ?? "Workspace files are unavailable."}</p>
         : browser.searchState === "searching" ? <p role="status">Searching…</p>
         : browser.query.trim() !== "" && browser.searchPage !== null
-          ? searchMatches.length === 0 ? <p>No matches.</p> : searchMatches.map(match => <button className="oa-react-file-search-result" key={`${match.pathRef}:${match.line ?? ""}`} onClick={() => openEntry(match.pathRef, "file")} type="button">
+          ? searchMatches.length === 0 ? <p>No matches.</p> : searchMatches.map(match => <button className="oa-react-file-search-result" key={`${match.pathRef}:${match.line ?? ""}`} onClick={() => openEntry(match.pathRef, "file", "workspace_search")} type="button">
               <File aria-hidden="true" /><span><strong>{match.pathRef}</strong>{match.preview === null ? null : <small>{match.line === null ? "" : `Line ${match.line} · `}{match.preview}</small>}</span>
             </button>)
           : pierrePaths.length === 0 ? <p>No indexed workspace files.</p>
@@ -95,14 +103,50 @@ export const ReactFilesSidebar = ({ state, report }: { readonly state: DesktopSh
 export const ReactWorkspaceEditor = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const editor = state.workspaceEditor
   const tab = editor.tabs.find(candidate => candidate.pathRef === editor.activePathRef) ?? null
+  const [quickQuery, setQuickQuery] = useState("")
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const paths = (state.workspaceBrowser.pathIndexProjection?.nodes ?? [])
+    .filter(node => node.kind === "file")
+    .map(node => node.pathRef)
+  const editorOptions = resolveIdeMonacoEditorOptions(editor.workbench.settings)
+  const openQuickOpen = (): void => {
+    setQuickQuery("")
+    dispatch(report, "WorkspaceEditorQuickOpenChanged", { query: "", paths })
+  }
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLocaleLowerCase() !== "p") return
+      event.preventDefault()
+      openQuickOpen()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [paths.join("\n")])
   return <section className="oa-react-file-editor" aria-label="File editor">
+    <div className="oa-react-file-tab-actions">
+      <Button size="icon-sm" variant="ghost" aria-label="Editor navigation back" disabled={editor.workbench.navigation.cursor <= 0} onClick={() => dispatch(report, "WorkspaceEditorNavigationStepped", "back")}><ArrowLeft aria-hidden="true" /></Button>
+      <Button size="icon-sm" variant="ghost" aria-label="Editor navigation forward" disabled={editor.workbench.navigation.cursor >= editor.workbench.navigation.entries.length - 1} onClick={() => dispatch(report, "WorkspaceEditorNavigationStepped", "forward")}><ArrowRight aria-hidden="true" /></Button>
+      <Button size="icon-sm" variant="ghost" aria-label="Quick Open" onClick={openQuickOpen}><Search aria-hidden="true" /></Button>
+      <Button size="icon-sm" variant="ghost" aria-label="Reopen closed editor" disabled={editor.closedPathRefs.length === 0 || state.workspaceBrowser.grantRef === null} onClick={() => state.workspaceBrowser.grantRef === null ? undefined : dispatch(report, "WorkspaceEditorClosedTabReopened", state.workspaceBrowser.grantRef)}><RotateCcw aria-hidden="true" /></Button>
+      <Button size="sm" variant="ghost" disabled={editor.tabs.length < 2} onClick={() => dispatch(report, "WorkspaceEditorTabsClosed", "others")}>Close others</Button>
+      <Button size="sm" variant="ghost" disabled={editor.tabs.length < 2} onClick={() => dispatch(report, "WorkspaceEditorTabsClosed", "right")}>Close right</Button>
+    </div>
     <div className="oa-react-file-tabs" role="tablist" aria-label="Open files" onKeyDown={event => tablistKey(event, editor.tabs.map(item => item.pathRef), editor.activePathRef, pathRef => dispatch(report, "WorkspaceEditorTabSelected", pathRef))}>
       {editor.tabs.map(item => <div aria-selected={item.pathRef === editor.activePathRef} key={item.pathRef} role="tab">
-        <button onClick={() => dispatch(report, "WorkspaceEditorTabSelected", item.pathRef)} tabIndex={item.pathRef === editor.activePathRef ? 0 : -1} type="button"><File aria-hidden="true" />{pathName(item.pathRef)}{workspaceEditorTabDirty(item) ? <span aria-label="Unsaved changes">•</span> : null}</button>
+        <button data-tab-mode={item.tabMode ?? "pinned"} onDoubleClick={() => dispatch(report, "WorkspaceEditorTabModeChanged", { pathRef: item.pathRef, tabMode: "pinned" })} onClick={() => dispatch(report, "WorkspaceEditorTabSelected", item.pathRef)} tabIndex={item.pathRef === editor.activePathRef ? 0 : -1} type="button"><File aria-hidden="true" />{pathName(item.pathRef)}{workspaceEditorTabDirty(item) ? <span aria-label="Unsaved changes">•</span> : null}</button>
+        <button aria-label={`Move ${item.pathRef} left`} disabled={editor.tabs[0]?.pathRef === item.pathRef} onClick={() => dispatch(report, "WorkspaceEditorTabMoved", { pathRef: item.pathRef, delta: -1 })} type="button"><ChevronLeft aria-hidden="true" /></button>
+        <button aria-label={`Move ${item.pathRef} right`} disabled={editor.tabs.at(-1)?.pathRef === item.pathRef} onClick={() => dispatch(report, "WorkspaceEditorTabMoved", { pathRef: item.pathRef, delta: 1 })} type="button"><ChevronRight aria-hidden="true" /></button>
+        <button aria-label={`${item.tabMode === "preview" ? "Pin" : "Unpin"} ${item.pathRef}`} onClick={() => dispatch(report, "WorkspaceEditorTabModeChanged", { pathRef: item.pathRef, tabMode: item.tabMode === "preview" ? "pinned" : "preview" })} type="button">{item.tabMode === "preview" ? <Pin aria-hidden="true" /> : <PinOff aria-hidden="true" />}</button>
         <button aria-label={`Close ${item.pathRef}`} onClick={() => dispatch(report, "WorkspaceEditorTabCloseRequested", item.pathRef)} type="button"><X aria-hidden="true" /></button>
       </div>)}
     </div>
+    {editor.workbench.quickOpen.phase === "closed" ? null : <div className="oa-react-quick-open" role="dialog" aria-label="Quick Open">
+      <div><Search aria-hidden="true" /><Input autoFocus aria-label="Search files by path" placeholder="Type a file name" value={quickQuery} onChange={event => { const query = event.currentTarget.value; setQuickQuery(query); dispatch(report, "WorkspaceEditorQuickOpenChanged", { query, paths }) }} /><Button size="icon-sm" variant="ghost" aria-label="Close Quick Open" onClick={() => dispatch(report, "WorkspaceEditorQuickOpenClosed")}><X aria-hidden="true" /></Button></div>
+      <ol>{editor.workbench.quickOpen.results.slice(0, 12).map((result, index) => <li key={result.pathRef}><button aria-current={index === editor.workbench.quickOpen.activeIndex} onClick={() => { if (state.workspaceBrowser.grantRef !== null) dispatch(report, "WorkspaceEditorOpenRequested", { grantRef: state.workspaceBrowser.grantRef, pathRef: result.pathRef, preview: true, ...(state.workspaceBrowser.pathIndexSnapshot === null ? {} : { source: "quick_open", identity: state.workspaceBrowser.pathIndexSnapshot.identity }) }); dispatch(report, "WorkspaceEditorQuickOpenClosed") }} type="button"><File aria-hidden="true" /><span>{result.pathRef}</span><small>{result.score}</small></button></li>)}</ol>
+      {editor.workbench.quickOpen.phase === "empty" ? <p>No indexed file matches this path query.</p> : null}
+    </div>}
     {tab === null ? <div className="oa-react-editor-empty"><File aria-hidden="true" /><h3>No document open</h3><p>Select a text file from the workspace tree.</p></div> : <>
+      <nav className="oa-react-editor-breadcrumbs" aria-label="Document breadcrumbs">{editor.workbench.breadcrumbs.map((item, index) => <span key={`${item.kind}:${index}`}>{index === 0 ? null : <ChevronRight aria-hidden="true" />}{item.label}</span>)}</nav>
       <header className="oa-react-editor-toolbar">
         <span title={tab.pathRef}>{tab.pathRef}</span>
         <div>
@@ -110,13 +154,25 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
           <Button size="sm" variant="ghost" disabled={tab.redo.length === 0} onClick={() => dispatch(report, "WorkspaceEditorRedoRequested")}>Redo</Button>
           <Button size="sm" variant="ghost" aria-pressed={editor.wordWrap} onClick={() => dispatch(report, "WorkspaceEditorWordWrapToggled")}>Wrap</Button>
           <Button size="sm" variant="ghost" aria-pressed={editor.minimap} onClick={() => dispatch(report, "WorkspaceEditorMinimapToggled")}>Minimap</Button>
-          <Button size="sm" variant="ghost" aria-pressed={editor.split} onClick={() => dispatch(report, "WorkspaceEditorSplitToggled")}>Split</Button>
+          <Button size="sm" variant="ghost" aria-pressed={editor.split} onClick={() => dispatch(report, "WorkspaceEditorSplitToggled")}><Columns2 aria-hidden="true" />Split</Button>
+          {editor.workbench.groups.map((group, index) => <Button size="sm" variant={editor.workbench.focusedGroupRef === group.groupRef ? "secondary" : "ghost"} key={group.groupRef} onClick={() => dispatch(report, "WorkspaceEditorGroupFocused", group.groupRef)}>Group {index + 1}</Button>)}
           <Button size="sm" variant={editor.vimEnabled ? "default" : "outline"} aria-pressed={editor.vimEnabled} onClick={() => dispatch(report, "WorkspaceEditorVimToggled")}>{editor.vimEnabled ? "Vim on" : "Vim off"}</Button>
+          <Button size="icon-sm" variant={settingsOpen ? "secondary" : "ghost"} aria-label="Editor settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(value => !value)}><Settings2 aria-hidden="true" /></Button>
           <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorSaveAllRequested")}>Save all</Button>
           <Button size="sm" variant="outline" disabled={tab.saveState === "saving"} onClick={() => dispatch(report, "WorkspaceEditorSaveAsStarted")}>Save As</Button>
           <Button size="sm" disabled={!workspaceEditorTabDirty(tab) || tab.saveState === "saving" || tab.phase === "unavailable"} onClick={() => dispatch(report, "WorkspaceEditorSaveRequested")}>{tab.saveState === "saving" ? "Saving…" : tab.saveState === "saved" ? "Saved" : "Save"}</Button>
         </div>
       </header>
+      {!settingsOpen ? null : <section className="oa-react-editor-settings" aria-label="Editor settings">
+        <strong>Editor settings</strong><span>Workspace overrides take precedence over user and default values.</span>
+        <label><input checked={editor.wordWrap} onChange={() => dispatch(report, "WorkspaceEditorWordWrapToggled")} type="checkbox" />Word wrap</label>
+        <label><input checked={editor.minimap} onChange={() => dispatch(report, "WorkspaceEditorMinimapToggled")} type="checkbox" />Minimap</label>
+        <label><input checked={editor.vimEnabled} onChange={() => dispatch(report, "WorkspaceEditorVimToggled")} type="checkbox" />Vim mode (user)</label>
+        <label>Tab size<select value={String((editor.workbench.settings.overrides.findLast(value => value.id === "editor.tabSize")?.value as { value?: number } | undefined)?.value ?? 2)} onChange={event => dispatch(report, "WorkspaceEditorSettingChanged", { id: "editor.tabSize", scope: "workspace", value: { _tag: "Integer", value: Number(event.currentTarget.value) } })}><option value="2">2</option><option value="4">4</option><option value="8">8</option></select></label>
+        <Button size="sm" variant="ghost" onClick={() => dispatch(report, "WorkspaceEditorSettingReset", { id: "editor.tabSize", scope: "workspace" })}>Reset workspace tab size</Button>
+        {editor.workbench.settings.errors.map(error => <p role="alert" key={error}>{error}</p>)}
+      </section>}
+      <aside className="oa-react-editor-outline" aria-label="Outline"><strong>Outline</strong><span>{editor.workbench.outline._tag === "Unavailable" ? editor.workbench.outline.message : editor.workbench.outline._tag}</span></aside>
       {editor.saveAsPathRef === null ? null : <div className="oa-react-editor-save-as">
         <Input aria-label="New relative document path" placeholder="src/new-file.ts" value={editor.saveAsPathRef} onChange={event => dispatch(report, "WorkspaceEditorSaveAsChanged", event.currentTarget.value)} />
         <Button size="sm" disabled={editor.saveAsPathRef.trim() === ""} onClick={() => dispatch(report, "WorkspaceEditorSaveAsSubmitted")}>Create copy</Button>
@@ -134,6 +190,7 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
               wordWrap={editor.wordWrap}
               minimap={editor.minimap}
               vimEnabled={editor.vimEnabled}
+              editorOptions={editorOptions}
               onEvent={event => dispatch(report, "WorkspaceEditorMonacoEventReceived", event)}
             />
             {!editor.split ? null : <MonacoEditorHost
@@ -143,6 +200,7 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
               wordWrap={editor.wordWrap}
               minimap={editor.minimap}
               vimEnabled={editor.vimEnabled}
+              editorOptions={editorOptions}
               onEvent={event => dispatch(report, "WorkspaceEditorMonacoEventReceived", event)}
             />}
           </div>}

@@ -30,6 +30,15 @@ export const DesktopCommandId = Schema.Literals([
   "workspace.explorer.rescan",
   "editor.save",
   "editor.save_all",
+  "editor.quick_open",
+  "editor.navigation.back",
+  "editor.navigation.forward",
+  "editor.tab.pin_toggle",
+  "editor.tab.close",
+  "editor.tab.close_others",
+  "editor.tab.close_right",
+  "editor.tab.close_all",
+  "editor.group.next",
   "editor.split.toggle",
   "editor.vim.toggle",
   "full-auto.launch",
@@ -51,19 +60,20 @@ export const DesktopCommandArguments = Schema.Union([
 ])
 export type DesktopCommandArguments = typeof DesktopCommandArguments.Type
 
-export type DesktopCommandDefinition = Readonly<{
-  id: DesktopCommandId
-  label: string
-  intentName: string
-  arguments: DesktopCommandArguments["kind"]
-  defaultArguments: DesktopCommandArguments
-  result: "dispatched" | "workspace_selected" | "workspace_picker_requested"
-  scope: "global" | "session" | "workspace"
-  availability: "always" | "session_ready" | "workspace_ready"
-  authorization: "local_user" | "verified_owner"
-  defaultBindings: ReadonlyArray<DesktopCommandChord>
-  palette: boolean
-}>
+export const DesktopCommandDefinitionSchema = Schema.Struct({
+  id: DesktopCommandId,
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
+  intentName: Schema.String.check(Schema.isPattern(/^[A-Z][A-Za-z0-9]{1,120}$/)),
+  arguments: Schema.Literals(["none", "workspace", "path", "explorer"]),
+  defaultArguments: DesktopCommandArguments,
+  result: Schema.Literals(["dispatched", "workspace_selected", "workspace_picker_requested"]),
+  scope: Schema.Literals(["global", "session", "workspace"]),
+  availability: Schema.Literals(["always", "session_ready", "workspace_ready"]),
+  authorization: Schema.Literals(["local_user", "verified_owner"]),
+  defaultBindings: Schema.Array(DesktopCommandChord).check(Schema.isMaxLength(8)),
+  palette: Schema.Boolean,
+}).annotate({ identifier: "DesktopCommandDefinition" })
+export type DesktopCommandDefinition = typeof DesktopCommandDefinitionSchema.Type
 
 export const desktopCanonicalCommandRegistry: ReadonlyArray<DesktopCommandDefinition> = [
   { id: "palette.toggle", label: "Commands", intentName: "DesktopCommandPaletteToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+K", "Control+K"], palette: false },
@@ -97,6 +107,15 @@ export const desktopCanonicalCommandRegistry: ReadonlyArray<DesktopCommandDefini
   { id: "workspace.explorer.rescan", label: "Rescan Explorer", intentName: "WorkspaceBrowserExplorerCommandRequested", arguments: "explorer", defaultArguments: { kind: "explorer", command: { _tag: "Rescan" } }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "editor.save", label: "Save active editor", intentName: "WorkspaceEditorSaveRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "editor.save_all", label: "Save all editors", intentName: "WorkspaceEditorSaveAllRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: ["Meta+Alt+S", "Control+Alt+S"], palette: true },
+  { id: "editor.quick_open", label: "Quick Open", intentName: "WorkspaceEditorQuickOpenOpened", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: ["Meta+P", "Control+P"], palette: true },
+  { id: "editor.navigation.back", label: "Editor navigation back", intentName: "WorkspaceEditorNavigationBackRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.navigation.forward", label: "Editor navigation forward", intentName: "WorkspaceEditorNavigationForwardRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.tab.pin_toggle", label: "Pin or unpin active editor", intentName: "WorkspaceEditorActiveTabPinToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.tab.close", label: "Close active editor", intentName: "WorkspaceEditorActiveTabClosed", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: ["Meta+W", "Control+W"], palette: true },
+  { id: "editor.tab.close_others", label: "Close other editors", intentName: "WorkspaceEditorOtherTabsClosed", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.tab.close_right", label: "Close editors to the right", intentName: "WorkspaceEditorRightTabsClosed", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.tab.close_all", label: "Close all editors", intentName: "WorkspaceEditorAllTabsClosed", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
+  { id: "editor.group.next", label: "Focus next editor group", intentName: "WorkspaceEditorNextGroupFocused", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: ["Meta+Shift+G", "Control+Shift+G"], palette: true },
   { id: "editor.split.toggle", label: "Toggle editor split", intentName: "WorkspaceEditorSplitToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "editor.vim.toggle", label: "Toggle Vim mode", intentName: "WorkspaceEditorVimToggled", arguments: "none", defaultArguments: { kind: "none" }, result: "dispatched", scope: "workspace", availability: "workspace_ready", authorization: "local_user", defaultBindings: [], palette: true },
   { id: "workspace.choose", label: "Choose workspace folder", intentName: "DesktopWorkspacePickerRequested", arguments: "none", defaultArguments: { kind: "none" }, result: "workspace_picker_requested", scope: "global", availability: "always", authorization: "local_user", defaultBindings: ["Meta+O", "Control+O"], palette: true },
@@ -206,6 +225,11 @@ export const DesktopCommandBindingProjection = Schema.Struct({
     overrideBinding: Schema.NullOr(DesktopCommandChord),
     effectiveBindings: Schema.Array(DesktopCommandChord),
     conflict: Schema.Boolean,
+    source: Schema.optional(Schema.Literals(["default", "user", "workspace", "unassigned", "conflicted"])),
+    platform: Schema.optional(Schema.Literals(["darwin", "win32", "linux"])),
+    context: Schema.optional(Schema.Literals(["global", "session", "workspace"])),
+    vimPrecedence: Schema.optional(Schema.Literals(["not_applicable", "app_before_vim", "vim_scoped"])),
+    conflictKinds: Schema.optional(Schema.Array(Schema.Literals(["exact", "prefix", "context"]))),
   })),
   conflicts: Schema.Array(Schema.Struct({
     chord: DesktopCommandChord,

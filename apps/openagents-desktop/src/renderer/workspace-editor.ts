@@ -45,6 +45,27 @@ import {
   makeIdeDocumentRef,
   type IdeMonacoDocumentEvent,
 } from "../ide/monaco-document-contract.ts"
+import { IdeEditorGroupRefSchema } from "../ide/project-contract.ts"
+import { IdePathIndexIdentitySchema, type IdePathIndexIdentity } from "../ide/path-index-contract.ts"
+import {
+  IdeNavigationEntryRefSchema,
+  IdeEditorSettingIdSchema,
+  IdeEditorSettingOverrideSchema,
+  IdeWorkbenchStateSchema,
+  breadcrumbsForPath,
+  emptyIdeWorkbenchState,
+  importIdeEditorSettings,
+  markIdeNavigationUnavailable,
+  pushIdeNavigation,
+  rankIdeQuickOpen,
+  resetIdeEditorSetting,
+  resolveIdeEditorSetting,
+  setIdeEditorSetting,
+  stepIdeNavigation,
+  type IdeEditorSettingId,
+  type IdeEditorSettingOverride,
+  type IdeWorkbenchState,
+} from "../ide/workbench-contract.ts"
 
 const maxTabs = 12
 const maxHistory = 100
@@ -74,6 +95,7 @@ export const WorkspaceEditorTabSchema = Schema.Struct({
   incrementalSequence: Schema.optional(IdeDocumentSequence),
   modelVersion: Schema.optional(IdeMonacoModelVersion),
   gapRecoveries: Schema.optional(EditorCountSchema),
+  tabMode: Schema.optional(Schema.Literals(["preview", "pinned"])),
 }).annotate({ identifier: "WorkspaceEditorTab" })
 export type WorkspaceEditorTab = typeof WorkspaceEditorTabSchema.Type
 
@@ -87,6 +109,8 @@ export const WorkspaceEditorStateSchema = Schema.Struct({
   vimEnabled: Schema.Boolean,
   nextDocumentOrdinal: EditorCountSchema,
   saveAsPathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  closedPathRefs: Schema.Array(DesktopWorkspacePathRefSchema).check(Schema.isMaxLength(20)),
+  workbench: IdeWorkbenchStateSchema,
 }).annotate({ identifier: "WorkspaceEditorState" })
 export type WorkspaceEditorState = typeof WorkspaceEditorStateSchema.Type
 
@@ -102,6 +126,8 @@ export const emptyWorkspaceEditorState = (
   vimEnabled: options.vimEnabled ?? false,
   nextDocumentOrdinal: 0,
   saveAsPathRef: null,
+  closedPathRefs: [],
+  workbench: emptyIdeWorkbenchState(),
 })
 
 export const workspaceEditorTabDirty = (tab: WorkspaceEditorTab): boolean =>
@@ -146,7 +172,113 @@ const emptyTab = (
   incrementalSequence: IdeDocumentSequence.make(0),
   modelVersion: IdeMonacoModelVersion.make(1),
   gapRecoveries: 0,
+  tabMode: "pinned",
 })
+
+const syncWorkbenchGroups = (
+  workbench: IdeWorkbenchState,
+  tabs: ReadonlyArray<WorkspaceEditorTab>,
+  activePathRef: string | null,
+  split: boolean,
+): IdeWorkbenchState => {
+  const documentRefs = tabs.flatMap(tab => tab.documentRef === undefined ? [] : [tab.documentRef])
+  const activeDocumentRef = tabs.find(tab => tab.pathRef === activePathRef)?.documentRef ?? null
+  const primary = {
+    groupRef: workbench.groups[0]?.groupRef ?? workbench.focusedGroupRef,
+    documentRefs,
+    activeDocumentRef,
+    direction: "primary" as const,
+    viewStates: documentRefs.map(documentRef => workbench.groups[0]?.viewStates.find(view => view.documentRef === documentRef) ?? {
+      documentRef,
+      selection: tabs.find(tab => tab.documentRef === documentRef)?.selection ?? { start: 0, end: 0 },
+      scrollTop: 0,
+      foldedLineStarts: [],
+    }),
+  }
+  const groups = split
+    ? [primary, {
+        groupRef: workbench.groups[1]?.groupRef ?? IdeEditorGroupRefSchema.make("ide.editor-group.secondary"),
+        documentRefs: activeDocumentRef === null ? [] : [activeDocumentRef],
+        activeDocumentRef,
+        direction: "right" as const,
+        viewStates: activeDocumentRef === null ? [] : [workbench.groups[1]?.viewStates.find(view => view.documentRef === activeDocumentRef) ?? {
+          documentRef: activeDocumentRef,
+          selection: tabs.find(tab => tab.documentRef === activeDocumentRef)?.selection ?? { start: 0, end: 0 },
+          scrollTop: 0,
+          foldedLineStarts: [],
+        }],
+      }]
+    : [primary]
+  return IdeWorkbenchStateSchema.make({
+    ...workbench,
+    groups,
+    focusedGroupRef: groups.some(group => group.groupRef === workbench.focusedGroupRef)
+      ? workbench.focusedGroupRef
+      : primary.groupRef,
+    breadcrumbs: activePathRef === null ? [] : breadcrumbsForPath(activePathRef),
+  })
+}
+
+const withSynchronizedWorkbench = (state: WorkspaceEditorState): WorkspaceEditorState => ({
+  ...state,
+  workbench: syncWorkbenchGroups(state.workbench, state.tabs, state.activePathRef, state.split),
+})
+
+const withWorkspaceEditorNavigation = (
+  state: WorkspaceEditorState,
+  pathRef: string,
+  source: "explorer" | "quick_open" | "workspace_search" | "recent_restore",
+  identity: IdePathIndexIdentity | undefined,
+): WorkspaceEditorState => {
+  const tab = tabFor(state, pathRef)
+  if (tab?.documentRef === undefined || tab.generation === undefined || identity === undefined) return state
+  const ordinal = state.workbench.navigation.entries.length
+  return {
+    ...state,
+    workbench: {
+      ...state.workbench,
+      navigation: pushIdeNavigation(state.workbench.navigation, {
+        entryRef: IdeNavigationEntryRefSchema.make(`ide.navigation.${ordinal}.${tab.generation}`),
+        source,
+        projectRef: identity.projectRef,
+        rootRef: identity.rootRef,
+        worktreeRef: identity.worktreeRef,
+        documentRef: tab.documentRef,
+        generation: tab.generation,
+        pathRef: tab.pathRef,
+        selection: tab.selection,
+        state: "ready",
+        reason: null,
+      }),
+    },
+  }
+}
+
+const stepEditorNavigation = (
+  editor: WorkspaceEditorState,
+  direction: "back" | "forward",
+): WorkspaceEditorState => {
+  const stepped = stepIdeNavigation(editor.workbench.navigation, direction)
+  if (stepped.entry === null) return editor
+  const target = editor.tabs.find(tab =>
+    tab.documentRef === stepped.entry!.documentRef && tab.generation === stepped.entry!.generation)
+  if (target === undefined) return {
+    ...editor,
+    workbench: {
+      ...editor.workbench,
+      navigation: markIdeNavigationUnavailable(
+        stepped.history,
+        stepped.entry.entryRef,
+        "The exact document generation is no longer open.",
+      ),
+    },
+  }
+  return withSynchronizedWorkbench({
+    ...editor,
+    activePathRef: target.pathRef,
+    workbench: { ...editor.workbench, navigation: stepped.history },
+  })
+}
 
 export const withWorkspaceEditorOpening = (
   state: WorkspaceEditorState,
@@ -155,11 +287,15 @@ export const withWorkspaceEditorOpening = (
   recoveredIdentity?: Readonly<{ documentRef: IdeDocumentRef; generation: IdeDocumentGeneration }>,
 ): WorkspaceEditorState => {
   const existing = tabFor(state, pathRef)
-  if (existing !== null) return { ...state, activePathRef: pathRef, closeConfirmRef: null }
+  if (existing !== null) return withSynchronizedWorkbench({ ...state, activePathRef: pathRef, closeConfirmRef: null })
   if (state.tabs.length >= maxTabs) return state
-  return {
+  const replaceablePreview = state.tabs.find(tab => (tab.tabMode ?? "pinned") === "preview" && !workspaceEditorTabDirty(tab))
+  const retainedTabs = replaceablePreview === undefined
+    ? state.tabs
+    : state.tabs.filter(tab => tab.documentRef !== replaceablePreview.documentRef)
+  return withSynchronizedWorkbench({
     ...state,
-    tabs: [...state.tabs, emptyTab(
+    tabs: [...retainedTabs, emptyTab(
       pathRef,
       recoveredIdentity?.documentRef ?? makeIdeDocumentRef(grantGenerationRef, state.nextDocumentOrdinal),
       recoveredIdentity?.generation ?? IdeDocumentGeneration.make(state.nextDocumentOrdinal),
@@ -167,7 +303,7 @@ export const withWorkspaceEditorOpening = (
     activePathRef: pathRef,
     closeConfirmRef: null,
     nextDocumentOrdinal: state.nextDocumentOrdinal + 1,
-  }
+  })
 }
 
 export const withWorkspaceEditorOpened = (
@@ -222,13 +358,106 @@ export const withWorkspaceEditorRenamed = (
   })
   const pathRefs = renamed.map(tab => tab.pathRef)
   if (new Set(pathRefs).size !== pathRefs.length) return state
-  return {
+  return withSynchronizedWorkbench({
     ...state,
     tabs: renamed,
     activePathRef: state.activePathRef === null ? null : remap(state.activePathRef) ?? state.activePathRef,
     closeConfirmRef: state.closeConfirmRef === null ? null : remap(state.closeConfirmRef) ?? state.closeConfirmRef,
     saveAsPathRef: null,
+  })
+}
+
+export const withWorkspaceEditorTabMode = (
+  state: WorkspaceEditorState,
+  pathRef: string,
+  tabMode: "preview" | "pinned",
+): WorkspaceEditorState => updateTab(state, pathRef, tab => ({ ...tab, tabMode }))
+
+export const withWorkspaceEditorTabMoved = (
+  state: WorkspaceEditorState,
+  pathRef: string,
+  delta: -1 | 1,
+): WorkspaceEditorState => {
+  const index = state.tabs.findIndex(tab => tab.pathRef === pathRef)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= state.tabs.length) return state
+  const tabs = [...state.tabs]
+  const [tab] = tabs.splice(index, 1)
+  tabs.splice(target, 0, tab!)
+  return withSynchronizedWorkbench({ ...state, tabs })
+}
+
+const closeEditorTabs = (
+  state: WorkspaceEditorState,
+  pathRefs: ReadonlyArray<string>,
+): WorkspaceEditorState => {
+  const requested = new Set(pathRefs)
+  const blocked = state.tabs.filter(tab => requested.has(tab.pathRef) && workspaceEditorTabDirty(tab))
+  const closable = state.tabs.filter(tab => requested.has(tab.pathRef) && !workspaceEditorTabDirty(tab))
+  const closed = new Set(closable.map(tab => tab.pathRef))
+  const tabs = state.tabs.map(tab => blocked.some(candidate => candidate.pathRef === tab.pathRef)
+    ? { ...tab, reason: "Close refused until the dirty document is saved or explicitly discarded." }
+    : tab).filter(tab => !closed.has(tab.pathRef))
+  const activePathRef = tabs.some(tab => tab.pathRef === state.activePathRef)
+    ? state.activePathRef
+    : tabs.at(-1)?.pathRef ?? null
+  return withSynchronizedWorkbench({
+    ...state,
+    tabs,
+    activePathRef,
+    closeConfirmRef: blocked[0]?.pathRef ?? null,
+    closedPathRefs: [...state.closedPathRefs, ...closable.map(tab => tab.pathRef)].slice(-20),
+  })
+}
+
+export const withWorkspaceEditorTabsClosed = (
+  state: WorkspaceEditorState,
+  operation: "active" | "others" | "right" | "all",
+): WorkspaceEditorState => {
+  const activeIndex = state.tabs.findIndex(tab => tab.pathRef === state.activePathRef)
+  if (activeIndex < 0) return state
+  const pathRefs = operation === "active" ? [state.tabs[activeIndex]!.pathRef]
+    : operation === "others" ? state.tabs.filter((_, index) => index !== activeIndex).map(tab => tab.pathRef)
+    : operation === "right" ? state.tabs.slice(activeIndex + 1).map(tab => tab.pathRef)
+    : state.tabs.map(tab => tab.pathRef)
+  return closeEditorTabs(state, pathRefs)
+}
+
+export const withWorkspaceEditorQuickOpen = (
+  state: WorkspaceEditorState,
+  query: string,
+  paths: ReadonlyArray<string>,
+): WorkspaceEditorState => ({
+  ...state,
+  workbench: {
+    ...state.workbench,
+    quickOpen: rankIdeQuickOpen(query, paths, 50),
+  },
+})
+
+export const withWorkspaceEditorSetting = (
+  state: WorkspaceEditorState,
+  override: IdeEditorSettingOverride,
+): WorkspaceEditorState => withWorkspaceEditorSettingsState(
+  state,
+  setIdeEditorSetting(state.workbench.settings, override),
+)
+
+const withWorkspaceEditorSettingsState = (
+  state: WorkspaceEditorState,
+  settings: IdeWorkbenchState["settings"],
+): WorkspaceEditorState => {
+  const boolean = (id: IdeEditorSettingId): boolean => {
+    const value = resolveIdeEditorSetting(settings, id).value
+    return value._tag === "Boolean" && value.value
   }
+  return withSynchronizedWorkbench({
+    ...state,
+    wordWrap: boolean("editor.wordWrap"),
+    minimap: boolean("editor.minimap.enabled"),
+    vimEnabled: boolean("editor.vim.enabled"),
+    workbench: { ...state.workbench, settings },
+  })
 }
 
 const findOffsets = (content: string, query: string): ReadonlyArray<number> => {
@@ -271,6 +500,7 @@ export const withWorkspaceEditorEvent = (
     redo: [],
     saveState: "idle",
     reason: null,
+    tabMode: "pinned",
     findMatches: findOffsets(value, current.findQuery),
     findIndex: 0,
   }))
@@ -312,6 +542,7 @@ export const withWorkspaceEditorMonacoEvent = (
     gapRecoveries: (current.gapRecoveries ?? 0) + (gap ? 1 : 0),
     saveState: "idle",
     reason: gap ? `Editor sequence gap recovered from the complete model snapshot at sequence ${sequence}.` : null,
+    tabMode: value === current.draft ? current.tabMode : "pinned",
     findMatches: findOffsets(value, current.findQuery),
     findIndex: 0,
   }))
@@ -513,7 +744,7 @@ const WorkspaceEditorRecoverySnapshotV2Schema = Schema.Struct({
   })).check(Schema.isMaxLength(maxTabs)),
 })
 
-export const WorkspaceEditorRecoverySnapshotSchema = Schema.Struct({
+const WorkspaceEditorRecoverySnapshotV3Schema = Schema.Struct({
   version: Schema.Literal(3),
   activePathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
   tabs: Schema.Array(Schema.Struct({
@@ -526,22 +757,53 @@ export const WorkspaceEditorRecoverySnapshotSchema = Schema.Struct({
     draft: Schema.String.check(Schema.isMaxLength(1_000_000)),
   })).check(Schema.isMaxLength(maxTabs)),
 })
+
+export const WorkspaceEditorRecoverySnapshotSchema = Schema.Struct({
+  version: Schema.Literal(4),
+  activePathRef: Schema.NullOr(DesktopWorkspacePathRefSchema),
+  split: Schema.Boolean,
+  closedPathRefs: Schema.Array(DesktopWorkspacePathRefSchema).check(Schema.isMaxLength(20)),
+  workbench: IdeWorkbenchStateSchema,
+  tabs: Schema.Array(Schema.Struct({
+    documentRef: IdeDocumentRef,
+    generation: IdeDocumentGeneration,
+    incrementalSequence: IdeDocumentSequence,
+    selection: IdeEditorSelectionSchema,
+    pathRef: DesktopWorkspacePathRefSchema,
+    expectedRevisionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
+    draft: Schema.String.check(Schema.isMaxLength(1_000_000)),
+    tabMode: Schema.Literals(["preview", "pinned"]),
+  })).check(Schema.isMaxLength(maxTabs)),
+})
 export type WorkspaceEditorRecoverySnapshot = typeof WorkspaceEditorRecoverySnapshotSchema.Type
 
 export const decodeWorkspaceEditorRecoverySnapshot = (value: unknown): WorkspaceEditorRecoverySnapshot | null => {
   const decoded = Schema.decodeUnknownExit(WorkspaceEditorRecoverySnapshotSchema)(value)
   if (Exit.isSuccess(decoded)) return decoded.value
+  const v3 = Schema.decodeUnknownExit(WorkspaceEditorRecoverySnapshotV3Schema)(value)
+  if (Exit.isSuccess(v3)) return WorkspaceEditorRecoverySnapshotSchema.make({
+    version: 4,
+    activePathRef: v3.value.activePathRef,
+    split: false,
+    closedPathRefs: [],
+    workbench: emptyIdeWorkbenchState(),
+    tabs: v3.value.tabs.map(tab => ({ ...tab, tabMode: "pinned" as const })),
+  })
   const legacy = Schema.decodeUnknownExit(WorkspaceEditorRecoverySnapshotV2Schema)(value)
   if (Exit.isFailure(legacy)) return null
   return WorkspaceEditorRecoverySnapshotSchema.make({
-    version: 3,
+    version: 4,
     activePathRef: legacy.value.activePathRef,
+    split: false,
+    closedPathRefs: [],
+    workbench: emptyIdeWorkbenchState(),
     tabs: legacy.value.tabs.map((tab, index) => ({
       ...tab,
       documentRef: makeIdeDocumentRef("recovery-v2", index),
       generation: IdeDocumentGeneration.make(index),
       incrementalSequence: IdeDocumentSequence.make(0),
       selection: { start: 0, end: 0 },
+      tabMode: "pinned" as const,
     })),
   })
 }
@@ -549,8 +811,11 @@ export const decodeWorkspaceEditorRecoverySnapshot = (value: unknown): Workspace
 export const workspaceEditorRecoverySnapshot = (
   state: WorkspaceEditorState,
 ): WorkspaceEditorRecoverySnapshot => ({
-  version: 3,
+  version: 4,
   activePathRef: state.activePathRef,
+  split: state.split,
+  closedPathRefs: state.closedPathRefs,
+  workbench: state.workbench,
   tabs: state.tabs.flatMap(tab => tab.document === null ? [] : [{
     documentRef: tab.documentRef ?? makeIdeDocumentRef(tab.document?.grantRef ?? "compatibility-recovery", 0),
     generation: tab.generation ?? IdeDocumentGeneration.make(0),
@@ -559,6 +824,7 @@ export const workspaceEditorRecoverySnapshot = (
     pathRef: tab.pathRef,
     expectedRevisionRef: tab.document.revisionRef,
     draft: tab.draft.slice(0, 1_000_000),
+    tabMode: tab.tabMode ?? "pinned",
   }]).slice(0, maxTabs),
 })
 
@@ -598,6 +864,7 @@ export const withWorkspaceEditorRecoveredTab = (
     ? recovered.incrementalSequence
     : IdeDocumentSequence.make(0)
   const selection = "selection" in recovered ? recovered.selection : { start: 0, end: 0 }
+  const tabMode = "tabMode" in recovered ? recovered.tabMode : "pinned"
   const opening = withWorkspaceEditorOpening(state, recovered.pathRef, grantRef, {
     documentRef,
     generation,
@@ -606,12 +873,13 @@ export const withWorkspaceEditorRecoveredTab = (
     const opened = withWorkspaceEditorOpened(opening, recovered.pathRef, result)
     return updateTab(opened, recovered.pathRef, tab => {
       if (result.document.revisionRef === recovered.expectedRevisionRef) {
-        return { ...tab, draft: recovered.draft, incrementalSequence, selection }
+        return { ...tab, draft: recovered.draft, incrementalSequence, selection, tabMode }
       }
       if (result.document.content === recovered.draft) return {
         ...tab,
         incrementalSequence,
         selection,
+        tabMode,
       }
       return {
         ...tab,
@@ -621,6 +889,7 @@ export const withWorkspaceEditorRecoveredTab = (
         selection,
         externalDocument: result.document,
         reason: "This recovered draft changed on disk while the app was closed.",
+        tabMode,
       }
     })
   }
@@ -646,20 +915,40 @@ export const withWorkspaceEditorRecoveredTab = (
     reason: result.state === "unavailable"
       ? `${result.message} Your recovered draft remains available for Save As.`
       : "The recovered document could not be matched. Its draft remains available for Save As.",
+    tabMode,
   }))
 }
 
 const WorkspaceEditorOpenPayloadSchema = Schema.Struct({
   grantRef: Schema.String,
   pathRef: DesktopWorkspacePathRefSchema,
+  preview: Schema.optional(Schema.Boolean),
+  source: Schema.optional(Schema.Literals(["explorer", "quick_open", "workspace_search", "recent_restore"])),
+  identity: Schema.optional(IdePathIndexIdentitySchema),
 })
 const WorkspaceEditorRecoveryPayloadSchema = Schema.Struct({
   grantRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)),
   snapshot: WorkspaceEditorRecoverySnapshotSchema,
 })
+const WorkspaceEditorTabModePayloadSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+  tabMode: Schema.Literals(["preview", "pinned"]),
+})
+const WorkspaceEditorTabMovePayloadSchema = Schema.Struct({
+  pathRef: DesktopWorkspacePathRefSchema,
+  delta: Schema.Literals([-1, 1]),
+})
+const WorkspaceEditorSettingResetPayloadSchema = Schema.Struct({
+  id: IdeEditorSettingIdSchema,
+  scope: Schema.Literals(["user", "workspace"]),
+})
 
 export const WorkspaceEditorOpenRequested = defineIntent("WorkspaceEditorOpenRequested", WorkspaceEditorOpenPayloadSchema)
 export const WorkspaceEditorTabSelected = defineIntent("WorkspaceEditorTabSelected", DesktopWorkspacePathRefSchema)
+export const WorkspaceEditorTabModeChanged = defineIntent("WorkspaceEditorTabModeChanged", WorkspaceEditorTabModePayloadSchema)
+export const WorkspaceEditorTabMoved = defineIntent("WorkspaceEditorTabMoved", WorkspaceEditorTabMovePayloadSchema)
+export const WorkspaceEditorTabsClosed = defineIntent("WorkspaceEditorTabsClosed", Schema.Literals(["active", "others", "right", "all"]))
+export const WorkspaceEditorClosedTabReopened = defineIntent("WorkspaceEditorClosedTabReopened", Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(160)))
 export const WorkspaceEditorTabCloseRequested = defineIntent("WorkspaceEditorTabCloseRequested", DesktopWorkspacePathRefSchema)
 export const WorkspaceEditorTabCloseConfirmed = defineIntent("WorkspaceEditorTabCloseConfirmed", DesktopWorkspacePathRefSchema)
 export const WorkspaceEditorTabCloseCancelled = defineIntent("WorkspaceEditorTabCloseCancelled", Schema.Null)
@@ -678,6 +967,25 @@ export const WorkspaceEditorWordWrapToggled = defineIntent("WorkspaceEditorWordW
 export const WorkspaceEditorMinimapToggled = defineIntent("WorkspaceEditorMinimapToggled", Schema.Null)
 export const WorkspaceEditorSplitToggled = defineIntent("WorkspaceEditorSplitToggled", Schema.Null)
 export const WorkspaceEditorVimToggled = defineIntent("WorkspaceEditorVimToggled", Schema.Null)
+export const WorkspaceEditorQuickOpenChanged = defineIntent("WorkspaceEditorQuickOpenChanged", Schema.Struct({
+  query: Schema.String.check(Schema.isMaxLength(200)),
+  paths: Schema.Array(DesktopWorkspacePathRefSchema).check(Schema.isMaxLength(100_000)),
+}))
+export const WorkspaceEditorQuickOpenClosed = defineIntent("WorkspaceEditorQuickOpenClosed", Schema.Null)
+export const WorkspaceEditorQuickOpenOpened = defineIntent("WorkspaceEditorQuickOpenOpened", Schema.Null)
+export const WorkspaceEditorActiveTabPinToggled = defineIntent("WorkspaceEditorActiveTabPinToggled", Schema.Null)
+export const WorkspaceEditorActiveTabClosed = defineIntent("WorkspaceEditorActiveTabClosed", Schema.Null)
+export const WorkspaceEditorOtherTabsClosed = defineIntent("WorkspaceEditorOtherTabsClosed", Schema.Null)
+export const WorkspaceEditorRightTabsClosed = defineIntent("WorkspaceEditorRightTabsClosed", Schema.Null)
+export const WorkspaceEditorAllTabsClosed = defineIntent("WorkspaceEditorAllTabsClosed", Schema.Null)
+export const WorkspaceEditorNextGroupFocused = defineIntent("WorkspaceEditorNextGroupFocused", Schema.Null)
+export const WorkspaceEditorNavigationStepped = defineIntent("WorkspaceEditorNavigationStepped", Schema.Literals(["back", "forward"]))
+export const WorkspaceEditorNavigationBackRequested = defineIntent("WorkspaceEditorNavigationBackRequested", Schema.Null)
+export const WorkspaceEditorNavigationForwardRequested = defineIntent("WorkspaceEditorNavigationForwardRequested", Schema.Null)
+export const WorkspaceEditorGroupFocused = defineIntent("WorkspaceEditorGroupFocused", IdeEditorGroupRefSchema)
+export const WorkspaceEditorSettingChanged = defineIntent("WorkspaceEditorSettingChanged", IdeEditorSettingOverrideSchema)
+export const WorkspaceEditorSettingReset = defineIntent("WorkspaceEditorSettingReset", WorkspaceEditorSettingResetPayloadSchema)
+export const WorkspaceEditorSettingsImported = defineIntent("WorkspaceEditorSettingsImported", Schema.String.check(Schema.isMaxLength(20_000)))
 export const WorkspaceEditorExternalChangeReceived = defineIntent("WorkspaceEditorExternalChangeReceived", DesktopWorkspaceChangeSchema)
 export const WorkspaceEditorSaveAsStarted = defineIntent("WorkspaceEditorSaveAsStarted", Schema.Null)
 export const WorkspaceEditorSaveAsChanged = defineIntent("WorkspaceEditorSaveAsChanged", Schema.String)
@@ -688,6 +996,10 @@ export const WorkspaceEditorRecoveryRequested = defineIntent("WorkspaceEditorRec
 export const workspaceEditorIntents = [
   WorkspaceEditorOpenRequested,
   WorkspaceEditorTabSelected,
+  WorkspaceEditorTabModeChanged,
+  WorkspaceEditorTabMoved,
+  WorkspaceEditorTabsClosed,
+  WorkspaceEditorClosedTabReopened,
   WorkspaceEditorTabCloseRequested,
   WorkspaceEditorTabCloseConfirmed,
   WorkspaceEditorTabCloseCancelled,
@@ -706,6 +1018,22 @@ export const workspaceEditorIntents = [
   WorkspaceEditorMinimapToggled,
   WorkspaceEditorSplitToggled,
   WorkspaceEditorVimToggled,
+  WorkspaceEditorQuickOpenChanged,
+  WorkspaceEditorQuickOpenClosed,
+  WorkspaceEditorQuickOpenOpened,
+  WorkspaceEditorActiveTabPinToggled,
+  WorkspaceEditorActiveTabClosed,
+  WorkspaceEditorOtherTabsClosed,
+  WorkspaceEditorRightTabsClosed,
+  WorkspaceEditorAllTabsClosed,
+  WorkspaceEditorNextGroupFocused,
+  WorkspaceEditorNavigationStepped,
+  WorkspaceEditorNavigationBackRequested,
+  WorkspaceEditorNavigationForwardRequested,
+  WorkspaceEditorGroupFocused,
+  WorkspaceEditorSettingChanged,
+  WorkspaceEditorSettingReset,
+  WorkspaceEditorSettingsImported,
   WorkspaceEditorExternalChangeReceived,
   WorkspaceEditorSaveAsStarted,
   WorkspaceEditorSaveAsChanged,
@@ -797,14 +1125,15 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
   const closePath = (pathRef: string, force: boolean) => setEditor(editor => {
     const tab = tabFor(editor, pathRef)
     if (tab === null) return editor
-    if (!force && workspaceEditorTabDirty(tab)) return { ...editor, closeConfirmRef: pathRef }
+    if (!force) return closeEditorTabs(editor, [pathRef])
     const tabs = editor.tabs.filter(value => value.pathRef !== pathRef)
-    return {
+    return withSynchronizedWorkbench({
       ...editor,
       tabs,
       activePathRef: editor.activePathRef === pathRef ? tabs.at(-1)?.pathRef ?? null : editor.activePathRef,
       closeConfirmRef: editor.closeConfirmRef === pathRef ? null : editor.closeConfirmRef,
-    }
+      closedPathRefs: [...editor.closedPathRefs, pathRef].slice(-20),
+    })
   })
 
   const closeDocument = (event: Extract<IdeMonacoDocumentEvent, { readonly _tag: "Close" }>) =>
@@ -867,37 +1196,72 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
   })
 
   return {
-    WorkspaceEditorOpenRequested: ({ grantRef, pathRef }: { grantRef: string; pathRef: string }) =>
+    WorkspaceEditorOpenRequested: ({ grantRef, pathRef, preview = false, source = "explorer", identity }: {
+      grantRef: string
+      pathRef: string
+      preview?: boolean
+      source?: "explorer" | "quick_open" | "workspace_search" | "recent_restore"
+      identity?: IdePathIndexIdentity
+    }) =>
       Effect.gen(function* () {
         const before = yield* SubscriptionRef.get(state)
         if (tabFor(before.workspaceEditor, pathRef) !== null) {
-          yield* setEditor(editor => ({ ...editor, activePathRef: pathRef, closeConfirmRef: null }))
+          yield* setEditor(editor => withWorkspaceEditorNavigation(
+            withSynchronizedWorkbench({ ...editor, activePathRef: pathRef, closeConfirmRef: null }), pathRef, source, identity,
+          ))
           return
         }
-        yield* setEditor(editor => withWorkspaceEditorOpening(editor, pathRef, grantRef))
+        yield* setEditor(editor => {
+          const opening = withWorkspaceEditorOpening(editor, pathRef, grantRef)
+          return preview ? withWorkspaceEditorTabMode(opening, pathRef, "preview") : opening
+        })
         const raw = yield* Effect.promise(() => bridge.openWorkspaceDocument({ grantRef, pathRef }).catch(() => null))
         const result = decodeWorkspaceDocumentResult(raw) ?? {
           state: "unavailable" as const,
           reason: "unavailable" as const,
           message: "The document response could not be read.",
         }
-        yield* setEditor(editor => withWorkspaceEditorOpened(editor, pathRef, result))
+        yield* setEditor(editor => withWorkspaceEditorNavigation(
+          withWorkspaceEditorOpened(editor, pathRef, result), pathRef, source, identity,
+        ))
       }),
     WorkspaceEditorTabSelected: (pathRef: string) =>
-      setEditor(editor => tabFor(editor, pathRef) === null ? editor : { ...editor, activePathRef: pathRef, closeConfirmRef: null }),
+      setEditor(editor => tabFor(editor, pathRef) === null ? editor : withSynchronizedWorkbench({ ...editor, activePathRef: pathRef, closeConfirmRef: null })),
+    WorkspaceEditorTabModeChanged: ({ pathRef, tabMode }: { pathRef: string; tabMode: "preview" | "pinned" }) =>
+      setEditor(editor => withWorkspaceEditorTabMode(editor, pathRef, tabMode)),
+    WorkspaceEditorTabMoved: ({ pathRef, delta }: { pathRef: string; delta: -1 | 1 }) =>
+      setEditor(editor => withWorkspaceEditorTabMoved(editor, pathRef, delta)),
+    WorkspaceEditorTabsClosed: (operation: "active" | "others" | "right" | "all") =>
+      setEditor(editor => withWorkspaceEditorTabsClosed(editor, operation)),
+    WorkspaceEditorClosedTabReopened: (grantRef: string) => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const pathRef = before.workspaceEditor.closedPathRefs.at(-1)
+      if (pathRef === undefined || tabFor(before.workspaceEditor, pathRef) !== null) return
+      yield* setEditor(editor => withWorkspaceEditorOpening({
+        ...editor,
+        closedPathRefs: editor.closedPathRefs.slice(0, -1),
+      }, pathRef, grantRef))
+      const raw = yield* Effect.promise(() => bridge.openWorkspaceDocument({ grantRef, pathRef }).catch(() => null))
+      const result = decodeWorkspaceDocumentResult(raw) ?? {
+        state: "unavailable" as const,
+        reason: "unavailable" as const,
+        message: "The reopened document response could not be read.",
+      }
+      yield* setEditor(editor => withWorkspaceEditorOpened(editor, pathRef, result))
+    }),
     WorkspaceEditorTabCloseRequested: (pathRef: string) =>
-      setEditor(editor => {
-        const tab = tabFor(editor, pathRef)
-        if (tab === null) return editor
-        if (workspaceEditorTabDirty(tab)) return { ...editor, closeConfirmRef: pathRef }
-        const tabs = editor.tabs.filter(value => value.pathRef !== pathRef)
-        return { ...editor, tabs, activePathRef: editor.activePathRef === pathRef ? tabs.at(-1)?.pathRef ?? null : editor.activePathRef }
-      }),
+      setEditor(editor => closeEditorTabs(editor, [pathRef])),
     WorkspaceEditorTabCloseConfirmed: (pathRef: string) =>
       setEditor(editor => {
         if (editor.closeConfirmRef !== pathRef) return editor
         const tabs = editor.tabs.filter(tab => tab.pathRef !== pathRef)
-        return { ...editor, tabs, activePathRef: editor.activePathRef === pathRef ? tabs.at(-1)?.pathRef ?? null : editor.activePathRef, closeConfirmRef: null }
+        return withSynchronizedWorkbench({
+          ...editor,
+          tabs,
+          activePathRef: editor.activePathRef === pathRef ? tabs.at(-1)?.pathRef ?? null : editor.activePathRef,
+          closeConfirmRef: null,
+          closedPathRefs: [...editor.closedPathRefs, pathRef].slice(-20),
+        })
       }),
     WorkspaceEditorTabCloseCancelled: () => setEditor(editor => ({ ...editor, closeConfirmRef: null })),
     WorkspaceEditorEventReceived: (event: CodeEditorEvent) => event.type === "save"
@@ -936,15 +1300,57 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
       }))
     }),
     WorkspaceEditorConflictKeepMine: () => saveActive,
-    WorkspaceEditorWordWrapToggled: () => setEditor(editor => ({ ...editor, wordWrap: !editor.wordWrap })),
-    WorkspaceEditorMinimapToggled: () => setEditor(editor => ({ ...editor, minimap: !editor.minimap })),
-    WorkspaceEditorSplitToggled: () => setEditor(editor => ({ ...editor, split: !editor.split })),
+    WorkspaceEditorWordWrapToggled: () => setEditor(editor => withWorkspaceEditorSetting(editor, {
+      id: "editor.wordWrap", scope: "workspace", value: { _tag: "Boolean", value: !editor.wordWrap },
+    })),
+    WorkspaceEditorMinimapToggled: () => setEditor(editor => withWorkspaceEditorSetting(editor, {
+      id: "editor.minimap.enabled", scope: "workspace", value: { _tag: "Boolean", value: !editor.minimap },
+    })),
+    WorkspaceEditorSplitToggled: () => setEditor(editor => withSynchronizedWorkbench({ ...editor, split: !editor.split })),
     WorkspaceEditorVimToggled: () => Effect.gen(function* () {
       const before = yield* SubscriptionRef.get(state)
       const enabled = !before.workspaceEditor.vimEnabled
-      yield* setEditor(editor => ({ ...editor, vimEnabled: enabled }))
+      yield* setEditor(editor => withWorkspaceEditorSetting(editor, {
+        id: "editor.vim.enabled", scope: "user", value: { _tag: "Boolean", value: enabled },
+      }))
       yield* Effect.promise(() => preferenceHost.setVimEnabled(enabled).catch(() => undefined))
     }),
+    WorkspaceEditorQuickOpenChanged: ({ query, paths }: { query: string; paths: ReadonlyArray<string> }) =>
+      setEditor(editor => withWorkspaceEditorQuickOpen(editor, query, paths)),
+    WorkspaceEditorQuickOpenClosed: () => setEditor(editor => ({
+      ...editor,
+      workbench: { ...editor.workbench, quickOpen: { ...editor.workbench.quickOpen, phase: "closed" } },
+    })),
+    WorkspaceEditorQuickOpenOpened: () => setEditor(editor => ({
+      ...editor,
+      workbench: { ...editor.workbench, quickOpen: { ...editor.workbench.quickOpen, phase: editor.workbench.quickOpen.results.length === 0 ? "empty" : "ready" } },
+    })),
+    WorkspaceEditorActiveTabPinToggled: () => setEditor(editor => {
+      const tab = activeTab(editor)
+      return tab === null ? editor : withWorkspaceEditorTabMode(editor, tab.pathRef, tab.tabMode === "preview" ? "pinned" : "preview")
+    }),
+    WorkspaceEditorActiveTabClosed: () => setEditor(editor => withWorkspaceEditorTabsClosed(editor, "active")),
+    WorkspaceEditorOtherTabsClosed: () => setEditor(editor => withWorkspaceEditorTabsClosed(editor, "others")),
+    WorkspaceEditorRightTabsClosed: () => setEditor(editor => withWorkspaceEditorTabsClosed(editor, "right")),
+    WorkspaceEditorAllTabsClosed: () => setEditor(editor => withWorkspaceEditorTabsClosed(editor, "all")),
+    WorkspaceEditorNextGroupFocused: () => setEditor(editor => {
+      const index = editor.workbench.groups.findIndex(group => group.groupRef === editor.workbench.focusedGroupRef)
+      const next = editor.workbench.groups[(Math.max(0, index) + 1) % editor.workbench.groups.length]
+      return next === undefined ? editor : { ...editor, workbench: { ...editor.workbench, focusedGroupRef: next.groupRef } }
+    }),
+    WorkspaceEditorNavigationStepped: (direction: "back" | "forward") => setEditor(editor => stepEditorNavigation(editor, direction)),
+    WorkspaceEditorNavigationBackRequested: () => setEditor(editor => stepEditorNavigation(editor, "back")),
+    WorkspaceEditorNavigationForwardRequested: () => setEditor(editor => stepEditorNavigation(editor, "forward")),
+    WorkspaceEditorGroupFocused: (groupRef: IdeWorkbenchState["focusedGroupRef"]) =>
+      setEditor(editor => editor.workbench.groups.some(group => group.groupRef === groupRef)
+        ? { ...editor, workbench: { ...editor.workbench, focusedGroupRef: groupRef } }
+        : editor),
+    WorkspaceEditorSettingChanged: (override: IdeEditorSettingOverride) =>
+      setEditor(editor => withWorkspaceEditorSetting(editor, override)),
+    WorkspaceEditorSettingReset: ({ id, scope }: { id: IdeEditorSettingId; scope: "user" | "workspace" }) =>
+      setEditor(editor => withWorkspaceEditorSettingsState(editor, resetIdeEditorSetting(editor.workbench.settings, id, scope))),
+    WorkspaceEditorSettingsImported: (raw: string) =>
+      setEditor(editor => withWorkspaceEditorSettingsState(editor, importIdeEditorSettings(raw))),
     WorkspaceEditorExternalChangeReceived: refreshChangedDocuments,
     WorkspaceEditorSaveAsStarted: () => setEditor(editor => {
       const tab = activeTab(editor)
@@ -965,7 +1371,9 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
           ...emptyWorkspaceEditorState({ vimEnabled: before.workspaceEditor.vimEnabled }),
           wordWrap: before.workspaceEditor.wordWrap,
           minimap: before.workspaceEditor.minimap,
-          split: before.workspaceEditor.split,
+          split: snapshot.split,
+          closedPathRefs: snapshot.closedPathRefs,
+          workbench: snapshot.workbench,
         }
         for (const tab of snapshot.tabs) {
           const raw = yield* Effect.promise(() => bridge.openWorkspaceDocument({
@@ -982,7 +1390,7 @@ export const makeWorkspaceEditorHandlers = <S extends WorkspaceEditorCapableStat
         const activePathRef = snapshot.activePathRef !== null && tabFor(recovered, snapshot.activePathRef) !== null
           ? snapshot.activePathRef
           : recovered.tabs.at(-1)?.pathRef ?? null
-        yield* setEditor(() => ({ ...recovered, activePathRef }))
+        yield* setEditor(() => withSynchronizedWorkbench({ ...recovered, activePathRef }))
       }),
   }
 }

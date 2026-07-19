@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vite-plus/test"
+import { Schema } from "effect"
 
 import {
   decodeDesktopDeferredCommand,
+  DesktopCommandDefinitionSchema,
   desktopCanonicalCommandRegistry,
   desktopCommandIsAvailable,
   normalizeDesktopCommandChord,
@@ -10,6 +12,7 @@ import {
 
 describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
   test("declares every command field once with unique ids and conflict-free defaults", () => {
+    expect(Schema.decodeUnknownSync(Schema.Array(DesktopCommandDefinitionSchema))(desktopCanonicalCommandRegistry)).toHaveLength(desktopCanonicalCommandRegistry.length)
     expect(new Set(desktopCanonicalCommandRegistry.map(value => value.id)).size).toBe(desktopCanonicalCommandRegistry.length)
     for (const command of desktopCanonicalCommandRegistry) {
       expect(command).toHaveProperty("scope")
@@ -31,6 +34,10 @@ describe("contract openagents_desktop.commands.canonical_registry.v1", () => {
       "workspace.choose",
       "workspace.files",
       "workspace.review",
+      "editor.quick_open",
+      "editor.tab.pin_toggle",
+      "editor.tab.close_all",
+      "editor.group.next",
     ]))
     expect(desktopCanonicalCommandRegistry.map(value => value.id)).not.toEqual(expect.arrayContaining([
       "workspace.fleet",

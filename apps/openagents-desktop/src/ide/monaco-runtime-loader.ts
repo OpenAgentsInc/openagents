@@ -14,6 +14,7 @@ import {
   type IdeMonacoRuntimeResourceSnapshot,
   type IdeVimProjection,
 } from "./monaco-document-contract.ts"
+import { IdeMonacoEditorOptionsSchema } from "./workbench-contract.ts"
 
 export const IdeMonacoAttachInputSchema = Schema.Struct({
   documentRef: IdeDocumentRef,
@@ -28,6 +29,7 @@ export const IdeMonacoAttachInputSchema = Schema.Struct({
   wordWrap: Schema.Boolean,
   minimap: Schema.Boolean,
   vimEnabled: Schema.Boolean,
+  editorOptions: IdeMonacoEditorOptionsSchema,
   readOnly: Schema.Boolean,
 })
 export type IdeMonacoAttachInput = typeof IdeMonacoAttachInputSchema.Type

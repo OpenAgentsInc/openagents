@@ -69,7 +69,7 @@ import {
 } from "./shell.ts"
 import type { ProviderLaneComposerProjection } from "../provider-lane-capabilities.ts"
 import { withWorkspaceBrowserRoot, type WorkspaceBrowserBridge } from "./workspace-browser.ts"
-import type { WorkspaceDocumentBridge } from "./workspace-editor.ts"
+import { emptyWorkspaceEditorState, type WorkspaceDocumentBridge } from "./workspace-editor.ts"
 import type { ComposerImageAttachment } from "./composer-images.ts"
 import { openagentsDesktopTheme } from "./theme.ts"
 import { validateBehaviorContractRegistry } from "@openagentsinc/behavior-contracts"
@@ -1972,6 +1972,7 @@ describe("pure transitions", () => {
         workspace: "files",
         input: "Explain this file",
         workspaceEditor: {
+          ...emptyWorkspaceEditorState(),
           tabs: [{
             pathRef: "src/answer.ts",
             phase: "ready",

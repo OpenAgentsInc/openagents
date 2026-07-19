@@ -230,7 +230,7 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         },
         {
           description:
-            "Proves document identity survives rename/Save As, generations reject stale events, monotonic edits recover explicit sequence gaps from complete snapshots, recovery v2 migrates to v3, dirty/save/conflict/undo/find remain canonical, and Vim/split toggles preserve drafts while Vim persists.",
+            "Proves document identity survives rename/Save As, generations reject stale events, monotonic edits recover explicit sequence gaps from complete snapshots, recovery v2/v3 migrates to the v4 workbench snapshot, dirty/save/conflict/undo/find remain canonical, and Vim/split/tabs/groups preserve drafts and durable settings.",
           id: "openagents_desktop.ide_monaco_document_runtime.state",
           kind: "bun-test",
           mode: "unit",
@@ -273,6 +273,69 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       surface: "openagents-desktop",
       verification:
         "The normal Desktop and behavior-contract sweeps run the contract/state/DOM/accessibility/preferences/command/boundary suites. verify:ide-03 rebuilds and audits the lazy production island, emits a schema-decoded public-safe benchmark receipt, executes the packaged Electron journey, and requires all Monaco models, views, workers, and listeners to reach zero after disposal.",
+    },
+    {
+      authorityBoundary:
+        "This contract owns daily workbench projection and orchestration only. The path index remains the source of admitted project/root/worktree identity; the document reducer remains canonical for bytes, dirty state, and recovery; the workspace service remains the only filesystem authority; Monaco receives validated display/options data only; and Pierre receives a bounded projection plus typed commands. Symbol results stay explicitly unavailable until IDE-06, Tokyo Night is the only admitted theme, and neither React nor these workbench schemas acquire roots, filesystem callbacks, process authority, or arbitrary Monaco contribution access.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.ide_daily_workbench.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/ide/workbench-contract.ts",
+        "apps/openagents-desktop/src/desktop-command-contract.ts",
+        "apps/openagents-desktop/src/renderer/workspace-editor.ts",
+        "apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-04-workbench.json",
+        "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-04-packaged-workbench.json",
+        "docs/ide/2026-07-19-ide-04-daily-workbench.md",
+        "github:OpenAgentsInc/openagents#9019",
+      ],
+      oracles: [
+        {
+          description:
+            "Decodes and exercises exact worktree/document navigation, stale/unavailable history, bounded deterministic Quick Open, honest Outline/breadcrumbs, two-layer settings precedence, schema-valid import/export, and allowlisted Monaco option projection.",
+          id: "openagents_desktop.ide_daily_workbench.contract",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/ide/workbench-contract.test.ts",
+        },
+        {
+          description:
+            "Proves preview/pinned/reordered/dirty-guarded tabs, shared-model split groups, closed-tab stack, recovery v4 migration, external rename/conflict behavior, and settings-to-document coherence through the Effect-owned editor reducer and intent handlers.",
+          id: "openagents_desktop.ide_daily_workbench.state",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/renderer/workspace-editor.test.ts",
+        },
+        {
+          description:
+            "Exercises the one stable Desktop command registry, durable binding store, visible exact-conflict removal, platform/context/source metadata, Vim precedence labels, typed Pierre file commands, and keyboard/screen-reader workbench controls.",
+          id: "openagents_desktop.ide_daily_workbench.commands_dom",
+          kind: "bun-test",
+          mode: "dom",
+          ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+        },
+        {
+          description:
+            "Measures Quick Open over 50,000 admitted relative paths and 10,000 bounded navigation pushes at p50/p95/p99, and extends the packaged LaunchServices journey through Quick Open, preview-to-pin, split, recovery v4, root withholding, and teardown.",
+          id: "openagents_desktop.ide_daily_workbench.scale_packaged",
+          kind: "script",
+          mode: "e2e",
+          ref: "apps/openagents-desktop/scripts/ide-workbench-benchmark.ts",
+        },
+      ],
+      productArea: "Desktop IDE daily workbench",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-19",
+      },
+      state: "enforced",
+      statement:
+        "Desktop provides one schema-first daily IDE workbench: exact project/root/worktree/document navigation and explicit stale history; bounded Quick Open, search-origin reuse, breadcrumbs, and honest symbol placeholders; preview/pinned tabs, dirty close operations, closed-tab recovery, shared-document split groups, and restart restore; one stable command and durable keybinding graph with visible source/context/platform/Vim precedence; complete typed grant-scoped Explorer operations; and bounded default/user/workspace editor settings projected through an allowlist into Monaco with Tokyo Night fixed.",
+      surface: "openagents-desktop",
+      verification:
+        "verify:ide-04 builds Desktop, emits the workbench benchmark, typechecks, runs contract/editor/browser/Pierre/command/binding/DOM/accessibility/behavior tests, and checks IDE boundaries. The packaged LaunchServices journey additionally proves Quick Open, preview/pin, split, recovery v4, fixed private-scheme Monaco, and root withholding in the signed-shape application artifact.",
     },
     {
       authorityBoundary:

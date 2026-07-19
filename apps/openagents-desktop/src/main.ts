@@ -5642,7 +5642,7 @@ const smokeWorkspaceFilesUi = `(async () => {
       recoveryTabCount = Array.isArray(stored?.tabs) ? stored.tabs.length : -1
       recoveryDraftHasMarker = stored?.tabs?.some((tab) => tab.pathRef === "session_index.jsonl" && tab.draft.includes("recovery-smoke-draft")) === true
       recoveryDraftTail = typeof stored?.tabs?.[0]?.draft === "string" ? stored.tabs[0].draft.slice(-32) : ""
-      recoveryStored = stored?.version === 3 && recoveryDraftHasMarker
+      recoveryStored = stored?.version === 4 && recoveryDraftHasMarker
     } catch {}
   }
   const leakedRoot = document.body.textContent?.includes("tests/fixtures/codex-smoke") === true
@@ -5703,7 +5703,7 @@ const smokeWorkspaceEditorRecovery = `(async () => {
   if (recoveryKey !== undefined) {
     try {
       const stored = JSON.parse(localStorage.getItem(recoveryKey) ?? "null")
-      recovered = stored?.version === 3 && stored?.tabs?.some((tab) => tab.pathRef === "session_index.jsonl" && tab.draft.includes("recovery-smoke-draft")) === true
+      recovered = stored?.version === 4 && stored?.tabs?.some((tab) => tab.pathRef === "session_index.jsonl" && tab.draft.includes("recovery-smoke-draft")) === true
     } catch {}
   }
   document.querySelector('button[aria-label="Close session_index.jsonl"]')?.click()

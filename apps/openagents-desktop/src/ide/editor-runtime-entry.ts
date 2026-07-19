@@ -416,17 +416,28 @@ const attach: IdeMonacoRuntime["attach"] = (host, rawInput, onEvent, onVim) => {
     theme: "openagents-tokyo-night",
     automaticLayout: true,
     ariaLabel: `Code editor for ${input.pathLabel}`,
-    accessibilitySupport: "on",
+    accessibilitySupport: input.editorOptions.accessibilitySupport ? "on" : "off",
     minimap: { enabled: input.minimap },
     wordWrap: input.wordWrap ? "on" : "off",
     readOnly: input.readOnly,
-    lineNumbers: "on",
+    lineNumbers: input.editorOptions.lineNumbers ? "on" : "off",
     folding: true,
-    bracketPairColorization: { enabled: true },
-    guides: { indentation: true, bracketPairs: true },
+    matchBrackets: input.editorOptions.bracketMatching ? "always" : "never",
+    bracketPairColorization: { enabled: input.editorOptions.bracketMatching },
+    guides: { indentation: input.editorOptions.indentationGuides, bracketPairs: input.editorOptions.bracketMatching },
     multiCursorModifier: "alt",
+    multiCursorLimit: input.editorOptions.multiCursor ? 10_000 : 1,
+    fontSize: input.editorOptions.fontSize,
+    lineHeight: input.editorOptions.lineHeight,
+    renderWhitespace: input.editorOptions.renderWhitespace,
+    rulers: [...input.editorOptions.rulers],
+    stickyScroll: { enabled: input.editorOptions.stickyScroll },
     scrollBeyondLastLine: false,
     renderValidationDecorations: "on",
+  })
+  modelEntry.model.updateOptions({
+    tabSize: input.editorOptions.tabSize,
+    insertSpaces: input.editorOptions.insertSpaces,
   })
   const initialStart = modelEntry.model.getPositionAt(input.selection.start)
   const initialEnd = modelEntry.model.getPositionAt(input.selection.end)
@@ -491,6 +502,21 @@ const attach: IdeMonacoRuntime["attach"] = (host, rawInput, onEvent, onVim) => {
       minimap: { enabled: next.minimap },
       wordWrap: next.wordWrap ? "on" : "off",
       readOnly: next.readOnly,
+      accessibilitySupport: next.editorOptions.accessibilitySupport ? "on" : "off",
+      lineNumbers: next.editorOptions.lineNumbers ? "on" : "off",
+      matchBrackets: next.editorOptions.bracketMatching ? "always" : "never",
+      bracketPairColorization: { enabled: next.editorOptions.bracketMatching },
+      guides: { indentation: next.editorOptions.indentationGuides, bracketPairs: next.editorOptions.bracketMatching },
+      multiCursorLimit: next.editorOptions.multiCursor ? 10_000 : 1,
+      fontSize: next.editorOptions.fontSize,
+      lineHeight: next.editorOptions.lineHeight,
+      renderWhitespace: next.editorOptions.renderWhitespace,
+      rulers: [...next.editorOptions.rulers],
+      stickyScroll: { enabled: next.editorOptions.stickyScroll },
+    })
+    modelEntry.model.updateOptions({
+      tabSize: next.editorOptions.tabSize,
+      insertSpaces: next.editorOptions.insertSpaces,
     })
     if (next.selectionVersion !== viewEntry.input.selectionVersion) {
       const start = modelEntry.model.getPositionAt(next.selection.start)

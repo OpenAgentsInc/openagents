@@ -40,6 +40,7 @@ const packagedBinary = packagedMacOsDirectory === undefined || packagedExecutabl
 const screenshotRef = "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-03-packaged-editor.png"
 const screenshotPath = path.join(repositoryRoot, screenshotRef)
 const receiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-03-packaged-journey.json")
+const workbenchReceiptPath = path.join(appRoot, "benchmarks", "ide", "2026-07-19-ide-04-packaged-workbench.json")
 const marker = "// IDE-03 packaged Monaco edit"
 const pathRef = "ide03.ts"
 
@@ -75,7 +76,7 @@ const recoveryContainsMarker = async (page: Page): Promise<boolean> => page.eval
     if (!key.startsWith("openagents.desktop.workspace-editor.v2.")) continue
     try {
       const value = JSON.parse(localStorage.getItem(key) ?? "null")
-      if (value?.version === 3 && value?.tabs?.some((tab: { draft?: unknown }) =>
+      if (value?.version === 4 && value?.tabs?.some((tab: { draft?: unknown }) =>
         typeof tab.draft === "string" && tab.draft.includes(expected as string))) return true
     } catch { /* malformed unrelated key */ }
   }
@@ -140,6 +141,20 @@ const main = async (): Promise<void> => {
     const legacyTextareaAbsent = await page.locator('.oa-react-editor-textarea, .oa-react-file-editor > textarea').count() === 0
     const rootWithheld = !(await page.locator('body').innerText()).includes(workspaceRoot)
 
+    await page.keyboard.press(process.platform === "darwin" ? "Meta+P" : "Control+P")
+    const quickOpen = page.getByRole("dialog", { name: "Quick Open" })
+    await quickOpen.waitFor({ state: "visible", timeout: 10_000 })
+    await quickOpen.getByRole("textbox", { name: "Search files by path" }).fill("README")
+    const readmeResult = quickOpen.getByRole("button", { name: /README\.md/ }).first()
+    await readmeResult.waitFor({ state: "visible", timeout: 10_000 })
+    await readmeResult.click()
+    await page.locator('.oa-react-file-tabs button[data-tab-mode="preview"]').waitFor({ state: "visible", timeout: 10_000 })
+    const previewOpened = await page.locator('.oa-react-file-tabs button[data-tab-mode="preview"]').count() === 1
+    await page.locator('.oa-react-file-tabs button[data-tab-mode="preview"]').dblclick()
+    const previewPinned = await page.locator('.oa-react-file-tabs button[data-tab-mode="preview"]').count() === 0
+    await page.getByRole("button", { name: /ide03\.ts/ }).first().click()
+    await primary.locator('[data-monaco-phase="ready"]').waitFor({ state: "visible", timeout: 10_000 })
+
     // Current Monaco uses Chromium's native EditContext (`role=textbox`) and
     // retains a read-only IME textarea only as an implementation detail.
     const input = primary.locator('.monaco-editor [role="textbox"]').first()
@@ -152,7 +167,7 @@ const main = async (): Promise<void> => {
         if (!key.startsWith("openagents.desktop.workspace-editor.v2.")) continue
         try {
           const value = JSON.parse(localStorage.getItem(key) ?? "null")
-          if (value?.version === 3 && value?.tabs?.some((tab: { draft?: unknown }) =>
+          if (value?.version === 4 && value?.tabs?.some((tab: { draft?: unknown }) =>
             typeof tab.draft === "string" && tab.draft.includes(expected as string))) return true
         } catch {}
       }
@@ -218,7 +233,27 @@ const main = async (): Promise<void> => {
       screenshotRef,
     })
     writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 })
+    const workbenchReceipt = {
+      schemaVersion: "openagents.desktop.ide-workbench-packaged-journey.v1",
+      capturedAt: new Date().toISOString(),
+      commitSha: receipt.commitSha,
+      platform: process.platform,
+      architecture: process.arch,
+      packaged: true,
+      quickOpenReady: true,
+      previewOpened,
+      previewPinned,
+      recoveryVersion: 4,
+      splitViews,
+      rootWithheld,
+      screenshotRef,
+    }
+    if (!previewOpened || !previewPinned || !recoveryReloaded || splitViews !== 2 || !rootWithheld) {
+      throw new Error(`IDE-04 packaged workbench journey failed: ${JSON.stringify(workbenchReceipt)}`)
+    }
+    writeFileSync(workbenchReceiptPath, `${JSON.stringify(workbenchReceipt, null, 2)}\n`, { mode: 0o600 })
     process.stdout.write(`[openagents-desktop] IDE-03 packaged Monaco journey: ${receiptPath}\n`)
+    process.stdout.write(`[openagents-desktop] IDE-04 packaged workbench journey: ${workbenchReceiptPath}\n`)
   } finally {
     await browser?.close()
     if (launchedApplicationPid !== null) {

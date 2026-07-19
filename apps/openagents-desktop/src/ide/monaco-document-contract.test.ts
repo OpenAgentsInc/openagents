@@ -18,6 +18,7 @@ import {
   IdeMonacoAttachInputSchema,
   ideMonacoRuntimeResources,
 } from "./monaco-runtime-loader.ts"
+import { emptyIdeEditorSettings, resolveIdeMonacoEditorOptions } from "./workbench-contract.ts"
 
 const appRoot = path.resolve(import.meta.dirname, "../..")
 
@@ -64,6 +65,7 @@ describe("IDE-03 schema-first Monaco document boundary", () => {
       wordWrap: false,
       minimap: false,
       vimEnabled: false,
+      editorOptions: resolveIdeMonacoEditorOptions(emptyIdeEditorSettings()),
       readOnly: false,
     })).toMatchObject({ documentRef, generation, language: "typescript" })
     const invalid = await Effect.runPromiseExit(Schema.decodeUnknownEffect(IdeMonacoDocumentEventSchema)({

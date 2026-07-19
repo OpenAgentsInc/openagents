@@ -54,6 +54,13 @@ const projection = (stored: StoredBindings): DesktopCommandBindingProjection => 
       overrideBinding: overrides.find(value => value.commandId === command.id)?.chord ?? null,
       effectiveBindings: resolved.bindings.filter(value => value.commandId === command.id).map(value => value.chord),
       conflict: conflicts.has(command.id),
+      source: conflicts.has(command.id) ? "conflicted" as const
+        : overrides.some(value => value.commandId === command.id) ? "user" as const
+        : command.defaultBindings.length === 0 ? "unassigned" as const : "default" as const,
+      platform: process.platform === "darwin" ? "darwin" as const : process.platform === "win32" ? "win32" as const : "linux" as const,
+      context: command.scope,
+      vimPrecedence: command.id.startsWith("editor.") ? "vim_scoped" as const : "app_before_vim" as const,
+      conflictKinds: conflicts.has(command.id) ? ["exact" as const] : [],
     })),
     conflicts: resolved.conflicts,
   }

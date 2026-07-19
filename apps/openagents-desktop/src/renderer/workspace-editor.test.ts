@@ -28,6 +28,10 @@ import {
   withWorkspaceEditorRecoveredTab,
   withWorkspaceEditorSaveResult,
   withWorkspaceEditorSaveAsResult,
+  withWorkspaceEditorSetting,
+  withWorkspaceEditorTabMode,
+  withWorkspaceEditorTabMoved,
+  withWorkspaceEditorTabsClosed,
   withWorkspaceEditorUndo,
   workspaceEditorIntents,
   workspaceEditorRecoverySnapshot,
@@ -88,6 +92,33 @@ describe("workspace editor state", () => {
     expect(state.tabs.map(tab => tab.pathRef)).toEqual(["src/index.ts", "README.md"])
     expect(state.activePathRef).toBe("README.md")
     expect(state.tabs[1]?.phase).toBe("ready")
+  })
+
+  test("preview tabs replace deterministically while pinned tabs reorder and reopen", () => {
+    let state = withWorkspaceEditorTabMode(readyState(), "src/index.ts", "preview")
+    state = withWorkspaceEditorOpening(state, "README.md")
+    state = withWorkspaceEditorOpened(state, "README.md", {
+      state: "available",
+      document: document({ pathRef: "README.md", content: "hello", languageMode: "markdown" }),
+    })
+    expect(state.tabs.map(tab => tab.pathRef)).toEqual(["README.md"])
+    state = withWorkspaceEditorOpening(state, "src/next.ts")
+    state = withWorkspaceEditorOpened(state, "src/next.ts", { state: "available", document: document({ pathRef: "src/next.ts" }) })
+    expect(withWorkspaceEditorTabMoved(state, "src/next.ts", -1).tabs.map(tab => tab.pathRef)).toEqual(["src/next.ts", "README.md"])
+    const closed = withWorkspaceEditorTabsClosed(state, "active")
+    expect(closed.closedPathRefs).toEqual(["src/next.ts"])
+  })
+
+  test("workspace settings are bounded and recovery v4 carries groups and effective layers", () => {
+    let state = withWorkspaceEditorSetting(readyState(), {
+      id: "editor.tabSize", scope: "workspace", value: { _tag: "Integer", value: 4 },
+    })
+    state = { ...state, split: true }
+    const snapshot = workspaceEditorRecoverySnapshot(state)
+    expect(snapshot).toMatchObject({ version: 4, split: true })
+    expect(snapshot.workbench.settings.overrides).toContainEqual({
+      id: "editor.tabSize", scope: "workspace", value: { _tag: "Integer", value: 4 },
+    })
   })
 
   test("typed changes own dirty state, bounded undo/redo, and selection", () => {
@@ -250,7 +281,7 @@ describe("workspace editor state", () => {
     const state = withWorkspaceEditorEvent(readyState(), { type: "change", value: "recover me" })
     const snapshot = workspaceEditorRecoverySnapshot(state)
     expect(snapshot).toMatchObject({
-      version: 3,
+      version: 4,
       activePathRef: "src/index.ts",
       tabs: [{
         pathRef: "src/index.ts",
@@ -275,7 +306,7 @@ describe("workspace editor state", () => {
       tabs: [{ pathRef: "src/index.ts", expectedRevisionRef: "revision-v2", draft: "legacy draft" }],
     })
     expect(decoded).toMatchObject({
-      version: 3,
+      version: 4,
       activePathRef: "src/index.ts",
       tabs: [{ generation: 0, incrementalSequence: 0, selection: { start: 0, end: 0 } }],
     })

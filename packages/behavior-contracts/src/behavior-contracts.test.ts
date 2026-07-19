@@ -142,7 +142,7 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(38)
+    expect(decoded.contracts).toHaveLength(39)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,
@@ -176,6 +176,12 @@ describe("behavior contract registry", () => {
     expect(ideMonaco?.enforcementTier).toBe("test-sweep")
     expect(ideMonaco?.oracles).toHaveLength(5)
     expect(ideMonaco?.statement).toContain("Vim is built in")
+    const ideWorkbench = decoded.contracts.find(
+      contract => contract.contractId === "openagents_desktop.ide_daily_workbench.v1",
+    )
+    expect(ideWorkbench?.state).toBe("enforced")
+    expect(ideWorkbench?.oracles).toHaveLength(4)
+    expect(ideWorkbench?.statement).toContain("schema-first daily IDE workbench")
     expect(
       decoded.contracts.find(
         contract =>
