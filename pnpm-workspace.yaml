@@ -74,6 +74,7 @@ packageExtensions:
       vite: "catalog:"
 
 patchedDependencies:
+  electron-installer-common@0.10.4: patches/electron-installer-common@0.10.4.patch
   foldkit@0.102.1: patches/foldkit@0.102.1.patch
 
 peerDependencyRules:
@@ -81,9 +82,9 @@ peerDependencyRules:
     - vite
 
 supportedArchitectures:
-  cpu: [current, x64]
-  libc: [current, glibc]
-  os: [current, linux]
+  cpu: [ current, x64 ]
+  libc: [ current, glibc ]
+  os: [ current, linux ]
 
 minimumReleaseAgeExclude:
   - blume@1.0.4

@@ -1530,10 +1530,14 @@ export const hostStageTargetIo = (workerRef: string): StageTargetIo => {
       // Packaging inputs (icon, signing entitlements) come from the exported
       // source revision, not the developer checkout.
       await mkdir(path.join(staged, "resources"), { recursive: true });
-      for (const icon of ["openagents-icon.icns", "openagents-icon.png"]) {
+      for (const resource of [
+        "openagents-icon.icns",
+        "openagents-icon.png",
+        "linux-desktop.ejs",
+      ]) {
         await cp(
-          path.join(stagedSourceApp, "resources", icon),
-          path.join(staged, "resources", icon),
+          path.join(stagedSourceApp, "resources", resource),
+          path.join(staged, "resources", resource),
         );
       }
       await mkdir(path.join(staged, "build"), { recursive: true });

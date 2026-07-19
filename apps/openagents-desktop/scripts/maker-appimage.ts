@@ -9,6 +9,7 @@ export type MakerAppImageConfig = Readonly<{
   executableName: string;
   icon: string;
   productName: string;
+  protocol: string;
   startupWmClass: string;
 }>;
 
@@ -40,7 +41,12 @@ export class MakerAppImage extends MakerBase<MakerAppImageConfig> {
         category: "Development",
         icon: this.config.icon,
         syncDesktopName: true,
-        desktop: { entry: { StartupWMClass: this.config.startupWmClass } },
+        desktop: {
+          entry: {
+            MimeType: `x-scheme-handler/${this.config.protocol};`,
+            StartupWMClass: this.config.startupWmClass,
+          },
+        },
         target: ["AppImage"],
       },
     };

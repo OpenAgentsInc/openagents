@@ -1,0 +1,51 @@
+diff --git a/src/installer.js b/src/installer.js
+index d4eb491c48afa6c5f388e89e531bae9f164603b8..23554b13b990a830ad15fce0ccc4885cc1d342ba 100644
+--- a/src/installer.js
++++ b/src/installer.js
+@@ -48,7 +48,7 @@ class ElectronInstaller {
+    * The Linux pixmap icon path, relative to the `baseAppDir`.
+    */
+   get pixmapIconPath () {
+-    return path.join('share', 'pixmaps', `${this.appIdentifier}.png`)
++    return path.join('share', 'pixmaps', `${this.options.iconName || this.appIdentifier}.png`)
+   }
+ 
+   get sourceDir () {
+@@ -88,7 +88,8 @@ class ElectronInstaller {
+   async copyHicolorIcons () {
+     return Promise.all(_.map(this.options.icon, (iconSrc, resolution) => {
+       const iconExt = ['scalable', 'symbolic'].includes(resolution) ? 'svg' : 'png'
+-      const iconName = resolution === 'symbolic' ? `${this.appIdentifier}-symbolic` : this.appIdentifier
++      const baseIconName = this.options.iconName || this.appIdentifier
++      const iconName = resolution === 'symbolic' ? `${baseIconName}-symbolic` : baseIconName
+       const iconFile = path.join(this.stagingDir, this.baseAppDir, 'share', 'icons', 'hicolor', resolution, 'apps', `${iconName}.${iconExt}`)
+ 
+       return error.wrapError('creating hicolor icon file', async () => this.copyIcon(iconSrc, iconFile))
+@@ -144,7 +145,12 @@ class ElectronInstaller {
+    */
+   async createBinarySymlink () {
+     const binSrc = path.join('../lib', this.appIdentifier, this.options.bin)
+-    const binDest = path.join(this.stagingDir, this.baseAppDir, 'bin', this.appIdentifier)
++    const binDest = path.join(
++      this.stagingDir,
++      this.baseAppDir,
++      'bin',
++      this.options.binaryName || this.appIdentifier
++    )
+     debug(`Symlinking binary from ${binSrc} to ${binDest}`)
+ 
+     const bundledBin = path.join(this.sourceDir, this.options.bin)
+@@ -190,7 +196,12 @@ class ElectronInstaller {
+   async createDesktopFile () {
+     const templatePath = this.options.desktopTemplate || this.defaultDesktopTemplatePath
+     const baseDir = path.join(this.stagingDir, this.baseAppDir, 'share', 'applications')
+-    return desktop.createDesktopFile(templatePath, baseDir, this.appIdentifier, this.options)
++    return desktop.createDesktopFile(
++      templatePath,
++      baseDir,
++      this.options.desktopFileName || this.appIdentifier,
++      this.options
++    )
+   }
+ 
+   /**

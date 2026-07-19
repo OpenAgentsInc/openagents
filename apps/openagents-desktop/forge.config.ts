@@ -554,6 +554,7 @@ const config: ForgeConfig = {
           executableName: activeProductIdentity.executableName,
           icon: stagedPathOr("resources/openagents-icon.png", "resources", "openagents-icon.png"),
           productName: activeProductIdentity.displayName,
+          protocol: activeProductIdentity.protocol,
           startupWmClass: activeProductIdentity.startupWmClass,
         };
       },
@@ -563,6 +564,9 @@ const config: ForgeConfig = {
       () => ({
         options: {
           name: activeProductIdentity.linuxPackageName,
+          binaryName: activeProductIdentity.executableName,
+          desktopFileName: activeProductIdentity.appId,
+          iconName: activeProductIdentity.appId,
           productName: activeProductIdentity.displayName,
           genericName: "AI development environment",
           description: "OpenAgents Effect Native desktop application",
@@ -572,6 +576,13 @@ const config: ForgeConfig = {
           maintainer: "OpenAgents, Inc.",
           homepage: "https://openagents.com",
           bin: activeProductIdentity.executableName,
+          desktopTemplate: stagedPathOr(
+            "resources/linux-desktop.ejs",
+            "resources",
+            "linux-desktop.ejs",
+          ),
+          mimeType: [`x-scheme-handler/${activeProductIdentity.protocol}`],
+          startupWmClass: activeProductIdentity.startupWmClass,
           icon: stagedPathOr("resources/openagents-icon.png", "resources", "openagents-icon.png"),
           categories: ["Development"],
         },
@@ -582,6 +593,9 @@ const config: ForgeConfig = {
       () => ({
         options: {
           name: activeProductIdentity.linuxPackageName,
+          binaryName: activeProductIdentity.executableName,
+          desktopFileName: activeProductIdentity.appId,
+          iconName: activeProductIdentity.appId,
           productName: activeProductIdentity.displayName,
           genericName: "AI development environment",
           description: "OpenAgents Effect Native desktop application",
@@ -590,6 +604,13 @@ const config: ForgeConfig = {
           group: "Development/Tools",
           homepage: "https://openagents.com",
           bin: activeProductIdentity.executableName,
+          desktopTemplate: stagedPathOr(
+            "resources/linux-desktop.ejs",
+            "resources",
+            "linux-desktop.ejs",
+          ),
+          mimeType: [`x-scheme-handler/${activeProductIdentity.protocol}`],
+          startupWmClass: activeProductIdentity.startupWmClass,
           icon: stagedPathOr("resources/openagents-icon.png", "resources", "openagents-icon.png"),
           categories: ["Development"],
         },

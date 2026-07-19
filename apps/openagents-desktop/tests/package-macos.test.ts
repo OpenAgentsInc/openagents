@@ -90,6 +90,20 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(appImageMaker).toContain("extraMetadata: { desktopName: this.config.appId }");
     expect(appImageMaker).toContain("syncDesktopName: true");
     expect(appImageMaker).toContain("icon: this.config.icon");
+    expect(appImageMaker).toContain("MimeType:");
+    const linuxDesktop = readFileSync(
+      path.join(root, "resources", "linux-desktop.ejs"),
+      "utf8",
+    );
+    expect(linuxDesktop).toContain("Exec=<%= binaryName %> %U");
+    expect(linuxDesktop).toContain("StartupWMClass=<%= startupWmClass %>");
+    expect(linuxDesktop).toContain("MimeType=<%= mimeType.join(';') %>;");
+    const installerPatch = readFileSync(
+      path.join(root, "..", "..", "patches", "electron-installer-common@0.10.4.patch"),
+      "utf8",
+    );
+    expect(installerPatch).toContain("this.options.desktopFileName || this.appIdentifier");
+    expect(installerPatch).toContain("this.options.binaryName || this.appIdentifier");
     const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")) as {
       scripts: Record<string, string>;
     };
@@ -195,7 +209,9 @@ describe("CUT-26 macOS artifact contract", () => {
     expect(staging).toContain("rustTargetTriple");
     expect(staging).toContain("chmod(destination, 0o755)");
     expect(staging).toContain("manifest.json");
-    expect(staging).toContain('["openagents-icon.icns", "openagents-icon.png"]');
+    expect(staging).toContain('"openagents-icon.icns"');
+    expect(staging).toContain('"openagents-icon.png"');
+    expect(staging).toContain('"linux-desktop.ejs"');
     expect(config.packagerConfig?.extendInfo).toMatchObject({
       NSMicrophoneUsageDescription: expect.any(String),
     });
