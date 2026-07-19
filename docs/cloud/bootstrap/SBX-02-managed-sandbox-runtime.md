@@ -71,6 +71,11 @@ agent turns. SBX-09 builds a dedicated Debian guest image with
 image ID, image digest, profile digest, source revision, and provisioner
 revision in the acceptance evidence.
 
+The operational native and Box-compatible authorities use the single profile
+ref `profile.sbx.gce.e2-small.v1`. That ref is part of the operational profile
+digest. The older `profile-ref://…` spelling in the historical component table
+above is not admitted for SBX-09 placement.
+
 The operational profile uses
 `network-policy-ref://openagents/managed-sandbox/broker-only-v1`. Each
 sandbox generation owns four firewall rules:

@@ -19671,7 +19671,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md",
-      "sha256": "d30899f5f06b3bdb4019a9bf430c9a564d801f58bd7c09ed5b6a80ecff60c03a",
+      "sha256": "be698421420e7f0677301a6258e91ecec61fb9cc80c30bd6404711b90974a6c5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

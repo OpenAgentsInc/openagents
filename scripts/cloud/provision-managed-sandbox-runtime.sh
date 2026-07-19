@@ -144,7 +144,7 @@ fi
 image_digest="sha256:$(printf '%s' "${project}|${guest_image_name}|${image_id}" | \
   shasum -a 256 | awk '{print $1}')"
 profile_digest="sha256:$(printf '%s' \
-  "gce-e2-small-v1|${image_digest}|${region}|e2-small|gce_vm|broker-only-v1|${control_ip}|900|1000|8790|900000|2|40000" | \
+  "profile.sbx.gce.e2-small.v1|${image_digest}|${region}|e2-small|gce_vm|broker-only-v1|${control_ip}|900|1000|8790|900000|2|40000" | \
   shasum -a 256 | awk '{print $1}')"
 
 control_image="${region}-docker.pkg.dev/${project}/oa-cloud/oa-codex-control:${image_tag}"
