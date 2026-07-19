@@ -719,3 +719,154 @@ priced, verified, and paid for.
 One market, cleared in receipts, settled in sats — reaching all the way
 down to a three-cent gotcha and all the way up to a bonded release. That
 is the verification economy, and the editor is its exchange floor.
+
+---
+
+## Addendum III: The Bootstrap — an IDE That Verifies the Codebase That Builds It (2026-07-19)
+
+A compiler earns trust by compiling itself. An IDE that claims verifiable
+software as its thesis must meet the same bar: it must build itself, under
+its own laws, and its first verification customer must be its own
+codebase. This addendum lays out that bootstrap — where it already stands,
+the ladder it climbs, how it maps onto the open issue graph as of today,
+and the one program that is currently missing: programmatic verification
+of the OpenAgents codebase itself, across its whole surface area.
+
+### 1. The bootstrap is already underway
+
+Episode 254 was the cutover: Claude Code and Codex Desktop closed, and the
+owner's development moved inside the near-alpha app — "we're going to fix
+OpenAgents from within OpenAgents," with the first self-hosted commit
+landing on camera. Episode 258 turned an incident into sixteen
+by-construction controls. IDE-07's acceptance oracle decoded a real
+packaged artifact, and that accepted build is the daily driver. The Full
+Auto core's proof class is literally "owner-real development" — the
+feature that builds the product was proven by building the product. The
+loop exists. What follows is making each rung of it *evidence* instead of
+practice.
+
+### 2. The dogfood ladder
+
+Each stage converts one more part of the IDE's own development from
+narrated work into observed, receipted work. The rungs map to open issues
+directly:
+
+**Stage 0 — live in the product (done).** Daily editing, agent work, and
+autonomous runs happen inside OpenAgents Desktop. IDE-00 through IDE-09
+are delivered and closed — including, as of #9037, Cursor-class AI editing
+with disclosed effective models and version-bound edits. Every change to
+the IDE can now flow through its own proposal plane: hash-bound
+admissions, transactional apply, host-observed diagnostics, disclosed
+context. The IDE's own Git history becomes a receipt stream.
+
+**Stage 1 — observed tests (#9038, IDE-10).** Today the completion gate —
+`pnpm run check` — is terminal prose from the IDE's point of view; the
+evidence plane honestly reports tests as `Unavailable`. IDE-10 (terminal,
+tasks, tests, Output over the project graph) is the single most
+load-bearing packet for the bootstrap: after it, "the sweep passed" is a
+host-observed fact bound to a workspace generation, for the IDE's own
+repository first.
+
+**Stage 2 — delivery receipts (#9040, IDE-12).** Git mutation, worktrees,
+review, and delivery with exact-version receipts turn the repository's
+completion discipline — commit on main, push, primary-checkout
+reconciliation — into machine-checked state instead of agent-reported
+state. The multi-agent hygiene rules this repo runs on (claims, leases,
+clean worktrees) become enforced structure rather than contract prose.
+
+**Stage 3 — unattended verification (#8967 + #9023).** Full Auto runs the
+sweeps nobody watches; managed sandboxes (SBX-06 #9027 integrates them
+into the IDE project graph, SBX-09 #9033 proves isolation and cleanup)
+give those runs disposable, receipted execution environments. Order
+matters here: #8978 (independent AssuranceSpec admission for Full Auto)
+and #8979 (binding to a signed packaged release) come first, so the tool
+that verifies everything else is itself the first independently admitted
+subject.
+
+**Stage 4 — the release built by the product (#8913 chain).** DIST-13
+(#8926) is one owner release command: freeze, five-target build/test,
+sign, candidate smoke, promote. REL-FEED-01 (#8993) wires the live update
+feed. The end state of the ladder is an IDE release produced, tested,
+signed, and promoted through pipelines the IDE itself hosts and observes —
+the full loop from proposal to shipped binary with no unreceipted rung.
+
+### 3. The missing program: verify the OpenAgents codebase itself
+
+Here is the honest gap the open-issue review exposes. The repository has
+roughly eighty workspace projects — the web app and its Cloud Run
+monolith, Pylon, the desktop app, mobile, the Cloud crates, dozens of
+packages — plus routes, IPC boundaries, public APIs, and release
+pipelines. Against that surface it has real but *uneven* verification
+assets: one completion gate (`pnpm run check`), the behavior-contract
+registry with oracle enforcement, ProductSpec/AssuranceSpec validators
+with one fully-CONFIRMED precedent (the MVP's 18 obligations, including
+real mutation receipts under `openagents.mutation.v1`), the promise
+registry, Electron smoke and QA harness suites, and STE document checks.
+What does not exist — in the codebase or in any open issue — is the *map*:
+a typed inventory that binds every surface to its oracle, or to an honest
+`unverified` tag. IDE-10 through IDE-19, SBX, Full Auto closure, and the
+DIST chain each verify their own slice; nothing owns the whole.
+
+The essay's own laws say what that program looks like. Call it
+**ASSURE-REPO**, in the spirit of the packet programs that precede it:
+
+- **AR-0 — surface inventory with loss accounting.** A machine-readable
+  inventory of every app, package, crate, route, worker, IPC channel, and
+  public endpoint, each row binding to its current oracles: behavior
+  contracts, test files, assurance obligations, promise IDs, smoke
+  journeys. Every surface either carries an oracle ref or an explicit
+  `unverified` tag with a reason. No silent surfaces — the repo-scale
+  version of "the UI says what was not observed."
+- **AR-1 — obligations over the inventory.** Per-surface AssuranceSpec
+  coverage graded exactly as the format already demands: designed versus
+  observed, with `INCONCLUSIVE` as the default for everything unproven.
+  The two proposed surface AssuranceSpecs become the first entries, not
+  the whole story.
+- **AR-2 — false-green audit.** The named taxonomy (fixture asserts, API
+  mirrors, mocked seams, coverage theater, round-ups) applied to the
+  existing suites, with mutation testing extended beyond the MVP precedent
+  so a passing sweep is evidence about behavior, not activity. A green
+  that survives mutation is worth more than a green that merely runs.
+- **AR-3 — the standing sweep.** Continuous verification as a Full Auto
+  lane in managed sandboxes: re-run oracles against current `main`,
+  re-derive the inventory, diff coverage, and land results as receipts —
+  with promise-registry and readiness surfaces consuming those receipts
+  instead of assertions. This is where "leave it cleaner than you found
+  it" becomes a machine's standing job rather than an agent's memory.
+- **AR-4 — drift oracles.** Checks that the repo's own claims about
+  itself hold: AGENTS.md and INVARIANTS.md assertions that name files,
+  commands, and behaviors; OpenAPI against served routes; roadmap status
+  lines against issue state. The unverified operational directive from
+  Section I was exactly this class of failure — a stated fact with no
+  compiler — and the repository's own documentation is the largest
+  unverified surface it has.
+
+**Fit:** AR-0 and AR-2 can start now — they need only the repository and
+the existing validators. AR-3 wants Stage 1 (IDE-10) and the SBX lane for
+full fidelity but can run degraded (terminal-observed, honestly labeled)
+before that. None of it blocks IDE-11 through IDE-19. Per this
+repository's own rules, ASSURE-REPO needs admission through the Sol
+roadmap and owner acceptance — feature issues are not self-service, and
+this essay, per its standing header, dispatches nothing. It is the
+argument for the packet, not the packet.
+
+### 4. Why the bootstrap is the proof
+
+Self-verification has a boundary the essay has already drawn twice: no
+producer admits its own work. An IDE that verifies itself still needs
+independent falsification — which is precisely what Addendum II's economy
+supplies (strangers paid to break your claims) and what #8978 models
+internally (an independent reviewer role no producer can fill). The
+bootstrap does not repeal that law; it is the law applied reflexively,
+with the codebase as first subject.
+
+But within that boundary, dogfooding is the strongest evidence a
+verifiable-software claim can generate. Every hour of the IDE building
+itself produces verification-grade ground truth as a byproduct — real
+proposals, real staleness refusals, real observed sweeps, real false
+greens caught and adjudicated — the exact K_IP^ver the economics says
+makes oversight cheap and risk insurable. The teardowns judged competitors
+by their artifacts; this program invites the same judgment and stakes the
+thesis on surviving it. A company whose product is proof, proving its own
+codebase in public, with the map of what remains unproven published
+alongside — that is not just the dogfood plan. It is the demo.
