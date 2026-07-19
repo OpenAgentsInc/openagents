@@ -36,6 +36,16 @@
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
       "ste_reviewed_at": "2026-07-19T15:36:00Z"
+    },
+    "packages/assurance-spec/starter-kit/AGENTS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T17:56:00Z"
+    },
+    "specs/CONVENTIONS.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:00:00Z"
     }
   }
 }
