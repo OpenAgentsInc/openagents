@@ -218,7 +218,7 @@ and 4,000 ms restart. The receipt records zero remote requests.
 The independent packaged macOS arm64 journey is recorded in
 `apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-06-packaged-language.json`
 and its paired PNG. It launched the staged application through LaunchServices
-at commit `189edaf75b4a6053ea39557bc0cf6ed5813ad20a` and proved the actual Monaco
+at commit `2057aff838107df8c44965b8187cd3088d96a673` and proved the actual Monaco
 TypeScript worker, project-local TypeScript 6.0.3 service generation, current
 Problems receipt, populated Outline, offline private renderer scheme, and
 root-redacted UI. The journey also caught and fixed a real startup race: the

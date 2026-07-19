@@ -229,6 +229,7 @@ const main = async (): Promise<void> => {
     await page.getByRole("button", { name: "Split", exact: true }).click()
     await page.locator('.oa-react-monaco-pane [data-monaco-phase="ready"]').nth(1).waitFor({ state: "visible", timeout: 10_000 })
     const splitViews = await page.locator('.oa-react-monaco-pane').count()
+    await page.getByRole("button", { name: "Refresh language", exact: true }).click()
     await page.waitForFunction(() => {
       const project = document.querySelector('[data-language-tier="project-local"]')?.textContent ?? ""
       const problems = document.querySelector('.oa-react-language-panel > header > span')?.textContent ?? ""
