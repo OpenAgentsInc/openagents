@@ -60,7 +60,11 @@ export const allBehaviorContracts = (): ReadonlyArray<FlatContract> => {
   return flat.sort((a, b) => compareStrings(a.contractId, b.contractId));
 };
 
-const isTestPath = (path: string): boolean => /\.(test|spec)\.(ts|tsx|mts|cts|mjs|js)$/.test(path);
+// `*.test.*`/`*.spec.*` plus the repo's `*.node-suite.ts` / `*.suite.ts`
+// `node --test`/vite-plus suite convention.
+const isTestPath = (path: string): boolean =>
+  /\.(test|spec)\.(ts|tsx|mts|cts|mjs|js)$/.test(path) ||
+  /(?:\.node-suite|\.suite)\.(ts|mts)$/.test(path);
 
 const withinPath = (path: string, owningPath: string): boolean =>
   path === owningPath || path.startsWith(`${owningPath}/`);

@@ -7,6 +7,8 @@
     "app:@openagentsinc/electron-ai-sdk-test": "reference-only"
   },
   "governedDocuments": ["AGENTS.md", "CLAUDE.md", "INVARIANTS.md", "docs/sol/MASTER_ROADMAP.md"],
-  "outOfScope": {},
+  "outOfScope": {
+    "app:@openagentsinc/openagents-audio-edge": "Cloud Run entrypoint (src/cloudrun.ts) with no exports; loading it throws or binds a server, and all logic lives in closures passed to Runtime.serve. Not unit-testable without a source refactor to extract the identity-token/handler/websocket functions. Integration-tested via deployment. Tracked in #9067."
+  },
   "driftDispositions": {}
 }
