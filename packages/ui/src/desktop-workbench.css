@@ -3846,3 +3846,14 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
  * (the base rule uses the inherited font, which would fall back to the sans
  * heading face). */
 .oa-react-event-heading code { font-family: var(--oa-font-mono); }
+
+/* Code BLOCKS stay mono regardless of the surrounding UI font. These `<pre>`
+ * regions (command output, tool-result body, and any protocol-detail pre) use
+ * the inherited font in the base rules, which only rendered mono because the
+ * old card trees sat under a monospace root. Now that surfaces default to the
+ * sans UI face, pin the actual code content back to mono explicitly. */
+.oa-react-protocol-detail > pre,
+.oa-react-command-output,
+.oa-react-tool-result {
+  font-family: var(--oa-font-mono);
+}
