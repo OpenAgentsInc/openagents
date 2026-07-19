@@ -43,9 +43,9 @@ competitor — parallel worktree agents, diff review, terminals, remote control
 desktop, Claude desktop, Claude Code, Cursor, Factory, Amp, Grok Build,
 OpenCode, T3 Code, OpenChamber, Command Code) shows the same holes everywhere:
 permission dialogs presented as containment while sandboxes are off by
-default; "completed" claimed without delivery states; no record of what
-authority a run was granted versus what enforcement actually ran; unsigned or
-fail-open release chains; agent topology that is fully retained on disk yet
+default. "Completed" claimed without delivery states. No record of what
+authority a run was granted versus what enforcement actually ran. Unsigned or
+fail-open release chains. Agent topology that is fully retained on disk yet
 almost invisible in the UI.
 
 And no product survives the owner walking away. The founder's own AFK test is
@@ -53,9 +53,9 @@ the sharpest statement of the unserved need: with a week of delegable work and
 a baby due any day, none of the major harnesses can be trusted to keep going
 for a day or two unattended. An overnight run with ample total usage halted
 after an hour at a single model's limit instead of dropping down a tier
-automatically — "why couldn't you do that automatically?" The incumbent loop
+automatically — "why could you not do that automatically?" The incumbent loop
 modes (`/loop`, `/goal`, cron) are "brittle to the harness: you could run out
-of usage credits, you can't connect multiple accounts, you can't connect
+of usage credits, you cannot connect multiple accounts, you cannot connect
 multiple providers." A user with one Claude account, three ChatGPT accounts, a
 Grok account, and a Cursor account has no system that connects all of them
 and routes between them. The first OpenAgents Full Auto attempt failed the
@@ -417,9 +417,9 @@ cut:
 
 ## Solution
 
-One long-lived local engine supervisor owns every conversation; Desktop is
+One long-lived local engine supervisor owns every conversation. Desktop is
 its first and deepest client. The engine seam is a generated Effect Schema
-protocol; all clients — Desktop renderer, terminal, mobile, web — consume the
+protocol. All clients — Desktop renderer, terminal, mobile, web — consume the
 same projections. Authority is compiled, not narrated: profiles become OS
 enforcement, and every run leaves the manifest/receipt pair. Identity is
 observed, not asserted: every message carries the effective model and account
@@ -445,14 +445,14 @@ evidence and the owner's stated direction for each element.
 
 MemoHarness is the learning loop around that flagship, not a second runtime.
 The TypeScript/Effect control plane owns `HarnessPolicyBundle`, experience,
-pattern, candidate, adaptation, receipt, retention, and release schemas;
-semantic retrieval and offline optimization; Cloud SQL metadata; private
-Cloud Storage evidence; and Blueprint admission. Run start resolves a released
+pattern, candidate, adaptation, receipt, retention, and release schemas.
+semantic retrieval and offline optimization. Cloud SQL metadata. Private
+Cloud Storage evidence. And Blueprint admission. Run start resolves a released
 base bundle, freezes an eligible bank snapshot, optionally derives one bounded
 effective bundle, and records the result before dispatch. A separate terminal-
 run compiler may create a new experience only after the run can no longer be
 influenced by it. Rust is reserved for isolated native containment, PTY, or
-local-inference helpers behind generated Effect-owned contracts; it does not
+local-inference helpers behind generated Effect-owned contracts. It does not
 own a parallel MemoHarness daemon, database, policy engine, or release path.
 
 The IDE follows the same kernel-and-rind law. A scoped Effect
@@ -463,13 +463,13 @@ focused VS Code protocol/language packages, Git, LSP/tsserver/DAP, and harnesses
 are replaceable mechanics around that graph. A Rust child may hold an OS PTY or
 compile/enforce a containment profile, but it cannot hold the project graph,
 document journal, session store, policy, credential, approval, or receipt key.
-Effect Schema is the source for any cross-language contract; absence or drift
+Effect Schema is the source for any cross-language contract. Absence or drift
 fails closed, and optional native acceleration must be removable without
 changing canonical identities.
 
 That service graph is schema-first rather than type-first. Boundary contracts
 are `Schema.Struct`, `Schema.TaggedStruct`, or `Schema.TaggedUnion` values with
-derived TypeScript types; stable refs are branded schemas; domain failures are
+derived TypeScript types. Stable refs are branded schemas. Domain failures are
 `Schema.TaggedErrorClass` values. Capabilities are `Context.Service`s composed
 with `Layer.effect`, non-trivial operations are named `Effect.fn`s, and the
 project scope owns interruption of watchers, language/debug processes,
@@ -482,14 +482,14 @@ project, persistence, mutation, or policy authority.
 ## Strategic Positioning
 
 Supervision breadth is converging table stakes across Cursor, T3 Code,
-Factory, Amp, and OpenCode; "it's pretty easy to get to parity with the good
+Factory, Amp, and OpenCode. "It is pretty easy to get to parity with the good
 open source harnesses." The unclaimed lane is the trust half — explicit
 authority, effective-containment truth, receipts, portable sessions, signed
 provenance — plus the flagship no incumbent lab will build: reliable
 AFK-grade Full Auto across all of a user's accounts and providers. The labs
-assume a user "sitting there vibing"; their loops are brittle to their own
+assume a user "sitting there vibing". Their loops are brittle to their own
 harness, halt at their own limits, and cannot span competitors' accounts.
-OpenAgents routes across all of them — "they're not going to throw them all
+OpenAgents routes across all of them — "they are not going to throw them all
 into a super harness and route between them, but OpenAgents will" — and the
 owner judges this "important enough of an unserved need to build the whole
 short-term roadmap of the company around." The trust layer is what makes
@@ -497,37 +497,37 @@ walking away rational: run receipts, typed termination, and the clearing-
 layer doctrine that the real product "is the receipt that proves the wiring
 worked." The audience is deliberate: power users who like video games —
 clicky, fast, dense, predictable — with an opinionated simple core for
-newcomers. Don't-break-userspace binds every release; one-click export means
-no lock-in, ever. Everything ships open source; being copied is accepted.
+newcomers. Do-not-break-userspace binds every release. One-click export means
+no lock-in, ever. Everything ships open source. Being copied is accepted.
 
 ## Risks
 
 - Trust surfaces could read as friction if receipts and manifests are not
-  quiet by default; the design must keep them one gesture away, not in the
+  quiet by default. The design must keep them one gesture away, not in the
   path of every action.
 - Fail-closed containment on platforms with weak sandbox primitives may block
-  workflows competitors allow; the owner-local danger mode must remain an
+  workflows competitors allow. The owner-local danger mode must remain an
   explicit, visible escape hatch without becoming a default.
 - Full Auto is only trustworthy after the bug-bash defect classes (queue
   replay, composer leaks, restart ambiguity, active-thread eviction) are
-  closed by contract; shipping it earlier converts every defect into an
+  closed by contract. Shipping it earlier converts every defect into an
   unattended failure discovered a day later.
-- Cross-provider handoff is currently plumbing-present, experience-unverified;
+- Cross-provider handoff is currently plumbing-present, experience-unverified.
   claiming it before the end-to-end acceptance tests exist would be exactly
   the false-green failure the product exists to eliminate.
-- Multi-account failover must stay within provider terms; own-capacity-only
+- Multi-account failover must stay within provider terms. Own-capacity-only
   and no-resale-of-subscription-inference are standing constraints.
 - The six-target matrix and owned-runner release chain are operationally
-  expensive; sequencing must not let breadth starve depth.
+  expensive. Sequencing must not let breadth starve depth.
 - Rendering the full agent tree live at fleet scale has real performance
-  risk; the perf-baseline gates exist to keep it honest.
+  risk. The perf-baseline gates exist to keep it honest.
 - A shared experience bank can leak private run content or create cross-tenant
-  influence if scope and retention are implicit; eligible snapshots must be
+  influence if scope and retention are implicit. Eligible snapshots must be
   consented, tenant/workspace filtered, content-addressed, and deletion-aware.
 - Adaptation can make evaluation meaningless if a run learns from its own
-  outcome or changes policy between turns; the frozen pre-run snapshot and
+  outcome or changes policy between turns. The frozen pre-run snapshot and
   immutable effective bundle are release-blocking invariants.
-- Optimization creates a false-green shortcut if candidates can self-promote;
+- Optimization creates a false-green shortcut if candidates can self-promote.
   held-out evidence and an independent Blueprint release gate are mandatory.
 - Monaco, Pierre, language servers, terminals, and agent adapters can create
   accidental parallel state owners unless every result is fenced by the one
@@ -542,7 +542,7 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   command translation, precedence table, and Vim-on/Vim-off corpus are the
   admission boundary.
 - A fixed dark palette can masquerade as accessibility completion. Tokyo Night
-  is the explicit initial product choice; checked semantic contrast and
+  is the explicit initial product choice. Checked semantic contrast and
   non-color cues are immediate gates, while light, high-contrast, and system
   modes remain visible IDE-18/full-parity gaps until their own evidence passes.
 
@@ -595,7 +595,7 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
 - Source synthesis: `docs/teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md`
 - Full teardown catalog and evidence conventions: `docs/teardowns/README.md`
 - Full Auto implementation authority: `specs/desktop/full-auto.product-spec.md`
-  (the implementation-level Full Auto spec; this surface spec states the
+  (the implementation-level Full Auto spec, this surface spec states the
   product vision above it) and
   `docs/fable/2026-07-17-full-auto-implementation-audit.md` (the corrected
   post-incident audit from the episode-256 session)
@@ -603,7 +603,7 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   `docs/research/2026-07-18-memoharness-paper-summary.md` and
   `docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md`
 - Transcript sources: `docs/transcripts/200.md`–`209.md` (Guidance Module
-  lineage in `206.md`, identity/wallet in `207.md`, don't-break-userspace in
+  lineage in `206.md`, identity/wallet in `207.md`, do-not-break-userspace in
   `204.md`), `docs/transcripts/214.md` + `225.md` (account visibility,
   hybrid routing, GUI-over-TUI), `docs/transcripts/228.md` (walk-away
   contract), `docs/transcripts/237.md` (clearing layer, confidence tiers),
@@ -636,7 +636,7 @@ no lock-in, ever. Everything ships open source; being copied is accepted.
   a MemoHarness release policy from shadow/dogfood to production.
 - MemoHarness's bounded, run-derived optimization bank does not admit ambient
   personal memory. Any future ambient-memory capability still requires a
-  separate owner-admitted spec; voice, multiplayer contribution, and the
+  separate owner-admitted spec. Voice, multiplayer contribution, and the
   Pylon provider/earning mode ship as their own owner-admitted contracts.
 
 ## Receipts
@@ -652,7 +652,7 @@ rendered from the resident proof layer. IDE-specific planned records include
 the IDE-00 baseline, package/license and fallback decisions, Tokyo Night token/
 contrast/visual evidence, Vim precedence/restart/teardown evidence, Schema and
 service-lifecycle architecture audits, integrated packaged journey results,
-and exact release-rung/capability-ledger closure. This section plans kinds; the
+and exact release-rung/capability-ledger closure. This section plans kinds. The
 evidence ledger lives in the assurance and receipt systems, not in this spec.
 
 ## Promise Links
@@ -660,5 +660,5 @@ evidence ledger lives in the assurance and receipt systems, not in this spec.
 None yet. Public claims derived from this spec (trust layer, signed updates,
 recovery guarantees, Full Auto AFK reliability, cross-provider handoff,
 zero-false-green) must land in the promise registry with verification gates
-before they appear in copy; UX Behavior Contracts carry the micro-scale
+before they appear in copy. UX Behavior Contracts carry the micro-scale
 equivalents in the same discipline.

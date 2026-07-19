@@ -3,8 +3,8 @@
 OpenAgents implementation of the [ProductSpec](https://github.com/gokulrajaram/ProductSpec)
 open standard (format v0.1) for `.product-spec.md` intent artifacts — an Effect
 Schema document model, parser, validator, and CLI. Adoption rationale and
-design: `docs/fable/2026-07-08-productspec-adoption-analysis.md`; repo
-conventions: `specs/CONVENTIONS.md`; tracking: #8593.
+design: `docs/fable/2026-07-08-productspec-adoption-analysis.md`. Repo
+conventions: `specs/CONVENTIONS.md`. Tracking: #8593.
 
 This is our own implementation. The upstream `@productspec/parser` is a
 conformance reference only — never a runtime dependency. The vendored fixtures
@@ -13,7 +13,7 @@ compatibility target: parser `0.19.0` at commit `9ef2654` (PSEL-0/PSEL-1,
 #8757). The `UPSTREAM_COMPATIBILITY` export states exactly which upstream
 semantics the package supports. The package also implements the upstream
 Decision Trace v0.1 JSON companion with an Effect Schema decoder and stable
-diagnostics; the dependency graph resolver and MCP evidence checklist remain
+diagnostics. The dependency graph resolver and MCP evidence checklist remain
 out of scope. The
 adopted boundary and migration plan are in
 `docs/assurance/PRODUCTSPEC_EVIDENCE_LOOP.md`.
@@ -50,7 +50,7 @@ Per `docs/assurance/ASSURANCE_SPEC.md` §4:
   versioned canonical intent projection (`productSpecIntentProjection`,
   `INTENT_PROJECTION_VERSION`). The projection excludes only Related Artifact
   attachments that are not `product_spec` dependencies plus the
-  `created_at`/`updated_at` provenance timestamps; everything else, including
+  `created_at`/`updated_at` provenance timestamps. Everything else, including
   `tool_metadata`, is intent-bound by default.
 - `planProductSpecEvidenceAttachmentEdit` /
   `applyProductSpecEvidenceAttachmentEdit` — the typed, owner-confirmed
@@ -95,21 +95,21 @@ leaves the repo in a shared artifact.
 
 Decision Trace validation follows the pinned upstream v0.1 schema exactly:
 portable subjects, events, decisions, drift/source/result records, and links.
-`validateDecisionTrace` returns stable error codes without throwing;
+`validateDecisionTrace` returns stable error codes without throwing.
 `parseDecisionTrace` returns the typed decoded trace or throws
 `DecisionTraceValidationError` with the same diagnostics.
 
 ## Boundaries
 
-Product Specs commit intent and, in current upstream ProductSpec, may index
+ProductSpecs commit intent and, in current upstream ProductSpec, may index
 external implementation/eval/outcome evidence with Related Artifacts. Those
 links never enforce or verify anything. Behavior contracts and Eval Suites
-remain the oracles; evidence systems retain the observations; the promise
+remain the oracles. Evidence systems retain the observations. The promise
 registry remains the sole authority for public claims.
 
 The separate Desktop ProductSpec workroom runtime owns accepted plans, work
 packets, leases, evidence envelopes, distinct-verifier receipts, and owner
-packet dispositions. This package supplies ProductSpec identity and criteria;
+packet dispositions. This package supplies ProductSpec identity and criteria.
 it does not own that runtime state.
 
 ## Proposed assurance companion
@@ -120,7 +120,7 @@ ProductSpec remains the product-intent and portable evidence-attachment layer.
 The ProductSpec implementation does not interpret test techniques,
 environments, falsifiers, proof rungs, evidence policy, freshness, adequacy, or
 release policy. Assurance artifacts and receipts may be linked through
-ProductSpec and the Desktop workroom by reference; their state does not move
+ProductSpec and the Desktop workroom by reference. Their state does not move
 into this package.
 
 The proposal, including its independent revision law and generated immutable

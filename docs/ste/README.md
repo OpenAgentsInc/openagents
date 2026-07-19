@@ -126,11 +126,15 @@ Record a semantic comparison before the new revision becomes authoritative.
 
 ### Semantic baseline
 
-The P1 control conversion has an additional semantic baseline.
+The P1 control conversion and the P2 specification conversion have an additional semantic baseline.
 The baseline protects normative keywords, code literals, URLs, issue references, and numeric values.
 Run `pnpm run check:ste-control-semantics` after each control document change.
 This comparison does not prove semantic equality.
 The technical reviewer must also examine the change.
+
+When ProductSpec bytes change, update each exact AssuranceSpec subject digest.
+Increment the assurance revision when this binding changes.
+Record the source and converted digests in the conversion receipt.
 
 ### Semantic baseline update
 

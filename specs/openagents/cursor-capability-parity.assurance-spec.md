@@ -1,8 +1,8 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.cursor.capability.parity"
-assurance_revision: 1
-title: "Cursor-Class Capability Parity Assurance Spec"
+assurance_revision: 2
+title: "Cursor-Class Capability Parity AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
 author: "OpenAgents"
@@ -48,7 +48,7 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "CP-AC-26",
       "CP-AC-27"
     ],
-    "document_digest": "sha256:c7fd0f4447b996203e4890d96b11ad0dee9048736eb6afd3bd78d1be7a4a3cda",
+    "document_digest": "sha256:a50322b69d6b85e4d65c38f349e65d6ab656a4b147fdf0e17061d1f0dbc27498",
     "path": "specs/openagents/cursor-capability-parity.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",

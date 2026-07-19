@@ -25,6 +25,24 @@ const paths = [
   "AUTHORITY.md",
   "docs/sol/README.md",
   "docs/sol/MASTER_ROADMAP.md",
+  "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md",
+  "specs/desktop/desktop-trust-complete-workbench.product-spec.md",
+  "specs/desktop/full-auto.assurance-spec.md",
+  "specs/desktop/full-auto.product-spec.md",
+  "specs/mobile/mobile-any-host-fleet-controller.product-spec.md",
+  "specs/openagents/authority-delegation.product-spec.md",
+  "specs/openagents/cursor-capability-parity.assurance-spec.md",
+  "specs/openagents/cursor-capability-parity.product-spec.md",
+  "specs/openagents/fast-follow.product-spec.md",
+  "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
+  "specs/openagents/managed-agent-sandboxes.product-spec.md",
+  "specs/openagents/portable-coding-sessions.product-spec.md",
+  "specs/openagents/sarah-owner-orchestrator.assurance-spec.md",
+  "specs/openagents/sarah-owner-orchestrator.product-spec.md",
+  "specs/web/openagents-com-sales-landing.product-spec.md",
+  "specs/web/openagents-com-trust-surface.product-spec.md",
+  "packages/assurance-spec/starter-kit/assurance/example.assurance-spec.md",
+  "packages/assurance-spec/starter-kit/docs/product-specs/example.product-spec.md",
   "docs/sol/OPERATING_MODEL.md",
   "docs/sol/CLAIM_PROTOCOL.md",
   "specs/CONVENTIONS.md",
@@ -58,16 +76,15 @@ const collect = (text: string): ProtectedRecord => ({
 });
 
 if (process.argv.includes("--capture") || capturePaths.length > 0) {
-  const unknownPaths = capturePaths.filter(
-    (path) => !(paths as readonly string[]).includes(path),
-  );
+  const unknownPaths = capturePaths.filter((path) => !(paths as readonly string[]).includes(path));
   if (unknownPaths.length > 0) {
     throw new Error(`Unknown STE semantic capture path: ${unknownPaths.join(", ")}`);
   }
   const selectedPaths = capturePaths.length > 0 ? capturePaths : paths;
-  const priorFiles = capturePaths.length > 0
-    ? (JSON.parse(readFileSync(baselinePath, "utf8")) as SemanticBaseline).files
-    : {};
+  const priorFiles =
+    capturePaths.length > 0
+      ? (JSON.parse(readFileSync(baselinePath, "utf8")) as SemanticBaseline).files
+      : {};
   const files = {
     ...priorFiles,
     ...Object.fromEntries(

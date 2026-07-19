@@ -1,8 +1,8 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.managed.agent.sandboxes"
-assurance_revision: 1
-title: "OpenAgents Managed Agent Sandboxes Assurance Spec"
+assurance_revision: 2
+title: "OpenAgents Managed Agent Sandboxes AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
 author: "OpenAgents"
@@ -41,7 +41,7 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "MSB-AC-17",
       "MSB-AC-18"
     ],
-    "document_digest": "sha256:a3c17e61c25807e16913f59a15d48f499a0b6502a68bde957cc46e38168300c1",
+    "document_digest": "sha256:0bef38178b696e0a3866f5206862af36fa80d31537d61bc15b90f2be3379665f",
     "path": "specs/openagents/managed-agent-sandboxes.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
@@ -90,7 +90,7 @@ No risk objects are inferred from ProductSpec prose. Reviewers must design the a
 ## Assurance Scope
 
 All 18 executable ProductSpec criteria are in scope. SBX-00 supplies contract,
-authority, provenance, and bounded-model candidates; later SBX issues must land
+authority, provenance, and bounded-model candidates. Later SBX issues must land
 the runtime, consumer, and live candidates named here. Snapshot, fork, and
 desktop ingress are assured as unavailable until their future admission gates
 are satisfied, rather than silently excluded.
@@ -728,7 +728,7 @@ Links and issue comments remain pointers, not verdicts. Each ready obligation
 requires the exact environment binding, oracle observation, deliberately
 failing negative control, and independent review named below. Missing, stale,
 partial, producer-only, fixture-for-live, or unreviewed evidence is
-`INCONCLUSIVE`; it never rounds green.
+`INCONCLUSIVE`. It never rounds green.
 
 ```assurancespec-evidence-policy
 {

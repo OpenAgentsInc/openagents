@@ -1,8 +1,8 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.desktop.trust.complete.workbench"
-assurance_revision: 1
-title: "Desktop Trust-Complete Workbench Assurance Spec"
+assurance_revision: 2
+title: "Desktop Trust-Complete Workbench AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
 author: "OpenAgents"
@@ -73,7 +73,7 @@ The proposal is bound to the exact original ProductSpec bytes, revision, path, a
       "AC-51",
       "AC-52"
     ],
-    "document_digest": "sha256:8f2702391ae2de9c518621fc46369613dba92d63e2f156de18176ee181e9a16d",
+    "document_digest": "sha256:019c4b3b55c69f94764bb44c65c6f5bbe135b2dfb71e40145907fbea5ddbe9d0",
     "path": "specs/desktop/desktop-trust-complete-workbench.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
@@ -96,7 +96,7 @@ No risk objects are inferred from ProductSpec prose. Reviewers must design the a
 
 ## Assurance Scope
 
-Every structured ProductSpec criterion is in assurance scope. No criterion is silently excluded or marked not applicable. All 52 generated obligations remain incomplete and `needs_design`; no repository candidate, environment, or proof technique is selected.
+Every structured ProductSpec criterion is in assurance scope. No criterion is silently excluded or marked not applicable. All 52 generated obligations remain incomplete and `needs_design`. No repository candidate, environment, or proof technique is selected.
 
 ## Environments
 

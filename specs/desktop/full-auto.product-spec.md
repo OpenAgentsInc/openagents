@@ -65,7 +65,7 @@ cache defect is fixed on `main` (`8cb900bbf9`), but the incident exposed
 product-model defects the fix does not touch:
 
 - **No run-level diagnosis.** The composer toggle has no concept of "this
-  run" independent of "this thread"; there was nothing to ask why the loop
+  run" independent of "this thread". There was nothing to ask why the loop
   stopped, when it would retry, or what to do about it.
 - **No durable objective.** The registry persists workspace, profile,
   continuation count, and failure state, but never a structured objective or
@@ -99,21 +99,21 @@ lands.
 ## Hypothesis
 
 If Full Auto becomes a named, durable **autonomous run** -- with a stable
-`runRef` independent of `threadRef`; an explicit objective and done condition
-as first-class durable fields; multiple independently active runs whose
+`runRef` independent of `threadRef`. An explicit objective and done condition
+as first-class durable fields. Multiple independently active runs whose
 lifecycle and controls are always scoped by `runRef` and whose exactly-once
-dispatch is scoped by distinct `threadRef`; a full lifecycle state machine (Draft, Running, Pausing,
+dispatch is scoped by distinct `threadRef`. A full lifecycle state machine (Draft, Running, Pausing,
 Paused, Retrying, Stalled, Completed, Failed, Stopped, Cap-reached) where
-every transition carries actor, timestamp, and typed reason; run-level
-liveness distinct from healthy long provider-turn duration; a bounded private
-run report; a dedicated left-rail launcher and read-only run view that
+every transition carries actor, timestamp, and typed reason. Run-level
+liveness distinct from healthy long provider-turn duration. A bounded private
+run report. A dedicated left-rail launcher and read-only run view that
 replaces the composer toggle and removes the ordinary composer while a run is
-active; and a host-owned, objective-priority provider-handoff envelope with a
+active. And a host-owned, objective-priority provider-handoff envelope with a
 visible transition receipt -- then an owner can start a run, walk away, and
 later answer every question in epic #8967's Outcome section (is it running,
-paused, retrying, stalled, completed, failed, stopped, or capped; what
-governs it; what did it accomplish; why did it stop and what can I do; what
-context moved on a provider switch and what didn't) directly from Desktop
+paused, retrying, stalled, completed, failed, stopped, or capped. What
+governs it. What did it accomplish. Why did it stop and what can I do. What
+context moved on a provider switch and what did not) directly from Desktop
 state, without forensic access to raw provider logs. The six named sidebar
 dogfood tests in the audit (Codex-to-Claude and reverse context handoff,
 objective retention under context pressure, a three-turn unattended run, a
@@ -121,16 +121,16 @@ restart-survival run, and a thread-pressure replay of the actual incident)
 should then pass in the owner's real profile.
 
 If the same run contract also binds a released, content-addressed harness
-bundle; optionally derives one immutable effective bundle before first
-dispatch from a frozen, scope-filtered private experience-bank snapshot;
-records exactly how that derivation happened; compiles a terminal run into a
-new experience only after it can no longer affect that run; and routes every
+bundle. Optionally derives one immutable effective bundle before first
+dispatch from a frozen, scope-filtered private experience-bank snapshot.
+records exactly how that derivation happened. Compiles a terminal run into a
+new experience only after it can no longer affect that run. And routes every
 offline optimizer candidate through held-out evaluation plus an independent
 Blueprint release gate, then Full Auto can improve across runs without
 changing authority, leaking private evidence, contaminating evaluation, or
 self-promoting unreviewed policy.
 
-This revision commits the target contract; FA-AC-38 onward are implemented
+This revision commits the target contract. FA-AC-38 onward are implemented
 across the 11 remaining child issues of epic #8967, each named in its own
 Proof line.
 
@@ -193,7 +193,7 @@ cut:
 FA-AC-01 through FA-AC-37 below are the exact criteria admitted in rev 9,
 kept verbatim for auditability. The Criterion Disposition Map immediately
 following resolves every one of them for rev 10. FA-AC-38 onward are new
-criteria this revision introduces for the target autonomous-run contract;
+criteria this revision introduces for the target autonomous-run contract.
 each names the exact epic #8967 child issue that owns its implementation, and
 its Proof line is explicitly **planned** evidence -- not yet executed -- until
 that issue lands.
@@ -205,26 +205,26 @@ that issue lands.
   off-by-default composer toggle and reports DesktopFullAutoToggled".
 - **FA-AC-02:** A Codex-lane turn started with Full Auto on sends
   `approvalPolicy: "never"` on both `thread/start` and `turn/start`, and its
-  prompt is prefixed with the Full Auto instruction; an ordinary turn keeps
+  prompt is prefixed with the Full Auto instruction. An ordinary turn keeps
   `approvalPolicy: "on-request"` and an unprefixed prompt.
   Proof: `codex-local-runtime.test.ts` "Full Auto (#8852) forces
   approvalPolicy never and prefixes the turn prompt..." and "an ordinary
   (non-Full-Auto) app-server turn keeps approvalPolicy on-request...".
 - **FA-AC-03:** A completed Full-Auto turn sends `fullAuto: true`
-  exactly once from the renderer; the renderer never loops. Continuation is
+  exactly once from the renderer. The renderer never loops. Continuation is
   decided in main by `reconcileFullAutoThreads`, called both right after that
   turn completes and once at app startup.
   Proof: `shell.test.ts` "a flagged turn sends fullAuto:true exactly once --
-  main, not the renderer, decides whether to continue"; `main.ts`'s
+  main, not the renderer, decides whether to continue". `main.ts`'s
   `dispatchCodexLocalTurn` calling `runFullAutoReconciliation()` after a
-  successful Full-Auto turn (code-reviewed; main.ts has no direct unit-test
+  successful Full-Auto turn (code-reviewed, main.ts has no direct unit-test
   harness, see Receipts for the isolated-module proof used instead).
 - **FA-AC-04:** Toggling Full Auto off persists to main immediately
   (`CodexLocalFullAutoSetChannel`), independent of whether a turn is in
   flight, so a toggle-off durably stops the loop even if the app quits before
   the next turn would have started.
   Proof: `shell.test.ts` "DesktopFullAutoToggled flips the flag and persists
-  it to main immediately"; `full-auto-restart.e2e.test.ts` "toggling off
+  it to main immediately". `full-auto-restart.e2e.test.ts` "toggling off
   before restart durably stops it -- Runtime B never dispatches".
 - **FA-AC-05:** When Full Auto is off, an ordinary turn sends `fullAuto`
   undefined (not `false`) and never resubmits automatically.
@@ -234,7 +234,7 @@ that issue lands.
   Auto off durably (registry, not renderer state) and appends an explanatory
   system note, rather than continuing unbounded -- and this holds even if a
   restart happens partway through the count. The consecutive-continuation
-  counter resets only when Full Auto is toggled off for that thread; a manual
+  counter resets only when Full Auto is toggled off for that thread. A manual
   send while the toggle stays on does NOT reset it, and re-enabling an
   already-enabled thread preserves the count. Since rev 4 the counter
   increments only on a SUCCESSFUL dispatch: a failed dispatch consumes
@@ -242,9 +242,9 @@ that issue lands.
   Proof: `full-auto-restart.e2e.test.ts` "a genuinely stuck loop self-disables
   at the continuation cap across restarts, rather than continuing unbounded"
   and "failed dispatches never consume cap slots: fail once then succeed ->
-  continuationCount is exactly 1"; `full-auto-registry.test.ts`
+  continuationCount is exactly 1". `full-auto-registry.test.ts`
   "continuationCount resets ONLY on toggle-off: a manual send leaves it
-  unchanged; off-then-on zeroes it".
+  unchanged. Off-then-on zeroes it".
 - **FA-AC-07:** A thread left enabled with no turn in flight when
   the app quits resumes its next continuation on its own at the next launch,
   with no user action beyond the original toggle.
@@ -255,7 +255,7 @@ that issue lands.
   interrupted-turn recovery resolves it -- Full Auto never races or
   duplicates that recovery.
   Proof: `full-auto-restart.e2e.test.ts` "a thread with a turn still in
-  flight at restart is left alone until that turn resolves"; the real
+  flight at restart is left alone until that turn resolves". The real
   wiring sequences `runFullAutoReconciliation()` after `localTurnRecovery`
   resolves, and computes `nonterminalThreadRefs` from the same
   `localTurnJournal.nonterminal()` that recovery itself owns.
@@ -264,9 +264,9 @@ that issue lands.
   gets a real thread id, rather than silently dropping the toggle's intent.
   Proof: `shell.test.ts` "a brand new thread persists its enabled state to
   main once it has a real id".
-- **FA-AC-10:** No Full Auto packet performs a direct commit, merge, or push;
+- **FA-AC-10:** No Full Auto packet performs a direct commit, merge, or push.
   Codex proposes changes exactly as every other Desktop Codex turn already
-  does. (Unchanged existing boundary; no new authority was added.)
+  does. (Unchanged existing boundary, no new authority was added.)
 - **FA-AC-11:** A corrupt or schema-invalid registry file never
   blocks Desktop main initialization. Opening it fails closed for the feature
   and open for the app: the bad file is quarantined beside the registry
@@ -278,7 +278,7 @@ that issue lands.
   and the registry opens empty instead of throwing" and "a schema-invalid (but
   valid JSON) registry file is also quarantined rather than thrown".
 - **FA-AC-12:** Registry record eviction never drops an
-  `enabled: true` record. All enabled records are kept; only the disabled tail
+  `enabled: true` record. All enabled records are kept. Only the disabled tail
   is bounded, filling remaining capacity (up to 128 total) with the
   most-recently-updated disabled records. An owner-enabled thread therefore
   always survives to the next restart, no matter how many other records were
@@ -295,9 +295,9 @@ that issue lands.
   longer matches.
   Proof: `full-auto-restart.e2e.test.ts` "enable on workspace A, resolve
   workspace B at reconcile -> no dispatch, record disabled with
-  workspace_mismatch, block reported"; `main.ts` binds via
+  workspace_mismatch, block reported". `main.ts` binds via
   `resolveDesktopLocalWorkspaceRoot()` in the `CodexLocalFullAutoSetChannel`
-  handler and passes the same resolver into reconciliation (code-reviewed;
+  handler and passes the same resolver into reconciliation (code-reviewed,
   main.ts has no direct unit-test harness).
 - **FA-AC-14:** An enabled record with NO recorded workspace (a pre-upgrade v1
   row) fails CLOSED at dispatch: it is never silently adopted onto the current
@@ -316,7 +316,7 @@ that issue lands.
   passes dispatch an enabled thread at most once. The lease releases on
   dispatch completion (success or failure). Only the STARTUP pass clears a
   stale lease -- one whose turn ref has no nonterminal local-turn journal row
-  (a dispatch that crashed before its turn was accepted); a mid-session pass
+  (a dispatch that crashed before its turn was accepted). A mid-session pass
   treats a held lease as in-flight and skips. As defense in depth, main's
   dispatch adapter refuses to start a continuation when the local-turn
   journal already holds a nonterminal turn on that thread.
@@ -326,9 +326,9 @@ that issue lands.
   serial task queue serializes overlapping reconciliation triggers...", "a
   stale lease (crashed mid-dispatch: no journal row for its turn ref) is
   cleared ONLY by the startup pass...", and "a lease whose turn IS still
-  nonterminal in the journal is NOT cleared at startup...";
+  nonterminal in the journal is NOT cleared at startup...".
   `full-auto-registry.test.ts` "claimPending holds the lease exactly once
-  until cleared; a missing record can never be claimed".
+  until cleared. A missing record can never be claimed".
 - **FA-AC-16:** A failed continuation dispatch -- thrown OR `{ ok: false }` --
   is a typed, owner-visible outcome, never a silently dormant enabled record.
   Failure persists `consecutiveFailures`, `lastFailureAt`, and a bounded
@@ -344,13 +344,13 @@ that issue lands.
   typed failure outcome as ok:false", "the bounded backoff window skips
   dispatch after a failure, then allows it once the window has passed", and
   "the 5th consecutive failure disables the record with a blockedReason and
-  reports disabled: true"; `full-auto-registry.test.ts` "recordFailure
-  increments and stamps typed failure state (releasing the lease);
+  reports disabled: true". `full-auto-registry.test.ts` "recordFailure
+  increments and stamps typed failure state (releasing the lease).
   recordSuccess clears all of it".
 - **FA-AC-17:** Automatic continuations preserve the initiating turn's
   execution profile. When a renderer-initiated turn carries
   `fullAuto: true`, main binds its effective account target, model, and
-  reasoning effort onto the durable record; every continuation (including a
+  reasoning effort onto the durable record. Every continuation (including a
   post-restart resume) replays that bound profile, revalidated against the
   live contract enums (a field that no longer decodes falls back to lane
   defaults instead of failing the loop). Fields that deliberately RESET on a
@@ -371,7 +371,7 @@ that issue lands.
 - **FA-AC-19:** A background (main-initiated) continuation is rendered as a
   coarse, typed, per-thread in-flight state, not silence until completion.
   Main owns an in-memory live-state map (idle | turn_running |
-  turn_completed | turn_failed | cap_reached | blocked; blocked carries the
+  turn_completed | turn_failed | cap_reached | blocked. Blocked carries the
   typed blockedReason as bounded detail) and broadcasts every transition to
   all windows over `CodexLocalFullAutoStateChannel`: turn_running with the
   lease turn ref at dispatch start, turn_completed on success, turn_failed
@@ -383,28 +383,28 @@ that issue lands.
   Token-by-token streaming remains deliberately out of scope.
   Proof: `shell.test.ts` "FA-H4 (#8877): withFullAutoLiveState projects a
   live-state event per thread and activeFullAutoTurnRunning reads only the
-  ACTIVE thread"; `react-composer.test.tsx` "FA-H4 (#8877): a running
+  ACTIVE thread". `react-composer.test.tsx` "FA-H4 (#8877): a running
   background Full Auto turn renders the status badge and the Stop
-  affordance; idle renders neither"; `main.ts` wires the transitions around
+  affordance. Idle renders neither". `main.ts` wires the transitions around
   the existing `runFullAutoReconciliation` dispatch adapter and callbacks
-  (code-reviewed; main.ts has no direct unit-test harness).
+  (code-reviewed, main.ts has no direct unit-test harness).
 - **FA-AC-20:** A working stop targets the ACTUAL background turn. While the
   active thread's live state is turn_running (renderer non-pending), the
   composer's Stop control dispatches the same interrupt intent, whose
   handler calls the thread-scoped `CodexLocalFullAutoInterruptChannel` with
-  only `{ threadRef }`; main resolves the live running turn ref itself and
+  only `{ threadRef }`. Main resolves the live running turn ref itself and
   signals the exact same `codexLocal.interrupt` runtime path the existing
   turn-interrupt channel uses, answering `{ ok: boolean }`. While the
   renderer's OWN turn is pending, Stop keeps signalling the active streaming
   turn unchanged. The interrupted background turn terminates through the
-  existing FA-H5 typed-failure path; the toggle remains the durable
+  existing FA-H5 typed-failure path. The toggle remains the durable
   loop-level stop.
   Proof: `shell.test.ts` "FA-H4 (#8877): DesktopTurnInterrupted with a
   running BACKGROUND turn (not pending) calls fullAutoHost.interrupt with
   the active threadRef" and "FA-H4 (#8877): while renderer-pending, Stop
   keeps signalling the ACTIVE streaming turn (chat.interruptActive), not the
-  background channel"; `react-composer.test.tsx` (Stop affordance case
-  above); `main.ts` interrupt handler (code-reviewed).
+  background channel". `react-composer.test.tsx` (Stop affordance case
+  above). `main.ts` interrupt handler (code-reviewed).
 - **FA-AC-21:** A manual send while a background Full Auto turn owns the
   thread is excluded, never run silently concurrently. When the active
   thread's live state is turn_running, `runNoteSubmission` refuses to start
@@ -417,8 +417,8 @@ that issue lands.
   says why, and the draft is kept".
 - **FA-AC-22:** The programmatic control surface is opt-in and off by
   default, loopback-only, and bearer-gated. Desktop main constructs the
-  control server ONLY when `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1`; the
-  listener binds 127.0.0.1 exclusively (ephemeral or env-pinned port); every
+  control server ONLY when `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1`. The
+  listener binds 127.0.0.1 exclusively (ephemeral or env-pinned port). Every
   request -- the OpenAPI document included -- requires the per-process scoped
   bearer credential (scopes drawn from `@openagentsinc/environment-auth`'s
   narrowing-only exchange, verified with a constant-time comparison) or is
@@ -428,8 +428,8 @@ that issue lands.
   requires OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1 exactly", "credential mint
   uses the environment-auth narrowing-only exchange...", "auth: no bearer and
   a wrong bearer are 401 on every route...", and "the connection file is
-  written mode 0600..."; `main.ts` wraps the entire server wiring in
-  `isFullAutoControlEnabled(process.env)` (code-reviewed; main.ts has no
+  written mode 0600...". `main.ts` wraps the entire server wiring in
+  `isFullAutoControlEnabled(process.env)` (code-reviewed, main.ts has no
   direct unit-test harness -- the guard function itself is the tested unit).
 - **FA-AC-23:** Programmatic enable NAMES the workspace the caller expects
   and enforces it: the request body requires `workspaceRef`, the server
@@ -437,7 +437,7 @@ that issue lands.
   `resolveDesktopLocalWorkspaceRoot` codex-local turns execute against, and
   any difference is a 409 `workspace_mismatch` refusal with the registry left
   untouched -- never a silent redirect. Programmatic enable can never grant a
-  new, previously-ungranted workspace; on success it binds exactly the
+  new, previously-ungranted workspace. On success it binds exactly the
   resolved workspace, the same path as the IPC set handler.
   Proof: `full-auto-control-server.test.ts` "enable with a mismatched
   workspaceRef is a 409 typed refusal and the registry is untouched" and
@@ -456,13 +456,13 @@ that issue lands.
   the exact injected reconciliation trigger (main passes
   `runFullAutoReconciliation`, the same FA-H3 promise-chain mutex + durable
   lease every other trigger point uses) exactly once and returns
-  `{ scheduled: true }` immediately; dispatch remains subject to lease,
+  `{ scheduled: true }` immediately. Dispatch remains subject to lease,
   workspace binding, backoff, and cap policy. An unknown threadRef is 404 and
   never touches the trigger.
   Proof: `full-auto-control-server.test.ts` "continue-now invokes the
   injected reconcile trigger exactly once and returns { scheduled: true }"
   (spy on the injected trigger) and "continue-now on an unknown threadRef is
-  a 404 and never touches the trigger"; `main.ts` passes
+  a 404 and never touches the trigger". `main.ts` passes
   `() => runFullAutoReconciliation()` as that capability (code-reviewed).
 - **FA-AC-26:** The served surface and the published OpenAPI 3.1 document
   cannot drift: `GET /v1/openapi.json` serves the hand-authored document, and
@@ -492,7 +492,7 @@ that issue lands.
   repo's public MCP protocol revision (2025-06-18).
   Proof: `scripts/full-auto-cli.ts` and `scripts/full-auto-mcp.ts`
   (pass-through by construction over the shared
-  `scripts/full-auto-control-client.ts`); live end-to-end receipt in the
+  `scripts/full-auto-control-client.ts`). Live end-to-end receipt in the
   rev 6 entry under Receipts (`pnpm run smoke:full-auto-control` exercises
   the real CLI as a second OS process against the real running Electron
   main).
@@ -518,17 +518,17 @@ that issue lands.
   `startFullAuto`).
 - **FA-AC-29:** The durable execution profile carries an optional ProviderLane
   ref. A rev-7 registry row with no lane still decodes and continues on
-  `codex-local`; a selected `fable-local` row survives a Runtime A → Runtime B
+  `codex-local`. A selected `fable-local` row survives a Runtime A → Runtime B
   reopen and reaches the shared dispatch seam with the same lane/account/model.
   Proof: `full-auto-restart.e2e.test.ts` "a Claude lane selection survives
-  Runtime A -> Runtime B..." plus the retained legacy-file registry tests;
+  Runtime A -> Runtime B..." plus the retained legacy-file registry tests.
   `pnpm run smoke:full-auto-restart` launches real Electron OS processes for
   `seed-claude` → `resume-claude` and receipts `dispatchedLane:fable-local`.
 - **FA-AC-30:** Reconciliation dispatches through the L1 ProviderLane SPI and
   fails closed for any lane that is unknown, L2-quarantined, does not advertise
   Full Auto, or lacks safe background-question settlement. Workspace binding,
   exactly-once lease, backoff, cap, and attribution behavior are unchanged.
-  Proof: `main.ts` lane selection + `projectProviderLaneCapabilities` gate;
+  Proof: `main.ts` lane selection + `projectProviderLaneCapabilities` gate.
   focused Full Auto regression suites.
 - **FA-AC-31:** Codex and Claude Full Auto turns use the single lane-keyed
   instruction policy. A background Claude `AskUserQuestion` never parks: it is
@@ -539,7 +539,7 @@ that issue lands.
   AskUserQuestion immediately..." and the retained interactive question tests.
 - **FA-AC-32:** `start` and `enable` accept an optional lane ref (default
   `codex-local`) through the shared control contract, served OpenAPI document,
-  MCP tools, and CLI `--lane`; status/list expose the public-safe selected lane.
+  MCP tools, and CLI `--lane`. Status/list expose the public-safe selected lane.
   An ineligible lane returns typed 409 `lane_not_eligible` without mutating the
   registry.
   Proof: `full-auto-control-server.test.ts` "enable accepts an admitted lane
@@ -547,13 +547,13 @@ that issue lands.
 - **FA-AC-33:** A real bounded Claude Code Full Auto run must be retained as a
   release receipt. ACP peer proof remains conditional on #8893/#8894 admission
   and must not be inferred from fixture coverage.
-  Proof: owner/dogfood receipt linked from #8901; until captured this criterion
+  Proof: owner/dogfood receipt linked from #8901. Until captured this criterion
   remains an explicit residual, not a release claim.
 - **FA-AC-34:** Every ProviderLane dispatch receives the same main-owned spec
   projection when the granted workspace contains `specs/**`. The projection is
   bounded to 32 files, 512,000 bytes per file, 64 snapshot criteria per
   ProductSpec, 128 snapshot obligations, 12 prompt criteria per ProductSpec,
-  12 prompt obligations, and 8,000 prompt characters; truncation is explicit.
+  12 prompt obligations, and 8,000 prompt characters. Truncation is explicit.
   Proof: `spec-lane-workflow.test.ts` projection-bound case plus the shared
   `makeProviderLaneDispatcher` seam.
 - **FA-AC-35:** Full Auto's shared lane instruction explicitly names unmet
@@ -578,7 +578,7 @@ that issue lands.
   objective, explicit done condition, workspace, provider profile
   (lane/account/model/effort), and turn cap as first-class durable fields
   decoded by an Effect Schema.
-  Proof: planned, owned by FA-RUN-01 (#8969); regression target
+  Proof: planned, owned by FA-RUN-01 (#8969). Regression target
   `full-auto-run-registry.test.ts` (module TBD by #8969).
 - **FA-AC-39:** Starting another active run while other runs are active mints a
   distinct `runRef` and `threadRef` and admits it without mutating, pausing, or
@@ -593,28 +593,28 @@ that issue lands.
   `react-full-auto-surface.test.tsx` multi-run monitor/open/stop case.
 - **FA-AC-40:** Starting a new run from a terminal run's launcher always mints
   a new distinct `runRef` and never mutates the terminal record's fields or
-  state; an optional predecessor-run reference may be carried for report
+  state. An optional predecessor-run reference may be carried for report
   continuity only, never for authority or objective inheritance.
   Proof: planned, owned by FA-RUN-01 (#8969).
 - **FA-AC-41:** On first startup after the FullAutoRun model ships, every
   existing `enabled: true` legacy thread-keyed registry row migrates
   additively to exactly one `FullAutoRun` record (Running or Paused per its
-  prior live state) with no data loss; a second startup performs no duplicate
-  migration; an `enabled: false` legacy row does not migrate to an active run.
+  prior live state) with no data loss. A second startup performs no duplicate
+  migration. An `enabled: false` legacy row does not migrate to an active run.
   Proof: planned, owned by FA-RUN-01 (#8969).
 - **FA-AC-42:** A run whose bound `threadRef` or provider session is missing
   or orphaned at reconciliation transitions to a typed Stalled or Failed
-  disposition with an owner-visible reason; it never silently reattaches to
+  disposition with an owner-visible reason. It never silently reattaches to
   an unrelated thread and never reproduces the six-hour silent stall recorded
   in the 2026-07-17 audit.
   Proof: planned, owned by FA-RUN-02 (#8970) (thread-pressure replay) and
-  FA-RUN-03 (#8971) (stall classification); regression target: a deterministic
+  FA-RUN-03 (#8971) (stall classification). Regression target: a deterministic
   replay of the exact incident composition (long turn, concurrent chats,
   bounded mutable-thread eviction, gap-to-next-reconciliation) plus a real
   Full Auto pressure run.
 - **FA-AC-43:** The full run lifecycle state machine is exactly Draft,
   Running, Pausing, Paused, Retrying, Stalled, Completed, Failed, Stopped, and
-  Cap-reached; every transition between these states persists actor (owner
+  Cap-reached. Every transition between these states persists actor (owner
   UI, control-api, or a named system policy such as workspace_guard or
   continuation_cap), a UTC timestamp, and a typed reason, extending the
   existing `disabledBy` attribution pattern to the complete graph. An illegal
@@ -623,7 +623,7 @@ that issue lands.
   Proof: planned, owned by FA-RUN-01 (#8969).
 - **FA-AC-44:** Pause with an active provider turn transitions the run to
   Pausing immediately and to Paused only once that turn resolves (completes
-  normally or is interrupted); Pause with no turn in flight transitions
+  normally or is interrupted). Pause with no turn in flight transitions
   directly to Paused. Resume is legal only from Paused, dispatches exactly
   once through the existing FA-H3 serialized-mutex-plus-lease path (FA-AC-15,
   retained unchanged), and a run cannot be resumed twice concurrently.
@@ -636,16 +636,16 @@ that issue lands.
 - **FA-AC-46:** A run's Completed disposition is a self-reported,
   owner-reviewable claim backed by the bounded `FullAutoRunReport`
   (FA-AC-51), not an automatically verified assertion that the objective/done
-  condition was actually satisfied; the product never presents Completed as
+  condition was actually satisfied. The product never presents Completed as
   verified truth. Automatic done-condition verification is explicitly cut
   (CUT-FA-04) past this revision.
   Proof: planned, owned by FA-RUN-01 (#8969) for the state itself and
-  FA-RUN-04 (#8972) for the report it is backed by; UX copy proof owned by
+  FA-RUN-04 (#8972) for the report it is backed by. UX copy proof owned by
   FA-UX-01 (#8974).
 - **FA-AC-47:** Run-level liveness is computed distinctly from a single
   healthy long-running provider turn: a run is live while a turn is genuinely
   executing OR while elapsed time since the last dispatch is within a defined
-  SLO window; outside that window the run transitions to Stalled with an
+  SLO window. Outside that window the run transitions to Stalled with an
   explicit owner-visible cause and a retry ETA, never silence.
   Proof: planned, owned by FA-RUN-03 (#8971).
 - **FA-AC-48:** A stalled run exposes an explicit, owner-actionable recovery
@@ -656,10 +656,10 @@ that issue lands.
   FA-UX-01 (#8974) (affordance).
 - **FA-AC-49:** Objective and done-condition text are durable fields on the
   `FullAutoRun` record itself, never dependent solely on provider-native
-  session continuity or the bounded transcript-note window; a provider
+  session continuity or the bounded transcript-note window. A provider
   switch or a bounded-history truncation cannot cause the objective to be
   lost from Desktop's own state.
-  Proof: planned, owned by FA-RUN-01 (#8969); handoff-path proof owned by
+  Proof: planned, owned by FA-RUN-01 (#8969). Handoff-path proof owned by
   FA-HO-01 (#8975).
 - **FA-AC-50:** Registry eviction never drops a non-terminal (Running,
   Pausing, Paused, Retrying, Stalled) run record, extending the existing
@@ -668,12 +668,12 @@ that issue lands.
   Proof: planned, owned by FA-RUN-01 (#8969).
 - **FA-AC-51:** Every run produces a bounded, private `FullAutoRunReport`
   containing: run ref, thread ref, title, objective, workspace, started/
-  stopped timestamps; provider/lane per turn and every provider transition;
+  stopped timestamps. Provider/lane per turn and every provider transition.
   per-turn disposition, duration, selected packet/issue, and bounded outcome
-  summary; commits/receipts claimed by the agent (verified independently
-  where possible); failure classification, retry/backoff, recovery action,
-  and disabled reason; liveness gaps over threshold; objective/acceptance
-  progress and remaining work; transcript-analysis findings; and a pointer to
+  summary. Commits/receipts claimed by the agent (verified independently
+  where possible). Failure classification, retry/backoff, recovery action,
+  and disabled reason. Liveness gaps over threshold. Objective/acceptance
+  progress and remaining work. Transcript-analysis findings. And a pointer to
   private raw evidence rather than raw transcript contents. The report never
   contains raw prompts, raw provider tool output, secrets, or credentials.
   Proof: planned, owned by FA-RUN-04 (#8972).
@@ -693,30 +693,30 @@ that issue lands.
   under **New session** in the left rail and collects title (auto-suggested
   from the objective, editable), objective, explicit done condition,
   workspace, provider/lane, and a bounded turn cap (default 20, clearly
-  shown) before Start is enabled; Start applies the same workspace-authority
+  shown) before Start is enabled. Start applies the same workspace-authority
   refusal rule as the existing control-API `start` (FA-AC-28, retained with
   stronger proof).
   Proof: planned, owned by FA-UX-01 (#8974).
 - **FA-AC-55:** After Start, the main canvas renders a dedicated read-only run
-  view for v1: objective and workspace remain pinned at the top; current
+  view for v1: objective and workspace remain pinned at the top. Current
   state is one of Running, Pausing, Paused, Retrying, Stalled, Completed,
   Failed, Stopped, or Cap-reached, rendered explicitly (not inferred from a
-  generic banner); Pause/Resume is the primary control depending on state;
-  Stop is a distinct, always-available terminal control while non-terminal;
+  generic banner). Pause/Resume is the primary control depending on state.
+  Stop is a distinct, always-available terminal control while non-terminal.
   the per-turn transcript (provider, duration, outcome, artifacts) is
-  inspectable; and the ordinary chat composer is absent from this view while
+  inspectable. And the ordinary chat composer is absent from this view while
   the run is active.
   Proof: planned, owned by FA-UX-01 (#8974).
 - **FA-AC-56:** The composer-embedded Full Auto toggle, badge, and
   manual-send fencing (FA-AC-01, FA-AC-19, FA-AC-21) are removed from the
-  ordinary chat composer once the dedicated launcher and run view ship; an
+  ordinary chat composer once the dedicated launcher and run view ship. An
   ordinary chat thread never exposes Full Auto controls inline again.
   Proof: planned, owned by FA-UX-01 (#8974).
 - **FA-AC-57:** The left-rail sidebar entry for an active or recently-terminal
   run displays its objective-derived title (never a raw first-message title)
   and a live-state-derived status indicator, and remains reachable via the
   same search/navigation affordances as an ordinary thread.
-  Proof: planned, owned by FA-UX-01 (#8974); reuses generic-title work
+  Proof: planned, owned by FA-UX-01 (#8974). Reuses generic-title work
   tracked at #8940.
 - **FA-AC-58:** A manual same-thread provider switch (Codex<->Claude) and an
   explicit Pause -> switch provider -> Resume sequence both project a
@@ -728,12 +728,12 @@ that issue lands.
   Proof: planned, owned by FA-HO-01 (#8975).
 - **FA-AC-59:** A provider switch (manual or Pause -> switch -> Resume)
   re-checks the target lane's L2 capability admission, auth, and Full Auto/
-  background-question eligibility before switching; on refusal the run
+  background-question eligibility before switching. On refusal the run
   remains on its current provider/lane with no partial state change (an
   explicit rollback, not a redirect).
   Proof: planned, owned by FA-HO-01 (#8975).
 - **FA-AC-60:** No documentation, UI copy, or public claim states or implies
-  that a provider switch transfers provider-private session state; copy is
+  that a provider switch transfers provider-private session state. Copy is
   restricted to what is actually true: a host-owned bounded projection of
   Desktop-visible thread history.
   Proof: planned, owned by FA-HO-01 (#8975).
@@ -742,12 +742,12 @@ that issue lands.
   background-question policy), never presented merely because a lane adapter
   exists in code. An admitted ACP lane that has not cleared this bar is not
   exposed as a first-class Full Auto or handoff picker option.
-  Proof: planned, owned by FA-HO-01 (#8975); repairs the picker gap tracked
+  Proof: planned, owned by FA-HO-01 (#8975). Repairs the picker gap tracked
   at #8977.
 - **FA-AC-62:** Real-provider execution of `TEST 01` and `TEST 02` from the
   2026-07-17 audit's sidebar test batch (Codex establishes a marker and a
   two-step task, switches the same thread to Claude, Claude states the
-  marker and performs step two; and the reverse) is captured as a named,
+  marker and performs step two. And the reverse) is captured as a named,
   retained receipt in the owner's real Desktop sidebar, not inferred from
   fixture coverage.
   Proof: planned, owned by FA-QA-01 (#8976).
@@ -762,7 +762,7 @@ that issue lands.
   explicit stop reason) and `TEST 05` (a Claude run surviving a Desktop
   restart with the same objective/lane and no duplicate turn) are captured as
   named, retained receipts.
-  Proof: planned, owned by FA-QA-01 (#8976); reuses FA-RUN-02 (#8970) restart
+  Proof: planned, owned by FA-QA-01 (#8976). Reuses FA-RUN-02 (#8970) restart
   infrastructure.
 - **FA-AC-65:** `TEST 06` -- the real replay of the 2026-07-17 incident
   (launch Full Auto, then create/open more than five other chats while its
@@ -786,7 +786,7 @@ that issue lands.
   record (fromLane, toLane, reason, at) -- the run never enters failure
   backoff while an untried admitted candidate remains. A full unsuccessful
   cycle through every candidate consumes exactly one FA-H5 failure-budget
-  step; untyped failures, records without a policy, and every existing
+  step. Untyped failures, records without a policy, and every existing
   cap/disable/backoff semantic behave exactly as before (proven by retained
   regression tests). Policies are validated fail-closed at bind time:
   unknown, unadmitted, or Full-Auto-ineligible lanes refuse the whole policy
@@ -796,7 +796,7 @@ that issue lands.
   refs, typed reason, timestamp -- never prompts, models, paths, or
   secrets), and a v1/v2-era registry file without the new optional fields
   decodes and behaves exactly as single-lane.
-  Proof: FA-RT-01 (#8987); `full-auto-restart.e2e.test.ts` "Full Auto
+  Proof: FA-RT-01 (#8987). `full-auto-restart.e2e.test.ts` "Full Auto
   multi-lane never-halt rotation (FA-RT-01 #8987)" cases (same-pass rotation
   per typed class, one-budget-step full cycle, untyped/legacy regression,
   bound-lane start order, restart survival), `full-auto-registry.test.ts`
@@ -811,8 +811,8 @@ that issue lands.
   (against the durable `enabledAt` anchor, failing CLOSED when a
   guardrail-bearing record lacks the anchor) and maxTurns terminate with
   `guardrail_max_wall_clock`/`guardrail_max_turns` and
-  `disabledBy: "guardrail"`; maxPerTurnFailures tightens the FA-H5 budget
-  while keeping its `dispatch_failure_limit` attribution; tokenBudgetRef is
+  `disabledBy: "guardrail"`. MaxPerTurnFailures tightens the FA-H5 budget
+  while keeping its `dispatch_failure_limit` attribution. TokenBudgetRef is
   carried durably as an owner-visible ref and never fabricated into
   enforcement. Absent guardrails preserve the existing 20-cap and 5-failure
   semantics byte-for-byte. Every between-turn decision persists as a typed,
@@ -822,7 +822,7 @@ that issue lands.
   field-by-field projection. A deterministic no-progress detector (three
   consecutive settled failed/interrupted_by_restart turns after the
   lastResumedAt ?? enabledAt anchor) transitions the record to a durable
-  `pausedReason`-carrying paused state instead of continuing blind; the
+  `pausedReason`-carrying paused state instead of continuing blind. The
   pause survives restart, only an explicit attributed resume
   (`resumeFullAuto`) clears it, and pre-resume evidence can never
   immediately re-pause the resumed loop. The non-overridable core set --
@@ -834,10 +834,10 @@ that issue lands.
   threadFailureHistory and settle the bound FullAutoRun to Stopped with the
   typed `guardrail` actor. Legacy registry files without the new optional
   fields decode unquarantined and behave exactly as before.
-  Proof: FA-GD-01 (#8991); `tests/full-auto-guardrails.test.ts` (guardrail
+  Proof: FA-GD-01 (#8991). `tests/full-auto-guardrails.test.ts` (guardrail
   schema/legacy decode, decision records, per-class typed halts, durable
   pause + restart survival + explicit resume, non-overridable immunity, run
-  report pickup); control-server/OpenAPI/UI wiring for bind-guardrails,
+  report pickup). Control-server/OpenAPI/UI wiring for bind-guardrails,
   resume, and the decision-history projection is an explicit named
   follow-up seam, not claimed by this revision.
 - **FA-AC-69:** Before a Full Auto run is admitted, the host resolves exactly
@@ -846,21 +846,21 @@ that issue lands.
   tool interaction, generation control, orchestration, memory management,
   output processing). Compatibility is checked against the
   exact engine protocol, provider/model/toolset, execution profile,
-  evaluator, and environment; an unknown, candidate-only, revoked, or
+  evaluator, and environment. An unknown, candidate-only, revoked, or
   incompatible bundle fails closed before a thread or first turn dispatch.
-  Proof: planned; new MemoHarness/Blueprint implementation authority is
+  Proof: planned. New MemoHarness/Blueprint implementation authority is
   required before dispatch.
 - **FA-AC-70:** When adaptation is enabled, run admission freezes an eligible
   experience-bank snapshot before the first dispatch. Retrieval is semantic
   through the central typed selector and is filtered by tenant, workspace,
   visibility, retention, consent, evaluator compatibility, deletion, and
-  tombstone state; it never uses ad hoc keyword intent routing and never
+  tombstone state. It never uses ad hoc keyword intent routing and never
   retrieves raw cross-tenant or ineligible evidence. The snapshot identity,
   safe experience/pattern refs, scores, filters, and cache/cost facts are
   recorded in the adaptation receipt, while raw prompts, transcripts, tool
   output, embeddings, secrets, credentials, and filesystem paths remain
   private.
-  Proof: planned; the retrieval, privacy, and deletion-aware snapshot suites
+  Proof: planned. The retrieval, privacy, and deletion-aware snapshot suites
   do not yet exist.
 - **FA-AC-71:** Per-case adaptation happens at most once, after the snapshot
   freezes and before the first provider turn. It applies only released,
@@ -868,10 +868,10 @@ that issue lands.
   containing base/result bundle digests, snapshot, selected patch refs,
   compatibility and risk decisions, and explicit no-current-run-label and
   no-current-run-feedback facts. The effective digest is immutable through
-  every continuation, restart, Pause/Resume, retry, and provider handoff;
+  every continuation, restart, Pause/Resume, retry, and provider handoff.
   an incompatible result fails closed rather than silently falling back or
   changing policy mid-run.
-  Proof: planned; run-start adaptation and restart/handoff invariance tests do
+  Proof: planned. Run-start adaptation and restart/handoff invariance tests do
   not yet exist.
 - **FA-AC-72:** The authority manifest before and after adaptation is
   identical for objective/done condition, workspace grant, execution
@@ -880,7 +880,7 @@ that issue lands.
   and external effects. The adapter schema cannot express those fields, and
   a malformed or hand-edited delta that attempts to change one refuses before
   dispatch with a typed reason.
-  Proof: planned; a bounded authority-immunity model and regression suite do
+  Proof: planned. A bounded authority-immunity model and regression suite do
   not yet exist.
 - **FA-AC-73:** Every `FullAutoRunReport`, private control record, and
   public-safe projection records the effective execution tuple of provider,
@@ -889,16 +889,16 @@ that issue lands.
   Public-safe projections are explicit-field allowlists and never include raw
   experience content, retrieval queries, embeddings, private scores, prompts,
   transcripts, tool output, secrets, credentials, or filesystem paths.
-  Proof: planned; report and cross-surface projection schemas require an
+  Proof: planned. Report and cross-surface projection schemas require an
   additive implementation revision.
 - **FA-AC-74:** A run can become a `HarnessExecutionExperience` only through a
   separate Effect-owned compiler after the run is terminal and its report is
   immutable. The experience records source run/report/evaluator/provenance,
   outcome and quality facts, visibility, retention, and retrieval/training
-  eligibility; it cannot alter the source run, its effective bundle, or the
+  eligibility. It cannot alter the source run, its effective bundle, or the
   frozen snapshot that source run used. Export, deletion, and tombstone flows
   prevent deleted evidence from re-entering later snapshots or candidates.
-  Proof: planned; no terminal-run experience compiler or deletion receipt
+  Proof: planned. No terminal-run experience compiler or deletion receipt
   suite is claimed by this revision.
 - **FA-AC-75:** Offline global optimization and pattern extraction consume
   only admitted immutable experience/evaluation snapshots and produce
@@ -906,18 +906,18 @@ that issue lands.
   candidate cannot become production by optimizer, executor, or run action:
   it must pass held-out quality, regression, compatibility, privacy, and
   safety evidence, then cross an independent Blueprint release gate. Shadow/
-  dogfood execution is explicit; production Full Auto resolves only released
+  dogfood execution is explicit. Production Full Auto resolves only released
   compatible versions and records promotion or rollback receipts.
-  Proof: planned; the optimizer, evidence packet, and Blueprint BP-MH release
+  Proof: planned. The optimizer, evidence packet, and Blueprint BP-MH release
   gate are not implemented or admitted by this document.
 - **FA-AC-76:** MemoHarness application and control-plane code is TypeScript
   on Effect: Effect Schema contracts, services/layers, structured errors,
   semantic retrieval, storage policy, optimization orchestration, adaptation,
   retention/deletion, and release resolution. Any Rust is an isolated native
   helper for containment, PTY/process primitives, or local inference behind a
-  generated Effect-owned contract; no Rust MemoHarness daemon, policy engine,
+  generated Effect-owned contract. No Rust MemoHarness daemon, policy engine,
   release authority, metadata database, or second source of truth is admitted.
-  Proof: planned; architecture conformance tests must reject ownership drift
+  Proof: planned. Architecture conformance tests must reject ownership drift
   when implementation begins.
 
 ## Criterion Disposition Map (Rev 9 -> Rev 10)
@@ -937,18 +937,18 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   prompt prefixing is an execution-posture fact orthogonal to how a run is
   launched or displayed.
 - **FA-AC-03** -- retained with stronger proof. `fullAuto: true` sent once,
-  continuation decided by main, remains true; the decision now keys off
+  continuation decided by main, remains true. The decision now keys off
   `FullAutoRun` lifecycle state (FA-AC-43) rather than a boolean.
 - **FA-AC-04** -- changed-superseded. The single toggle-off mutation is
   replaced by two distinct typed transitions, Stop (FA-AC-45) and Pause
-  (FA-AC-44); the underlying guarantee -- an owner action persists to main
+  (FA-AC-44). The underlying guarantee -- an owner action persists to main
   immediately and durably regardless of an in-flight turn -- is retained by
   both.
 - **FA-AC-05** -- retained unchanged. Ordinary (non-run) chat still never
   auto-resubmits.
 - **FA-AC-06** -- retained with stronger proof. The 20-continuation cap
   becomes the explicit Cap-reached terminal lifecycle state (part of
-  FA-AC-43) instead of an implicit "disabled" with a note; reset-only-on-off
+  FA-AC-43) instead of an implicit "disabled" with a note. Reset-only-on-off
   semantics carry forward to reset-only-on-Stop-or-new-run.
 - **FA-AC-07** -- retained with stronger proof. Restart-resume now also
   restores the durable objective/done-condition fields (FA-AC-49), not only
@@ -971,17 +971,17 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   fail-closed mismatch behavior move from "enable" to "Start" with identical
   semantics.
 - **FA-AC-14** -- retained unchanged. Unbound-record fail-closed behavior is
-  unaffected by the run model; it re-expresses over FullAutoRun rows.
+  unaffected by the run model. It re-expresses over FullAutoRun rows.
 - **FA-AC-15** -- retained unchanged. The FA-H3 serialized-mutex-plus-lease
   exactly-once dispatch mechanism is unmodified and is explicitly reused by
   Resume (FA-AC-44).
 - **FA-AC-16** -- retained with stronger proof. The typed failure/backoff/
-  disable-after-5 policy is retained; its terminal outcome now lands in the
+  disable-after-5 policy is retained. Its terminal outcome now lands in the
   explicit Failed or Stalled lifecycle state (FA-AC-43) rather than a generic
   "disabled" boolean.
 - **FA-AC-17** -- retained unchanged. Execution-profile continuity across
   continuations and restarts is unaffected by the run model.
-- **FA-AC-18** -- retained unchanged as a general principle; the specific v1
+- **FA-AC-18** -- retained unchanged as a general principle. The specific v1
   registry migration instance is restated and extended by FA-AC-41.
 - **FA-AC-19** -- changed-superseded. The coarse typed live-state model
   (idle/turn_running/turn_completed/turn_failed/cap_reached/blocked) is
@@ -990,11 +990,11 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   folded into the full lifecycle machine (FA-AC-43).
 - **FA-AC-20** -- retained with stronger proof. The Stop-targets-actual-
   background-turn mechanism (interrupt resolves the live running turn ref)
-  is retained; Stop is now a first-class terminal lifecycle transition
+  is retained. Stop is now a first-class terminal lifecycle transition
   (FA-AC-45) rather than a composer button behavior.
 - **FA-AC-21** -- changed-superseded. Manual-send fencing during a
   background turn is retired as literally specified because the ordinary
-  composer is no longer present at all while a run is active (FA-AC-55); the
+  composer is no longer present at all while a run is active (FA-AC-55). The
   underlying guarantee -- never a silent second concurrent turn on the same
   thread -- is retained unconditionally by the exactly-once lease (FA-AC-15).
 - **FA-AC-22** -- retained unchanged. Control-surface opt-in/loopback/bearer
@@ -1002,13 +1002,13 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
 - **FA-AC-23** -- retained unchanged. Programmatic workspace-authority
   naming and 409 mismatch refusal carry forward to `start` unchanged.
 - **FA-AC-24** -- retained with stronger proof. Attributed system notes on
-  every mutating control call are retained; the general attribution
+  every mutating control call are retained. The general attribution
   requirement now extends to every lifecycle transition, not only
   enable/disable/continue-now (part of FA-AC-43).
 - **FA-AC-25** -- retained unchanged. continue-now remains a trigger into
   the shared serialized reconciliation path, never a new dispatch mechanism.
 - **FA-AC-26** -- retained with stronger proof. Served-surface/OpenAPI parity
-  and public-safety bounds are retained; the schema/route table grows to
+  and public-safety bounds are retained. The schema/route table grows to
   carry the new run fields (title/objective/done condition/lifecycle state)
   under the same no-transcript-text bound.
 - **FA-AC-27** -- retained unchanged. MCP/CLI thin-pass-through-client
@@ -1016,18 +1016,18 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
 - **FA-AC-28** -- retained with stronger proof. `POST /v1/full-auto/start`
   becomes the canonical Draft->Running mission-contract launch path
   (FA-AC-54/FA-AC-38), now also carrying objective/done-condition/title
-  fields; the exact workspace-authority refusal rule is unchanged.
+  fields. The exact workspace-authority refusal rule is unchanged.
 - **FA-AC-29** -- retained unchanged. Optional ProviderLane ref continuity
   and cross-restart decode are unaffected by the run model.
 - **FA-AC-30** -- retained unchanged. L1 SPI dispatch and fail-closed lane
   eligibility gating are unaffected by the run model.
 - **FA-AC-31** -- retained unchanged. The lane-keyed background-question
-  policy is unaffected while Running; a future interactive path while Paused
+  policy is unaffected while Running. A future interactive path while Paused
   is explicitly out of scope (see Scope: out).
 - **FA-AC-32** -- retained unchanged. Optional lane selector on start/enable
   and typed `lane_not_eligible` refusal are unaffected by the run model.
 - **FA-AC-33** -- deferred, CUT reference: tracked under FA-REL-01 (#8979)
-  release admission rather than cut from intent; still an open residual, not
+  release admission rather than cut from intent. Still an open residual, not
   satisfied by this revision.
 - **FA-AC-34** -- retained unchanged. The bounded ProductSpec/AssuranceSpec
   spec-lane projection applies identically regardless of launch surface.
@@ -1035,7 +1035,7 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   obligation framing is unaffected by the run model.
 - **FA-AC-36** -- retained with stronger proof. The post-turn spec
   revalidation note becomes one structured entry among the
-  `FullAutoRunReport`'s per-turn disposition fields (FA-AC-51); its
+  `FullAutoRunReport`'s per-turn disposition fields (FA-AC-51). Its
   evidence-only authority is unchanged.
 - **FA-AC-37** -- retained unchanged. Cross-lane projection/revalidation
   parity is unaffected by the run model.
@@ -1081,23 +1081,23 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   Auto one-click by default, hide advanced fields, support multiple
   simultaneous instances, let both user and agent monitor/cancel any run, and
   keep iterating against the real system. That instruction is the acceptance
-  identity for the rev-13 policy changes below; implementation still must earn
+  identity for the rev-13 policy changes below. Implementation still must earn
   its evidence independently:
   - the rev-13 concurrent independently controlled run policy (FA-AC-39),
     explicitly requested by the owner on 2026-07-18 together with the
-    one-click launcher and monitor/cancel surface;
+    one-click launcher and monitor/cancel surface.
   - the single-prompt default with inferred title/done condition and collapsed
-    Advanced configuration (FA-AC-54/55); and
+    Advanced configuration (FA-AC-54/55). And
   - the run monitor with runRef-scoped open and Stop plus the existing
     authenticated API/CLI/MCP arbitrary-run controls (FA-AC-47/48/55).
-  This direct instruction records owner acceptance for the rev-13 changes. It
-  does not retroactively supply release evidence for unrelated criteria;
-  FA-REL-01 (#8979) must still rely on executed receipts for its claims.
+    This direct instruction records owner acceptance for the rev-13 changes. It
+    does not retroactively supply release evidence for unrelated criteria.
+    FA-REL-01 (#8979) must still rely on executed receipts for its claims.
 - Retained from rev 5, still open and still cheap to revisit later rather
   than free to build now: live token-by-token streaming of an in-progress
   turn remains cut in the read-only run view (see Scope: out), and per-thread
   toggle-state resync on arbitrary in-session switch is moot under the new
-  model (CUT-FA-03). Rev 13 now admits the local multi-run monitor; a future
+  model (CUT-FA-03). Rev 13 now admits the local multi-run monitor. A future
   fleet scheduler or cross-machine admission surface remains a separate owner
   decision.
 - **OPEN FOR MEMOHARNESS.** Owner or an explicitly designated independent
@@ -1110,12 +1110,12 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
 ## Receipts
 
 - **Rev 14 (MemoHarness spec incorporation):** ProductSpec and AssuranceSpec
-  only; no application code, optimizer, storage migration, experience bank,
-  or Blueprint release is claimed. Adds FA-AC-69..76; binds every run to a
-  released base/effective harness identity; freezes one pre-run eligible bank
-  snapshot; requires an immutable adaptation receipt and authority-preserving
-  delta; moves experience compilation after terminal state; keeps offline
-  candidates behind held-out evidence and an independent release gate; and
+  only. No application code, optimizer, storage migration, experience bank,
+  or Blueprint release is claimed. Adds FA-AC-69..76. Binds every run to a
+  released base/effective harness identity. Freezes one pre-run eligible bank
+  snapshot. Requires an immutable adaptation receipt and authority-preserving
+  delta. Moves experience compilation after terminal state. Keeps offline
+  candidates behind held-out evidence and an independent release gate. And
   assigns the application/control plane to TypeScript/Effect with Rust limited
   to isolated native helpers. Research basis:
   `docs/research/2026-07-18-memoharness-paper-summary.md` and
@@ -1125,30 +1125,30 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   `routingPolicy` / `rotationHistory` record fields (backward-compatible:
   every pre-#8987 file decodes unchanged), `bindRoutingPolicy` /
   `recordRotation` write paths (bounded, oldest-evicted), and the public-safe
-  `projectFullAutoRotationHistory` helper; new `full-auto-routing.ts` owns
+  `projectFullAutoRotationHistory` helper. New `full-auto-routing.ts` owns
   fail-closed policy validation over the existing full-auto-lane policy table
-  plus the live L2 capability projection; `full-auto-reconcile.ts` adds the
+  plus the live L2 capability projection. `full-auto-reconcile.ts` adds the
   typed `failureClass` dispatch-result field, the
   `classifyFullAutoDispatchFailure` mapping (typed lane reasons plus the
   exact codex-app-server-turn quota/rate-limit detail markers), and the
   same-pass rotation cycle (fresh lease per attempt, one budget step per full
-  unsuccessful cycle, profile rebound to the succeeding candidate);
+  unsuccessful cycle, profile rebound to the succeeding candidate).
   `full-auto-control-contract.ts` adds the OPTIONAL bounded
   `rotationHistory` field to the public-safe control record schema (server
-  population owned by the control-surface issue); `main.ts` wires the
+  population owned by the control-surface issue). `main.ts` wires the
   failure classification and an owner-visible rotation system note.
   Verification: scoped suites `tests/full-auto-restart.e2e.test.ts`,
   `tests/full-auto-registry.test.ts`, `src/full-auto-routing.test.ts`,
   `src/full-auto-lane.test.ts`, plus the full existing full-auto test set
-  and a clean `tsc -p tsconfig.json --noEmit`; exact pass counts recorded in
+  and a clean `tsc -p tsconfig.json --noEmit`. Exact pass counts recorded in
   the issue #8987 closeout.
 - **Rev 10 (#8968):** ProductSpec-only revision -- no `apps/openagents-desktop`
   application code changed. Retitled from "Full Auto Provider-Lane Composer
-  Loop" to "Full Auto Autonomous Run Contract"; added the Criterion
-  Disposition Map custom section resolving all 37 rev-9 criteria; added
+  Loop" to "Full Auto Autonomous Run Contract". Added the Criterion
+  Disposition Map custom section resolving all 37 rev-9 criteria. Added
   FA-AC-38 through FA-AC-66 (29 new criteria) for the target FullAutoRun
   contract, each naming its owning epic #8967 child issue with an explicit
-  `planned` proof status; rewrote Problem/Hypothesis/Scope/Owner Gates;
+  `planned` proof status. Rewrote Problem/Hypothesis/Scope/Owner Gates.
   restructured `cut:` to add CUT-FA-04/05/06 and mark CUT-FA-03
   superseded/moot. Companion changes in the same commit: three `pending`
   behavior-contract entries added to
@@ -1157,93 +1157,93 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   Full Auto run-authority bullet added to root `INVARIANTS.md`'s Authority
   Boundaries section. The existing AssuranceSpec
   (`specs/desktop/full-auto.assurance-spec.md`) is left untouched and flagged
-  stale-pending-reconciliation (see `tool_metadata.openagents_assurance_spec_status`);
+  stale-pending-reconciliation (see `tool_metadata.openagents_assurance_spec_status`).
   its reconciliation is FA-AS-01 (#8978), which explicitly depends on this
   issue.
   Verification: `node --import tsx packages/product-spec/src/cli.ts validate
-  --specs-root specs`; `pnpm --dir packages/product-spec run test` (includes
-  the repo Product Spec roots gate that validates every file under `specs/`,
-  including this one, with zero errors); `pnpm --dir packages/behavior-contracts
-  run test`. Exact pass/fail counts recorded in the issue #8968 closeout
+--specs-root specs`; `pnpm --dir packages/product-spec run test` (includes
+  the repo ProductSpec roots gate that validates every file under `specs/`,
+  including this one, with zero errors). `pnpm --dir packages/behavior-contracts
+run test`. Exact pass/fail counts recorded in the issue #8968 closeout
   comment.
 - Rev 8 (L6 #8901): provider-lane generalization. `pnpm --dir
-  apps/openagents-desktop run typecheck`; 97 focused provider/Full Auto tests;
+apps/openagents-desktop run typecheck`. 97 Focused provider/Full Auto tests.
   Desktop suite 1732 passed / 39 skipped with one pre-existing timing failure
-  in `codex-connect.test.ts`; `pnpm run check:fast`; and a real built-Electron
+  in `codex-connect.test.ts`. `pnpm run check:fast`. And a real built-Electron
   `pnpm run smoke:full-auto-restart` passed Codex resume, workspace-mismatch
   fail-closed, and a non-Codex `seed-claude` → `resume-claude` two-process
   dispatch receipted as `fable-local`. The smoke uses the deterministic Claude
-  fixture; the distinct real authenticated Claude Code dogfood proof required
+  fixture. The distinct real authenticated Claude Code dogfood proof required
   by FA-AC-33 remains residual and is not claimed here.
 - Rev 6 (FA-H13 #8886): the Phase 1 local control surface.
   New modules: `full-auto-control-contract.ts` (Effect Schemas + the shared
   `FULL_AUTO_CONTROL_ROUTES` table), `full-auto-control-openapi.ts`
   (hand-authored OpenAPI 3.1 document), `full-auto-control-server.ts`
   (node:http loopback server, environment-auth-scoped bearer mint,
-  constant-time verification, mode-0600 `full-auto/control.json`); main.ts
+  constant-time verification, mode-0600 `full-auto/control.json`). Main.ts
   wiring behind `isFullAutoControlEnabled` with a narrow capability options
   object (same registry / workspace resolver / serialized reconcile trigger /
-  live-state map / journal / note appender the IPC handlers use); thin
+  live-state map / journal / note appender the IPC handlers use). Thin
   clients `scripts/full-auto-cli.ts` + `scripts/full-auto-mcp.ts` over
   `scripts/full-auto-control-client.ts` (package script `full-auto`).
   Focused verification: `vp test --run --max-concurrency 1 --root .
-  apps/openagents-desktop/src/full-auto-control-server.test.ts` -- 1 file
+apps/openagents-desktop/src/full-auto-control-server.test.ts` -- 1 file
   passed, 14 tests passed (auth gating, 0600 connection file,
   workspace-mismatch 409 refusal with registry untouched, enable/disable
   attribution notes, continue-now trigger spy called exactly once + 404
   never-touches-trigger, public-safe list/status/turns projections decoded
   against the contract schemas, OpenAPI <-> routes parity in both
-  directions); regression `full-auto-restart.e2e.test.ts` +
+  directions). Regression `full-auto-restart.e2e.test.ts` +
   `full-auto-registry.test.ts` + `renderer/shell.test.ts` -- 3 files passed,
-  147 passed, 11 skipped; clean `tsc -p tsconfig.json --noEmit`.
-  Live end-to-end receipt (`pnpm run smoke:full-auto-control`; build first):
+  147 passed, 11 skipped. Clean `tsc -p tsconfig.json --noEmit`.
+  Live end-to-end receipt (`pnpm run smoke:full-auto-control`, build first):
   the REAL Electron app launched windowless with
   `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1` +
   `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL_PROBE=1` against isolated OS-temp
   userData, and the actual CLI ran as a second OS process (discovery via
   control.json -> bearer -> HTTP `list` then `status`). Passing receipt
   line: `[openagents-desktop full-auto-control] live smoke OK
-  {"threadRef":"…","listedRecords":1,"enabled":true,"workspaceBound":true,
-  "liveState":"idle"}`.
+{"threadRef":"…","listedRecords":1,"enabled":true,"workspaceBound":true,
+"liveState":"idle"}`.
 - FA-H12 (#8885): two-process Electron restart smoke
   `apps/openagents-desktop/scripts/full-auto-restart-smoke.ts`
-  (`pnpm run smoke:full-auto-restart`; build first). Spawns the real app
+  (`pnpm run smoke:full-auto-restart`, build first). Spawns the real app
   twice against one temporary user-data directory: the seed process writes
   an enabled, workspace-bound registry record plus a completed terminal
-  fixture turn and quits; the resume process is observed to run startup
+  fixture turn and quits. The resume process is observed to run startup
   reconciliation and dispatch exactly one fixture continuation, hitting the
-  durable cap deterministically; a second seed/resume pair proves the
+  durable cap deterministically. A second seed/resume pair proves the
   workspace-mismatch fail-closed path across processes. Passing receipt
   line: `[openagents-desktop full-auto-restart] two-process smoke OK
-  {"seeded":true,"resumed":true,"dispatchedTurnRefPresent":true,
-  "continuationCount":20,"mismatchFailedClosed":true}`. This smoke is the
-  merge gate for any renewed "survives restart" claim; the packaged
+{"seeded":true,"resumed":true,"dispatchedTurnRefPresent":true,
+"continuationCount":20,"mismatchFailedClosed":true}`. This smoke is the
+  merge gate for any renewed "survives restart" claim. The packaged
   real-repository owner observation remains the gate for live/owner-accepted
   claims.
 - Rev 5 (FA-H4 #8877): contract additions in `codex-local-contract.ts`
   (`CodexLocalFullAutoStateChannel`, `CodexLocalFullAutoStateSchema` with its
-  decode helper, `CodexLocalFullAutoInterruptChannel` + request schema);
+  decode helper, `CodexLocalFullAutoInterruptChannel` + request schema).
   main-owned live-state map, broadcast, extended get response, and the
   thread-scoped interrupt handler in `main.ts` (state emission wired around
   the existing reconcile dispatch adapter/callbacks -- reconcile logic itself
-  untouched); preload `fullAuto.onState`/`fullAuto.interrupt` following the
-  localTurnRecovery.onUpdate decode-then-listen pattern; renderer projection
+  untouched). Preload `fullAuto.onState`/`fullAuto.interrupt` following the
+  localTurnRecovery.onUpdate decode-then-listen pattern. Renderer projection
   (`fullAutoLiveByThread`, `withFullAutoLiveState`,
   `activeFullAutoTurnRunning`), boot subscription, send-fencing, extended
   Stop handling, and the composer badge. Focused verification:
   `vp test --run --max-concurrency 1 --root .
-  apps/openagents-desktop/src/renderer/shell.test.ts
-  apps/openagents-desktop/src/renderer/react-composer.test.tsx` -- 2 files
-  passed, 136 tests passed, 11 skipped; plus
+apps/openagents-desktop/src/renderer/shell.test.ts
+apps/openagents-desktop/src/renderer/react-composer.test.tsx` -- 2 files
+  passed, 136 tests passed, 11 skipped. Plus
   `apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts`,
   `full-auto-registry.test.ts`, `design-conformance.test.ts`, and
-  `mvp-visible-surfaces.test.ts` -- 4 files passed, 69 tests passed; plus a
+  `mvp-visible-surfaces.test.ts` -- 4 files passed, 69 tests passed. Plus a
   clean `tsc -p tsconfig.json --noEmit`.
 - Rev 4 (FA-H2 #8875, FA-H3 #8876, FA-H5 #8878, FA-H6 #8879):
   `full-auto-restart.e2e.test.ts` extended with the workspace-binding
   refuse/disable and fail-closed cases, the audit's two adversarial probes
   converted into retained regression tests (overlapping reconciles dispatch
-  once; ok:false is a typed visible failure), the serial-queue mutex proof,
+  once. Ok:false is a typed visible failure), the serial-queue mutex proof,
   stale-lease startup recovery, backoff/disable-after-5 failure policy, the
   cap-counting decision (failures never consume cap slots), and profile
   continuity across a restart. `full-auto-registry.test.ts` extended with
@@ -1251,10 +1251,10 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   failure/success state transitions, workspace/profile binding durability,
   and the enable/disable option semantics. Focused verification:
   `vp test --run --max-concurrency 1 --root . apps/openagents-desktop/tests/
-  full-auto-restart.e2e.test.ts apps/openagents-desktop/tests/
-  full-auto-registry.test.ts apps/openagents-desktop/src/renderer/
-  shell.test.ts apps/openagents-desktop/src/codex-local-runtime.test.ts`
-  -- 4 files passed, 169 tests passed, 11 skipped; plus a clean
+full-auto-restart.e2e.test.ts apps/openagents-desktop/tests/
+full-auto-registry.test.ts apps/openagents-desktop/src/renderer/
+shell.test.ts apps/openagents-desktop/src/codex-local-runtime.test.ts`
+  -- 4 files passed, 169 tests passed, 11 skipped. Plus a clean
   `tsc -p tsconfig.json --noEmit`.
 - Automated success-metric instrumentation was deliberately removed in rev 3
   as unmeasurable (audit Finding 9, #8882): the app has no consent surface,
@@ -1263,16 +1263,16 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
   without consent. Automated metrics may return only alongside a real
   consent surface and an implementation that actually records them.
 - `pnpm --dir apps/openagents-desktop run typecheck` (`tsc -p tsconfig.json
-  --noEmit`) — clean, zero errors.
+--noEmit`) — clean, zero errors.
 - `codex-local-runtime.test.ts`: two cases proving `approvalPolicy` and
   prompt-prefix behavior for Full Auto vs. an ordinary turn (rev 1,
   unchanged).
 - `react-composer.test.tsx`: one case proving the toggle renders and reports
   `DesktopFullAutoToggled` (rev 1, unchanged).
 - `shell.test.ts`: cases proving a flagged turn sends `fullAuto: true`
-  exactly once with no renderer-side loop; toggle persists to main
-  immediately for the active thread; a brand-new thread's enabled state
-  reaches main once it has a real id; an ordinary turn never resubmits.
+  exactly once with no renderer-side loop. Toggle persists to main
+  immediately for the active thread. A brand-new thread's enabled state
+  reaches main once it has a real id. An ordinary turn never resubmits.
 - `full-auto-restart.e2e.test.ts` (new, #8853): the "Runtime A seeds durable
   state, Runtime B reconciles" proof pattern already used by
   `local-turn-restart.e2e.test.ts` for interrupted-turn recovery, applied
@@ -1285,13 +1285,13 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
 - `full-auto-registry.test.ts` (rev 3, #8880/#8883): pins the cap-reset
   semantics (reset only on toggle-off), corrupt-file quarantine (registry
   opens empty, quarantine file exists, subsequent persist works), and
-  enabled-record eviction survival (enabled records never evicted; only the
+  enabled-record eviction survival (enabled records never evicted, only the
   disabled tail is bounded), all against the real on-disk registry.
 - Full run: `vp test --run --max-concurrency 1 --root ../..
-  apps/openagents-desktop` — 1521 passed, 39 skipped, 1 failed. The one
+apps/openagents-desktop` — 1521 passed, 39 skipped, 1 failed. The one
   failure (`codex-turn-state.test.ts`, a Codex app-server protocol
   notification/item fixture replay test) is pre-existing and unrelated to
-  Full Auto -- a relative-path fixture lookup this change never touches;
+  Full Auto -- a relative-path fixture lookup this change never touches.
   confirmed by running it in isolation with the same result.
 - Not yet done, recommended as an owner follow-up: an actual packaged-app
   smoke (toggle on, send one message, quit the running Desktop app, relaunch,
@@ -1304,5 +1304,5 @@ replaces it), **removed with rationale**, or **deferred** with an explicit
 
 - No promise-registry entry changes as a result of this spec. The existing
   red `autopilot.desktop_full_auto_guidance.v1` entry is unrelated legacy
-  scope tied to a deleted app and remains exactly as recorded; this spec does
+  scope tied to a deleted app and remains exactly as recorded. This spec does
   not claim it, reference it as satisfied, or request its update.

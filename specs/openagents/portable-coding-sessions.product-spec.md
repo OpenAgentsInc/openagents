@@ -89,7 +89,7 @@ or Desktop, see shell and recent top-level metadata before detail hydration,
 inspect one child transcript, request a move, and follow the same refs while
 the source quiesces and the destination rehydrates. Tap, click, menu, palette,
 and supported key paths invoke the same typed action and outcome. Voice is an
-editable input modality over those actions; text always remains available.
+editable input modality over those actions. Text always remains available.
 
 ## Acceptance Criteria
 
@@ -104,7 +104,7 @@ editable input modality over those actions; text always remains available.
   and contains no credentials, host handles, live process state, sockets,
   memory, PTYs, raw provider history, or unbounded private content.
 - Every destination reauthorizes and redeems new owner/session/attachment/
-  target/capability/TTL-scoped grants; source grants revoke and cleanup is
+  target/capability/TTL-scoped grants. Source grants revoke and cleanup is
   receipted.
 - Local to managed to owner-managed movement and failback preserve exact refs
   with no duplicate accepted parent or child work.
@@ -116,28 +116,28 @@ editable input modality over those actions; text always remains available.
   substitution, orphan, false authority, or repository data loss.
 - Cursor-class background and remote-control journeys can start owner-local,
   owner-managed, or OpenAgents-managed, survive client closure, accept web or
-  mobile intervention, and return to Desktop under the same session refs; no
+  mobile intervention, and return to Desktop under the same session refs. No
   journey creates a second cloud-canonical transcript or silently changes
   placement, custody, model, harness, or authority.
 - Project/file/document/proposal/evidence deep links survive a host move as
   opaque safe refs, but the destination resolves them only after attachment,
-  project, document, and audience checks; stale or unavailable generations
+  project, document, and audience checks. Stale or unavailable generations
   open an explicit snapshot/diff/unavailable state rather than a current line.
 - PTYs, terminal screen/process state, LSP/tsserver/DAP processes and caches,
   and Rust helper state never enter a portable checkpoint. A destination
   negotiates compatible capabilities and starts fresh helpers under Effect
-  admission; cached evidence is labeled until new live generations arrive.
+  admission. Cached evidence is labeled until new live generations arrive.
 - Every portable and cross-surface boundary value is decoded from one
-  identified Effect Schema and its TypeScript type is derived from that source;
+  identified Effect Schema and its TypeScript type is derived from that source.
   raw per-client interfaces or handwritten unions cannot become a second
   checkpoint, transport, helper, mobile, web, or public-share contract.
 - Quiesce, detach, attach, move, failback, revocation, and restart close the
   owning scoped Effect layer and interrupt all generation-bound transports,
   streams, watchers, language/debug processes, terminal children, and helper
-  children before a later generation can accept work; late output is rejected.
+  children before a later generation can accept work. Late output is rejected.
 - Portable continuation carries no authoritative Vim or theme state. Desktop
   resolves its current built-in Vim setting and Tokyo Night projection after
-  reauthorization; mobile/web may render only the allowlisted semantic review
+  reauthorization. Mobile/web may render only the allowlisted semantic review
   tokens and cannot change editor policy.
 
 ## Success Metrics
@@ -172,11 +172,11 @@ editable input modality over those actions; text always remains available.
 ## Risks
 
 - A broad "resume" implementation can accidentally become silent rerun or a
-  second executor; generation and idempotency checks must precede mutation.
+  second executor. Generation and idempotency checks must precede mutation.
 - Provider hidden state is not portable. The product must say checkpoint and
   rehydrate, not imply live process-memory migration.
 - Secret-bearing logs or snapshots can invalidate the whole architecture even
-  when movement works; broker and scan failures fail closed.
+  when movement works. Broker and scan failures fail closed.
 - Target-provider breadth can race ahead of the session fence. PORT-01 and
   PORT-02 remain the critical path before adapters or UI claim portability.
 - A superficial Cursor Remote Control clone can preserve vendor-cloud lock-in.
@@ -196,13 +196,13 @@ negotiation, checkpoints, destination admission, recovery, and safe mobile/web
 projections. A move transfers exact admitted content and causal identities,
 then the destination recreates its Monaco models, language/Git/task services,
 external harnesses, and any process-opaque Rust PTY/containment helpers under
-fresh local policy. UI selection and layout are hints; authority, dirty-buffer
+fresh local policy. UI selection and layout are hints. Authority, dirty-buffer
 content, and native process state are never inferred from them.
 
 The portability service graph uses identified `Schema.Struct`,
 `Schema.TaggedStruct`, and `Schema.TaggedUnion` contracts with derived types and
-constrained refs. `Context.Service` capabilities compose through `Layer.effect`;
-named `Effect.fn` operations expose `Schema.TaggedErrorClass` failures; the
+constrained refs. `Context.Service` capabilities compose through `Layer.effect`.
+named `Effect.fn` operations expose `Schema.TaggedErrorClass` failures. The
 attachment scope owns transports, streams, watchers, external processes, and
 helper interruption. Destination-owned editor configuration is resolved only
 after reauthorization: Vim state is never migrated as authority, and Tokyo
@@ -227,7 +227,7 @@ projection.
 
 - Physical-phone acceptance of PORT-06/PORT-07 and final signed PORT-08 journey.
 - Any public claim that portable sessions or a named managed provider have
-  shipped; code and fixture proof alone cannot authorize that statement.
+  shipped. Code and fixture proof alone cannot authorize that statement.
 
 ## Receipts
 

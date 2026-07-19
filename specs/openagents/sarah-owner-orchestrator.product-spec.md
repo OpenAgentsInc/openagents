@@ -77,7 +77,7 @@ cut:
 After signing into OpenAgents mobile, the owner lands on Sarah unless an
 explicit restored coding session or active Full Auto run takes precedence.
 Sarah is pinned in the existing workspace drawer and uses the ordinary typed
-composer/transcript. The conversation header says only `Sarah`; authority and
+composer/transcript. The conversation header says only `Sarah`. Authority and
 runtime details remain available through receipts and explicit status requests
 instead of consuming the chat header. The owner can ask “what is the latest release?”,
 “what is blocking Full Auto?”, “who is saying what?”, or “what should we do
@@ -88,20 +88,20 @@ ran until a target receipt exists.
 ## Acceptance Criteria
 
 - **SARAH-AC-01:** One authenticated owner maps deterministically to one opaque
-  Sarah thread; another owner cannot observe or mutate it.
+  Sarah thread. Another owner cannot observe or mutate it.
 - **SARAH-AC-02:** The same thread and history survive app restart, device
   change, and repeated bootstrap without duplicate identities or conversations.
 - **SARAH-AC-03:** Mobile pins Sarah inside the existing conversation UI and
-  sends Sarah messages through the hosted Khala runtime; public `/sarah` stays
+  sends Sarah messages through the hosted Khala runtime. Public `/sarah` stays
   404 and no second persona state machine returns.
 - **SARAH-AC-04:** Current business claims cite exact bounded sources with
-  freshness and owner/private classification; missing sources fail soft and
+  freshness and owner/private classification. Missing sources fail soft and
   remain explicit.
 - **SARAH-AC-05:** Model context contains no raw tokens, credentials,
   mnemonics, private filesystem paths, customer-private payloads, or unbounded
   database/tool output.
 - **SARAH-AC-06:** Sarah's effective authority is the intersection of the root
-  profile, Sarah profile, active program, target policy, and exact capability;
+  profile, Sarah profile, active program, target policy, and exact capability.
   explicit deny wins and self-amplification is impossible.
 - **SARAH-AC-07:** Visibility never implies mutation. Repository, GCP, release,
   GitHub, Forum, and Full Auto actions enter their existing typed adapters and
@@ -112,7 +112,7 @@ ran until a target receipt exists.
 - **SARAH-AC-09:** Sarah distinguishes observed fact, inference,
   recommendation, delegated action, succeeded action, refusal, and unavailable
   state in owner-visible language.
-- **SARAH-AC-10:** Revocation or supersession stops new actions immediately;
+- **SARAH-AC-10:** Revocation or supersession stops new actions immediately.
   an in-flight action reaches only its safest bounded checkpoint.
 - **SARAH-AC-11:** Gemma 4 function calls are decoded through the normalized
   inference contract, bounded to six tool rounds, and replay assistant calls
@@ -121,10 +121,10 @@ ran until a target receipt exists.
 - **SARAH-AC-12:** Sarah can read owner-linked coding capacity and dispatch at
   most eight Codex workers through the existing Khala/Pylon broker. Every real
   dispatch pins the exact current public `OpenAgentsInc/openagents` commit and
-  returns actual assignment refs; no linked capacity yields an honest blocker.
+  returns actual assignment refs. No linked capacity yields an honest blocker.
 - **SARAH-AC-13:** Sarah can read the owner's public-safe Full Auto projection
   and dispatch only pause, resume, or stop for an exact existing run. The
-  server result remains `pending` until Desktop applies or rejects it; pending
+  server result remains `pending` until Desktop applies or rejects it. Pending
   is never described as an applied transition.
 - **SARAH-AC-14:** Every tool call emits ordered private runtime activity and
   an exact Sarah authority receipt. The final assistant answer follows those
@@ -138,22 +138,22 @@ ran until a target receipt exists.
 - **SARAH-AC-16:** Before provider inference, every Sarah turn resolves exactly
   one released content-addressed policy and durably binds its digest and six
   dimension refs. A review or activation during the turn cannot change that
-  binding; a conflict fails closed.
+  binding. A conflict fails closed.
 - **SARAH-AC-17:** Sarah can request a review of only terminal turns from the
   authenticated owner's exact Sarah thread. The separate Effect compiler
   creates append-only owner-private experiences with source refs/digests and
-  bounded outcome facts; the running turn, deleted rows, and other owners are
+  bounded outcome facts. The running turn, deleted rows, and other owners are
   ineligible.
 - **SARAH-AC-18:** Harness optimization and evaluation are separate Gemma 4
   invocations over disjoint training and held-out experience snapshots. The
   candidate schema can alter only 1–8 bounded conversational instructions and
-  a 40–240 word default ceiling; six dimension identities and every authority-
+  a 40–240 word default ceiling. Six dimension identities and every authority-
   bearing field remain immutable and unexpressible.
 - **SARAH-AC-19:** Sarah and the optimizer cannot evaluate, release, or activate
   their candidate. A separate Blueprint gate requires held-out quality and
   regression scores of at least 0.75, privacy and safety scores of at least
   0.90, exact dimension compatibility, and deterministic secret/provenance
-  fencing before compare-and-swap activation; a concurrent base change fails
+  fencing before compare-and-swap activation. A concurrent base change fails
   closed.
 - **SARAH-AC-20:** Harness bank rows, optimizer/evaluator prompts, raw thread
   content, and private scores have no public or mobile projection. A released
@@ -173,7 +173,7 @@ ran until a target receipt exists.
 - **SARAH-AC-23:** Sarah receives no raw `gcloud`, shell, database, topology,
   guest-address, service-account, provider-credential, filesystem-path, or
   generic container-admin tool. Budget, capacity, authority, broker, guest,
-  revoke, and cleanup failures remain explicit; a failed or recovery-required
+  revoke, and cleanup failures remain explicit. A failed or recovery-required
   teardown is never described as successful. This capability does not grant
   remote Full Auto start or cross-machine `FullAutoRun` admission.
 
@@ -224,7 +224,7 @@ ran until a target receipt exists.
   producer out of verification and activation.
 - A managed-sandbox tool can become generic cloud-admin authority. The broker
   is a closed lifecycle and work-unit API with exact budgets and capability
-  refs; raw cloud, shell, database, topology, and credential surfaces remain
+  refs. Raw cloud, shell, database, topology, and credential surfaces remain
   unrepresentable.
 
 ## Related Artifacts

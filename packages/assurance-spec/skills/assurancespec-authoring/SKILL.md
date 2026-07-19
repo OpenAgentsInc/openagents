@@ -17,7 +17,7 @@ when the current obligation needs them:
 ## Working method
 
 1. Start with `assurance-spec propose <file.product-spec.md>`. Never
-   hand-scaffold the document; the deterministic proposal binds the exact
+   hand-scaffold the document. The deterministic proposal binds the exact
    ProductSpec revision, document digest, and stable criterion IDs.
 2. Design one obligation per proof claim. Every `required` obligation names an
    oracle and a falsifier that the oracle must reject.
@@ -25,7 +25,7 @@ when the current obligation needs them:
    Two mock-only component tests do not prove their wiring.
 4. Bind every evidence requirement to explicit Environment Profile refs. A
    fixture-tier pass remains fixture-tier evidence.
-5. Preserve obligation IDs. Never renumber or reuse an ID; supersede it and
+5. Preserve obligation IDs. Never renumber or reuse an ID. Supersede it and
    keep the history explicit.
 6. Run `assurance-spec validate` and `assurance-spec coverage` after every
    edit. Leave unresolved design as typed `needs_design`, never as implied

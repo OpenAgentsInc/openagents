@@ -39,21 +39,21 @@ tool_metadata:
 
 The web surfaces of every audited competitor are marketing plus cloud-canonical
 transcript custody, and their trust failures are public record: Cursor had two
-pricing crises from opaque metering and a concealed base-model substitution;
+pricing crises from opaque metering and a concealed base-model substitution.
 Amp hides model identity behind mode names and holds transcripts cloud-only
-with "unlisted" links that are internet-readable; Factory publishes mutually
-contradictory data-flow pages; Command Code calls a hosted inference loop
-"local" while posting an undisclosed device fingerprint; almost everyone's
+with "unlisted" links that are internet-readable. Factory publishes mutually
+contradictory data-flow pages. Command Code calls a hosted inference loop
+"local" while posting an undisclosed device fingerprint. Almost everyone's
 release chain is unsigned or checksum-only from the same origin. A developer
 or team deciding whether to trust an agent vendor has nowhere to verify
 anything: not what model ran, not what a run cost, not where data went, not
 whether the binary they installed is what the vendor built. The same user
 needs a browser surface that can actually supervise their fleet when they are
-on a machine that isn't theirs. And OpenAgents itself has public-economy
+on a machine that is not theirs. And OpenAgents itself has public-economy
 surfaces no competitor even attempts — a free collective-intelligence API, a
 Bitcoin-paid verified-work loop, referral attribution, agent community — that
-need a public home whose every number is backed by receipts, because "we're
-not going to be making any big claims that aren't sourced by evidence."
+need a public home whose every number is backed by receipts, because "we are
+not going to be making any big claims that are not sourced by evidence."
 
 ## Hypothesis
 
@@ -288,8 +288,8 @@ receipted state spatially when the substrate is real.
 
 For MemoHarness, web is verifier and safe controller, never optimizer or
 memory host by implication. Shared Effect Schema projections expose immutable
-bundle and receipt lineage; the receipt verifier recomputes public digests and
-Blueprint release relationships; and benchmark views compare only identical
+bundle and receipt lineage. The receipt verifier recomputes public digests and
+Blueprint release relationships. And benchmark views compare only identical
 effective tuples. Authoritative Desktop or managed Effect services own
 private retrieval, Cloud SQL metadata, private Cloud Storage evidence,
 adaptation, terminal experience compilation, optimization, and release
@@ -314,7 +314,7 @@ settings, or any authority-bearing Desktop behavior.
 
 ## Strategic Positioning
 
-Every competitor asks to be believed; none can be checked. Cursor, Amp,
+Every competitor asks to be believed. None can be checked. Cursor, Amp,
 Factory, and Command Code each failed publicly on exactly the dimensions this
 surface makes verifiable. A public trust ledger is cheap to render once the
 underlying receipts exist and is structurally hard for cloud-custody vendors
@@ -332,7 +332,7 @@ wherever cheapest, graded against a rubric, recorded in a receipt, settled to
 everyone who contributed — because "money only travels across a gap it can
 verify." Confidence is priced (draft, verified, reviewed, bonded are
 different products at different prices), the long-run metric is accepted
-outcomes per kilowatt-hour, and "the real product is not the wiring; it is
+outcomes per kilowatt-hour, and "the real product is not the wiring. It is
 the receipt that proves the wiring worked." This surface is where that
 doctrine is publicly checkable, in the open lane: plural systems held
 accountable through markets and receipts, paying the people — deflation plus
@@ -340,25 +340,25 @@ dividends — rather than pooling value at the top.
 
 ## Risks
 
-- A trust ledger with gaps reads worse than none; ship each ledger section
+- A trust ledger with gaps reads worse than none. Ship each ledger section
   only when its underlying receipts are real and continuously produced.
 - Supervision parity on the web must not quietly turn the browser into a
-  privilege escalation path; the projection-only boundary needs the same
+  privilege escalation path. The projection-only boundary needs the same
   IPC-grade discipline as Desktop's renderer.
 - Usage-truth commitments (SM-4, AC-8) create a standing operational
-  obligation to reconcile counters; that cost is the product working as
+  obligation to reconcile counters. That cost is the product working as
   intended, but it must be staffed.
-- Economy copy is regulated by the promise registry; a planned pays-you
+- Economy copy is regulated by the promise registry. A planned pays-you
   mechanic presented as live would be exactly the kind of unverifiable claim
   this surface exists to eliminate.
 - Fragment-token onboarding depends on relay and pairing infrastructure from
-  the mobile/desktop programs; web sequencing cannot outrun them.
-- The Verse layer is spectacle on top of receipts; building it before the
+  the mobile/desktop programs. Web sequencing cannot outrun them.
+- The Verse layer is spectacle on top of receipts. Building it before the
   counters converge would invert the honesty ordering.
 - Public adaptive-harness claims can become irreproducible marketing if the
-  harness/evaluator/environment tuple or cache state is omitted; incomplete
+  harness/evaluator/environment tuple or cache state is omitted. Incomplete
   tuples are unpublished, not footnoted away.
-- Trust-ledger lineage can accidentally disclose private retrieval evidence;
+- Trust-ledger lineage can accidentally disclose private retrieval evidence.
   public receipt schemas must verify digests and decisions while keeping raw
   experiences, embeddings, queries, and scores private.
 - Code shares can become accidental repository mirrors, secret leaks, or
@@ -416,8 +416,8 @@ dividends — rather than pooling value at the top.
   law, /stats, routing disclosure, benchmark honesty),
   `docs/transcripts/247.md` (sell-in-public funnel),
   `docs/transcripts/252.md` (Observer, run views, trace grammar),
-  `docs/transcripts/255.md` (pricing candor); back-catalog laws from
-  `docs/transcripts/204.md` (don't-break-userspace), `212.md` (API parity),
+  `docs/transcripts/255.md` (pricing candor). Back-catalog laws from
+  `docs/transcripts/204.md` (do-not-break-userspace), `212.md` (API parity),
   `224.md` (crawlable earnings transparency), `227.md` (no lock-in, export)
 - Sibling surface specs: `specs/desktop/desktop-trust-complete-workbench.product-spec.md`,
   `specs/mobile/mobile-any-host-fleet-controller.product-spec.md`
@@ -445,7 +445,7 @@ dividends — rather than pooling value at the top.
   ships.
 - Initial public CodeShareBundle publication, discoverability defaults,
   maximum content/retention bounds, and any organization-wide share default
-  require owner and privacy review; private per-object sharing never silently
+  require owner and privacy review. Private per-object sharing never silently
   inherits a broader workspace default.
 
 ## Receipts
@@ -458,13 +458,13 @@ work payout receipts, public-safe HarnessAdaptationReceipts, harness release/
 promotion/rollback receipts, immutable CodeShareBundle compilation and
 verification records, code-share visibility/expiry/revocation/access-audit
 records, and QA/assurance run receipts behind shareable run views. This
-section plans kinds; evidence lives in the receipt systems, not in this spec.
+section plans kinds. Evidence lives in the receipt systems, not in this spec.
 
 ## Promise Links
 
 None yet. Every public claim this surface makes (usage truth, verifiable
 releases, data-flow candor, counter convergence, referral accrual, verified-
 work payouts) must be registered in the promise registry with verification
-gates before it appears in copy; SM-4 and AC-8 are written to be consistent
+gates before it appears in copy. SM-4 and AC-8 are written to be consistent
 with the exact-rows law already governing public counters, and pays-you
 economics remain planned-state promises until settlement evidence exists.

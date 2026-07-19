@@ -4562,7 +4562,7 @@
       "STE-8.1": 6
     },
     "docs/changelog/UNRELEASED.md": {
-      "STE-2.4": 13,
+      "STE-2.4": 16,
       "STE-8.1": 14,
       "STE-5.1": 6,
       "STE-3.6": 3
@@ -10046,7 +10046,6 @@
       "STE-2.4": 15,
       "STE-5.1": 4
     },
-    "docs/ste/README.md": {},
     "docs/stripe/2026-06-22-khala-mpp-integration-plan.md": {
       "STE-8.1": 17,
       "STE-5.1": 6,
@@ -10434,11 +10433,6 @@
       "STE-2.4": 1,
       "STE-5.1": 1
     },
-    "packages/assurance-spec/README.md": {
-      "STE-2.4": 23,
-      "STE-8.1": 13,
-      "STE-5.1": 10
-    },
     "packages/assurance-spec/conformance/invalid/cyclic-obligation-dependency.assurance-spec.md": {
       "STE-2.4": 4
     },
@@ -10529,40 +10523,6 @@
       "STE-2.4": 1
     },
     "packages/assurance-spec/fixtures/agent-run/workspace/subject.product-spec.md": {},
-    "packages/assurance-spec/skills/assurancespec-authoring/SKILL.md": {
-      "STE-2.4": 5,
-      "STE-8.1": 2,
-      "STE-5.1": 1
-    },
-    "packages/assurance-spec/skills/assurancespec-authoring/references/authoring.md": {
-      "STE-2.4": 3,
-      "STE-8.1": 2
-    },
-    "packages/assurance-spec/skills/assurancespec-authoring/references/environments.md": {
-      "STE-2.4": 2,
-      "STE-8.1": 1
-    },
-    "packages/assurance-spec/skills/assurancespec-authoring/references/oracles-and-falsifiers.md": {
-      "STE-8.1": 1,
-      "STE-2.4": 2
-    },
-    "packages/assurance-spec/skills/assurancespec-authoring/references/seams.md": {
-      "STE-5.1": 1,
-      "STE-2.4": 2
-    },
-    "packages/assurance-spec/skills/assurancespec-work/SKILL.md": {
-      "STE-2.4": 10,
-      "STE-8.1": 10
-    },
-    "packages/assurance-spec/starter-kit/README.md": {
-      "STE-8.1": 1
-    },
-    "packages/assurance-spec/starter-kit/assurance/example.assurance-spec.md": {
-      "STE-2.4": 4
-    },
-    "packages/assurance-spec/starter-kit/docs/product-specs/example.product-spec.md": {
-      "STE-2.4": 1
-    },
     "packages/atif/README.md": {
       "STE-2.4": 4,
       "STE-8.1": 2,
@@ -10884,11 +10844,6 @@
       "STE-8.1": 7,
       "STE-5.1": 1
     },
-    "packages/product-spec/README.md": {
-      "STE-8.1": 8,
-      "STE-2.4": 8,
-      "STE-5.1": 3
-    },
     "packages/product-spec/fixtures/conformance/ATTRIBUTION.md": {
       "STE-2.4": 2,
       "STE-5.1": 1,
@@ -11010,41 +10965,11 @@
       "STE-2.4": 29,
       "STE-5.1": 35
     },
-    "specs/README.md": {
-      "STE-8.1": 16,
-      "STE-5.1": 5,
-      "STE-2.4": 11
-    },
     "specs/approval-protocol/ApprovalProtocol.cfg": {},
     "specs/approval-protocol/ApprovalProtocol.tla": {
       "STE-8.1": 1,
       "STE-5.1": 3,
       "STE-2.4": 1
-    },
-    "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md": {
-      "STE-2.4": 5,
-      "STE-5.1": 2,
-      "STE-8.1": 1
-    },
-    "specs/desktop/desktop-trust-complete-workbench.product-spec.md": {
-      "STE-8.1": 30,
-      "STE-5.1": 35,
-      "STE-2.4": 37,
-      "STE-9.1": 6,
-      "STE-8.2": 2
-    },
-    "specs/desktop/full-auto.assurance-spec.md": {
-      "STE-2.4": 37,
-      "STE-5.1": 30,
-      "STE-8.1": 22,
-      "STE-8.2": 3
-    },
-    "specs/desktop/full-auto.product-spec.md": {
-      "STE-2.4": 192,
-      "STE-5.1": 148,
-      "STE-8.1": 167,
-      "STE-9.1": 1,
-      "STE-8.2": 10
     },
     "specs/khala-fleet-delegate/FleetDelegateSupervisor.cfg": {
       "STE-2.4": 1
@@ -11054,13 +10979,6 @@
       "STE-2.4": 15
     },
     "specs/khala-fleet-delegate/FleetDelegateSupervisorLiveness.cfg": {},
-    "specs/mobile/mobile-any-host-fleet-controller.product-spec.md": {
-      "STE-2.4": 30,
-      "STE-8.1": 17,
-      "STE-5.1": 18,
-      "STE-8.2": 1,
-      "STE-9.1": 1
-    },
     "specs/mutations/approval-stale-forgery/ApprovalStaleForgery.cfg": {},
     "specs/mutations/approval-stale-forgery/ApprovalStaleForgery.tla": {
       "STE-8.1": 1,
@@ -11086,67 +11004,12 @@
     "specs/mutations/session-crash-divergence/SessionCrashDivergence.tla": {
       "STE-2.4": 2
     },
-    "specs/openagents/authority-delegation.product-spec.md": {
-      "STE-2.4": 34,
-      "STE-5.1": 24,
-      "STE-8.1": 12,
-      "STE-8.2": 1
-    },
-    "specs/openagents/cursor-capability-parity.assurance-spec.md": {
-      "STE-2.4": 4
-    },
-    "specs/openagents/cursor-capability-parity.product-spec.md": {
-      "STE-5.1": 65,
-      "STE-2.4": 60,
-      "STE-8.1": 40
-    },
-    "specs/openagents/fast-follow.product-spec.md": {
-      "STE-5.1": 23,
-      "STE-2.4": 32,
-      "STE-8.1": 12
-    },
-    "specs/openagents/managed-agent-sandboxes.assurance-spec.md": {
-      "STE-8.1": 3,
-      "STE-8.2": 2,
-      "STE-2.4": 4
-    },
-    "specs/openagents/managed-agent-sandboxes.product-spec.md": {
-      "STE-2.4": 23,
-      "STE-5.1": 20,
-      "STE-8.1": 12
-    },
-    "specs/openagents/portable-coding-sessions.product-spec.md": {
-      "STE-5.1": 14,
-      "STE-2.4": 9,
-      "STE-8.1": 14
-    },
-    "specs/openagents/sarah-owner-orchestrator.assurance-spec.md": {
-      "STE-2.4": 4
-    },
-    "specs/openagents/sarah-owner-orchestrator.product-spec.md": {
-      "STE-2.4": 32,
-      "STE-5.1": 11,
-      "STE-8.1": 14,
-      "STE-8.2": 1
-    },
     "specs/session-thread-mapping/SessionThreadMapping.cfg": {
       "STE-2.4": 1
     },
     "specs/session-thread-mapping/SessionThreadMapping.tla": {
       "STE-2.4": 4,
       "STE-5.1": 2
-    },
-    "specs/web/openagents-com-sales-landing.product-spec.md": {
-      "STE-2.4": 16,
-      "STE-5.1": 5,
-      "STE-8.1": 8
-    },
-    "specs/web/openagents-com-trust-surface.product-spec.md": {
-      "STE-2.4": 46,
-      "STE-8.1": 20,
-      "STE-9.1": 4,
-      "STE-5.1": 22,
-      "STE-8.2": 2
     }
   }
 }

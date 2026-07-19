@@ -113,7 +113,7 @@ never changes the visible evidence tier.
 - **AD-AC-03:** Effective authority is the intersection of current system and
   owner instructions, law/platform terms, repository invariants, resource
   policy/runtime gates, the profile, and target-local contracts. Explicit deny
-  wins; the delegate cannot amplify its own authority.
+  wins. The delegate cannot amplify its own authority.
 - **AD-AC-04:** Full Auto release, root-spec completion, complete Fast Follow,
   and promise/growth/revenue programs have a durable order and honest advance
   condition. Parallel non-colliding capacity may pull later admitted work, but
@@ -142,7 +142,7 @@ never changes the visible evidence tier.
   where the AssuranceSpec requires separation.
 - **AD-AC-11:** The blocker-resolution ladder is ordered and mandatory. Only an
   irreducible reserved action, inaccessible human account identity, or budget
-  expansion can settle as `needs_owner`; all other blockers route, automate,
+  expansion can settle as `needs_owner`. All other blockers route, automate,
   repair, narrow, or yield another admitted packet.
 - **AD-AC-12:** `NEEDS_OWNER.md` entries identify reserved category, exact
   target, attempted ladder steps, smallest UI action, continuing work, and
@@ -175,7 +175,7 @@ never changes the visible evidence tier.
 - **AD-AC-19:** Candidate and publication communication is bounded and
   idempotent across linked GitHub issues, explicitly requested tester handles,
   and the Forum `release-candidates` topic. A structured tester PASS is
-  receipted; BLOCKED or unstructured feedback becomes a linked Full Auto issue
+  receipted. BLOCKED or unstructured feedback becomes a linked Full Auto issue
   even when the source issue is already closed.
 - **AD-AC-20:** Every public changelog row records trigger kind, triggering
   actor, release actor, source feedback, release URL, authority profile
@@ -184,7 +184,7 @@ never changes the visible evidence tier.
 - **AD-AC-21:** Revision 3 designates `principal.sarah` as the owner-facing
   `sarah_orchestrator` role across the four ordered programs. Her effective
   authority is the intersection of root profile, Sarah profile, target policy,
-  and exact capability; no prompt or visibility grants mutation authority.
+  and exact capability. No prompt or visibility grants mutation authority.
 - **AD-AC-22:** Sarah business context is authenticated-owner scoped, bounded,
   freshness-labelled, cited, and secret-free. Current-state claims without an
   available source are refused or marked unavailable, never invented.
@@ -194,11 +194,11 @@ never changes the visible evidence tier.
 - **AD-AC-24:** Revision 4 permits Sarah to dispatch at most eight coding
   workers only through authenticated owner-linked Pylon capacity and an exact
   public repository commit. Actual assignment refs, not model prose, prove a
-  dispatch; absent capacity is a blocker, not implicit cloud or foreign-user
+  dispatch. Absent capacity is a blocker, not implicit cloud or foreign-user
   substitution.
 - **AD-AC-25:** Revision 4 permits Sarah to dispatch pause/resume/stop intents
   for an exact existing owner Full Auto run. Desktop remains transition
-  authority, and only its applied outcome proves the transition; a server-side
+  authority, and only its applied outcome proves the transition. A server-side
   pending intent is not success.
 - **AD-AC-26:** Revision 4 grants no remote Full Auto start, raw workspace, the
   general Full Auto private MemoHarness bank, during-run adaptation, candidate promotion,
@@ -208,7 +208,7 @@ never changes the visible evidence tier.
   owner-private thread. Sarah cannot read or export the resulting private
   experience bank, change authority-bearing dimensions, evaluate, release, or
   activate a candidate. A separate optimizer/evaluator/gate may activate only
-  a bounded conversational policy for a subsequent turn; the current turn's
+  a bounded conversational policy for a subsequent turn. The current turn's
   content-addressed binding is immutable.
 
 ## Success Metrics
@@ -243,14 +243,14 @@ never changes the visible evidence tier.
 ## Risks
 
 - A prose-only profile can be applied inconsistently until runtime adapters
-  enforce it; deterministic validation and exact receipts are the bootstrap
+  enforce it. Deterministic validation and exact receipts are the bootstrap
   defense, not the final control plane.
 - Over-broad resource labels can hide privilege expansion. Each adapter must
   resolve them into exact project, repository, release channel, device,
   provider, or product-promise targets before execution.
 - Independence can become ceremonial if a second session merely trusts the
   producer's summary. Review must reproduce evidence and record its own claim.
-- Conservative budgets can still create waste through repeated small actions;
+- Conservative budgets can still create waste through repeated small actions.
   cumulative measurement and stop-before-cap behavior are required.
 - “Grow revenue” can be misread as permission to contact or charge people.
   Revision 1 deliberately limits that phase to product work and zero-spend
@@ -275,7 +275,7 @@ never changes the visible evidence tier.
   deploy Codex subagents, and manage Full Auto processes admits revision 4's
   two exact brokers while preserving the spec's learning/promotion gates. The
   owner's subsequent direction to let Sarah review her own thread history and
-  improve her harness admits revision 5's exact terminal-history review broker;
+  improve her harness admits revision 5's exact terminal-history review broker.
   it does not grant Sarah self-evaluation, self-release, current-turn mutation,
   general Full Auto MemoHarness access, or authority expansion.
 - Any increase to the numeric spend caps, permission for paid outreach or new
@@ -283,7 +283,7 @@ never changes the visible evidence tier.
   data action, raw secret access, or weakening of a mandatory invariant needs
   a current owner direction and profile revision.
 - A platform flow that legally or technically requires the natural account
-  holder remains an exact owner action; its existence does not stop unrelated
+  holder remains an exact owner action. Its existence does not stop unrelated
   admitted work.
 
 ## Receipts
@@ -303,5 +303,5 @@ never changes the visible evidence tier.
   existing product-promise entries and #8978/#8979 proof gates.
 - Transcript-derived growth or revenue promises become actionable only after
   reconciliation into the promise registry or a target-owned ProductSpec.
-- Authority delegation improves delivery throughput; it is not itself a public
+- Authority delegation improves delivery throughput. It is not itself a public
   product claim.

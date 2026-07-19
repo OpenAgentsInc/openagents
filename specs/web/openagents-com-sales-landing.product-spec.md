@@ -62,20 +62,20 @@ cut:
 
 ## User Experience
 
-The staged landing renders at the staging route before the root flip; the
+The staged landing renders at the staging route before the root flip. The
 landed React replica remains the visual baseline it is compared against. The
 production surface is the openagents.com root after owner-approved cutover.
 
 ## Acceptance Criteria
 
 - Every section renders from the ported kit on TanStack Start with the single
-  Protoss-blue theme; no `next/*` imports remain.
+  Protoss-blue theme. No `next/*` imports remain.
 - The stats section reads the live public counters — never hardcoded numbers
-  (exact-only law; counters are projections of receipted rows).
+  (exact-only law, counters are projections of receipted rows).
 - No pricing, checkout, credits, wallet, market, payout, settlement, or Sites
   CTA is rendered. Retired paid capacity is not presented as free capacity.
 - All landing copy passes the promise-registry copy gates with owner sign-off
-  recorded before the root flip; no claim appears that the registry cannot
+  recorded before the root flip. No claim appears that the registry cannot
   back.
 - Root cutover has a rollback note proven by exercising the rollback path once
   on staging.
@@ -110,7 +110,7 @@ production surface is the openagents.com root after owner-approved cutover.
 - Copy gates are the schedule risk: no flip without owner sign-off, so drafting
   toward the gates must start early (owner gate below).
 - The Effect Native rescope (§EN) makes the forward landing the first
-  production Effect Native surface; regression risk is bounded by keeping the
+  production Effect Native surface. Regression risk is bounded by keeping the
   React replica as the visual baseline and comparing before the flip.
 
 ## Owner Gates
@@ -121,13 +121,13 @@ production surface is the openagents.com root after owner-approved cutover.
 
 ## Receipts
 
-- Copy-gate pass receipts per section; root-flip receipt with rollback note;
-  staging rollback exercised once; Eval Suite green runs before/after flip;
+- Copy-gate pass receipts per section. Root-flip receipt with rollback note.
+  staging rollback exercised once. Eval Suite green runs before/after flip.
   counter wiring verified against the public endpoints (never synthesized).
 
 ## Promise Links
 
-- Landing claims must dereference to registry-backed promises only; the
+- Landing claims must dereference to registry-backed promises only. The
   live-counter and pricing claims link to their existing registry entries.
   This spec's success metrics are conversion measures and feed no public
   claim directly.

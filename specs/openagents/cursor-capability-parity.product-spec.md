@@ -113,33 +113,33 @@ cut:
 
 The ledger below is the minimum completeness boundary, not an implementation
 status claim. Each row expands into finer-grained target-owned work and proof.
-The Cursor teardown and its pinned source snapshot are the evidence baseline;
+The Cursor teardown and its pinned source snapshot are the evidence baseline.
 Fast Follow keeps the rows current.
 
-| Capability family           | Cursor-class outcome OpenAgents must cover                                                                                                                                                          | OpenAgents form and advantage                                                                                                                                        |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Product shells              | Classic project IDE plus a dedicated agent-first multi-session window, project/repository opening, recent work, settings, updates, and account entry                                                | One canonical session graph rendered as workbench, agents window, mobile, web, and terminal densities                                                                |
-| Editor core                 | Files, tabs/splits, search, symbols, navigation, diagnostics, source control, diffs, terminal, tasks/tests/debug, keymaps, themes, settings, recovery, remote workspaces, and extension-driven language support | Zed-quality generation-fenced Effect project graph with Monaco/Pierre/xterm as replaceable mechanics; built-in persistent Vim and one initial owned Tokyo Night semantic projection; light/high-contrast/system themes before full parity |
-| AI editing                  | Low-latency single- and multi-line completion, next-edit prediction, inline ask/edit/generate, selection transforms, fast multi-file apply, review, accept, reject, and undo                        | Model/provider-selectable editing with exact patch provenance, checkpoints, receipts, and local or managed execution                                                 |
-| Repository intelligence     | Codebase chat, semantic search, file/symbol/path context, explicit mentions, docs/web context, ignore rules, and continuously refreshed repository knowledge                                        | Hybrid local lexical/symbol/path index plus optional selectable embedding backends; visible scope, freshness, cost, custody, export, and deletion                    |
-| Conversation system         | Durable threads, side chats, branching, searchable past conversations, titles, attachments, mentions, reasoning, tool activity, usage, export, and deletion                                         | Host-independent session identity, complete object graph, honest gaps, full-text search, portable custody, no cloud-only canonical history                           |
-| Agent modes                 | Ask/read-only, plan, agent/execute, debug/review, design/front-end, and custom modes with mode-specific tools, models, permissions, and instructions                                                | Typed execution profiles and reusable mode policies; mode names never conceal model, authority, or placement                                                         |
-| Agent tools                 | Workspace read/write/search, shell and PTY, Git and worktrees, diagnostics/tests, browser navigation, screenshots, web search, computer/OS use, image input, and artifact preview                   | Schema-decoded commands, scoped capabilities, sandbox enforcement, human approvals, and per-action receipts                                                          |
-| Parallel agency             | Background shells, multiple concurrent sessions, subagents with independent transcripts, worktree isolation, plan fan-out, best-of-N generation, comparison, review, and merge                      | Canonical agent graph, collision-safe claims, typed fan-out/fan-in, explicit comparison records, and acceptance outside the producing agent                          |
-| Recovery and memory         | Checkpoints, code/chat rewind, crash recovery, compaction, summaries, rules, memories, repository instructions, and reusable context                                                                | Two-phase conflict-aware restore; declared admitted-input manifests; inspectable memory sources and per-source disable/delete controls                               |
-| Background and cloud agents | Start work locally or remotely, continue after the client closes, monitor status, inspect diffs/logs/artifacts, intervene, and hand back to the workstation                                         | Portable sessions with exclusive attachment generations across local, owner-managed, OpenAgents-managed, and audited-provider targets                                |
-| Automations                 | Scheduled and event-triggered agents, recurring jobs, repository/issue/PR/webhook triggers, isolated workspaces, budgets, notifications, result review, rerun, pause, and cancel                    | Durable Full Auto/automation state machines with typed triggers, caps, leases, receipts, optional placement, and provider/account failover                           |
-| Remote control              | Continue and supervise work from web and mobile, answer questions, approve, steer, queue, stop, review changes, and receive notifications                                                           | Any-host remote control with scoped revocable device grants, E2EE relay, exactly-once command outcomes, and no desktop credential on the phone                       |
-| CLI and protocols           | Headless agent CLI, interactive terminal use, scripting/JSON output, session resume, CI use, and editor/agent protocol integration                                                                  | One typed protocol with full-screen, native-scrollback, and headless renderers; SDK and ACP/MCP-compatible bridges without a second authority path                   |
-| Extensibility               | Extensions, marketplace/discovery, plugins, skills, MCP servers, rules, commands, hooks, subagent definitions, team bundles, import/export, enable/disable, and updates                             | Signed provenance, permissions, isolation profiles, compatibility ledger, review, receipts, and support for open portable formats without trusted-process execution  |
-| Browser and design          | Embedded browser, DOM/screenshot context, browser automation, preview/dev server, responsive inspection, visual editing, design-to-code, and image workflows                                        | Partitioned browser/preview surfaces, explicit network profiles, receipted computer use, and optional specialized design harnesses                                   |
-| Sharing and review links    | Share conversations, background-agent outcomes, changed code, artifacts, and review state with collaborators from web                                                                              | Audience-scoped verifiable code-share bundles over selected tree/excerpt/diff/problem/test/artifact/agent evidence, with expiry/revocation and zero execution authority |
-| Models and accounts         | Broad first- and third-party model catalog, automatic/best routing, explicit model selection, multiple accounts, usage visibility, quotas, and team policy                                          | Better-model-by-default without lock-in: harness/model separation, local lanes, BYOK/subscriptions, honest effective identity, policy routing, and failover          |
-| Teams and enterprise        | Shared rules/plugins/skills, centralized settings, model/tool/network controls, privacy controls, SSO/SCIM-style identity, audit, billing/usage administration, and managed deployment              | Typed policy compilation, organization-scoped capability grants, exportable audit receipts, self-host/owner-managed options, and no admin-policy ambiguity           |
-| Security and privacy        | Sandbox, permission prompts, network controls, privacy modes, codebase indexing controls, secret handling, workspace trust, and update integrity                                                    | Requested-versus-effective enforcement, hermetic profiles, secret broker, explicit data-flow matrix, signed release sets, rollback, and fail-closed behavior         |
-| Distribution                | Supported signed desktop builds and updates across macOS, Windows, and Linux on x64 and arm64 where platform support exists                                                                         | Six-target release manifest, compatibility ledger, retained rollback slot, deterministic source/build disclosure, and no live-site desktop renderer                  |
-| Data lifecycle              | Local databases, chats, search indexes, snapshots, checkpoints, caches, auth, telemetry, remote indexes, and server-side run state                                                                  | Human-readable data inventory, storage viewer, one-click complete export, selective/full deletion, verified remote tombstones, retention controls, and rebuild paths |
-| Quality and accessibility   | Fast startup, responsive transcripts/editor, reliable long-running agents, keyboard completeness, screen-reader support, reduced motion, high contrast, localization, and graceful offline behavior | Checked-in performance/accessibility budgets and fault matrices; capability state is available, degraded with reason, or unavailable—never silently missing          |
+| Capability family           | Cursor-class outcome OpenAgents must cover                                                                                                                                                                      | OpenAgents form and advantage                                                                                                                                                                                                             |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product shells              | Classic project IDE plus a dedicated agent-first multi-session window, project/repository opening, recent work, settings, updates, and account entry                                                            | One canonical session graph rendered as workbench, agents window, mobile, web, and terminal densities                                                                                                                                     |
+| Editor core                 | Files, tabs/splits, search, symbols, navigation, diagnostics, source control, diffs, terminal, tasks/tests/debug, keymaps, themes, settings, recovery, remote workspaces, and extension-driven language support | Zed-quality generation-fenced Effect project graph with Monaco/Pierre/xterm as replaceable mechanics. Built-in persistent Vim and one initial owned Tokyo Night semantic projection. Light/high-contrast/system themes before full parity |
+| AI editing                  | Low-latency single- and multi-line completion, next-edit prediction, inline ask/edit/generate, selection transforms, fast multi-file apply, review, accept, reject, and undo                                    | Model/provider-selectable editing with exact patch provenance, checkpoints, receipts, and local or managed execution                                                                                                                      |
+| Repository intelligence     | Codebase chat, semantic search, file/symbol/path context, explicit mentions, docs/web context, ignore rules, and continuously refreshed repository knowledge                                                    | Hybrid local lexical/symbol/path index plus optional selectable embedding backends. Visible scope, freshness, cost, custody, export, and deletion                                                                                         |
+| Conversation system         | Durable threads, side chats, branching, searchable past conversations, titles, attachments, mentions, reasoning, tool activity, usage, export, and deletion                                                     | Host-independent session identity, complete object graph, honest gaps, full-text search, portable custody, no cloud-only canonical history                                                                                                |
+| Agent modes                 | Ask/read-only, plan, agent/execute, debug/review, design/front-end, and custom modes with mode-specific tools, models, permissions, and instructions                                                            | Typed execution profiles and reusable mode policies. Mode names never conceal model, authority, or placement                                                                                                                              |
+| Agent tools                 | Workspace read/write/search, shell and PTY, Git and worktrees, diagnostics/tests, browser navigation, screenshots, web search, computer/OS use, image input, and artifact preview                               | Schema-decoded commands, scoped capabilities, sandbox enforcement, human approvals, and per-action receipts                                                                                                                               |
+| Parallel agency             | Background shells, multiple concurrent sessions, subagents with independent transcripts, worktree isolation, plan fan-out, best-of-N generation, comparison, review, and merge                                  | Canonical agent graph, collision-safe claims, typed fan-out/fan-in, explicit comparison records, and acceptance outside the producing agent                                                                                               |
+| Recovery and memory         | Checkpoints, code/chat rewind, crash recovery, compaction, summaries, rules, memories, repository instructions, and reusable context                                                                            | Two-phase conflict-aware restore. Declared admitted-input manifests. Inspectable memory sources and per-source disable/delete controls                                                                                                    |
+| Background and cloud agents | Start work locally or remotely, continue after the client closes, monitor status, inspect diffs/logs/artifacts, intervene, and hand back to the workstation                                                     | Portable sessions with exclusive attachment generations across local, owner-managed, OpenAgents-managed, and audited-provider targets                                                                                                     |
+| Automations                 | Scheduled and event-triggered agents, recurring jobs, repository/issue/PR/webhook triggers, isolated workspaces, budgets, notifications, result review, rerun, pause, and cancel                                | Durable Full Auto/automation state machines with typed triggers, caps, leases, receipts, optional placement, and provider/account failover                                                                                                |
+| Remote control              | Continue and supervise work from web and mobile, answer questions, approve, steer, queue, stop, review changes, and receive notifications                                                                       | Any-host remote control with scoped revocable device grants, E2EE relay, exactly-once command outcomes, and no desktop credential on the phone                                                                                            |
+| CLI and protocols           | Headless agent CLI, interactive terminal use, scripting/JSON output, session resume, CI use, and editor/agent protocol integration                                                                              | One typed protocol with full-screen, native-scrollback, and headless renderers. SDK and ACP/MCP-compatible bridges without a second authority path                                                                                        |
+| Extensibility               | Extensions, marketplace/discovery, plugins, skills, MCP servers, rules, commands, hooks, subagent definitions, team bundles, import/export, enable/disable, and updates                                         | Signed provenance, permissions, isolation profiles, compatibility ledger, review, receipts, and support for open portable formats without trusted-process execution                                                                       |
+| Browser and design          | Embedded browser, DOM/screenshot context, browser automation, preview/dev server, responsive inspection, visual editing, design-to-code, and image workflows                                                    | Partitioned browser/preview surfaces, explicit network profiles, receipted computer use, and optional specialized design harnesses                                                                                                        |
+| Sharing and review links    | Share conversations, background-agent outcomes, changed code, artifacts, and review state with collaborators from web                                                                                           | Audience-scoped verifiable code-share bundles over selected tree/excerpt/diff/problem/test/artifact/agent evidence, with expiry/revocation and zero execution authority                                                                   |
+| Models and accounts         | Broad first- and third-party model catalog, automatic/best routing, explicit model selection, multiple accounts, usage visibility, quotas, and team policy                                                      | Better-model-by-default without lock-in: harness/model separation, local lanes, BYOK/subscriptions, honest effective identity, policy routing, and failover                                                                               |
+| Teams and enterprise        | Shared rules/plugins/skills, centralized settings, model/tool/network controls, privacy controls, SSO/SCIM-style identity, audit, billing/usage administration, and managed deployment                          | Typed policy compilation, organization-scoped capability grants, exportable audit receipts, self-host/owner-managed options, and no admin-policy ambiguity                                                                                |
+| Security and privacy        | Sandbox, permission prompts, network controls, privacy modes, codebase indexing controls, secret handling, workspace trust, and update integrity                                                                | Requested-versus-effective enforcement, hermetic profiles, secret broker, explicit data-flow matrix, signed release sets, rollback, and fail-closed behavior                                                                              |
+| Distribution                | Supported signed desktop builds and updates across macOS, Windows, and Linux on x64 and arm64 where platform support exists                                                                                     | Six-target release manifest, compatibility ledger, retained rollback slot, deterministic source/build disclosure, and no live-site desktop renderer                                                                                       |
+| Data lifecycle              | Local databases, chats, search indexes, snapshots, checkpoints, caches, auth, telemetry, remote indexes, and server-side run state                                                                              | Human-readable data inventory, storage viewer, one-click complete export, selective/full deletion, verified remote tombstones, retention controls, and rebuild paths                                                                      |
+| Quality and accessibility   | Fast startup, responsive transcripts/editor, reliable long-running agents, keyboard completeness, screen-reader support, reduced motion, high contrast, localization, and graceful offline behavior             | Checked-in performance/accessibility budgets and fault matrices. Capability state is available, degraded with reason, or unavailable—never silently missing                                                                               |
 
 Every maintained ledger row must eventually include: `cursor_evidence_ref`,
 `source_version`, `source_observation_date`, `target_surface`, `target_owner`,
@@ -148,7 +148,7 @@ Every maintained ledger row must eventually include: `cursor_evidence_ref`,
 `remote_data_classes`, `network_dependencies`, `disposition`, and
 `freshness_state`. Allowed dispositions are `observed`, `gap`, `admitted`,
 `implemented_unverified`, `verified`, `owner_accepted`, `superseded`, or
-`owner_exception`; “not needed” is not a disposition.
+`owner_exception`. “Not needed” is not a disposition.
 
 ## User Experience
 
@@ -183,9 +183,9 @@ canonical session graph.
 
 One host-owned protocol separates surface, harness, model, placement, sync,
 and persistence. Harness adapters translate native runtime events and resume
-state; provider adapters supply model calls; sandbox providers supply isolated
-filesystems and processes; the session service owns durable identity and the
-canonical event graph; projection services render that graph into Desktop,
+state. Provider adapters supply model calls. Sandbox providers supply isolated
+filesystems and processes. The session service owns durable identity and the
+canonical event graph. Projection services render that graph into Desktop,
 web, mobile, terminal, and SDK shapes. Adapters can add native configuration
 without taking ownership of authority or history.
 
@@ -195,23 +195,23 @@ documents, search/index, language, Git, terminal/task/debug, agent context and
 proposals, persistence, placement, and safe projections. Monaco, Pierre,
 xterm, focused VS Code libraries, LSP/tsserver/DAP/Git, and harness processes
 remain replaceable. Rust child processes may supply OS PTY or containment
-facts, but never application state; optional native acceleration enters only
+facts, but never application state. Optional native acceleration enters only
 after a measured cross-platform gate and can be removed without changing
 canonical project or session identity.
 
 The contract graph is schema-first: `Schema.Struct`, `Schema.TaggedStruct`, and
-`Schema.TaggedUnion` own boundary shapes and their TypeScript types are derived;
-branded schemas own stable refs; `Schema.TaggedErrorClass` owns typed failures.
+`Schema.TaggedUnion` own boundary shapes and their TypeScript types are derived.
+branded schemas own stable refs. `Schema.TaggedErrorClass` owns typed failures.
 `Context.Service` and `Layer.effect` own capability construction, named
 `Effect.fn` operations own observable behavior, and project scopes interrupt
 their watchers, processes, streams, and subscriptions. One
 `DesktopThemeProjection` maps the pinned Tokyo Night palette into every
-initial IDE adapter; one app-owned `VimModeController` translates a
+initial IDE adapter. One app-owned `VimModeController` translates a
 replaceable Monaco Vim engine into the canonical command/document graph.
 
 The repository knowledge service has explicit tiers: always-available local
-path/text/symbol search; optional local embeddings where a compatible model is
-installed; optional owner-managed or OpenAgents-managed semantic indexing;
+path/text/symbol search. Optional local embeddings where a compatible model is
+installed. Optional owner-managed or OpenAgents-managed semantic indexing.
 and explicit third-party documentation/web retrieval. Content manifests,
 chunk metadata, embeddings, caches, and remote index handles are distinct data
 classes with independent retention and deletion. No UI label such as “indexed”
@@ -229,7 +229,7 @@ move or adapter replacement cannot silently remove a supported workflow.
   required field named in this spec, pins the Cursor evidence/version/date,
   and has no missing, duplicate, stale-without-warning, or “not needed” row.
 - **CP-AC-02:** A release claiming Cursor parity has no required row below
-  `owner_accepted`; an owner exception names the preserved user outcome,
+  `owner_accepted`. An owner exception names the preserved user outcome,
   approved substitute, expiry/review date, and evidence, and is never counted
   as parity until its substitute is accepted.
 - **CP-AC-03:** One test repository can be opened in the classic workbench and
@@ -242,7 +242,7 @@ move or adapter replacement cannot silently remove a supported workflow.
   provenance under checked-in latency and correctness budgets.
 - **CP-AC-05:** Ask, plan, execute, review/debug, design, and custom modes compile
   to explicit model, tool, permission, placement, memory, and instruction
-  policies; changing a mode cannot silently broaden authority or conceal the
+  policies. Changing a mode cannot silently broaden authority or conceal the
   effective model.
 - **CP-AC-06:** Parallel-session, subagent, worktree, background-shell, and
   best-of-N tests prove complete child transcripts, isolated mutation claims,
@@ -253,27 +253,27 @@ move or adapter replacement cannot silently remove a supported workflow.
   secret redaction, and action receipts while preserving the supported Cursor-
   class workflow.
 - **CP-AC-08:** Background and automation tests start from schedule, repository,
-  issue/PR, and webhook/manual triggers; run under local, owner-managed, and
-  OpenAgents-managed placement; survive client closure/restart; enforce caps
-  and idempotency; notify and accept intervention; and produce reviewable
+  issue/PR, and webhook/manual triggers. Run under local, owner-managed, and
+  OpenAgents-managed placement. Survive client closure/restart. Enforce caps
+  and idempotency. Notify and accept intervention. And produce reviewable
   outcomes without duplicate execution.
 - **CP-AC-09:** The same portable session can start on Desktop, continue in a
   background placement, be supervised from web and mobile, and return to an
   owner host with one identity and at most one accepting attachment generation.
 - **CP-AC-10:** The CLI, SDK, terminal UI, Desktop, web, and mobile invoke the
-  same stable command IDs and observe the same durable outcomes; scripting and
+  same stable command IDs and observe the same durable outcomes. Scripting and
   JSON modes expose typed errors and never introduce a parallel authority path.
 - **CP-AC-11:** Skills, MCP servers, rules, hooks, plugins, extensions, and
   subagent definitions support discover/install/import/export/update/disable/
   remove and team distribution, with provenance, compatibility, declared
-  permissions, isolation, rollback, and receipts; untrusted code never executes
+  permissions, isolation, rollback, and receipts. Untrusted code never executes
   inside the trusted shell or engine process.
 - **CP-AC-12:** For every session, the placement disclosure and receipt identify
   selected and effective harness, model/provider/account, execution target,
   sandbox profile, network policy, index/data flows, cost/usage, and retained
-  artifacts; automatic substitution is visible and policy-bound.
+  artifacts. Automatic substitution is visible and policy-bound.
 - **CP-AC-13:** With remote embeddings disabled, repository path/text/symbol
-  search and agent context remain functional; each optional local or remote
+  search and agent context remain functional. Each optional local or remote
   semantic backend has an independent scope, freshness, rebuild, export,
   retention, and verified deletion path.
 - **CP-AC-14:** The data inventory enumerates all local and remote data classes
@@ -282,7 +282,7 @@ move or adapter replacement cannot silently remove a supported workflow.
   device revocation, full local reset, and remote deletion/tombstone receipts.
 - **CP-AC-15:** macOS, Windows, and Linux release evidence covers supported x64
   and arm64 targets, signed update and rollback, startup, editor, agent,
-  terminal, browser, extension, accessibility, and offline-degradation matrices;
+  terminal, browser, extension, accessibility, and offline-degradation matrices.
   unsupported platform/capability pairs are visible gaps, not silent omissions.
 - **CP-AC-16:** Fast Follow refresh detects a new or changed Cursor capability,
   records exact evidence and freshness, creates or updates the parity gap
@@ -298,10 +298,10 @@ move or adapter replacement cannot silently remove a supported workflow.
   fabricates completion.
 - **CP-AC-19:** The integrated-IDE corpus opens the same file from Finder,
   Explorer, quick open, search, Problems, symbols, Git, and an agent backlink
-  into one current Monaco document; proves multi-root/worktree isolation,
+  into one current Monaco document. Proves multi-root/worktree isolation,
   dirty/conflict/restart recovery, language/navigation, Git/review,
   terminal/tasks/tests/debug, and agent proposal/apply/undo without another
-  editor; and rejects every stale attachment/document/service generation.
+  editor. And rejects every stale attachment/document/service generation.
 - **CP-AC-20:** A coding session can attach to an exact project, disclose a
   generation-bound context manifest, receive a version-bound multi-file
   proposal, review it in the same Changes/diff plane, apply or refuse it under
@@ -310,13 +310,13 @@ move or adapter replacement cannot silently remove a supported workflow.
 - **CP-AC-21:** Local, owner-managed, and admitted managed project-capability
   journeys use identical command/result contracts and stable refs while
   exposing effective placement, version, latency, freshness, custody, and
-  attachment generation; disconnect, revocation, or incompatibility never
+  attachment generation. Disconnect, revocation, or incompatibility never
   silently uploads, installs, relocates, or substitutes a capability.
 - **CP-AC-22:** A public or audience-scoped code-share journey compiles an
   allowlisted, verifiable bundle containing only selected tree/excerpt/diff/
-  proposal/problem/test/artifact/log/agent/receipt evidence; snapshot/live
+  proposal/problem/test/artifact/log/agent/receipt evidence. Snapshot/live
   mode, omission, staleness, expiry, revocation, access, and public-copy risk
-  are visible; and the page has no workspace, terminal, Git, model, or mutation
+  are visible. And the page has no workspace, terminal, Git, model, or mutation
   authority and leaks no root, environment, credential, secret, private
   context, raw terminal, embedding, or unselected repository content.
 - **CP-AC-23:** An architecture audit finds every authoritative project,
@@ -326,24 +326,24 @@ move or adapter replacement cannot silently remove a supported workflow.
   explicit failure behavior and reversal threshold, and no credential,
   project/session/policy/database/receipt authority.
 - **CP-AC-24:** The maintained daily-editor corpus enables and disables Vim
-  from Settings, command palette, and status control; proves persistent
+  from Settings, command palette, and status control. Proves persistent
   off-by-default mode, core Normal/Insert/Visual operations, counts, operators,
   text objects, registers, repeat, search, supported colon commands, clipboard,
   conflict-safe save/close, split/worktree isolation, IME/accessibility,
-  restart, and complete listener teardown; and finds no extension-host or
+  restart, and complete listener teardown. And finds no extension-host or
   direct-Monaco authority path.
 - **CP-AC-25:** Every initially supported Desktop IDE projection renders from
   one provenance-pinned Tokyo Night semantic token plane before first paint,
   passes checked contrast and non-color-state journeys, works offline, and
   retains document/terminal/review state across theme initialization. A full-
   parity claim additionally requires the deferred first-party light, high-
-  contrast dark/light, and system-following corpus; Tokyo Night alone is never
+  contrast dark/light, and system-following corpus. Tokyo Night alone is never
   reported as complete theme/accessibility parity.
 - **CP-AC-26:** An architecture audit finds a single Effect Schema source and
   derived TypeScript type for every persisted, IPC, helper, mobile/web, and
-  public-share boundary; constrained branded refs and stable codegen schema
-  identifiers where applicable; no raw interface or handwritten union acting
-  as a parallel contract; and every untrusted input decoded before use.
+  public-share boundary. Constrained branded refs and stable codegen schema
+  identifiers where applicable. No raw interface or handwritten union acting
+  as a parallel contract. And every untrusted input decoded before use.
 - **CP-AC-27:** A lifecycle and release audit finds IDE capabilities composed
   as Context.Service/Layer.effect services with named Effect.fn operations,
   Schema.TaggedErrorClass failures, and scoped resource interruption, and maps
@@ -411,7 +411,7 @@ move or adapter replacement cannot silently remove a supported workflow.
 
 - Cursor changes quickly. Evidence pinning, observation dates, and automated
   freshness warnings are required or parity becomes a stale marketing claim.
-- “Everything” can flatten sequencing. The ledger is complete; implementation
+- “Everything” can flatten sequencing. The ledger is complete. Implementation
   remains criterion-addressed and dependency-ordered through roadmap and work
   authority.
 - An unbundled product can expose too many choices. Opinionated defaults and
@@ -439,7 +439,7 @@ move or adapter replacement cannot silently remove a supported workflow.
   bypass the command, document, focus, accessibility, and teardown laws. Both
   remain app-owned projections with explicit packaged journeys.
 - Shipping only Tokyo Night can be mislabeled as accessibility/theme parity.
-  It is the admitted initial default; the broader first-party theme corpus
+  It is the admitted initial default. The broader first-party theme corpus
   stays a visible parity gap until separately proven.
 
 ## Related Artifacts

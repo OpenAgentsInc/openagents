@@ -2,7 +2,7 @@
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.starter.assurance.adoption"
 assurance_revision: 1
-title: "Starter Assurance Adoption Assurance Spec"
+title: "Starter Assurance Adoption AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
 author: "Repository owner"

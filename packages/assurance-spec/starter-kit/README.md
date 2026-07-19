@@ -16,7 +16,7 @@ The committed `assurance/owned-runner.json` is consumed by
 retained as information and never become a percentage or threshold gate.
 
 OpenAgents intentionally does not include a `.github/workflows` file. This
-repository forbids GitHub-hosted CI; verification runs on OpenAgents-owned
+repository forbids GitHub-hosted CI. Verification runs on OpenAgents-owned
 infrastructure or locally through the same deterministic command. Downstream
 repositories may integrate the command with infrastructure they control, but
 the starter kit grants no hosted runner, credential, admission, or release

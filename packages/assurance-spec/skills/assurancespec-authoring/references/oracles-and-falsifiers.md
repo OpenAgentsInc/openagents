@@ -8,7 +8,7 @@ pass” without a bounded object and decision rule.
 Every required obligation also needs a falsifier: a controlled counterexample
 or mutation that must produce `REFUTED`. The falsifier demonstrates that the
 oracle can reject a relevant failure. If no meaningful falsifier can be named,
-the oracle is not yet an adequate proof design; retain `missing_falsifier` or
+the oracle is not yet an adequate proof design. Retain `missing_falsifier` or
 `obligation_needs_design` rather than inventing confidence.
 
 Do not rewrite an oracle or falsifier after observing a failure merely to make

@@ -166,6 +166,9 @@ describe("STE screening review", () => {
 describe("STE structural rewrite", () => {
   test("replaces prose semicolons and preserves source data and words", () => {
     const input = [
+      "---",
+      'summary: "Keep a;b in metadata."',
+      "---",
       "Use the route; then inspect it.",
       "Keep `printf 'a;b'` and https://example.com/a;b unchanged.",
       "Keep `multi;line",
@@ -176,6 +179,9 @@ describe("STE structural rewrite", () => {
     ].join("\n");
     expect(rewriteSteSemicolons(input)).toBe(
       [
+        "---",
+        'summary: "Keep a;b in metadata."',
+        "---",
         "Use the route. Then inspect it.",
         "Keep `printf 'a;b'` and https://example.com/a;b unchanged.",
         "Keep `multi;line",

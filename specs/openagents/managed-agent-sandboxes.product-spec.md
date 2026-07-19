@@ -49,8 +49,8 @@ choice.
 ## Hypothesis
 
 If OpenAgents defines one owner-scoped, generation-fenced `SandboxResource`
-over its existing Google Cloud workroom substrate; exposes its native typed
-service to Desktop, Sarah, mobile, and web; and serves an admitted subset of
+over its existing Google Cloud workroom substrate. Exposes its native typed
+service to Desktop, Sarah, mobile, and web. And serves an admitted subset of
 the Box v1 API as a compatibility projection, then users can start and
 supervise long-running agents on OpenAgents-managed capacity with a familiar
 SDK while OpenAgents remains authoritative for where work runs, what it can
@@ -100,7 +100,7 @@ image/profile, custody, capabilities, network posture, TTL, budget, and
 retained data. The same project and agent refs remain visible while the
 sandbox provisions, runs, stops, resumes, or fails. Text, tool, file,
 artifact, usage, and lifecycle events stream into the ordinary project and
-agent graphs; a quiet process is not shown as idle unless its runtime has
+agent graphs. A quiet process is not shown as idle unless its runtime has
 structurally settled.
 
 In the stable owner Sarah thread, the owner can ask Sarah to create a sandbox
@@ -129,7 +129,7 @@ the OpenAgents base URL and use only the documented compatibility subset.
 - **MSB-AC-03:** A requested live managed target reports ready only from an
   observed healthy admitted GCP provisioner and guest. Fake mode, missing KVM
   or images, unhealthy boot, quota/budget/capacity exhaustion, or unavailable
-  capacity returns a typed refusal; no local or fake execution can satisfy
+  capacity returns a typed refusal. No local or fake execution can satisfy
   live acceptance. Region/class/image, concurrency, TTL, least-privilege
   keyless service identities, external-IP posture, and network policy bind
   before provisioning.
@@ -142,14 +142,14 @@ the OpenAgents base URL and use only the documented compatibility subset.
 - **MSB-AC-05:** Phase 1 serves only the admitted account/limits, lifecycle,
   prompt/status/events/interrupt, file, command, and artifact operations.
   Every unsupported Box operation returns stable typed `501
-  capability_not_implemented`; no empty result or fake success implies parity.
+capability_not_implemented`. No empty result or fake success implies parity.
 - **MSB-AC-06:** A prompt creates one exact runtime turn with effective
   provider, model, harness, work unit, and generation truth. Prompt status is
-  first class; reconnectable ascending cursor pages preserve order; interrupt
+  first class. Reconnectable ascending cursor pages preserve order. Interrupt
   targets exactly one turn and is idempotent.
 - **MSB-AC-07:** A long-running turn has no silence-based completion and no
   arbitrary production wall timeout. Structural runtime completion, explicit
-  stop, a declared lease/budget guardrail, or a typed failure settles it; idle
+  stop, a declared lease/budget guardrail, or a typed failure settles it. Idle
   stop can arm only after that settlement and cannot race active hidden work.
 - **MSB-AC-08:** Provider, SCM, tool, network, ingress, and API capabilities
   are scoped, expiring, revocable broker leases redeemed only inside the exact
@@ -163,7 +163,7 @@ the OpenAgents base URL and use only the documented compatibility subset.
   refs.
 - **MSB-AC-10:** Native OpenAgents events and receipts remain the lossless
   record. Every Box-compatible event identifies its translator version and
-  cursor; conformance proves projection ordering and omission, but a Box event
+  cursor. Conformance proves projection ordering and omission, but a Box event
   or SDK terminal state can never replace native authority, private evidence,
   usage truth, or cleanup evidence.
 - **MSB-AC-11:** Desktop creates and attaches a managed sandbox through the
@@ -188,7 +188,7 @@ the OpenAgents base URL and use only the documented compatibility subset.
   broker outage, control-plane restart, cursor loss, stop/resume failure, and
   teardown failure remain distinct typed outcomes. Cleanup is complete only
   when receipts prove zero residual compute, firewall/ingress, scratch,
-  process, and capability grants; otherwise the sandbox is recovery-required.
+  process, and capability grants. Otherwise the sandbox is recovery-required.
 - **MSB-AC-15:** Snapshot and fork remain unavailable until an exact completed
   checkpoint binds source sandbox/generation, image/toolchain, repository
   post-image, content digest, and retention. Fork creates a fresh sandbox and
@@ -206,7 +206,7 @@ the OpenAgents base URL and use only the documented compatibility subset.
   staging and owner-gated GCP plus one Desktop and one Sarah create-to-agent-
   turn-to-stop/resume/delete journey. Receipts bind source/deployed revisions,
   image/provisioner/translator identities, measured incremental cost, zero
-  residue, rollback, limitations, and owner observation; fixture or fake proof
+  residue, rollback, limitations, and owner observation. Fixture or fake proof
   cannot satisfy this criterion.
 
 ## Success Metrics
@@ -244,7 +244,7 @@ the OpenAgents base URL and use only the documented compatibility subset.
   isolation and cost boundary. Product and receipts name the effective GCE VM
   or Firecracker microVM and never claim OCI semantics unless implemented.
 - Compatibility pressure can weaken secret, network, desktop, or lifecycle
-  policy. Typed incompatibility is preferable to unsafe parity; account-wide
+  policy. Typed incompatibility is preferable to unsafe parity. Account-wide
   secret replication and public VNC remain unsupported.
 - Prewarming every message can become a cost leak. Admission decides whether
   to prewarm, and idle stop waits for structural settlement under an exact
@@ -255,7 +255,7 @@ the OpenAgents base URL and use only the documented compatibility subset.
   accepts only closed lifecycle and work-unit operations with exact bounded
   inputs and independently enforced target policy.
 - Snapshot or resume language can imply process-memory continuity. The product
-  states filesystem checkpoint and service restart; hidden provider state,
+  states filesystem checkpoint and service restart. Hidden provider state,
   processes, sockets, and memory do not move.
 
 ## Related Artifacts

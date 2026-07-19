@@ -5,6 +5,19 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Active specifications complete their STE conversion (#9050)
+
+- issues: #9050
+- commits: this change
+- contracts-specs: 16 active specifications, 12 specification authoring documents
+- invariants: no ProductSpec intent change, exact subject digests remain bound, assurance revisions identify binding changes
+- evidence: docs/ste/p2-specification-conversion-receipt.md, docs/ste/control-semantic-baseline.v1.json
+- lane: codex/asd-ste100-migration-20260719-r2
+
+All active specifications and their active authoring documents now have checked STE profiles.
+The conversion keeps technical requirements, code, paths, URLs, identifiers, and protocol values.
+Five AssuranceSpec documents now bind the converted ProductSpec bytes with new assurance revisions.
+
 ## Agent controls complete their STE review (#9049)
 
 - issues: #9049

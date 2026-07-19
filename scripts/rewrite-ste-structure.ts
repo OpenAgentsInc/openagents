@@ -8,7 +8,12 @@ const words = (text: string): readonly string[] =>
 export const rewriteSteSemicolons = (input: string): string => {
   let inFence = false;
   let inCodeSpan = false;
-  const output = input.split(/\r?\n/).map((line) => {
+  let inFrontMatter = input.startsWith("---\n") || input.startsWith("---\r\n");
+  const output = input.split(/\r?\n/).map((line, lineIndex) => {
+    if (inFrontMatter) {
+      if (lineIndex > 0 && line.trim() === "---") inFrontMatter = false;
+      return line;
+    }
     if (/^\s*(```|~~~)/.test(line)) {
       inFence = !inFence;
       return line;

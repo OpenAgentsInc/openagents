@@ -8,7 +8,7 @@ production-like infrastructure.
 Evidence never silently upgrades tiers. A fixture observation remains fixture
 evidence even if the same command might run elsewhere. Missing profiles or
 capabilities produce `environment_profile_missing`,
-`environment_profiles_need_design`, or another typed gap; they never produce a
+`environment_profiles_need_design`, or another typed gap. They never produce a
 green skip.
 
 Record the exact profile digest when the profile format supplies one. If the

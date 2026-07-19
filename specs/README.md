@@ -4,13 +4,13 @@ This root contains two complementary spec tiers:
 
 - `.product-spec.md` intent artifacts under `specs/<area>/`, governed by
   [`CONVENTIONS.md`](CONVENTIONS.md) and validated by
-  `packages/product-spec`; and
+  `packages/product-spec`. And
 - bounded TLA+ models and mutation checks described below.
 
 The current owner-delegated completion program is recorded in
 [`../AUTHORITY.md`](../AUTHORITY.md) and
 [`../docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md`](../docs/sol/2026-07-18-owner-delegated-autonomy-accepted-plan.md).
-That authority permits agents to implement and prove the specs; it does not
+That authority permits agents to implement and prove the specs. It does not
 let implementation silently rewrite intent or let a model authorize runtime
 behavior.
 
@@ -27,13 +27,13 @@ is the cross-surface breadth contract for competing with Cursor. It requires a
 current evidence-pinned capability ledger and equivalent supported outcomes
 across Desktop, web, mobile, CLI, background execution, automation, ecosystem,
 and data lifecycle. Sibling surface specs own their exact interactions and
-proof; the parity spec prevents stronger trust architecture from being used as
+proof. The parity spec prevents stronger trust architecture from being used as
 an excuse for missing capability. It does not claim the capabilities have
 shipped or replace roadmap, assurance, acceptance, or release authority.
 
 Revision 3 of that parity contract and revision 7 of the Desktop workbench
 contract define the IDE bar as Zed-quality integration over one generation-
-fenced project/evidence graph. Portable Sessions revision 4 owns IDE-13;
+fenced project/evidence graph. Portable Sessions revision 4 owns IDE-13.
 mobile revision 7 and web revision 7 own their bounded IDE-14 projections.
 The canonical dependency sequence, built-in Vim contract, initial Tokyo Night
 theme contract, and release-rung vocabulary live in
@@ -47,16 +47,16 @@ IDE-13/IDE-17, Sarah revision 4, and bounded mobile/web supervision. It keeps
 Google Cloud and OpenAgents workrooms authoritative while treating the Ascii
 Box v1 API and exact TypeScript SDK as an isolated compatibility target. Full
 Auto revision 14 remains unchanged and still excludes cross-machine run
-admission; a managed sandbox work unit is not a remote `FullAutoRun` by
+admission. A managed sandbox work unit is not a remote `FullAutoRun` by
 inference. Epic [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023)
 and its accepted plan own implementation sequence, not this index.
 
-Effect/TypeScript owns application authority and persistence; every boundary
-contract is Effect Schema-first with derived types; capability lifecycle uses
-Effect services/layers/scopes; Rust is limited to supervised authority-free
+Effect/TypeScript owns application authority and persistence. Every boundary
+contract is Effect Schema-first with derived types. Capability lifecycle uses
+Effect services/layers/scopes. Rust is limited to supervised authority-free
 native helpers. Mobile receives bounded review projections, and web/public
 links receive allowlisted verifiable code-share bundles without editor or
-execution authority. Tokyo Night is the one initial owned Desktop IDE theme;
+execution authority. Tokyo Night is the one initial owned Desktop IDE theme.
 Vim is built in and off by default. Broader light/high-contrast/system theme
 support remains required before the complete-accessibility/full-parity gate.
 
@@ -64,12 +64,12 @@ Two exact-subject proposed proof-design companions now cover the reconciled IDE
 contracts:
 
 - [`desktop/desktop-trust-complete-workbench.assurance-spec.md`](desktop/desktop-trust-complete-workbench.assurance-spec.md)
-  binds Desktop ProductSpec revision 7; and
+  binds Desktop ProductSpec revision 7. And
 - [`openagents/cursor-capability-parity.assurance-spec.md`](openagents/cursor-capability-parity.assurance-spec.md)
   binds Cursor parity ProductSpec revision 3.
 
 Both are deterministic proposal skeletons: every criterion is represented,
-but proof design remains `needs_design`; neither is admitted, authorized to
+but proof design remains `needs_design`. Neither is admitted, authorized to
 execute, observed, owner-accepted, or release evidence. The existing Full Auto
 AssuranceSpec revision 4 remains exactly bound to unchanged Full Auto
 ProductSpec revision 14 and supplies the independent IDE-17 dependency. Frozen
@@ -110,9 +110,9 @@ unless TLC reports a violation for each mutation. Deadlock checking is left on.
 
 | Spec                                                                                       | Checked properties                                                                                                                                                                                       | Source seams                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `khala-fleet-delegate/FleetDelegateSupervisor.tla` (`FleetDelegateSupervisor.cfg`)         | `ActiveAssignmentsNeverExceedAdvertisedCapacity`, `ClaimUniquenessUnderRacingSupervisors`, `PausedRunsClaimNothing`, `SupervisorReviveHonorsAutoRevivableGuard`                                          | `clients/khala-code-desktop/src/bun/fleet-run-supervisor.ts`; `apps/pylon/src/orchestration/store.ts` (`tryClaimWorkUnit`, `expireWorkClaims`, `releaseWorkClaim`, `reconcileWorkClaims`, `isAutoRevivableFleetRun`)                                               |
-| `khala-fleet-delegate/FleetDelegateSupervisor.tla` (`FleetDelegateSupervisorLiveness.cfg`) | `TerminationUnderBoundedClaims`, `DrainEventuallyTerminates`                                                                                                                                             | Same supervisor/store seams; liveness is checked at a smaller bound so the racing/TTL/reclaim safety state space remains practical. The termination property has no `phase = "idle"` disjunct; operator lifecycle intervention is modeled separately as authority. |
-| `approval-protocol/ApprovalProtocol.tla`                                                   | `NoLostApprovals`, `NoDuplicateApprovalResponses`, `NoStaleApproveApplication` (action property: approve applies only at the recorded epoch), `AllIssuedRequestsEventuallyClose` (leads-to, falsifiable) | Desktop approval RPCs, Inbox `approval_required`, Codex/Claude approval bridges. `StaleApproveAttempt` models the stale retry; the mutation drops Approve's epoch guard in a copy of THIS spec.                                                                    |
+| `khala-fleet-delegate/FleetDelegateSupervisor.tla` (`FleetDelegateSupervisor.cfg`)         | `ActiveAssignmentsNeverExceedAdvertisedCapacity`, `ClaimUniquenessUnderRacingSupervisors`, `PausedRunsClaimNothing`, `SupervisorReviveHonorsAutoRevivableGuard`                                          | `clients/khala-code-desktop/src/bun/fleet-run-supervisor.ts`. `apps/pylon/src/orchestration/store.ts` (`tryClaimWorkUnit`, `expireWorkClaims`, `releaseWorkClaim`, `reconcileWorkClaims`, `isAutoRevivableFleetRun`)                                               |
+| `khala-fleet-delegate/FleetDelegateSupervisor.tla` (`FleetDelegateSupervisorLiveness.cfg`) | `TerminationUnderBoundedClaims`, `DrainEventuallyTerminates`                                                                                                                                             | Same supervisor/store seams. Liveness is checked at a smaller bound so the racing/TTL/reclaim safety state space remains practical. The termination property has no `phase = "idle"` disjunct. Operator lifecycle intervention is modeled separately as authority. |
+| `approval-protocol/ApprovalProtocol.tla`                                                   | `NoLostApprovals`, `NoDuplicateApprovalResponses`, `NoStaleApproveApplication` (action property: approve applies only at the recorded epoch), `AllIssuedRequestsEventuallyClose` (leads-to, falsifiable) | Desktop approval RPCs, Inbox `approval_required`, Codex/Claude approval bridges. `StaleApproveAttempt` models the stale retry. The mutation drops Approve's epoch guard in a copy of THIS spec.                                                                    |
 | `session-thread-mapping/SessionThreadMapping.tla`                                          | `NoOrphanThreadBinding`, `NoDoubleBind`, `PersistedMappingConsistent`, `CrashReloadEventuallyRestoresBindings`                                                                                           | Khala Code Desktop session catalog, thread list reload/reconcile, and session persistence paths. `Bind` and `PersistBinding` are split so crash-before-persist divergence is reachable.                                                                            |
 
 ## Mutation Proofs
@@ -122,7 +122,7 @@ The checked mutation variants are under `specs/mutations/`:
 - `fleet-paused-claim`: allows a stale paused-run claim and TLC violates
   `PausedRunsClaimNothing`.
 - `fleet-operator-revive`: in-place copy of the main fleet spec with the
-  `stateSource # "operator"` conjunct dropped from `AutoRevivable`; TLC
+  `stateSource # "operator"` conjunct dropped from `AutoRevivable`. TLC
   violates `SupervisorReviveHonorsAutoRevivableGuard` (the #7975/#7978 fix).
 - `approval-stale-forgery`: accepts an approval after interruption and TLC
   violates `NoStaleApproveApplication`.
@@ -133,7 +133,7 @@ Known modeling limit: `ClaimUniquenessUnderRacingSupervisors` holds largely
 by construction — per-unit claim state is a single function entry, so the
 SQLite partial-unique-index insert race inside `tryClaimWorkUnit` is not
 representable in this bounded model. Treat that invariant as documenting the
-intended shape, not as certifying the store's concurrency control; the
+intended shape, not as certifying the store's concurrency control. The
 store-level tests own that seam.
 
 The JSON files under `fixtures/counterexamples/` are public-safe fixture seeds

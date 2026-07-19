@@ -1,8 +1,8 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.sarah.owner.orchestrator"
-assurance_revision: 3
-title: "Sarah Owner Orchestrator Assurance Spec"
+assurance_revision: 4
+title: "Sarah Owner Orchestrator AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
 author: "OpenAgents"
@@ -10,7 +10,7 @@ author: "OpenAgents"
 
 ## Assurance Objective
 
-Revision 3 rebinds the unchanged revision-4 Sarah intent to the exact authority
+Revision 4 rebinds the unchanged revision-4 Sarah intent to the exact authority
 metadata bytes admitted by SBX-00 and designs SARAH-AC-21 through SARAH-AC-23.
 The earlier Sarah obligations remain honestly `needs_design`. This proposal
 claims neither execution, independent verification, admission, nor release.
@@ -47,7 +47,7 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "SARAH-AC-22",
       "SARAH-AC-23"
     ],
-    "document_digest": "sha256:040b813b20d24870c24e67490c6de35cd278a3389e2aea6ea5a89d5c8467a89b",
+    "document_digest": "sha256:9de58d7e23e5488783f42fe4312b029d6d507b76818283c9ce4cab9d09c93bea",
     "path": "specs/openagents/sarah-owner-orchestrator.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",

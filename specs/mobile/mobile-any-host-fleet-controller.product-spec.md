@@ -56,7 +56,7 @@ with structural trust defects: T3 Code's mobile app proves full controller
 breadth (multi-environment pairing, diff review, Git controls, native
 terminal, offline outbox) but binds threads to single environments, routes
 through hosted third-party relay infrastructure, and executes with no
-containment or receipts; Cursor's iOS app supervises only Cursor's cloud.
+containment or receipts. Cursor's iOS app supervises only Cursor's cloud.
 Nobody ships a phone surface that can supervise and steer agents on any of
 the owner's hosts — with the phone never executing anything, never holding
 raw credentials, and every consequential action leaving a durable receipt.
@@ -255,16 +255,16 @@ cut:
 ## Solution
 
 The phone is the fleet's remote control, not its runtime. One Effect Native
-application model renders phone and tablet; all state arrives as typed
+application model renders phone and tablet. All state arrives as typed
 projections of the same engine protocol Desktop consumes, over Sync and the
 owned relay. The same session refs resolve everywhere: steer, queue, and stop
 from the phone are the same typed intents Desktop dispatches, with durable
 admission and replay making each one land exactly once. The environment
-directory and pairing come first; portable session movement is the substrate
-that makes "which host" a detail rather than an identity; the workbench
-modes, outbox, and attention inbox make supervision complete; receipts make
-it trustworthy; and the overnight-fleet morning review is the journey the
-whole surface is tuned for. T3 Code's mobile app is the breadth bar; the
+directory and pairing come first. Portable session movement is the substrate
+that makes "which host" a detail rather than an identity. The workbench
+modes, outbox, and attention inbox make supervision complete. Receipts make
+it trustworthy. And the overnight-fleet morning review is the journey the
+whole surface is tuned for. T3 Code's mobile app is the breadth bar. The
 trust layer is the difference.
 
 MemoHarness follows the same projection-only law. The Effect Native client
@@ -286,7 +286,7 @@ hands opaque refs back to Desktop for fresh authorization and resolution.
 The Effect Native projection service decodes the same identified schemas and
 derives its TypeScript types rather than restating DTO interfaces. Scoped
 layers own cache, stream, outbox, and teardown lifetimes. An allowlisted Tokyo
-Night semantic subset colors code evidence consistently; it conveys no theme
+Night semantic subset colors code evidence consistently. It conveys no theme
 code or Desktop Vim/editor authority.
 
 ## Strategic Positioning
@@ -294,7 +294,7 @@ code or Desktop Vim/editor authority.
 Competitors prove demand for mobile supervision (T3's full controller,
 Cursor's remote control, Amp's mobile thread control) but every one couples
 it to a single vendor cloud or an environment-local thread model. The
-founder's stated payoff — "when I've gotten mobile working, it's been
+founder's stated payoff — "when I have gotten mobile working, it has been
 amazing — controlling this kind of stuff from a mobile app" — depends on the
 one-interface consolidation Desktop provides: because the engine holds all
 accounts and capacity, the phone can be a thin, complete controller over all
@@ -304,20 +304,20 @@ position no one else can copy without rebuilding their custody model.
 ## Risks
 
 - Controller breadth without the desktop-grade engine work lands as a hollow
-  shell; sequencing must keep mobile behind the protocol and portability
+  shell. Sequencing must keep mobile behind the protocol and portability
   substrates it projects.
 - Owned relay operations (E2EE courier, device revocation) are new
-  infrastructure surface; the reachability-not-authorization boundary must
+  infrastructure surface. The reachability-not-authorization boundary must
   hold under audit.
 - Push-attention latency targets depend on platform notification behavior
-  the app does not control; measure honestly before committing targets.
-- Earnings and counter projections must never outrun the promise registry;
+  the app does not control. Measure honestly before committing targets.
+- Earnings and counter projections must never outrun the promise registry.
   pays-you copy on a store-distributed app is a public claim with review
   consequences.
-- Voice adds transcription privacy surface; it stays behind the controller
+- Voice adds transcription privacy surface. It stays behind the controller
   core and its own custody review.
 - A convenient harness inspector could accidentally become a private-memory
-  exfiltration or remote self-promotion surface; the shared safe-projection
+  exfiltration or remote self-promotion surface. The shared safe-projection
   schema and absence of bank/optimizer/promotion commands are hard boundaries.
 - A rich Files/Changes projection can drift into a fragile phone IDE or leak
   source by convenience. The safe-field schema, content bounds, explicit
@@ -380,7 +380,7 @@ position no one else can copy without rebuilding their custody model.
 - Sign-off on the lost-device revocation flow before scoped tokens ship
   broadly.
 - Sign-off on the exact MemoHarness mobile safe-projection fields and on any
-  mobile surface that can request a released adaptation policy; candidate
+  mobile surface that can request a released adaptation policy. Candidate
   promotion and private bank access remain separate higher-trust,
   independently admitted owner workflows, not mobile capabilities.
 - Any earnings, payout, or referral-accrual display requires the matching
@@ -394,13 +394,13 @@ outcome receipts, writeback post-image receipts, session-movement and
 source-cleanup receipts, grant issuance and revocation receipts, outbox
 replay records, account-rotation records surfaced from the engine, safe
 HarnessAdaptationReceipt refs, harness release/rollback state, and earnings/
-counter projections reconcilable to exact rows. This section plans kinds;
+counter projections reconcilable to exact rows. This section plans kinds.
 evidence lives in the receipt systems, not in this spec.
 
 ## Promise Links
 
 None yet. Public claims derived from this spec (any-host control, phone
 never executes, exactly-once replay, earnings displays) must land in the
-promise registry with verification gates before they appear in copy; the
+promise registry with verification gates before they appear in copy. The
 pays-you economics remain `planned`-state promises until settlement evidence
 exists.

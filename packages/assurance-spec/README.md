@@ -4,7 +4,7 @@ The repository-installable agent skills live in [`skills/`](./skills/):
 `assurancespec-authoring` creates and refines deterministic proposals, while
 `assurancespec-work` executes reviewed obligations without acquiring admission,
 verification, completion, or release authority. npm-based installation remains
-gated on the starter-kit/publication milestone; the files are published here
+gated on the starter-kit/publication milestone. The files are published here
 now for direct repository consumption.
 
 Deterministic proposal, parsing, structural validation, serialization, and
@@ -23,11 +23,11 @@ upstream-style `productspec-acceptance-criteria` item list even though
 `@openagentsinc/product-spec` parses and validates that list. Do not rewrite or
 downgrade a structured ProductSpec to work around this. The IDE reconciliation
 records the bounded mechanical bridge for Desktop revision 7 in that proposed
-AssuranceSpec and `docs/assurance/README.md`; direct structured-item support is
+AssuranceSpec and `docs/assurance/README.md`. Direct structured-item support is
 a tooling follow-up, not an assurance or admission shortcut.
 
 Observer's semantic-planning boundary is also available as an injected Effect
-program. The caller supplies an explicit accepted ProductSpec identity pin;
+program. The caller supplies an explicit accepted ProductSpec identity pin.
 the request builder checks its path, revision, document digest, and ordered
 criterion ids against the exact Markdown. A provider-neutral planner returns a
 typed disposition for every criterion. Deterministic compilation rejects
@@ -69,9 +69,9 @@ node --import tsx packages/assurance-spec/src/cli.ts observer propose \
 obligation still needs design. `coverage` reports adequacy separately.
 `observer propose --planner fixture` exercises the same injected planner
 request/response compiler used by agents and intentionally leaves every
-criterion `needs_design`; it grants no review, admission, or execution
+criterion `needs_design`. It grants no review, admission, or execution
 authority. Library callers inject their provider implementation through
-`runSemanticPlannerProposal`; model calls do not occur inside parsing or
+`runSemanticPlannerProposal`. Model calls do not occur inside parsing or
 compilation.
 
 For a ProductSpec whose Acceptance Criteria section uses only a
@@ -147,21 +147,21 @@ paths.
 - **Custom sections round-trip.** A `## custom-<kebab-name>` heading (the id
   itself is the heading in this bounded profile) is preserved byte-stable
   after the nine mandatory sections instead of failing `unsupported_section`.
-  Malformed custom ids fail `invalid_custom_section_id`; custom sections
+  Malformed custom ids fail `invalid_custom_section_id`. Custom sections
   before a mandatory section fail `invalid_section_order`. Documents without
   custom sections serialize exactly as before.
 - **Unknown frontmatter round-trips.** Flat `key: value` lines outside the
   bounded profile are preserved verbatim, in authored order, after the known
   keys. They are never interpreted.
 - **Thin/empty-section warnings.** A mandatory section whose narrative
-  (structured block excluded) is empty warns `empty_required_section`; fewer
+  (structured block excluded) is empty warns `empty_required_section`. Fewer
   than `THIN_SECTION_WORD_COUNT` meaningful words warns
   `thin_required_section`. Warnings never affect validity — they are cheap
   honesty about skeleton documents, and the deterministically generated MVP
   proposal rightly warns on every section until a human writes real reasoning.
 - **Referential integrity at parse time.** Duplicate/dangling/uncovered
   criterion, environment, and gate references are computed in the same parse
-  pass; `parseAssuranceSpec` throws the first violation and
+  pass. `parseAssuranceSpec` throws the first violation and
   `validateAssuranceSpec` reports the complete set.
 
 ## Conformance corpus (`conformance/`)
@@ -169,7 +169,7 @@ paths.
 `conformance/valid/` holds canonical documents (seeded from the checked-in MVP
 proposal plus minimal fixtures) that must validate and round-trip byte-stable.
 `conformance/invalid/` holds one fixture per implemented stable error code,
-named `<code-kebab>[--variant].assurance-spec.md`; the sweep in
+named `<code-kebab>[--variant].assurance-spec.md`. The sweep in
 `test/conformance.test.ts` derives the expected code from the filename and
 mechanically enforces that every registered code
 (`ASSURANCE_STRUCTURAL_ERROR_CODES`) has a fixture and every fixture names a
@@ -179,7 +179,7 @@ Codes are API. Fixtures are frozen bytes — never regenerate them to make a
 serializer change pass. Any change that can make a previously valid document
 invalid must bump `assurance_spec_format_version`, freeze the current corpus
 under a per-version directory, and seed the new version's corpus
-(ASSURANCE_SPEC.md §13; the version pin is asserted in the parity tests).
+(ASSURANCE_SPEC.md §13, the version pin is asserted in the parity tests).
 
 ## Review annotations (`.assurance-review.json`)
 
@@ -239,7 +239,7 @@ assurance-spec owned-runner assurance/owned-runner.json --root . --json
 ```
 
 Structural validation and stale committed session pins block. The three
-ledgers remain informational; the runner never computes or gates on a blended
+ledgers remain informational. The runner never computes or gates on a blended
 percentage. Its schema requires `github_hosted_ci: false`. No GitHub Actions
 workflow is shipped because the OpenAgents repository forbids hosted CI.
 
@@ -255,7 +255,7 @@ packs ProductSpec before AssuranceSpec, records SHA-256 tarball receipts, then
 the verifier installs the exact tarballs offline in a clean temporary checkout
 and runs the starter gate. Registry publication and no-auth clean-consumer
 proofs are recorded separately in the adopting repository's immutable
-distribution and registry receipts; package prose is not publication
+distribution and registry receipts. Package prose is not publication
 authority. The repository's own adoption lives at
-`assurance/owned-runner.json` with a committed current MVP session pin; it runs
+`assurance/owned-runner.json` with a committed current MVP session pin. It runs
 the same structural blocking and informational-ledger policy as the kit.

@@ -110,7 +110,7 @@ A cache hit says “reused study evidence,” never “recommended” or “adop
 In Desktop, Fast Follow appears as a work source inside the existing Full Auto
 experience rather than as a hidden second agent. A future five-slot portfolio can
 allocate three ordinary delivery workers, one research worker, and one admitted
-implementation worker; the owner can stop, steer, and inspect each. If the
+implementation worker. The owner can stop, steer, and inspect each. If the
 ordinary backlog empties, the run policy may reallocate capacity without
 inventing work. `no_material_delta` is a successful honest closeout.
 
@@ -123,7 +123,7 @@ implementation admission.
 A current explicit owner direction can supply separate target admission for a
 named directive or the ordered initial program. OpenAgents persists that
 direction as a target-owned accepted plan/work-packet ledger. This direct path
-is required here because GitHub issues are reserved for reproducible bugs; it
+is required here because GitHub issues are reserved for reproducible bugs. It
 does not weaken packet claims, verification, release gates, or public-promise
 authority.
 
@@ -149,7 +149,7 @@ The artifact split is deliberate:
 - `GapAssessment` is exact-target-bound and private by default.
 - `WorkProposal` is an evidence-only issue/work-packet candidate.
 - an ordinary admitted issue or work packet plus claim/lease authorizes
-  implementation;
+  implementation.
 - AssuranceSpec, tests, review, receipts, and owner gates authorize confidence
   and acceptance through their existing paths.
 
@@ -161,10 +161,10 @@ a claim-aware supervisor, not in the authored learning document.
 ## Acceptance Criteria
 
 - **FF-AC-01:** A target resolves the nearest applicable `FASTFOLLOW.md` beside
-  `AGENTS.md`; missing, escaped, malformed, unsupported, duplicate, or dangling
+  `AGENTS.md`. Missing, escaped, malformed, unsupported, duplicate, or dangling
   input fails with a stable diagnostic and produces no inferred policy.
 - **FF-AC-02:** The parser and validator expose stable source, lesson, and
-  directive IDs; every `source#lesson` reference resolves exactly once, and one
+  directive IDs. Every `source#lesson` reference resolves exactly once, and one
   directive can deterministically combine lessons from multiple projects for
   multiple bounded target scopes.
 - **FF-AC-03:** Exact authored bytes and canonical learning intent have separate
@@ -190,7 +190,7 @@ a claim-aware supervisor, not in the authored learning document.
 - **FF-AC-07:** Full Auto consumes Fast Follow through the existing host-owned
   provider-lane projection and the existing serialized reconciliation/lease
   path. The bound turn records exact work, spec, manifest, directive, candidate,
-  and claim identities; no parallel dispatcher or provider parser exists.
+  and claim identities. No parallel dispatcher or provider parser exists.
 - **FF-AC-08:** A separately admitted run policy can enforce the owner example
   of `3 delivery / 1 research / 1 implementation` while actionable backlog
   exists and `0 / 2 / 3` after it empties, without duplicate claims or mutation
@@ -210,8 +210,8 @@ a claim-aware supervisor, not in the authored learning document.
   Optimizer output is a candidate behind review and release gates and cannot
   dispatch, mutate, self-promote, pay, settle, or change a public claim.
 - **FF-AC-12:** The operator surface distinguishes research, candidate,
-  admitted implementation, verification, blocked, stale, and terminal states;
-  shows source/target freshness and cache provenance; and retains working stop,
+  admitted implementation, verification, blocked, stale, and terminal states.
+  shows source/target freshness and cache provenance. And retains working stop,
   steer, and bounded-cost controls.
 - **FF-AC-13:** The committed OpenAgents seed validates and references every
   non-README Markdown document in `docs/teardowns/`, binds
@@ -222,7 +222,7 @@ a claim-aware supervisor, not in the authored learning document.
 - **FF-AC-14:** On current main, an owner can use the legacy Full Auto entry
   bridge to start one durable run over the seed's ordered Amp initial program,
   admitted implementation, or backlog-fallback method through repository
-  instructions and the Fast Follow skill; docs state the 20-turn cap and do
+  instructions and the Fast Follow skill. Docs state the 20-turn cap and do
   not claim native portfolio scheduling.
 - **FF-AC-15:** Format validation, reference validation, teardown coverage,
   authority boundaries, and the two five-slot capacity profiles have committed
@@ -233,7 +233,7 @@ a claim-aware supervisor, not in the authored learning document.
   date, evidence, target surface/owner/spec/acceptance refs, placement and data
   classes, implementation/assurance refs, disposition, and freshness. A new or
   changed upstream capability updates evidence and proposes a gap without
-  granting mutation authority; no row may disappear, use “not needed,” or treat
+  granting mutation authority. No row may disappear, use “not needed,” or treat
   stronger target architecture as sufficient unless an owner-approved
   substitute preserves the user outcome.
 
@@ -287,11 +287,11 @@ a claim-aware supervisor, not in the authored learning document.
   dispositions, freshness, and `no_material_delta` are safety features, not
   optional reporting polish.
 - Shared inference can leak target-private context. Only public upstream study
-  is cross-project by default; target adaptation stays isolated.
+  is cross-project by default. Target adaptation stays isolated.
 - Current Full Auto admits at most one active run per Desktop profile and has
   main-owned liveness, retry/backoff, bounded reporting, private analysis, and
   explicit handoff seams. Native portfolio work must extend that typed run
-  authority; it cannot be designed as prompt text or inferred from five-slot
+  authority. It cannot be designed as prompt text or inferred from five-slot
   examples.
 - A five-worker run can duplicate PRs and collide on hot contracts. Claims,
   isolated worktrees, dependency ordering, and one integration owner are

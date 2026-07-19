@@ -29,7 +29,7 @@ describe("AssuranceSpec repository-installable skills", () => {
       "oracle and a falsifier",
       "Two mock-only component tests do not prove their wiring",
       "fixture-tier pass remains fixture-tier evidence",
-      "Never renumber or reuse an ID; supersede it",
+      "Never renumber or reuse an ID. Supersede it",
       "assurance-spec validate",
       "assurance-spec coverage",
       "`lifecycle_state: proposed`",

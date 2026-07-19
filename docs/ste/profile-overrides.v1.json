@@ -51,6 +51,12 @@
       "ste_reviewed_at": "2026-07-19T18:01:00Z",
       "ste_accepted_screening_rules": ["STE-2.4"]
     },
+    "docs/ste/README.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:10:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4"]
+    },
     "docs/ste/agent-compact-profile.v1.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
@@ -68,6 +74,12 @@
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719",
       "ste_reviewed_at": "2026-07-19T15:40:00Z"
+    },
+    "docs/ste/p2-specification-conversion-receipt.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T19:10:00Z",
+      "ste_accepted_screening_rules": ["STE-2.4"]
     },
     "docs/ste/templates/receipt.md": {
       "ste_status": "checked",
@@ -142,6 +154,230 @@
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
       "ste_reviewed_at": "2026-07-19T18:00:00Z"
+    },
+    "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/desktop/desktop-trust-complete-workbench.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/desktop/full-auto.assurance-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/desktop/full-auto.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/mobile/mobile-any-host-fleet-controller.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/authority-delegation.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/cursor-capability-parity.assurance-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/cursor-capability-parity.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/fast-follow.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/managed-agent-sandboxes.assurance-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/managed-agent-sandboxes.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/portable-coding-sessions.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/sarah-owner-orchestrator.assurance-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/openagents/sarah-owner-orchestrator.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/web/openagents-com-sales-landing.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/web/openagents-com-trust-surface.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "specs/README.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/product-spec/README.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/README.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/starter-kit/README.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/starter-kit/assurance/example.assurance-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/starter-kit/docs/product-specs/example.product-spec.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/skills/assurancespec-authoring/SKILL.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/skills/assurancespec-authoring/references/authoring.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/skills/assurancespec-authoring/references/environments.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/skills/assurancespec-authoring/references/oracles-and-falsifiers.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/skills/assurancespec-authoring/references/seams.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
+    },
+    "packages/assurance-spec/skills/assurancespec-work/SKILL.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:46:55Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-5.1", "STE-8.2"]
     }
   }
 }
