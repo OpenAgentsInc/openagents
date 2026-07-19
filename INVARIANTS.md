@@ -276,6 +276,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   owner email. A deterministic Sarah-shaped thread ref and a historical
   authority receipt remain necessary evidence but never substitute for that
   current identity check.
+- Sarah mobile speech is an explicit, delivery-only projection of one already
+  visible completed assistant message. The control renders only in the
+  authenticated owner's admitted Sarah thread, and the server independently
+  revalidates the current owner identity, deterministic thread, and authority
+  receipt before provider dispatch. Speech never creates a message, changes
+  Sarah's reasoning provider or harness, grants a tool, or supplies execution
+  authority. The standard OpenAI key remains in Secret Manager/server runtime;
+  synthesized bytes are no-store, short-lived device cache only, visibly
+  disclosed as AI-generated, and deleted after completion, stop, thread switch,
+  sign-out, or host teardown.
 - Every delegated mutation resolves exact actor, action, resource, program,
   conditions, claim/lease, and reserved-action exclusions before execution and
   again before production deploy, release, spend, destructive action, or

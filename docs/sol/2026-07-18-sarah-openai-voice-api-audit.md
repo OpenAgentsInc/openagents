@@ -14,6 +14,36 @@
 - Existing audio architecture:
   [`../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md`](../voice/2026-07-12-persistent-desktop-voice-mode-audit-and-plan.md)
 
+## 2026-07-18 implementation update
+
+The first owner proof deliberately takes a smaller TTS-only bridge than the
+full duplex gateway roadmap below:
+
+- `POST /api/mobile/sarah/speech` reuses the existing authenticated owner and
+  `hasSarahThreadAuthority` checks, then calls OpenAI `/v1/audio/speech` with
+  server-fixed `gpt-4o-mini-tts`, `marin`, and MP3;
+- the mobile Sarah surface exposes `Listen · AI-generated voice` only for the
+  latest completed reply in the admitted Sarah thread, with creating, playing,
+  stop, retry, and typed failure states;
+- the OpenAI key is the existing Google Cloud Secret Manager secret
+  `autopilot-voice-openai-api-key`, mounted into the monolith as
+  `OPENAI_API_KEY`; it never enters the app;
+- one request is bounded to 4,096 characters and fails rather than truncating;
+  bracketed internal citations are removed by the same deterministic Sarah
+  conversation sanitizer used by the visible transcript before synthesis;
+- MP3 bytes are `no-store`, written to a uniquely named device cache file,
+  played through `expo-audio`, and deleted on completion, stop, thread switch,
+  or host teardown; and
+- this path is delivery-only. It does not replace Sarah's Gemma reasoning,
+  create messages, mutate her harness, expose provider choice, grant tools, or
+  add microphone/input authority.
+
+This is the shortest path to working Sarah speech on the phone. It does not
+claim the full gateway acceptance gates for streaming PCM, barge-in,
+microphone capture, raw-audio policy receipts, or Android parity. Those remain
+the follow-on VOICE-SARAH-1/2 work below; once needed, the direct route should
+be folded behind `apps/openagents-audio` without changing the mobile contract.
+
 ## Executive recommendation
 
 Sarah should gain voice as a **chained, owner-authenticated input/output

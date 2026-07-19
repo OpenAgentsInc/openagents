@@ -272,11 +272,32 @@ describe(`contract ${contractId}`, () => {
     }));
 
     expect(view).toContain("Visible Sarah reply");
+    expect(view).toContain("Listen · AI-generated voice");
+    expect(view).toContain("SarahSpeechRequested");
     expect(view).not.toContain("Internal runtime detail");
     expect(view).not.toContain("source.internal.private-ref");
     expect(view).toContain("Gemma 4 31B · Google AI Studio");
     expect(view).not.toContain("Retry");
     expect(view).not.toContain("Close turn");
+  });
+
+  test("withholds Sarah voice outside the admitted owner thread", () => {
+    const ordinaryState = buildHomeProgram().initialState;
+    const ordinary = JSON.stringify(renderContentView({
+      ...ordinaryState,
+      khala: {
+        ...ordinaryState.khala,
+        entries: [{
+          key: "assistant.ordinary",
+          role: "assistant",
+          text: "Ordinary assistant reply",
+          status: "done",
+        }],
+        transcriptVisibleCount: 1,
+      },
+    }));
+    expect(ordinary).not.toContain("AI-generated voice");
+    expect(ordinary).not.toContain("SarahSpeechRequested");
   });
 
   test("explains the stop affordance with compact live runtime truth", () => {

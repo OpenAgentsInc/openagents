@@ -1160,6 +1160,10 @@ import {
   hasSarahThreadAuthority,
   makeSarahOwnerRoutes,
 } from './sarah-owner-routes'
+import {
+  SARAH_SPEECH_PATH,
+  makeSarahSpeechRoutes,
+} from './sarah-speech-routes'
 import { makeSarahRuntimeTools } from './sarah-runtime-tools'
 import {
   SelfServeFanoutEndpoint,
@@ -10516,6 +10520,29 @@ const sarahOwnerRoutes = makeSarahOwnerRoutes<Env>({
   },
 })
 
+const sarahSpeechRoutes = makeSarahSpeechRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (
+      actor === undefined ||
+      actor.kind !== 'human' ||
+      !isOpenAgentsAdminEmail(actor.user.email)
+    ) {
+      return undefined
+    }
+    return {
+      userId: actor.user.userId,
+      ...(actor.tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, actor.tokens!)
+            },
+          }),
+    }
+  },
+})
+
 // MOB-FA-02 (#8994): the sibling Pause/Resume/Stop control-intent route --
 // same "is this a signed-in owner" authentication as the projection route
 // above; every query stays scoped to the authenticated owner's own userId.
@@ -11675,6 +11702,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       sarahOwnerRoutes
         .handle(request, env, ctx)
         .pipe(Effect.map(materializeHttpResult)),
+  },
+  {
+    path: SARAH_SPEECH_PATH,
+    handler: (request, env, ctx) => sarahSpeechRoutes.handle(request, env, ctx),
   },
   // MOB-FA-02 (#8994): mobile dispatches (POST) and polls (GET) typed
   // Pause/Resume/Stop control intents here; Desktop pulls pending intents

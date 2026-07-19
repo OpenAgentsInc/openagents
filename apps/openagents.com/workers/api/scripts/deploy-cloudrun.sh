@@ -24,6 +24,7 @@ set -euo pipefail
 #   openagents-gemini-api-key / openagents-openrouter-api-key /
 #   openagents-fireworks-api-key / openagents-exa-api-key /
 #   openagents-resend-api-key / openagents-vertex-sa-key
+#   autopilot-voice-openai-api-key           owner-private Sarah TTS
 #   openagents-github-client-secret          GitHub OAuth client secret
 #
 # Cloud Scheduler: pass --with-scheduler to (re)create the per-minute
@@ -137,6 +138,7 @@ SET_SECRETS=(
   "OPENAGENTS_ADMIN_API_TOKEN=openagents-monolith-admin-token-${ENV_SUFFIX}:latest"
   "KHALA_SYNC_LIVE_HUB_TOKEN=khala-live-hub-token:latest"
   "GEMINI_API_KEY=openagents-gemini-api-key:latest"
+  "OPENAI_API_KEY=autopilot-voice-openai-api-key:latest"
   # Sarah removed 2026-07-10 (epic #8610). The following Secret Manager
   # entries are retained in GCP as history but are no longer mounted:
   #   sarah-liveavatar-api-key, sarah-avatar-llm-bearer,

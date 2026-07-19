@@ -223,6 +223,27 @@ This is the invariant ledger for `openagents`.
   or provider-credential authority follows from it. Regression coverage lives
   in `workers/api/src/audio-grant-routes.test.ts`.
 
+## Sarah Mobile Speech Delivery
+
+- `POST /api/mobile/sarah/speech` is a narrow owner-private TTS delivery seam,
+  not a mobile audio grant, command channel, Sarah inference lane, or authority
+  broker. It requires the current authenticated admitted admin owner and calls
+  `hasSarahThreadAuthority` for the exact submitted Sarah thread before any
+  provider request. A Sarah-shaped ref alone is insufficient.
+- The accepted body is a closed, bounded
+  `openagents.sarah.speech.request.v1` value naming one visible message ref and
+  no provider choice. The server owns model `gpt-4o-mini-tts`, voice `marin`,
+  instructions, and MP3 format. Inputs above 4,096 characters fail rather than
+  silently truncate. Provider failures are redacted.
+- `OPENAI_API_KEY` is mounted server-side from Secret Manager. It never enters
+  mobile JavaScript state, a response, log, Sync row, receipt, or public
+  projection. Successful audio is `no-store`, marked `x-openagents-ai-voice`,
+  and creates no durable media record. The mobile surface explicitly labels
+  playback as AI-generated and deletes its temporary file after completion or
+  stop. Regression coverage lives in
+  `workers/api/src/sarah-speech-routes.test.ts` and
+  `apps/openagents-mobile/tests/sarah-speech-client.test.ts`.
+
 ## Clean Public URLs
 
 - First-party product routes must not carry auth, connection, payment,

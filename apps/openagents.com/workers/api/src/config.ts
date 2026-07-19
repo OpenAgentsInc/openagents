@@ -295,6 +295,8 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // never committed/logged. Each enables the corresponding passthrough adapter
   // when the gateway flag is on; absent => that partner adapter stays inert.
   ANTHROPIC_API_KEY?: string | undefined
+  // Partner passthrough plus owner-private Sarah TTS. This stays server-side;
+  // it must never enter a mobile bundle, public response, Sync record, or log.
   OPENAI_API_KEY?: string | undefined
   // Optional partner base-URL overrides (origin, no trailing slash). Default to
   // the public Anthropic / OpenAI origins when unset.

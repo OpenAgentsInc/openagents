@@ -430,6 +430,15 @@ export const App = () => {
         Promise.resolve<FullAutoRunControlDispatchOutcome>({ state: "unavailable" }),
     [],
   )
+  const sarahSpeech = useCallback(
+    (input: Readonly<{ threadRef: string; messageRef: string; text: string }>) =>
+      syncHostRef.current?.sarahSpeech(input) ??
+        Promise.resolve({
+          state: "unavailable" as const,
+          message: "Sarah voice is unavailable right now.",
+        }),
+    [],
+  )
   useEffect(() => {
     syncPhaseRef.current = syncPhase
   }, [syncPhase])
@@ -774,6 +783,7 @@ export const App = () => {
           fullAutoRun={fullAutoRun}
           fullAutoControl={fullAutoControl}
           sarah={sarah}
+          sarahSpeech={sarahSpeech}
           notificationSettings={notificationSettings}
           incomingShare={incomingShare}
           onShareConsumed={consumeIncomingShare}

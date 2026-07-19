@@ -177,9 +177,11 @@ import {
   type KhalaState,
   type KhalaTurnClient,
   type MobileAccessibilityProfile,
+  type AssistantSpeechControlView,
 } from "./khala-core"
 import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
 import { mobileAttachmentRef } from "./mobile-transcript-attachment"
+import { sanitizeOwnerConversationResponse } from "./mobile-transcript-content"
 import {
   initialMobileTranscriptVisibleCount,
   newlyConfirmedTranscriptEntryCount,
@@ -242,6 +244,12 @@ export interface HomeState {
   readonly archivedConversationThreads: ReadonlyArray<MobileConversationThreadSummary>
   readonly activeThreadRef: string | null
   readonly sarah: SarahPrincipalProjection | null
+  readonly sarahSpeech: Readonly<{
+    phase: "idle" | "generating" | "playing" | "failed"
+    generation: number
+    messageRef: string | null
+    message: string | null
+  }>
   readonly workspaceSearch: string
   readonly workspaceStatusFilter: MobileWorkspaceStatusFilter
   readonly workspaceProjectFilter: string | null
@@ -417,6 +425,12 @@ export const initialHomeState: HomeState = {
   archivedConversationThreads: [],
   activeThreadRef: null,
   sarah: null,
+  sarahSpeech: {
+    phase: "idle",
+    generation: 0,
+    messageRef: null,
+    message: null,
+  },
   workspaceSearch: "",
   workspaceStatusFilter: "all",
   workspaceProjectFilter: null,
@@ -454,7 +468,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-18.sarah-runtime-truth-08"
+export const BUNDLE_TAG = "2026-07-18.sarah-openai-voice-09"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -735,6 +749,15 @@ export const FullAutoRunControlRequested = defineIntent(
     runRef: Schema.String,
   }),
 )
+export const SarahSpeechRequested = defineIntent(
+  "SarahSpeechRequested",
+  Schema.Struct({
+    threadRef: Schema.String,
+    messageRef: Schema.String,
+    text: Schema.String,
+  }),
+)
+export const SarahSpeechStopped = defineIntent("SarahSpeechStopped", EmptyPayload)
 export const AgentStackToggledIntent = defineIntent(AgentStackToggled, EmptyPayload)
 export const AgentRowSelectedIntent = defineIntent(
   AgentRowSelected,
@@ -868,6 +891,8 @@ export const homeIntentDefinitions = [
   RuntimeTurnStopConfirmationDismissed,
   RuntimeTurnStopConfirmed,
   FullAutoRunControlRequested,
+  SarahSpeechRequested,
+  SarahSpeechStopped,
   AgentStackToggledIntent,
   AgentRowSelectedIntent,
   WorkGroupToggledIntent,
@@ -1039,6 +1064,36 @@ export const chromeProps = (state: HomeState): ChromeProps => ({
   sending: state.khala.pending,
 })
 
+const latestSarahAssistantEntry = (state: HomeState): Readonly<{
+  messageRef: string
+  text: string
+}> | null => {
+  if (state.sarah === null || state.activeThreadRef !== state.sarah.threadRef) return null
+  for (let index = state.khala.entries.length - 1; index >= 0; index -= 1) {
+    const entry = state.khala.entries[index]
+    if (entry?.role !== "assistant" || entry.status !== "done") continue
+    const text = sanitizeOwnerConversationResponse(entry.text).trim()
+    if (text.length === 0 || text.length > 4_096) return null
+    return { messageRef: entry.key, text }
+  }
+  return null
+}
+
+const sarahSpeechControlForState = (state: HomeState): AssistantSpeechControlView | null => {
+  const entry = latestSarahAssistantEntry(state)
+  if (entry === null) return null
+  return {
+    phase: state.sarahSpeech.phase,
+    message: state.sarahSpeech.message,
+    onPlay: IntentRef("SarahSpeechRequested", StaticPayload({
+      threadRef: state.sarah!.threadRef,
+      messageRef: entry.messageRef,
+      text: entry.text,
+    })),
+    onStop: IntentRef("SarahSpeechStopped", StaticPayload({})),
+  }
+}
+
 export const renderContentView = (state: HomeState): View =>
   Stack(
     {
@@ -1081,7 +1136,11 @@ export const renderContentView = (state: HomeState): View =>
               : "live",
           fullAutoRunHeaderForState(state),
           state.sarah !== null && state.activeThreadRef === state.sarah.threadRef
-            ? { mode: "compact", assistantLabel: state.sarah.displayName }
+            ? {
+                mode: "compact",
+                assistantLabel: state.sarah.displayName,
+                speech: sarahSpeechControlForState(state),
+              }
             : "visible",
         )]
       : [
@@ -2127,6 +2186,7 @@ export interface HomeProgramOptions {
   readonly conversation?: Extract<MobileConversationSelection, { readonly mode: "sync" }>
   readonly accessibility?: MobileAccessibilityProfile
   readonly sarah?: SarahPrincipalProjection
+  readonly sarahSpeech?: SarahSpeechPlaybackPort
   /** Initial live `FullAutoRun` mobile projection, when already resolved at
    * selection time (openagents #8982). Later updates flow through
    * `program.fullAuto.setProjection`, not another `buildHomeProgram` call. */
@@ -2201,6 +2261,18 @@ export interface HomeProgramOptions {
     ) => Promise<MobileCodingComposerSession | null>
   }>
 }
+
+export type SarahSpeechPlaybackPort = Readonly<{
+  play: (input: Readonly<{
+    threadRef: string
+    messageRef: string
+    text: string
+  }>) => Promise<Readonly<
+    | { state: "started"; completed: Promise<"completed" | "stopped"> }
+    | { state: "unavailable"; message: string }
+  >>
+  stop: () => void
+}>
 
 export type MobileSelectedThreadLeaseController = Readonly<{
   activate: (
@@ -4651,7 +4723,23 @@ export const makeHomeHandlers = (
               ...current,
               khala: { ...current.khala, viewingAttachmentRef: null },
             }),
-    ConversationThreadSelected: synced?.ConversationThreadSelected ?? (() => Effect.void),
+    ConversationThreadSelected: (payload: Readonly<{ threadRef: string }>) => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      if (before.sarah?.threadRef === before.activeThreadRef && payload.threadRef !== before.activeThreadRef) {
+        options.sarahSpeech?.stop()
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          sarahSpeech: {
+            phase: "idle" as const,
+            generation: current.sarahSpeech.generation + 1,
+            messageRef: null,
+            message: null,
+          },
+        }))
+      }
+      const handler = synced?.ConversationThreadSelected
+      if (handler !== undefined) yield* handler(payload)
+    }),
     ConversationThreadRenameStarted: synced?.ConversationThreadRenameStarted ?? (() => Effect.void),
     ConversationThreadRenameChanged: synced?.ConversationThreadRenameChanged ?? (() => Effect.void),
     ConversationThreadRenameSubmitted: synced?.ConversationThreadRenameSubmitted ?? (() => Effect.void),
@@ -4708,6 +4796,103 @@ export const makeHomeHandlers = (
           }
         })
       }),
+    SarahSpeechRequested: (payload: Readonly<{
+      threadRef: string
+      messageRef: string
+      text: string
+    }>) => Effect.gen(function* () {
+      if (options.sarahSpeech === undefined) return
+      const before = yield* SubscriptionRef.get(state)
+      const latest = latestSarahAssistantEntry(before)
+      if (
+        before.sarah === null ||
+        before.activeThreadRef !== before.sarah.threadRef ||
+        payload.threadRef !== before.sarah.threadRef ||
+        latest === null ||
+        latest.messageRef !== payload.messageRef ||
+        latest.text !== payload.text ||
+        before.sarahSpeech.phase === "generating" ||
+        before.sarahSpeech.phase === "playing"
+      ) return
+      const generation = before.sarahSpeech.generation + 1
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        sarahSpeech: {
+          phase: "generating" as const,
+          generation,
+          messageRef: payload.messageRef,
+          message: null,
+        },
+      }))
+      const result = yield* Effect.tryPromise({
+        try: () => options.sarahSpeech!.play(payload),
+        catch: cause => cause,
+      }).pipe(Effect.option)
+      if (result._tag === "None") {
+        yield* SubscriptionRef.update(state, current =>
+          current.sarahSpeech.generation !== generation
+            ? current
+            : {
+                ...current,
+                sarahSpeech: {
+                  ...current.sarahSpeech,
+                  phase: "failed" as const,
+                  message: "Sarah voice is unavailable right now.",
+                },
+              })
+        return
+      }
+      const playback = result.value
+      if (playback.state === "unavailable") {
+        yield* SubscriptionRef.update(state, current =>
+          current.sarahSpeech.generation !== generation
+            ? current
+            : {
+                ...current,
+                sarahSpeech: {
+                  ...current.sarahSpeech,
+                  phase: "failed" as const,
+                  message: playback.message,
+                },
+              })
+        return
+      }
+      yield* SubscriptionRef.update(state, current =>
+        current.sarahSpeech.generation !== generation
+          ? current
+          : {
+              ...current,
+              sarahSpeech: { ...current.sarahSpeech, phase: "playing" as const },
+            })
+      yield* Effect.tryPromise({
+        try: () => playback.completed,
+        catch: cause => cause,
+      }).pipe(Effect.option)
+      yield* SubscriptionRef.update(state, current =>
+        current.sarahSpeech.generation !== generation
+          ? current
+          : {
+              ...current,
+              sarahSpeech: {
+                phase: "idle" as const,
+                generation,
+                messageRef: null,
+                message: null,
+              },
+            })
+    }),
+    SarahSpeechStopped: () => Effect.gen(function* () {
+      options.sarahSpeech?.stop()
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        sarahSpeech: {
+          phase: "idle" as const,
+          generation: current.sarahSpeech.generation + 1,
+          messageRef: null,
+          message: null,
+        },
+      }))
+    }),
     CodingSessionSelected: options.coding === undefined
       ? () => Effect.void
       : payload => Effect.gen(function* () {
@@ -4980,7 +5165,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         contentViewStream: makeViewProgramFromState(state, renderContentView).viewStream,
         drawerViewStream: makeViewProgramFromState(state, renderDrawerView).viewStream,
         report,
-        close: selectedThreadLease.close,
+        close: async () => {
+          options.sarahSpeech?.stop()
+          await selectedThreadLease.close()
+        },
         stateChanges: SubscriptionRef.changes(state),
         chrome: {
           toggleDrawer: fire("DrawerToggled"),
@@ -5054,6 +5242,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
         sync: {
           setPhase: phase => {
             if (phase !== "live" && phase !== "catching_up") {
+              options.sarahSpeech?.stop()
               void selectedThreadLease.clear()
             }
             Effect.runFork(SubscriptionRef.update(state, current =>
@@ -5082,6 +5271,12 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     codingAttachmentPicking: false,
                     codingAttachmentMutatingRef: null,
                     codingAttachmentStatus: null,
+                    sarahSpeech: {
+                      phase: "idle" as const,
+                      generation: current.sarahSpeech.generation + 1,
+                      messageRef: null,
+                      message: null,
+                    },
                     khala: initialKhalaState,
                   }
                 : { ...current, syncPhase: phase }))

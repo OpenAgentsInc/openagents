@@ -68,6 +68,13 @@ export interface MobileAccessibilityProfile {
   readonly minTouchTarget: number
 }
 
+export type AssistantSpeechControlView = Readonly<{
+  phase: "idle" | "generating" | "playing" | "failed"
+  onPlay: ReturnType<typeof IntentRef>
+  onStop: ReturnType<typeof IntentRef>
+  message: string | null
+}>
+
 export const defaultMobileAccessibilityProfile: MobileAccessibilityProfile = {
   reduceMotion: false,
   fontScale: 1,
@@ -438,6 +445,41 @@ const compactRuntimeStatusViews = (
     }),
   ])]
 }
+
+const assistantSpeechControlViews = (
+  speech: AssistantSpeechControlView | null,
+  accessibility: MobileAccessibilityProfile,
+): ReadonlyArray<View> => speech === null
+  ? []
+  : [
+      Button({
+        key: "assistant-speech-control",
+        label: speech.phase === "generating"
+          ? "Creating voice…"
+          : speech.phase === "playing"
+            ? "Stop voice"
+            : speech.phase === "failed"
+              ? "Try voice again · AI-generated"
+              : "Listen · AI-generated voice",
+        variant: speech.phase === "playing" ? "secondary" : "ghost",
+        disabled: speech.phase === "generating",
+        onPress: speech.phase === "playing" ? speech.onStop : speech.onPlay,
+        a11y: {
+          label: speech.phase === "playing"
+            ? "Stop the AI-generated assistant voice"
+            : "Listen to the AI-generated assistant voice",
+        },
+        style: { width: "full", minHeight: accessibility.minTouchTarget },
+      }),
+      ...(speech.phase === "failed" && speech.message !== null
+        ? [Text({
+            key: "assistant-speech-error",
+            content: speech.message,
+            variant: "caption",
+            color: "textMuted",
+          })]
+        : []),
+    ]
 
 const agentBadgeTone = (tone: LiveAgentGraphTone): "neutral" | "info" | "success" | "warn" | "danger" =>
   tone === "active"
@@ -912,6 +954,7 @@ export const renderKhalaSurface = (
   runtimeDetails: "visible" | "hidden" | Readonly<{
     mode: "compact"
     assistantLabel: string
+    speech?: AssistantSpeechControlView | null
   }> = "visible",
 ): View => {
   const compactRuntime = typeof runtimeDetails === "object"
@@ -1087,6 +1130,9 @@ export const renderKhalaSurface = (
       ...(compactRuntime === null
         ? []
         : compactRuntimeStatusViews(state, compactRuntime.assistantLabel)),
+      ...(compactRuntime === null
+        ? []
+        : assistantSpeechControlViews(compactRuntime.speech ?? null, accessibility)),
       ...(runtimeDetails !== "visible" ? [] : runtimeControlViews(state, accessibility)),
       ...(runtimeDetails !== "visible"
         ? []

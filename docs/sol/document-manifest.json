@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "f338fc0c976b10ead22437e17aa5e7a0bf84569e3bcb0f4b58e106faefbd968c",
+  "sourceTreeSha256": "91183ad8d8fe38eec69cff4b393305572c664b0b7800a6a4d16fda555434ea12",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2173,7 +2173,7 @@
       "owner": "OpenAgents Sarah voice architecture",
       "disposition": "retain-decision-analysis",
       "dispatch": false,
-      "sha256": "c82e25a6adf6b5f86ded940c3393b8b8388c606c7c1228ee8bdb2c74d5821ca4",
+      "sha256": "98486da8ec3cb4e10657cc6f995e72bc42bdb35728b1965f8e9e333edd947201",
       "status": "current point-in-time architecture recommendation",
       "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-12",

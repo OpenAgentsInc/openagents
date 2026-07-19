@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { File } from "expo-file-system"
 import {
   AccessibilityInfo,
   AppState,
@@ -55,7 +56,15 @@ import {
   normalizeMobileAccessibilityProfile,
   renderHomeView,
   type MobileSyncPhase,
+  type SarahSpeechPlaybackPort,
 } from "./home-core"
+
+type SarahPlaybackRecord = Readonly<{
+  player: import("expo-audio").AudioPlayer
+  subscription: Readonly<{ remove: () => void }>
+  fileUri: string
+  resolve: (outcome: "completed" | "stopped") => void
+}>
 
 /**
  * React Native is the capability host: safe-area and keyboard avoidance wrap
@@ -74,6 +83,7 @@ export const HomeScreen = ({
   fullAutoRun,
   fullAutoControl,
   sarah,
+  sarahSpeech,
   notificationSettings,
   incomingShare,
   onShareConsumed,
@@ -95,6 +105,14 @@ export const HomeScreen = ({
     action: FullAutoRunControlAction
   }>) => Promise<FullAutoRunControlDispatchOutcome>
   readonly sarah?: SarahPrincipalProjection | null
+  readonly sarahSpeech?: (input: Readonly<{
+    threadRef: string
+    messageRef: string
+    text: string
+  }>) => Promise<Readonly<
+    | { state: "ready"; fileUri: string }
+    | { state: "unauthorized" | "forbidden" | "too_long" | "unavailable"; message: string }
+  >>
   readonly notificationSettings?: MobileNotificationSettingsPort
   readonly incomingShare?: MobileShareIntake | null
   readonly onShareConsumed?: () => void
@@ -146,6 +164,63 @@ export const HomeScreen = ({
   const initialWorkspaceWidth = useRef(width).current
   const [reduceMotion, setReduceMotion] = useState(false)
   const attentionDispatchRef = useRef<string | null>(null)
+  const sarahPlaybackRef = useRef<SarahPlaybackRecord | null>(null)
+  const releaseSarahPlayback = useCallback((outcome: "completed" | "stopped"): void => {
+    const record = sarahPlaybackRef.current
+    if (record === null) return
+    sarahPlaybackRef.current = null
+    record.subscription.remove()
+    try { record.player.pause() } catch { /* already settled */ }
+    try { record.player.remove() } catch { /* already released */ }
+    try {
+      const file = new File(record.fileUri)
+      if (file.exists) file.delete()
+    } catch { /* cache cleanup is best effort */ }
+    record.resolve(outcome)
+  }, [])
+  const sarahSpeechPlayback = useMemo<SarahSpeechPlaybackPort | undefined>(() =>
+    sarahSpeech === undefined
+      ? undefined
+      : {
+          stop: () => releaseSarahPlayback("stopped"),
+          play: async input => {
+            releaseSarahPlayback("stopped")
+            const result = await sarahSpeech(input)
+            if (result.state !== "ready") {
+              return { state: "unavailable" as const, message: result.message }
+            }
+            try {
+              const { createAudioPlayer } = require("expo-audio") as typeof import("expo-audio")
+              const player = createAudioPlayer(result.fileUri, { updateInterval: 100 })
+              let settle!: (outcome: "completed" | "stopped") => void
+              const completed = new Promise<"completed" | "stopped">(resolve => {
+                settle = resolve
+              })
+              const subscription = player.addListener("playbackStatusUpdate", status => {
+                if (status.didJustFinish) releaseSarahPlayback("completed")
+              })
+              sarahPlaybackRef.current = {
+                player,
+                subscription,
+                fileUri: result.fileUri,
+                resolve: settle,
+              }
+              player.play()
+              return { state: "started" as const, completed }
+            } catch {
+              try {
+                const file = new File(result.fileUri)
+                if (file.exists) file.delete()
+              } catch { /* cache cleanup is best effort */ }
+              return {
+                state: "unavailable" as const,
+                message: "Sarah voice could not play on this device.",
+              }
+            }
+          },
+        },
+    [sarahSpeech, releaseSarahPlayback],
+  )
   const accessibility = useMemo(
     () => normalizeMobileAccessibilityProfile({ fontScale, reduceMotion }),
     [fontScale, reduceMotion],
@@ -167,6 +242,7 @@ export const HomeScreen = ({
       ...(fullAutoRun === null || fullAutoRun === undefined ? {} : { fullAutoRun }),
       ...(fullAutoControl === undefined ? {} : { fullAutoControl }),
       ...(sarah === null || sarah === undefined ? {} : { sarah }),
+      ...(sarahSpeechPlayback === undefined ? {} : { sarahSpeech: sarahSpeechPlayback }),
     }),
     // fullAutoRun deliberately excluded: its initial value seeds the program
     // once at mount; later changes flow through `program.fullAuto.setProjection`
@@ -175,7 +251,7 @@ export const HomeScreen = ({
     // fullAutoControl is stable across the component's lifetime (a plain
     // capability closure over the sync host, not per-render state) the same
     // way `sessionActions` and `coding` are already treated below.
-    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl, sarah],
+    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl, sarah, sarahSpeechPlayback],
   )
   const report = useMemo<IntentReporter>(() => (ref, runtimeValue) => {
     prepareMobileNativeIntentFeedback(ref.name, accessibility.reduceMotion)
@@ -203,8 +279,9 @@ export const HomeScreen = ({
     program.workspace.setWidth(width)
   }, [program, width])
   useEffect(() => () => {
+    releaseSarahPlayback("stopped")
     void program.close()
-  }, [program])
+  }, [program, releaseSarahPlayback])
   useEffect(() => {
     program.sync.setPhase(syncPhase)
   }, [program, syncPhase])

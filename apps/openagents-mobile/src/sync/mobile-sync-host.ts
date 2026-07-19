@@ -1,4 +1,5 @@
 import { randomUUID } from "expo-crypto"
+import { File, Paths } from "expo-file-system"
 import { openDatabaseSync } from "expo-sqlite"
 
 import {
@@ -24,6 +25,7 @@ import {
 } from "../coding/mobile-repository-environment-client"
 import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
 import { fetchSarahPrincipal } from "../sarah/sarah-client"
+import { fetchSarahSpeech } from "../sarah/sarah-speech-client"
 import { openMobileSyncHostCore, type MobileSyncHost } from "./mobile-sync-host-core"
 
 export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
@@ -46,6 +48,16 @@ export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
   repositoryEnvironment: () => Promise<MobileRepositoryEnvironmentPort | null>
   /** Stable owner-private Sarah identity. Token custody remains host-only. */
   sarah: () => Promise<SarahPrincipalProjection | null>
+  /** Owner-private TTS transport. Auth stays inside the native sync host and
+   * only a short-lived local audio file crosses into the playback host. */
+  sarahSpeech: (input: Readonly<{
+    threadRef: string
+    messageRef: string
+    text: string
+  }>) => Promise<Readonly<
+    | { state: "ready"; fileUri: string }
+    | { state: "unauthorized" | "forbidden" | "too_long" | "unavailable"; message: string }
+  >>
 }>
 
 export const OPENAGENTS_MOBILE_SYNC_DATABASE = "openagents-mobile-sync.sqlite"
@@ -81,6 +93,26 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
         baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
         accessToken: credential.accessToken,
       });
+    },
+    sarahSpeech: async input => {
+      const credential = await loadNativeSessionCredential()
+      if (credential === null || host.conversation() === null) {
+        return { state: "unauthorized", message: "Sign in again to listen to Sarah." }
+      }
+      const result = await fetchSarahSpeech({
+        baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+        accessToken: credential.accessToken,
+        ...input,
+      })
+      if (result.state !== "ready") return result
+      try {
+        const file = new File(Paths.cache, `openagents-sarah-${randomUUID()}.mp3`)
+        file.create()
+        file.write(result.audio)
+        return { state: "ready", fileUri: file.uri }
+      } catch {
+        return { state: "unavailable", message: "Sarah voice could not open on this device." }
+      }
     },
     fleetRuns: async () => {
       const credential = await loadNativeSessionCredential()
