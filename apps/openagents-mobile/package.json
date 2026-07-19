@@ -22,6 +22,7 @@
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
+    "@openagentsinc/managed-sandbox-contract": "workspace:*",
     "@openagentsinc/portable-session-contract": "workspace:*",
     "@openagentsinc/sarah": "workspace:*",
     "effect": "catalog:",

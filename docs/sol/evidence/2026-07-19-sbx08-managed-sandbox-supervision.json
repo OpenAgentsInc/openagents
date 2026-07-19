@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx08_supervision_component.v1",
+  "capturedAt": "2026-07-19T22:08:57Z",
+  "passed": true,
+  "issueRef": "https://github.com/OpenAgentsInc/openagents/issues/9031",
+  "proofRung": "deterministic_mobile_and_authenticated_web_component",
+  "contract": {
+    "schema": "openagents.managed_sandbox_supervision.v1",
+    "commandSchema": "openagents.managed_sandbox_supervision_command.v1",
+    "outcomeSchema": "openagents.managed_sandbox_supervision_outcome.v1",
+    "mobilePath": "/api/managed-sandboxes/mobile/supervision",
+    "webPath": "/api/managed-sandboxes/web/supervision",
+    "legalCommands": ["Interrupt", "Stop", "Resume", "Delete"],
+    "defaultEnabled": false
+  },
+  "safety": {
+    "exactVersionAndGenerationRequired": true,
+    "exactBytesPersistedBeforeSend": true,
+    "offlineReplayReusesBytes": true,
+    "durableOutcomeIsCompletionAuthority": true,
+    "sarahActorDistinguishable": true,
+    "webBearerRemainsServerSide": true,
+    "sdkInClient": false,
+    "gcpClientInClient": false,
+    "providerCredentialInProjection": false,
+    "promptOrRuntimeOutputInProjection": false,
+    "rawPathPtyOrShellInProjection": false
+  },
+  "proof": {
+    "focusedTestFilesPassed": 6,
+    "focusedTestsPassed": 18,
+    "mobileTestFilesPassed": 59,
+    "mobileTestsPassed": 295,
+    "authenticatedWebTestFilesPassed": 61,
+    "authenticatedWebTestsPassed": 355,
+    "authenticatedWebCloudRunBuildPassed": true,
+    "sharedContractTypecheckPassed": true,
+    "workerTypecheckPassed": true,
+    "mobileTypecheckPassed": true,
+    "authenticatedWebTypecheckPassed": true,
+    "impeccableScopedDetectorPassed": true,
+    "assuranceSpecValidationPassed": true,
+    "solDocumentationChecksPassed": true,
+    "repositoryFastCheckPassed": true
+  },
+  "limitations": [
+    "No production deployment or feature flag was changed by SBX-08.",
+    "Observed cost stays explicitly unreported when the native authority has only a budget cap.",
+    "Safe file, change, or artifact lists stay empty when the native retained projection has no exact safe refs.",
+    "SBX-09 remains the live GCP, cost, rollback, cleanup, packaged-client, owner-thread, and rollout gate.",
+    "Physical-device proof remains a separate mobile release gate."
+  ]
+}

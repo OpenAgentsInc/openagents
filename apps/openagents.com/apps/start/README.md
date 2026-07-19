@@ -9,6 +9,21 @@ Server loaders/functions should use `@openagentsinc/effect-start` for the
 Effect boundary and server request context instead of creating app-local
 bridges.
 
+## Managed sandbox supervision
+
+The authenticated `/managed-sandboxes` route is a bounded supervision client.
+Its same-origin server proxy reads the existing HTTP-only owner session cookie
+and adds the bearer only on the server-to-server request. Browser code never
+receives that bearer. The page decodes the shared safe schema and stores exact
+typed interrupt, stop, resume, or delete bytes in a local outbox before send.
+Offline replay uses the same native idempotency key. A request, notification,
+or quiet process is not completion, and delete remains incomplete until the
+projection carries zero-residue cleanup truth.
+
+The route has no Box SDK, Google Cloud client, provider credential, raw path,
+runtime output, PTY, shell, or generic container control. It remains default-
+off with the native broker until SBX-09 accepts the live GCP rollout.
+
 ## UI Components
 
 This package is configured for shadcn/ui on Tailwind 4:

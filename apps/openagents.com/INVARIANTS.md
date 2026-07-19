@@ -4362,3 +4362,28 @@ scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
   control bearer, storage, or runtime admission fails closed. SBX-09 alone may
   arm rollout after independent live GCP, packaged Desktop, Sarah, cost,
   rollback, and zero-residue proof.
+
+## Managed Sandbox Mobile and Web Supervision (SBX-08, #9031)
+
+- The mobile and authenticated-web routes project the native owner broker.
+  They do not own lifecycle, runtime, cleanup, billing, or provider state.
+- `@openagentsinc/managed-sandbox-contract/supervision` is the only client
+  boundary schema. Unknown and forbidden fields fail decode. The projection
+  excludes owner and tenant refs, prompts, runtime output, credentials, image
+  digests, topology, raw paths, PTY data, and shell access.
+- Mobile and web can send only interrupt, stop, resume, or delete. Each command
+  binds the surface, sandbox, version, resource generation, expiry, and native
+  idempotency ref. Surface substitution, expiry, revoke, and stale generation
+  refuse before a provider effect.
+- Each client persists the exact request bytes before send and replays those
+  bytes after an offline gap. A request or notification is not completion.
+  Only the durable native outcome can settle the UI.
+- The web proxy reads the existing HTTP-only authenticated owner session. It
+  sends the bearer only to the same private Worker route. Browser code never
+  receives the bearer.
+- Sarah and other actors use one projection. The last runtime actor ref keeps
+  them distinguishable. Delete stays incomplete until native cleanup truth is
+  complete with its zero-residue receipt.
+- These routes use the same default-off broker flag as SBX-07. SBX-08 proves
+  deterministic components only. SBX-09 owns live GCP rollout, cost, rollback,
+  packaged-client, and physical-device evidence.

@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.managed.agent.sandboxes"
-assurance_revision: 2
+assurance_revision: 3
 title: "OpenAgents Managed Agent Sandboxes AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -41,11 +41,11 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "MSB-AC-17",
       "MSB-AC-18"
     ],
-    "document_digest": "sha256:0bef38178b696e0a3866f5206862af36fa80d31537d61bc15b90f2be3379665f",
+    "document_digest": "sha256:67a55f11874981f73c3db99d3dbd0330661fc26cbfaa0a94a29fd36026f92846",
     "path": "specs/openagents/managed-agent-sandboxes.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 1
+    "spec_revision": 2
   }
 }
 ```
@@ -541,7 +541,15 @@ or observations exist today.
     "technique": "authority_decision_matrix"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "packages/managed-sandbox-contract/src/supervision.ts",
+      "packages/managed-sandbox-contract/src/supervision.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-supervision-routes.test.ts",
+      "apps/openagents-mobile/tests/mobile-managed-sandbox.test.ts",
+      "apps/openagents.com/apps/start/src/routes/-managed-sandbox-web-client.test.ts",
+      "apps/openagents.com/apps/start/src/routes/-managed-sandbox-supervision-page.test.tsx",
+      "docs/sol/evidence/2026-07-19-sbx08-managed-sandbox-supervision.json"
+    ],
     "criterion_refs": [
       "MSB-AC-13"
     ],

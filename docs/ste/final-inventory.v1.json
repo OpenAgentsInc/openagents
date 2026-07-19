@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "fcd3bb9f9955ad0d9b9015e6a1d40e485dd8e0568fa7b81c61ac862f278c519b",
+      "sha256": "3c0ef8b0d67bb049df93ad2925986b4953add8ec8c8869e46e30fa04732ae38c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1024,7 +1024,7 @@
     },
     {
       "path": "apps/openagents-mobile/README.md",
-      "sha256": "8a3af1ad1f6cd4410172c3bf71ead55ed74b56154e2af6ce94e70deb6e82c087",
+      "sha256": "31149a806777c3b2b3c2e38991219008a0e1b48b9b3ab22831739665727c0328",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1090,7 +1090,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "ca9cc5e5d97dffb7cddde21701ceb6bf9ae9786bd2d26e2d57a0cb2df406c805",
+      "sha256": "f39a6c97956cb29e1f78a3969b1f9d8069a3de02373dceb445515e0b05e49aeb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1178,7 +1178,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/README.md",
-      "sha256": "d8d6ee0aa5cc32450e1fecd5bf575345853421edbea1c9f19a2b364977b004fd",
+      "sha256": "e555015985706b6a9aab9c3e86396e758790e21bd68ea103e1c41a9d61650c85",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -16294,7 +16294,7 @@
     },
     {
       "path": "docs/assure-repo/README.md",
-      "sha256": "14fccd4955f4516f4dcdaf1c2bd43a2b4ef7685136ed465a19ecce2aaaa1dfbf",
+      "sha256": "e1005f5c4bef3c1b7b6081d0cc5f332640ab300760b48522cde2c4b75ecc4d93",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19716,6 +19716,28 @@
     {
       "path": "docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md",
       "sha256": "39c432f6b07b9e7c5d930e11fc729f154b76028ee5f3869ec3db58def0895277",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/cloud/bootstrap/SBX-08-managed-sandbox-supervision.md",
+      "sha256": "982c393c398865ae945b509b27fa4d96aab00077517d80469890c5e2e334f9cf",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -23467,7 +23489,7 @@
     },
     {
       "path": "docs/fable/2026-07-19-verifiable-software.md",
-      "sha256": "735eab722e5a3dda495628a76f303aefaff65221ba8a229a43401272813cfe39",
+      "sha256": "61082d837ab1e3088c744cee2e80a63596fc73c2c47f1704e128de2eb91fbb6f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -26621,7 +26643,7 @@
     },
     {
       "path": "docs/ide/ROADMAP.md",
-      "sha256": "d3506d7a4ff10bcd3a112b4ea867461bba9e8fe94873f0d7564ff37a019d736b",
+      "sha256": "0b4df5dec0dc0a56aab53da1658c9be2048231b322d6156113468a89e837a308",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -38166,6 +38188,38 @@
       }
     },
     {
+      "path": "docs/sarah/2026-07-19-sarah-activation-gap-analysis.md",
+      "sha256": "1d1cfdd8f3f2d5d89d33c5ab7c962603ad017c616ba77aa490cc66d5517a9038",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
+      "path": "docs/sarah/2026-07-19-sarah-program-assessment.md",
+      "sha256": "1f1569d41bf587615426d1d75201a93be2593d48c96387962e82049da2872eb3",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/sarah/EN-GAPS.md",
       "sha256": "7726335b3606589c6fe3b2792177152940152a5a24554b8417a8919b382a103f",
       "reason": "Final review of a converted document",
@@ -39953,7 +40007,7 @@
     },
     {
       "path": "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md",
-      "sha256": "b8a011ed894b2f2f09585d47e06b3c476acbbba00768424979f4dc64fca608b1",
+      "sha256": "a20455a1e73780831cd1db69cf8133e856436a8128fba9174d08100b4532709a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40023,7 +40077,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "f53f92a466f7ad1c6b9ea32eee387eba9619bfb4a0c1499295839551abd72946",
+      "sha256": "1d23a61f1e6f7952306182978a61db88ad72da366b62caed6cc0f9be6fa9ccc8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40063,7 +40117,7 @@
     },
     {
       "path": "docs/sol/README.md",
-      "sha256": "5509713cc3e31528881f21e9d5c9bb46678a562acdca18081f053afd421b2494",
+      "sha256": "a273086ef79f1a4833eda52df6d50bdb13c0f6397014ea96d2a319ee4e2fc5bd",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40080,7 +40134,7 @@
     },
     {
       "path": "docs/sol/SUBSYSTEM_IMPLEMENTATION_IMPLICATIONS.md",
-      "sha256": "527036784ad0ec1a5c61fb7684bc1849c790a2f3e522426d45b3baaf34aa84c8",
+      "sha256": "58c94c84cf2fee18e794044fb84ab3ec5de38ce9464fbb0fcfe5421314230956",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -46340,7 +46394,7 @@
     },
     {
       "path": "packages/assure-repo/README.md",
-      "sha256": "a06be4ad2c29c3d417cafd4fd6360e00e19f4931cb1b679490df58e278cf2da2",
+      "sha256": "3b7f22b388462b4ae34a124988b1ca825cf69cdf4ba3600aca43bb2b4f07d356",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46936,7 +46990,7 @@
     },
     {
       "path": "packages/managed-sandbox-contract/README.md",
-      "sha256": "72896fbd09039538921f75f1df31a104047e352987c4f73e149df0e0adb765aa",
+      "sha256": "ebd9e27bec48f516d48fd1ee6c9f8416fe91680ab5a5e571c551f392a2668edd",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48632,7 +48686,7 @@
     },
     {
       "path": "specs/mobile/mobile-any-host-fleet-controller.product-spec.md",
-      "sha256": "00e7aba617b55bcaad51cbdea6a9a6e56c1d450ccbb08e379e2171a2003682f1",
+      "sha256": "2104d6dac8667dccc67fb53735acea6685a88f22608eb2dd9f5201a3aa3587c0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48855,7 +48909,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
-      "sha256": "84e52a4a9496359de477005c72ae6e51ffd34561ad62a9dc57be74c2a1c7f3fc",
+      "sha256": "de54bcf3150aadef28373db11a16759c416023963381de0a2b2740432404c56d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48876,7 +48930,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.product-spec.md",
-      "sha256": "0bef38178b696e0a3866f5206862af36fa80d31537d61bc15b90f2be3379665f",
+      "sha256": "67a55f11874981f73c3db99d3dbd0330661fc26cbfaa0a94a29fd36026f92846",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

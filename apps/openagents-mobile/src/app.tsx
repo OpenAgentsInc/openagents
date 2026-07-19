@@ -78,6 +78,12 @@ import {
 import type { FullAutoRunControlDispatchOutcome } from "./full-auto/full-auto-run-control-intent"
 import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
 import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
+import type { ManagedSandboxSupervisionProjection } from "@openagentsinc/managed-sandbox-contract"
+import type {
+  MobileManagedSandboxControlAction,
+  MobileManagedSandboxControlResult,
+  MobileManagedSandboxSnapshot,
+} from "./managed-sandbox/mobile-managed-sandbox"
 
 type MobileCodingHomeBinding = Readonly<{
   directory: MobileCodingDirectory
@@ -153,6 +159,7 @@ const selectAuthenticatedMobileExperience = async (
   conversation: MobileConversationSelection
   coding?: MobileCodingHomeBinding
   fullAutoRun: FullAutoRunProjectionResult
+  managedSandboxes: MobileManagedSandboxSnapshot
   sarah: SarahPrincipalProjection | null
 }>> => {
   const coding = syncHost.coding()
@@ -171,6 +178,7 @@ const selectAuthenticatedMobileExperience = async (
   // landing surface. Active work remains available from navigation, but a
   // restored coding composer must never silently own Sarah's send target.
   const fullAutoRunResult = await syncHost.fullAutoRun()
+  const managedSandboxes = await syncHost.managedSandboxes()
   // `threadRef` is nullable: a Full Auto run may exist before Desktop binds
   // it to a khala-sync thread. `undefined` here means "nothing to
   // prioritize", not "no active run" — the live state header can still
@@ -192,7 +200,9 @@ const selectAuthenticatedMobileExperience = async (
     adapter: { randomId: randomUUID },
   })
   const directory = await coding.directory()
-  if (conversation.mode !== "sync") return { conversation, fullAutoRun: fullAutoRunResult, sarah }
+  if (conversation.mode !== "sync") {
+    return { conversation, fullAutoRun: fullAutoRunResult, managedSandboxes, sarah }
+  }
   const executionTargetCatalog = await syncHost.executionTargets()
   const fleetRunResult = await syncHost.fleetRuns()
   const repositoryEnvironment = await syncHost.repositoryEnvironment()
@@ -258,6 +268,7 @@ const selectAuthenticatedMobileExperience = async (
   return {
     conversation,
     fullAutoRun: fullAutoRunResult,
+    managedSandboxes,
     sarah,
     coding: {
       directory,
@@ -403,6 +414,7 @@ export const App = () => {
   const [incomingShare, setIncomingShare] = useState<MobileShareIntake | null>(null)
   const [conversationRevision, setConversationRevision] = useState(0)
   const [fullAutoRun, setFullAutoRun] = useState<FullAutoRunProjectionResult | null>(null)
+  const [managedSandboxes, setManagedSandboxes] = useState<MobileManagedSandboxSnapshot | null>(null)
   const [sarah, setSarah] = useState<SarahPrincipalProjection | null>(null)
   const syncHostRef = useRef<MobileNativeSyncHost | null>(null)
   const codingBindingRef = useRef<MobileCodingHomeBinding | undefined>(undefined)
@@ -428,6 +440,18 @@ export const App = () => {
     (input: Readonly<{ runRef: string; action: FullAutoRunControlAction }>) =>
       syncHostRef.current?.fullAutoControl(input) ??
         Promise.resolve<FullAutoRunControlDispatchOutcome>({ state: "unavailable" }),
+    [],
+  )
+  const managedSandboxControl = useCallback(
+    (input: Readonly<{
+      projection: ManagedSandboxSupervisionProjection
+      action: MobileManagedSandboxControlAction
+    }>) =>
+      syncHostRef.current?.managedSandboxControl(input) ??
+        Promise.resolve<MobileManagedSandboxControlResult>({
+          state: "rejected",
+          reasonRef: "reason.authority_unavailable",
+        }),
     [],
   )
   const sarahSpeech = useCallback(
@@ -512,6 +536,7 @@ export const App = () => {
         const experience = await selectAuthenticatedMobileExperience(syncHostRef.current!, applyActiveThread)
         setConversationSelection(experience.conversation)
         setFullAutoRun(experience.fullAutoRun)
+        setManagedSandboxes(experience.managedSandboxes)
         setSarah(experience.sarah)
         publishCodingBinding(experience.coding)
         setConversationRevision(current => current + 1)
@@ -532,6 +557,7 @@ export const App = () => {
       pendingAttentionTargetRef.current = null
       setPendingAttentionTarget(null)
       setFullAutoRun(null)
+      setManagedSandboxes(null)
       setSarah(null)
       const result = await signOutNativeSession()
       if (result.state === "signed_out") {
@@ -552,6 +578,7 @@ export const App = () => {
     let syncStatusTimer: ReturnType<typeof setInterval> | undefined
     let fullAutoRunPollTimer: ReturnType<typeof setInterval> | undefined
     let fullAutoRunPollInFlight = false
+    let managedSandboxPollInFlight = false
     let linkSubscription: ReturnType<typeof Linking.addEventListener> | undefined
     let notificationSubscription: Readonly<{ remove: () => void }> | undefined
     let targetDelivery: NativeCodingTargetDelivery | undefined
@@ -575,6 +602,7 @@ export const App = () => {
           conversationSelectionRef.current = experience.conversation
           setConversationSelection(experience.conversation)
           setFullAutoRun(experience.fullAutoRun)
+          setManagedSandboxes(experience.managedSandboxes)
           setSarah(experience.sarah)
           publishCodingBinding(experience.coding)
           setConversationRevision(current => current + 1)
@@ -677,6 +705,7 @@ export const App = () => {
               if (stopped) return
               setConversationSelection(experience.conversation)
               setFullAutoRun(experience.fullAutoRun)
+              setManagedSandboxes(experience.managedSandboxes)
               setSarah(experience.sarah)
               publishCodingBinding(experience.coding)
               setSyncPhase(experience.conversation.mode === "sync" ? "live" : "session_ready")
@@ -687,11 +716,13 @@ export const App = () => {
             publishCodingBinding(undefined)
             setSyncPhase("denied")
             setConversationSelection({ mode: "local" })
+            setManagedSandboxes(null)
             break
           case "unavailable":
             publishCodingBinding(undefined)
             setSyncPhase("unavailable")
             setConversationSelection({ mode: "local" })
+            setManagedSandboxes(null)
             break
         }
       },
@@ -709,6 +740,7 @@ export const App = () => {
         publishCodingBinding(undefined)
         syncPhaseRef.current = "denied"
         setConversationSelection({ mode: "local" })
+        setManagedSandboxes(null)
         setConversationRevision(current => current + 1)
       }
       if (
@@ -728,16 +760,28 @@ export const App = () => {
     // while a live synced conversation exists; a no-op elsewhere, so it adds
     // no behavior when there is no active run or no signed-in session.
     fullAutoRunPollTimer = setInterval(() => {
-      if (stopped || fullAutoRunPollInFlight) return
+      if (stopped) return
       if (syncHost?.conversation() == null) return
-      fullAutoRunPollInFlight = true
-      void syncHost.fullAutoRun()
-        .then(result => {
-          if (!stopped) setFullAutoRun(result)
-        })
-        .finally(() => {
-          fullAutoRunPollInFlight = false
-        })
+      if (!fullAutoRunPollInFlight) {
+        fullAutoRunPollInFlight = true
+        void syncHost.fullAutoRun()
+          .then(result => {
+            if (!stopped) setFullAutoRun(result)
+          })
+          .finally(() => {
+            fullAutoRunPollInFlight = false
+          })
+      }
+      if (!managedSandboxPollInFlight) {
+        managedSandboxPollInFlight = true
+        void syncHost.managedSandboxes()
+          .then(result => {
+            if (!stopped) setManagedSandboxes(result)
+          })
+          .finally(() => {
+            managedSandboxPollInFlight = false
+          })
+      }
     }, 5_000)
     const handle = startOtaPolling({
       isEnabled: Updates.isEnabled,
@@ -782,6 +826,8 @@ export const App = () => {
           onAttentionTargetConsumed={consumeAttentionTarget}
           fullAutoRun={fullAutoRun}
           fullAutoControl={fullAutoControl}
+          managedSandboxes={managedSandboxes}
+          managedSandboxControl={managedSandboxControl}
           sarah={sarah}
           sarahSpeech={sarahSpeech}
           notificationSettings={notificationSettings}

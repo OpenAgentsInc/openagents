@@ -26,6 +26,15 @@ import {
 import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
 import { fetchSarahPrincipal } from "../sarah/sarah-client"
 import { fetchSarahSpeech } from "../sarah/sarah-speech-client"
+import {
+  fetchMobileManagedSandboxes,
+  makeMobileManagedSandboxController,
+  type MobileManagedSandboxControlAction,
+  type MobileManagedSandboxControlResult,
+  type MobileManagedSandboxSnapshot,
+} from "../managed-sandbox/mobile-managed-sandbox"
+import { openExpoMobileManagedSandboxOutbox } from "../managed-sandbox/expo-mobile-managed-sandbox-outbox"
+import type { ManagedSandboxSupervisionProjection } from "@openagentsinc/managed-sandbox-contract"
 import { openMobileSyncHostCore, type MobileSyncHost } from "./mobile-sync-host-core"
 
 export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
@@ -45,6 +54,13 @@ export type MobileNativeSyncHost = MobileSyncHost & Readonly<{
     runRef: string
     action: FullAutoRunControlAction
   }>) => Promise<FullAutoRunControlDispatchOutcome>
+  /** Safe, generation-fenced managed-sandbox supervision. The host keeps
+   * bearer credentials and the durable exactly-once outbox private. */
+  managedSandboxes: () => Promise<MobileManagedSandboxSnapshot>
+  managedSandboxControl: (input: Readonly<{
+    projection: ManagedSandboxSupervisionProjection
+    action: MobileManagedSandboxControlAction
+  }>) => Promise<MobileManagedSandboxControlResult>
   repositoryEnvironment: () => Promise<MobileRepositoryEnvironmentPort | null>
   /** Stable owner-private Sarah identity. Token custody remains host-only. */
   sarah: () => Promise<SarahPrincipalProjection | null>
@@ -84,8 +100,13 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
     randomId: randomUUID,
     openStore: openNativeStore,
   })
+  const managedSandboxOutbox = openExpoMobileManagedSandboxOutbox(OPENAGENTS_MOBILE_SYNC_DATABASE)
   return {
     ...host,
+    close: () => {
+      managedSandboxOutbox.close?.()
+      host.close()
+    },
     sarah: async () => {
       const credential = await loadNativeSessionCredential();
       if (credential === null || host.conversation() === null) return null;
@@ -148,6 +169,33 @@ export const openMobileSyncHost = (): MobileNativeSyncHost => {
         accessToken: () => credential.accessToken,
       })
       return dispatch(input)
+    },
+    managedSandboxes: async () => {
+      const credential = await loadNativeSessionCredential()
+      if (credential === null || host.conversation() === null) {
+        return { state: "unauthorized" }
+      }
+      const controller = makeMobileManagedSandboxController({
+        baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+        accessToken: () => credential.accessToken,
+        outbox: managedSandboxOutbox,
+      })
+      await controller.flush()
+      return fetchMobileManagedSandboxes({
+        baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+        accessToken: credential.accessToken,
+      })
+    },
+    managedSandboxControl: async input => {
+      const credential = await loadNativeSessionCredential()
+      if (credential === null || host.conversation() === null) {
+        return { state: "rejected", reasonRef: "reason.authentication_required" }
+      }
+      return makeMobileManagedSandboxController({
+        baseUrl: OPENAGENTS_MOBILE_SYNC_BASE_URL,
+        accessToken: () => credential.accessToken,
+        outbox: managedSandboxOutbox,
+      }).request(input.projection, input.action)
     },
     executionTargets: async () => {
       try {

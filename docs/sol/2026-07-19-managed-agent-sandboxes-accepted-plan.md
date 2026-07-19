@@ -6,7 +6,7 @@
 - Owner authority: current owner conversation
 - Base commit: `43b5dbc56e05e1278f99dd269824087b205e40f0`
 - Epic: [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023)
-- ProductSpec: [`../../specs/openagents/managed-agent-sandboxes.product-spec.md`](../../specs/openagents/managed-agent-sandboxes.product-spec.md) revision 1
+- ProductSpec: [`../../specs/openagents/managed-agent-sandboxes.product-spec.md`](../../specs/openagents/managed-agent-sandboxes.product-spec.md) revision 2
 - Source analysis: [`../teardowns/2026-07-19-ascii-box-optibox-openagents-gcp-analysis.md`](../teardowns/2026-07-19-ascii-box-optibox-openagents-gcp-analysis.md)
 
 ## Owner outcome
@@ -99,7 +99,7 @@ or cleanup truth.
 | SBX-05 | [#9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | bounded files, commands, artifacts, quota, and hardening              | SBX-02/03                                                   | complete, default-off guest I/O component accepted        |
 | SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration                                   | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | complete, default-off Desktop consumer component accepted |
 | SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker                                   | SBX-00/04/05                                                | complete, default-off native broker component accepted    |
-| SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision                                    | SBX-06/07                                                   | not started                                               |
+| SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision                                    | SBX-06/07                                                   | complete, default-off controller components accepted      |
 | SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout                           | SBX-00 through SBX-08                                       | not started                                               |
 | SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2                        | SBX-09                                                      | not started                                               |
 
@@ -160,10 +160,17 @@ failed, refused, recovery-required, and complete stay distinct.
 
 ### Mobile and web
 
-Mobile and web remain controllers. SBX-08 reuses the any-host directory,
-exactly-once outbox, attention inbox, portable-session refs, and IDE-14 safe
-projections. Neither client receives the Box SDK, GCP client, raw path, PTY,
-provider credential, generic shell, or lifecycle authority.
+Mobile and web remain controllers. SBX-08 now supplies one shared bounded
+projection and four exact controls over the native owner broker. The mobile
+host keeps its bearer and exact-byte SQLite outbox. The authenticated web proxy
+keeps its bearer in the server HTTP-only session and the browser keeps an
+exact-byte local outbox. Both clients show target, generations, lifecycle,
+effective runtime, actor, attention, elapsed and idle time, lease, budget,
+structural event, safe outcome refs, and cleanup truth. Neither client receives
+the Box SDK, GCP client, prompt, runtime output, raw path, PTY, provider
+credential, generic shell, or lifecycle authority. A durable outcome is the
+only completion authority. SBX-09 still owns live rollout, and physical-device
+proof remains separate.
 
 ### Full Auto
 

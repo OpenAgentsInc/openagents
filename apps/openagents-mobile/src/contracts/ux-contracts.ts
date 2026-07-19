@@ -5,8 +5,40 @@ import {
 export const openAgentsMobileUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-19.1",
+    version: "2026-07-19.2",
     contracts: [
+      {
+        contractId: "openagents_mobile.managed_sandbox.supervision.v1",
+        state: "enforced",
+        surface: "openagents-mobile",
+        productArea: "managed sandbox supervision",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "accepted-owner-plan", statedBy: "owner", statedOn: "2026-07-19" },
+        statement:
+          "Mobile shows bounded managed-sandbox lifecycle, runtime, attention, budget, outcome, and cleanup truth and sends only exact typed interrupt, stop, resume, or delete controls.",
+        authorityBoundary:
+          "The authenticated Worker and native managed-sandbox broker retain lifecycle and runtime authority. The native host owns the access token and durable SQLite outbox. The Effect Native view receives only the shared safe projection and durable outcomes. It receives no Box SDK, Google Cloud client, provider credential, prompt, runtime output, raw path, PTY, shell, or generic container control. An accepted request or notification is not completion, and delete completes only from a zero-residue cleanup receipt. Physical-device proof remains a separate release gate.",
+        evidenceRefs: [
+          "packages/managed-sandbox-contract/src/supervision.ts",
+          "apps/openagents-mobile/src/managed-sandbox/mobile-managed-sandbox.ts",
+          "apps/openagents-mobile/src/managed-sandbox/expo-mobile-managed-sandbox-outbox.ts",
+          "apps/openagents-mobile/src/screens/mobile-managed-sandbox-view.ts",
+          "apps/openagents-mobile/tests/mobile-managed-sandbox.test.ts",
+        ],
+        oracles: [
+          {
+            id: "mobile_managed_sandbox_safe_supervision",
+            kind: "bun-test",
+            mode: "e2e",
+            ref: "apps/openagents-mobile/tests/mobile-managed-sandbox.test.ts",
+            description:
+              "Proves safe projection decode, actor attribution, legal generation-fenced controls, exact offline replay, revoke and stale-generation refusal, cleanup failure, and forbidden-field exclusion.",
+          },
+        ],
+        verification:
+          "Managed-sandbox mobile tests, shared-contract tests, Worker route tests, mobile typecheck, behavior-contract checks, repository checks, and the separate SBX-09 live and physical-device gates.",
+      },
       {
         contractId: "openagents_mobile.sarah.live_tool_activity.v1",
         state: "enforced",

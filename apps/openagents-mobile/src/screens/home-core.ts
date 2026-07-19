@@ -41,6 +41,16 @@ import {
   type FullAutoRunProjectionResult,
 } from "../full-auto/full-auto-run-projection"
 import type { FullAutoRunControlDispatchOutcome } from "../full-auto/full-auto-run-control-intent"
+import {
+  decodeManagedSandboxSupervisionOutcome,
+  type ManagedSandboxSupervisionOutcome,
+  type ManagedSandboxSupervisionProjection,
+} from "@openagentsinc/managed-sandbox-contract"
+import type {
+  MobileManagedSandboxControlAction,
+  MobileManagedSandboxControlResult,
+  MobileManagedSandboxSnapshot,
+} from "../managed-sandbox/mobile-managed-sandbox"
 
 import type {
   MobileCodingDirectory,
@@ -294,6 +304,14 @@ export interface HomeState {
    * last dispatched control intent (applied/rejected/pending/unauthorized/
    * unavailable), surfaced honestly rather than assumed from silence. */
   readonly fullAutoControlOutcome: FullAutoRunControlDispatchOutcome | null
+  readonly managedSandboxes: MobileManagedSandboxSnapshot | null
+  readonly managedSandboxControlPending: Readonly<{
+    sandboxRef: string
+    action: MobileManagedSandboxControlAction
+    expectedVersion: number
+  }> | null
+  readonly managedSandboxControlOutcome: ManagedSandboxSupervisionOutcome | null
+  readonly managedSandboxDeleteConfirmRef: string | null
   readonly codingExecutionTargetCatalogRequired: boolean
   readonly codingAttachmentPicking: boolean
   readonly codingAttachmentMutatingRef: string | null
@@ -459,6 +477,10 @@ export const initialHomeState: HomeState = {
   fullAutoRun: null,
   fullAutoControlPending: null,
   fullAutoControlOutcome: null,
+  managedSandboxes: null,
+  managedSandboxControlPending: null,
+  managedSandboxControlOutcome: null,
+  managedSandboxDeleteConfirmRef: null,
   codingExecutionTargetCatalogRequired: false,
   codingAttachmentPicking: false,
   codingAttachmentMutatingRef: null,
@@ -468,7 +490,7 @@ export const initialHomeState: HomeState = {
 }
 
 /** Visible OTA tag for the authenticated owner-orchestrator reboot. */
-export const BUNDLE_TAG = "2026-07-19.sarah-message-voice-11"
+export const BUNDLE_TAG = "2026-07-19.sbx08-managed-sandbox-12"
 
 const EmptyPayload = Schema.Struct({})
 
@@ -749,6 +771,25 @@ export const FullAutoRunControlRequested = defineIntent(
     runRef: Schema.String,
   }),
 )
+export const ManagedSandboxControlRequested = defineIntent(
+  "ManagedSandboxControlRequested",
+  Schema.Struct({
+    sandboxRef: Schema.String,
+    action: Schema.Literals(["interrupt", "stop", "resume"]),
+  }),
+)
+export const ManagedSandboxDeleteRequested = defineIntent(
+  "ManagedSandboxDeleteRequested",
+  Schema.Struct({ sandboxRef: Schema.String, action: Schema.Literal("delete") }),
+)
+export const ManagedSandboxDeleteConfirmed = defineIntent(
+  "ManagedSandboxDeleteConfirmed",
+  Schema.Struct({ sandboxRef: Schema.String }),
+)
+export const ManagedSandboxDeleteDismissed = defineIntent(
+  "ManagedSandboxDeleteDismissed",
+  Schema.Struct({ sandboxRef: Schema.String }),
+)
 export const SarahSpeechRequested = defineIntent(
   "SarahSpeechRequested",
   Schema.Struct({
@@ -891,6 +932,10 @@ export const homeIntentDefinitions = [
   RuntimeTurnStopConfirmationDismissed,
   RuntimeTurnStopConfirmed,
   FullAutoRunControlRequested,
+  ManagedSandboxControlRequested,
+  ManagedSandboxDeleteRequested,
+  ManagedSandboxDeleteConfirmed,
+  ManagedSandboxDeleteDismissed,
   SarahSpeechRequested,
   SarahSpeechStopped,
   AgentStackToggledIntent,
@@ -1148,6 +1193,12 @@ export const renderContentView = (state: HomeState): View =>
               ? "unavailable"
               : "live",
           fullAutoRunHeaderForState(state),
+          {
+            snapshot: state.managedSandboxes,
+            pending: state.managedSandboxControlPending,
+            lastOutcome: state.managedSandboxControlOutcome,
+            deleteConfirmRef: state.managedSandboxDeleteConfirmRef,
+          },
           state.sarah !== null && state.activeThreadRef === state.sarah.threadRef
             ? {
                 mode: "compact",
@@ -2212,6 +2263,11 @@ export interface HomeProgramOptions {
     runRef: string
     action: FullAutoRunControlAction
   }>) => Promise<FullAutoRunControlDispatchOutcome>
+  readonly managedSandboxes?: MobileManagedSandboxSnapshot
+  readonly managedSandboxControl?: (input: Readonly<{
+    projection: ManagedSandboxSupervisionProjection
+    action: MobileManagedSandboxControlAction
+  }>) => Promise<MobileManagedSandboxControlResult>
   readonly settings?: Readonly<{
     environments?: MobileEnvironmentConnectionsPort
     notifications?: MobileNotificationSettingsPort
@@ -3760,6 +3816,71 @@ export const makeHomeHandlers = (
       current.codingAttachmentMutatingRef !== null ||
       current.khala.runtimeControlSubmittingAction !== null,
   })
+  const requestManagedSandboxControl = (
+    sandboxRef: string,
+    action: MobileManagedSandboxControlAction,
+  ) => Effect.gen(function* () {
+    if (options.managedSandboxControl === undefined) return
+    const before = yield* SubscriptionRef.get(state)
+    if (
+      before.managedSandboxControlPending !== null ||
+      before.managedSandboxes?.state !== "available"
+    ) return
+    const projection = before.managedSandboxes.envelope.projections.find(
+      candidate => candidate.sandboxRef === sandboxRef,
+    )
+    if (projection === undefined) return
+    yield* SubscriptionRef.update(state, current => ({
+      ...current,
+      managedSandboxControlPending: {
+        sandboxRef,
+        action,
+        expectedVersion: projection.version,
+      },
+      managedSandboxControlOutcome: null,
+    }))
+    const result = yield* Effect.promise(() => options.managedSandboxControl!({
+      projection,
+      action,
+    }))
+    if (result.state === "pending") return
+    const safeRef = sandboxRef.replace(/[^A-Za-z0-9._:-]/gu, "").slice(-160)
+    const outcome = result.state === "settled"
+      ? result.outcome
+      : decodeManagedSandboxSupervisionOutcome({
+          schema: "openagents.managed_sandbox_supervision_outcome.v1",
+          commandRef: `command.mobile.local-refusal.${safeRef}`,
+          idempotencyRef: `idempotency.mobile.local-refusal.${safeRef}`,
+          state: "refused",
+          reasonRef: result.reasonRef,
+          receiptRefs: [],
+          projection,
+          observedAt: new Date().toISOString(),
+        })
+    yield* SubscriptionRef.update(state, current => {
+      const snapshot = current.managedSandboxes
+      const nextSnapshot = outcome.projection === null || snapshot?.state !== "available"
+        ? snapshot
+        : {
+            ...snapshot,
+            envelope: {
+              ...snapshot.envelope,
+              observedAt: outcome.observedAt,
+              projections: snapshot.envelope.projections.map(candidate =>
+                candidate.sandboxRef === outcome.projection!.sandboxRef
+                  ? outcome.projection!
+                  : candidate),
+            },
+          }
+      return {
+        ...current,
+        managedSandboxes: nextSnapshot,
+        managedSandboxControlPending: null,
+        managedSandboxControlOutcome: outcome,
+        managedSandboxDeleteConfirmRef: null,
+      }
+    })
+  })
   return {
     DrawerToggled: () => SubscriptionRef.update(state, current => current.workspaceLayoutMode === "regular"
       ? {
@@ -4851,6 +4972,28 @@ export const makeHomeHandlers = (
           }
         })
       }),
+    ManagedSandboxControlRequested: (payload: Readonly<{
+      sandboxRef: string
+      action: "interrupt" | "stop" | "resume"
+    }>) => requestManagedSandboxControl(payload.sandboxRef, payload.action),
+    ManagedSandboxDeleteRequested: (payload: Readonly<{
+      sandboxRef: string
+      action: "delete"
+    }>) => SubscriptionRef.update(state, current =>
+      current.managedSandboxControlPending !== null
+        ? current
+        : { ...current, managedSandboxDeleteConfirmRef: payload.sandboxRef }),
+    ManagedSandboxDeleteConfirmed: (payload: Readonly<{ sandboxRef: string }>) =>
+      Effect.gen(function* () {
+        const before = yield* SubscriptionRef.get(state)
+        if (before.managedSandboxDeleteConfirmRef !== payload.sandboxRef) return
+        yield* requestManagedSandboxControl(payload.sandboxRef, "delete")
+      }),
+    ManagedSandboxDeleteDismissed: (payload: Readonly<{ sandboxRef: string }>) =>
+      SubscriptionRef.update(state, current =>
+        current.managedSandboxDeleteConfirmRef !== payload.sandboxRef
+          ? current
+          : { ...current, managedSandboxDeleteConfirmRef: null }),
     SarahSpeechRequested: (payload: Readonly<{
       threadRef: string
       messageRef: string
@@ -5089,6 +5232,13 @@ export interface HomeProgramHandle {
      * `fullAutoRunHeaderForState`'s `control` field on the next render. */
     readonly dispatchControl: (runRef: string, action: FullAutoRunControlAction) => void
   }
+  readonly managedSandboxes: {
+    readonly setSnapshot: (snapshot: MobileManagedSandboxSnapshot | null) => void
+    readonly requestControl: (
+      sandboxRef: string,
+      action: MobileManagedSandboxControlAction,
+    ) => void
+  }
   readonly controller: {
     readonly selectDestination: (destination: MobileControllerDestination) => void
     readonly inspectSession: (sessionRef: string) => void
@@ -5175,6 +5325,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           ? {}
           : { fleetRuns: options.coding.fleetRuns }),
         fullAutoRun: options.fullAutoRun ?? baseInitialState.fullAutoRun,
+        managedSandboxes: options.managedSandboxes ?? baseInitialState.managedSandboxes,
         settings: {
           ...baseInitialState.settings,
           incomingShare: options.settings?.incomingShare ?? null,
@@ -5337,6 +5488,10 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     selectedPortableDestinationRef: null,
                     portableSubmittingAction: null,
                     portableNotice: null,
+                    managedSandboxes: null,
+                    managedSandboxControlPending: null,
+                    managedSandboxControlOutcome: null,
+                    managedSandboxDeleteConfirmRef: null,
                     codingAttachmentPicking: false,
                     codingAttachmentMutatingRef: null,
                     codingAttachmentStatus: null,
@@ -5371,6 +5526,31 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
           dispatchControl: (runRef, action) => fireRef(IntentRef(
             "FullAutoRunControlRequested",
             StaticPayload({ runRef, action }),
+          )),
+        },
+        managedSandboxes: {
+          setSnapshot: snapshot => {
+            Effect.runFork(SubscriptionRef.update(state, current => {
+              const pending = current.managedSandboxControlPending
+              const reconciled = pending !== null &&
+                snapshot?.state === "available" &&
+                snapshot.envelope.projections.some(projection =>
+                  projection.sandboxRef === pending.sandboxRef &&
+                  projection.version > pending.expectedVersion)
+              return {
+                ...current,
+                managedSandboxes: snapshot,
+                managedSandboxControlPending: reconciled
+                  ? null
+                  : current.managedSandboxControlPending,
+              }
+            }))
+          },
+          requestControl: (sandboxRef, action) => fireRef(IntentRef(
+            action === "delete"
+              ? "ManagedSandboxDeleteRequested"
+              : "ManagedSandboxControlRequested",
+            StaticPayload({ sandboxRef, action }),
           )),
         },
         controller: {

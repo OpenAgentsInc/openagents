@@ -66,7 +66,9 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   — active owner direction, ProductSpec, and SBX-00..10 issue ledger.
   It specifies the proof limit for one GCP `SandboxResource`.
   It also covers the pinned Box v1 facade and IDE-13/17 integration.
-  Sarah's closed broker and limited mobile and web supervision are in epic #9023.
+  Sarah's closed broker and bounded mobile and authenticated-web controller
+  components are code-landed in epic #9023. SBX-09 remains the live rollout
+  and independent acceptance gate.
 - [`2026-07-18-sarah-terminal-history-harness-implementation.md`](./2026-07-18-sarah-terminal-history-harness-implementation.md)
   — current implementation record for Sarah's owner-private terminal history.
   It covers the experience compiler and the limited conversation candidate.

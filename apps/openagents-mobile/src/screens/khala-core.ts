@@ -62,6 +62,10 @@ import {
   renderMobileWorkLog,
   type MobileWorkGroup,
 } from "./mobile-work-log"
+import {
+  renderMobileManagedSandboxViews,
+  type MobileManagedSandboxViewState,
+} from "./mobile-managed-sandbox-view"
 
 export type MobileTextScale = "normal" | "large" | "extra_large"
 
@@ -952,6 +956,7 @@ export const renderKhalaSurface = (
   composerPathDiscovery: MobileComposerPathDiscoveryState = { state: "idle" },
   historyAvailability: "live" | "refreshing" | "unavailable" = "live",
   fullAutoRun: FullAutoRunHeaderView | null = null,
+  managedSandboxes: MobileManagedSandboxViewState | null = null,
   runtimeDetails: "visible" | "hidden" | Readonly<{
     mode: "compact"
     assistantLabel: string
@@ -1071,6 +1076,7 @@ export const renderKhalaSurface = (
     },
     [
       ...fullAutoRunHeaderViews(fullAutoRun),
+      ...(managedSandboxes === null ? [] : renderMobileManagedSandboxViews(managedSandboxes)),
       ...(authority === "sync" && historyAvailability === "unavailable"
         ? [Text({
             key: "khala-history-unavailable",

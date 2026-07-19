@@ -878,6 +878,11 @@ import {
   MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
   makeManagedSandboxDesktopRoutes,
 } from './managed-sandbox-desktop-routes'
+import {
+  MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
+  MANAGED_SANDBOX_WEB_SUPERVISION_PATH,
+  makeManagedSandboxSupervisionRoutes,
+} from './managed-sandbox-supervision-routes'
 import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from './marketing-agency-claim-upgrade'
 import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import { makeInMemoryMarketingAgencySelfServeClaimStore } from './marketing-agency-self-serve-claim-upgrade'
@@ -10604,6 +10609,33 @@ const managedSandboxDesktopRoutes = makeManagedSandboxDesktopRoutes<Env>({
   runtime: managedSandboxBoxV1RuntimeForEnv,
 })
 
+const managedSandboxSupervisionRoutes = makeManagedSandboxSupervisionRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (actor === undefined || actor.kind !== 'human') return undefined
+    return {
+      userId: actor.user.userId,
+      ...(actor.tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, actor.tokens!)
+            },
+          }),
+    }
+  },
+  enabled: env =>
+    isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
+    env.KHALA_SYNC_DB !== undefined &&
+    typeof env.OA_CLOUD_CONTROL_URL === 'string' &&
+    env.OA_CLOUD_CONTROL_URL.trim() !== '' &&
+    typeof env.OA_CLOUD_CONTROL_TOKEN === 'string' &&
+    env.OA_CLOUD_CONTROL_TOKEN.trim() !== '',
+  policy: managedSandboxBoxV1PolicyForEnv,
+  store: managedSandboxBoxV1StoreForEnv,
+  runtime: managedSandboxBoxV1RuntimeForEnv,
+})
+
 const sarahSpeechRoutes = makeSarahSpeechRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
     const actor = await authenticateRequestActor(request, env, ctx)
@@ -11796,6 +11828,16 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
     handler: (request, env, ctx) =>
       managedSandboxDesktopRoutes.commands(request, env, ctx),
+  },
+  {
+    path: MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
+    handler: (request, env, ctx) =>
+      managedSandboxSupervisionRoutes.mobile(request, env, ctx),
+  },
+  {
+    path: MANAGED_SANDBOX_WEB_SUPERVISION_PATH,
+    handler: (request, env, ctx) =>
+      managedSandboxSupervisionRoutes.web(request, env, ctx),
   },
   {
     path: SARAH_SPEECH_PATH,

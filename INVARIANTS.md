@@ -65,6 +65,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   OCI compatibility and no generic cloud or container-administration surface.
   Enforcement references live in `docs/cloud/INVARIANTS.md`.
   Retired-provider prose cannot authorize implementation.
+- Mobile and authenticated web are managed-sandbox controllers only. They
+  decode one shared bounded projection and can send only typed, generation-
+  fenced interrupt, stop, resume, or delete commands through durable exact-byte
+  outboxes. They cannot receive an SDK, cloud client, provider credential,
+  prompt, runtime output, raw path, PTY, shell, or generic container control.
+- A client request, local outbox state, notification, or quiet runtime is not a
+  managed-sandbox outcome. Delete is complete only when the native projection
+  contains zero-residue cleanup truth. Sarah and other actors share the same
+  projection and remain distinguishable by an exact actor ref.
 
 ## Preserved Transcript Archive
 

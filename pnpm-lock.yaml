@@ -677,6 +677,9 @@ importers:
       '@openagentsinc/khala-sync-client':
         specifier: workspace:*
         version: link:../../packages/khala-sync-client
+      '@openagentsinc/managed-sandbox-contract':
+        specifier: workspace:*
+        version: link:../../packages/managed-sandbox-contract
       '@openagentsinc/portable-session-contract':
         specifier: workspace:*
         version: link:../../packages/portable-session-contract
@@ -829,6 +832,9 @@ importers:
       '@openagentsinc/khala-sync-db-collection':
         specifier: workspace:*
         version: link:../../../../packages/khala-sync-db-collection
+      '@openagentsinc/managed-sandbox-contract':
+        specifier: workspace:*
+        version: link:../../../../packages/managed-sandbox-contract
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../../../../packages/runtime-platform

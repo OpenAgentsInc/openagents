@@ -10,6 +10,7 @@ import {
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
 import { routeDesktopDownloadRequest } from './desktop-download-resolver.server'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
+import { routeManagedSandboxProxyRequest } from './managed-sandbox-proxy'
 import { routeQaBoardRequest } from './qa-board-projection.server'
 
 type StartWorkerEnv = Record<string, unknown>
@@ -92,6 +93,11 @@ const server = createServerEntry({
       return khalaSyncProxyResponse.status === 101
         ? khalaSyncProxyResponse
         : applySecurityHeaders(khalaSyncProxyResponse)
+    }
+
+    const managedSandboxProxyResponse = await routeManagedSandboxProxyRequest(request)
+    if (managedSandboxProxyResponse !== undefined) {
+      return applySecurityHeaders(managedSandboxProxyResponse)
     }
 
     const response = await handler.fetch(request, {

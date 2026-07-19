@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-19
-- Revision: 123
+- Revision: 124
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: Full Auto epic #8967 is the active P0 product program,
   #8978/#8979 are its remaining assurance/release chain. Managed-sandbox epic
@@ -113,16 +113,16 @@ and Full Auto projection slices have been reauthorized and landed.
 
 ## Active P1 — managed agent sandboxes, IDE placement, and Sarah broker
 
-Owner direction admits [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023), the
-[`accepted plan`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md), and [`ProductSpec`](../../specs/openagents/managed-agent-sandboxes.product-spec.md).
+Owner direction admits [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023), the [`accepted plan`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md), and [`ProductSpec`](../../specs/openagents/managed-agent-sandboxes.product-spec.md).
 The generation-fenced resource reports GCE VM or Firecracker isolation
 honestly, native GCP/workroom truth remains authority and Box is compatibility
 only. SBX-00..09 lead from contract to live IDE/Sarah proof, SBX-10 is deferred.
 Portable movement and cross-machine Full Auto stay separately gated.
-SBX-00 through SBX-07 are code-landed: the native Worker broker now serves the
-closed Sarah tool set and authenticated Desktop endpoints. The broker flag stays
-off until SBX-09 independently proves the deployed GCP, cleanup, cost, rollback,
-packaged Desktop, and real owner-thread journeys.
+SBX-00 through SBX-08 are code-landed. The native Worker broker serves closed
+Sarah tools, Desktop endpoints, and bounded mobile and authenticated-web routes.
+The clients share one safe schema and exact-byte outboxes. Only durable native
+outcomes complete actions. The broker flag stays off until SBX-09 proves the
+live GCP, cleanup, cost, rollback, packaged-client, and owner-thread journeys.
 
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 

@@ -25,3 +25,9 @@ SBX-04 adds exact Codex and Claude turn identity, ordered events, usage
 receipts, and exact interrupt. SBX-05 adds the closed guest I/O request,
 public-safe operation receipt, and content-addressed artifact receipt. The Box
 objects remain projections over these native contracts.
+
+SBX-08 adds `./supervision`. This entry point contains the bounded mobile and
+authenticated-web projection, four legal control commands, and durable outcome
+schemas. It excludes owner and tenant refs, prompts, runtime output, image
+digests, credentials, topology, raw paths, PTY data, and shell access. Mobile
+and web decode this contract. They do not define a second lifecycle model.

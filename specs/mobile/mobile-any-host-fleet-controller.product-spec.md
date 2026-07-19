@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Mobile: Any-Host Agent Fleet Controller"
 artifact_type: "prd"
-spec_revision: 7
+spec_revision: 8
 author: "OpenAgents"
 created_at: "2026-07-17T22:03:50.000Z"
 updated_at: "2026-07-19T00:00:00.000Z"
@@ -29,6 +29,7 @@ tool_metadata:
   openagents_revision_5_note: "Rev 5 incorporates MemoHarness strictly as safe remote supervision. Mobile may select only released compatible harness bundles/adaptation policies exposed by the host, and projects a run's base/effective bundle digests, adaptation state, frozen bank-snapshot ref, effective execution tuple, candidate/release state, and redacted receipts. It never receives raw experiences, prompts, transcripts, tool output, embeddings, retrieval queries or scores, secrets, credentials, or paths; never runs retrieval/optimization; and cannot mutate the bank, edit modules, promote candidates, or expand run authority."
   openagents_revision_6_note: "Rev 6 adds the mobile projection needed for a Zed-quality Desktop IDE: exact generation-bound project/worktree/file/document/proposal/evidence vocabulary; safe multi-root tree, file/symbol/search, Problems, diffs, test/task/artifact evidence, review/comment and Desktop handoff; and explicit stale/unavailable truth. Mobile remains a controller, not a Monaco/LSP/PTY/Git/native-helper host, and general code editing stays cut. Adds AC-21 through AC-24 and SM-9."
   openagents_revision_7_note: "Rev 7 binds mobile explicitly to IDE-14 of docs/ide/ROADMAP.md and the shared IDE release-rung vocabulary. Mobile renders the same bounded generation-fenced code evidence through shared Effect Schema DTOs and the Tokyo Night semantic review token subset, but it neither hosts a full editor nor owns or toggles Desktop Vim state. Raw type/interface duplicates are forbidden at the projection boundary; lifecycle stays in Effect Native services. Adds AC-25 through AC-27 and SM-10 through SM-11."
+  openagents_revision_8_note: "Rev 8 records the admitted SBX-08 managed-sandbox controller. Mobile decodes one shared bounded lifecycle/runtime/budget/cleanup projection, preserves Sarah and other actor refs, and persists exact interrupt, stop, resume, or delete bytes in the native SQLite outbox before send. It has no SDK, GCP client, provider credential, prompt, runtime output, raw path, PTY, shell, or generic container control. A durable outcome is the only completion authority. Adds AC-28 and SM-12."
   openagents_ide_architecture: "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md"
   openagents_ide_roadmap: "docs/ide/ROADMAP.md (mobile ownership: IDE-14; projection dependency: IDE-13)"
   openagents_ide_spec_crosswalk: "specs/IDE_ROADMAP_CROSSWALK.md"
@@ -185,6 +186,8 @@ cut:
   criterion: When bounded code evidence renders on phone or tablet, syntax, diff, diagnostic, selection, focus, and status roles come from the allowlisted Tokyo Night semantic review projection, pass the applicable contrast/non-color checks, and contain no executable theme contribution; the UI neither claims broader Desktop theme parity nor stores or mutates Desktop Vim settings or modal state.
 - id: AC-27
   criterion: When a mobile release describes IDE support, it identifies its role as IDE-14 bounded supervision/review over an admitted IDE-13 capability and links exact project-generation, acceptance, and assurance state; it never promotes Files foundation, a basic Desktop editor, or an agent-IDE packet into portable/full Cursor parity by inference.
+- id: AC-28
+  criterion: When mobile supervises an OpenAgents-managed sandbox, it decodes the shared bounded target, generation, lifecycle, effective runtime, actor, attention, lease, budget, safe outcome-ref, and cleanup projection and sends only exact generation-fenced interrupt, stop, resume, or delete commands through the durable outbox; offline replay uses the same bytes, notification state never completes an action, and no SDK, cloud client, provider credential, prompt, runtime output, raw path, PTY, shell, or generic container control enters the phone.
 ```
 
 ## Success Metrics
@@ -250,6 +253,11 @@ cut:
   target: "100% of initially supported code-evidence surfaces"
   target_status: committed
   window: every release candidate
+- id: SM-12
+  metric: mobile_managed_sandbox_commands_settled_once_from_durable_native_outcomes
+  target: "100%; zero notification-completed or duplicate commands"
+  target_status: committed
+  window: every release candidate and rolling 30-day dogfood
 ```
 
 ## Solution

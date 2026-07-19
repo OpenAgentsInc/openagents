@@ -1449,7 +1449,7 @@
       ]
     },
     "docs/sol/README.md": {
-      "sourceSha256": "5509713cc3e31528881f21e9d5c9bb46678a562acdca18081f053afd421b2494",
+      "sourceSha256": "a273086ef79f1a4833eda52df6d50bdb13c0f6397014ea96d2a319ee4e2fc5bd",
       "normativeKeywords": [],
       "inlineCode": [
         "../../AUTHORITY.md",
@@ -1539,6 +1539,7 @@
       "numericValues": [
         "00",
         "01",
+        "09",
         "1",
         "1",
         "1",
@@ -1766,7 +1767,7 @@
       ]
     },
     "docs/sol/MASTER_ROADMAP.md": {
-      "sourceSha256": "f53f92a466f7ad1c6b9ea32eee387eba9619bfb4a0c1499295839551abd72946",
+      "sourceSha256": "1d23a61f1e6f7952306182978a61db88ad72da366b62caed6cc0f9be6fa9ccc8",
       "normativeKeywords": [],
       "inlineCode": [
         "/",
@@ -2076,7 +2077,7 @@
         "07",
         "07",
         "07",
-        "07",
+        "08",
         "08",
         "08",
         "09",
@@ -2146,7 +2147,7 @@
         "12",
         "12",
         "12",
-        "123",
+        "124",
         "13",
         "13",
         "13",
@@ -2900,7 +2901,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "ca9cc5e5d97dffb7cddde21701ceb6bf9ae9786bd2d26e2d57a0cb2df406c805",
+      "sourceSha256": "f39a6c97956cb29e1f78a3969b1f9d8069a3de02373dceb445515e0b05e49aeb",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -3059,6 +3060,7 @@
         "@openagentsinc/atif/trace",
         "@openagentsinc/atif/trace",
         "@openagentsinc/khala-sync-server",
+        "@openagentsinc/managed-sandbox-contract/supervision",
         "@openagentsinc/proof-replay",
         "@openagentsinc/three-effect",
         "AGENTIC_LABOR_PRODUCTS_ENABLED",
@@ -4842,7 +4844,8 @@
         "#9024",
         "#9025",
         "#9026",
-        "#9030"
+        "#9030",
+        "#9031"
       ],
       "numericValues": [
         "0",
@@ -4884,6 +4887,10 @@
         "05",
         "06",
         "07",
+        "07",
+        "08",
+        "08",
+        "09",
         "09",
         "09",
         "09",
@@ -5209,7 +5216,8 @@
         "9024",
         "9025",
         "9026",
-        "9030"
+        "9030",
+        "9031"
       ]
     },
     "apps/openagents.com/apps/start/public/AGENTS.md": {
@@ -8362,7 +8370,7 @@
       ]
     },
     "specs/mobile/mobile-any-host-fleet-controller.product-spec.md": {
-      "sourceSha256": "00e7aba617b55bcaad51cbdea6a9a6e56c1d450ccbb08e379e2171a2003682f1",
+      "sourceSha256": "2104d6dac8667dccc67fb53735acea6685a88f22608eb2dd9f5201a3aa3587c0",
       "normativeKeywords": [],
       "inlineCode": [
         "HarnessPolicyBundle",
@@ -8408,12 +8416,14 @@
         "03",
         "03",
         "04",
+        "08",
         "1",
         "1",
         "1",
         "10",
         "10",
         "10",
+        "100",
         "100",
         "100",
         "100",
@@ -8424,6 +8434,8 @@
         "11",
         "119",
         "119",
+        "12",
+        "12",
         "12",
         "120",
         "13",
@@ -8509,9 +8521,12 @@
         "26",
         "27",
         "27",
+        "28",
+        "28",
         "3",
         "3",
         "3",
+        "30",
         "30",
         "30",
         "30",
@@ -8531,7 +8546,8 @@
         "7",
         "7",
         "7",
-        "7",
+        "8",
+        "8",
         "8",
         "8",
         "8980",
@@ -9006,7 +9022,7 @@
       ]
     },
     "specs/openagents/managed-agent-sandboxes.assurance-spec.md": {
-      "sourceSha256": "84e52a4a9496359de477005c72ae6e51ffd34561ad62a9dc57be74c2a1c7f3fc",
+      "sourceSha256": "de54bcf3150aadef28373db11a16759c416023963381de0a2b2740432404c56d",
       "normativeKeywords": [],
       "inlineCode": [
         "501\\ncapability_not_implemented",
@@ -9066,7 +9082,6 @@
         "09",
         "09-01",
         "1",
-        "1",
         "10",
         "10",
         "10",
@@ -9122,6 +9137,7 @@
         "19",
         "19",
         "19",
+        "19",
         "2",
         "2026-07",
         "2026-07",
@@ -9134,6 +9150,8 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
+        "3",
         "501",
         "501",
         "501",
@@ -9142,7 +9160,7 @@
       ]
     },
     "specs/openagents/managed-agent-sandboxes.product-spec.md": {
-      "sourceSha256": "0bef38178b696e0a3866f5206862af36fa80d31537d61bc15b90f2be3379665f",
+      "sourceSha256": "67a55f11874981f73c3db99d3dbd0330661fc26cbfaa0a94a29fd36026f92846",
       "normativeKeywords": [],
       "inlineCode": [
         "@asciidev/box-sdk@0.0.24",
@@ -9190,10 +9208,11 @@
         "06",
         "07",
         "08",
+        "08",
         "09",
         "09",
         "09",
-        "1",
+        "09",
         "1",
         "1",
         "1",
@@ -9220,6 +9239,8 @@
         "19",
         "19",
         "19",
+        "2",
+        "2",
         "2",
         "2026-07",
         "2026-07",

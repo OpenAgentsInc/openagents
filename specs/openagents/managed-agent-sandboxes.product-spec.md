@@ -2,7 +2,7 @@
 spec_format_version: "0.1"
 title: "OpenAgents Managed Agent Sandboxes"
 artifact_type: "prd"
-spec_revision: 1
+spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-19T00:00:00Z"
 updated_at: "2026-07-19T00:00:00Z"
@@ -23,6 +23,7 @@ tool_metadata:
   openagents_source: "docs/teardowns/2026-07-19-ascii-box-optibox-openagents-gcp-analysis.md"
   openagents_ide_roadmap: "docs/ide/ROADMAP.md (managed capability dependency of IDE-13 and IDE-17)"
   openagents_assurance_level: "managed execution, tenant isolation, lifecycle, and cross-surface authority"
+  openagents_revision_2_note: "Rev 2 records the SBX-08 controller implementation. Mobile and authenticated web decode one shared bounded supervision schema, preserve exact actor attribution, and persist exact generation-fenced command bytes before send. The implementation remains default-off. SBX-09 still owns live GCP acceptance and rollout, and physical-device evidence remains a separate release gate. No acceptance criterion changed."
 ---
 
 ## Problem

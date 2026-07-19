@@ -60,9 +60,9 @@ const principal: SarahPrincipalProjection = {
   role: "Owner orchestrator",
   threadRef: thread.threadRef,
   authorityProfileRef: "openagents.sarah-owner-orchestrator",
-  authorityRevision: 3,
+  authorityRevision: 4,
   rootAuthorityProfileRef: "openagents.owner-delegated-autonomy",
-  rootAuthorityRevision: 5,
+  rootAuthorityRevision: 6,
   memory: "durable_cited",
   capabilities: [],
 };

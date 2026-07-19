@@ -136,9 +136,11 @@ Implementation consequences:
   add evidence, but the owner decision says nothing gates on it.
 - Keep direct account recovery/settings available behind bounded capabilities.
 - Keep the stable owner-private Sarah thread as one admitted client of the
-  same authority/outcome paths. Under SBX-08, project sandbox lifecycle,
-  attention, long-running agent, artifact, budget, and cleanup truth without
-  hosting the runtime or SDK on the phone.
+  same authority/outcome paths. The SBX-08 component projects bounded sandbox
+  lifecycle, attention, long-running agent, safe outcome refs, budget, and
+  cleanup truth without hosting the runtime or SDK on the phone. The native
+  host owns the bearer and exact-byte outbox. A durable native outcome is the
+  only completion authority. SBX-09 still owns live rollout proof.
 - Treat any app-local SwiftUI module as an explicit host exception, not a
   second state model or a reason for visual expansion.
 

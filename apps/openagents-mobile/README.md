@@ -44,6 +44,13 @@ only supported mobile product and imports no legacy client source.
   start, same-run follow-up, or interrupt commands. Home receives confirmed
   stream updates until terminal state appears or an explicit pending-
   reconciliation timeout is shown.
+- `src/managed-sandbox/mobile-managed-sandbox.ts` — controller-only adapter for
+  the shared managed-sandbox supervision schema. It can list bounded owner
+  projections and issue only interrupt, stop, resume, or delete against exact
+  versions and resource generations. The Expo host keeps the bearer and the
+  SQLite exact-byte outbox. Offline retry uses the same command bytes and UI
+  completion requires a durable outcome. The phone has no SDK, cloud client,
+  runtime, raw path, PTY, provider credential, or generic shell.
 - `src/auth/native-session-vault.ts` — one versioned Expo SecureStore record
   for the native OpenAgents access/refresh tokens and server-derived owner ref.
   Recovery exposes only signed-out or credential-present-unverified state.
@@ -192,3 +199,13 @@ same in-flight timeline and converge on one server-projected interrupted
 terminal without duplicate assistant output. This deterministic result does
 not replace the still-pending physical-iPhone network-gap receipt for
 #8689/#8677.
+
+The authenticated host also projects up to three managed sandboxes into Home.
+Each panel shows the effective target and isolation, resource and attachment
+generations, lifecycle, actor, provider/model/harness, elapsed and idle time,
+lease, budget cap, last structural event, attention, safe outcome refs, and
+cleanup truth. Sarah-started and owner-started work use the same projection and
+remain distinguishable by actor. Interrupt, stop, resume, and two-step delete
+use the durable outbox. A pending command, push, quiet runtime, or delete request
+does not display as complete. The component proof does not replace SBX-09 live
+GCP acceptance or the separate installed physical-device release proof.

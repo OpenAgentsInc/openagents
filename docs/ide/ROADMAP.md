@@ -16,10 +16,10 @@ The product contracts remain authoritative for intent:
 - `specs/desktop/desktop-trust-complete-workbench.product-spec.md` revision 7.
 - `specs/openagents/cursor-capability-parity.product-spec.md` revision 3.
 - `specs/openagents/portable-coding-sessions.product-spec.md` revision 4.
-- `specs/openagents/managed-agent-sandboxes.product-spec.md` revision 1.
+- `specs/openagents/managed-agent-sandboxes.product-spec.md` revision 2.
 - `specs/openagents/sarah-owner-orchestrator.product-spec.md` revision 4 as a
   brokered managed-sandbox consumer, not IDE authority.
-- mobile revision 7 and web revision 7 for supervision and public sharing.
+- mobile revision 8 and web revision 7 for supervision and public sharing.
 
 `specs/IDE_ROADMAP_CROSSWALK.md` is the exhaustive traceability index from
 IDE-00..19 to those ProductSpec criteria, the unchanged Full Auto and Fast
@@ -374,7 +374,7 @@ The post-basic-IDE implementation program is epic
 | [SBX-04 #9024](https://github.com/OpenAgentsInc/openagents/issues/9024) | implemented structural Codex/Claude turns, ordered runtime events, terminal receipts, and exact interrupt. IDE consumption waits for SBX-06 and the live SBX-09 gate |
 | [SBX-05 #9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | implemented root-confined files, bounded process-tree commands, content-addressed artifacts, quotas, and public-safe receipts behind the default-off private guest route |
 | [SBX-06 #9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | implemented the default-off, schema-decoded managed placement component and visible create/inspect/interrupt/stop/resume/delete projection consumed later by IDE-13 #9041 and IDE-17 #9045. It does not claim their broader exits or SBX-09 live acceptance |
-| [SBX-07 #9030](https://github.com/OpenAgentsInc/openagents/issues/9030) and [SBX-08 #9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | make Sarah and mobile/web consumers of the same lifecycle authority, they do not create client-local runtime models |
+| [SBX-07 #9030](https://github.com/OpenAgentsInc/openagents/issues/9030) and [SBX-08 #9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | implemented the default-off Sarah broker and bounded mobile/authenticated-web controllers over the same lifecycle authority. They do not create client-local runtime models, and SBX-09 remains the live gate |
 | [SBX-09 #9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independently proves live GCP, SDK, Desktop, Sarah, isolation, cleanup, cost, and rollback before a release claim |
 | [SBX-10 #9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | defers checkpoint/fork/private desktop until Phase 1 is accepted and their distinct semantics pass |
 
@@ -744,6 +744,13 @@ causal, runtime, and receipt evidence with snapshot/live, omission, staleness,
 expiry, access, revocation, and verification facts. Public pages have no
 workspace, Git, terminal, model, or mutation authority.
 
+SBX-08 implements the managed-sandbox part of this packet. Mobile and
+authenticated web decode one shared safe lifecycle/runtime/budget/cleanup
+schema and send exact version and generation-bound controls through durable
+outboxes. The implementation does not complete the broader code-review,
+publish/revoke, public `CodeShareBundle`, IDE-13, or IDE-14 exits. It remains
+default-off until SBX-09 live acceptance.
+
 Exit: Desktop/mobile/web continuation and publish/revoke journeys pass without
 private-state leakage.
 
@@ -968,5 +975,6 @@ mutation authority into Monaco, xterm, a harness, or a native helper.
 In parallel at P1, managed-sandbox epic
 [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) has begun with
 its contract freeze, durable lifecycle authority, runtime/guest components,
-and Desktop placement consumer. SBX-07 is next for the Sarah and Desktop
-broker. No managed placement release claim may bypass SBX-09 live acceptance.
+and Desktop placement consumer. SBX-07 and SBX-08 have landed the default-off
+Sarah broker and bounded mobile/authenticated-web controller components. No
+managed placement release claim may bypass SBX-09 live acceptance.

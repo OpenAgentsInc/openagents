@@ -28,6 +28,7 @@
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/khala-sync-db-collection": "workspace:*",
+    "@openagentsinc/managed-sandbox-contract": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/sync-schema": "workspace:*",
     "@openagentsinc/sync-worker": "workspace:*",

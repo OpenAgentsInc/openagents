@@ -44,6 +44,12 @@ import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-pro
 import type { FullAutoRunControlDispatchOutcome } from "../full-auto/full-auto-run-control-intent"
 import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
 import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
+import type { ManagedSandboxSupervisionProjection } from "@openagentsinc/managed-sandbox-contract"
+import type {
+  MobileManagedSandboxControlAction,
+  MobileManagedSandboxControlResult,
+  MobileManagedSandboxSnapshot,
+} from "../managed-sandbox/mobile-managed-sandbox"
 import { EffectNativeHost } from "../effect-native/effect-native-host"
 import {
   enableMobileLayoutAnimation,
@@ -82,6 +88,8 @@ export const HomeScreen = ({
   onAttentionTargetConsumed,
   fullAutoRun,
   fullAutoControl,
+  managedSandboxes,
+  managedSandboxControl,
   sarah,
   sarahSpeech,
   notificationSettings,
@@ -104,6 +112,11 @@ export const HomeScreen = ({
     runRef: string
     action: FullAutoRunControlAction
   }>) => Promise<FullAutoRunControlDispatchOutcome>
+  readonly managedSandboxes?: MobileManagedSandboxSnapshot | null
+  readonly managedSandboxControl?: (input: Readonly<{
+    projection: ManagedSandboxSupervisionProjection
+    action: MobileManagedSandboxControlAction
+  }>) => Promise<MobileManagedSandboxControlResult>
   readonly sarah?: SarahPrincipalProjection | null
   readonly sarahSpeech?: (input: Readonly<{
     threadRef: string
@@ -241,6 +254,10 @@ export const HomeScreen = ({
       },
       ...(fullAutoRun === null || fullAutoRun === undefined ? {} : { fullAutoRun }),
       ...(fullAutoControl === undefined ? {} : { fullAutoControl }),
+      ...(managedSandboxes === null || managedSandboxes === undefined
+        ? {}
+        : { managedSandboxes }),
+      ...(managedSandboxControl === undefined ? {} : { managedSandboxControl }),
       ...(sarah === null || sarah === undefined ? {} : { sarah }),
       ...(sarahSpeechPlayback === undefined ? {} : { sarahSpeech: sarahSpeechPlayback }),
     }),
@@ -251,7 +268,7 @@ export const HomeScreen = ({
     // fullAutoControl is stable across the component's lifetime (a plain
     // capability closure over the sync host, not per-render state) the same
     // way `sessionActions` and `coding` are already treated below.
-    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl, sarah, sarahSpeechPlayback],
+    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl, managedSandboxControl, sarah, sarahSpeechPlayback],
   )
   const report = useMemo<IntentReporter>(() => (ref, runtimeValue) => {
     prepareMobileNativeIntentFeedback(ref.name, accessibility.reduceMotion)
@@ -288,6 +305,9 @@ export const HomeScreen = ({
   useEffect(() => {
     program.fullAuto.setProjection(fullAutoRun ?? null)
   }, [program, fullAutoRun])
+  useEffect(() => {
+    program.managedSandboxes.setSnapshot(managedSandboxes ?? null)
+  }, [program, managedSandboxes])
   useEffect(() => {
     program.settings.setIncomingShare(incomingShare ?? null)
   }, [program, incomingShare])

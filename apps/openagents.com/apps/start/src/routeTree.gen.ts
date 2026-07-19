@@ -24,6 +24,7 @@ import { Route as PortalRouteImport } from './routes/portal'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as NewRouteImport } from './routes/new'
 import { Route as MirrorcodeRouteImport } from './routes/mirrorcode'
+import { Route as ManagedSandboxesRouteImport } from './routes/managed-sandboxes'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LandingEnRouteImport } from './routes/landing-en'
 import { Route as InstallRouteImport } from './routes/install'
@@ -141,6 +142,11 @@ const NewRoute = NewRouteImport.update({
 const MirrorcodeRoute = MirrorcodeRouteImport.update({
   id: '/mirrorcode',
   path: '/mirrorcode',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ManagedSandboxesRoute = ManagedSandboxesRouteImport.update({
+  id: '/managed-sandboxes',
+  path: '/managed-sandboxes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -375,6 +381,7 @@ export interface FileRoutesByFullPath {
   '/install': typeof InstallRoute
   '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
+  '/managed-sandboxes': typeof ManagedSandboxesRoute
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
@@ -434,6 +441,7 @@ export interface FileRoutesByTo {
   '/install': typeof InstallRoute
   '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
+  '/managed-sandboxes': typeof ManagedSandboxesRoute
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
@@ -495,6 +503,7 @@ export interface FileRoutesById {
   '/install': typeof InstallRoute
   '/landing-en': typeof LandingEnRoute
   '/login': typeof LoginRoute
+  '/managed-sandboxes': typeof ManagedSandboxesRoute
   '/mirrorcode': typeof MirrorcodeRoute
   '/new': typeof NewRoute
   '/onboarding': typeof OnboardingRoute
@@ -557,6 +566,7 @@ export interface FileRouteTypes {
     | '/install'
     | '/landing-en'
     | '/login'
+    | '/managed-sandboxes'
     | '/mirrorcode'
     | '/new'
     | '/onboarding'
@@ -616,6 +626,7 @@ export interface FileRouteTypes {
     | '/install'
     | '/landing-en'
     | '/login'
+    | '/managed-sandboxes'
     | '/mirrorcode'
     | '/new'
     | '/onboarding'
@@ -676,6 +687,7 @@ export interface FileRouteTypes {
     | '/install'
     | '/landing-en'
     | '/login'
+    | '/managed-sandboxes'
     | '/mirrorcode'
     | '/new'
     | '/onboarding'
@@ -737,6 +749,7 @@ export interface RootRouteChildren {
   InstallRoute: typeof InstallRoute
   LandingEnRoute: typeof LandingEnRoute
   LoginRoute: typeof LoginRoute
+  ManagedSandboxesRoute: typeof ManagedSandboxesRoute
   MirrorcodeRoute: typeof MirrorcodeRoute
   NewRoute: typeof NewRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -887,6 +900,13 @@ declare module '@tanstack/react-router' {
       path: '/mirrorcode'
       fullPath: '/mirrorcode'
       preLoaderRoute: typeof MirrorcodeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/managed-sandboxes': {
+      id: '/managed-sandboxes'
+      path: '/managed-sandboxes'
+      fullPath: '/managed-sandboxes'
+      preLoaderRoute: typeof ManagedSandboxesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -1219,6 +1239,7 @@ const rootRouteChildren: RootRouteChildren = {
   InstallRoute: InstallRoute,
   LandingEnRoute: LandingEnRoute,
   LoginRoute: LoginRoute,
+  ManagedSandboxesRoute: ManagedSandboxesRoute,
   MirrorcodeRoute: MirrorcodeRoute,
   NewRoute: NewRoute,
   OnboardingRoute: OnboardingRoute,
