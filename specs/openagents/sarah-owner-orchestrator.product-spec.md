@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Sarah Owner Orchestrator"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
-updated_at: "2026-07-18T21:55:00Z"
+updated_at: "2026-07-19T00:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -21,6 +21,9 @@ tool_metadata:
   openagents_authority: "AUTHORITY.md revision 5 + Sarah runtime authority revision 3"
   openagents_source: "docs/transcripts/24Xsarah.md"
   openagents_assurance_level: "owner-private cross-resource orchestration"
+  openagents_managed_sandbox_epic: "9023"
+  openagents_assurance_spec_status: "revision 1 is superseded as an exact rev-3 proposal; revision 2 rebinds this rev-4 intent and retains every obligation as needs_design"
+  openagents_revision_4_note: "Rev 4 adds the owner-directed managed-sandbox outcome without granting a generic cloud shell or pretending the broker is already live. Sarah may create, list, inspect, dispatch into, interrupt, stop, resume, and delete exact owner-scoped OpenAgents-managed GCP sandboxes only after the managed-sandbox ProductSpec, SBX-00 authority revision, target broker, and live GCP proof land. Every action binds program/work-unit/target/profile/TTL/budget/capability refs and returns authority plus target receipts. It remains distinct from remote Full Auto start, raw topology, broad cloud credentials, and generic container administration. Adds SARAH-AC-21 through SARAH-AC-23."
 ---
 
 ## Problem
@@ -53,6 +56,7 @@ in:
   - hosted Khala inference with Sarah's cited system context
   - brokered repository, Google Cloud, RC release, GitHub, and Forum operations under exact authority
   - Gemma 4 buffered function calling for bounded owner-linked Codex worker dispatch/status and existing Full Auto run read/pause/resume/stop
+  - after exact authority and broker admission, managed-sandbox create/list/inspect/dispatch/interrupt/stop/resume/delete for the authenticated owner's Google Cloud capacity through `specs/openagents/managed-agent-sandboxes.product-spec.md`
   - one released content-addressed six-dimension Sarah conversational harness bound immutably before each provider turn
   - owner-private terminal-thread experience compilation, bounded candidate production, held-out evaluation, and an independent Blueprint release gate for next-turn activation
 out:
@@ -65,7 +69,7 @@ cut:
   - destructive production customer-data operations
   - stable publication without current owner direction
   - invariant weakening, unsupported public claims, or self-amplification
-  - remote Full Auto start, raw local workspace selection, Full Auto MemoHarness private-bank access or mutation, current-turn learning, during-turn adaptation, Sarah/optimizer candidate self-promotion, or assurance self-admission
+  - remote Full Auto start, raw local workspace selection, raw gcloud or shell access, generic container administration, broad project/topology/credential access, Full Auto MemoHarness private-bank access or mutation, current-turn learning, during-turn adaptation, Sarah/optimizer candidate self-promotion, or assurance self-admission
 ```
 
 ## User Experience
@@ -155,6 +159,23 @@ ran until a target receipt exists.
   content, and private scores have no public or mobile projection. A released
   improvement affects only subsequent ordinary Sarah replies and exposes only
   bounded private activity/receipt refs when the owner explicitly asks.
+- **SARAH-AC-21:** After SBX-00 admits the exact Sarah authority and managed-
+  sandbox broker, Sarah can create, list, inspect, stop, resume, and delete
+  only the authenticated owner's OpenAgents-managed sandboxes. Every request
+  binds exact program/work-unit/target/image-profile/TTL/budget/capability and
+  idempotency refs, and every actual outcome is supported by both an authority
+  receipt and the sandbox lifecycle receipt.
+- **SARAH-AC-22:** Sarah can dispatch one bounded long-running work unit into
+  an exact ready owner sandbox, follow ordered structural runtime activity,
+  and interrupt that exact turn. Quiet output is never called idle or
+  completed, and a model response, SDK status, pending operation, or sandbox
+  state cannot substitute for the native terminal and cleanup receipts.
+- **SARAH-AC-23:** Sarah receives no raw `gcloud`, shell, database, topology,
+  guest-address, service-account, provider-credential, filesystem-path, or
+  generic container-admin tool. Budget, capacity, authority, broker, guest,
+  revoke, and cleanup failures remain explicit; a failed or recovery-required
+  teardown is never described as successful. This capability does not grant
+  remote Full Auto start or cross-machine `FullAutoRun` admission.
 
 ## Success Metrics
 
@@ -177,6 +198,12 @@ ran until a target receipt exists.
   window: rolling 30 days
   segment: non-reserved delegated actions
   source: authority_and_target_receipts
+- id: managed_sandbox_orchestration_truth
+  metric: sarah_managed_sandbox_actions_with_exact_authority_target_and_cleanup_outcomes
+  target: "100%; zero generic-cloud actions and zero false completion"
+  window: every managed-sandbox release candidate and rolling 30-day owner dogfood
+  segment: authenticated owner Sarah thread
+  source: sarah_authority_and_managed_sandbox_receipts
 ```
 
 ## Risks
@@ -195,13 +222,29 @@ ran until a target receipt exists.
   Terminal-only snapshots, disjoint held-out turns, a non-authority candidate
   schema, a distinct evaluator, and a compare-and-swap release gate keep the
   producer out of verification and activation.
+- A managed-sandbox tool can become generic cloud-admin authority. The broker
+  is a closed lifecycle and work-unit API with exact budgets and capability
+  refs; raw cloud, shell, database, topology, and credential surfaces remain
+  unrepresentable.
+
+## Related Artifacts
+
+- Managed sandbox intent and issue program:
+  `specs/openagents/managed-agent-sandboxes.product-spec.md`,
+  `docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md`, and epic
+  [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023).
+- Source architecture evidence:
+  `docs/teardowns/2026-07-19-ascii-box-optibox-openagents-gcp-analysis.md`.
 
 ## Owner Gates
 
-The current owner direction admits revision 3, TestFlight build 119, and the
-server runtime deploy. Sarah may request her own bounded terminal-history
+The current owner direction admits revision 4 as product and roadmap intent,
+alongside the already-live revision-3 runtime, TestFlight build 119, and server
+deploy. Sarah may request her own bounded terminal-history
 review, but the independent evaluator and Blueprint gate own release and
-activation. Only a
+activation. Managed-sandbox mutation stays unavailable until SBX-00 revises
+the root and Sarah authority profiles, the exact broker lands, and SBX-09
+records live GCP and cleanup proof. Only a
 future expansion into reserved financial, legal/people, destructive-data,
 human-identity, over-budget, or stable-release authority requires another
 owner direction and profile revision.
@@ -219,6 +262,8 @@ owner direction and profile revision.
   fingerprint, and IPA digest evidence.
 - Sarah harness bundle, terminal-experience snapshot, held-out evaluation,
   Blueprint release, activation, and next-turn binding receipts.
+- Managed-sandbox authority, lifecycle, runtime-turn, event, budget/cost,
+  interrupt, stop/resume/delete, and zero-residue cleanup receipts.
 
 ## Promise Links
 

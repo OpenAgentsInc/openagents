@@ -1,6 +1,6 @@
 # OpenAgents Cloud Architecture
 
-Status: **active** (rewritten 2026-07-09 for #8591)
+Status: **active** (rewritten 2026-07-09 for #8591; managed-sandbox plan added 2026-07-19)
 
 OpenAgents Cloud is the managed-node and workroom execution layer for Agent
 Computers, placement, capacity, and redacted receipts. Implementation lives
@@ -35,6 +35,12 @@ oa-node (crates/oa-node)
 
 oa-workroomd (crates/oa-workroomd)
   per-workroom sidecar for gateways, ingress, Codex auth grants, artifacts, receipts
+
+ManagedSandboxService / OpenAgentsSandboxV1 (planned under #9023)
+  owner-scoped lifecycle and runtime authority over existing GCP/workroom seams
+
+Box v1 compatibility facade (planned under #9023)
+  bounded HTTP projection for a pinned development-only SDK conformance client
 
 Psionic
   inference, training, sandbox execution, cluster runtime, execution evidence
@@ -106,6 +112,35 @@ Benchmark Cloud
 - durable storage of raw Codex `auth.json` material;
 - open-ended task planning;
 - final acceptance authority.
+
+## Managed Sandbox Boundary
+
+Epic [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) and the
+[`managed-sandbox ProductSpec`](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
+admit a planned `SandboxResource` over this existing control plane. The
+resource binds owner, tenant, work unit, sandbox, generation, target, image,
+lease, budget, capabilities, runtime turns, and receipts before mutation. Its
+lifecycle keeps lease, guest, filesystem checkpoint, ingress, and runtime-turn
+facts separate.
+
+The admitted runtime may be a GCE VM or a Firecracker microVM and must report
+that isolation unit honestly. It is not necessarily an OCI container. A live
+managed request cannot fall back to fake/local execution, and readiness or
+cleanup requires observed target evidence rather than a control-plane label.
+
+OpenAgents may serve a bounded Box v1 facade from an OpenAgents-owned URL so
+the unmodified pinned TypeScript SDK can exercise lifecycle, prompt/events,
+files, commands, and artifacts. That facade is lossy compatibility only:
+native Effect Schema contracts, authorization, event cursors, private
+evidence, usage, cost, artifact, and cleanup receipts remain authoritative.
+Unsupported methods fail explicitly. No Box type enters the canonical Cloud
+contract, and no client receives GCP credentials or vendor control-plane
+authority.
+
+Desktop and Sarah consume the same managed-sandbox broker. Mobile and web
+receive bounded projections only. This boundary does not admit portable host
+movement or cross-machine `FullAutoRun`; both retain their separate product
+and assurance gates.
 
 ## Codex Auth Boundary
 

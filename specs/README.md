@@ -41,6 +41,16 @@ theme contract, and release-rung vocabulary live in
 AssuranceSpec/packet mapping lives in
 [`IDE_ROADMAP_CROSSWALK.md`](IDE_ROADMAP_CROSSWALK.md).
 
+[`openagents/managed-agent-sandboxes.product-spec.md`](openagents/managed-agent-sandboxes.product-spec.md)
+revision 1 now owns the concrete OpenAgents-managed GCP sandbox used by
+IDE-13/IDE-17, Sarah revision 4, and bounded mobile/web supervision. It keeps
+Google Cloud and OpenAgents workrooms authoritative while treating the Ascii
+Box v1 API and exact TypeScript SDK as an isolated compatibility target. Full
+Auto revision 14 remains unchanged and still excludes cross-machine run
+admission; a managed sandbox work unit is not a remote `FullAutoRun` by
+inference. Epic [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023)
+and its accepted plan own implementation sequence, not this index.
+
 Effect/TypeScript owns application authority and persistence; every boundary
 contract is Effect Schema-first with derived types; capability lifecycle uses
 Effect services/layers/scopes; Rust is limited to supervised authority-free

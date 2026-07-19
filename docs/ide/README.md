@@ -8,13 +8,14 @@ grant implementation authority by themselves.
 Canonical roadmap:
 
 - [OpenAgents IDE roadmap](./ROADMAP.md) — the single dependency-ordered build
-  sequence from the delivered IDE-00..03 project/Explorer/Monaco foundation through the
+  sequence from the delivered IDE-00..07 daily-use foundation through the
   complete Pierre tree/diff plane, built-in toggleable Vim mode, the current
   Khala editor default with Tokyo Night fallback, Zed-quality agent
   integration, and full Cursor parity.
 
 Supporting evidence and architecture (not independent roadmaps):
 
+- [Managed agent sandboxes, Box compatibility, IDE, and Sarah](../sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md) — owner-accepted P1 dependency program for a canonical GCP `SandboxResource`, pinned Box SDK conformance, IDE-13/17 integration, Sarah broker, bounded mobile/web supervision, and live cleanup proof under epic `#9023`.
 - [IDE-07 packaged daily-use basic IDE acceptance](./2026-07-19-ide-07-basic-ide-acceptance.md) — the exact-artifact/SHA contract, fifteen-journey matrix, frozen percentile/resource budgets, seven-launch chat-only zero-cost proof, custody/rollback oracle, platform limits, and narrow `OpenAgents basic IDE` claim boundary for issue `#9022`.
 - [Khala editor theme owner work packet](./2026-07-19-khala-editor-theme-owner-work-packet.md) — the current owner supersession that makes the Khala projection the fixed default while retaining Tokyo Night as an owned fallback.
 - [IDE-03 delivery: Monaco, built-in Vim, and Tokyo Night](./2026-07-19-ide-03-monaco-vim-tokyo-night.md) — the authority map, opaque model lifecycle, built-in Vim boundary, theme projection, percentile/resource evidence, and packaged Finder/LaunchServices journey for issue `#9018`.

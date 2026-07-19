@@ -27,6 +27,12 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
 - [Invariants](./INVARIANTS.md)
 - [Architecture](./ARCHITECTURE.md)
 - Contracts under `docs/cloud/contracts/`
+- [Managed agent sandboxes accepted plan](../sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md)
+  and [ProductSpec](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
+  — active #9023 program for one owner-scoped GCP `SandboxResource`, a
+  development-only Box SDK conformance facade, IDE/Sarah consumers, and live
+  isolation/cleanup proof; planned contract and runtime work, not current
+  production availability
 - [Remote-first portable session pathway](../sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md)
   — planned product/roadmap additions for owner-managed and managed-provider
   targets, cross-host checkpoints, general brokered capabilities, and mobile

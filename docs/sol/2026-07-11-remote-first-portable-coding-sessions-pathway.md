@@ -7,6 +7,13 @@
   AdvertisedEndpoint vocabulary as this pathway's canonical language. This
   amendment renames and clarifies authority language only; no contract,
   requirement, or invariant was weakened, removed, or restated.
+- Reconciled: 2026-07-19 — managed-sandbox epic
+  [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) now admits a
+  concrete OpenAgents-managed GCP `SandboxResource` for new work. It does not
+  reopen the closed PORT issue ledger, prove session movement/failback, or
+  convert sandbox stop/resume into process-memory portability. The
+  [`managed-sandbox accepted plan`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md)
+  owns that separate implementation program.
 - Class: contract
 - Dispatch: yes; PORT-00 through PORT-08 are live as #8745–#8753
 - Owner: Sol portable sessions
@@ -786,7 +793,9 @@ Implementation must register and test these before claiming portability:
 - a generic arbitrary-secret tunnel;
 - silently lowering VM/container isolation to host execution;
 - public pooled access to an owner's homelab;
-- Sarah, avatar, video, ambient microphone capture, or voice persona work; and
+- using Sarah, avatar, video, ambient microphone capture, or voice persona as
+  a portability authority; Sarah's separately admitted managed-sandbox broker
+  remains a bounded client of the same target authority; and
 - claiming managed-provider support before a real adapter passes isolation,
   secret, snapshot, teardown, and receipt acceptance.
 
@@ -803,6 +812,11 @@ The master roadmap incorporated the original remote-first additions:
 - require an authorized any-host session directory on mobile; and
 - carve persona-neutral conversational voice out of the Sarah/avatar/video
   wontdo boundary.
+
+The 2026-07-19 managed-sandbox program supplies a concrete new-work placement
+target for IDE-13/17 and Sarah. It intentionally does not satisfy portable
+checkpoint, exclusive detach/attach, move, failback, or cross-machine Full
+Auto criteria. Those claims remain independently gated.
 
 The subsequent reconciliation adds the episode-249 consequence: the canonical agent graph,
 independent child transcripts/activity cursors, and the fast click/tap/hotkey

@@ -2,7 +2,7 @@
 
 Date: 2026-07-19
 Status: canonical IDE build sequence
-Baseline: OpenAgents `36df7bdd9c`; Cursor evidence through 3.11.13
+Baseline: OpenAgents `43b5dbc56e`; Cursor evidence through 3.11.13
 
 ## Purpose and authority
 
@@ -16,6 +16,9 @@ The product contracts remain authoritative for intent:
 - `specs/desktop/desktop-trust-complete-workbench.product-spec.md` revision 7;
 - `specs/openagents/cursor-capability-parity.product-spec.md` revision 3;
 - `specs/openagents/portable-coding-sessions.product-spec.md` revision 4;
+- `specs/openagents/managed-agent-sandboxes.product-spec.md` revision 1;
+- `specs/openagents/sarah-owner-orchestrator.product-spec.md` revision 4 as a
+  brokered managed-sandbox consumer, not IDE authority;
 - mobile revision 7 and web revision 7 for supervision and public sharing.
 
 `specs/IDE_ROADMAP_CROSSWALK.md` is the exhaustive traceability index from
@@ -47,6 +50,10 @@ new design:
 - the Zed agent-IDE adaptation analysis;
 - the Zed-quality Effect/Rust architecture decision;
 - the Cursor product and full local-storage teardown;
+- the Ascii Box/Optibox managed-sandbox teardown and OpenAgents GCP fit
+  analysis;
+- the owner-accepted managed-sandbox implementation plan and native SBX issue
+  ledger;
 - the Cursor parity and Desktop ProductSpecs;
 - the current Desktop package graph, renderer, workspace services, command
   contracts, guarantees, and recent Editor-first commits.
@@ -107,6 +114,7 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 | integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph  | IDE-00 onward                              |
 | agent-to-code loop          | no inspectable context manifest plus version-bound proposal/review/apply/backlink loop in the editor                          | IDE-08                                     |
 | inline AI editing           | no completion, next-edit, inline transform, or editor-native multi-file apply                                                 | IDE-09                                     |
+| managed agent sandbox       | GCP, Agent Computer, Firecracker, workroom, and placement seams exist, but no one durable SandboxResource, admitted Box-compatible facade, or IDE/Sarah create-to-cleanup journey is proven | SBX-00..09, then IDE-13/17                 |
 | full Cursor parity          | the ProductSpec ledger is a target, not a release fact                                                                        | IDE-19                                     |
 
 The already-landed Files/Finder work is **foundation**, not IDE parity. It must
@@ -155,6 +163,10 @@ Every packet follows these laws.
     `Schema.TaggedErrorClass`; untrusted inputs use Schema decoders; and
     watchers, streams, and children are scoped and interrupted with their
     owning project layer.
+11. **Compatibility adapters do not own the IDE.** The admitted Box v1 facade
+    projects the canonical `SandboxResource`; its pinned SDK may prove wire
+    compatibility but cannot own project identity, lifecycle, events,
+    authority, placement, artifacts, or completion truth.
 
 ## Product shape and initial defaults
 
@@ -342,6 +354,31 @@ Zed's GPUI editor. Do not add a Rust IDE database or application service.
 
 Packets are small review and acceptance boundaries, not an instruction to land
 the entire program in one change.
+
+### Managed-sandbox dependency program
+
+Owner direction on 2026-07-19 admits epic
+[#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) as a P1
+parallel dependency program. It does not reorder IDE-08..12 or claim managed
+execution is already live.
+
+The post-basic-IDE implementation program is epic
+[#9035](https://github.com/OpenAgentsInc/openagents/issues/9035): IDE-08..19 are
+#9036..#9047 in packet order.
+
+| SBX packet | IDE relationship |
+| --- | --- |
+| [SBX-00 #9029](https://github.com/OpenAgentsInc/openagents/issues/9029) | freezes sandbox, authority, event, receipt, and Box compatibility contracts before the IDE consumes them |
+| [SBX-01 #9034](https://github.com/OpenAgentsInc/openagents/issues/9034) through [SBX-05 #9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | supply durable lifecycle, real GCP execution, long-running turns, files, commands, artifacts, and hardening below the project graph |
+| [SBX-06 #9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | after IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040, supplies the managed target consumed by IDE-13 #9041 and IDE-17 #9045 |
+| [SBX-07 #9030](https://github.com/OpenAgentsInc/openagents/issues/9030) and [SBX-08 #9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | make Sarah and mobile/web consumers of the same lifecycle authority; they do not create client-local runtime models |
+| [SBX-09 #9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independently proves live GCP, SDK, Desktop, Sarah, isolation, cleanup, cost, and rollback before a release claim |
+| [SBX-10 #9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | defers checkpoint/fork/private desktop until Phase 1 is accepted and their distinct semantics pass |
+
+The canonical intent and issue order are
+[`managed-agent-sandboxes.product-spec.md`](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
+and
+[`2026-07-19-managed-agent-sandboxes-accepted-plan.md`](../sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md).
 
 ## Packet details
 
@@ -671,6 +708,13 @@ admitted compatible-provider capabilities. Transport stable refs and bounded
 events, not raw local roots. Expose effective placement, version, latency,
 freshness, custody, attachment generation, and compatibility.
 
+For `OpenAgents-managed`, consume the generation-fenced `SandboxResource`
+admitted by SBX-00..09. Create, inspect, stop, resume, interrupt, and delete go
+through the same main-owned project capability service used by the agent and
+evidence graphs. Show the effective GCE VM or Firecracker microVM honestly;
+do not relabel it an OCI container, install the Box SDK in production code, or
+treat an SDK state label as readiness or cleanup proof.
+
 Disconnect/revoke/reconnect/move tests reject late output and prevent double
 attachment, silent upload, helper installation, credential movement, or
 managed fallback.
@@ -731,6 +775,13 @@ morning-review outcomes.
 Startup restores the user's chosen surface; the flagship agent window never
 force-opens. Every mode compiles to visible model, tools, permissions,
 placement, memory, and instructions.
+
+Managed long-running work uses the same sandbox, project, work-unit, turn,
+agent, and receipt refs exposed by IDE-13. Sarah-started work remains visibly
+attributed to `principal.sarah` while sharing that graph. This packet does not
+silently bind a managed sandbox to `FullAutoRun`; cross-machine Full Auto
+admission remains excluded until its own ProductSpec and AssuranceSpec are
+revised and rebound.
 
 Exit: classic IDE and Agents Window show the same sessions, worktrees,
 proposals, terminals, checkpoints, evidence, and effective identities.
@@ -864,6 +915,11 @@ The release-blocking integrated corpus must eventually cover:
     derivatives, indexes, checkpoints, backups, and shares converged.
 12. Import the safe subset of a clean Cursor profile with a complete
     imported/skipped/rejected report.
+13. Create one managed GCP sandbox, run and reconnect to a long-lived agent
+    turn, interrupt or settle it, stop/resume, delete, and prove zero residue.
+14. Start the same bounded managed work once through Desktop and once through
+    Sarah while preserving one lifecycle authority and distinct actor
+    receipts.
 
 ## Explicit non-goals and rejected shortcuts
 
@@ -880,6 +936,8 @@ The release-blocking integrated corpus must eventually cover:
 - no dependency on an extension to obtain the built-in Vim experience;
 - no full editor on mobile or public web;
 - no parity claim from dependency presence, screenshots, or agent self-report.
+- no Box SDK or compatibility response as project, runtime, authority,
+  completion, cleanup, or public-parity truth.
 
 ## Immediate next work
 
@@ -888,10 +946,17 @@ IDE-07 accepted only the “OpenAgents basic IDE” rung for its exact macOS arm
 candidate; it preserved the TypeScript-only project-language limit, every
 IDE-08..19 gap, and the epic's separate owner-acceptance boundary.
 
-The next packet is IDE-08: make agents native to the existing project,
+The next packet is IDE-08
+[#9036](https://github.com/OpenAgentsInc/openagents/issues/9036): make agents native to the existing project,
 document, language, and review graph through inspectable context manifests,
 exact version-bound proposals, backlinks, apply/reject/undo receipts, and
 post-apply evidence without granting a harness editor authority. IDE-09 and
 IDE-10 may proceed only at their documented dependency boundaries; neither may
 smuggle proposal or project authority into Monaco, xterm, a harness, or a
 native helper.
+
+In parallel at P1, managed-sandbox epic
+[#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) begins with
+SBX-00 contract/assurance freeze. Its runtime packets may mature beneath the
+IDE, but SBX-06 cannot bypass IDE-08/10/12, and no managed placement claim may
+bypass SBX-09 live acceptance.

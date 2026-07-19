@@ -1,16 +1,15 @@
-# MASTER ROADMAP — Full Auto flagship and trust-complete surfaces
+# MASTER ROADMAP — Full Auto, managed sandboxes, and trust-complete surfaces
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-18
-- Revision: 121
+- Updated: 2026-07-19
+- Revision: 122
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: Full Auto epic #8967 is the active P0 product program;
-  #9000–#9002 and #8976 are complete at the owner-real development rung, so
-  #8978 independent assurance and #8979 signed packaged release are the
-  remaining closure chain. It composes with distribution epic #8913 and the
-  admitted Amp, T3 Desktop, and T3 mobile packet ledgers; live defects remain
-  independently claimable
+  #8978/#8979 are its remaining assurance/release chain. Managed-sandbox epic
+  #9023 is P1 parallel from SBX-00 #9029 without bypassing Full Auto, IDE
+  dependencies, or SBX-09. Distribution #8913, Amp/T3 ledgers, and live
+  defects retain their independent gates
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -127,6 +126,15 @@ owner grant. General loop-decided provider/account/model selection and PORT-03
 host movement remain closed even though the bounded mobile directory/control
 and Full Auto projection slices have been reauthorized and landed.
 
+## Active P1 — managed agent sandboxes, IDE placement, and Sarah broker
+
+Owner direction admits [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023), the
+[`accepted plan`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md), and [`ProductSpec`](../../specs/openagents/managed-agent-sandboxes.product-spec.md).
+The generation-fenced resource reports GCE VM or Firecracker isolation
+honestly; native GCP/workroom truth remains authority and Box is compatibility
+only. SBX-00..09 lead from contract to live IDE/Sarah proof; SBX-10 is deferred.
+Portable movement and cross-machine Full Auto stay separately gated.
+
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
 The owner approved **FULL HARVEST** on 2026-07-17: the full target-native Amp port is authorized through the
@@ -230,7 +238,7 @@ there is no remaining AssuranceSpec program queue.
 ## Owner decisions
 
 1. **The ProductSpec-native Codex Workroom MVP is the accepted baseline.** Its signed local-first Desktop journey stays proven; closed R0–R7 successors do not silently reopen.
-2. **Sarah is removed, not the front door.** `/sarah/*` stays tombstoned; the temporary typed server adapter grants no Sarah UI or persona authority.
+2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned; `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. Managed-sandbox actions remain unavailable until SBX-00 revises authority and SBX-07 lands the closed broker.
 3. **Desktop is the deep workbench, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** Unpacketized expansion cannot preempt Full Auto.
 4. **Retained UI uses Effect Native.** Electron, React Native/Expo, DOM, native, and canvas are hosts/renderers over shared typed components and intents.
 5. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes; local stores remain bounded caches/offline queues.
@@ -240,9 +248,9 @@ there is no remaining AssuranceSpec program queue.
 9. **Reference audits are evidence.** Only the exact owner-admitted T3/Amp packets authorize adaptation; source parity never bypasses target contracts or receipts.
 10. **Cross-device, mixed-fleet, and portability claims stay proof-rung bounded.** The completed MVP implies none of them.
 11. **Mobile expansion is exact-plan bounded.** The T3 ledger is active authority and #8980 is closed bounded evidence; Khala/T3 source behavior alone is not.
-12. **Remote workrooms remain dormant substrate outside exact admissions.** Closed proofs do not create a general remote-execution program.
+12. **Remote workrooms are exact-admission substrate.** Closed proofs do not create a general remote-execution program; #9023 now admits only the named GCP managed-sandbox lifecycle, compatibility, IDE, Sarah, supervision, and proof packets.
 13. **Desktop is tokenless over one host-owned Runtime Gateway.** The renderer receives projections/emits closed intents; credentials, raw runtime, processes, and durable state stay host-owned.
-14. **Active expansion is explicit.** Full Auto #8967, release #8913, and the Amp/T3 ledgers own their bounded scopes; closed #8980 and prior tombstones are evidence, not queues.
+14. **Active expansion is explicit.** Full Auto #8967, managed sandboxes #9023, release #8913, and the Amp/T3 ledgers own their bounded scopes; closed #8980 and prior tombstones are evidence, not queues.
 15. **Parent/subagent history is loss-accounted.** Every supported item renders once or becomes an explicit redaction/gap; provider-native history stays owner-local until typed adoption.
 16. **Predictable visible behavior is a release contract.** Paint, paging, failure/privacy, accessibility, restart, and host/device journeys need executable UX proof; media only demonstrates.
 17. **Effect service topology is explicit.** Scope direction, freshness, replacement, disposal, cancellation, and perimeter bridges stay typed.
@@ -276,7 +284,7 @@ workbench with Desktop as the deep host, mobile as the bounded remote
 controller/workbench, and openagents.com as the public trust/API surface.
 Named durable Full Auto runs are the flagship short-term journey.
 
-**Dormant design horizon:** general managed-target breadth, portable host
+**Dormant design horizon:** managed-target breadth beyond #9023, portable host
 movement/failback, concurrent Full Auto portfolios, autonomous provider
 selection, and voice are not implied follow-ons. Their landed identity,
 authority, safety, and evidence contracts remain reusable substrate; an exact
@@ -314,7 +322,8 @@ manifests, download, observer/trace, and receipt/promise-integrity routes.
 
 Closed not-planned unless an owner decision explicitly reopens them:
 
-- Sarah UI/front door, persona/relationship/role/named-colleague expansion;
+- standalone/public Sarah UI, persona/relationship/role/named-colleague
+  expansion beyond the admitted owner-private `principal.sarah` thread;
 - avatar, opener, pre-rendered clips, Sarah/persona voice, realtime video,
   media cache/admission, and presentation-quality experiments;
 - optional glass/visual lowering not required for accessibility, interaction
@@ -326,7 +335,7 @@ Closed not-planned unless an owner decision explicitly reopens them:
 - literal OpenCode/T3/Amp cloning, new client-local fleet/sync authority, live
   process-memory migration, silent provider/target fallback, or clients
   calling vendor control planes;
-- general managed or owner-managed workroom expansion, portable host
+- managed or owner-managed workroom expansion beyond #9023, portable host
   movement/failback, autonomous provider selection, concurrent Full Auto
   fleets, voice/audio, and R7 dogfood outside their exact admitted packets;
 - a parallel app-local React Native/SwiftUI/shadcn/Zod/oRPC/TanStack
@@ -439,6 +448,11 @@ Keep four facts separate:
 capacity, usage, bounded workspace/writeback, verification, and reclaim.
 #8636 then proves one claim registry across owner-local and managed placement.
 Routing cannot be accepted around an unaccepted target.
+
+#9023 makes that substrate one owner-scoped IDE/Sarah `SandboxResource` with
+separate contract-through-live-proof packets. It is managed placement, not
+process-memory portability, and Box never replaces native target/event/receipt
+truth.
 
 Portable movement additionally requires:
 
@@ -553,12 +567,14 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 
 ### Canonical open product issue projection
 
-This offline projection excludes `area:docs` maintenance issues to avoid
-self-referential queue churn. The pinned `roadmap:sol` artifact currently has
-no entries, so the canonical label-scoped product projection is empty. Refresh
-it before dispatch. Owner-created P0 issues without that label and exact
-accepted-plan ledgers remain operational authority as named above; they are
-not copied into this guarded projection.
+This guarded projection excludes `area:docs`; live issue claims still own
+dispatch and exact plans own dependency order.
+
+| Program | Open issues | Owning plan |
+| --- | --- | --- |
+| Basic IDE closure | #9014 | `docs/ide/ROADMAP.md` |
+| Managed sandboxes | #9023, #9024, #9025, #9026, #9027, #9028, #9029, #9030, #9031, #9032, #9033, #9034 | `2026-07-19-managed-agent-sandboxes-accepted-plan.md` |
+| Agent IDE and parity | #9035, #9036, #9037, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md` |
 
 The superseded broad program/client, CUT-27, AUDIO-8, and non-reauthorized PORT
 outcomes remain closed `not planned`; their bodies were not rewritten and
@@ -572,9 +588,8 @@ Closed `wontfix`/not-planned tombstones include #8595, #8610, #8634, #8635,
 
 At this snapshot:
 
-The pinned `roadmap:sol` projection has **no active product issues**. The
-following owner-created issues and accepted ledgers remain exact successor
-authority outside that label-scoped projection:
+The pinned `roadmap:sol` projection records the current open product set. The
+following issues and accepted ledgers remain exact successor authority:
 
 1. Preserve the accepted ProductSpec-native MVP and completed AssuranceSpec /
    Observatory proof baseline; neither needs to be re-proved to start a bounded
@@ -584,36 +599,40 @@ authority outside that label-scoped projection:
    admission; #8979 consumes the dogfood/assurance evidence plus exact signed
    release identity. Do not reroute these remaining gates into another runtime
    rewrite.
-3. Retain closed #8980's simulator receipt as bounded first-screen evidence.
+3. Start #9023 at SBX-00 #9029 while Full Auto remains P0. SBX-06 waits for
+   IDE-08/10/12, Sarah mutation waits for SBX-00/07, and live/public claims
+   wait for SBX-09.
+4. Retain closed #8980's simulator receipt as bounded first-screen evidence.
    Remote run control, report review, and physical-device acceptance require
    their next exact packet; do not infer them from that projection.
-4. Continue #8913's owned release matrix. Native signing/package proof,
+5. Continue #8913's owned release matrix. Native signing/package proof,
    candidate completeness, promotion, `/download` convergence, and the
    one-command receipt are one release transaction; platform claims stay
    independent.
-5. Continue the exact claimed Amp and T3 mobile packets when they do not
+6. Continue the exact claimed Amp and T3 mobile packets when they do not
    collide with #8967/#8913 hot contracts. The T3 Desktop harvest is locally
    complete through its census and now waits on the shared signed-release
    authority for distribution claims.
-6. After the Wave-0 schemas and receipts stabilize, admit the first trust-layer
+7. After the Wave-0 schemas and receipts stabilize, admit the first trust-layer
    and web-proof packets from the surface crosswalk: authority manifest /
    execution receipt, named containment profile, release trust ledger, routing
    disclosure, and counter attestation. Do not start all vision tracks at once.
-7. Keep #8984 and any supported security, privacy, data-loss,
+8. Keep #8984 and any supported security, privacy, data-loss,
    accessibility, outage, or compatibility defect independently claimable;
    a failing completion gate or first-run path blocks its affected proof rung.
 
 Completed Node/pnpm/Vite Plus cutover, MVP, and public ProductSpec/
 AssuranceSpec distribution remain accepted infrastructure. They are not the
-current queue. New product work uses #8967/#8913, the admitted packet ledgers,
-or another explicit owner authority; source analyses and surface specs alone
-cannot dispatch it.
+current queue. New product work uses #8967/#9023/#8913, the admitted packet
+ledgers, or another explicit owner authority; source analyses and surface specs
+alone cannot dispatch it.
 
 ## Implementation laws
 
 These laws govern the accepted MVP baseline and the exact active Full Auto,
-release, Fast Follow, T3 Desktop, and T3 mobile programs. A durable law does
-not authorize work beyond the live issue or accepted packet that cites it.
+managed-sandbox, release, Fast Follow, T3 Desktop, and T3 mobile programs. A
+durable law does not authorize work beyond the live issue or accepted packet
+that cites it.
 
 1. **Integrate before inventing.** Existing FleetRun, plan DAG, intents, Sync,
    assignments, and receipts must be shown insufficient before new schemas.
@@ -719,7 +738,10 @@ not authorize work beyond the live issue or accepted packet that cites it.
     handoff, and terminal dispositions remain distinct. #8974 removed the
     legacy composer toggle from the active-run UX in favor of the dedicated
     launcher and read-only run view.
-34. **Surface vision is staged.** The three surface ProductSpecs define target
+34. **Compatibility is projection, not authority.** Box may exercise the
+    admitted subset, but native lifecycle, authorization, events, cost,
+    artifacts, and cleanup remain canonical; unsupported methods refuse.
+35. **Surface vision is staged.** The three surface ProductSpecs define target
     outcomes, while this roadmap, current invariants, live issues, accepted
     packet ledgers, promise gates, and proof rungs control sequence and claims.
     Reconciliation never converts `partial`, `planned`, or `unverified` into

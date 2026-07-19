@@ -1,11 +1,448 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-14T16:54:00.000Z",
+  "generatedAt": "2026-07-19T15:04:16.557Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
     "area:docs"
   ],
   "maxAgeHours": 168,
-  "issues": []
+  "issues": [
+    {
+      "labels": [
+        "master-task",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "owner:desktop",
+        "desktop",
+        "tracking",
+        "roadmap:sol"
+      ],
+      "number": 9014,
+      "state": "OPEN",
+      "title": "EPIC — IDE-00–IDE-07: ship the daily-use OpenAgents basic IDE",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9014"
+    },
+    {
+      "labels": [
+        "master-task",
+        "type:feature",
+        "effect",
+        "gcp",
+        "tracking",
+        "cloud-boundary",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9023,
+      "state": "OPEN",
+      "title": "EPIC — Managed agent sandboxes: GCP lifecycle, Box SDK compatibility, IDE, and Sarah",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9023"
+    },
+    {
+      "labels": [
+        "events",
+        "type:feature",
+        "codex",
+        "runtime",
+        "cloud-boundary",
+        "claude",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9024,
+      "state": "OPEN",
+      "title": "SBX-04 — Run long-lived Codex and Claude work with prompt truth, events, and interrupt",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9024"
+    },
+    {
+      "labels": [
+        "api",
+        "backend",
+        "type:feature",
+        "effect",
+        "test-harness",
+        "cloud-boundary",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9025,
+      "state": "OPEN",
+      "title": "SBX-03 — Serve the admitted Box v1 facade and pass the unmodified TypeScript SDK",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9025"
+    },
+    {
+      "labels": [
+        "backend",
+        "type:feature",
+        "area:security",
+        "receipts",
+        "cloud-boundary",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9026,
+      "state": "OPEN",
+      "title": "SBX-05 — Add bounded files, commands, artifacts, quotas, and sandbox hardening",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9026"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "effect",
+        "owner:desktop",
+        "desktop",
+        "gcp",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9027,
+      "state": "OPEN",
+      "title": "SBX-06 — Integrate managed sandboxes into the OpenAgents IDE project and agent graphs",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9027"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "area:infra",
+        "rust",
+        "gcp",
+        "deployment",
+        "cloud-boundary",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9028,
+      "state": "OPEN",
+      "title": "SBX-02 — Add the real GCP managed-sandbox runtime layer and image admission",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9028"
+    },
+    {
+      "labels": [
+        "effect",
+        "owner:contracts-docs",
+        "gcp",
+        "cloud-boundary",
+        "type:schema",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9029,
+      "state": "OPEN",
+      "title": "SBX-00 — Freeze managed-sandbox, Box compatibility, authority, and assurance contracts",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9029"
+    },
+    {
+      "labels": [
+        "backend",
+        "type:feature",
+        "effect",
+        "gcp",
+        "roadmap:sol",
+        "area:sarah",
+        "priority:P1-parallel"
+      ],
+      "number": 9030,
+      "state": "OPEN",
+      "title": "SBX-07 — Give Sarah a typed managed-sandbox lifecycle and dispatch broker",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9030"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "mobile",
+        "gcp",
+        "projections",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9031,
+      "state": "OPEN",
+      "title": "SBX-08 — Project managed sandbox supervision to mobile and web",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9031"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "area:security",
+        "phase-2",
+        "gcp",
+        "cloud-boundary",
+        "roadmap:sol",
+        "priority:P2-deferred"
+      ],
+      "number": 9032,
+      "state": "OPEN",
+      "title": "SBX-10 — Add proven snapshots, fork, and private desktop ingress after Phase 1",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9032"
+    },
+    {
+      "labels": [
+        "qa",
+        "area:testing",
+        "receipts",
+        "gcp",
+        "deployment",
+        "type:proof",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9033,
+      "state": "OPEN",
+      "title": "SBX-09 — Prove live GCP managed-sandbox acceptance, isolation, cleanup, and rollout",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9033"
+    },
+    {
+      "labels": [
+        "backend",
+        "type:feature",
+        "effect",
+        "area:data",
+        "cloud-boundary",
+        "roadmap:sol",
+        "priority:P1-parallel"
+      ],
+      "number": 9034,
+      "state": "OPEN",
+      "title": "SBX-01 — Implement durable sandbox lifecycle authority and generation-fenced store",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9034"
+    },
+    {
+      "labels": [
+        "master-task",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "owner:desktop",
+        "desktop",
+        "tracking",
+        "roadmap:sol"
+      ],
+      "number": 9035,
+      "state": "OPEN",
+      "title": "EPIC — IDE-08–IDE-19: ship the agent IDE, portable platform, and Cursor parity",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9035"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:protocol",
+        "owner:desktop",
+        "desktop",
+        "roadmap:sol"
+      ],
+      "number": 9036,
+      "state": "OPEN",
+      "title": "IDE-08 — Make agents native to the code graph with inspectable context and version-bound proposals",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9036"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:protocol",
+        "owner:desktop",
+        "desktop",
+        "roadmap:sol"
+      ],
+      "number": 9037,
+      "state": "OPEN",
+      "title": "IDE-09 — Add Cursor-class AI editing with disclosed effective models and version-bound edits",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9037"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:protocol",
+        "owner:desktop",
+        "desktop",
+        "roadmap:sol"
+      ],
+      "number": 9038,
+      "state": "OPEN",
+      "title": "IDE-10 — Integrate terminal, tasks, tests, and Output over one Effect project graph",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9038"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:protocol",
+        "owner:desktop",
+        "desktop",
+        "roadmap:sol"
+      ],
+      "number": 9039,
+      "state": "OPEN",
+      "title": "IDE-11 — Integrate debug through a supervised Effect DAP capability graph",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9039"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:protocol",
+        "owner:desktop",
+        "desktop",
+        "roadmap:sol"
+      ],
+      "number": 9040,
+      "state": "OPEN",
+      "title": "IDE-12 — Complete Git, worktrees, review, and delivery with exact-version receipts",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9040"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:protocol",
+        "area:security",
+        "owner:desktop",
+        "desktop",
+        "type:schema",
+        "type:proof",
+        "roadmap:sol"
+      ],
+      "number": 9041,
+      "state": "OPEN",
+      "title": "IDE-13 — Make project capabilities portable with exclusive attachment and verified checkpoints",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9041"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:openagents.com",
+        "area:testing",
+        "area:security",
+        "owner:desktop",
+        "mobile",
+        "desktop",
+        "roadmap:sol"
+      ],
+      "number": 9042,
+      "state": "OPEN",
+      "title": "IDE-14 — Project the IDE safely to mobile, web, and immutable public code shares",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9042"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:security",
+        "area:packages",
+        "owner:desktop",
+        "desktop",
+        "type:schema",
+        "roadmap:sol"
+      ],
+      "number": 9043,
+      "state": "OPEN",
+      "title": "IDE-15 — Add an isolated extension and component ABI with least-privilege host effects",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9043"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:protocol",
+        "area:security",
+        "owner:desktop",
+        "desktop",
+        "roadmap:sol"
+      ],
+      "number": 9044,
+      "state": "OPEN",
+      "title": "IDE-16 — Add supervised preview, browser, design, and computer-use workflows",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9044"
+    },
+    {
+      "labels": [
+        "ui",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:protocol",
+        "area:security",
+        "owner:desktop",
+        "desktop",
+        "roadmap:sol"
+      ],
+      "number": 9045,
+      "state": "OPEN",
+      "title": "IDE-17 — Complete the agent platform around one Editor and Agents Window graph",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9045"
+    },
+    {
+      "labels": [
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:data",
+        "area:infra",
+        "area:testing",
+        "area:release",
+        "area:security",
+        "owner:desktop",
+        "mobile",
+        "desktop",
+        "type:schema",
+        "roadmap:sol"
+      ],
+      "number": 9046,
+      "state": "OPEN",
+      "title": "IDE-18 — Close custody, Cursor migration, six-target delivery, enterprise, and accessibility gaps",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9046"
+    },
+    {
+      "labels": [
+        "master-task",
+        "type:feature",
+        "priority:P0",
+        "effect",
+        "area:testing",
+        "area:release",
+        "owner:desktop",
+        "desktop",
+        "type:schema",
+        "type:proof",
+        "claim-boundary",
+        "roadmap:sol"
+      ],
+      "number": 9047,
+      "state": "OPEN",
+      "title": "IDE-19 — Close and continuously maintain evidence-backed Cursor parity",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9047"
+    }
+  ]
 }

@@ -9,9 +9,21 @@
       "disposition": "retain-active-audit",
       "dispatch": false
     },
+    "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md": {
+      "class": "authority",
+      "owner": "OpenAgents managed sandboxes / epic #9023",
+      "disposition": "retain-active-authority",
+      "dispatch": false
+    },
     "docs/sol/receipts/2026-07-19-desktop-rc24-publication.md": {
       "class": "receipt",
       "owner": "OpenAgents Desktop RC24 publication",
+      "disposition": "retain-evidence",
+      "dispatch": false
+    },
+    "docs/sol/receipts/2026-07-19-desktop-rc25-publication.md": {
+      "class": "receipt",
+      "owner": "OpenAgents Desktop RC25 publication",
       "disposition": "retain-evidence",
       "dispatch": false
     },

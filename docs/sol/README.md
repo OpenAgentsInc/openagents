@@ -6,12 +6,15 @@
 - Owner: Sol roadmap
 
 Sol owns the implementation-grounded OpenAgents roadmap. The accepted Desktop
-Codex Workroom baseline now has an active Full Auto flagship program, a
-cross-platform release program, and owner-admitted Amp, T3 Desktop, and T3
-mobile packet ledgers. The three 2026-07-17 surface ProductSpecs are
-roadmap-reconciled outcomes, while exact issues/packets still own dispatch.
-General portable movement, autonomous provider/fleet policy, voice, settlement,
-and other owner-gated expansions remain closed unless separately admitted.
+Codex Workroom baseline now has an active Full Auto flagship program, an
+active P1 managed-agent-sandbox program, a cross-platform release program, and
+owner-admitted Amp, T3 Desktop, and T3 mobile packet ledgers. The three
+2026-07-17 surface ProductSpecs are roadmap-reconciled outcomes, while exact
+issues/packets still own dispatch. Managed-sandbox epic #9023 is the bounded
+exception to the otherwise closed general managed-target horizon; portable
+movement, cross-machine Full Auto admission, autonomous provider/fleet policy,
+voice, settlement, and other owner-gated expansions remain closed unless
+separately admitted.
 This index points to the authorities; it does not cache the roadmap revision or
 issue count.
 
@@ -49,6 +52,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   authenticated persistent orchestrator inside OpenAgents mobile, using cited
   business projections and existing capability brokers while public `/sarah`
   and the standalone app remain retired.
+- [`2026-07-19-managed-agent-sandboxes-accepted-plan.md`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md)
+  — active owner direction, ProductSpec, dependency-ordered SBX-00..10 issue
+  ledger, and proof boundary for one GCP `SandboxResource`, a pinned Box v1
+  compatibility facade, IDE-13/17 integration, Sarah's closed broker, and
+  bounded mobile/web supervision under epic #9023.
 - [`2026-07-18-sarah-terminal-history-harness-implementation.md`](./2026-07-18-sarah-terminal-history-harness-implementation.md)
   — current implementation record for Sarah's owner-private terminal-history
   experience compiler, bounded conversational candidate, independent held-out
@@ -86,7 +94,7 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
   it is retained as the provider oracle/fallback, not production Full Auto
   authority or the selected sprint path.
 - [`../../specs/desktop/full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md)
-  — Full Auto rev-13 mission, lifecycle, routing, guardrails, liveness,
+  — Full Auto rev-14 mission, lifecycle, routing, guardrails, liveness,
   evidence, UX, and handoff intent for epic #8967; live child issues own
   implementation sequence.
 - [`CHALLENGE_LEDGER.md`](./CHALLENGE_LEDGER.md) — accepted risks, falsifiers,
@@ -124,6 +132,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
+
+- [`2026-07-18-atif-thread-model-audit.md`](./2026-07-18-atif-thread-model-audit.md)
+  — implemented audit establishing OpenAgents thread/events as canonical
+  operational truth and ATIF as a versioned public-safe evidence projection;
+  relevant to IDE/SBX event export but not sandbox lifecycle authority.
 
 - [`2026-07-18-sarah-openai-voice-api-audit.md`](./2026-07-18-sarah-openai-voice-api-audit.md)
   — official-OpenAI-docs and current-code audit of request TTS, bounded and

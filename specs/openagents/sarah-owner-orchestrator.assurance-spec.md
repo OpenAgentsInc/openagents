@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.sarah.owner.orchestrator"
-assurance_revision: 1
+assurance_revision: 2
 title: "Sarah Owner Orchestrator Assurance Spec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -39,13 +39,16 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "SARAH-AC-17",
       "SARAH-AC-18",
       "SARAH-AC-19",
-      "SARAH-AC-20"
+      "SARAH-AC-20",
+      "SARAH-AC-21",
+      "SARAH-AC-22",
+      "SARAH-AC-23"
     ],
-    "document_digest": "sha256:356e31d5d552bb5aad07e1720fcd993d357b3abd72b5448d6fec3351026820ae",
+    "document_digest": "sha256:becfed39f5b0fc1c59f3a38b0acdfa2e3facd7d89de4240610635a5e2b79c3a7",
     "path": "specs/openagents/sarah-owner-orchestrator.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 3
+    "spec_revision": 4
   }
 }
 ```
@@ -57,8 +60,8 @@ No risk objects are inferred from ProductSpec prose. Reviewers must design the a
 ```assurancespec-risks
 {
   "risks": [],
-  "source_digest": "sha256:20f9b53a80f7a15929a21191e7d5f4e7ca0c24da75a2cf159ecdb23ac4b2aada",
-  "source_snapshot": "- “Full knowledge” can become an unsafe database dump. Only purpose-built,\n  bounded, owner-scoped projections enter context.\n- A human name can obscure that Sarah is an AI. The system prompt and product\n  copy identify her as AI and prohibit impersonation.\n- One point of contact can become one point of failure. Her thread is durable,\n  context sources fail independently, and every action stays in existing\n  systems with its own receipts and rollback.\n- Broad company decision authority can collapse separation of duties. Sarah\n  may decide and delegate, but cannot self-verify assurance or self-release\n  from her own evidence.\n- Self-improvement can become evaluation leakage or authority amplification.\n  Terminal-only snapshots, disjoint held-out turns, a non-authority candidate\n  schema, a distinct evaluator, and a compare-and-swap release gate keep the\n  producer out of verification and activation."
+  "source_digest": "sha256:80be305696fbd9cc9a7eb11095f55aaf7cca191512c104c959fd99976cc7939b",
+  "source_snapshot": "- “Full knowledge” can become an unsafe database dump. Only purpose-built,\n  bounded, owner-scoped projections enter context.\n- A human name can obscure that Sarah is an AI. The system prompt and product\n  copy identify her as AI and prohibit impersonation.\n- One point of contact can become one point of failure. Her thread is durable,\n  context sources fail independently, and every action stays in existing\n  systems with its own receipts and rollback.\n- Broad company decision authority can collapse separation of duties. Sarah\n  may decide and delegate, but cannot self-verify assurance or self-release\n  from her own evidence.\n- Self-improvement can become evaluation leakage or authority amplification.\n  Terminal-only snapshots, disjoint held-out turns, a non-authority candidate\n  schema, a distinct evaluator, and a compare-and-swap release gate keep the\n  producer out of verification and activation.\n- A managed-sandbox tool can become generic cloud-admin authority. The broker\n  is a closed lifecycle and work-unit API with exact budgets and capability\n  refs; raw cloud, shell, database, topology, and credential surfaces remain\n  unrepresentable."
 }
 ```
 
@@ -313,6 +316,39 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "source_claim_digest": "sha256:b1e6cfbf2306b34363d240ed63acaca0b35c79be2a02ceaa0c2b43a7d1a1f537",
     "source_claim_snapshot": "Harness bank rows, optimizer/evaluator prompts, raw thread\ncontent, and private scores have no public or mobile projection. A released\nimprovement affects only subsequent ordinary Sarah replies and exposes only\nbounded private activity/receipt refs when the owner explicitly asks.",
     "title": "Assure SARAH-AC-20"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-21"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-21-01",
+    "source_claim_digest": "sha256:4a971e60504c371777941fecbeb54a8db0de1bc869209b947d250f5db3f917a1",
+    "source_claim_snapshot": "After SBX-00 admits the exact Sarah authority and managed-\nsandbox broker, Sarah can create, list, inspect, stop, resume, and delete\nonly the authenticated owner's OpenAgents-managed sandboxes. Every request\nbinds exact program/work-unit/target/image-profile/TTL/budget/capability and\nidempotency refs, and every actual outcome is supported by both an authority\nreceipt and the sandbox lifecycle receipt.",
+    "title": "Assure SARAH-AC-21"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-22"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-22-01",
+    "source_claim_digest": "sha256:078fb2dc873cde005c665a1894136314edcb8a2b969d88eb66bc88f4dea9f01d",
+    "source_claim_snapshot": "Sarah can dispatch one bounded long-running work unit into\nan exact ready owner sandbox, follow ordered structural runtime activity,\nand interrupt that exact turn. Quiet output is never called idle or\ncompleted, and a model response, SDK status, pending operation, or sandbox\nstate cannot substitute for the native terminal and cleanup receipts.",
+    "title": "Assure SARAH-AC-22"
+  },
+  {
+    "candidate_artifact_refs": [],
+    "criterion_refs": [
+      "SARAH-AC-23"
+    ],
+    "disposition": "required",
+    "id": "AO-SARAH-AC-23-01",
+    "source_claim_digest": "sha256:6088dfa5de266331975eb898fcfd4e5f97082a80d908f476403f6f3983272935",
+    "source_claim_snapshot": "Sarah receives no raw `gcloud`, shell, database, topology,\nguest-address, service-account, provider-credential, filesystem-path, or\ngeneric container-admin tool. Budget, capacity, authority, broker, guest,\nrevoke, and cleanup failures remain explicit; a failed or recovery-required\nteardown is never described as successful. This capability does not grant\nremote Full Auto start or cross-machine `FullAutoRun` admission.",
+    "title": "Assure SARAH-AC-23"
   }
 ]
 ```

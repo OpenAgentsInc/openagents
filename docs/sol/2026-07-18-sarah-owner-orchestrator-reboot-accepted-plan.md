@@ -5,7 +5,7 @@
 - Date: 2026-07-18
 - Owner authority: current owner conversation
 - Base commit: `888574ab00f0cb86611e2178ca057db673caa87b`
-- ProductSpec: [`../../specs/openagents/sarah-owner-orchestrator.product-spec.md`](../../specs/openagents/sarah-owner-orchestrator.product-spec.md)
+- ProductSpec: [`../../specs/openagents/sarah-owner-orchestrator.product-spec.md`](../../specs/openagents/sarah-owner-orchestrator.product-spec.md) revision 4
 - Authority: [`../../AUTHORITY.md`](../../AUTHORITY.md) revision 5 and [`../authority/SARAH_AUTHORITY.md`](../authority/SARAH_AUTHORITY.md) revision 3
 
 ## Decision
@@ -56,6 +56,28 @@ supported app; it does not supersede the standalone-surface tombstone.
    read/pause/resume/stop for existing Full Auto runs. Every call emits visible
    runtime activity plus an authority receipt; pending is never presented as
    completed. MemoHarness bank, adaptation, and promotion remain unavailable.
+8. The 2026-07-19 managed-sandbox expansion proceeds only through epic #9023:
+   SBX-00 freezes and admits the exact authority/resource/condition contract,
+   SBX-07 composes the shared managed-sandbox broker, and SBX-09 independently
+   proves the live GCP journey. Until those gates land, Sarah's runtime
+   capabilities remain the revision-3 authority set.
+
+## 2026-07-19 managed-sandbox expansion
+
+Sarah ProductSpec revision 4 now admits the desired owner outcome: create,
+list, inspect, dispatch into, interrupt, stop, resume, and delete an
+OpenAgents-managed sandbox through the same `ManagedSandboxService` used by
+Desktop. The implementation authority and issue order live in the
+[`managed-sandbox accepted plan`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md)
+and [epic #9023](https://github.com/OpenAgentsInc/openagents/issues/9023).
+
+This is a gated intent revision, not a live tool grant. `AUTHORITY.md` revision
+5 and `docs/authority/SARAH_AUTHORITY.md` revision 3 remain runtime truth until
+SBX-00 lands their exact successor profiles with denial tests. Sarah never
+receives raw `gcloud`, shell, database, topology, service-account, provider
+credential, host-path, or generic container-admin access. A sandbox work unit
+also remains distinct from `FullAutoRun`; remote Full Auto start stays excluded
+unless Full Auto receives its own exact ProductSpec and AssuranceSpec revision.
 
 ## Capability rollout
 
@@ -66,6 +88,11 @@ publication, and GitHub/Forum communication are brokered through the existing
 mechanisms; no new super-adapter bypasses them. Richer company-priority
 projections, semantic memory compaction, and more target receipts can land
 incrementally without changing the principal or UI contract.
+
+Managed-sandbox lifecycle and dispatch are a later broker capability under
+#9023, not part of the already-landed Sarah reboot claim. They reuse the same
+principal, thread, ordered runtime activity, authority receipts, and target
+receipts; they do not add a Sarah-only control plane or state model.
 
 ## Verification and release gates
 
@@ -112,3 +139,9 @@ to inspect or dispatch Codex workers and supervise an existing Full Auto run,
 close and reopen the app without losing continuity, and observe that every
 mutation remains brokered and auditable. Backend is deployed, tests are green,
 and main is pushed.
+
+For the separately admitted managed-sandbox expansion, done additionally means
+SBX-00/07/09 are closed: the owner can create and supervise one real GCP
+sandbox through the same durable lifecycle authority as Desktop, every step
+has authority and target receipts, and delete proves zero residue. That later
+gate does not retroactively widen this plan's completed Sarah runtime proof.

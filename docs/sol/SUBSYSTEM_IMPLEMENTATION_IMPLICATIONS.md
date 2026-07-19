@@ -1,15 +1,17 @@
 # Reliable Desktop/mobile subsystem implementation implications
 
 - Class: contract
-- Updated: 2026-07-12
+- Updated: 2026-07-19
 - Status: active, revision-independent subsystem boundary companion to
   [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 - Dispatch: no current queue; use the master roadmap, live issues/claims,
   current code/tests, and receipts for implementation state
 
-The prior Sarah-first subsystem map is superseded. Its authority, privacy,
-typed-service, and receipt principles are retained; its named front door,
-relationship-first navigation, and A/V sequencing are not.
+The prior standalone Sarah-first subsystem map is superseded. Its authority,
+privacy, typed-service, and receipt principles are retained. Current
+`principal.sarah` is an authenticated owner-private mobile orchestrator over
+the same brokers; the public `/sarah` route, standalone app, relationship-first
+navigation mandate, and A/V sequencing remain retired.
 
 This document states durable responsibilities and prohibitions. “Must” names a
 maintained product contract, not evidence that the capability is absent today.
@@ -21,10 +23,10 @@ Desktop and mobile are different capability hosts over one owner-scoped state,
 authority, action, and evidence reality:
 
 ```text
-client intent -> policy -> Fleet/Pylon authority -> execution
-      ^                                           |
-      |                                           v
-client state <- Khala Sync <- receipt/outcome <- evidence
+client or Sarah intent -> policy/broker -> Fleet/Pylon/sandbox authority -> execution
+          ^                                                        |
+          |                                                        v
+client state <- Khala Sync <- bounded receipt/outcome projection <- evidence
 ```
 
 - Desktop is the deep coding workbench and Fleet cockpit.
@@ -86,6 +88,9 @@ Implementation consequences:
   this list does not mean the capability is absent.
 - Compose Fleet state from existing Pylon/Sync authority. Direct controls and
   any future automation use the same typed command IDs and outcomes.
+- Under #9023, consume the canonical `SandboxResource` through the IDE-13
+  project-capability and IDE-17 agent graphs. The renderer never receives the
+  Box SDK, GCP credentials, raw roots, or a generic control-plane client.
 - Use typed foreign-host nodes for editor/terminal depth; never generalize raw
   filesystem/process/IPC authority into the renderer.
 - Preserve the OpenCode parity audit as the capability benchmark:
@@ -130,12 +135,17 @@ Implementation consequences:
   current roadmap: physical iOS plus Android emulator. Physical Android may
   add evidence, but the owner decision says nothing gates on it.
 - Keep direct account recovery/settings available behind bounded capabilities.
+- Keep the stable owner-private Sarah thread as one admitted client of the
+  same authority/outcome paths. Under SBX-08, project sandbox lifecycle,
+  attention, long-running agent, artifact, budget, and cleanup truth without
+  hosting the runtime or SDK on the phone.
 - Treat any app-local SwiftUI module as an explicit host exception, not a
   second state model or a reason for visual expansion.
 
 Do not:
 
-- restore Sarah/persona/demo/Minerals/video product scope;
+- restore a standalone/public Sarah app or route, persona demo, Minerals,
+  avatar, or video product scope;
 - present generic Khala chat as account, Fleet, model, payment, or receipt
   authority;
 - expose raw **local device** filesystem/process credentials or unbounded host
@@ -157,12 +167,18 @@ Implementation consequences:
   verification, usage, and receipt contracts before adding anything.
 - Use named isolated account refs; never automatic default provider homes.
 - Keep one claim registry across owner-local and future managed-cloud targets.
+- Under #9023, expose one owner-scoped, generation-fenced `SandboxResource`
+  over the existing GCP/Agent Computer/workroom seams. Keep lease, guest,
+  filesystem, ingress, and runtime-turn truth distinct.
 - Distinguish accepted, rejected, failed, and unknown-pending-reconcile.
 - Preserve exact usage when measured and explicit `not_measured` otherwise.
 - Keep owner-local subscription and managed-cloud grant/economic rails distinct.
 - Retain closed #8640 as mixed-account runtime proof; it does not establish a
-  Sarah front door, complete the Desktop/mobile cutover, or represent current
-  work.
+  managed-sandbox product, complete the Desktop/mobile cutover, or represent
+  current work.
+- Treat the Box v1 route as a bounded compatibility projection only. Native
+  Effect Schema identities, events, authority, usage, artifacts, and cleanup
+  receipts remain canonical; unsupported methods refuse explicitly.
 
 Do not:
 
@@ -254,14 +270,22 @@ Safe drain/reconciliation and stable read-only history precede deletion. Broad
 route conversion, landing, Forum expansion, portal, CRM, sales, and outbound
 product work remain closed unless separately reauthorized.
 
-## 9. Closed presentation scope and retained voice modality
+## 9. Sarah boundary, closed presentation scope, and retained voice modality
 
-- Sarah as named/default front door;
+- standalone or public Sarah app/front door and `/sarah` route;
 - persona/relationship/role-program/named-colleague expansion;
 - avatar, opener, Sarah/persona voice, realtime video, media admission/cache,
   and presentation-quality experiments;
 - landing/portal/Forum product expansion;
 - optional visual/glass/lowering polish.
+
+The authenticated owner-private `principal.sarah` thread is admitted and is
+not part of that closed presentation scope. It reads bounded cited business
+context and invokes only named typed brokers. The #9023 expansion may add
+managed-sandbox create/list/inspect/dispatch/interrupt/stop/resume/delete only
+after SBX-00 revises authority and SBX-07 lands the closed broker. It grants no
+generic cloud, shell, database, topology, credential, or container-admin tool,
+and it does not imply remote Full Auto start.
 
 Persona-neutral conversational voice is not part of the closed Sarah scope. It
 is an R6/R7 input/output modality over the same typed session command and

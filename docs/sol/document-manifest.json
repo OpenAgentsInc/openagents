@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "f97f98debbd145726eaccb093104a129c9fa709308549262358ebc426e54921e",
+  "sourceTreeSha256": "1fbff00cb9cfdc69571a77a056f837873da14fe0deed657f2c6e5a20536fcfba",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -552,7 +552,7 @@
       "owner": "Sol portable sessions",
       "disposition": "retain-decision",
       "dispatch": false,
-      "sha256": "c5d8539b342ecaaf45c9974c56a65c7cf77a1b92a2a945dfad0c882a73b6db3c",
+      "sha256": "a432a973b70b6ca57e670ef371904f08048eb1dec3378efed8d603c5b963acff",
       "status": "owner-directed product path; ordered implementation ledger active",
       "snapshot": "2026-07-11",
       "reviewedAt": "2026-07-12",
@@ -597,7 +597,8 @@
         8752,
         8753,
         8778,
-        8780
+        8780,
+        9023
       ]
     },
     {
@@ -2039,8 +2040,10 @@
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
-      "inboundLinks": [],
-      "inboundSourceCount": 0,
+      "inboundLinks": [
+        "docs/sol/README.md"
+      ],
+      "inboundSourceCount": 1,
       "issueLinks": []
     },
     {
@@ -2205,7 +2208,7 @@
       "owner": "OpenAgents Sarah owner orchestration",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "6e684d9c71e578e271cb62f41f3ad05c4d55649f9098486002a9b946a4233ef8",
+      "sha256": "029e84bbeeaaf2587ccd7f3e095731b8636b4c8e7aef27bbae6884efe009de98",
       "status": "active",
       "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-12",
@@ -2217,7 +2220,9 @@
         "docs/sol/decisions/2026-07-10-greenfield-clients-and-sarah-removal.md"
       ],
       "inboundSourceCount": 4,
-      "issueLinks": []
+      "issueLinks": [
+        9023
+      ]
     },
     {
       "path": "docs/sol/2026-07-18-sarah-terminal-history-harness-implementation.md",
@@ -2276,6 +2281,49 @@
       "inboundLinks": [],
       "inboundSourceCount": 0,
       "issueLinks": []
+    },
+    {
+      "path": "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md",
+      "class": "authority",
+      "owner": "OpenAgents managed sandboxes / epic #9023",
+      "disposition": "retain-active-authority",
+      "dispatch": false,
+      "sha256": "858f2127c0839b4fc042e1c22b7b4db1dbba01bb8fa824317215b26b2f97f392",
+      "status": "active",
+      "snapshot": "2026-07-19",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [
+        "docs/cloud/README.md",
+        "docs/ide/README.md",
+        "docs/ide/ROADMAP.md",
+        "docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md",
+        "docs/sol/2026-07-18-sarah-owner-orchestrator-reboot-accepted-plan.md",
+        "docs/sol/MASTER_ROADMAP.md",
+        "docs/sol/README.md",
+        "docs/sol/issues/README.md"
+      ],
+      "inboundSourceCount": 8,
+      "issueLinks": [
+        9023,
+        9024,
+        9025,
+        9026,
+        9027,
+        9028,
+        9029,
+        9030,
+        9031,
+        9032,
+        9033,
+        9034,
+        9035,
+        9036,
+        9038,
+        9040,
+        9041,
+        9045
+      ]
     },
     {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
@@ -2364,9 +2412,9 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "4eec726db57ce11efe7d9f2688fd122a5752977aa877af447092c91f7eb0dddc",
+      "sha256": "2b66e3bfb7d81898ca82615b351d8e35979e28f4af50b554f10ecdeec248bf67",
       "status": "canonical OpenAgents implementation roadmap",
-      "snapshot": "2026-07-18",
+      "snapshot": "2026-07-19",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
@@ -2477,7 +2525,33 @@
         8991,
         9000,
         9001,
-        9002
+        9002,
+        9014,
+        9023,
+        9024,
+        9025,
+        9026,
+        9027,
+        9028,
+        9029,
+        9030,
+        9031,
+        9032,
+        9033,
+        9034,
+        9035,
+        9036,
+        9037,
+        9038,
+        9039,
+        9040,
+        9041,
+        9042,
+        9043,
+        9044,
+        9045,
+        9046,
+        9047
       ]
     },
     {
@@ -2506,7 +2580,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "cffae81ee532b70679ee3cc7eec06e724c345db9b01938f31ba1a8f48bc91e9c",
+      "sha256": "815fb1a6f8231a58304ab933d9b2493c2225acbef2bdaacc1e22c85c2dae5c6b",
       "status": "current",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2528,7 +2602,8 @@
         8967,
         8978,
         9000,
-        9002
+        9002,
+        9023
       ]
     },
     {
@@ -2537,9 +2612,9 @@
       "owner": "Sol roadmap",
       "disposition": "retain-contract",
       "dispatch": false,
-      "sha256": "22644cb2d56180530e7f6ca82b28d62a45bb1bd774f315222fcb01ccb9dc80c9",
+      "sha256": "b459e058679d94f731c46c914b90ed6f07096d5c313dc8f3ccb1a602e1549834",
       "status": "active, revision-independent subsystem boundary companion to",
-      "snapshot": "2026-07-12",
+      "snapshot": "2026-07-19",
       "reviewedAt": "2026-07-12",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
@@ -2552,7 +2627,8 @@
         8640,
         8733,
         8734,
-        8736
+        8736,
+        9023
       ]
     },
     {
@@ -2582,7 +2658,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-index",
       "dispatch": false,
-      "sha256": "ef216bc5cd04aa1020a0b861fa61af60bdde29ac316f7dd6ab14dbc0f5a8b918",
+      "sha256": "ee810f3fb4f058d4dc07db099a2845a135221ad3ac6936115f45d6e8830d189a",
       "status": "current classification index",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",
@@ -2664,7 +2740,33 @@
         8797,
         8798,
         8799,
-        8800
+        8800,
+        9014,
+        9023,
+        9024,
+        9025,
+        9026,
+        9027,
+        9028,
+        9029,
+        9030,
+        9031,
+        9032,
+        9033,
+        9034,
+        9035,
+        9036,
+        9037,
+        9038,
+        9039,
+        9040,
+        9041,
+        9042,
+        9043,
+        9044,
+        9045,
+        9046,
+        9047
       ]
     },
     {
@@ -3833,6 +3935,21 @@
       "disposition": "retain-evidence",
       "dispatch": false,
       "sha256": "1cfb4ca803e841ad23fad15e5deb4971438042db31140a8219db01a7787c1d67",
+      "status": "retain-evidence",
+      "snapshot": "current checked-in content",
+      "reviewedAt": "2026-07-12",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": []
+    },
+    {
+      "path": "docs/sol/receipts/2026-07-19-desktop-rc25-publication.md",
+      "class": "receipt",
+      "owner": "OpenAgents Desktop RC25 publication",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "4eec1aa59f3270092583fca8c2617781034286648f165d3c6a041feaea33cd40",
       "status": "retain-evidence",
       "snapshot": "current checked-in content",
       "reviewedAt": "2026-07-12",

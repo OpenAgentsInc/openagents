@@ -29,8 +29,14 @@ dispatch authority.
 
 ## Live issues represented by an owning plan
 
-No owning plan currently dispatches a live issue. The Node/pnpm/Vite Plus
-program and all folded leaves are closed evidence.
+- [`OpenAgents IDE roadmap`](../../ide/ROADMAP.md) represents basic-IDE parent
+  #9014 and agent-IDE/parity epic and packets #9035, #9036, #9037, #9038,
+  #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, and #9047.
+- [`Managed agent sandboxes accepted plan`](../2026-07-19-managed-agent-sandboxes-accepted-plan.md)
+  represents epic and packets #9023, #9024, #9025, #9026, #9027, #9028,
+  #9029, #9030, #9031, #9032, #9033, and #9034.
+
+The Node/pnpm/Vite Plus program and all folded leaves are closed evidence.
 
 ## Closed proof and implementation sources
 
