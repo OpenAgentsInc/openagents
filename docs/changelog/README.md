@@ -14,6 +14,17 @@ Every OpenAgents release carries two changelog artifacts:
    is linked from the human changelog, but it is never the primary public
    surface.
 
+The human changelog uses the base STE profile.
+The agent changelog uses the base profile when possible.
+It can use the versioned [agent compact profile](../ste/agent-compact-profile.v1.md).
+This profile permits controlled technical terms and labeled record fragments.
+It does not permit an omitted condition, limit, proof state, or authority reference.
+
+RC.25 is the reference pattern for this separation.
+Its human section explains actions, benefits, and release limits.
+Its agent section gives issues, commits, contracts, invariants, evidence, and lane data.
+Do not rewrite a released changelog to apply this policy after publication.
+
 Every dated release also records a public-safe provenance header: trigger
 kind, trigger actor, release actor, authority reference, release URL, and
 source-feedback reference. Historical releases say when they predate the

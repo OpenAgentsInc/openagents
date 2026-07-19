@@ -12378,7 +12378,9 @@
       "owner": "OpenAgents documentation",
       "risk": "legacy",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "dual",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1"
     },
     {
       "path": "docs/changelog/2026-07-17-desktop-0.1.0-rc.17.md",
@@ -12391,7 +12393,9 @@
       "owner": "OpenAgents documentation",
       "risk": "legacy",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "dual",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1"
     },
     {
       "path": "docs/changelog/2026-07-17-desktop-0.1.0-rc.18.md",
@@ -12404,7 +12408,9 @@
       "owner": "OpenAgents documentation",
       "risk": "legacy",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "dual",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1"
     },
     {
       "path": "docs/changelog/2026-07-18-desktop-0.1.0-rc.19.md",
@@ -12417,7 +12423,9 @@
       "owner": "OpenAgents documentation",
       "risk": "legacy",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "dual",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1"
     },
     {
       "path": "docs/changelog/2026-07-18-desktop-0.1.0-rc.20.md",
@@ -12430,7 +12438,9 @@
       "owner": "OpenAgents documentation",
       "risk": "legacy",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "dual",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1"
     },
     {
       "path": "docs/changelog/2026-07-18-desktop-0.1.0-rc.21.md",
@@ -12443,7 +12453,9 @@
       "owner": "OpenAgents documentation",
       "risk": "legacy",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "dual",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1"
     },
     {
       "path": "docs/changelog/2026-07-19-desktop-0.1.0-rc.24.md",
@@ -12456,7 +12468,9 @@
       "owner": "OpenAgents documentation",
       "risk": "legacy",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "dual",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1"
     },
     {
       "path": "docs/changelog/2026-07-19-desktop-0.1.0-rc.25.md",
@@ -12469,7 +12483,9 @@
       "owner": "OpenAgents documentation",
       "risk": "legacy",
       "source": null,
-      "replacement": null
+      "replacement": null,
+      "ste_audience": "dual",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1"
     },
     {
       "path": "docs/changelog/README.md",
@@ -29003,6 +29019,24 @@
       "risk": "legacy",
       "source": null,
       "replacement": null
+    },
+    {
+      "path": "docs/ste/agent-compact-profile.v1.md",
+      "ste_issue": 9,
+      "ste_mode": "descriptive",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",
+      "ste_reviewed_at": "2026-07-19T18:17:55Z",
+      "owner": "OpenAgents documentation",
+      "risk": "legacy",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
     },
     {
       "path": "docs/ste/p1-control-conversion-receipt.md",

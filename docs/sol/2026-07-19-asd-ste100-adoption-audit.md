@@ -39,6 +39,17 @@ Thus, local hooks and OpenAgents-owned runners use the same checker.
 This control does not show full conformance.
 The P1 through P6 conversions and inspections are still necessary.
 
+The policy has a controlled agent compact profile.
+Human-facing text continues to use the base STE profile.
+Agent-facing text should also use the base profile when possible.
+The compact profile permits a versioned term extension and labeled record fragments.
+It cannot relax authority, safety, evidence, or ambiguity controls.
+
+The OpenAgents Desktop RC.25 release shows the dual-audience pattern.
+Its human changelog explains user actions and release limits.
+Its agent changelog records dense technical data with stable labels.
+The released file remains immutable evidence.
+
 ## Standard authority
 
 [ASD-STE100 Issue 9](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf) is the standard now.

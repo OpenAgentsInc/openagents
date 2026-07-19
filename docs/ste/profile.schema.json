@@ -13,6 +13,15 @@
     "owner",
     "risk"
   ],
+  "allOf": [
+    {
+      "if": { "required": ["ste_agent_compact_revision"] },
+      "then": {
+        "required": ["ste_audience"],
+        "properties": { "ste_audience": { "enum": ["agent", "dual"] } }
+      }
+    }
+  ],
   "properties": {
     "path": { "type": "string", "minLength": 1 },
     "ste_issue": { "const": 9 },
@@ -29,6 +38,8 @@
       "type": "array",
       "uniqueItems": true,
       "items": { "enum": ["STE-2.4", "STE-3.6"] }
-    }
+    },
+    "ste_audience": { "enum": ["human", "agent", "dual"] },
+    "ste_agent_compact_revision": { "const": "openagents-agent-compact-v1" }
   }
 }

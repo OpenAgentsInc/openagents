@@ -5,6 +5,23 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Agent records have a controlled compact language profile (#9049)
+
+- issues: #9049
+- commits: this change
+- contracts-specs: openagents-ste-policy-v2, openagents-agent-compact-v1, STE document profile schema
+- invariants: human text uses base STE, agent extensions cannot relax authority, safety, evidence, or ambiguity controls
+- evidence: docs/ste/agent-compact-profile.v1.md, docs/ste/agent-compact-terms.v1.json, scripts/check-ste.test.ts
+- lane: codex/asd-ste100-migration-20260719-r2
+
+OpenAgents now separates human technical text from compact agent records.
+Human text continues to use the base STE profile.
+Agent records can use controlled technical terms and labeled fields when these forms improve precision.
+
+The checker limits the extension to an identified agent section or agent document.
+The policy keeps all conditions, limits, proof states, and authority references.
+The RC.25 dual changelog is the reference pattern, and its released bytes remain unchanged.
+
 ## Agents can review and safely apply exact code proposals (#9036)
 
 - issues: #9036

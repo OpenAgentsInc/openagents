@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagents.com/schemas/agent-compact-terms-v1.json",
+  "title": "OpenAgents agent compact terms",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["revision", "baseGlossaryRevision", "audience", "terms"],
+  "properties": {
+    "revision": { "const": "openagents-agent-compact-v1" },
+    "baseGlossaryRevision": { "const": "openagents-ste-glossary-v1" },
+    "audience": { "const": "agent" },
+    "terms": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["term", "permittedForms", "meaning"],
+        "properties": {
+          "term": { "type": "string", "minLength": 1 },
+          "permittedForms": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "meaning": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -9,6 +9,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   Simplified Technical English.
 - [`docs/ste/README.md`](docs/ste/README.md) owns the repository policy. The
   versioned OpenAgents glossary owns approved company technical terms.
+- Human-facing text must use the base STE profile.
+- Agent-facing text should use the base profile when possible.
+- The versioned agent compact profile can add controlled terms and record fragments.
+- The compact profile cannot relax authority, safety, evidence, or ambiguity controls.
 - The repository must not contain a copy of the ASD dictionary without written
   permission from the copyright owner.
 - A checker result is not proof of full conformance. Important text requires a

@@ -4,17 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applyScreeningReview,
+  agentCompactLineNumbers,
   countDiagnostics,
   deriveProfile,
   dictionaryWords,
   extractProse,
   inspectStructure,
   validateGlossary,
+  validateAgentCompactTerms,
   type CheckerConfig,
 } from "./ste-core";
 
 const config: CheckerConfig = {
   policyRevision: "test",
+  agentCompactRevision: "openagents-agent-compact-v1",
   steIssue: 9,
   glossaryRevision: "test-v1",
   governedExtensions: [".md"],
@@ -29,6 +32,14 @@ describe("STE prose extraction", () => {
       "Use `pnpm test`.\n\n```sh\npnpm test; exit 1\n```\nRead [the guide](https://example.com).",
     );
     expect(prose.map((line) => line.text)).toEqual(["Use  .", "Read the guide."]);
+  });
+
+  test("limits a compact extension to the agent section of a dual document", () => {
+    const lines = agentCompactLineNumbers(
+      "## Human changelog\nUse the app.\n\n## Agent changelog\n- lane: release\n\n## Release provenance\nOwner request.",
+      "dual",
+    );
+    expect([...lines]).toEqual([4, 5, 6]);
   });
 });
 
@@ -64,6 +75,12 @@ describe("STE profiles and glossary", () => {
     expect(deriveProfile("AGENTS.md", config).risk).toBe("control");
     expect(deriveProfile("docs/release-runbook.md", config).ste_mode).toBe("mixed");
     expect(deriveProfile("docs/transcripts/a.md", config).ste_status).toBe("source-data");
+    expect(deriveProfile("docs/changelog/2026-07-19-desktop-0.1.0-rc.25.md", config)).toMatchObject(
+      {
+        ste_audience: "dual",
+        ste_agent_compact_revision: "openagents-agent-compact-v1",
+      },
+    );
   });
 
   test("rejects duplicate forms and long technical nouns", () => {
@@ -91,6 +108,19 @@ describe("STE profiles and glossary", () => {
       JSON.stringify({ steIssue: 9, entries: [{ permittedForms: ["use", "used"] }] }),
     );
     expect(dictionaryWords(path)).toEqual(new Set(["use", "used"]));
+  });
+
+  test("rejects duplicate agent compact forms", () => {
+    expect(
+      validateAgentCompactTerms({
+        revision: "test",
+        baseGlossaryRevision: "test",
+        terms: [
+          { term: "lane", permittedForms: ["lane"], meaning: "A work unit." },
+          { term: "other", permittedForms: ["LANE"], meaning: "Another work unit." },
+        ],
+      }),
+    ).toContain("duplicate agent compact form: LANE");
   });
 });
 

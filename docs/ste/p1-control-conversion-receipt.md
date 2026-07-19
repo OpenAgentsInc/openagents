@@ -37,6 +37,18 @@ The ledger generator refreshed only the baseline for each specified migration fi
 The semantic checker refreshed only the root invariant baseline.
 This action did not reset the baseline for other files.
 
+## Agent compact clarification
+
+The RC.25 release has separate human and agent changelogs.
+The policy now uses this dual-audience pattern.
+Human text uses the base STE profile.
+Agent text should also use that profile when possible.
+
+The `openagents-agent-compact-v1` overlay permits controlled technical terms and labeled record fragments.
+It applies only to an identified agent section or agent document.
+It cannot relax authority, safety, evidence, or ambiguity controls.
+The strict lexical check limits the expanded terms to that identified text.
+
 ## Author templates
 
 - `docs/ste/templates/audit.md`

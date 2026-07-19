@@ -2,7 +2,7 @@
 
 - Standard: ASD-STE100 Issue 9
 - Glossary revision: `openagents-ste-glossary-v1`
-- Policy revision: `openagents-ste-policy-v1`
+- Policy revision: `openagents-ste-policy-v2`
 - Scope: OpenAgents technical documents and specifications
 - Status: active migration control
 
@@ -11,6 +11,21 @@
 Write all new technical text in Simplified Technical English (STE).
 Use the rules in ASD-STE100 Issue 9.
 Use the approved OpenAgents terms in [`glossary.v1.json`](./glossary.v1.json).
+
+## Audience profiles
+
+Use the base STE profile for human-facing text.
+Also use it for agent-facing text when it gives a clear and short result.
+
+Some agent records need dense technical data.
+Use the [agent compact profile](./agent-compact-profile.v1.md) for these records.
+The profile adds [controlled terms](./agent-compact-terms.v1.json) and labeled record fragments.
+It does not relax safety, authority, evidence, or ambiguity controls.
+Strict lexical checks permit the extension only in an identified agent section.
+
+A dual-audience document must identify the human and agent sections.
+The agent extension applies only to the identified agent section.
+Do not make human instructions depend on an agent section.
 
 Do not copy the ASD dictionary into this repository.
 Use an authorized dictionary file for a strict lexical check.

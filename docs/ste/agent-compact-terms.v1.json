@@ -1,0 +1,47 @@
+{
+  "revision": "openagents-agent-compact-v1",
+  "baseGlossaryRevision": "openagents-ste-glossary-v1",
+  "audience": "agent",
+  "terms": [
+    {
+      "term": "typecheck",
+      "permittedForms": ["typecheck", "typechecks", "typechecked"],
+      "meaning": "Examine source types without a production build."
+    },
+    {
+      "term": "smoke",
+      "permittedForms": ["smoke", "smokes"],
+      "meaning": "A small test of an important product path."
+    },
+    {
+      "term": "proof rung",
+      "permittedForms": ["proof rung", "proof rungs"],
+      "meaning": "A named level in the OpenAgents evidence sequence."
+    },
+    {
+      "term": "lane",
+      "permittedForms": ["lane", "lanes"],
+      "meaning": "A claimed and limited unit of agent work."
+    },
+    {
+      "term": "fence",
+      "permittedForms": ["fence", "fences", "fenced"],
+      "meaning": "A version or generation check that rejects stale work."
+    },
+    {
+      "term": "fail-closed",
+      "permittedForms": ["fail-closed"],
+      "meaning": "A state that rejects an action when required proof is absent."
+    },
+    {
+      "term": "source-derived",
+      "permittedForms": ["source-derived"],
+      "meaning": "Made from an identified source with recorded provenance."
+    },
+    {
+      "term": "byte-exact",
+      "permittedForms": ["byte-exact"],
+      "meaning": "Equal at the byte level."
+    }
+  ]
+}

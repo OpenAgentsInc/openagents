@@ -1,5 +1,6 @@
 {
-  "policyRevision": "openagents-ste-policy-v1",
+  "policyRevision": "openagents-ste-policy-v2",
+  "agentCompactRevision": "openagents-agent-compact-v1",
   "steIssue": 9,
   "glossaryRevision": "openagents-ste-glossary-v1",
   "governedExtensions": [".md", ".mdx", ".rst", ".adoc", ".txt", ".tla", ".cfg"],

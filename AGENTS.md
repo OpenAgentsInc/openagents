@@ -16,6 +16,9 @@ previous repository shape.
 - Follow [`docs/ste/README.md`](docs/ste/README.md) for profiles, source data,
   inspections, and migration states.
 - Use the approved OpenAgents terms in the versioned glossary.
+- Prefer STE for agent communication.
+- Use the agent compact profile only when its controlled extensions make a technical record faster or less ambiguous.
+- Do not apply the agent compact profile to human-facing text.
 - Do not copy the ASD dictionary into the repository. Use an authorized local
   dictionary for strict lexical checks.
 - Run the STE check for each document change. Do not add a structural defect

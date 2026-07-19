@@ -17,6 +17,8 @@ export interface SteProfile {
   readonly source: string | null;
   readonly replacement: string | null;
   readonly ste_accepted_screening_rules?: readonly ("STE-2.4" | "STE-3.6")[];
+  readonly ste_audience?: "human" | "agent" | "dual";
+  readonly ste_agent_compact_revision?: "openagents-agent-compact-v1";
 }
 
 export interface SteDiagnostic {
@@ -32,8 +34,19 @@ export interface StructuralCounts {
   readonly [rule: string]: number;
 }
 
+export interface AgentCompactTerms {
+  readonly revision: string;
+  readonly baseGlossaryRevision: string;
+  readonly terms: ReadonlyArray<{
+    readonly term: string;
+    readonly permittedForms: readonly string[];
+    readonly meaning: string;
+  }>;
+}
+
 export interface CheckerConfig {
   readonly policyRevision: string;
+  readonly agentCompactRevision: "openagents-agent-compact-v1";
   readonly steIssue: 9;
   readonly glossaryRevision: string;
   readonly governedExtensions: readonly string[];
@@ -53,6 +66,21 @@ const markdownCodeFencePattern = /^\s*(```|~~~)/;
 export const readCheckerConfig = (root: string): CheckerConfig =>
   JSON.parse(readFileSync(`${root}/docs/ste/checker-config.v1.json`, "utf8")) as CheckerConfig;
 
+export const validateAgentCompactTerms = (value: AgentCompactTerms): readonly string[] => {
+  const errors: string[] = [];
+  const forms = new Set<string>();
+  for (const entry of value.terms) {
+    if (!entry.term || !entry.meaning || entry.permittedForms.length === 0)
+      errors.push("each agent compact term needs a term, meaning, and permitted form");
+    for (const form of entry.permittedForms) {
+      const key = form.toLowerCase();
+      if (forms.has(key)) errors.push(`duplicate agent compact form: ${form}`);
+      forms.add(key);
+    }
+  }
+  return errors;
+};
+
 export const isGovernedPath = (path: string, config: CheckerConfig): boolean =>
   config.governedExtensions.includes(extname(path).toLowerCase());
 
@@ -66,6 +94,7 @@ export const deriveProfile = (path: string, config: CheckerConfig): SteProfile =
     path.endsWith("/INVARIANTS.md");
   const publicText =
     path.includes("/public/") || path.startsWith("docs/api/") || path.startsWith("docs/guides/");
+  const dualChangelog = /^docs\/changelog\/\d{4}-\d{2}-\d{2}-desktop-.+\.md$/.test(path);
 
   return {
     path,
@@ -95,6 +124,12 @@ export const deriveProfile = (path: string, config: CheckerConfig): SteProfile =
         : "Third-party reference material"
       : null,
     replacement: null,
+    ...(dualChangelog
+      ? {
+          ste_audience: "dual" as const,
+          ste_agent_compact_revision: config.agentCompactRevision,
+        }
+      : {}),
   };
 };
 
@@ -137,6 +172,25 @@ export const extractProse = (input: string): readonly ProseLine[] => {
     if (text) output.push({ number: index + 1, text, startsBlock });
   }
   return output;
+};
+
+export const agentCompactLineNumbers = (
+  input: string,
+  audience: SteProfile["ste_audience"],
+): ReadonlySet<number> => {
+  const lines = input.split(/\r?\n/);
+  if (audience === "agent") return new Set(lines.map((_, index) => index + 1));
+  if (audience !== "dual") return new Set();
+
+  const selected = new Set<number>();
+  let inAgentSection = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (/^##\s+Agent changelog\s*$/.test(line)) inAgentSection = true;
+    else if (/^##\s+/.test(line)) inAgentSection = false;
+    if (inAgentSection) selected.add(index + 1);
+  }
+  return selected;
 };
 
 const wordCount = (text: string): number =>

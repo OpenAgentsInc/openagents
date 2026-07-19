@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-12",
-  "sourceTreeSha256": "59fc1a3687fe060d18e21af3b2a57021c9b603fccd7d8ea797e14fe6746d0d09",
+  "sourceTreeSha256": "ec3562bc9682016ac0dc4c5f6c87f78667ed0508b79af5372d34b21553ed549e",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2273,7 +2273,7 @@
       "owner": "OpenAgents documentation",
       "disposition": "retain-active-audit",
       "dispatch": false,
-      "sha256": "af3ad980c201578089f2775d4ed30c26f51695fda3a885b51fbf7961c46bcccf",
+      "sha256": "50de32c313e1883fe8bd235329ea7ae791d1e40f3561a897e1bb364b00ec65f1",
       "status": "active company requirement with incomplete repository enforcement",
       "snapshot": "`030754d52632673f17cdd7b2a71a93866dd34800`",
       "reviewedAt": "2026-07-12",

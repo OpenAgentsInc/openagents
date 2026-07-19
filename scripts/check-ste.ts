@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   applyScreeningReview,
+  agentCompactLineNumbers,
   countDiagnostics,
   dictionaryWords,
   extractProse,
@@ -10,6 +11,7 @@ import {
   isGovernedPath,
   readCheckerConfig,
   validateGlossary,
+  validateAgentCompactTerms,
   type SteDiagnostic,
   type SteProfile,
 } from "./ste-core";
@@ -33,13 +35,28 @@ const glossaryValue = JSON.parse(readFileSync(`${root}/docs/ste/glossary.v1.json
   revision: string;
   terms: Array<{ permittedForms: string[]; prohibitedSynonyms: string[] }>;
 };
-const configurationErrors = [...validateGlossary(glossaryValue)];
+const agentCompactValue = JSON.parse(
+  readFileSync(`${root}/docs/ste/agent-compact-terms.v1.json`, "utf8"),
+) as {
+  revision: string;
+  baseGlossaryRevision: string;
+  terms: Array<{ term: string; permittedForms: string[] }>;
+};
+const configurationErrors = [
+  ...validateGlossary(glossaryValue),
+  ...validateAgentCompactTerms(agentCompactValue),
+];
 if (
   ledger.steIssue !== 9 ||
   ledger.glossaryRevision !== config.glossaryRevision ||
   glossaryValue.revision !== config.glossaryRevision
 )
   configurationErrors.push("ledger, checker, and glossary revisions must agree");
+if (
+  agentCompactValue.revision !== config.agentCompactRevision ||
+  agentCompactValue.baseGlossaryRevision !== config.glossaryRevision
+)
+  configurationErrors.push("agent compact, checker, and glossary revisions must agree");
 if (configurationErrors.length > 0) {
   for (const error of configurationErrors) console.error(`STE-CONFIG: ${error}`);
   process.exit(1);
@@ -98,6 +115,11 @@ const companyForms = new Set(
     .flatMap((term) => term.permittedForms)
     .flatMap((form) => form.toLowerCase().split(/\s+/)),
 );
+const agentCompactForms = new Set(
+  agentCompactValue.terms
+    .flatMap((term) => term.permittedForms)
+    .flatMap((form) => form.toLowerCase().split(/\s+/)),
+);
 
 for (const path of selected) {
   const profile = profiles.get(path);
@@ -107,6 +129,13 @@ for (const path of selected) {
   }
   if (profile.ste_issue !== 9 || profile.ste_glossary_revision !== config.glossaryRevision)
     errors.push(`${path}: STE-PROFILE: use Issue 9 and ${config.glossaryRevision}`);
+  if (
+    profile.ste_agent_compact_revision &&
+    profile.ste_agent_compact_revision !== config.agentCompactRevision
+  )
+    errors.push(`${path}: STE-PROFILE: use ${config.agentCompactRevision}`);
+  if (profile.ste_agent_compact_revision && !["agent", "dual"].includes(profile.ste_audience ?? ""))
+    errors.push(`${path}: STE-PROFILE: identify an agent or dual audience`);
   if (
     (profile.ste_status === "inspected" || profile.ste_status === "source-data") &&
     (!profile.ste_reviewer || !profile.ste_reviewed_at) &&
@@ -125,10 +154,18 @@ for (const path of selected) {
   }
 
   if (strict && approvedWords) {
+    const agentLines = profile.ste_agent_compact_revision
+      ? agentCompactLineNumbers(text, profile.ste_audience)
+      : new Set<number>();
     for (const line of extractProse(text)) {
       for (const match of line.text.matchAll(/\b[A-Za-z]+(?:-[A-Za-z0-9]+)*\b/g)) {
         const word = match[0].toLowerCase();
-        if (approvedWords.has(word) || companyForms.has(word)) continue;
+        if (
+          approvedWords.has(word) ||
+          companyForms.has(word) ||
+          (agentLines.has(line.number) && agentCompactForms.has(word))
+        )
+          continue;
         diagnostics.push({
           rule: "STE-1.1",
           path,
