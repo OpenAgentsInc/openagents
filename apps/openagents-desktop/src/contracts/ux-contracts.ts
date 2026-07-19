@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-18.1",
+    version: "2026-07-18.2",
     contracts: [
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
@@ -4921,11 +4921,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       },
       {
         contractId: "openagents_desktop.workspace.files_sidebar_command_toggle.v1",
-        state: "pending",
+        state: "enforced",
         surface: "openagents-desktop",
         productArea: "Desktop current-worktree Files sidebar",
         enforcementTier: "test-sweep",
-        blockerRefs: ["github:OpenAgentsInc/openagents#9007"],
+        blockerRefs: [],
         source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-18" },
         statement:
           "In OpenAgents Desktop, Command-E toggles the tree of the current working directory in the right sidebar.",
@@ -4955,15 +4955,31 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
           {
             id: "openagents_desktop.workspace.files_sidebar_command_toggle.dom",
-            kind: "planned",
+            kind: "bun-test",
             mode: "dom",
-            ref: "github:OpenAgentsInc/openagents#9007",
+            ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
             description:
-              "Follow-up wiring proves the effective shortcut toggles the mounted current-worktree Files sidebar without intercepting editable content.",
+              "Proves a typed request opens and closes the mounted Files right sidebar while retaining the selected coding-session grant projection.",
+          },
+          {
+            id: "openagents_desktop.workspace.files_sidebar_command_toggle.effective_binding",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/command-shortcuts.test.ts",
+            description:
+              "Proves platform defaults, user overrides, conflicts, editable targets, prevented events, and key repeat are handled without a second shortcut authority.",
+          },
+          {
+            id: "openagents_desktop.workspace.files_sidebar_command_toggle.electron",
+            kind: "visual-smoke",
+            mode: "e2e",
+            ref: "apps/openagents-desktop/src/main.ts",
+            description:
+              "The built Electron smoke synthesizes the effective Command-E/Control-E chord, proves the current-worktree Files projection opens in the right sidebar, and repeats the chord to close it.",
           },
         ],
         verification:
-          "Issue #9006 admits the registry and pure transition. Issue #9007 wires and verifies the mounted shortcut path before this first delivery is complete.",
+          "Issues #9006 and #9007 land the registry, guarded effective-binding matcher, Effect intent/request state, mounted right-sidebar transition, current-worktree boundary proof, and built Electron open/close smoke in the normal Desktop verification gate.",
       },
     ],
   };

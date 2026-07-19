@@ -57,6 +57,9 @@ The ordered implementation ledger is:
    effective shortcut to the mounted right sidebar, proves current-worktree
    scope and toggle behavior, and records the packaged verification boundary.
 
+Implementation status: #9006 and #9007 have landed the contract, typed toggle,
+effective-binding guard, mounted current-worktree tree, and packaged proof packet.
+
 This quick-files slice is a prerequisite interaction rung, not a substitute
 for IDE-00 through IDE-07. The larger plan continues after the two issues land.
 

@@ -31,11 +31,14 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
     expect(main).toContain('.filter(command => command.id !== "window.fullscreen_toggle")')
     expect(main).toContain('role: "togglefullscreen"')
     expect(main).toContain("bindingForNativeMenu(fullscreenCommand)")
+    expect(main).toContain('command.id === "workspace.files" ? { registerAccelerator: false }')
     expect(main).toContain("DesktopCommandReadyChannel")
     expect(preload).toContain("decodeDesktopDeferredCommandOrNull")
     expect(preload).toContain("ipcRenderer.on(DesktopCommandEventChannel")
     expect(boot).toContain("bridge?.commands?.onCommand")
     expect(boot).toContain("resolveDesktopDeferredCommandIntent")
+    expect(boot).toContain("desktopCommandShortcutMatches")
+    expect(boot).toContain('IntentRef("DesktopFilesSidebarToggled"')
     expect(boot).toContain('source: "restore"')
     // The deferred-command rejection still surfaces a visible notice (CUT-15),
     // now through the transient command-notice controller (self-dismissing
@@ -46,7 +49,7 @@ describe("contract openagents_desktop.commands.host_routing.v1", () => {
   test("parses only exact closed command URLs and ignores unrelated argv", () => {
     expect(parseDesktopCommandUrl("openagents://command/workspace.files")).toMatchObject({
       commandId: "workspace.files",
-      arguments: { kind: "workspace", workspace: "files" },
+      arguments: { kind: "none" },
       source: "deep_link",
     })
     for (const invalid of [

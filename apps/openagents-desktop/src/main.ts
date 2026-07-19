@@ -5514,7 +5514,7 @@ const smokeWorkspaceEditorRecovery = `(async () => {
   const deadline = Date.now() + 10000
   // UX-4 (#8790): no Files dock icon — after the reload mounts, re-enter the
   // Files workspace exactly like a keyboard user: canonical ⌘K palette chord,
-  // then the closed "Open Files" command row (CW-AC-12 identity).
+  // then the closed "Toggle Files" command row (CW-AC-12 identity).
   while (Date.now() < deadline && document.querySelector('[data-en-key="shell-transcript"]') === null) {
     await wait(50)
   }
@@ -6962,6 +6962,57 @@ const smokeCmdNNewChat = `(async () => {
   }
 })()`
 
+const smokeCmdEOpenFiles = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const bindings = await globalThis.openagentsDesktop?.commands?.bindings?.()
+  const filesBinding = bindings?.rows?.find?.((row) => row.commandId === "workspace.files") ?? null
+  const workingDirectory = await globalThis.openagentsDesktop?.workingDirectory?.()
+  const codingCatalog = await globalThis.openagentsDesktop?.codingCatalog?.snapshot?.()
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  const darwin = ${JSON.stringify(process.platform === "darwin")}
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "e",
+    metaKey: darwin,
+    ctrlKey: !darwin,
+    bubbles: true,
+    cancelable: true,
+  }))
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector('[aria-label="Files surface"]') === null) {
+    await wait(50)
+  }
+  const selected = document.querySelector('[role="tab"][aria-selected="true"]')
+  const tree = document.querySelector('[aria-label="Workspace files"]')
+  return {
+    ok: document.querySelector('[aria-label="Files surface"]') !== null &&
+      tree !== null && (selected?.textContent ?? "").includes("Files") &&
+      typeof codingCatalog?.selectedSessionRef === "string",
+    selected: selected?.textContent ?? null,
+    tree: tree !== null,
+    catalogSelected: codingCatalog?.selectedSessionRef ?? null,
+    effectiveBindings: filesBinding?.effectiveBindings ?? null,
+    bindingConflict: filesBinding?.conflict ?? null,
+    workingDirectoryReady: typeof workingDirectory === "string" && workingDirectory.length > 0,
+  }
+})()`
+
+const smokeCmdECloseFiles = `(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+  const darwin = ${JSON.stringify(process.platform === "darwin")}
+  window.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "e",
+    metaKey: darwin,
+    ctrlKey: !darwin,
+    bubbles: true,
+    cancelable: true,
+  }))
+  const deadline = Date.now() + 10000
+  while (Date.now() < deadline && document.querySelector('.oa-react-surface-panel') !== null) {
+    await wait(50)
+  }
+  return { ok: document.querySelector('.oa-react-surface-panel') === null }
+})()`
+
 const captureShot = async (window: BrowserWindow, name: string): Promise<void> => {
   if (smokeShotsDir === undefined || smokeShotsDir === "") return
   const image = await window.webContents.capturePage()
@@ -7217,6 +7268,9 @@ const runSmoke = (window: BrowserWindow): void => {
           await step("react-provider-auth-switch", smokeReactProviderAuthSwitch)
           await step("react-sidebar-destinations", smokeReactSidebarDestinations)
           await captureShot(window, "react-sidebar-expanded")
+          await step("react-cmd-e-files-open", smokeCmdEOpenFiles)
+          await captureShot(window, "react-command-e-files")
+          await step("react-cmd-e-files-close", smokeCmdECloseFiles)
           await step("react-image-attachment", smokeReactImageAttachment)
           const imageReceipt = codexAppServerSmoke?.receipt()
           if (imageReceipt?.localImageTurns !== 1 ||
@@ -7280,8 +7334,9 @@ const runSmoke = (window: BrowserWindow): void => {
         await step("first-keystroke-lands-in-composer", smokeFirstKeystrokeLandsInComposer)
         await step("runtime-gateway-bootstrap", smokeRuntimeGatewayBootstrap)
         await step("workspace-tree-refresh-watch-bridge", smokeWorkspaceTreeBridge)
-        // UX-4 (#8790): Files lost its dock icon — route through the closed
-        // canonical command identity, exactly like a palette/native-menu user.
+        // Compatibility smoke retains the canonical command-host route. The
+        // ordinary React product smoke above owns the Command-E right-panel
+        // interaction proof added by #9007.
         const filesCommand = desktopCanonicalCommandRegistry.find(command => command.id === "workspace.files")
         if (filesCommand === undefined) throw new Error("canonical workspace.files command missing")
         desktopCommandHost.enqueue(deferredDesktopCommand(
@@ -7424,6 +7479,11 @@ const installDesktopCommandMenu = (bindings?: DesktopCommandBindingProjection): 
     ...(bindingForNativeMenu(command) === undefined
       ? {}
       : { accelerator: bindingForNativeMenu(command) }),
+    // A binary renderer toggle cannot tolerate Electron delivering the same
+    // chord through both the native accelerator and the guarded DOM listener.
+    // Keep the effective shortcut visible in the menu, but let the renderer
+    // own registration so editable targets and user conflicts remain honored.
+    ...(command.id === "workspace.files" ? { registerAccelerator: false } : {}),
     click: () => {
       dispatchNativeDesktopCommand(command, {
         hasOpenWindow: () => BrowserWindow.getAllWindows().some(window => !window.isDestroyed()),

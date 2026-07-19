@@ -848,6 +848,49 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
   })
 
+  test("consumes typed Files-sidebar requests as a binary right-panel toggle", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    const session = {
+      sessionRef: "session-command-e", workContextRef: "context-command-e", grantRef: "grant-command-e",
+      projectRef: "project-command-e", repositoryRef: "repository-command-e", worktreeRef: "worktree-command-e",
+      projectLabel: "OpenAgents", repositoryLabel: "openagents", worktreeLabel: "main",
+      state: "active" as const, lastActiveAt: "2026-07-18T12:00:00.000Z", recoveryReason: null,
+    }
+    const initial: DesktopShellState = {
+      ...base,
+      codingCatalog: { ...base.codingCatalog, selectedSessionRef: session.sessionRef, sessions: [session] },
+      workspaceBrowser: { ...base.workspaceBrowser, phase: "ready", grantRef: session.grantRef },
+    }
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={initial} report={report} />)
+    expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
+
+    const opened: DesktopShellState = {
+      ...initial,
+      workspace: "files",
+      presentation: {
+        ...initial.presentation,
+        filesSidebarRequest: { version: 1, open: true },
+      },
+    }
+    await render(root, <WorkbenchShell state={opened} report={report} />)
+    expect(container.querySelector('[aria-label="Files surface"]')).not.toBeNull()
+
+    const closed: DesktopShellState = {
+      ...opened,
+      workspace: "chat",
+      presentation: {
+        ...opened.presentation,
+        filesSidebarRequest: { version: 2, open: false },
+      },
+    }
+    await render(root, <WorkbenchShell state={closed} report={report} />)
+    expect(container.querySelector(".oa-react-surface-panel")).toBeNull()
+  })
+
   test("mounts grant-scoped file tabs and exact read-only rich diff actions", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
@@ -961,7 +1004,11 @@ describe("React workbench shell", () => {
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={{
       ...fixtureState(),
-      presentation: { sidebarCollapsed: true, sessionSearchOpen: false },
+      presentation: {
+        sidebarCollapsed: true,
+        sessionSearchOpen: false,
+        filesSidebarRequest: { version: 0, open: false },
+      },
     }} report={report} />)
     const trigger = container.querySelector<HTMLButtonElement>(".oa-react-sidebar-expand")
     await interact(() => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", metaKey: true, bubbles: true })))
@@ -1019,7 +1066,11 @@ describe("React workbench shell", () => {
     expect(received.at(-1)).toEqual({ name: "DesktopSidebarCollapsedChanged", payload: true })
     await render(root, <WorkbenchShell state={{
       ...chat,
-      presentation: { sidebarCollapsed: true, sessionSearchOpen: false },
+      presentation: {
+        sidebarCollapsed: true,
+        sessionSearchOpen: false,
+        filesSidebarRequest: { version: 0, open: false },
+      },
     }} report={report} />)
     expect(container.querySelector(".oa-react-workbench")?.getAttribute("data-rail-collapsed")).toBe("true")
     const expand = container.querySelector<HTMLButtonElement>(".oa-react-sidebar-expand")

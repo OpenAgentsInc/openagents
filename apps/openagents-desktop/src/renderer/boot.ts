@@ -141,6 +141,7 @@ import {
   type DesktopDeferredCommand,
 } from "../desktop-command-contract.ts"
 import { resolveDesktopDeferredCommandIntent } from "./command-registry.ts"
+import { desktopCommandShortcutMatches } from "./command-shortcuts.ts"
 import { decodeDesktopPreviewChangeEvent } from "../dev-preview-contract.ts"
 import { desktopPreviewReloadRisk } from "./dev-preview.ts"
 
@@ -1513,7 +1514,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       const resolution = resolveDesktopDeferredCommandIntent(command, {
         sessionReady: current.settings.openAgentsSession === "session_ready",
         verifiedOwner: current.settings.openAgentsSession === "session_ready",
-        workspaceReady: current.workspaceBrowser.grantRef !== null || current.codingCatalog.sessions.length > 0,
+        workspaceReady: current.workingDirectory !== null || current.workspaceBrowser.grantRef !== null || current.codingCatalog.sessions.length > 0,
       })
       if (resolution.state === "rejected") {
         // CUT-15: the command IS still rejected/ignored. Only the notice
@@ -1657,6 +1658,27 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       void Effect.runPromise(
         registry.dispatch(resolveIntentRef(IntentRef("DesktopFullscreenToggled", StaticPayload(null)))),
       )
+    }
+    const onFilesSidebarShortcut = (event: KeyboardEvent): void => {
+      const current = Effect.runSync(SubscriptionRef.get(state))
+      const target = event.target
+      const editable = target instanceof HTMLElement &&
+        target.closest("input, textarea, [contenteditable='true']") !== null
+      const matched = desktopCommandShortcutMatches(
+        current.commandBindings,
+        "workspace.files",
+        bridge?.platform ?? "unknown",
+        event,
+        editable,
+      )
+      if (!matched) return
+      const workspaceReady = current.workingDirectory !== null || current.workspaceBrowser.grantRef !== null || current.codingCatalog.sessions.length > 0
+      if (!workspaceReady) return
+      event.preventDefault()
+      event.stopPropagation()
+      void Effect.runPromise(
+        registry.dispatch(resolveIntentRef(IntentRef("DesktopFilesSidebarToggled", StaticPayload(null)))),
+      ).catch(() => undefined)
     }
     const onCommandPaletteShortcut = (event: KeyboardEvent): void => {
       const target = event.target
@@ -1862,6 +1884,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     })
     window.addEventListener("keydown", onNewChatShortcut)
     window.addEventListener("keydown", onFullscreenShortcut)
+    window.addEventListener("keydown", onFilesSidebarShortcut, true)
     window.addEventListener("keydown", onCommandPaletteShortcut)
     window.addEventListener("keydown", onHistoryModifierDown, true)
     window.addEventListener("keydown", onHistoryConversationShortcut)
@@ -1874,6 +1897,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       removeComposerImageAcquisition()
       window.removeEventListener("keydown", onNewChatShortcut)
       window.removeEventListener("keydown", onFullscreenShortcut)
+      window.removeEventListener("keydown", onFilesSidebarShortcut, true)
       window.removeEventListener("keydown", onCommandPaletteShortcut)
       window.removeEventListener("keydown", onHistoryModifierDown, true)
       window.removeEventListener("keydown", onHistoryConversationShortcut)
@@ -1888,10 +1912,15 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // scale the shared theme through the token pipeline; reduced-motion resolves
     // to a root data attribute the app CSS honors. Defaults are identity, so the
     // common path (and the no-preload smoke path) is unchanged.
-    const preferences = yield* Effect.promise(loadDesktopPreferences)
+    const [preferences, commandBindings] = yield* Effect.promise(() => Promise.all([
+      loadDesktopPreferences(),
+      commandBindingHost.snapshot().catch(() => null),
+    ]))
     yield* SubscriptionRef.update(state, current => ({
       ...current,
+      commandBindings,
       presentation: {
+        ...current.presentation,
         sidebarCollapsed: preferences.presentation.sidebarCollapsed,
         // Disclosure is intentionally launch-ephemeral. The authoritative
         // query remains in history state and is never duplicated in prefs.

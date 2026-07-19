@@ -51,7 +51,7 @@ export const selectVoiceAction = (text: string): VoiceActionRoute => {
   if (best.score < 0.43 || margin < 0.08) return { kind: "message", text: bounded, confidence: best.score }
   if (best.route.kind === "interrupt") return { kind: "interrupt", confidence: best.score }
   const registered = desktopCanonicalCommandRegistry.some(command =>
-    command.id === best.route.commandId && command.arguments === "workspace" && automaticCommandIds.has(command.id))
+    command.id === best.route.commandId && automaticCommandIds.has(command.id))
   return registered
     ? { kind: "focus", commandId: best.route.commandId, confidence: best.score }
     : { kind: "editable_fallback", text: bounded, confidence: best.score }

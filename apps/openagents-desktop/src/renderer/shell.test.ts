@@ -117,6 +117,7 @@ test("sidebar presentation changes remain Effect-owned and search disclosure is 
   expect((await Effect.runPromise(SubscriptionRef.get(state))).presentation).toEqual({
     sidebarCollapsed: true,
     sessionSearchOpen: true,
+    filesSidebarRequest: { version: 0, open: false },
   })
 })
 
@@ -2198,8 +2199,7 @@ describe("pure transitions", () => {
     const files = nodeByKey(view, "desktop-command-workspace.files") as {
       onPress?: { name?: string; payload?: unknown }
     }
-    expect(files.onPress?.name).toBe("DesktopWorkspaceSelected")
-    expect(JSON.stringify(files.onPress)).toContain("files")
+    expect(files.onPress?.name).toBe("DesktopFilesSidebarToggled")
     expect(nodeByKey(view, "desktop-command-palette-close")?._tag).toBe("Button")
   })
 
@@ -2497,7 +2497,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
     )
   })
 
-  test("palette command uses the same workspace handler as the visible dock", async () => {
+  test("palette command toggles the Files sidebar request through one typed intent", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const state = yield* SubscriptionRef.make(withCommandPalette(baseState, true))
@@ -2510,9 +2510,15 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           onPress: Parameters<typeof resolveIntentRef>[0]
         }
         yield* registry.dispatch(resolveIntentRef(command.onPress, null))
-        const after = yield* SubscriptionRef.get(state)
-        expect(after.workspace).toBe("files")
-        expect(after.commandPaletteOpen).toBe(false)
+        const opened = yield* SubscriptionRef.get(state)
+        expect(opened.workspace).toBe("files")
+        expect(opened.commandPaletteOpen).toBe(false)
+        expect(opened.presentation.filesSidebarRequest).toEqual({ version: 1, open: true })
+
+        yield* registry.dispatch(resolveIntentRef(command.onPress, null))
+        const closed = yield* SubscriptionRef.get(state)
+        expect(closed.workspace).toBe("chat")
+        expect(closed.presentation.filesSidebarRequest).toEqual({ version: 2, open: false })
       }),
     )
   })
@@ -4561,7 +4567,7 @@ describe("EP250 window + sidebar owner contracts", () => {
     const entry = desktopCanonicalCommandRegistry.find((command) => command.id === "workspace.files")
     expect(entry).toMatchObject({
       label: "Toggle Files",
-      intentName: "DesktopWorkspaceSelected",
+      intentName: "DesktopFilesSidebarToggled",
       defaultBindings: ["Meta+E", "Control+E"],
       palette: true,
     })

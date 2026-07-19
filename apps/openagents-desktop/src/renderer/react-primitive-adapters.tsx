@@ -439,6 +439,7 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
   }
   const [layout, setLayout] = useState(readLayout)
   const [addOpen, setAddOpen] = useState(false)
+  const consumedFilesRequestVersion = useRef(state.presentation.filesSidebarRequest.version)
   const update = (action: DesktopSurfaceLayoutAction): void => setLayout(current => reduceDesktopSurfaceLayout(current, action))
   useEffect(() => setLayout(readLayout()), [storageKey])
   useEffect(() => {
@@ -447,6 +448,19 @@ export const DesktopSurfaceManager = ({ state, report, conversation }: {
   useEffect(() => {
     if (state.workspace === "files" || state.workspace === "review") update({ type: "open", surface: state.workspace })
   }, [state.workspace])
+  useEffect(() => {
+    const request = state.presentation.filesSidebarRequest
+    if (request.version === consumedFilesRequestVersion.current) return
+    consumedFilesRequestVersion.current = request.version
+    const next = reduceDesktopSurfaceLayout(layout, {
+      type: request.open ? "open" : "close",
+      surface: "files",
+    })
+    setLayout(next)
+    if (!request.open && next.active === "review") {
+      dispatch(report, "DesktopWorkspaceSelected", "review")
+    }
+  }, [layout, report, state.presentation.filesSidebarRequest])
   const activate = (surface: DesktopSurfaceKind): void => {
     update({ type: "open", surface })
     if (surface === "terminal") {
