@@ -130,11 +130,7 @@ const findDevAppPid = (requiredProcessGroupId) => {
   if (result.status !== 0) return null;
   for (const value of (result.stdout ?? "").trim().split(/\s+/u)) {
     const pid = Number.parseInt(value, 10);
-    if (
-      Number.isSafeInteger(pid) &&
-      pid > 0 &&
-      processGroupId(pid) === requiredProcessGroupId
-    )
+    if (Number.isSafeInteger(pid) && pid > 0 && processGroupId(pid) === requiredProcessGroupId)
       return pid;
   }
   return null;
@@ -148,7 +144,21 @@ const requestGracefulQuit = (oldAppPid) => {
   }
 };
 
-const notifyFailure = (message) => {
+export const claimFailureNotification = (claimPath) => {
+  mkdirSync(path.dirname(claimPath), { recursive: true, mode: 0o700 });
+  try {
+    const claimFd = openSync(claimPath, "wx", 0o600);
+    fsyncSync(claimFd);
+    closeSync(claimFd);
+    return true;
+  } catch (error) {
+    if (error?.code === "EEXIST") return false;
+    throw error;
+  }
+};
+
+const notifyFailure = (message, claimPath) => {
+  if (!claimFailureNotification(claimPath)) return false;
   const escaped = bounded(message, 220).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
   spawnSync(
     "/usr/bin/osascript",
@@ -157,6 +167,7 @@ const notifyFailure = (message) => {
       stdio: "ignore",
     },
   );
+  return true;
 };
 
 const realDependencies = (config) => ({
@@ -286,7 +297,8 @@ const realDependencies = (config) => ({
     const log = readFileSync(config.logPath, "utf8");
     return log.includes("[openagents-desktop] renderer dev server ready at");
   },
-  notifyFailure,
+  notifyFailure: (message) =>
+    notifyFailure(message, `${config.receiptPath}.failure-notification-claimed`),
   writeGeneration: ({ newDevPid, newAppPid }) => {
     const document = {
       schemaVersion: "openagents.desktop.dev_generation.v1",

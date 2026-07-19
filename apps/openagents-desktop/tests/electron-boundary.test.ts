@@ -146,7 +146,9 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(launcher).toContain("pnpm install --frozen-lockfile --ignore-scripts");
     expect(launcher).toContain('node "$electron_package/install.js"');
     expect(launcher).toContain('if [[ "${1:-}" == "--restart" ]]');
-    expect(launcher).toContain("/bin/launchctl submit");
+    expect(launcher).toContain('/bin/launchctl bootstrap "gui/$UID" "$launchd_plist_path"');
+    expect(launcher).toContain("/usr/bin/plutil -insert KeepAlive -bool false");
+    expect(launcher).not.toContain("/bin/launchctl submit");
     expect(launcher).toContain(
       'git -C "$source_repo" show "${target_sha}:apps/openagents-desktop/scripts/oa-dev-supervisor.mjs"',
     );
@@ -164,6 +166,7 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     );
     expect(restartSupervisor).toContain("detached: true");
     expect(restartSupervisor).toContain("schemaVersion: receiptSchema");
+    expect(restartSupervisor).toContain("claimFailureNotification");
   });
 
   test("main exposes fixed validated channels rather than arbitrary command authority", () => {
@@ -242,7 +245,9 @@ describe("Electron boundary (issue #8574 mandatory first-scaffold hardening)", (
     expect(main).toContain("resolveCodexSessionsRoot(");
     expect(main).toContain("smokeMode,");
     const isolatedAppProof = stripComments(read("src/isolated-app-proof.ts"));
-    expect(isolatedAppProof).toContain('path.join(input.smokeFixtureRoot, "codex-smoke", "sessions")');
+    expect(isolatedAppProof).toContain(
+      'path.join(input.smokeFixtureRoot, "codex-smoke", "sessions")',
+    );
     expect(isolatedAppProof).toContain("input.smokeMode");
   });
 
@@ -377,7 +382,8 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
             (reactHostFiles.has(name) &&
               (reactHostImport.test(specifier) ||
                 specifier === sharedReactWorkbenchImport ||
-                (name === "react-workspace-surfaces.tsx" && specifier === ownedPierreAdapterImport))),
+                (name === "react-workspace-surfaces.tsx" &&
+                  specifier === ownedPierreAdapterImport))),
           `${name} imports disallowed renderer dependency ${specifier}`,
         ).toBe(true);
       }

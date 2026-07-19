@@ -596,6 +596,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   bounded failure, and the `oa-dev` recovery command. Handoff or relaunch
   failure preserves an owner-visible receipt; expected supervised SIGTERM/143
   is lifecycle evidence, not an unexplained crash.
+- Each accepted restart is a one-shot launchd transaction with `KeepAlive`
+  disabled. A terminal coordinator outcome must never be relaunched implicitly,
+  and one request may claim at most one owner-visible failure notification;
+  retry requires a new explicit `oa-dev --restart` request.
 - This boundary is enforced by
   `apps/openagents-desktop/tests/oa-dev-supervisor.test.ts` and the launcher
   assertions in `apps/openagents-desktop/tests/electron-boundary.test.ts`.

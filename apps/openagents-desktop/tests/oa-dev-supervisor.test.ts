@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 type Exit = { code: number | null; signal: NodeJS.Signals | null };
 type SupervisorModule = {
   classifyDevExit: (exit: Exit) => string;
+  claimFailureNotification: (claimPath: string) => boolean;
   superviseRestart: (
     config: Record<string, unknown>,
     dependencies: Record<string, unknown>,
@@ -294,5 +295,17 @@ describe("oa-dev launchd restart supervisor", () => {
     );
     expect(supervisor.classifyDevExit({ code: 0, signal: null })).toBe("normal_exit");
     expect(supervisor.classifyDevExit({ code: 1, signal: null })).toBe("unexpected_exit");
+  });
+
+  test("allows at most one failure notification claim for a restart request", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-dev-notification-claim-"));
+    const claimPath = path.join(root, "restart.failure-notification-claimed");
+    try {
+      expect(supervisor.claimFailureNotification(claimPath)).toBe(true);
+      expect(existsSync(claimPath)).toBe(true);
+      expect(supervisor.claimFailureNotification(claimPath)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

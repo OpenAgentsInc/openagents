@@ -192,6 +192,7 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
   receipt_path="$restart_root/$request_ref.json"
   log_path="$restart_root/$request_ref.log"
   supervisor_path="$restart_root/$request_ref-supervisor.mjs"
+  launchd_plist_path="$restart_root/$request_ref.plist"
   label="com.openagents.desktop.dev-restart.$$.${target_sha[1,10]}"
   lock_token="$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
   candidate_lock="$restart_root/.active.lock.$$.${lock_token}"
@@ -209,7 +210,11 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
     restart_active=false
     if [[ -n "$active_owner_pid" ]] && kill -0 "$active_owner_pid" 2>/dev/null; then restart_active=true; fi
     if [[ -n "$active_coordinator_pid" ]] && kill -0 "$active_coordinator_pid" 2>/dev/null; then restart_active=true; fi
-    if [[ -n "$active_label" ]] && /bin/launchctl print "gui/$UID/$active_label" >/dev/null 2>&1; then restart_active=true; fi
+    active_launchd_pid=""
+    if [[ -n "$active_label" ]]; then
+      active_launchd_pid="$(/bin/launchctl print "gui/$UID/$active_label" 2>/dev/null | sed -n 's/^[[:space:]]*pid = \([0-9][0-9]*\)$/\1/p' | head -1)"
+    fi
+    if [[ -n "$active_launchd_pid" ]] && kill -0 "$active_launchd_pid" 2>/dev/null; then restart_active=true; fi
     if $restart_active; then
       rm -rf "$candidate_lock"
       echo "oa-dev: a supervised restart is already active${active_receipt:+; receipt: $active_receipt}" >&2
@@ -222,6 +227,9 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
       echo "oa-dev: restart lock is still initializing; retry" >&2
       exit 75
     fi
+    if [[ -n "$active_label" ]]; then
+      /bin/launchctl bootout "gui/$UID/$active_label" >/dev/null 2>&1 || true
+    fi
     rm -rf "$lock_dir"
     if ! node -e 'require("node:fs").renameSync(process.argv[1], process.argv[2])' "$candidate_lock" "$lock_dir" 2>/dev/null; then
       rm -rf "$candidate_lock"
@@ -230,7 +238,7 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
     fi
   fi
   if ! git -C "$source_repo" show "${target_sha}:apps/openagents-desktop/scripts/oa-dev-supervisor.mjs" > "$supervisor_path"; then
-    rm -rf "$lock_dir" "$supervisor_path"
+    rm -rf "$lock_dir" "$supervisor_path" "$launchd_plist_path"
     echo "oa-dev: target commit does not contain the restart supervisor" >&2
     exit 1
   fi
@@ -238,7 +246,7 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
   requested_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   pnpm_path="$(command -v pnpm)"
   if [[ -z "$pnpm_path" ]]; then
-    rm -rf "$lock_dir" "$supervisor_path"
+    rm -rf "$lock_dir" "$supervisor_path" "$launchd_plist_path"
     echo "oa-dev: pnpm is required" >&2
     exit 1
   fi
@@ -254,7 +262,7 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
     };
     process.stdout.write(Buffer.from(JSON.stringify(value)).toString("base64url"));
   ' "$request_ref" "$requested_at" "$old_sha" "$target_sha" "$existing_pid" "$old_pgid" "$source_repo" "$launch_repo" "$receipt_path" "$lock_dir" "$log_path" "$owner_launch_cwd" "$node24_bin/node" "$pnpm_path" "$lock_token" "$generation_path")" || {
-    rm -rf "$lock_dir" "$supervisor_path"
+    rm -rf "$lock_dir" "$supervisor_path" "$launchd_plist_path"
     exit 1
   }
   if ! node -e '
@@ -282,10 +290,38 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
       const parent = fs.openSync(path.dirname(receiptPath), "r"); fs.fsyncSync(parent); fs.closeSync(parent);
     ' "$receipt_path" "$1"
   }
-  if ! /bin/launchctl submit -l "$label" -o "$log_path" -e "$log_path" -- \
-      /usr/bin/env "PATH=$PATH" "$node24_bin/node" "$supervisor_path" supervise "$config_json"; then
+  launchd_arguments_json="$(node -e '
+    process.stdout.write(JSON.stringify(process.argv.slice(1)))
+  ' "$node24_bin/node" "$supervisor_path" supervise "$config_json")" || {
+    mark_restart_failed "could not encode the one-shot launchd handoff"
+    rm -rf "$lock_dir" "$supervisor_path" "$launchd_plist_path"
+    exit 1
+  }
+  launchd_environment_json="$(node -e '
+    process.stdout.write(JSON.stringify({ PATH: process.argv[1] }))
+  ' "$PATH")" || {
+    mark_restart_failed "could not encode the one-shot launchd environment"
+    rm -rf "$lock_dir" "$supervisor_path" "$launchd_plist_path"
+    exit 1
+  }
+  if ! /usr/bin/plutil -create xml1 "$launchd_plist_path" ||
+      ! /usr/bin/plutil -insert Label -string "$label" "$launchd_plist_path" ||
+      ! /usr/bin/plutil -insert ProgramArguments -json "$launchd_arguments_json" "$launchd_plist_path" ||
+      ! /usr/bin/plutil -insert EnvironmentVariables -json "$launchd_environment_json" "$launchd_plist_path" ||
+      ! /usr/bin/plutil -insert RunAtLoad -bool true "$launchd_plist_path" ||
+      ! /usr/bin/plutil -insert KeepAlive -bool false "$launchd_plist_path" ||
+      ! /usr/bin/plutil -insert ProcessType -string Background "$launchd_plist_path" ||
+      ! /usr/bin/plutil -insert StandardOutPath -string "$log_path" "$launchd_plist_path" ||
+      ! /usr/bin/plutil -insert StandardErrorPath -string "$log_path" "$launchd_plist_path"; then
+    mark_restart_failed "could not create the one-shot launchd handoff; the running app was preserved"
+    rm -rf "$lock_dir" "$supervisor_path" "$launchd_plist_path"
+    echo "oa-dev: could not create the one-shot launchd handoff; the running app was preserved" >&2
+    exit 1
+  fi
+  chmod 600 "$launchd_plist_path"
+  if ! /bin/launchctl bootstrap "gui/$UID" "$launchd_plist_path"; then
     mark_restart_failed "launchd refused restart handoff; the running app was preserved"
-    rm -rf "$lock_dir" "$supervisor_path"
+    rm -rf "$lock_dir" "$supervisor_path" "$launchd_plist_path"
     echo "oa-dev: launchd refused restart handoff; the running app was preserved" >&2
     exit 1
   fi
@@ -299,9 +335,9 @@ if $restart_requested && [[ -n "$managed_pid" ]]; then
     sleep 0.1
   done
   if ! $handoff_owned; then
-    /bin/launchctl remove "$label" >/dev/null 2>&1 || true
+    /bin/launchctl bootout "gui/$UID/$label" >/dev/null 2>&1 || true
     mark_restart_failed "launchd did not acknowledge restart ownership; the running app was preserved"
-    rm -rf "$lock_dir"
+    rm -rf "$lock_dir" "$supervisor_path" "$launchd_plist_path"
     echo "oa-dev: launchd did not acknowledge restart ownership; the running app was preserved" >&2
     echo "oa-dev: inspect $receipt_path" >&2
     exit 1
