@@ -48683,7 +48683,7 @@
     },
     {
       "path": "specs/openagents/assure-repo-codebase-verification.product-spec.md",
-      "sha256": "79025c32b66535c86e603267d616664536ddac9a495a1f25069e89d3458b3737",
+      "sha256": "a70d4504608e3b79b8b0d46a72d4a538200fb310662ab6f33e0a2a8552c33f8c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -84,14 +84,14 @@ In scope:
 Out of scope:
 
 - Writing new product oracles for unverified surfaces (each such oracle is
-  its own admitted work; this program makes the gap visible and priced).
+  its own admitted work. This program makes the gap visible and priced).
 - Verification of external or reference repositories.
 - Any public claim, promise flip, release decision, or assurance admission.
 
 Cut:
 
 - A repo-wide quality score or single verification percentage. Blended
-  scores are structurally excluded; only per-surface facts exist.
+  scores are structurally excluded. Only per-surface facts exist.
 - Live-production probing by default in drift or sweep oracles.
 
 ## User Experience
@@ -106,22 +106,22 @@ Nothing renders green without a decoded, fresh receipt behind it.
 ## Acceptance Criteria
 
 - Every inventory row carries at least one oracle ref or an explicit typed
-  `unverified` reason; a row with neither fails validation. The inventory is
+  `unverified` reason. A row with neither fails validation. The inventory is
   derived from the workspace, route, and crate graphs, and a staleness guard
   fails when it ages past its bound relative to `main`.
-- Obligation state uses the assurance-spec vocabulary; designed and observed
-  are never merged; missing evidence decodes as `INCONCLUSIVE`; intentional
+- Obligation state uses the assurance-spec vocabulary. Designed and observed
+  are never merged. Missing evidence decodes as `INCONCLUSIVE`. Intentional
   out-of-scope surfaces carry typed dispositions.
 - Every reported false green is demonstrated by a reproduction (such as a
   surviving mutation), and every confirmed finding is fixed or explicitly
-  dispositioned; no oracle is weakened to resolve a finding.
+  dispositioned. No oracle is weakened to resolve a finding.
 - Mutation evidence exists for the behavior-contract oracle set and at least
   one additional package per program area, with kills and survivors reported
   separately and no aggregate mutation score presented as proof.
 - A sweep run produces one receipt binding commit, inventory generation,
-  oracle set, and exact outcomes; runs execute under unmodified Full Auto
-  guardrails; pre-IDE-10 runs label their evidence class honestly.
-- Coverage and obligation drift between sweep runs lands as typed findings;
+  oracle set, and exact outcomes. Runs execute under unmodified Full Auto
+  guardrails. Pre-IDE-10 runs label their evidence class honestly.
+- Coverage and obligation drift between sweep runs lands as typed findings.
   a surface losing its oracle or an observation going stale is visible, not
   silent.
 - At least one consuming readiness surface renders exclusively from sweep
@@ -167,17 +167,17 @@ Nothing renders green without a decoded, fresh receipt behind it.
 
 - Inventory theater: a generated map that ages or overstates coverage. The
   freshness guard and the index-not-verdict rule (an oracle ref proves
-  nothing by itself) are the mitigations; AR-1's grading keeps refs and
+  nothing by itself) are the mitigations. AR-1's grading keeps refs and
   proof separate.
 - Verifier correlation: agent-classified false greens judged by similar
   agents. AR-2 requires demonstration by reproduction, and the program
-  inherits the no-self-admission law; independent falsification capacity
+  inherits the no-self-admission law. Independent falsification capacity
   (per the essay's Addendum II) is the long-run mitigation.
 - Sweep sprawl: a standing lane consuming capacity without findings.
   Sweep budgets are typed configuration, and the lane reports drift diffs —
   an empty diff is a cheap run, not a wasted one.
 - Oracle weakening pressure: the temptation to loosen a test to clear a
-  finding. Prohibited by the behavior-contract law; every fix is
+  finding. Prohibited by the behavior-contract law. Every fix is
   diff-reviewed against it.
 
 ## Solution
@@ -213,6 +213,6 @@ admission (#8978), AR-4 rides the document-check path and joins the sweep.
 
 ## Promise Links
 
-- None at revision 1. No existing promise cites repo-wide verification; any
+- None at revision 1. No existing promise cites repo-wide verification. Any
   future promise built on this program enters the registry through its own
   copy and verification gates, consuming AR-3 sweep receipts as evidence.
