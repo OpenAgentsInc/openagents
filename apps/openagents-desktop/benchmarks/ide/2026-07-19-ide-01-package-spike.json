@@ -1,7 +1,7 @@
 {
   "schemaVersion": "openagents.desktop.ide-package-spike-matrix.v1",
-  "capturedAt": "2026-07-19T07:11:13.592Z",
-  "commitSha": "ed0ca607b2c7b6c4ef8d5b57bcaf4de1d5e9c02f",
+  "capturedAt": "2026-07-19T10:15:10.651Z",
+  "commitSha": "5b532083a5dafabffd9d6a50cae8b9f2e677cc4f",
   "development": {
     "schemaVersion": "openagents.desktop.ide-package-spike-probe.v1",
     "layout": "development",
@@ -37,7 +37,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 8,
@@ -45,22 +55,22 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=0"
             ]
           },
-          "domNodes": 115
+          "domNodes": 147
         },
         "disposed": {
           "schemaVersion": "openagents.desktop.ide-package-spike.v1",
@@ -89,7 +99,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 0,
@@ -97,27 +117,27 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=0"
             ]
           },
           "domNodes": 23
         },
-        "loadMilliseconds": 534,
-        "disposeMilliseconds": 26,
-        "processWorkingSetBytes": 1083113472,
-        "rendererWorkingSetBytes": 354418688
+        "loadMilliseconds": 465,
+        "disposeMilliseconds": 20,
+        "processWorkingSetBytes": 1089060864,
+        "rendererWorkingSetBytes": 356237312
       },
       {
         "ready": {
@@ -147,7 +167,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 8,
@@ -155,22 +185,22 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=1"
             ]
           },
-          "domNodes": 115
+          "domNodes": 147
         },
         "disposed": {
           "schemaVersion": "openagents.desktop.ide-package-spike.v1",
@@ -199,7 +229,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 0,
@@ -207,27 +247,27 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=1"
             ]
           },
           "domNodes": 23
         },
-        "loadMilliseconds": 252,
-        "disposeMilliseconds": 15,
-        "processWorkingSetBytes": 1205010432,
-        "rendererWorkingSetBytes": 385794048
+        "loadMilliseconds": 250,
+        "disposeMilliseconds": 19,
+        "processWorkingSetBytes": 1213431808,
+        "rendererWorkingSetBytes": 389988352
       },
       {
         "ready": {
@@ -257,7 +297,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 8,
@@ -265,22 +315,22 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
             ]
           },
-          "domNodes": 115
+          "domNodes": 147
         },
         "disposed": {
           "schemaVersion": "openagents.desktop.ide-package-spike.v1",
@@ -309,7 +359,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 0,
@@ -317,27 +377,27 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
             ]
           },
           "domNodes": 23
         },
-        "loadMilliseconds": 255,
-        "disposeMilliseconds": 13,
-        "processWorkingSetBytes": 1197146112,
-        "rendererWorkingSetBytes": 404226048
+        "loadMilliseconds": 251,
+        "disposeMilliseconds": 3,
+        "processWorkingSetBytes": 1214906368,
+        "rendererWorkingSetBytes": 424476672
       }
     ],
     "expectedFailure": {
@@ -366,7 +426,8 @@
         "workerInitialized": false,
         "virtualized": true,
         "scaleItems": 200,
-        "renderedScaleItems": 5
+        "renderedScaleItems": 5,
+        "reviewSourceClasses": []
       },
       "resources": {
         "activeWorkers": 0,
@@ -374,16 +435,16 @@
         "externalUrls": [],
         "loadedUrls": [
           "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-          "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-          "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-          "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-          "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-          "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-          "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-          "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+          "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+          "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+          "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+          "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+          "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+          "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+          "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
           "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
-          "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-          "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+          "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+          "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
           "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
           "openagents-app://renderer/ide-package-spike/index.html?cycle=3&failWorker=typescript"
         ]
@@ -426,7 +487,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 8,
@@ -434,22 +505,22 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=0"
             ]
           },
-          "domNodes": 115
+          "domNodes": 147
         },
         "disposed": {
           "schemaVersion": "openagents.desktop.ide-package-spike.v1",
@@ -478,7 +549,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 0,
@@ -486,27 +567,27 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=0"
             ]
           },
           "domNodes": 23
         },
-        "loadMilliseconds": 466,
+        "loadMilliseconds": 460,
         "disposeMilliseconds": 16,
-        "processWorkingSetBytes": 814612480,
-        "rendererWorkingSetBytes": 347750400
+        "processWorkingSetBytes": 815824896,
+        "rendererWorkingSetBytes": 357072896
       },
       {
         "ready": {
@@ -536,7 +617,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 8,
@@ -544,22 +635,22 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=1"
             ]
           },
-          "domNodes": 115
+          "domNodes": 147
         },
         "disposed": {
           "schemaVersion": "openagents.desktop.ide-package-spike.v1",
@@ -588,7 +679,17 @@
             "workerInitialized": true,
             "virtualized": true,
             "scaleItems": 200,
-            "renderedScaleItems": 5
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
           },
           "resources": {
             "activeWorkers": 0,
@@ -596,137 +697,157 @@
             "externalUrls": [],
             "loadedUrls": [
               "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
               "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
               "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
               "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
               "openagents-app://renderer/ide-package-spike/index.html?cycle=1"
-            ]
-          },
-          "domNodes": 23
-        },
-        "loadMilliseconds": 248,
-        "disposeMilliseconds": 20,
-        "processWorkingSetBytes": 910065664,
-        "rendererWorkingSetBytes": 376782848
-      },
-      {
-        "ready": {
-          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
-          "phase": "ready",
-          "cycle": 2,
-          "themeId": "tokyo-night",
-          "themeBeforeEditorPaint": true,
-          "monaco": {
-            "modelCount": 4,
-            "editorsCreated": 1,
-            "languageWorkersReady": [
-              "editor",
-              "json",
-              "css",
-              "html",
-              "typescript"
-            ],
-            "failureLabel": null
-          },
-          "pierre": {
-            "rendered": true,
-            "unified": true,
-            "split": true,
-            "annotation": true,
-            "selectedRange": true,
-            "workerInitialized": true,
-            "virtualized": true,
-            "scaleItems": 200,
-            "renderedScaleItems": 5
-          },
-          "resources": {
-            "activeWorkers": 8,
-            "createdWorkers": 8,
-            "externalUrls": [],
-            "loadedUrls": [
-              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
-              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
-              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
-              "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
-            ]
-          },
-          "domNodes": 115
-        },
-        "disposed": {
-          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
-          "phase": "disposed",
-          "cycle": 2,
-          "themeId": "tokyo-night",
-          "themeBeforeEditorPaint": true,
-          "monaco": {
-            "modelCount": 0,
-            "editorsCreated": 0,
-            "languageWorkersReady": [
-              "editor",
-              "json",
-              "css",
-              "html",
-              "typescript"
-            ],
-            "failureLabel": null
-          },
-          "pierre": {
-            "rendered": false,
-            "unified": false,
-            "split": false,
-            "annotation": false,
-            "selectedRange": false,
-            "workerInitialized": true,
-            "virtualized": true,
-            "scaleItems": 200,
-            "renderedScaleItems": 5
-          },
-          "resources": {
-            "activeWorkers": 0,
-            "createdWorkers": 8,
-            "externalUrls": [],
-            "loadedUrls": [
-              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-              "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-              "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-              "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-              "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-              "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-              "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
-              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
-              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
-              "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
-              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
-              "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
             ]
           },
           "domNodes": 23
         },
         "loadMilliseconds": 249,
-        "disposeMilliseconds": 21,
-        "processWorkingSetBytes": 884637696,
-        "rendererWorkingSetBytes": 391004160
+        "disposeMilliseconds": 19,
+        "processWorkingSetBytes": 923303936,
+        "rendererWorkingSetBytes": 390889472
+      },
+      {
+        "ready": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "ready",
+          "cycle": 2,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 4,
+            "editorsCreated": 1,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": true,
+            "unified": true,
+            "split": true,
+            "annotation": true,
+            "selectedRange": true,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
+          },
+          "resources": {
+            "activeWorkers": 8,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
+            ]
+          },
+          "domNodes": 147
+        },
+        "disposed": {
+          "schemaVersion": "openagents.desktop.ide-package-spike.v1",
+          "phase": "disposed",
+          "cycle": 2,
+          "themeId": "tokyo-night",
+          "themeBeforeEditorPaint": true,
+          "monaco": {
+            "modelCount": 0,
+            "editorsCreated": 0,
+            "languageWorkersReady": [
+              "editor",
+              "json",
+              "css",
+              "html",
+              "typescript"
+            ],
+            "failureLabel": null
+          },
+          "pierre": {
+            "rendered": false,
+            "unified": false,
+            "split": false,
+            "annotation": false,
+            "selectedRange": false,
+            "workerInitialized": true,
+            "virtualized": true,
+            "scaleItems": 200,
+            "renderedScaleItems": 5,
+            "reviewSourceClasses": [
+              "GitHeadIndex",
+              "GitIndexWorktree",
+              "GitHeadWorktree",
+              "SavedDraft",
+              "DraftExternalConflict",
+              "CheckpointCurrent",
+              "AgentProposal",
+              "CandidateComparison"
+            ]
+          },
+          "resources": {
+            "activeWorkers": 0,
+            "createdWorkers": 8,
+            "externalUrls": [],
+            "loadedUrls": [
+              "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
+              "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+              "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+              "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+              "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+              "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+              "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+              "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
+              "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
+              "openagents-app://renderer/ide-package-spike/assets/tokyo-night-oM2G3aXe.js",
+              "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
+              "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
+              "openagents-app://renderer/ide-package-spike/index.html?cycle=2"
+            ]
+          },
+          "domNodes": 23
+        },
+        "loadMilliseconds": 250,
+        "disposeMilliseconds": 20,
+        "processWorkingSetBytes": 913571840,
+        "rendererWorkingSetBytes": 414187520
       }
     ],
     "expectedFailure": {
@@ -755,7 +876,8 @@
         "workerInitialized": false,
         "virtualized": true,
         "scaleItems": 200,
-        "renderedScaleItems": 5
+        "renderedScaleItems": 5,
+        "reviewSourceClasses": []
       },
       "resources": {
         "activeWorkers": 0,
@@ -763,16 +885,16 @@
         "externalUrls": [],
         "loadedUrls": [
           "openagents-app://renderer/ide-package-spike/assets/css-DIMkf-bt.js",
-          "openagents-app://renderer/ide-package-spike/assets/cssMode-IVNJIy_n.js",
-          "openagents-app://renderer/ide-package-spike/assets/html-CX1ieXb7.js",
-          "openagents-app://renderer/ide-package-spike/assets/htmlMode-3XIr_xLa.js",
-          "openagents-app://renderer/ide-package-spike/assets/index-Byo_JR1p.css",
-          "openagents-app://renderer/ide-package-spike/assets/index-CoMD_ve_.js",
-          "openagents-app://renderer/ide-package-spike/assets/jsonMode-PppvhhKh.js",
-          "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-yVesdIm1.js",
+          "openagents-app://renderer/ide-package-spike/assets/cssMode-BQqfGL5w.js",
+          "openagents-app://renderer/ide-package-spike/assets/html-B6ChJvMM.js",
+          "openagents-app://renderer/ide-package-spike/assets/htmlMode-Ddiojkrb.js",
+          "openagents-app://renderer/ide-package-spike/assets/index-C0peX6bk.css",
+          "openagents-app://renderer/ide-package-spike/assets/index-D3Kr2xWH.js",
+          "openagents-app://renderer/ide-package-spike/assets/jsonMode-Ccac-ekv.js",
+          "openagents-app://renderer/ide-package-spike/assets/lspLanguageFeatures-CM3LW8Cq.js",
           "openagents-app://renderer/ide-package-spike/assets/rolldown-runtime-QTnfLwEv.js",
-          "openagents-app://renderer/ide-package-spike/assets/tsMode-Dcy8fwkn.js",
-          "openagents-app://renderer/ide-package-spike/assets/typescript-2foK_eZl.js",
+          "openagents-app://renderer/ide-package-spike/assets/tsMode-C_DEKiX4.js",
+          "openagents-app://renderer/ide-package-spike/assets/typescript-BswZ8FSj.js",
           "openagents-app://renderer/ide-package-spike/assets/typescript-DOu2WMV5.js",
           "openagents-app://renderer/ide-package-spike/index.html?cycle=3&failWorker=typescript"
         ]
@@ -785,6 +907,7 @@
     "Monaco editor, JSON, CSS, HTML, and TypeScript workers initialize from private-scheme assets.",
     "Pierre renders unified/split diffs, a controlled selection, an annotation, and its worker pool.",
     "Pierre CodeView virtualizes a 200-file review collection rather than mounting every file.",
+    "All eight versioned review source classes render through the same app-owned Pierre adapter.",
     "Every observed request stays on openagents-app:; the fixture requires no network.",
     "Every disposal reaches zero Monaco models and zero tracked workers.",
     "An injected TypeScript-worker construction failure disposes every model and tracked worker."

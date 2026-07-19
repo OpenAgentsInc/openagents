@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "openagents.desktop.ide-review-benchmark.v1",
+  "issue": "IDE-05",
+  "generatedAt": "2026-07-19T10:15:01.617Z",
+  "runtime": {
+    "node": "v24.13.1",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "corpus": {
+    "sourceClasses": [
+      "GitHeadIndex",
+      "GitIndexWorktree",
+      "GitHeadWorktree",
+      "SavedDraft",
+      "DraftExternalConflict",
+      "CheckpointCurrent",
+      "AgentProposal",
+      "CandidateComparison"
+    ],
+    "aggregateFiles": 500,
+    "aggregatePatchBytes": 1647282,
+    "samples": 30
+  },
+  "latency": {
+    "sourceProjection": {
+      "p50Ms": 0.11508300000002691,
+      "p95Ms": 0.17737500000004047,
+      "p99Ms": 0.23141700000002174,
+      "maxMs": 1.2113749999999754
+    },
+    "aggregateParse": {
+      "p50Ms": 8.465708000000063,
+      "p95Ms": 8.765625,
+      "p99Ms": 9.999167,
+      "maxMs": 11.817916999999966
+    }
+  },
+  "cancellationFence": {
+    "scheduled": 100,
+    "committed": 1,
+    "superseded": 99
+  },
+  "resources": {
+    "openCloseCycles": 200,
+    "workerPoolDisabled": true,
+    "activeWorkersAfter": 0,
+    "listenerDeltaAfter": 0,
+    "retainedHeapBytes": -27095112
+  },
+  "budgets": {
+    "projectionP95Ms": 20,
+    "aggregateParseP95Ms": 250,
+    "retainedHeapBytes": 16777216,
+    "passed": true
+  },
+  "offline": {
+    "remoteRequests": 0
+  }
+}

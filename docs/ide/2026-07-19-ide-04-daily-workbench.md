@@ -187,11 +187,13 @@ legacy textarea, and zero models/views/workers/listeners after close.
 
 ## Explicit non-goals and next packets
 
-- IDE-05 owns terminal/PTTY process lifecycle and working-directory policy.
+- IDE-05 owns the versioned Pierre review plane across Git, documents,
+  conflicts, checkpoints, proposals, and candidate comparisons.
 - IDE-06 owns language services, real symbols, diagnostics, formatting,
   code-action authority, and symbol-backed Outline/quick-symbol results.
-- IDE-07 owns Git status/diff/hunk/commit/worktree workflows beyond the existing
-  read-only review surface.
+- IDE-07 owns the packaged daily-editor acceptance matrix. IDE-10 owns
+  terminal/PTTY mechanics, and IDE-12 owns safe Git mutation/worktree delivery
+  beyond the read-only review surface.
 - Arbitrary Monaco extensions/settings/themes, autosave, format-on-save,
   collaboration, debugging, and direct filesystem/process access remain absent.
 
