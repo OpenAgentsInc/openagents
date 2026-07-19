@@ -433,6 +433,16 @@ const publishLocalLanguage = (entry: ModelEntry, state: IdeMonacoLocalLanguageSt
   for (const callback of entry.localLanguageCallbacks) callback(entry.localLanguage)
 }
 
+const localWorkerFailureMessage = (cause: unknown): string => {
+  if (cause instanceof Error) return cause.message.slice(0, 500)
+  if (typeof cause === "object" && cause !== null) {
+    const message = Reflect.get(cause, "message")
+    if (typeof message === "string" && message.trim() !== "") return message.slice(0, 500)
+  }
+  const rendered = String(cause)
+  return rendered === "[object Object]" ? "The document-local worker failed to start." : rendered.slice(0, 500)
+}
+
 const activateLocalLanguage = (entry: ModelEntry, input: IdeMonacoAttachInput): void => {
   const language = languageFor(input.language)
   entry.localInput = input
@@ -489,7 +499,7 @@ const activateLocalLanguage = (entry: ModelEntry, input: IdeMonacoAttachInput): 
     publishLocalLanguage(entry, IdeMonacoLocalLanguageStateSchema.cases.Failed.make({
       language,
       workerGeneration,
-      message: cause instanceof Error ? cause.message.slice(0, 500) : "The document-local worker failed to start.",
+      message: localWorkerFailureMessage(cause),
       recoverable: true,
     }))
   })
