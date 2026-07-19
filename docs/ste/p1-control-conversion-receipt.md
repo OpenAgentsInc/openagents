@@ -66,3 +66,11 @@ The strict lexical check limits the expanded terms to that identified text.
 
 Convert all other P1 control documents.
 Complete the technical review and the STE inspection for each important contract.
+
+## Root control punctuation pass
+
+The first root-control pass removed 454 prose semicolons.
+It changed `AGENTS.md`, `INVARIANTS.md`, and `docs/sol/MASTER_ROADMAP.md`.
+The pass kept the protected semantic token sets without changes.
+These three documents remain in the migration state.
+Sentence, paragraph, vocabulary, and inspection work remains.

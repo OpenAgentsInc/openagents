@@ -97,6 +97,11 @@ The deterministic check finds these conditions:
 - A prohibited OpenAgents synonym
 - An absent or inconsistent document profile.
 
+Use `pnpm run rewrite:ste-semicolons -- <paths>` for a mechanical punctuation pass.
+The command does not change code fences, inline code, or URLs.
+It also refuses a result that changes the normalized word sequence.
+This pass does not complete an STE review.
+
 Some grammar checks give possible defects.
 They can report text that an STE inspector accepts.
 The checker does not decide if a sentence has one topic.

@@ -33,6 +33,7 @@ An agent section can use these extensions:
 - Approved terms from [`agent-compact-terms.v1.json`](./agent-compact-terms.v1.json)
 - Labeled record fragments for scope, contracts, invariants, evidence, state, and lane
 - Compact tables or lists when each field has one stable meaning
+- Compact control clauses when each clause has one obligation
 - A complex technical term when a shorter term would increase ambiguity
 
 Prefer the shortest text that keeps the complete meaning.

@@ -70,14 +70,14 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 - `docs/transcripts/` is retained historical material and must not be deleted,
   renamed, rewritten, or used as runtime private data.
-- New refactor docs belong in `docs/refactor/`; do not mix migration planning
+- New refactor docs belong in `docs/refactor/`, do not mix migration planning
   into the transcript archive.
 
 ## Effect Workspace Boundary
 
 - New production TypeScript code in this repo must use Effect. Retained server,
   CLI, test, and repository-tooling code targets the owner-selected Node 24 LTS
-  destination; browser, Electron-renderer, React Native/Hermes, and native
+  destination, browser, Electron-renderer, React Native/Hermes, and native
   hosts keep their explicit runtime boundaries.
 - The [`Node/pnpm/Vite Plus conversion contract`](docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md)
   is complete. No supported runtime, build, test, package, hook, release,
@@ -119,7 +119,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 - `packages/qa-swarm-contract` owns
   `openagents.qa_swarm.run_projection.v1`. QA Runner and the OpenAgents web
-  consumer must decode that same Effect Schema; an app-local schema with the
+  consumer must decode that same Effect Schema, an app-local schema with the
   same version string is not a compatible contract.
 - A job id, configured cap, target label, or receipt-looking string is not an
   observed artifact or admitted receipt. Unpublished/unresolved trace, video,
@@ -147,7 +147,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - An observed discovery becomes a regression candidate only when its exact
   observation receipt is bound into a replayable, public-safe trace and the
   deterministic distiller accepts it. A candidate is `validated` only after an
-  exact source-digest-bound rerun passes; failed, unavailable, substituted, or
+  exact source-digest-bound rerun passes, failed, unavailable, substituted, or
   non-rerunnable candidates remain `INCONCLUSIVE`.
 - Repository mutation for a validated regression is absent by default and can
   occur only through explicitly injected SCM authority. A `proposed` projection
@@ -161,7 +161,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 ## QA Swarm Assurance Execution
 
 - The current Desktop swarm target is exactly `apps/openagents-desktop` under
-  `openagents.desktop.current`; deleted Khala client paths are never execution
+  `openagents.desktop.current`, deleted Khala client paths are never execution
   targets or evidence authority.
 - `apps/qa-runner/src/assurance-swarm.ts` partitions every exact Assurance
   Manifest unit once across the six typed scripted-browser, seeded-monkey,
@@ -172,10 +172,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   execution unit, command, source, native report, and artifact commitment.
 - Real execution, provider spend, and native control require explicit arming.
   Unsupported, missing, failed, or unarmed adapters remain `INCONCLUSIVE` with
-  no fabricated native report, artifact commitment, or Assurance Receipt; they
+  no fabricated native report, artifact commitment, or Assurance Receipt, they
   may not be inferred from configured jobs or artifact slots. A lane adapter
   must equal every assigned Manifest unit's locked adapter. Non-model lanes
-  report exact zero provider usage; an executed model lane must report exact
+  report exact zero provider usage, an executed model lane must report exact
   observed input and output usage within its declared cap. The orchestrator is
   evidence-only: it cannot admit, accept, merge, deploy, or promote a promise.
 
@@ -203,7 +203,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - A current explicit owner direction is valid separate target authority for a
   named Fast Follow directive or ordered initial program. It must be persisted
   as a target-owned accepted plan/work packet. When GitHub policy permits only
-  reproducible bugs, no feature issue is required; every product mutation still
+  reproducible bugs, no feature issue is required, every product mutation still
   requires one bounded packet, collision-safe claim/worktree, and local proof.
 - Program admission does not grant deploy, release, credential, paid-provider
   spend, settlement, cross-tenant publication, public-promise, or invariant-
@@ -211,16 +211,16 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Source freshness, evidence confidence, relevance, target fit, portability,
   license/provenance, implementation, verification, disposition, and exception
   remain independent axes. `no_material_delta`, rejected, superseded, stale,
-  blocked, unavailable, and inconclusive are honest terminal observations; an
+  blocked, unavailable, and inconclusive are honest terminal observations, an
   autonomous loop must not manufacture or duplicate parity work.
 - Full Auto may consume Fast Follow only through its existing workspace,
   provider, work-context, durable lease, failure, cap, stop, and recovery
-  authority. The authored capacity profile cannot dispatch workers; concurrent
+  authority. The authored capacity profile cannot dispatch workers, concurrent
   allocation requires a separately admitted claim-aware FullAutoRunPolicy or
   FleetRun.
 - When a spec defines `initial_program`, selection follows its exact directive
   order and default evidence stage until each directive is terminal or
-  blocked. A referenced strategy essay remains evidence and sequencing input;
+  blocked. A referenced strategy essay remains evidence and sequencing input,
   it cannot reopen a roadmap lane or satisfy implementation admission by
   itself. A separately recorded owner-accepted plan can do so.
 - Blueprint, Khala, semantic planners, StudyPackets, and DSPy/GEPA-class
@@ -237,13 +237,13 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 - `packages/assurance-spec/src/semantic-planner.ts` owns the provider-neutral
   semantic-planner request, response, and deterministic proposal compiler.
-  Planning starts only from an explicit accepted ProductSpec identity pin; the
+  Planning starts only from an explicit accepted ProductSpec identity pin, the
   exact repository-relative path, revision, document digest, and ordered
   criterion set must match the supplied ProductSpec bytes.
 - Planner output disposes every exact criterion once. Unknown, duplicate, or
   missing criterion ids, changed input/subject bindings, malformed designed
   proof, self-verification, and label-only seams fail closed. A planner cannot
-  supply or rewrite source-claim snapshots or digests; the compiler copies
+  supply or rewrite source-claim snapshots or digests, the compiler copies
   those only from the checked request. Weak proof may remain an explicit
   `needs_design` disposition but may not masquerade as designed.
 - Semantic planner implementations are injected Effect programs. Model and
@@ -274,7 +274,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Managed Cloud infrastructure (`oa-codex-control`, `oa-node`, `oa-workroomd`,
   `openagents-cloud-contract`) lives in this monorepo under `crates/*`.
 - The private `OpenAgentsInc/cloud` repository is historical source only and
-  must not receive new feature work; see `docs/cloud/MIGRATION.md` and issue
+  must not receive new feature work, see `docs/cloud/MIGRATION.md` and issue
   #8591.
 - Agent Computer, Cloud-VM, GCE capacity, workroom, capability, and receipt
   code builds from public openagents source. Live secrets, topology, and host
@@ -282,7 +282,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Cloud daemons execute and emit redacted non-money receipts. They do not own
   user credit ledgers, public claim promotion, wallet, payout, payment, or
   settlement authority. The former edge-runtime and MDK/Nexus money authority is
-  retired under VP-1; preserved records are recovery evidence only.
+  retired under VP-1, preserved records are recovery evidence only.
 - Fake GCE and fake Cloud-VM provisioners are the default. Live Firecracker
   and live GCE lanes are explicit env-gated owner modes.
 - Detailed Cloud invariants live in `docs/cloud/INVARIANTS.md`.
@@ -290,7 +290,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 ## Authority Boundaries
 
 - Delegated action authority is explicit, revisioned, revocable, and
-  non-amplifying. The current authored profile is [`AUTHORITY.md`](AUTHORITY.md);
+  non-amplifying. The current authored profile is [`AUTHORITY.md`](AUTHORITY.md),
   it composes by intersection with system/current-owner instruction,
   applicable law and platform terms, repository invariants, resource policy,
   runtime gates, ProductSpec/AssuranceSpec intent, roadmap/issue/claim state,
@@ -301,18 +301,18 @@ More specific invariant ledgers apply inside imported apps and packages.
   superuser identity. Effective authority is the intersection of root
   `AUTHORITY.md`, `docs/authority/SARAH_AUTHORITY.md`, the active program,
   target-local policy, and an exact capability broker. Sarah may recommend and
-  prioritize broadly; current-state evidence retains bounded source refs in the
+  prioritize broadly, current-state evidence retains bounded source refs in the
   private context/receipt layer, while ordinary owner conversation never emits
   raw source refs, internal IDs, or bracketed citations. Model output alone can
   neither mutate a target nor report success. Short conversational input must
-  receive a short conversational answer; Sarah may produce an operations brief,
+  receive a short conversational answer, Sarah may produce an operations brief,
   audit, or recommended-action list only when the owner asks for that detail.
   Confirmed Sarah tool calls, results, and failures remain visible in the
-  conversation as compact human-readable activity while they happen; the UI
+  conversation as compact human-readable activity while they happen, the UI
   may hide internal refs and runtime plumbing but must never hide whether a
   tool was actually used or whether it succeeded.
 - Sarah has one deterministic opaque owner-private Khala Sync thread. That
-  thread and its confirmed history are durable memory; fresh business context
+  thread and its confirmed history are durable memory, fresh business context
   is projected from bounded owner-scoped/public-safe adapters. Raw credentials,
   mnemonics, private paths, customer-private payloads, and unbounded database or
   tool output never enter the prompt, Sync post-images, logs, or receipts.
@@ -325,10 +325,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   dispatcher immediately after the durable push commits. The once-per-minute
   scheduled drain is recovery only and must never be the primary mobile-chat
   latency path. A failed wake-up cannot roll back or misreport the durable
-  mutation; the recovery drain may safely claim it later.
+  mutation, the recovery drain may safely claim it later.
 - Sarah mobile speech is an explicit, delivery-only projection of one already
   visible completed assistant message. Every eligible completed Sarah message
-  exposes its own long-press action; no permanent or thread-global speech
+  exposes its own long-press action, no permanent or thread-global speech
   control renders. At most one clip is active, selecting another message stops
   the prior clip, and only the selected message may show bounded preparing,
   playing, or failed state with an AI-generated disclosure. These interactions
@@ -337,7 +337,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   and authority receipt before provider dispatch. Speech never creates a
   message, changes Sarah's reasoning provider or harness, grants a tool, or
   supplies execution authority. The standard OpenAI key remains in Secret
-  Manager/server runtime; synthesized bytes are no-store, short-lived device
+  Manager/server runtime, synthesized bytes are no-store, short-lived device
   cache only, and deleted after completion, stop, thread switch, sign-out, or
   host teardown.
 - Every delegated mutation resolves exact actor, action, resource, program,
@@ -349,7 +349,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Producer, evidence producer, verifier, AssuranceSpec admitter, release
   operator, and public-claim roles remain separate wherever the bound contract
   requires independence. An owner-designated independent reviewer must use a
-  distinct execution identity and reproduce evidence; a producer cannot verify
+  distinct execution identity and reproduce evidence, a producer cannot verify
   or admit its own obligation, and assurance admission cannot authorize
   release or a public claim.
 - An owner/device/credential blocker must exhaust the admitted verify,
@@ -363,14 +363,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   customer-data destruction, natural-person identity ceremonies, over-budget
   spend, invariant weakening, unsupported public claims, and authority
   self-amplification are always reserved unless a higher current owner
-  instruction lawfully and explicitly revises the profile; evidence gates and
+  instruction lawfully and explicitly revises the profile, evidence gates and
   secret-handling invariants cannot be waived by profile text.
 - The delegated release operator MAY autonomously publish, communicate,
   promote, or roll back a Desktop **RC** only under `AUTHORITY.md` revision
   4's retained `grant.autonomous_rc_release_and_communication` scope. Stable
   releases still require current explicit owner direction. Every candidate
   and publication records the exact trigger ref, release actor, authority
-  revision/grant, source revision, and distribution boundary; GitHub and
+  revision/grant, source revision, and distribution boundary, GitHub and
   Forum messages are bounded, idempotent release-transaction communications
   rather than a general outbound-comms grant.
 - Release impact is selected from changed product paths, never from prose or
@@ -392,8 +392,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   until Desktop applies it. Sarah may additionally inspect her exact released
   conversational bundle and ask a broker to review only completed turns from
   her authenticated owner's stable Sarah thread. Terminal experience rows are
-  append-only and owner-private; optimization and held-out evaluation use
-  disjoint snapshots; the candidate schema cannot express tools, authority,
+  append-only and owner-private, optimization and held-out evaluation use
+  disjoint snapshots, the candidate schema cannot express tools, authority,
   workspace, provider, budgets, approvals, or external effects. Sarah and the
   optimizer cannot evaluate, release, or activate their own candidate. A
   distinct Blueprint gate may atomically activate a compatible released
@@ -419,16 +419,16 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents-desktop/src/full-auto-run-registry.ts` and its control-API
   surface (`full-auto-control-server.ts`, routes under `/v1/full-auto/runs`):
   a run's `runRef` is durable and independent of any `threadRef` it is
-  currently bound to; multiple active (non-terminal) Full Auto runs may
+  currently bound to, multiple active (non-terminal) Full Auto runs may
   coexist in one Desktop profile only as distinct `runRef` + `threadRef`
   identities, with monitor/control mutations scoped to an exact `runRef` and
-  no shared lifecycle state; local admission is bounded at eight active runs
-  and a ninth start fails before minting a thread; every lifecycle transition among Draft, Running,
+  no shared lifecycle state, local admission is bounded at eight active runs
+  and a ninth start fails before minting a thread, every lifecycle transition among Draft, Running,
   Pausing, Paused, Retrying, Stalled, Completed, Failed, Stopped, and
   Cap-reached carries actor, timestamp, and a typed reason, extending the
-  existing `disabledBy` attribution pattern to the full graph; Stop is a
-  terminal transition distinct from Pause and is never resumed; Resume is
-  legal only from Paused; and a run's objective/done-condition text is a
+  existing `disabledBy` attribution pattern to the full graph, Stop is a
+  terminal transition distinct from Pause and is never resumed, Resume is
+  legal only from Paused, and a run's objective/done-condition text is a
   first-class durable field that must not depend solely on provider-native
   session continuity or bounded transcript notes, so a provider switch or a
   truncated history projection cannot silently lose it. The legacy
@@ -436,17 +436,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   additively and idempotently into this model
   (`migrateLegacyFullAutoRegistry`): an `enabled: true` legacy row becomes a
   Running run whose objective is the exact prior generic instruction, marked
-  `legacy_migration`, never an invented user-authored goal; an `enabled: false`
-  row never migrates to an active run; every distinct enabled legacy row may
+  `legacy_migration`, never an invented user-authored goal, an `enabled: false`
+  row never migrates to an active run, every distinct enabled legacy row may
   migrate independently, and any row whose transition fails is
   preserved as a Draft rather than dropped. A
   provider reporting a turn as done never by itself asserts that a run's
-  objective/done condition was satisfied; automatic done-condition
+  objective/done condition was satisfied, automatic done-condition
   verification is out of scope, and Completed stays a self-reported,
   owner-reviewable disposition backed by the run's bounded private report.
   The `FullAutoRunReport` (FA-RUN-04, #8972), run-level liveness/SLO
   classification (FA-RUN-03, #8971), and cross-provider handoff envelope
-  (FA-HO-01, #8975) are implemented as separately scoped authorities; none was
+  (FA-HO-01, #8975) are implemented as separately scoped authorities, none was
   implicitly granted by #8969. The report may summarize turns, commits,
   failures, and provider transitions, but raw prompts, tool output, and
   provider transcripts remain private and must not enter public receipts,
@@ -470,7 +470,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Desktop Codex host services accept only canonical WorkContext-relative
   filesystem paths and typed capability operations. Filesystem mutation,
   command execution, external import, Windows setup, and feedback upload each
-  consume a one-shot revision-and-payload-bound main-process authority; the
+  consume a one-shot revision-and-payload-bound main-process authority, the
   renderer has no raw app-server, absolute-path, shell, environment, or generic
   process capability. Watches, command processes, searches, and imports belong
   to one app-server generation and must surface disconnect/overflow explicitly.
@@ -479,7 +479,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   environment IDs, pairing codes, installation/client IDs, raw process output,
   transcript text, SDP, and audio never enter public projections. Unsandboxed
   processes, PTYs, remote grants, and realtime sessions are generation-owned,
-  bounded, revocable, and cleaned on disconnect; destructive experimental
+  bounded, revocable, and cleaned on disconnect, destructive experimental
   controls consume one-shot confirmation-bound authority and emit hashed
   private receipts.
 - Codex release authority is multi-column and fail-closed. Transport counts,
@@ -495,7 +495,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   is absent, every offered reasoning level must be advertised for the selected
   model, and main rechecks the exact model against that same catalog before a
   turn. Compatibility receipts and additive telemetry decode drift remain
-  private diagnostics and release-gate evidence; they are never transcript
+  private diagnostics and release-gate evidence, they are never transcript
   messages. The owner must test a local build before this repair can authorize
   any new RC, tag, package, release asset, or publication.
 - Payments, markets, Sites, tipping, wallet custody, payout, billing credits,
@@ -516,15 +516,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   Claude bypass is additionally a revocable, process-opaque authority bound to
   one exact local Pylon, run/turn/session, operation/assignment, and named
   account. Serialized/restarted, bridge, org-cloud, public, remote, mismatched,
-  expired, and revoked paths cannot inherit it; public audit evidence carries
+  expired, and revoked paths cannot inherit it, public audit evidence carries
   policy/authority/proof refs, never the permission-mode literal.
   Fleet supervisor loops and their Codex/Claude dispatches are owned by the
   exact run scope: stop/close aborts and joins them before releasing the Pylon
   slot, while late lifecycle remains retained. Completed/accepted publication
-  waits for the matching exact verifier and terminal closeout evidence; a
+  waits for the matching exact verifier and terminal closeout evidence, a
   delayed, cancelled, restarted, rejected, or stale attempt cannot be promoted.
   Exact own-capacity usage keeps provider counters truthful: uncached input,
-  output, reasoning, and cache-read tokens are independently nonnegative;
+  output, reasoning, and cache-read tokens are independently nonnegative,
   cache reads may exceed uncached input (as in Claude warm prompts), while
   total tokens remain exactly uncached input plus output.
   Caller-owned Khala -> Pylon -> Codex coding delegation is also owner-local:
@@ -534,10 +534,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   approval policy `never`) so real GitHub/worktree operations can complete.
   Codex selects that posture only when the trusted local no-spend runner passes
   its non-serializable process-local own-capacity control and the lease is also
-  `no-spend`; lease/task/config fields alone cannot mint the exception. Other
+  `no-spend`, lease/task/config fields alone cannot mint the exception. Other
   Codex executor calls remain bounded with provider network access disabled.
   In that exact owner-local, own-capacity, no-spend posture, a long-lived SCM
-  credential finding remains an honest typed closeout disclosure/caveat; it
+  credential finding remains an honest typed closeout disclosure/caveat, it
   cannot retroactively convert completed, verified, or already-landed work into
   a credential-policy rejection. The Claude twin may use the same disclosure
   posture only when its live process-opaque owner-local authority and no-spend
@@ -549,7 +549,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   loaders never read a permissive mode from public wire/config.
 - Real Khala fleet-run coding dispatch must use named, isolated account refs
   from the caller-owned Pylon account registry. Automatic real-work fanout must
-  not route through the display/default Codex account or omit `--account-ref`;
+  not route through the display/default Codex account or omit `--account-ref`,
   that would write rollouts under the operator's default `~/.codex` home.
   Named Claude readiness is provider-proven, not inferred permanently from a
   credential directory: an exact provider-disabled refusal removes the local
@@ -558,13 +558,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   Claude turns never manufacture a zero-token successful-usage observation,
   and public projections expose only the bounded provider-disabled blocker.
   A runtime-intent supervisor rooted at an explicit Pylon home must also bound
-  implicit sibling-home discovery to that Pylon's account root; it may widen
+  implicit sibling-home discovery to that Pylon's account root, it may widen
   discovery only through an explicit account-home root and must never infer
   the owner's default `~/.codex` or `~/.claude` custody from `$HOME`.
   Local Pylon control sessions must also prefer healthy connected Codex account
   registry entries before falling back to the default Codex home. Provider
   usage exhaustion, rate limiting, and auth revocation are typed account-health
-  failures; they must update the local health/quota ledger, surface as
+  failures, they must update the local health/quota ledger, surface as
   account-specific failure classes, and retry another healthy connected Codex
   account when one exists.
   Delegate dispatch failures are classified as typed transient or permanent
@@ -576,14 +576,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   Fleet-run supervisor ticks are serialized per Pylon/run handle so startup
   status reads and the background loop cannot over-dispatch past the target
   concurrency. Regression coverage lives in Pylon's `src/orchestration`
-  manager, supervisor, owned-runner, and standing-executor tests; deleted
+  manager, supervisor, owned-runner, and standing-executor tests, deleted
   desktop adapters are recoverable at `c7044f5a28` only.
   Hybrid FleetRun placement is work-unit authority, not run-wide inference:
   each plan unit may carry the shared typed target, quota, marginal-cost,
   data-posture, repository, and task constraints. The one supervisor evaluates
   those constraints before claiming, uses one work-claim registry across
   owner-local and managed-cloud capacity, and projects the selected capacity
-  class on every v2 execution event. Explicit targets never substitute; an
+  class on every v2 execution event. Explicit targets never substitute, an
   `auto` decision retains its complete typed skip history. Managed-cloud units
   still require the broker-authorized Agent Computer adapter and may never
   inherit owner-local subscription or credential authority.
@@ -592,13 +592,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   work context and metered with refs-only lifecycle/resource receipts. Agent
   Computers are not user Pylons, are not another user's capacity, and are not
   wallet or payout authority. They may receive only scoped runtime credentials
-  and SCM broker-issued repo credentials; assignment payloads must carry only
+  and SCM broker-issued repo credentials, assignment payloads must carry only
   broker refs, never embedded tokens, PATs, credentialed URLs, or credential
   helper output. Raw user OAuth tokens, provider master keys, wallet material,
   raw GCE topology, guest IPs, prompts, repo content, and private traces must
   not enter public projections, docs, issue comments, tests, fixtures, or logs.
 - Agent Computer result writeback must use the same user-authorized SCM broker
-  path. Git operations may create/push only scoped task branches; they must not
+  path. Git operations may create/push only scoped task branches, they must not
   force-push, must not push to the base branch, and must surface permission
   failures as typed public-safe refs. Branch and pull-request URLs may be
   projected only as thread-scoped runtime event metadata or public-safe closeout
@@ -639,11 +639,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   atomic durable receipt that binds old and target commits, old process
   identity/outcome, coordinator identity, replacement identities, readiness or
   bounded failure, and the `oa-dev` recovery command. Handoff or relaunch
-  failure preserves an owner-visible receipt; expected supervised SIGTERM/143
+  failure preserves an owner-visible receipt, expected supervised SIGTERM/143
   is lifecycle evidence, not an unexplained crash.
 - Each accepted restart is a one-shot launchd transaction with `KeepAlive`
   disabled. A terminal coordinator outcome must never be relaunched implicitly,
-  and one request may claim at most one owner-visible failure notification;
+  and one request may claim at most one owner-visible failure notification,
   retry requires a new explicit `oa-dev --restart` request.
 - This boundary is enforced by
   `apps/openagents-desktop/tests/oa-dev-supervisor.test.ts` and the launcher
@@ -661,14 +661,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   `desktop/khala-code-desktop/<channel>/feed.json` and tag as
   `khala-code-desktop-v<version>`. The legacy `/desktop/<channel>/feed.json`
   route remains the default Autopilot Desktop lane. RC/prerelease Khala builds
-  must use the `rc` channel and GitHub `--prerelease --latest=false`; stable
+  must use the `rc` channel and GitHub `--prerelease --latest=false`, stable
   latest eligibility is reserved for non-prerelease versions.
 - Public Khala Code install or download surfaces may route users to Codex
   prerequisites, the npm `khala` CLI, and source-build instructions, but must
   keep desktop DMG availability marked pending until the receipt set above
   exists. Public download counters must be exact grouped
   `khala_code_download_events` rows or an explicit empty response with blocker
-  refs; page views, feed presence, or planned artifacts are not install counts.
+  refs, page views, feed presence, or planned artifacts are not install counts.
 - (CUT-26, #8706) The legacy Electrobun desktop serving lanes above are
   historical: the **legacy desktop lockout**
   (`apps/oa-updates/src/legacy-desktop-lockout.ts`) is ARMED BY DEFAULT, and
@@ -677,19 +677,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   Electrobun `/desktop/<file>` OTA route) answers one typed `410`
   `openagents.desktop.legacy_lockout.v1` document instead of content. Only
   the exact `OA_LEGACY_DESKTOP_LOCKOUT=disarmed-historical-read-only` value
-  re-enables archival read-only serving; every other value stays armed (fail
+  re-enables archival read-only serving, every other value stays armed (fail
   closed). Publishing new legacy releases remains refused independently
   (`assertDesktopReleaseProductPublishable`), and the deprecated clients
   receive no new features — including no remote kill-switch capability.
 - (2026-07-14 owner supersession) The `apps/autopilot-desktop` source tree
-  itself was deleted at owner direction ("OpenAgents desktop supercedes it");
+  itself was deleted at owner direction ("OpenAgents desktop supercedes it"),
   recover via `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`. The
   CUT-26 lockout routes above are unaffected: `updates.openagents.com` keeps
   answering the legacy `autopilot-desktop`/legacy-feed routes with the typed
   `410` lockout document — the route tombstones outlive the source tree.
   `clients/khala-code-desktop` was deleted in #8793 after its Pylon and QA
   dependents migrated. No executable package, import, smoke, or QA matrix may
-  depend on that path again; `scripts/khala-code-desktop-removal.test.ts`
+  depend on that path again, `scripts/khala-code-desktop-removal.test.ts`
   enforces the bounded absence oracle. Historical evidence resolves through
   git at `c7044f5a28` and the backroom supersession intake.
 - (CUT-26, #8706) OpenAgents Desktop releases publish ONLY through the
@@ -698,14 +698,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   `update_manifest.v1` shape served at
   `/desktop/openagents/<channel>/manifest.json` + `manifest.sig.json` +
   `release.json`. Version monotonicity and channel rules (strictly newer
-  only; no pre-release on stable; downgrades refused unconditionally) are
+  only, no pre-release on stable, downgrades refused unconditionally) are
   enforced at publish time, the signed bytes are self-verified through the
   exact client verification seam before staging, the seed boundary re-checks
   the manifest digest at boot, and the client verifies against its pinned
   release key — all fail closed. The ed25519 release private key enters the
   publisher only through the documented env seam
   (`OPENAGENTS_RELEASE_SIGNING_PRIVATE_JWK_D` + `_KID` or
-  `OPENAGENTS_RELEASE_SECRETS_PATH`) and is never printed; tests use
+  `OPENAGENTS_RELEASE_SECRETS_PATH`) and is never printed, tests use
   in-process fixture keypairs only, and a key claiming the production kid
   whose derived public key differs from the committed pin is refused at
   publish time. The unsigned `artifactUrl` is transport only — the download
@@ -716,7 +716,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `darwin-{arm64,x64}`, `win32-x64`, and
   `linux-{arm64,x64}`. Stable and RC are separate application identities and
   state roots. Exactly one version/source revision must converge across all
-  required target/format cells before atomic promotion; a declared maker,
+  required target/format cells before atomic promotion, a declared maker,
   runner, candidate, or download is not a support claim. The intended
   automated boundaries are the ReleaseSet schema/canonicalization/signature
   tests, channel/state identity model, target staging/component-ledger gates,
@@ -725,28 +725,28 @@ More specific invariant ledgers apply inside imported apps and packages.
   rollback-or-explicit-no-rollback receipts and one promotion receipt.
 - (DIST-01, #8914) Desktop production signing has no unsigned fallback on any
   platform. macOS retains its app+nested-code+DMG Developer ID, notarization,
-  staple, and Gatekeeper gates; Windows requires `Valid` Authenticode from
+  staple, and Gatekeeper gates, Windows requires `Valid` Authenticode from
   exactly `OpenAgents, Inc.` for the installer and executable payload before
-  publication and install; Linux packages remain gated by the signed
+  publication and install, Linux packages remain gated by the signed
   ReleaseSet digest/length and native package/payload oracles. Credential-
   absence, unsigned-marker, wrong-publisher, foreign-architecture, and
-  unledgered-component tests are the intended automated boundary; native
+  unledgered-component tests are the intended automated boundary, native
   downloaded-artifact receipts are the release boundary.
 - (DIST-01, #8914) Remote Desktop versions are strictly monotonic and never
   use `allowDowngrade`. Rollback is only the local immediately retained slot
   after a typed first-launch failure. macOS DMG, Windows NSIS, and Linux
-  AppImage may claim retained-slot rollback after their native receipts;
+  AppImage may claim retained-slot rollback after their native receipts,
   macOS ZIP and Linux DEB/RPM explicitly have no app-owned rollback claim.
   Reducer/model/property and restart-interruption tests are the intended
-  automated boundary; N-1 update, deliberate first-launch failure, recovery,
+  automated boundary, N-1 update, deliberate first-launch failure, recovery,
   and format-specific rollback receipts are the release boundary.
 - (DIST-01, #8914) Desktop builds/tests/signing/publication/promotion run only
-  on owned orchestration and target-capable owned workers; GitHub Actions and
+  on owned orchestration and target-capable owned workers, GitHub Actions and
   GitHub-hosted CI remain prohibited. A concrete runner registry must bind
   opaque worker identity, native OS/architecture, image/toolchain revision,
   signing-access class, native acceptance host, attestation, freshness, and
   quarantine. Repository authority guards and runner-registry validation are
-  the intended automated boundary; owned worker and native-host attestations
+  the intended automated boundary, owned worker and native-host attestations
   are the release boundary.
 - (DIST-01, #8914) GitHub Releases is a verified prerelease transport and
   discovery mirror, never update authority. An asset is uploaded only from an
@@ -758,15 +758,15 @@ More specific invariant ledgers apply inside imported apps and packages.
 - (DIST-01, #8914) `oa-updates` Desktop publication must preserve the complete
   mobile OTA export, manifest selection, headers, assets, and known-good probe.
   A Desktop metadata-only deploy cannot replace the service image. Route/asset
-  regressions and candidate-feed fixtures are the intended automated boundary;
+  regressions and candidate-feed fixtures are the intended automated boundary,
   pre- and post-promotion mobile manifest/asset receipts are the release
   boundary and any failure blocks or rolls back Cloud Run traffic.
 - (DIST-01, #8914) `/download` resolves only the verified promoted Desktop
   ReleaseSet and cannot contain handwritten artifact URLs or infer support
   from a requested OS. Public availability requires the target/format native
-  receipt; direct DEB/RPM downloads never imply a package repository,
+  receipt, direct DEB/RPM downloads never imply a package repository,
   unattended update, or app-owned rollback. Typed resolver/route/accessibility
-  and telemetry-redaction tests are the intended automated boundary; public
+  and telemetry-redaction tests are the intended automated boundary, public
   target-resolution/download receipts are the release boundary. The server-side
   resolver enforcing this (DIST-10, #8923) is
   `apps/openagents.com/apps/start/src/desktop-download-resolver.server.ts`
@@ -807,24 +807,24 @@ More specific invariant ledgers apply inside imported apps and packages.
   generation, atomic promotion, `/download`/homepage/`/changelog` verification,
   and the one final public-safe receipt. Dry-run, durable resume, partial-matrix
   refusal, idempotence, and pre-promotion failure tests are the intended
-  automated boundary; a real RC command receipt is the release boundary. The
+  automated boundary, a real RC command receipt is the release boundary. The
   v1 macOS compatibility runbook is the sole temporary exception until #8915.
 - (DIST-01, #8914) Every Desktop release has a release-operator-reviewed
   public changelog and a detailed public-safe agent changelog with the exact
   ProductSpec §15.1 names. Under the revision-2 autonomous RC grant, the
   delegated release operator performs this review without a second owner
-  ceremony; stable still follows its explicit owner gate. Both artifacts bind
+  ceremony, stable still follows its explicit owner gate. Both artifacts bind
   trigger kind/ref, release actor, exact authority revision/grant, release URL,
   and source-feedback refs in addition to the bounded human notes and
   digest-bound refs that enter ReleaseSet v2 before its signature.
   `/changelog`, `/download`, GitHub, and the in-app prompt cannot diverge from
   those signed inputs. Accumulator generation, bounds, roll-forward
   idempotence, route state, attribution, and cross-artifact consistency tests
-  are the intended automated boundary; the two indefinitely retained dated
+  are the intended automated boundary, the two indefinitely retained dated
   artifacts and signed ReleaseSet notes refs are the release boundary.
 - Candidate feedback intake binds every GitHub or Forum tester comment to the
   exact generated `Candidate-Version` field. Requested-tester identity and
-  comment chronology alone are not release correlation; an unbound or
+  comment chronology alone are not release correlation, an unbound or
   wrong-version comment cannot be acknowledged, mint a follow-up issue, or
   trigger another candidate. A direct GitHub issue is a separate bounded
   intake shape: its author must be a requested tester, its creation must be
@@ -835,9 +835,9 @@ More specific invariant ledgers apply inside imported apps and packages.
   unrelated issue or infers severity from prose. Bounded PASS/BLOCKED parsing
   and unstructured triage occur only after their applicable binding succeeds.
 - (DIST-03, #8916) Desktop packaging entrypoints require an EXPLICIT target
-  build descriptor (`openagents.desktop.target_build_descriptor.v1`; the six
-  closed target keys; EXACT per-target format coverage — darwin dmg+zip,
-  win32 nsis, linux appimage+deb+rpm; subsets are refused). Host inference
+  build descriptor (`openagents.desktop.target_build_descriptor.v1`, the six
+  closed target keys, EXACT per-target format coverage — darwin dmg+zip,
+  win32 nsis, linux appimage+deb+rpm, subsets are refused). Host inference
   (`process.arch`/`process.platform`) never selects a release target. Staging
   (`apps/openagents-desktop/scripts/stage-target.ts`) runs in a clean
   per-target temporary workspace: the EXACT source revision is exported into
@@ -854,7 +854,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   and owned native components (`oa-desktop-audio`) build only with the
   descriptor's explicit Rust target triple, with build output inside the
   staging workspace (path-prefix remapped for cross-run determinism).
-  Auto-created staging workspaces are cleaned up on success AND error; only
+  Auto-created staging workspaces are cleaned up on success AND error, only
   an explicit `--retain` keeps one for debug/proof runs. The developer
   checkout, shared node_modules, and the shared cargo target directory are
   never the packaged source: Electron Forge requires
@@ -865,7 +865,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   mutated or reused workspace can never produce a receipt referencing stale
   proof), refuses when its ACTUALLY installed Electron/Forge versions differ
   from the ledger's locked toolchain, discards its checkout copy wholesale,
-  and packages ONLY the staged tree; after package/asar assembly a LIVE gate
+  and packages ONLY the staged tree, after package/asar assembly a LIVE gate
   re-audits the REAL app.asar entry list through `stagedTreeViolations`,
   verifies per-closure-entry packed/unpacked/extraResource placement
   fidelity against the ledger plan, and re-hashes shipped unpacked/
@@ -900,17 +900,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   receipt schema. Descriptor/ledger/receipt schema tests and the injected
   single-defect negative oracles in
   `apps/openagents-desktop/tests/release-staging.test.ts` are the automated
-  boundary; per-target ledgers and receipts inside the signed release set are
+  boundary, per-target ledgers and receipts inside the signed release set are
   the release boundary.
 - OpenAgents Desktop macOS artifacts carry the product-owned
   `resources/openagents-icon.icns` bundle. Finder, Dock, ZIP, and DMG output
-  must never fall back to Electron's atom icon; the packaging contract test
+  must never fall back to Electron's atom icon, the packaging contract test
   validates both the Forge input and the ICNS container before release.
 - Khala Code outside-user run evidence is opt-in only. The desktop may offer a
   "post run receipt" control, but it must not phone home or submit evidence on
   startup, refresh, harness inspection, or page view. Public run receipts may
   contain only app version, platform, architecture, distribution channel, and
-  bounded harness readiness; they must not store or project paths, prompts,
+  bounded harness readiness, they must not store or project paths, prompts,
   logs, tokens, account identifiers, machine identifiers, request body blobs, or
   user identity. A run receipt is evidence only: it does not replace the signed
   DMG/notary/update-feed receipt set and does not by itself flip a product
@@ -936,7 +936,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   against both the tool name ref and authority ref before any tool body runs.
 - Forge tenant git tokens for definition-backed work compile requested git
   scopes through the same policy boundary. `git:receive-pack`,
-  `git:upload-pack`, and `git:admin` map to Forge git tool refs; denied scopes
+  `git:upload-pack`, and `git:admin` map to Forge git tool refs, denied scopes
   are rejected before token mint, and ask scopes create operator escalation
   instead of minting a token. Definition dispatch records only token refs on the
   Forge work/run rows, scopes receive-pack tokens to the task repository/ref
@@ -956,7 +956,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `scanLongLivedScmCredentials`: Codex and Claude git-checkout runners scan the
   bounded workspace plus selected isolated account home after materialization,
   immediately before provider execution, and again before verification or PR
-  publication. Non-owner and labor findings are typed fail-closed refusals; an
+  publication. Non-owner and labor findings are typed fail-closed refusals, an
   exact owner-local own-capacity no-spend finding is instead a typed closeout
   disclosure that does not contradict completed or landed work. Lease cleanup
   still removes token-leaked workspaces even when they are dirty.
@@ -977,7 +977,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   upstream staleness cadence, records the observed upstream commit and setup
   result, and must keep honest hit/miss counters. A matching cold dispatch may
   start from the prebuilt directory only when the requested pinned commit equals
-  the registry baseline; otherwise it records a miss and falls back to normal
+  the registry baseline, otherwise it records a miss and falls back to normal
   `git_worktree` materialization. Prebuilt setup artifacts are allowed only as
   ignored local cache material, registry rows and paths are never public
   authority, and refresh/setup/restore failures must degrade to a miss rather
@@ -992,24 +992,24 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Durable definition triggers are persisted as
   `openagents.agent_definition_trigger.v1` rows in the owner-scoped
   `agent_definition_triggers` table. The definition still owns the trigger
-  contract; the trigger table owns only operational scheduler state:
+  contract, the trigger table owns only operational scheduler state:
   `next_run_at`, enable/pause state, pause reason, and consecutive failure
   count.
 - `next_run_at` is a precomputed scheduler hint for cron triggers, not
   dispatch authority. A due, enabled trigger must still pass the scheduler,
   definition-run route, lane/toolset policy, accounting, and owner-scope gates
   before any work starts. Inbound webhook trigger rows likewise store typed
-  source/condition configuration only; verified ingress, normalization, and
+  source/condition configuration only, verified ingress, normalization, and
   condition evaluation are separate authority steps.
 - Cron trigger dispatch enters through Google Cloud Scheduler and the bounded
-  Cloud Run cron endpoint. Cloud SQL row locking owns serialization; request
+  Cloud Run cron endpoint. Cloud SQL row locking owns serialization, request
   routes, webhook ingress, and ad hoc processes must not scan and dispatch due
   cron rows directly. Each scheduler tick processes due rows oldest-first under
   a bounded cap, and every attempted dispatch must move `next_run_at` to the
   next cron instant before another tick can consider the row again. Refusals
   and failures increment/preserve the failure streak rather than retrying in a
   tight duplicate loop.
-- Auto-pause after 3 consecutive failures; `maxRunsPerDay` /
+- Auto-pause after 3 consecutive failures, `maxRunsPerDay` /
   `maxRunSeconds` / `maxCreditsPerDay` are enforced at dispatch with typed
   refusals - a buggy background watcher must never be a money pump. Dispatch
   refuses invalid budgets, refuses owner+definition rows that already hit the
@@ -1044,7 +1044,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - GitHub @mention definition runs are limited to signed
   `issue_comment.created` source events with a configured bot mention. The
   GitHub webhook route may use the raw comment body only to extract that
-  bounded mention fact; raw comment text, webhook body, signatures, and
+  bounded mention fact, raw comment text, webhook body, signatures, and
   provider payloads must not become model-visible trigger payloads. Matching
   triggers dispatch through the same owner-scoped bot-integration template and
   store a GitHub completion callback descriptor on the run trigger payload.
@@ -1065,7 +1065,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   Manual run-now must not become an owner-scope bypass or a second dispatch
   path.
 - The Google Cloud LiveHub service is the client-facing live notification
-  transport. Cloud SQL remains authoritative; LiveHub may cache only bounded,
+  transport. Cloud SQL remains authoritative, LiveHub may cache only bounded,
   replayable public-safe frames and connection metadata. It must not become a
   second scheduler, business-state database, or credential store.
 - `event_ledger.v1` rows for the background-agent unified inbox are private,
@@ -1073,7 +1073,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   only after source-specific signature verification and typed normalization,
   and only matched owner triggers provide the owner boundary for ledger ingest.
   Cloud SQL rows store source refs, external refs, actor refs,
-  content refs, subject refs, bounded summaries, and timestamps; they must not
+  content refs, subject refs, bounded summaries, and timestamps, they must not
   store raw webhook bodies, raw comment/message text, provider payloads,
   secrets, signatures, tokens, or training/eval consent. The per-owner
   Cloud SQL transactions and owner-scoped unique keys own ordering and dedupe.
@@ -1131,7 +1131,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 - Connector sidecars never own workspace, payment, email, membership,
   settlement, identity, or broad provider-account authority. The platform
-  remains authoritative for those state changes; connectors may only emit
+  remains authoritative for those state changes, connectors may only emit
   source-verified, bounded events and execute explicitly modeled per-connector
   tools.
 - Before any connector event reaches model context, session history, logs, or
@@ -1141,7 +1141,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   only typed subjects, source refs, redacted refs, booleans, timestamps, and
   blocker/caveat refs.
 - Outbound connector mutation must pass an app-owned idempotency gate before
-  dispatch. Provider retry keys alone are not enough; the OpenAgents connector
+  dispatch. Provider retry keys alone are not enough, the OpenAgents connector
   contract owns the dedupe key and the bounded receipt/projection.
 - Generic provider tools are forbidden. Tool authority must name the connector,
   provider, subject kind, and operation, and it must stay bound to the verified
@@ -1192,7 +1192,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   malformed, broad, or loose reports should be rejected by the issue form or
   moved back to the Forum rather than becoming normal product-promise intake.
 - This initial promise system is documentation-backed. Runtime enforcement must
-  be added before treating the registry as an automated product gate; until
+  be added before treating the registry as an automated product gate, until
   then, `docs/promises/checks-and-gates.md` is the model-boundary record.
 
 ## Commit Metadata Privacy
@@ -1223,20 +1223,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   same `packages/khala-sync-client` store core. The host owns the database
   handle and installation identity, closes the authenticated Sync session
   before the store on process/OTA teardown, and exposes only bounded phase/
-  freshness state to Effect Native views; a local cache is never authenticated
+  freshness state to Effect Native views, a local cache is never authenticated
   or server-authoritative Sync.
 - Catch-up pages and advancing live deltas must cover every dense server-
   assigned scope version from the durable cursor through the advertised
   cursor. A sparse or non-progressing batch is a protocol failure: the client
-  keeps its durable cursor and reconnects for authoritative replay; retained-
+  keeps its durable cursor and reconnects for authoritative replay, retained-
   window loss enters the existing MustRefetch/snapshot-replacement path.
   Duplicate or stale frames remain idempotent no-ops.
 - Every awaited bootstrap/log response is fenced by the requesting scope
   generation before it can replace or advance durable state. Unsubscribe,
-  close, and proven revocation invalidate that generation; a late push response
+  close, and proven revocation invalidate that generation, a late push response
   cannot acknowledge or publish rejection state after revocation. On the
   server, a runtime event must equal the turn's durable next `event_count`
-  (the first event is sequence `0`; after `N` admitted events the next is
+  (the first event is sequence `0`, after `N` admitted events the next is
   sequence `N`) and match its lifecycle state: only `turn.started` can leave `queued`, a second
   start cannot mutate `running`, and no provider event can mutate a completed,
   failed, interrupted, or closed turn. A stale hosted worker is settled as one
@@ -1250,44 +1250,44 @@ More specific invariant ledgers apply inside imported apps and packages.
 - After native-session verification, Desktop main and the mobile Expo host
   alone may compose the shared HTTP/WebSocket session and subscribe
   `personalScope(serverDerivedOwnerUserId)`. The access-token callback is
-  re-read by the transport so bounded rotation does not expose a token; owner
+  re-read by the transport so bounded rotation does not expose a token, owner
   refs, credentials, transport/session objects, store handles, and raw rows
   never enter either view program.
 - Native conversation clients use the one shared client implementation of the
   server's canonical `chat.createThread` / `chat.appendMessage` mutators and
   `chat_thread` / `chat_message` schemas. View-facing confirmed projections
   omit owner identity and carry stable thread/message refs, server entity
-  versions, scope cursor, phase, and pending count; optimistic content is never
+  versions, scope cursor, phase, and pending count, optimistic content is never
   labeled confirmed, and denial/sign-out removes the conversation capability.
   After Send, a local unconfirmed user message remains visible with an honest
   delivery state across intermediate confirmed-only Sync projections. Local
   admission replaces only its temporary key with the exact durable message
-  ref; only that exact confirmed ref clears the local delivery state. A typed
+  ref, only that exact confirmed ref clears the local delivery state. A typed
   rejection or transport failure keeps the message visible, exposes the safe
   error, and restores the draft instead of silently deleting the attempt.
   An authenticated `out_of_order` result may repair only a server-proven
   positive pending-ID gap: the client atomically renumbers the still-unseen,
   locally dense queue from the server watermark plus one while preserving
   FIFO order, exact intent bytes, and creation times, then rebuilds the
-  optimistic overlay. It refuses an empty, non-dense, or non-gap queue; the
+  optimistic overlay. It refuses an empty, non-dense, or non-gap queue, the
   server ledger's strict dense ordering is never weakened.
   Optional image bytes on `chat_message` remain inside the owner-private exact
   thread scope: at most four closed-type PNG/JPEG/GIF/WebP payloads, at most
   2 MiB decoded each, with decoded length, file signature, and SHA-256 checked
   by the server before storage/changelog admission. Native paths and picker
   URIs never enter Sync. The trusted Pylon reader may materialize an image only
-  into a turn-scoped private scratch path and must delete it after dispatch;
+  into a turn-scoped private scratch path and must delete it after dispatch,
   no public/view receipt projects base64 bytes.
   Mobile coding execution targets come only from the strictly decoded,
   authenticated personal target catalog. The canonical device-local composer
-  draft persists the exact lane/provider/model/account/execution-target refs;
+  draft persists the exact lane/provider/model/account/execution-target refs,
   a missing, stale, revoked, offline, or unadvertised selection preserves the
   draft and withholds Send. A new turn carries that exact target, while an
   already-running turn remains pinned to its confirmed lane. Neither path may
   silently substitute another provider or account.
 - Native clients create one immutable device-local identity before OpenAuth.
   Its `scope.device_local.*` rows live in separate `local_entities` tables with
-  `LocalRevision`; they are local Source Authority and are never readable as
+  `LocalRevision`, they are local Source Authority and are never readable as
   server-confirmed rows, assigned `SyncVersion`, or sent through hosted Sync.
   A server-verified account link is additive and reversible: link/unlink never
   rewrites the local identity or deletes local rows. Revocation still purges or
@@ -1295,7 +1295,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Native provider-neutral timelines use the shared client reader over the
   existing `agent_run` / `agent_run_event` entities on one exact agent-run
   scope. Only live confirmed run state and the newest 500 ordered event facts
-  may project; owner/objective/repository/runtime/backend, event source, raw
+  may project, owner/objective/repository/runtime/backend, event source, raw
   payload JSON, external callback refs, and non-live cached rows stay hidden.
 - Desktop Codex preflight validates the current account configuration with the
   user's validated installed Codex parser before a provider probe turn. Automatic repair is
@@ -1325,7 +1325,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   preload/main/gateway responses, and enter runtime Sync only as private
   causality refs. Paths, URLs, prompts, bodies, owner fields, credentials,
   provider payloads, native handles, and raw errors are forbidden. The
-  process host owns replaceable runtime/workspace/Sync/account/history slots;
+  process host owns replaceable runtime/workspace/Sync/account/history slots,
   WorkContext/session/window replacement and app teardown close each owned
   finalizer once, abort in-flight native sign-in, and leave zero active slots.
   Regression and built-host coverage lives in
@@ -1340,7 +1340,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   a directory, chooses one with the directory picker, or asks macOS to open one
   bounded supported code document with the packaged application, and remains one
   WorkContext-owned main-process capability. A managed launcher preserves its
-  original directory through `OPENAGENTS_DESKTOP_LAUNCH_CWD`; Electron main
+  original directory through `OPENAGENTS_DESKTOP_LAUNCH_CWD`, Electron main
   validates and admits that root on every ordinary startup, superseding stale
   persisted navigation. Direct executable launches use their captured
   `process.cwd()`. A macOS `open-file` selection admits only the selected
@@ -1349,22 +1349,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   relative inputs, directories, and invalid paths fail closed. None of these
   paths gives the renderer absolute-path selection authority. The packaged
   macOS bundle advertises only the bounded source/text formats the UTF-8 editor
-  can represent, with `CFBundleTypeRole=Editor` and `LSHandlerRank=Alternate`;
+  can represent, with `CFBundleTypeRole=Editor` and `LSHandlerRank=Alternate`,
   development launches make no system-registration claim and the app never
   silently replaces the owner's default handler. A pre-ready document selection
   may expose only that reduced filename as a sandboxed renderer launch hint so
-  Files is the first shell paint; the hint is not a workspace grant. Main still
+  Files is the first shell paint, the hint is not a workspace grant. Main still
   admits the containing directory and sends the typed open-file command. That
   command drains before coding-history hydration, and chat/provider metadata
   cannot block or replace the editor-first launch surface. The new recursive
   tree/search projections carry the opaque grant ref, relative path refs,
-  bounded page/result counts, and a declared cache key/epoch/freshness fact;
+  bounded page/result counts, and a declared cache key/epoch/freshness fact,
   they never carry the selected absolute root, a native handle, or an ambient
   current directory. Hidden, Git-ignored, secret-shaped, binary, unreadable,
   traversal, and symlink-escape entries are withheld. One recursive watcher is
-  opened only while subscribers exist; each change, explicit refresh, or
+  opened only while subscribers exist, each change, explicit refresh, or
   unlocated/overflow event advances the epoch and invalidates tree/search
-  caches. Every bounded search executes in its own WorkContext-owned worker;
+  caches. Every bounded search executes in its own WorkContext-owned worker,
   watch/refresh invalidation terminates stale tasks before advancing authority,
   only the unchanged epoch may populate the cache, and caller cancellation,
   worker failure/exit, WorkContext replacement, or app disposal settles each
@@ -1373,13 +1373,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   close the watcher exactly once. The core boundary and adversarial fixtures
   live in
   `apps/openagents-desktop/src/workspace-service.ts` and
-  `apps/openagents-desktop/tests/workspace-service.test.ts`; worker lifecycle
+  `apps/openagents-desktop/tests/workspace-service.test.ts`, worker lifecycle
   and real built-artifact coverage live in
   `apps/openagents-desktop/src/workspace-search-host.test.ts` and
   `apps/openagents-desktop/tests/build.test.ts`. Fixed tree,
   refresh, subscribe/unsubscribe, and decoded change-event channels now cross
   main/preload only for the trusted top-level bundled renderer. Preload
-  reference-counts local consumers; main keeps one exact subscription per
+  reference-counts local consumers, main keeps one exact subscription per
   webContents, rebinds it after an explicit WorkContext replacement, and
   closes it with the window/app lifecycle. The built Electron smoke proves a
   relative tree page, a newer refresh event, unsubscribe, and zero active host
@@ -1392,13 +1392,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   revision-bound rename, revision-bound non-recursive delete, and host-injected
   reveal operations accept and return only relative refs. Hidden, secret,
   Git-ignored, traversal, symlink, stale-revision, existing-target, non-empty-
-  directory, and permission-loss cases fail with typed outcomes; only confirmed
+  directory, and permission-loss cases fail with typed outcomes, only confirmed
   mutations advance the WorkContext epoch. Their adversarial core fixtures live
   in `apps/openagents-desktop/tests/workspace-service.test.ts`. Fixed decoded
   create/rename/delete/reveal main-preload operations now cross only for the
-  trusted top-level bundled renderer; Electron main injects reveal authority
+  trusted top-level bundled renderer, Electron main injects reveal authority
   into each selected WorkContext and no absolute path returns. Desktop Files
-  composes the accessible relative tree/search/mutation surface; preload reduces
+  composes the accessible relative tree/search/mutation surface, preload reduces
   native-picker completion to a boolean and exposes none of the legacy root
   summary/list/read/save/Git-diff methods. The real Electron smoke clicks Files,
   proves no selected-root text or legacy editor, and tears down with zero active
@@ -1410,14 +1410,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   target, including a target that appears during the write race. Confirmed
   workspace renames retarget matching open file and descendant tabs without
   dropping drafts. Editor recovery persists only bounded relative path refs,
-  revisions, and drafts under an opaque coding-session ref; it persists no root
+  revisions, and drafts under an opaque coding-session ref, it persists no root
   or grant, reopens through the current grant, and surfaces changed or missing
   files as explicit conflicts before any save. These paths never return the
   selected root or accept ambient/absolute renderer paths.
 - Desktop Git review requests are closed typed operations over the current
   canonical WorkContext repository. Status projects only relative paths plus
   opaque repository, HEAD, and exact status snapshot refs. Diff and discard
-  requests must echo the matching repository/status refs; any concurrent HEAD,
+  requests must echo the matching repository/status refs, any concurrent HEAD,
   index, or tracked-worktree change makes the request stale. Diff projection is
   bounded to 120 KB and rejects binary, secret-shaped, and unavailable output
   before renderer or provider context. Discard is confirmation-gated, applies
@@ -1425,7 +1425,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `git restore --worktree -- <relative-path>` semantics—never reset, checkout,
   untracked deletion, arbitrary argv, or automated commit/push/PR publication.
   Composer review context is one explicit removable next-turn attachment,
-  labeled untrusted before provider delivery and cleared on accepted submit;
+  labeled untrusted before provider delivery and cleared on accepted submit,
   receipts never contain its path or diff content.
 - Provider-native Codex history remains owner-local and read-only. On the
   healthy path Desktop pages catalog/thread/turn/item truth from the pooled
@@ -1434,13 +1434,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   gaps. Rollout JSONL parsing is available only as a labeled smoke,
   migration, or diagnostic fallback. Raw provider payloads, rollout paths,
   encrypted/raw reasoning, credentials, and filesystem/provider authority
-  never cross preload; local history is never uploaded to Khala Sync by
+  never cross preload, local history is never uploaded to Khala Sync by
   default. For every decoded thread, source records equal rendered source
   records plus wholly redacted records plus explicit gap records.
 - Windowed history prepends preserve the first visible keyed row synchronously
   inside the shared DOM commit. Variable-height rows added above the viewport
   may not produce an intermediate stale `scrollTop` frame or a delayed
-  post-paint correction; ordinary appends and unrelated rerenders retain their
+  post-paint correction, ordinary appends and unrelated rerenders retain their
   existing numeric scroll position.
 - Desktop selects its chat authority once at renderer boot: confirmed account-
   linked Sync when the current gateway catalog is live, otherwise explicit
@@ -1448,7 +1448,7 @@ More specific invariant ledgers apply inside imported apps and packages.
 - The first ProductSpec-native Desktop MVP composer is fixed to the ordinary
   logged-in Codex session. It exposes no provider/account, model,
   reasoning-effort, plugin, MCP, or voice selector. Its sole admitted media
-  affordance is the bounded image picker/paste/drop path; it adds no provider
+  affordance is the bounded image picker/paste/drop path, it adds no provider
   choice or arbitrary filesystem authority. Internal post-MVP provider/media
   substrates do not authorize other visible affordances and may never silently
   substitute another provider for Codex.
@@ -1465,19 +1465,19 @@ More specific invariant ledgers apply inside imported apps and packages.
   exception.
 - Desktop composer images accept only PNG/JPEG/WebP/GIF, at most eight per
   turn and 10 MB each. Picker, paste, and drop converge on one serialized typed
-  classifier; ordinary text paste falls through, and wrong-type, empty,
+  classifier, ordinary text paste falls through, and wrong-type, empty,
   oversized, unreadable, or over-count inputs fail with accessible copy.
   Pending Steer/Queue actions remain text-only. An idle image-only turn is
-  valid; successful sends clear attachments and failed sends restore the exact
+  valid, successful sends clear attachments and failed sends restore the exact
   retry set. Native picker paths never cross preload. Default Codex app-server
   delivery uses bounded `localImage` inputs, while the retained exec fallback
   keeps its isolated `-i` lowering proof. Logs, public-safe projections, and
   analytics contain neither attachment bytes nor paths.
 - The compatibility shell and React workbench consume one typed primary-sidebar
   projection in this exact order: New session, Chat, Project home, Settings.
-  The rows reuse canonical command identities and typed intents; New session is
+  The rows reuse canonical command identities and typed intents, New session is
   an action, while Chat, Project home, and Settings project current selection.
-  A typed current indicator is allowed only for the selected destination;
+  A typed current indicator is allowed only for the selected destination,
   unread counts or status badges may not appear until a real authority supplies
   them. ProductSpec and AssuranceSpec remain excluded under the preceding
   allowlist rule.
@@ -1485,8 +1485,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   When AUDIO-4 #8737 lands, native capture/playback may run only in the signed
   process-opaque `crates/oa-desktop-audio` Rust helper authorized by the
   Effect/Rust audio decision. `packages/audio-contract` Effect Schema remains
-  canonical; Electron main supervises a closed public-safe control protocol;
-  raw media and the direct authenticated media socket stay inside the helper;
+  canonical, Electron main supervises a closed public-safe control protocol,
+  raw media and the direct authenticated media socket stay inside the helper,
   renderer, preload, Runtime Gateway events, Khala Sync, command authority,
   storage policy, Google adapters, and UI remain Effect/TypeScript. This bullet
   does not make Mic visible in the MVP: AUDIO work retains its own acceptance
@@ -1494,10 +1494,10 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 ### Persistent Voice and Raw Media
 
-- A voice generation starts only after an explicit, versioned disclosure; stop,
+- A voice generation starts only after an explicit, versioned disclosure, stop,
   revoke, and restart fail closed, and restart never silently resumes capture.
 - Capture, network egress, retention, and playback are separate authoritative
-  facts. Mute synchronously stops capture and egress; it never implies deletion
+  facts. Mute synchronously stops capture and egress, it never implies deletion
   or retention, and no preference alone enables retention.
 - Every frame is fenced by exact owner, device, thread, session, generation,
   and monotonic sequence. ACKs never regress or acknowledge unsent data.
@@ -1512,7 +1512,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   analytics, traces, or support bundles.
 - Rust may own native capture/playback and the bounded media envelope only. It
   owns no transcript, command, Sync, storage, retention-policy, or outcome
-  schema; the Effect audio contract is canonical.
+  schema, the Effect audio contract is canonical.
 - The executable regressions live in
   `packages/audio-contract/src/lifecycle-model.test.ts`, with shared
   Effect/Rust accept/reject vectors in `fixtures/audio-contract/media-v1.json`.
@@ -1522,7 +1522,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   defensively reapplies it, with deterministic thread-ref tie-breaking.
 - Desktop local-lane transcript notes preserve provider event arrival order
   both while streaming and after durable reload. Consecutive assistant text
-  deltas may coalesce only until the next display-bearing non-text event; that
+  deltas may coalesce only until the next display-bearing non-text event, that
   event closes the assistant segment, and later text starts a new segment
   after it. Tool results update the matching invocation card in place at the
   invocation's original position rather than moving the card or surrounding
@@ -1532,17 +1532,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   output may accumulate until the next renderer frame, but every semantic
   boundary and turn completion flushes pending text first. Workspace watches
   exclude dot/generated trees, deduplicate and coalesce bursts for 75 ms, cap
-  exact affected refs at 256, and refresh only visible/loaded affected slices;
+  exact affected refs at 256, and refresh only visible/loaded affected slices,
   overflow is one explicit full-invalidation event.
 - An accepted Desktop-local provider turn is durable before provider dispatch.
   Electron main owns a private mode-0600 journal keyed by exact thread, turn,
-  and lane; it records the selected account, provider session identity,
+  and lane, it records the selected account, provider session identity,
   lifecycle phase, bounded assistant segments/cursor, recovery generation, and
   one terminal disposition. Checkpoint writes are cadence-bounded and atomic,
   and deterministic message keys preserve live text/tool ordering without
   duplicate prompt or assistant segments after reload. Startup reconciles each
   nonterminal record once. Codex consults app-server durable turn state and may
-  mark `resumed_after_restart` only when that state confirms completion; a
+  mark `resumed_after_restart` only when that state confirms completion, a
   running or unknown turn becomes an explicit transient gap and requires an
   owner retry because the protocol has no replay cursor. Production never
   fabricates a continuation prompt to replace lost deltas. The current Claude Agent SDK cannot reattach an interrupted query,
@@ -1551,20 +1551,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   recovery authority, and restart never auto-starts microphone capture.
 - Desktop top-level local Codex turns have no automatic wall-clock deadline.
   Long or temporarily quiet coding work continues until Codex completes,
-  fails, or the owner explicitly uses Stop; elapsed time alone must never send
+  fails, or the owner explicitly uses Stop, elapsed time alone must never send
   SIGTERM or manufacture a provider-unavailable failure. A host deadline may
   be injected only by bounded tests and is not production configuration.
 - Desktop captures its process working directory at launch and uses that exact
   directory as the default coding cwd for top-level local Codex and Claude
   turns. It must not silently replace that cwd with an Application Support
   per-thread directory. The runtime accepts the cwd through a host getter so a
-  future explicit directory setting can replace the launch default; provider
+  future explicit directory setting can replace the launch default, provider
   probes, account custody, and delegated scratch workers remain isolated.
 - An empty Desktop conversation fills its transcript row and centers the
   welcome prompt with the active current working directory. That directory is
   a schema-decoded projection of Electron main's canonical WorkContext. Only
   this empty state may render the adjacent Change action, which dispatches the
-  existing typed native workspace-picker intent; React must not call
+  existing typed native workspace-picker intent, React must not call
   `process.cwd()`, infer a path from session history, or submit an absolute
   path. Cancel retains the prior WorkContext. Selection uses the same admitted
   workspace grant consumed by Files, Terminal, Git, and the next Codex turn.
@@ -1576,12 +1576,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   §6. Forge defaults may not leak into release receipts, signed manifests, or
   uploaded filenames.
 - Desktop's mixed runtime/provider conversation sidebar has one canonical
-  target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation;
+  target order for rendering, Command/Ctrl+1–9 hints, and keyboard activation,
   numbering never restarts at a source boundary. Selecting a runtime/app-local
   row always unmounts any provider-history page before projecting that row's
   transcript, so a successful selection cannot leave stale chat content visible.
 - A local tool invocation renders as one stable transcript row. Its started
-  event establishes the row identity and command preview; matching completion
+  event establishes the row identity and command preview, matching completion
   or failure updates that row's status and bounded result in place. React and
   the compatibility renderer must share the same lifecycle reconciler and may
   not expose raw start/result transport events as separate conversation rows.
@@ -1596,7 +1596,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `tests/codex-history.test.ts`.
 - File-change items retain bounded `changes[]` path, kind, line tallies, and
   unified diff payloads instead of flattening them to a count. Live
-  `item/fileChange/patchUpdated` updates reconcile by provider `itemId`; the
+  `item/fileChange/patchUpdated` updates reconcile by provider `itemId`, the
   latest `turn/diff/updated` aggregate occupies one deterministic turn-diff
   row and closes with the turn. Retained `apply_patch` records project through
   the same typed card. Per-file truncation is explicit, and add/remove/meta
@@ -1611,7 +1611,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   scanned `renderer/react-primitive-adapters.tsx`, `renderer/react-timeline.tsx`,
   `renderer/react-composer.tsx`, and `renderer/react-review.tsx` hosts. Pure,
   controlled workbench presentation and its canonical token-driven stylesheet
-  live in `packages/ui`; Desktop and web may consume those same visual
+  live in `packages/ui`, Desktop and web may consume those same visual
   primitives, but the package may not import Desktop domain state, Effect
   subscriptions/intents, Electron, routing, persistence, or model-stream
   clients. Desktop adapters consume the shared primitives from the same Effect-owned
@@ -1637,17 +1637,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   attempt to flatten `khalaTheme.radius` or hand-pick a custom `danger` hex to
   achieve this — `packages/tokens` (effect-native) enforces that every color
   role derives from the palette and clears WCAG AA text contrast, and that the
-  control lattice's radii stay members of the theme's radius scale; changing
+  control lattice's radii stay members of the theme's radius scale, changing
   those at the token level was tried and reverted (2026-07-16) because it
   either breaks those invariants or squares every control app-wide, a far
   bigger change than the workbench chat/tool-card scope calls for. One
   authoritative
   surface selects exactly one whole-surface backend for its lifetime: declared
   React lowerings or the proven direct catalog compatibility backend, never
-  both. Desktop selects React for an ordinary launch; the catalog backend is
+  both. Desktop selects React for an ordinary launch, the catalog backend is
   reachable only through the explicit `renderer=compatibility` fallback for
   retained specialist surfaces and their acceptance oracle. The Effect-owned
-  stream opens once outside React effects; Strict Mode
+  stream opens once outside React effects, Strict Mode
   replay may reattach React listeners but cannot duplicate the host
   subscription, command effect, or terminal outcome. Unmount closes the
   selected backend, subscription, root, and token stylesheet. Tailwind and any
@@ -1656,14 +1656,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   the preferred source-component layer when it supplies an
   appropriate control. Generated components stay under Desktop `src/components/ui`,
   while `shadcn-khala.css` maps every semantic palette role onto canonical
-  `--en-*` variables; the preset may not install a parallel light/dark palette.
+  `--en-*` variables, the preset may not install a parallel light/dark palette.
   The preset's original font choices are replaced by the shared
   `@openagentsinc/ui` typography authority: Zalando Sans is the primary sans,
   Inter and the host stack are fallbacks, and Disket Mono is the primary mono
   across Desktop, web, docs, and shared workbench components.
   Tailwind defaults remain disabled rather than becoming a second theme.
   Portable renderer modules remain
-  `.ts`, React-free, and free of `className`/`ReactNode`; no Zustand, Effect
+  `.ts`, React-free, and free of `className`/`ReactNode`, no Zustand, Effect
   Atom React, TanStack router, Zod, arbitrary JSX component, or second theme/
   icon system may become application authority. The Electron renderer remains
   tokenless and Node-free. This boundary and `.tsx` scanner coverage are
@@ -1671,20 +1671,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   `apps/openagents-desktop/src/renderer/design-conformance.test.ts`.
 - Desktop React sidebar chrome follows one stable top-left anatomy: native
   macOS traffic lights share the first row with the sidebar expander and
-  navigation-history slots; the next row is the `OpenAgents` identity with an
-  icon-only search disclosure; primary destinations and conversation titles
+  navigation-history slots, the next row is the `OpenAgents` identity with an
+  icon-only search disclosure, primary destinations and conversation titles
   remain left aligned beneath it. Each conversation title and its timestamp or
-  status metadata share one non-wrapping row, with metadata right-justified;
+  status metadata share one non-wrapping row, with metadata right-justified,
   metadata may not consume a second line. Search never occupies a permanent field when
   closed. Every glyph is named by the closed Effect Native `IconName` catalog
-  and lowered by a renderer-private adapter; enabled controls may never be
+  and lowered by a renderer-private adapter, enabled controls may never be
   no-ops. Back/forward read one ephemeral bounded stack owned by the Effect
   shell SubscriptionRef. Admitted workspace, local-session, Codex-history,
   and coding-session destinations enter only after their authoritative open
-  succeeds; adjacent duplicates collapse, traversal preserves the forward
+  succeeds, adjacent duplicates collapse, traversal preserves the forward
   branch, and only a new successful navigation truncates it. DesktopShellState
   projects exact can-go flags and public-safe target titles. React dispatches
-  typed Back/Forward intents and owns no stack or `window.history`; a failed or
+  typed Back/Forward intents and owns no stack or `window.history`, a failed or
   stale target cannot advance the cursor, move focus, or invent transcript
   scroll. The collision review leaves default key chords unassigned rather
   than conflicting with editable controls or Electron native menu commands.
@@ -1692,7 +1692,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   only sidebar state persisted in the versioned main-process preferences
   document. Restore reuses the existing pre-mount preference read, preserves
   content geometry, and always leaves an expander reachable. Session-search
-  disclosure is launch-ephemeral and starts closed after reload/restart; the
+  disclosure is launch-ephemeral and starts closed after reload/restart, the
   query stays exclusively in history state and closing search clears it through
   the existing typed history intent. A restored collapsed rail never focuses
   search or steals the composer focus established at shell-interactable. The
@@ -1704,11 +1704,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   Git state. It remains read-only: no edit, discard, stage, commit, branch,
   push, PR, terminal, arbitrary Git argv, absolute root, or raw diff fallback.
   Review refusals and runtime recovery banners project typed Effect
-  dispositions; React never classifies raw provider/runtime error strings.
+  dispositions, React never classifies raw provider/runtime error strings.
 - A newly created Desktop window occupies the active display's full usable
   `workArea` while remaining an ordinary resizable window. It preserves the
   operating-system menu bar, Dock/taskbar, traffic lights, and normal window
-  controls; startup must not call `maximize()` or enter native fullscreen.
+  controls, startup must not call `maximize()` or enter native fullscreen.
   The explicit fullscreen command remains separate owner authority.
 - The MVP sidebar never projects connected provider accounts or usage. Any
   retained account/Fleet state is non-visible post-MVP substrate only.
@@ -1724,16 +1724,16 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Readable Desktop transcript content never changes layout geometry because of
   hover or focus. Hidden/revealed message affordances may change paint-only
   properties such as opacity or color on already allocated boxes, or use an
-  out-of-flow overlay; they may not change height, width, margin, padding,
+  out-of-flow overlay, they may not change height, width, margin, padding,
   border width, type metrics, grid/flex geometry, or display. The removed
-  message-top metadata bar must not return; message metadata remains available
+  message-top metadata bar must not return, message metadata remains available
   through the stable details inspector without moving message prose.
 - Desktop React transcripts use the admitted shadcn MessageScroller as a
   viewport-scoped behavior primitive, never as message, model, transport, or
   persistence authority. Stable item IDs and explicit user-turn anchors drive
   last-turn reopening, prior-context peek, prepend preservation, direct jumps,
   and streamed follow-at-live-edge behavior. Wheel, touch, keyboard scrolling,
-  text/link interaction, or leaving the live edge releases automatic movement;
+  text/link interaction, or leaving the live edge releases automatic movement,
   new output may arrive offscreen behind a reachable Jump to latest control.
   The viewport remains a keyboard-focusable labelled region, its content is a
   polite additions-only log with streaming busy state, and offscreen rows use
@@ -1741,15 +1741,15 @@ More specific invariant ledgers apply inside imported apps and packages.
 - Desktop New Chat is never a silent no-op. The dock action, command palette,
   and platform Command-N chord dispatch one typed `DesktopNewChat` intent. A
   new thread is created first through the app-owned durable local store and
-  pinned to local authority; live Sync pending reconciliation is never on the
+  pinned to local authority, live Sync pending reconciliation is never on the
   New Chat critical path. Runtime creation is fallback-only when the local
-  bridge cannot create. Only a real thread may clear the loaded history page;
+  bridge cannot create. Only a real thread may clear the loaded history page,
   success always mounts an empty transcript and focuses the composer. This is
   enforced by the `new_chat_always_exits_history` UX contract,
   converging-host unit coverage, and both built-Electron input paths.
 - Desktop provider runtimes are package-owned, version-explicit capabilities.
   The Codex app-server wire contract is generated programmatically from exact
-  upstream identities in `@openagentsinc/codex-app-server-protocol`; handwritten
+  upstream identities in `@openagentsinc/codex-app-server-protocol`, handwritten
   request/notification inventories are not protocol authority. Current-source
   and shipped-binary manifests have separate denominators. Every member has a
   reviewed disposition, generated-schema digest, and stability gate, while the
@@ -1758,10 +1758,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   executable hash is incompatible before thread start. Experimental app-server
   capability advertisement remains disabled until the matching generated
   manifest has complete handlers and projections. Generated drift fails CI
-  until the manifest is reviewed; supported six-method behavior is unchanged.
+  until the manifest is reviewed, supported six-method behavior is unchanged.
   Desktop owns one long-lived Codex app-server supervisor per reviewed binary
   hash, effective `CODEX_HOME`/account, and host target. Turns and preflight
-  acquire leases from that process-owned supervisor; releasing the last turn
+  acquire leases from that process-owned supervisor, releasing the last turn
   does not kill the connection. Every connection installs the complete
   generated reverse-request registry before its single initialize handshake,
   and thread/turn identities route interactive handlers without cross-thread
@@ -1775,7 +1775,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   a compact JSON Schema decoder generated from the reviewed Effect schemas
   before product projection. Decoded provider payloads first enter a private
   `CodexNativeEnvelope` plane with exact generation/request/thread/turn/item
-  identity. Semantic envelopes have bounded durable identity journals; audio,
+  identity. Semantic envelopes have bounded durable identity journals, audio,
   process output, raw responses, and deltas use a smaller transient spool.
   Provider text, workspace content and paths, auth/MCP/attestation material,
   and credentials never enter that journal. Unknown or malformed future
@@ -1784,7 +1784,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   authoritative over earlier deltas/starts for the native item projection.
   All 11 bundled server-initiated methods pass through one process-owned
   exactly-once arbiter keyed by connection plus stable request/causal identity.
-  Window/lease handlers submit generated-response-validated proposals; the
+  Window/lease handlers submit generated-response-validated proposals, the
   first valid proposal commits and late/duplicate proposals are inspectable
   no-ops. Pending attention has a deadline and shutdown cancellation, and its
   bounded `0600` journal contains only hashed request identity, method,
@@ -1796,7 +1796,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `currentTime/read` succeeds without experimental capability advertising.
   Turn and item effects are generated programmatically from the same pinned
   notification manifest. `turn/steer` is a compare-and-set against the exact
-  active regular turn and carries a stable client user-message identity;
+  active regular turn and carries a stable client user-message identity,
   hashed receipts contain no message text. Interrupt ACK is admission only and
   cannot terminalize a turn without terminal notification or repaired durable
   state. Codex next-turn intents live in a private mode-0600 durable queue,
@@ -1806,25 +1806,25 @@ More specific invariant ledgers apply inside imported apps and packages.
   forbidden.
   The running-turn composer is a projection of one typed admission matrix, not
   renderer-local authority. Steer is enabled only with the displayed exact
-  provider turn ID; queue admission is idempotent by a stable intent and
+  provider turn ID, queue admission is idempotent by a stable intent and
   client-user-message identity retained across refusal or lost ACK. Draft input
   clears only after typed acceptance. Main-owned queue rows expose lifecycle,
   order, and revision-safe edit/cancel only before promotion transfers dispatch
-  ownership; Stop is always a distinct intent. Composer queue and admission
+  ownership, Stop is always a distinct intent. Composer queue and admission
   projections are fenced by exact thread identity: switching chats clears the
   prior projection before hydrating the destination queue, and late callbacks
   from another thread cannot overwrite the visible composer.
   Codex extension state is owned by one main-process ecosystem service per
   exact app-server pool. Every generated skills/hooks/marketplace/plugin/app/MCP
-  identity has an explicit product disposition; catalog notifications reconcile
+  identity has an explicit product disposition, catalog notifications reconcile
   without restart. Mutations consume revision-bound WorkContext authority and
   absolute extension roots must remain inside that grant. Plugin lifecycle
   reconciles plugin, app, and MCP catalogs before acceptance. Renderer
   projections omit private paths, resource URIs, tool schemas, connector/MCP
   secrets, and raw provider errors. OAuth and elicitations retain exact causal
-  thread/server identity; dynamic tools require declared namespace grants; a
+  thread/server identity, dynamic tools require declared namespace grants, a
   turn cannot select an unreconciled or unauthorized extension.
-  Codex launches the user's existing native executable; OpenAgents never
+  Codex launches the user's existing native executable, OpenAgents never
   packages, copies, or re-signs Codex or app-server. One immutable main-process
   `CodexRuntimeResolution` authority selects an absolute identity once per
   application lifetime from the documented standalone location, the official
@@ -1835,7 +1835,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   spawn, timeout, malformed-version, and incompatible-version failures. The
   ordinary current-session child removes any inherited fleet/account
   `CODEX_HOME` override so Codex uses `~/.codex` and reuses the user's existing
-  config, sessions, and credentials. Paths and raw probe output remain main-private;
+  config, sessions, and credentials. Paths and raw probe output remain main-private,
   public projections are bounded and path-free.
   Claude execution imports the exact pinned Agent SDK. The compatibility
   catalog fails closed unless observed versions equal the bundled/tested lock
@@ -1852,13 +1852,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   automatic health-ordered account selection and visible rotation. For the
   Claude composer, the omitted/default target prefers the currently
   authenticated local Claude Code session and uses isolated Pylon Claude homes
-  only as fallback; explicitly selecting a named Pylon account pins it.
+  only as fallback, explicitly selecting a named Pylon account pins it.
   The Codex composer MVP uses only the ordinary authenticated local Codex
   session and exposes no named-Pylon linking, rotation, or isolated-home
   fallback. Current-session launches must clear an inherited `CODEX_HOME` so
   stale Pylon selection cannot override `~/.codex`. Desktop smoke, proof,
   fixture-path, startup-trace, and isolated-profile environment controls are
-  host-only and must be removed from every Codex provider subprocess; a proof
+  host-only and must be removed from every Codex provider subprocess, a proof
   turn must see the same provider environment as an ordinary user turn.
   Desktop maintenance must not call the ambient Codex npm/brew updater: its
   Codex row observes the same bundled authority, and repair is an OpenAgents
@@ -1866,7 +1866,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   unless the exact unpacked Codex is executable, target-correct, signed, and
   version-compatible under `PATH=/usr/bin:/bin:/usr/sbin:/sbin`.
   ProductSpec skills and dynamic tools are advertised to Codex only while the
-  host owns an admitted ProductSpec work context; an ordinary coding chat must
+  host owns an admitted ProductSpec work context, an ordinary coding chat must
   not inherit proposal workflow instructions or tools.
   Delegated Fleet children
   may retain explicit named-account custody under their separate fleet
@@ -1880,11 +1880,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   only opaque plugin refs plus bounded provenance, scope, readiness, enablement,
   restart, next-turn-use, and capability metadata. Only enabled directories
   with a valid `.claude-plugin/plugin.json` may enter the pinned Agent SDK
-  options; missing, invalid, duplicate, unknown-ref, and disabled entries fail
+  options, missing, invalid, duplicate, unknown-ref, and disabled entries fail
   closed and cannot be substituted by a provider-default plugin source.
   Skills never auto-route from prose or keywords. Only the modeled leading
   `/skill <plugin>/<skill> <prompt>` grammar can select a skill already present
-  in the typed enabled-plugin catalog; main re-resolves its opaque plugin ref
+  in the typed enabled-plugin catalog, main re-resolves its opaque plugin ref
   and exact `skills/<name>/SKILL.md` before enabling the SDK Skill tool for
   that turn. Malformed, missing, disabled, duplicate-name, empty-prompt, and
   stale selections fail closed without running an unskilled substitute turn.
@@ -1892,20 +1892,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   `owner_full` (the established default-mode allow-all tool posture with the
   real question flow) and may be narrowed to SDK-enforced `plan_only`, which
   cannot execute tools. Codex remains honestly full-execution-only until its
-  bundled runtime exposes an equivalent plan authority; a plan-only request on
+  bundled runtime exposes an equivalent plan authority, a plan-only request on
   that lane fails closed. No stored or renderer-supplied mode can select SDK
   `bypassPermissions` or broaden authority beyond the owner-full default.
   It never merges the two catalogs in one renderer lifetime. Sync-mode create/
-  append waits for the exact generated ref to appear confirmed; timeout remains
+  append waits for the exact generated ref to appear confirmed, timeout remains
   pending and is never converted into success.
 - Native live conversation reconciliation is driven by the shared Sync
   content/state notifications and durable scope cursor, never by transcript
   interval polling. Each subscription carries an exact subscription ref,
   generation, ordered local sequence, thread/run/message/event correlation
   refs, and `provisional | confirmed | interrupted` delivery. Resume gaps
-  collapse to one bounded authoritative snapshot; a future cursor interrupts
+  collapse to one bounded authoritative snapshot, a future cursor interrupts
   fail-closed. Slow consumers retain at most one newest pending snapshot, and
-  expose source/delivery/coalescing/maximum-pending/latency metrics; close
+  expose source/delivery/coalescing/maximum-pending/latency metrics, close
   removes both observers and the owned thread scope exactly once. The
   shared contract and mobile no-poll boundary are enforced by
   `packages/khala-sync-client/src/live-conversation.test.ts` and
@@ -1913,13 +1913,13 @@ More specific invariant ledgers apply inside imported apps and packages.
   registry additionally bounds active slots, closes a prior generation before
   replacement, fences stale unsubscribe, and disposes all slots once. Runtime
   Gateway v8 now schema-decodes the full bounded update and exposes typed
-  subscribe/resume/unsubscribe outcomes through the existing event channel;
+  subscribe/resume/unsubscribe outcomes through the existing event channel,
   main resets the registry before Sync authority replacement or sign-out and
   gateway disposal closes it. The Desktop runtime chat consumer registers that
   decoded listener before append, uses one fenced subscription through exact-
   message and terminal confirmation, and closes with one exact unsubscribe.
   It retains only one-shot queries for initial catalog/detail or final timeout
-  diagnosis; no recurring 100 ms timeline loop remains. This boundary is
+  diagnosis, no recurring 100 ms timeline loop remains. This boundary is
   enforced by `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`.
 
 **Planned live-agent portability model boundary:**
@@ -1941,7 +1941,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   one validated `live_agent_graph` per canonical
   `scope.thread.<threadRef>`, keyed by stable `graphRef` and advanced only
   through the shared exact-cursor reducer. The top-level session and canonical
-  thread refs stay distinct; provider-native node thread refs cannot choose
+  thread refs stay distinct, provider-native node thread refs cannot choose
   Sync authorization scope. A named fail-soft server projector now validates,
   structurally redacts, and appends this post-image through the normal dense-
   version transaction writer. Live provider call-site binding is now active for
@@ -1954,7 +1954,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   eight graphs / 2,000 nodes / 4,000 edges, and emits matching graph refs
   through Runtime Gateway protocol v8 on the existing cursor-aware
   subscription. Exact resume and one bounded authoritative refetch use the
-  durable Sync cursor; non-live scopes expose no cached graph authority. The
+  durable Sync cursor, non-live scopes expose no cached graph authority. The
   shared runtime contract now also carries body-free `agent.child.*` events.
   Real Claude Agent SDK subagent task messages populate stable child nodes and
   parent edges in the same transaction, preserve them through root settlement,
@@ -1962,7 +1962,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   installed Codex SDK 0.139.0 public union exposes no typed child event, so
   Codex live child production stays explicitly unsupported rather than inferred
   from tool text. Redacted named runs prove the Claude lifecycle and the current
-  Codex app-server's typed `subAgentActivity` source; Pylon transport convergence
+  Codex app-server's typed `subAgentActivity` source, Pylon transport convergence
   and a named confirmed-reconnect receipt remain CUT-11 work.
   The shared client presentation model now converts canonical post-images into
   deterministic hierarchy rows with typed action/attention/elapsed/terminal
@@ -1995,7 +1995,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`,
   `apps/openagents-mobile/tests/mobile-agent-graph.test.ts`,
   `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`, and
-  `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`; physical-
+  `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`, physical-
   device equivalence remains pending.
 
 ## Retired Client Boundary
@@ -2003,8 +2003,8 @@ More specific invariant ledgers apply inside imported apps and packages.
 - `clients/khala-cli`, `clients/khala-ios`, and `clients/khala-mobile` were
   removed by owner direction on 2026-07-14. They are Git-history evidence, not
   workspace members, install surfaces, release inputs, or compatibility roots.
-- Pylon is the supported terminal/Codex-capacity path; `apps/openagents-mobile`
-  is the only supported mobile app; `apps/openagents-desktop` is the only
+- Pylon is the supported terminal/Codex-capacity path, `apps/openagents-mobile`
+  is the only supported mobile app, `apps/openagents-desktop` is the only
   supported desktop app.
 - Shared Effect Native, Khala Sync, protocol, runtime, and QA packages remain
   only when a supported app/service consumes them. A removed client path may
@@ -2018,31 +2018,31 @@ More specific invariant ledgers apply inside imported apps and packages.
   identities. `coding_project`, `coding_repository`, `coding_worktree`,
   `coding_session`, and `coding_navigation` post-images carry an exact
   authority scope and explicit availability/grant facts. Hosted authority is
-  only `scope.user.*` or `scope.team.*`; signed-out Desktop rows are explicitly
+  only `scope.user.*` or `scope.team.*`, signed-out Desktop rows are explicitly
   `scope.device_local.*`, remain in `local_entities`, and are never submitted
   to hosted projection. Their raw filesystem binding stays in a separate
   owner-private main-process file and never enters the post-image or renderer.
   Restore validates all
-  project/repository/worktree/session relationships before returning ready;
+  project/repository/worktree/session relationships before returning ready,
   ambiguous aliases, owner mismatch, missing work, archive, revoked grants,
   and unprojected grant truth produce typed recovery. Opaque aliases may resolve
   to a canonical ref but never become authority. Duplicate tabs collapse to
-  one canonical session; typed conversation/editor/terminal/agent focus is
-  preserved. Catalog text retrieval is not implemented with string matching;
+  one canonical session, typed conversation/editor/terminal/agent focus is
+  preserved. Catalog text retrieval is not implemented with string matching,
   only bounded structured filters are allowed at this layer. The shared schema,
   structural redaction, 64-state fail-closed model, and restart resolver are
   enforced by `packages/khala-sync/src/coding-session.test.ts`. Server
   projection accepts only one bounded same-owner relationship-valid bundle,
   rejects private-shaped material before storage, and appends sequentially
   through one transaction so every changed entity shares one dense scope
-  version; its unit and real-Postgres oracles live in
+  version, its unit and real-Postgres oracles live in
   `packages/khala-sync-server/src/coding-session-projection.test.ts`.
   Confirmed client reads validate entity-id/owner agreement, apply explicit
   aggregate bounds, and expose no cached catalog until the exact owner scope is
-  live; malformed and cross-owner rows are ignored and the shared resolver
+  live, malformed and cross-owner rows are ignored and the shared resolver
   revalidates the resulting relationship graph. This is enforced by
   `packages/khala-sync-client/src/coding-session.test.ts`. Desktop persistence
-  now uses the same schemas through the local-authority store; process restart,
+  now uses the same schemas through the local-authority store, process restart,
   duplicate open, typed focus/route restore, structured query, archive, missing-
   worktree recovery, IPC redaction, and built renderer reload are enforced by
   `apps/openagents-desktop/tests/desktop-coding-catalog.test.ts`,
@@ -2055,7 +2055,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   attachment fencing, portable per-child transcript/activity cursors, replay
   repair, and one typed click/tap/hotkey action path. PORT-00 #8745 freezes the
   versioned public-safe schemas, bounded cross-record invariant audit, and
-  real-host journey in `packages/portable-session-contract`; its enforced
+  real-host journey in `packages/portable-session-contract`, its enforced
   behavior contract is
   `openagents_apps.portable_session_contract_freeze.v1`. This is schema/model
   authority only. PORT-01 supplies persistence and PORT-02 supplies broker
@@ -2063,7 +2063,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   target enrollment, movement, mobile control, and owner acceptance remain
   pending #8748–#8753.
 - Current provider-native Codex topology remains owner-local, read-only, and
-  loss-accounted. The landed inline child card is a bounded history projection;
+  loss-accounted. The landed inline child card is a bounded history projection,
   it does not prove live Khala Sync topology, host movement, child rehydration,
   or graph-wide fencing.
 - The PORT-00 schema/model boundary rejects host/path-shaped refs, non-owner-
@@ -2072,7 +2072,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   descendant fences, mismatched checkpoint generations, non-excluded secret/
   process state, lease-scope mismatch, stale movement commands, missing
   destinations, and silent target changes. Production implementation must
-  decode these schemas and run equivalent pre-mutation checks; passing the
+  decode these schemas and run equivalent pre-mutation checks, passing the
   package audit alone never grants execution authority.
 - Before any later portable/live-agent implementation claims enforcement, its
   bounded issue must register the production authority, update this ledger and
@@ -2086,22 +2086,22 @@ More specific invariant ledgers apply inside imported apps and packages.
   per-thread cursors, authorized target membership, attachment generation,
   secret-free checkpoint refs/digests, event log, repairable current rows, and
   command outcomes commit transactionally. The partial unique index permits at
-  most one work-accepting attachment; every event and command checks the exact
-  attachment generation; movement fences the complete descendant set before
+  most one work-accepting attachment, every event and command checks the exact
+  attachment generation, movement fences the complete descendant set before
   advancing it. Exact command/completion retries reconcile without executing
   twice, conflicting identity reuse fails closed, and an owner retention purge
   cascades authority rows while appending Sync tombstones. The hub/stream is
   acceleration only: restart, stream gaps, or `MustRefetch` rebuild from Cloud
   SQL, never from a socket or current projection. The real-Postgres oracle is
   `portable-session-authority.test.ts`. This does not grant target credentials
-  or execute a host move; those remain PORT-02/PORT-03.
+  or execute a host move, those remain PORT-02/PORT-03.
 - PORT-02 #8747 implements the general target-scoped capability broker in
   `packages/portable-session-contract/src/capability-broker.ts` without
   changing PORT-00's frozen lease schema or PORT-01's durable authority.
   Provider, SCM read/write, MCP/tool, and bounded API leases bind one owner,
   session, attachment generation, target, capability, optional account/tool,
   least-privilege permission set, and bounded TTL. Issue, redeem, renew,
-  revoke, reissue, release, and wipe are exact-operation-ref idempotent;
+  revoke, reissue, release, and wipe are exact-operation-ref idempotent,
   conflicting replay fails closed. Source revoke and target wipe must complete
   before a destination lease is issued, and reissue requires a fresh
   destination source-grant ref. Raw material is visible only inside the
@@ -2112,20 +2112,20 @@ More specific invariant ledgers apply inside imported apps and packages.
   authority. Focused enforcement is
   `packages/portable-session-contract/src/capability-broker.test.ts`. This is a
   real local/managed adapter integration seam, not proof that a process or
-  session moved; PORT-03 owns that real-host movement receipt.
+  session moved, PORT-03 owns that real-host movement receipt.
 - PORT-03 #8748 composes those two authorities in
   `packages/khala-sync-server/src/portable-session-move.ts`. A movement command
   requires migration `0067`'s owner/session execution binding and preserves
   the exact canonical run, repository, and pinned-base refs through checkpoint,
-  stage, activation, and replay; a legacy unbound row remains readable but
+  stage, activation, and replay, a legacy unbound row remains readable but
   cannot move, and no host path may synthesize the binding. A movement command
-  is admitted against the exact current attachment generation; the runtime
-  quiesces every canonical descendant; PORT-01 persists the graph-wide fence;
+  is admitted against the exact current attachment generation, the runtime
+  quiesces every canonical descendant, PORT-01 persists the graph-wide fence,
   and only then may the destination stage and verify the checkpoint while
   `acceptingWork:false`, with every planned fresh destination lease ref bound
   to that exact staged resource. Only after that stage succeeds may PORT-02
   revoke/wipe each source lease and issue/redeem its destination-generation
-  lease into the staged resource. Stage failure has zero broker effects; a
+  lease into the staged resource. Stage failure has zero broker effects, a
   later broker failure aborts the staged destination and releases every
   attempted destination lease. The destination cannot activate until the
   PORT-01 completion transaction has independently required the exact durable
@@ -2133,7 +2133,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   source, and advanced the sole live attachment generation. Source cleanup
   must cover every agent plus process, scratch, and port state before that
   commit. Pre-commit failure leaves the source quiesced and the session in
-  `recovery_required`; newly issued destination leases are released and a
+  `recovery_required`, newly issued destination leases are released and a
   refs-only typed outcome is durable. A lost activation acknowledgement
   reconciles by replaying one stable activation operation after the already-
   completed durable command, never by running the move or accepting a parent/
@@ -2142,17 +2142,17 @@ More specific invariant ledgers apply inside imported apps and packages.
   `portable-capability-broker-store.ts` additionally make the broker's complete
   refs-only state, exact operation evidence, revision CAS, and one active move
   claim a single Postgres transaction. Every write locks and revalidates the
-  exact owner/session/move/command/source-generation/destination claim; a stale
+  exact owner/session/move/command/source-generation/destination claim, a stale
   revision or competing claim writes neither state nor evidence, and raw
   credential or host material is rejected before the transaction. The split
-  state/evidence sink remains a deterministic-test compatibility seam only;
+  state/evidence sink remains a deterministic-test compatibility seam only,
   production portable movement must use the atomic store. The owner-local
   Pylon source adapter binds that same exact session/attachment/generation to
   the canonical root/child control sessions. Quiescence rejects new replies,
   aborts and joins every bound executor, and retains the one workspace until a
   secret-free repository/diff/graph checkpoint is durably stored in the local
   SQLite operation ledger. Ordinary cancellation continues to retain dirty
-  workspaces; only portable cleanup carrying the exact checkpoint ref and
+  workspaces, only portable cleanup carrying the exact checkpoint ref and
   SHA-256 digest may reclaim a dirty Pylon-owned lease and record its cleaned
   state. Checkpoint and cleanup replay after SQLite reopen do not repeat
   process or workspace effects. This source-side boundary is enforced by
@@ -2165,7 +2165,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   the prior process epoch absent, and returns one typed refs-only recovery
   outcome. Every old epoch rechecks SQLite before accepting a reply, so a
   process that outlives restart cannot accept another parent or child turn.
-  Same-byte recovery replays; a conflicting recovery ref or attachment
+  Same-byte recovery replays, a conflicting recovery ref or attachment
   generation fails closed. This restart fence is enforced by
   `apps/pylon/tests/portable-control-session-recovery.test.ts`. Managed → local
   failback stages through `apps/pylon/src/portable-session-destination.ts`.
@@ -2174,7 +2174,7 @@ More specific invariant ledgers apply inside imported apps and packages.
   root/child graph, per-thread cursors, and fresh destination capability refs
   while the local destination remains non-accepting. It may activate only after
   PORT-01 reports the exact checkpoint-bound local attachment at the next
-  generation. Its SQLite replay cannot reopen the old local generation; a
+  generation. Its SQLite replay cannot reopen the old local generation, a
   staged abort must prove every agent and capability plus process, scratch, and
   port state released. Private paths and checkpoint bytes remain behind the
   local rehydrator and never enter ledger outcomes. This destination boundary
@@ -2186,14 +2186,14 @@ More specific invariant ledgers apply inside imported apps and packages.
   post-image, and permits symbolic links only when their declared relative
   target has no empty/dot/dotdot/backslash component and resolves inside the
   repository. Resolver/upload/verification failure must run the same scoped
-  `abortPrepared` compensation; teardown is durably marked pending before the
+  `abortPrepared` compensation, teardown is durably marked pending before the
   VM effect, and replay treats an already-missing VM as successful cleanup.
   Activation alone accepts no fabricated work. The private continuation route
   requires exactly one unique turn for the canonical root and every child, an
   installed stage-planned provider lease, and one real bounded `oa-workroomd
 codex session` execution per agent. Only agent/turn refs, monotonic thread
   cursors, evidence refs, and material exclusion may enter host or guest
-  journals; same-operation replay cannot execute a second turn. Focused
+  journals, same-operation replay cannot execute a second turn. Focused
   enforcement lives in `apps/pylon/tests/portable-session-control.test.ts` and
   `crates/oa-codex-control/tests/portable_managed_agent_computer_contract.rs`.
   The server does not treat that host acknowledgement as canonical activity.
@@ -2203,7 +2203,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   pair it appends an exact next `running` event and then a `waiting` settled
   event, advances that agent's activity cursor, and returns the canonical
   final per-thread cursors. A lost acknowledgement replays those same accepted
-  refs, evidence refs, and cursors without another event; a partial operation,
+  refs, evidence refs, and cursors without another event, a partial operation,
   changed turn/evidence, cursor conflict, or stale attachment generation rolls
   the complete graph transaction back. Real-Postgres enforcement lives in
   `packages/khala-sync-server/src/portable-managed-continuation.test.ts`.
@@ -2211,7 +2211,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   cursor must equal retained pre-state, every accepted event cursor advances
   exactly once, and the retained resource commits the returned cursor set
   before acknowledgement. Reverse checkpoint export is allowed only for the
-  exact quiesced checkpoint; it returns the same bounded archive contract,
+  exact quiesced checkpoint, it returns the same bounded archive contract,
   persists bytes only in a mode-0600 private host artifact store, and provides
   byte-identical replay under one operation ref while journals retain refs and
   digests only.
@@ -2225,7 +2225,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
 - Mobile selects a visible conversation authority after native-session recovery
   and before mounting one Effect Native Home program: confirmed personal Sync
   when live, otherwise the existing public-local conversation. Explicit auth
-  transitions dispose and remount the program; catalogs never merge. Sync-mode
+  transitions dispose and remount the program, catalogs never merge. Sync-mode
   create/append uses stable mobile refs, waits for the exact ref to become
   confirmed, labels drafts pending, and clears account-linked projections on
   denial or sign-out.
@@ -2251,7 +2251,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
 - Mobile coding navigation reads the CUT-13 catalog only from the exact
   server-verified personal scope while that scope is live. Signed-out, idle,
   refetch, unavailable, and denied phases expose no cached repository/session
-  rows; denial is named as purged authority and other offline phases name the
+  rows, denial is named as purged authority and other offline phases name the
   cache as withheld. Deep-link and notification payloads contain only bounded
   repository/session/thread refs and are revalidated against the live owner,
   relationships, availability, and grants before use. The selected stable refs
@@ -2270,7 +2270,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `apps/openagents-mobile/tests/mobile-sync-host.test.ts`. The Effect Native
   drawer groups live sessions under confirmed repositories, and one typed
   session intent reopens the exact thread and binds a closeable conversation
-  subscription; new-chat and ordinary-thread navigation close that lease.
+  subscription, new-chat and ordinary-thread navigation close that lease.
   Process restart resolves the persisted target before choosing a conversation
   rather than inferring the first chat row. This integration is enforced by
   `apps/openagents-mobile/tests/authoritative-home.test.ts` and
@@ -2280,35 +2280,35 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   through the same exact target resolver before activation. Stale/unauthorized
   targets are terminal, concurrent flushes coalesce, and host teardown removes
   both native listeners and clears the queue. This is enforced by
-  `apps/openagents-mobile/tests/native-coding-target-delivery.test.ts`;
+  `apps/openagents-mobile/tests/native-coding-target-delivery.test.ts`,
   physical iOS/Android receipts remain CUT-14 work.
 - Desktop command metadata has one canonical typed registry at
   `apps/openagents-desktop/src/desktop-command-contract.ts`. Each command names
   its stable id, intent, scope, readiness, authorization, argument/result
-  shape, default bindings, and palette visibility; the renderer palette derives
+  shape, default bindings, and palette visibility, the renderer palette derives
   from it rather than maintaining a second list. User chord aliases normalize
   to one bounded grammar, conflicting chords dispatch nothing until recovered,
   and malformed/unknown overrides are ignored. Overrides persist only in an
-  owner-private atomic store beneath Electron `userData`; conflict recovery
+  owner-private atomic store beneath Electron `userData`, conflict recovery
   removes or resets overrides rather than guessing precedence. Deferred native
   menu/deep-link/second-instance/restore inputs decode through the closed v1
   envelope and still require current readiness and owner authority. Main owns
   admission, the single-instance lock, bounded pre-ready queuing, and duplicate
-  suppression; the renderer can dispatch only the decoded typed intent. The
+  suppression, the renderer can dispatch only the decoded typed intent. The
   isolated built-host second-process receipt enforces this boundary. Release
   signing and distribution remain CUT-26 work. The canonical `workspace.files`
   command owns Meta+E on macOS and Control+E elsewhere and toggles a bounded
   Files workspace mode for the currently selected coding session's admitted
   WorkContext. Files must replace the existing primary Sessions rail, reuse
   the existing conversation header for its controls, and reuse the existing
-  main region for the editor; it is not an admitted right-panel surface and
+  main region for the editor, it is not an admitted right-panel surface and
   may not add a parallel shell, tab strip, resize rail, or structural chrome.
   Exiting Files restores the ordinary Sessions rail and Chat workspace. The
   mode cannot infer an ambient cwd, disclose the selected absolute root,
   create another workspace grant, or bypass the typed workspace browser/open
   path. Files renders through `@pierre/trees` only behind the owned renderer
   adapter, which receives canonical relative refs already admitted by
-  main-owned workspace state; Pierre receives no bridge, filesystem, root,
+  main-owned workspace state, Pierre receives no bridge, filesystem, root,
   grant, Git/process, rename, or drag-and-drop authority.
   Git ignore classification sends relative refs as NUL-delimited literal
   stdin paths and fails closed on classifier failure, so arbitrary valid names
@@ -2322,35 +2322,35 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   the exact project, root, worktree, coding session, workspace grant,
   placement generation, and attachment generation. Its context manifest
   accounts exactly for every included or omitted item, destination,
-  sensitivity, freshness, retention, bytes/tokens, and effective runtime;
+  sensitivity, freshness, retention, bytes/tokens, and effective runtime,
   semantic retrieval may be disabled without disabling explicit, lexical,
   language, symbol, or Git context. A harness or renderer can submit only a
   Schema-decoded proposal whose bytes match its claimed SHA-256 and whose
   create/edit/rename/delete operations bind an exact base plus explicit
-  encoding, line-ending, mode, and symlink policy. Exact retries reconcile;
+  encoding, line-ending, mode, and symlink policy. Exact retries reconcile,
   conflicting ref reuse, late generations, dirty or changed bases, secrets,
   private/binary/oversize material, and unsupported policy fail closed.
   Partial decisions create a new exact child proposal. Pierre projects the
-  review and Monaco projects documents; neither applies bytes. Main's
+  review and Monaco projects documents, neither applies bytes. Main's
   `IdeAgentDocumentAuthority` alone creates checkpoints and performs the
   canonical sequential mutation with compensating rollback. Undo is an
   explicit `Undone` state, converts post-image evidence to stale, converts
   backlinks to historical, and expires private preimages at the retained
   policy boundary. Diagnostics, formatting, tests, Git, delivery,
-  verification, and owner acceptance are separate host-observed facts;
+  verification, and owner acceptance are separate host-observed facts,
   absent observation is `Unavailable`, and no harness completion or renderer
   command can record evidence. ProductSpec revision/digest/criterion/packet
   lineage must remain byte-identical across proposal and evidence. Private
   roots, file bytes, prompts, and provider payloads never enter the public
-  receipt. Equal relative paths remain isolated by worktree attachment; a new
+  receipt. Equal relative paths remain isolated by worktree attachment, a new
   generation cancels unsettled proposals and late output cannot revive it.
   This boundary is enforced by `agent-code-contract.test.ts`,
   `agent-code-service.test.ts`, `agent-code-host.test.ts`,
   `react-agent-code.test.tsx`, `electron-boundary.test.ts`, the IDE boundary
   oracle, and the packaged IDE-08 journey. It implements the local agent-code
-  loop only; IDE-09 inline completion and IDE-10+ terminal/SCM/portable breadth
+  loop only, IDE-09 inline completion and IDE-10+ terminal/SCM/portable breadth
   remain separate authorities.
-- Rich coding drafts use `@openagentsinc/composer-state`; apps must not create a
+- Rich coding drafts use `@openagentsinc/composer-state`, apps must not create a
   second editor/attachment state machine. The private
   `openagents.coding_composer_draft.v1` snapshot carries only stable context and
   target refs around the structured document. Submission refuses unfinished
@@ -2360,7 +2360,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   account, path, editor, or diff content. Native restart recovery persists the
   canonical snapshot only under the immutable identity's device-local
   `local_entities` scope, with exact owner/draft binding, bounded size/count,
-  and stale/conflict/duplicate outcomes; it never enters hosted Sync. Native
+  and stale/conflict/duplicate outcomes, it never enters hosted Sync. Native
   file/image acquisition is bounded before and after reading bytes, copies the
   selected file into the app document sandbox under its SHA-256 digest, and
   places only `attachment.native-local.sha256.*` metadata in the draft. Picker
@@ -2370,18 +2370,18 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `openagents.runtime_interaction.v1` authority and `runtime_interaction` Sync
   entity. New requests must match authenticated owner, exact thread/turn,
   durable provider lane, next event sequence, legal turn state, and a future
-  server deadline. Decisions are kind-matched and exact-ref/idempotency-bound;
+  server deadline. Decisions are kind-matched and exact-ref/idempotency-bound,
   exact retry reconciles, conflicting reuse rejects, and late/revoked decisions
-  never resolve. Full post-images project only to the exact private thread;
+  never resolve. Full post-images project only to the exact private thread,
   clients withhold cached rows unless that thread scope is live.
 - Native OpenAgents user access/refresh tokens live only in platform credential
   custody: Expo SecureStore on mobile and the Electron main-process OS
   credential boundary on Desktop. Effect Native state receives only typed
-  session phases; stored credentials are unverified until the server accepts
+  session phases, stored credentials are unverified until the server accepts
   them, and malformed or retired-epoch records are purged fail-closed.
 - Desktop native-session custody uses Electron `safeStorage` in main plus one
   opaque encrypted record beneath the private `userData` root. Custody refuses
-  unavailable OS encryption and the Linux `basic_text` backend; the directory
+  unavailable OS encryption and the Linux `basic_text` backend, the directory
   and file are owner-private, replacement is atomic, and preload/renderer/
   Runtime Gateway schemas never carry owner or credential fields.
 - Ordinary Desktop startup is Keychain-free: BrowserWindow uses a
@@ -2392,7 +2392,7 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   `openagents-desktop` and only an RFC 8252 loopback redirect shaped exactly as
   `http://127.0.0.1:{ephemeral-port}/auth/callback`. The issuer requires GitHub
   authorization code + PKCE S256, a bounded challenge, a non-privileged port,
-  and no userinfo/query/fragment; it rejects localhost, non-loopback, HTTPS,
+  and no userinfo/query/fragment, it rejects localhost, non-loopback, HTTPS,
   custom schemes, missing ports, and mobile-client reuse.
 - The Desktop callback listener binds only literal IPv4 loopback on an
   OS-assigned port, accepts only the exact path, method, state, and non-empty
@@ -2404,31 +2404,31 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   session phase (`signed_out`, `unverified`, `session_ready`, `denied`, or
   `unavailable`). Its typed sign-in/sign-out intents send no arguments, disable
   while the host action is in flight, and never render callback, owner, or
-  credential fields; `session_ready` is not presented as live Sync.
+  credential fields, `session_ready` is not presented as live Sync.
 - Desktop Codex discovery selects and version-probes the user's existing
   installation without reading or mutating credential material. Desktop does
   not install, update, or repair that external installation and does not offer
   an OpenAgents update as a Codex repair. Missing, malformed, or incompatible
   installations project a bounded instruction to install/update Codex and
   restart OpenAgents. Optional official release notes never fabricate runtime
-  success; the executable probe and app-server protocol remain authority.
-  Runtime Gateway maintenance schemas admit only `codex`; Desktop Settings
+  success, the executable probe and app-server protocol remain authority.
+  Runtime Gateway maintenance schemas admit only `codex`, Desktop Settings
   must never query, project, or offer Claude Code/OpenCode maintenance during
   the Codex-only MVP. Broader Pylon-core maintenance definitions are dormant
   backend capability, not Desktop product scope.
 - Mobile recovery may send the refresh token only to
   `GET /api/mobile/auth/session` via the bounded `X-OpenAgents-Refresh-Token`
-  header. The existing OpenAuth verifier owns rotation; replacement tokens are
+  header. The existing OpenAuth verifier owns rotation, replacement tokens are
   rewritten to SecureStore before the host projects `session_ready`. Denial or
   server-derived owner mismatch purges the record, while transient failure
   hides shared work without deleting a potentially valid credential.
 - Mobile interactive sign-in uses exactly the public client
   `openagents-khala-mobile`, provider GitHub, authorization code, PKCE S256,
   and canonical redirect `openagents://auth`. One imperative AuthRequest owns
-  callback state validation and its verifier; an error result is never
+  callback state validation and its verifier, an error result is never
   exchanged. The system authentication session may reuse the owner's existing
   GitHub login so an app update or repeated sign-in does not demand credentials
-  again; OpenAgents access and refresh tokens still live only in the app's
+  again, OpenAgents access and refresh tokens still live only in the app's
   SecureStore. Explicit sign-out must obtain a server response proving both
   access and refresh revocation before the local SecureStore record is cleared.
 - Operations (Cloud SQL monitoring, migration runner, compaction, capture

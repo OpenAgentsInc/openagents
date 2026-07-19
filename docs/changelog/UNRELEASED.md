@@ -5,6 +5,21 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Root control documents remove prose semicolons (#9049)
+
+- issues: #9049
+- commits: this change
+- contracts-specs: AGENTS.md, INVARIANTS.md, docs/sol/MASTER_ROADMAP.md
+- invariants: no requirement change, protected control tokens remain equal
+- evidence: docs/ste/p1-control-conversion-receipt.md, scripts/check-ste.test.ts
+- lane: codex/asd-ste100-migration-20260719-r2
+
+Three central OpenAgents control documents now use approved punctuation instead of prose semicolons.
+The change keeps code, URLs, technical words, and protected requirements without changes.
+
+The documents remain in the STE migration state.
+Sentence, paragraph, vocabulary, and inspection work is still necessary.
+
 ## Agent records have a controlled compact language profile (#9049)
 
 - issues: #9049

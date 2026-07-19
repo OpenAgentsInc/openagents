@@ -3,7 +3,7 @@
 ## Scope
 
 This repository is the OpenAgents Effect monorepo on Node 24, pnpm, and Vite
-Plus. The conversion contract is complete; supported paths must remain on that
+Plus. The conversion contract is complete, supported paths must remain on that
 toolchain.
 
 Preserve `docs/transcripts/`. It is the retained transcript archive from the
@@ -51,13 +51,13 @@ and documentation reconciliation that can proceed alongside the primary lane.
 - Respect the surfaced session/thread cap and provider quota. Recursive fanout
   still requires a separately bounded, non-colliding lane.
 - Before declaring completion, reconcile every child result against current
-  `origin/main`; a spawned agent or passing child test is not itself the final
+  `origin/main`, a spawned agent or passing child test is not itself the final
   integration receipt.
 - Across independent Codex tabs/sessions, the live Sol GitHub issue is the
   normal claim ledger. When repository policy prohibits a feature issue, an
   exact owner-accepted plan/work packet is the ledger instead. Follow
   `docs/sol/CLAIM_PROTOCOL.md` before mutation, including hot files **and hot
-  contracts**; a claim becomes stale only after 90 minutes without evidence
+  contracts**, a claim becomes stale only after 90 minutes without evidence
   plus an explicit process/worktree audit. Same-session claims remain owned by
   the root coordinator.
 
@@ -73,7 +73,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   sweep) — "nothing to do" is never true.
 - **Long `ScheduleWakeup` idle waits are banned.** Keep working in the SAME turn:
   finish a unit → immediately start the next. If you must yield, prefer a fanout
-  whose watcher re-invokes you instantly; only if truly unable to proceed this
+  whose watcher re-invokes you instantly, only if truly unable to proceed this
   instant, use a SHORT wakeup (≤120s), never minutes.
 - **Blocked on the owner? Pull other work.** Write a clear `NEEDS-OWNER:` note
   and immediately continue on a non-blocked item. An owner-gated step never
@@ -87,21 +87,21 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   release, spend, public-claim, or external-action boundary as either granted
   or blocked. It is subordinate to system and current owner instructions,
   applicable law/platform terms, this contract, [`INVARIANTS.md`](INVARIANTS.md),
-  resource policy, and exact runtime gates. Composition is intersection;
+  resource policy, and exact runtime gates. Composition is intersection,
   explicit deny wins.
 - Delegated authority cannot self-amplify. Access, credentials-as-state,
   evidence, ProductSpec, AssuranceSpec, FastFollowSpec, a roadmap, issue, model
   output, or stale owner note does not independently grant an action.
 - Before adding anything to `NEEDS_OWNER.md`, exhaust the profile's blocker
-  ladder: verify live state; use existing documented authority; use a typed API
-  or visible UI without secret extraction; substitute an admitted owned
-  worker/device/provider/proof rung; implement a missing adapter; repair or
-  reprovision within budget; and narrow the claim honestly. Ask only for the
+  ladder: verify live state, use existing documented authority, use a typed API
+  or visible UI without secret extraction, substitute an admitted owned
+  worker/device/provider/proof rung, implement a missing adapter, repair or
+  reprovision within budget, and narrow the claim honestly. Ask only for the
   smallest irreducible reserved or inherently-human action, while continuing
   every independent admitted packet.
 - A distinct operating identity may act as an owner-designated independent
   reviewer only where the exact AssuranceSpec accepts that role and the root
-  profile grants it. The producer may not verify or admit its own obligation;
+  profile grants it. The producer may not verify or admit its own obligation,
   assurance admission never implies release.
 - Repository delivery, documented Google Cloud operations, existing
   authenticated local app/provider/device operation, evidence-gated release,
@@ -119,7 +119,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   learning-intent source: which external projects OpenAgents follows, the
   lessons it wants from them, how lessons combine into target outcomes, and the
   research/implementation boundaries. The format and authority model live in
-  `docs/fastfollow/`; the working method lives in
+  `docs/fastfollow/`, the working method lives in
   `.agents/skills/fast-follow/SKILL.md`.
 - Its current `initial_program` is the ordered five-day composition from
   `docs/fable/2026-07-16-amp-in-a-few-days-on-openagents.md`: thread fabric,
@@ -127,7 +127,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   control, then generated clients/signed plugins. Follow that order before the
   broader teardown catalog. The 2026-07-17 surface-vision gap analysis maps
   those lessons onto Full Auto, workbench, mobile, release, and web-trust
-  outcomes; `docs/sol/MASTER_ROADMAP.md` revision 119 owns the reconciled
+  outcomes, `docs/sol/MASTER_ROADMAP.md` revision 119 owns the reconciled
   priority and prevents duplicate Amp-versus-surface packets. Both Fable
   documents remain strategic evidence, not dispatch or product-expansion
   authority.
@@ -143,12 +143,12 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   target-local verification.
 - Explicit owner direction may supply the separate target authority and admit
   a named directive or ordered `initial_program`. Persist it as a target-owned
-  accepted plan/work-packet ledger; do not demand a feature issue when the
+  accepted plan/work-packet ledger, do not demand a feature issue when the
   repository's issue policy forbids one. Program admission still decomposes
   into bounded claimed packets and does not grant deploy, spend, release,
   settlement, public-claim, or invariant-bypass authority.
 - Reuse an exact public StudyPacket before repeating upstream inference. Public
-  upstream research may be shared by content digest; target-specific code,
+  upstream research may be shared by content digest, target-specific code,
   prompts, traces, gaps, credentials, customer data, and private holdouts stay
   target-private by default. A cache hit is evidence reuse, never adoption.
 - Persist `no_material_delta`, rejected, superseded, stale, unavailable,
@@ -162,7 +162,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   one concrete unit per continuation. The authored 3/1/1 capacity profile does
   not itself allocate runs, waive the eight-active-run cap, create a
   cross-machine fleet, or authorize provider rotation beyond the admitted Full
-  Auto policy; those behaviors still require compatible run/claim authority.
+  Auto policy, those behaviors still require compatible run/claim authority.
 
 ## Unattended macOS Credential Checks
 
@@ -175,14 +175,14 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   `OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1` and place
   `OPENAGENTS_DESKTOP_USER_DATA` strictly beneath the OS temporary directory.
   That mode uses Chromium's mock keychain and deliberately disables the native
-  session vault; it can never prove authenticated Sync.
+  session vault, it can never prove authenticated Sync.
 - For authenticated Desktop verification, launch the signed app against its
   existing normal profile and consume only the app's public-safe session state,
   IPC results, and visible UI. Never extract credentials as a diagnostic. Use
   typed app/API controls or safe visible UI automation when the action is
   already delegated. Only after the root authority profile's blocker ladder
   proves that a genuinely new human Keychain authorization is unavoidable may
-  the exact UI action be recorded in `NEEDS_OWNER.md`; continue every other
+  the exact UI action be recorded in `NEEDS_OWNER.md`, continue every other
   admitted lane instead of waiting.
 
 ## Repo Layout
@@ -192,7 +192,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - Google Cloud is the sole production infrastructure authority. Current
   services use Cloud Run or GCE, Cloud SQL, Cloud Storage, Secret Manager,
   Cloud Scheduler, and Google Cloud load balancing. Cloudflare remains the
-  authoritative DNS provider for `openagents.com`; its DNS-only records point
+  authoritative DNS provider for `openagents.com`, its DNS-only records point
   directly to Google Cloud. Do not migrate the nameservers or enable the
   Cloudflare HTTP proxy without a new owner decision.
 - Cloudflare Workers, Durable Objects, D1, R2, Queues, Analytics Engine,
@@ -206,7 +206,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - `apps/openagents.com/` owns the single OpenAgents web app. The retained
   public product routes are `/`, `/forum`, required Forum
   descendants, and `/promises` (`/sarah` was removed at owner direction
-  2026-07-10 — see the Sarah section below); legal, authentication, machine-readable API,
+  2026-07-10 — see the Sarah section below), legal, authentication, machine-readable API,
   asset, and operational endpoints are infrastructure exceptions. Preserve the
   complete product-promise and service-deliverable integrity chain—including
   stable docs/report paths, registry/transition/audit/readiness APIs,
@@ -214,7 +214,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   refs. Autopilot, Sites, and other legacy pages are retirement sources, not
   product surfaces to grow.
 - The retired `apps/openagents-world/`, `apps/forge/`, and
-  `apps/nostr-relay/` services are deleted. Git history is their archive; do
+  `apps/nostr-relay/` services are deleted. Git history is their archive, do
   not recreate them or route current work to them.
 - `packages/world-contract/` is the shared Effect Schema contract home for
   public-safe world rows, commands, deltas, cursors, moderation decisions, and
@@ -222,7 +222,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - `packages/world-client/` is the shared desktop/web Verse world client that
   mirrors snapshots and deltas into a read-only `WorldReadModel`.
 - The world service has no active production host. Any future world backend
-  requires a new Google Cloud design and explicit product authority; shared
+  requires a new Google Cloud design and explicit product authority, shared
   world contracts and client projections alone are not deploy authority.
 - `apps/forum/` owns the forum extraction target for
   `openagents.com/forum`. Live Forum routes are served by the Google Cloud Run
@@ -248,14 +248,14 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - `docs/sol/` owns the canonical master roadmap, live issue set, grounded
   implementation design, subsystem implications, and day-to-day slice
   ordering. `docs/fable/` is retained historical strategy and no longer owns
-  sequencing. Start with `docs/sol/MASTER_ROADMAP.md`; current code, issue
+  sequencing. Start with `docs/sol/MASTER_ROADMAP.md`, current code, issue
   state, contracts, and receipts remain the factual status authorities.
 - `docs/mvp/` owns the canonical first-deployable-product package: its exact
   ProductSpec, supporting audit, and reading-order README. The ProductSpec owns
-  intent; `docs/sol/MASTER_ROADMAP.md` still owns priority and sequencing.
+  intent, `docs/sol/MASTER_ROADMAP.md` still owns priority and sequencing.
 - `apps/openagents-desktop/src/product-spec-workroom*` owns the implemented
   ProductSpec plan/packet/lease/evidence/verification-ref/owner-
-  disposition runtime loop. Assurance may feed it exact receipt references;
+  disposition runtime loop. Assurance may feed it exact receipt references,
   it does not replace that state or turn workroom `verified` into release or
   public-claim authority.
 - `docs/assurance/` owns the proposed AssuranceSpec companion format, Observer
@@ -271,7 +271,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   authority.
 - `docs/qa/` owns QA execution notes, operational runbooks, oracle descriptions,
   and retained historical evidence. Most current files describe the frozen
-  Khala Code migration source; their dated green state is not evidence for
+  Khala Code migration source, their dated green state is not evidence for
   `apps/openagents-desktop`. AssuranceSpec semantics do not live there.
 - `docs/forum/`, `docs/nostr/`, and `docs/research/` own dated audits for
   those areas.
@@ -291,7 +291,7 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 
 Use this when an outside/community user wants to connect their own Codex
 account(s) so a per-user Artanis can burn down a backlog across their fleet.
-Pylon is the supported terminal front door; the retired Khala CLI no longer is.
+Pylon is the supported terminal front door, the retired Khala CLI no longer is.
 
 Walk the user through exactly this:
 
@@ -305,14 +305,14 @@ What the user will see: `pylon auth codex` drives the standard
 `codex login --device-auth` flow — it opens the browser to the device URL and
 shows a SHORT code to enter (no long auth string to copy). It then confirms with
 the linked account email. The `codex` CLI must be installed
-(`npm install -g @openai/codex`); if it is missing, Pylon prints
+(`npm install -g @openai/codex`), if it is missing, Pylon prints
 a friendly install hint.
 
 - **More accounts = more throughput.** Each `pylon auth codex` auto-assigns
-  the next ref (`codex`, then `codex-2`, `codex-3`, …); pass `--account <ref>`
+  the next ref (`codex`, then `codex-2`, `codex-3`, …), pass `--account <ref>`
   to name one. Distinct ChatGPT accounts have distinct rate budgets, so each new
   _distinct_ account is real added concurrency.
-- **`pylon accounts list`** prints connected account metadata and readiness;
+- **`pylon accounts list`** prints connected account metadata and readiness,
   use `pylon codex accounts list --json` for the public-safe Codex alias.
 - **Automatic dispatch uses the connected-account pool.** When Pylon has ready
   isolated Codex accounts in its registry, local Codex control sessions and
@@ -322,13 +322,13 @@ a friendly install hint.
   surfaces `account_exhausted` / `account_rate_limited` instead of a generic
   session failure, and retries the next ready connected Codex account.
 - **Safety (always true):** each account uses an ISOLATED home under
-  `<pylon home>/accounts/codex/<ref>`; the flow NEVER touches the default
-  `~/.codex` home (that would wipe a live session); credentials stay on the
+  `<pylon home>/accounts/codex/<ref>`, the flow NEVER touches the default
+  `~/.codex` home (that would wipe a live session), credentials stay on the
   user's machine and tokens are never printed. Accounts are registered into the
   user's Pylon config (`<pylon home>/config.json`), so a local Pylon, the codex
   supervisor, and the server dispatch gate all see the fleet.
 
-This is the onboarding front door; the request/proof contract for routing actual
+This is the onboarding front door, the request/proof contract for routing actual
 coding work through the connected fleet is the runbook below.
 
 ## Khala -> Pylon -> Codex Coding Delegation Runbook
@@ -336,7 +336,7 @@ coding work through the connected fleet is the runbook below.
 Use this when a user wants coding work routed through Khala to the user's own
 local Pylon, with Pylon executing the assignment through the local Codex-capable
 session. The deeper smoke doc is
-`docs/khala/2026-06-25-bare-agent-pylon-mcp-khala-e2e-smoke.md`; the invariant
+`docs/khala/2026-06-25-bare-agent-pylon-mcp-khala-e2e-smoke.md`, the invariant
 ledger is `apps/openagents.com/INVARIANTS.md` under "Khala Coding Delegation
 Through Pylons". For running this engine 24/7 at scale (standing pylon, codex
 supervisor, identity/token footguns, and stall diagnosis), see the operations
@@ -388,7 +388,7 @@ Expected output lists each configured Codex account with
 `readiness.state: "ready"` and `capability.pylon.local_codex` before you route
 work to it. Use this before parallel delegation and after every new
 `pylon auth codex` login. The older `$PYLON accounts list --json` path remains
-equivalent; prefer the Codex namespaced alias in Pylon/Codex runbooks so the
+equivalent, prefer the Codex namespaced alias in Pylon/Codex runbooks so the
 operator intent is unambiguous. For a specific account proof, run the refresh
 path explicitly:
 
@@ -398,14 +398,14 @@ $PYLON accounts usage --account "<codex account ref>" --refresh --json
 
 That refresh consumes a minimal provider call and should return a
 `truth.localSession.usage` record for the selected account. It proves the local
-Codex login works, but it is not the Khala counter proof; still perform the
+Codex login works, but it is not the Khala counter proof, still perform the
 delegation and `token_usage_events` checks below.
 
 If a run fails because the selected ChatGPT/Codex account is exhausted, the
 operator-facing failure class must say so (`account_exhausted`,
 `account_rate_limited`, or a specific auth-health class). Do not mask provider
 capacity failures as bad session IDs or generic execution errors. A Pylon with
-other ready connected accounts should automatically retry on the next account;
+other ready connected accounts should automatically retry on the next account,
 if no retry happens, inspect the account health/quota ledger before dispatching
 more work.
 
@@ -461,7 +461,7 @@ Expected output includes `ok: true`, `assignmentRef`,
 `durableRequestId`, `durableStreamUrl`, `workflow: "codex_agent_task"`, and a
 delegation frame naming the targeted Pylon. The CLI immediately follows a
 returned assignment ref by running the matching local no-spend assignment and
-adds `autoRun` plus `assignmentRun` to the JSON output; use `--no-run` only for
+adds `autoRun` plus `assignmentRun` to the JSON output, use `--no-run` only for
 diagnostics when you intentionally want to create a lease without executing it.
 If the request falls through to a model/provider path instead of returning a
 delegation frame, stop and debug the delegation preconditions before running
@@ -492,11 +492,11 @@ Keep this prompt public-safe and bounded: cite public issue numbers, public file
 paths, and public verification commands only. Do not include raw private prompts,
 secrets, local paths, provider payloads, wallet material, or private repo
 content. The Pylon runner receives the public objective summary plus the pinned
-checkout refs; raw Codex events and local workspace paths stay on the device.
+checkout refs, raw Codex events and local workspace paths stay on the device.
 For caller-owned Khala -> Pylon -> Codex assignments, the local Codex runner uses
 the SDK equivalent of `--dangerously-bypass-approvals-and-sandbox`: sandbox mode
 `danger-full-access`, approval policy `never`, and network enabled. That full
-access is an owner-local executor invariant so Codex can do real Git/GitHub work;
+access is an owner-local executor invariant so Codex can do real Git/GitHub work,
 do not add it as a public wire field or use it for untrusted labor/provider
 work.
 
@@ -516,10 +516,10 @@ $PYLON khala closeout "<assignmentRef>" --json
 ```
 
 Expected `closeoutChecklist.ok: true` means the assignment trace-status and
-proof projections agree on assignment, Pylon, and owner refs; final owner-only
-trace and raw-event summaries exist; exact own-capacity token rows are
-recorded; the worker closeout event proves `paymentMode: "no-spend"`,
-`settlementState: "not_applicable"`, and `payoutClaimAllowed: false`; and the
+proof projections agree on assignment, Pylon, and owner refs, final owner-only
+trace and raw-event summaries exist, exact own-capacity token rows are
+recorded, the worker closeout event proves `paymentMode: "no-spend"`,
+`settlementState: "not_applicable"`, and `payoutClaimAllowed: false`, and the
 lifecycle is closed out without rejection refs. Use
 `$PYLON khala status --assignment-ref "<assignmentRef>" --json` and
 `$PYLON khala proof "<assignmentRef>" --json` only when inspecting the two
@@ -608,17 +608,17 @@ Expected: `visibility='owner_only'`, `schema_version='ATIF-v1.7'`, owner equals
 the linked OpenAuth/user account, and the stored trajectory has been scrubbed
 before tripwire. The trace projection may contain bounded agent messages,
 reasoning summaries, tool labels, file-change counts, and command output byte
-counts; it must not contain raw prompts, raw shell output, API keys, provider
+counts, it must not contain raw prompts, raw shell output, API keys, provider
 credentials, local auth paths, wallet material, or private repo data.
 
 Trace ingest failures are fail-soft: the local Codex task and exact token row
 should still complete, with only a public-safe diagnostic returned by the ingest
-route. Token-ingest failures are not acceptable proof; rerun or debug them until
+route. Token-ingest failures are not acceptable proof, rerun or debug them until
 the exact `token_usage_events` row exists.
 
 The redacted ATIF trace is only the public-safe summary. While the Codex SDK
 turn is still running, local Pylon streams raw SDK event chunks to
-`POST /api/pylon/codex/event-chunks`; the Cloud Run API stores those chunks in private
+`POST /api/pylon/codex/event-chunks`, the Cloud Run API stores those chunks in private
 owner-scoped Cloud Storage under the Pylon/Codex raw-event-chunk prefix, with Cloud SQL
 metadata rows in `pylon_codex_raw_event_chunks` keyed by
 assignment/session/owner/turn/chunk. Verify that chunk rows exist before
@@ -633,15 +633,15 @@ SELECT chunk_ref, assignment_ref, session_ref, turn_index, chunk_index,
 ```
 
 At final turn closeout, Pylon also posts the complete ordered Codex SDK event
-stream to `POST /api/pylon/codex/turns` as `rawEvents`; the Cloud Run API stores that
+stream to `POST /api/pylon/codex/turns` as `rawEvents`, the Cloud Run API stores that
 canonical whole-turn archive in `pylon_codex_raw_events` for audit and
 idempotent replay checks. Raw chunks and final archives may contain prompts,
-command/tool args, local paths, file-change details, and shell output; they
+command/tool args, local paths, file-change details, and shell output, they
 must never be copied into public traces, counters, issue comments, Forum posts,
 product-promise output, or public closeout refs. Raw-event persistence is
 fail-soft for the local coding task and should return only private-safe refs or
 diagnostics. Token accounting remains exact-only: do not synthesize public
-counter deltas from chunks; reconcile the counter against the exact
+counter deltas from chunks, reconcile the counter against the exact
 `token_usage_events` rows posted from `turn.completed.usage`.
 
 7. Confirm the public counter projected those exact rows:
@@ -680,7 +680,7 @@ Known public-safe steering gaps to keep visible:
   Khala request to any linked capacity until the caller-scoped capacity resolver
   and router branch are verified in the same deployment.
 - The authorization boundary is the token-resolved owner scope. A remote issuer
-  must only read and target Pylons linked to that same owner scope; never widen a
+  must only read and target Pylons linked to that same owner scope, never widen a
   routing test to pooled, third-party, marketplace, or settlement-bearing
   capacity while validating this own-capacity path.
 - The typed coding request path must remain explicit. If `--workflow
@@ -726,20 +726,20 @@ and local Codex auth out of reports.
 ### Harness MCP pilot (FEED-1 #8783, opt-in)
 
 Supervised Codex sessions can be handed a READ-ONLY OpenAgents toolkit over
-MCP. Off by default; enable per session by setting
+MCP. Off by default, enable per session by setting
 `OPENAGENTS_PYLON_CODEX_HARNESS_MCP_PILOT=1` in the codex_agent_task
 environment (the same env the readiness probe sees). When enabled, the
 executor starts a loopback-only (`127.0.0.1`) MCP HTTP server for that session
 (`apps/pylon/src/harness-mcp-server.ts`), mints a per-session scoped bearer
 credential (scopes `operator_read`/`workspace_read` from
-`@openagentsinc/environment-auth`; DPoP upgrade tracked against ENV-2 #8780),
+`@openagentsinc/environment-auth`, DPoP upgrade tracked against ENV-2 #8780),
 and injects the server URL plus credential env var into the Codex thread's MCP
 config via SDK `--config` overrides (`mcp_servers.openagents`). Toolkit:
 `pylon.assignment.context` (assignmentRef, public-safe objective, pinned
 verify command), `pylon.fleet.status`, and `pylon.receipt.lookup` — no
 mutating tools. Every tool output passes the shared
 `@openagentsinc/mcp-contract` unsafe-material rules plus khala-tools public
-text redaction; secret-shaped fields are omitted, and the session token never
+text redaction, secret-shaped fields are omitted, and the session token never
 appears in closeouts, receipts, or public projections. The server lives and
 dies with its Codex thread. With the flag unset there is zero behavior change.
 
@@ -756,12 +756,12 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   secrets live (`~/work/.secrets/` + GCP Secret Manager, project `openagentsgemini`).
 - Signing/notarization details live in `apps/oa-updates/docs/release-signing-runbook.md`
   (ed25519 release key + the `HQWSG26L43` Apple Developer ID) — read before any signed
-  release. Publish/deploy only from a clean `origin/main`; RCs are pre-releases and
+  release. Publish/deploy only from a clean `origin/main`, RCs are pre-releases and
   never take the stable `latest` badge.
 
 ## Effect Development Guidance
 
-Before writing or reviewing Effect TypeScript, use both repository guides; they
+Before writing or reviewing Effect TypeScript, use both repository guides, they
 are complementary, not alternatives:
 
 1. Read `.agents/skills/effect/SKILL.md` completely, then read every reference
@@ -798,12 +798,12 @@ and deterministic Effect tests. Do not skip it merely because
   never implement there, and leave it clean and detached at current
   `origin/main`. If unrelated live work makes the canonical checkout unsafe to
   reconcile, preserve it under the multi-agent hygiene rule and report the
-  reconciliation gate as blocked; never describe the session as completely
+  reconciliation gate as blocked, never describe the session as completely
   clean. The required final evidence is:
   `git status --porcelain` empty in both checkouts and
   `git rev-parse HEAD` equal to `git rev-parse origin/main` in each.
 - **The owner dev launcher is repository-owned.** Its canonical source is
-  `apps/openagents-desktop/scripts/oa-dev-launch`; keep the installed
+  `apps/openagents-desktop/scripts/oa-dev-launch`, keep the installed
   `~/.local/bin/oa-dev-launch` copy aligned with it. Dependency synchronization
   must use the frozen pnpm lockfile with lifecycle scripts disabled, because a
   normal app launch may not run all 80 workspace projects' `prepare` hooks.
@@ -822,7 +822,7 @@ and deterministic Effect tests. Do not skip it merely because
 - **One completion gate:** `pnpm run check` is the repository definition of
   green for humans, agents, and owned CI. Run it before considering a task
   complete. Root `test`, `typecheck`, `lint`, and `fmt` commands are components
-  of the same workspace-discovered runner; the pre-push hook invokes its
+  of the same workspace-discovered runner, the pre-push hook invokes its
   `check:fast` profile rather than maintaining a separate policy list.
 - For work under `apps/openagents.com/`, also read
   `apps/openagents.com/AGENTS.md` and `apps/openagents.com/INVARIANTS.md`.
@@ -835,13 +835,13 @@ and deterministic Effect tests. Do not skip it merely because
   too large or out of scope for the current change, fix what is cheap and **explicitly
   flag the rest** (in the report, and a tracking issue if it will persist) — never
   silently leave a red, and never describe a partially-green run as clean.
-- **Product shape (owner decision, 2026-07-09; amended 2026-07-18):** there
+- **Product shape (owner decision, 2026-07-09, amended 2026-07-18):** there
   are three product apps: the OpenAgents web app (`/`, `/forum`, and
   `/promises`), the **OpenAgents** mobile app, and **OpenAgents Desktop**.
   The standalone Sarah surface remains removed: `/sarah` and every
   `/sarah/api/*` route are 404 tombstones and `apps/sarah` is deleted. The
   2026-07-18 reboot makes `principal.sarah` an authenticated owner-orchestrator
-  capability inside the supported apps, beginning with OpenAgents mobile; it
+  capability inside the supported apps, beginning with OpenAgents mobile, it
   does not create a fourth app. Khala Code, Autopilot,
   Pylon cockpit, Sites, and other prior product ideas are capabilities,
   engine-room services, or migration sources—not additional product apps. P0
@@ -851,7 +851,7 @@ and deterministic Effect tests. Do not skip it merely because
 - **Greenfield app boundary (owner decision, 2026-07-09):** mobile and desktop
   are new applications, not rename-in-place conversions. Build OpenAgents
   mobile at `apps/openagents-mobile` with Effect Native on a React Native/Expo
-  host; its product name is `OpenAgents`, its iOS bundle identifier and Android
+  host, its product name is `OpenAgents`, its iOS bundle identifier and Android
   application ID are exactly `com.openagents.app`, and its checked-in icon is
   the canonical `apps/openagents-mobile/assets/images/icon.png` (SHA-256
   `0a1865ac6d1efc792d365d9a37af9e6ffa3270fa7c8731f36129f35371bfc7ce`). Build
@@ -860,7 +860,7 @@ and deterministic Effect tests. Do not skip it merely because
   `https://github.com/LuanRoger/electron-shadcn` as the required starting
   template (reviewed local mirror `~/work/projects/repos/electron-shadcn`). Pin
   the imported upstream commit and preserve its MIT attribution. The reviewed
-  template enables `contextIsolation` but also enables `nodeIntegration`; turn
+  template enables `contextIsolation` but also enables `nodeIntegration`, turn
   `nodeIntegration` off, set `sandbox: true`, remove its upstream updater and
   Forge publisher target before first launch/package, install deny-by-default
   permission/navigation/window-open handling, and replace its broad starter
@@ -877,49 +877,49 @@ and deterministic Effect tests. Do not skip it merely because
   parity/migration/release-proof retention clause for the named surfaces.
   `apps/autopilot-desktop`, `packages/sarah-take-scoreboard`, and
   `.agents/skills/khala-fleet` are deleted (recover via
-  `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`; archive intake
+  `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`, archive intake
   `openagents-supersession-prune-2026-07-14/` in the backroom repo). The
   affected promises are withdrawn in registry pass `2026-07-14.1`
   (`docs/promises/2026-07-14-owner-supersession-removals.md`).
   A later owner direction on 2026-07-14 removed all three remaining `clients/`
   applications (`khala-cli`, `khala-ios`, and `khala-mobile`) and their live
   release/onboarding dependents. Historical evidence remains recoverable from
-  Git; Pylon, OpenAgents mobile, and OpenAgents Desktop are the supported paths.
+  Git, Pylon, OpenAgents mobile, and OpenAgents Desktop are the supported paths.
   `clients/khala-code-desktop` was deleted after its live Pylon/QA dependents
   were migrated in #8793. Recover its final source with
-  `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`; QA-owned fixture
+  `git show c7044f5a2870110b331c5a7288caceb85488290a:<path>`, QA-owned fixture
   contracts now live under `packages/khala-qa-harness/src/legacy-contracts`,
   while harness-neutral chat events use `packages/agent-runtime-schema`.
   `packages/autopilot-ui`
   stays: the live `apps/openagents.com/apps/web` app imports it. The FleetRun
-  authority's neutral canonical path is `/api/fleet-runs`;
+  authority's neutral canonical path is `/api/fleet-runs`,
   `/api/sarah/fleet-runs` remains a served compatibility alias for shipped
   desktop/mobile binaries (do not 410 it).
 - Keep new TypeScript implementation work on Effect and Effect Schema, and
   target Node for retained server, CLI, test, and repository-tooling code. Do
   not add runtime-specific APIs or surfaces outside the Node 24 host contract.
   The `docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md`
-  conversion is complete; use pnpm and Vite Plus for supported commands.
+  conversion is complete, use pnpm and Vite Plus for supported commands.
   **UI layer (owner decision, 2026-07-08 — supersedes the 2026-07-04
   React+Tailwind clause): the entire repo converts to Effect Native, ASAP**
   — one typed Effect-Schema component set with typed intents, an Effect v4
   runtime, and thin swappable renderers, per
-  `docs/sol/MASTER_ROADMAP.md` and the `docs/effect-native/` design docs; the
+  `docs/sol/MASTER_ROADMAP.md` and the `docs/effect-native/` design docs, the
   framework is public at
   `OpenAgentsInc/effect-native` (workspace sibling `~/work/effect-native`).
   New UI anywhere authors the Effect Native component set wherever a
-  renderer exists for that surface; React/TanStack Start and React Native
+  renderer exists for that surface, React/TanStack Start and React Native
   are renderer adapters and serving hosts only — never the architecture.
   Effect remains the services/logic substrate everywhere. Existing Foldkit
-  surfaces in `apps/openagents.com/apps/web` are legacy; retained routes are
+  surfaces in `apps/openagents.com/apps/web` are legacy, retained routes are
   converted under #8634/#8635 and all other public pages retired, except for
   the owner-directed 2026-07-18 restoration of the read-only
   `/trace/{uuid}` ATIF evidence viewer in `apps/start`. The
   OpenAgents Desktop target is **Effect Native on Electron** (#8574 on the
-  effect-native Phase 4 epic #20/#21–#43); the previously planned
+  effect-native Phase 4 epic #20/#21–#43), the previously planned
   React+Tailwind and Electrobun destination shells are cancelled. Retained web
   conversion PRs delete the legacy surface they replace. Greenfield mobile and
-  desktop PRs keep parity/QAM gates green while extracting shared contracts;
+  desktop PRs keep parity/QAM gates green while extracting shared contracts,
   component gaps go upstream through the
   effect-native GAPS register (EN-2 #8572), never local one-off primitives.
 - Never stash, reset, checkout, restore, or otherwise move another agent's
@@ -937,7 +937,7 @@ and deterministic Effect tests. Do not skip it merely because
   (Firecracker/vsock microVMs, GCE capacity, managed-node lifecycle), not UI
   or Worker logic — the Effect Native conversion mandate in the Sol master
   roadmap governs UI surfaces and does not convert them. TypeScript callers
-  never link the crates directly; they use the Effect Schema mirrors in
+  never link the crates directly, they use the Effect Schema mirrors in
   `packages/cloud-contract` and the documented HTTP contracts. Product, UI,
   Worker, and Pylon logic stays on Effect/TypeScript and moves to the selected
   Node runtime under the conversion contract.
@@ -946,18 +946,18 @@ and deterministic Effect tests. Do not skip it merely because
   Desktop media helper. It owns microphone/playback device I/O, resampling,
   bounded audio buffers, packetization, the direct authenticated media socket,
   and prompt cancellation only. Effect Schema in `packages/audio-contract`
-  remains canonical; Electron/Runtime Gateway supervision, identity, policy,
+  remains canonical, Electron/Runtime Gateway supervision, identity, policy,
   commands, conversations, Sync, storage orchestration, Google adapters,
   receipts, and all UI remain Effect/TypeScript. The helper never becomes a
   Tauri/WGPUI shell, links into the renderer, or learns command/Sync/storage
   authority. Binding rationale and reversal tests live in
   `docs/voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md`.
 - **Mobile policy (owner decision, 2026-07-04 — supersedes the 2026-06-26
-  no-Expo mandate for the framework; amended 2026-07-09):** the mobile
+  no-Expo mandate for the framework, amended 2026-07-09):** the mobile
   destination is a new **OpenAgents** app at `apps/openagents-mobile`, built
   from scratch as one Expo React Native codebase for iOS + Android (no separate
   Swift and Kotlin apps), authored in Effect Native with
-  React Native as renderer/host machinery and styling as typed style objects on the shared @effect-native/tokens vocabulary (NativeWind/Tailwind class strings REJECTED per docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md; owner-confirmed 2026-07-09), TanStack DB +
+  React Native as renderer/host machinery and styling as typed style objects on the shared @effect-native/tokens vocabulary (NativeWind/Tailwind class strings REJECTED per docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md, owner-confirmed 2026-07-09), TanStack DB +
   `khala-sync-db-collection` as the data layer, and expo-modules ports of the
   native Swift pieces (voice/STT, Apple FM bridge). See
   `docs/fable/2026-07-04-tanstack-start-sites-and-web-app-evaluation.md`
@@ -975,8 +975,8 @@ and deterministic Effect tests. Do not skip it merely because
 prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
   the owner explicitly changes that. `publish-ota.sh` targets only the
   supported `apps/openagents-mobile` application by default.
-  The new app's display name is exactly `OpenAgents`; its iOS bundle identifier
-  and Android application ID are exactly `com.openagents.app`; its icon is the
+  The new app's display name is exactly `OpenAgents`, its iOS bundle identifier
+  and Android application ID are exactly `com.openagents.app`, its icon is the
   exact Khala Code mobile icon pinned above. Store build/version numbers and
   signing/provisioning must remain monotonic and valid against the owner-
   designated existing store records before upload. The deleted Khala RN and
@@ -992,13 +992,13 @@ prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
   `pending` entry with blocker refs). Never leave a stated expectation only
   in conversation. Until the greenfield app roots exist, new cross-app
   expectations belong in a pending shared registry under
-  `packages/behavior-contracts`; once scaffolded, each new app owns its registry.
+  `packages/behavior-contracts`, once scaffolded, each new app owns its registry.
   Historical client registries in Git and the human doc
   at `docs/khala-code/khala-code-ux-contract.md`, are parity/migration inputs
   only, not destination authority. The shared schema and coverage checker live
   in `packages/behavior-contracts`
   (`@openagentsinc/behavior-contracts`). Enforced contracts must run in the
-  normal test sweep; do not weaken an oracle to make a change pass — that is
+  normal test sweep, do not weaken an oracle to make a change pass — that is
   a contract change and needs the owner's sign-off.
 - Keep Claim Your Agent public identity flows tweet-first where possible:
   use the shared owner-claim/X verification routes, the friendly
@@ -1015,7 +1015,7 @@ prebuild` + Xcode/Gradle); `eas build`/`eas submit` stay unused unless
 - Before publishing ANY npm package from this repo, read
   `apps/pylon/docs/npm-publishing-runbook.md`. The scope is
   `@openagentsinc/` (never `@openagents/`), the auth token lives in
-  workspace `.secrets/npm-publish.env`; use `pnpm pack` plus
+  workspace `.secrets/npm-publish.env`, use `pnpm pack` plus
   `npm publish <tarball>`. Pylon pre-stable
   releases publish under `--tag rc` only, and registry-CDN propagation
   makes fresh publishes look 404 to registry clients for minutes — the runbook covers
@@ -1046,7 +1046,7 @@ Cloud crate behavior. Read `docs/cloud/INVARIANTS.md` before node/workroom/
 capability/receipt/VM changes.
 
 Do **not** re-open private `OpenAgentsInc/cloud` for new features. Do **not**
-bury Cloud under `apps/pylon` — Pylon is contributor/local runtime; Cloud is
+bury Cloud under `apps/pylon` — Pylon is contributor/local runtime, Cloud is
 first-class infra under `crates/*`.
 
 ## Product Specs (`specs/`)
@@ -1056,56 +1056,56 @@ first-class infra under `crates/*`.
 Related Artifact index for evidence held elsewhere. A link is never a
 verification verdict. ProductSpec stays upstream of MASTER_ROADMAP sequencing,
 epics, behavior contracts, Eval Suites, and the promise registry. Read
-`specs/CONVENTIONS.md` before adding or editing one;
+`specs/CONVENTIONS.md` before adding or editing one,
 rationale in `docs/fable/2026-07-08-productspec-adoption-analysis.md` (#8593).
 The owner-directed first-MVP package is the single co-located exception:
 `docs/mvp/openagents-codex-workroom-mvp.product-spec.md` stays beside its audit
-and is included in the ProductSpec test sweep; do not create a mirror under
+and is included in the ProductSpec test sweep, do not create a mirror under
 `specs/`.
 
 - Validate general specs with
   `node --import tsx packages/product-spec/src/cli.ts validate --specs-root specs` and the MVP
   with `... validate docs/mvp/openagents-codex-workroom-mvp.product-spec.md`
-  (both enforced by `pnpm run test:product-spec` in the normal sweep);
+  (both enforced by `pnpm run test:product-spec` in the normal sweep),
   scaffold with `... init specs/<area>/<name>.product-spec.md`.
 - Specs declare and index: link behavior-contract IDs, Eval Suite names,
   promise IDs, and approved durable evidence refs without duplicating their
-  content. Registries/evidence systems enforce or observe; never treat a
+  content. Registries/evidence systems enforce or observe, never treat a
   ProductSpec or Related Artifact as release or public-claim authority.
 - Never edit a spec to match implementation without a `spec_revision` bump —
   accidental behavior never silently becomes intent.
-- `tool_metadata` is stripped on public export; no secrets, customer data, or
+- `tool_metadata` is stripped on public export, no secrets, customer data, or
   private pricing in this tree (private engagement specs live in private repos).
 
 ## Sarah — owner orchestrator reboot (owner direction 2026-07-18)
 
 - The old Sarah surface remains dead: the `openagents.com/sarah` web page, every
   `/sarah/api/*` route, and the whole `apps/sarah` package were deleted at
-  owner direction 2026-07-10. Git history is the archive; do not resurrect
+  owner direction 2026-07-10. Git history is the archive, do not resurrect
   that mount, those routes, or that package.
 - Current Sarah is `principal.sarah`: the authenticated human owner's
   persistent orchestrator on one stable owner-private Khala Sync thread inside
   supported OpenAgents clients. The normative ProductSpec is
-  `specs/openagents/sarah-owner-orchestrator.product-spec.md`; authority is the
+  `specs/openagents/sarah-owner-orchestrator.product-spec.md`, authority is the
   intersection of `AUTHORITY.md` and `docs/authority/SARAH_AUTHORITY.md`.
 - Reuse the existing mobile conversation, hosted Khala runtime, Full Auto,
   FleetRun, claims, repository/GitHub, Forum, Google Cloud, release, and
   product-promise primitives. Do not add a Sarah-specific CRM, transcript
   store, issue queue, provider router, raw credential path, or authority model.
 - Business context is bounded, owner-scoped, redacted, freshness-labelled, and
-  cited. Visibility is never mutation authority; actions must pass exact typed
+  cited. Visibility is never mutation authority, actions must pass exact typed
   capability brokers and emit authority plus target receipts.
 - `GET /sarah` and `/sarah/*` return an explicit 404 tombstone from the
   Cloud Run monolith entrypoint (`src/cloudrun/server.ts`).
 - The behavior contracts that bound the surface are preserved verbatim as
-  `retired` in `packages/behavior-contracts/src/sarah-retired.ts`; the human
+  `retired` in `packages/behavior-contracts/src/sarah-retired.ts`, the human
   rendering stays at `docs/sarah/SARAH_CONTRACTS.md` (historical).
 - API-side Sarah-named surfaces that are NOT under `/sarah`
   (`/api/sarah/fleet-runs` FleetRun intake authority, CRM handoff/checkout
   operator routes, internal-neutral inference lane caps) remain in place —
-  their client surface is gone; any change there is a separate decision.
+  their client surface is gone, any change there is a separate decision.
   Since 2026-07-14 the FleetRun authority's neutral canonical path is
-  `/api/fleet-runs` (same handler); `/api/sarah/fleet-runs` stays a served
+  `/api/fleet-runs` (same handler), `/api/sarah/fleet-runs` stays a served
   compatibility alias because shipped desktop/mobile binaries pin it. The CRM
   handoff/checkout routes stay under their current names: live CRM machinery
   (`crm-reply-routes.ts`, `crm-command.ts`, `crm-mcp.ts`) consumes them, so a

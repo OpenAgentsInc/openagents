@@ -14,6 +14,7 @@ import {
   validateAgentCompactTerms,
   type CheckerConfig,
 } from "./ste-core";
+import { rewriteSteSemicolons } from "./rewrite-ste-structure";
 
 const config: CheckerConfig = {
   policyRevision: "test",
@@ -140,5 +141,30 @@ describe("STE screening review", () => {
     expect(applyScreeningReview(diagnostics, profile).map((item) => item.rule)).toEqual([
       "STE-8.1",
     ]);
+  });
+});
+
+describe("STE structural rewrite", () => {
+  test("replaces prose semicolons and preserves source data and words", () => {
+    const input = [
+      "Use the route; then inspect it.",
+      "Keep `printf 'a;b'` and https://example.com/a;b unchanged.",
+      "Keep `multi;line",
+      "code;span` unchanged.",
+      "```sh",
+      "printf 'c;d'",
+      "```",
+    ].join("\n");
+    expect(rewriteSteSemicolons(input)).toBe(
+      [
+        "Use the route, then inspect it.",
+        "Keep `printf 'a;b'` and https://example.com/a;b unchanged.",
+        "Keep `multi;line",
+        "code;span` unchanged.",
+        "```sh",
+        "printf 'c;d'",
+        "```",
+      ].join("\n"),
+    );
   });
 });
