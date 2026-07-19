@@ -29,7 +29,7 @@ overrides:
 packageExtensionsChecksum: sha256-q5WdBF7BCWKzly/tgcivWtVAQ00t1e/WaEGl0+mhjaI=
 
 patchedDependencies:
-  electron-installer-common@0.10.4: 108c0e59f070e36c99e5f1f3b8c882f4ef8ccded18a1b18aabdafb8a3c9bc725
+  electron-installer-common@0.10.4: a1b1b1fe2cb13041b23248884df37684b9c9004e9ece6748b7b5073a4579a458
   foldkit@0.102.1: 23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0
 
 importers:
@@ -16029,7 +16029,7 @@ snapshots:
       - dmg-builder
       - supports-color
 
-  electron-installer-common@0.10.4(patch_hash=108c0e59f070e36c99e5f1f3b8c882f4ef8ccded18a1b18aabdafb8a3c9bc725):
+  electron-installer-common@0.10.4(patch_hash=a1b1b1fe2cb13041b23248884df37684b9c9004e9ece6748b7b5073a4579a458):
     dependencies:
       '@electron/asar': 3.4.1
       '@malept/cross-spawn-promise': 1.1.1
@@ -16050,7 +16050,7 @@ snapshots:
     dependencies:
       '@malept/cross-spawn-promise': 1.1.1
       debug: 4.4.3
-      electron-installer-common: 0.10.4(patch_hash=108c0e59f070e36c99e5f1f3b8c882f4ef8ccded18a1b18aabdafb8a3c9bc725)
+      electron-installer-common: 0.10.4(patch_hash=a1b1b1fe2cb13041b23248884df37684b9c9004e9ece6748b7b5073a4579a458)
       fs-extra: 9.1.0
       get-folder-size: 2.0.1
       lodash: 4.18.1
@@ -16075,7 +16075,7 @@ snapshots:
     dependencies:
       '@malept/cross-spawn-promise': 1.1.1
       debug: 4.4.3
-      electron-installer-common: 0.10.4(patch_hash=108c0e59f070e36c99e5f1f3b8c882f4ef8ccded18a1b18aabdafb8a3c9bc725)
+      electron-installer-common: 0.10.4(patch_hash=a1b1b1fe2cb13041b23248884df37684b9c9004e9ece6748b7b5073a4579a458)
       fs-extra: 9.1.0
       lodash: 4.18.1
       word-wrap: 1.2.5
