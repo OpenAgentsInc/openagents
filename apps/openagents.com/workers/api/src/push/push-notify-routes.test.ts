@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  dispatchNotifyEventForOwner,
   handlePushNotificationPreferencesRequest,
   handlePushNotifyEventsRequest,
   PUSH_NOTIFICATION_PREFERENCES_PATH,
@@ -180,6 +181,62 @@ describe('handlePushNotifyEventsRequest — dispatch', () => {
     const body = (await response.json()) as { sent: number; suppressedByPreference: boolean }
     expect(body.sent).toBe(0)
     expect(body.suppressedByPreference).toBe(true)
+  })
+})
+
+// SARAH-PUSH-2 (#9063): the direct in-process seam a caller (the hosted
+// dispatch tick, the runtime-interaction "needs input" route) uses instead
+// of the HTTP admin-bearer route above — same lookup + dispatch, no fetch.
+describe('dispatchNotifyEventForOwner', () => {
+  test('resolves devices + preference then dispatches, with no HTTP hop', async () => {
+    const env = makeEnv()
+    await registerPushDeviceToken(env.db, {
+      accessToken: 'a1',
+      deviceId: 'device-1',
+      expoPushToken: 'token-1',
+      nowIso: '2026-07-06T00:00:00.000Z',
+      platform: 'ios',
+      userId: 'user-1',
+    })
+
+    const outcome = await dispatchNotifyEventForOwner(
+      env.db,
+      fakeAuthStorage(),
+      { kind: 'turn_completed', ownerUserId: 'user-1', threadId: 'thread-1' },
+      async () => new Response(JSON.stringify({ data: [{ id: 'ticket-1', status: 'ok' }] }), { status: 200 }),
+    )
+    expect(outcome).toEqual({ invalidatedTokens: [], ok: true, sent: 1, suppressedByPreference: false })
+  })
+
+  test('respects the disabled preference the same way the HTTP route does', async () => {
+    const env = makeEnv()
+    await registerPushDeviceToken(env.db, {
+      accessToken: 'a1',
+      deviceId: 'device-1',
+      expoPushToken: 'token-1',
+      nowIso: '2026-07-06T00:00:00.000Z',
+      platform: 'ios',
+      userId: 'user-1',
+    })
+    await Effect.runPromise(
+      handlePushNotificationPreferencesRequest(
+        makeDependencies({ adminOk: true, sessionUserId: 'user-1' }),
+        new Request(`https://openagents.com${PUSH_NOTIFICATION_PREFERENCES_PATH}`, {
+          body: JSON.stringify({ pushEnabled: false }),
+          method: 'PUT',
+        }),
+        env,
+        ctx,
+      ),
+    )
+
+    const outcome = await dispatchNotifyEventForOwner(
+      env.db,
+      fakeAuthStorage(),
+      { kind: 'turn_needs_input', ownerUserId: 'user-1', threadId: 'thread-1' },
+    )
+    expect(outcome.sent).toBe(0)
+    expect(outcome.suppressedByPreference).toBe(true)
   })
 })
 

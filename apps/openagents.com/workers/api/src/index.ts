@@ -1080,6 +1080,7 @@ import {
 import {
   PUSH_NOTIFICATION_PREFERENCES_PATH,
   PUSH_NOTIFY_EVENTS_PATH,
+  dispatchNotifyEventForOwner,
   handlePushNotificationPreferencesRequest,
   handlePushNotifyEventsRequest,
 } from './push/push-notify-routes'
@@ -7068,6 +7069,16 @@ const runHostedRuntimeTurnDispatchForEnv = async (
           },
           input,
         ),
+      // SARAH-PUSH-2 (#9063): in-process push on turn_completed/turn_failed —
+      // no HTTP hop, no admin bearer. The dispatch tick calls this fail-soft
+      // (see `notifyTurnOutcomeFailSoft`), so a push failure here never
+      // affects the already-recorded turn outcome.
+      notify: async ({ kind, ownerUserId, threadId, turnId }) =>
+        dispatchNotifyEventForOwner(
+          paymentsLedgerDbForEnv(env),
+          authKvStoreForEnv(env),
+          { kind, ownerUserId, threadId, turnId },
+        ),
       registry: khalaSyncMutatorRegistry,
       sql: client.sql,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
@@ -12206,6 +12217,16 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         binding: env.KHALA_SYNC_DB,
         registry: khalaSyncMutatorRegistry,
         requireOperator: () => requireAdminApiToken(request, env),
+        // SARAH-PUSH-2 (#9063): a NEW pending interaction IS the honest
+        // "the turn needs your input" transition — in-process push, no HTTP
+        // hop, no admin bearer. Fail-soft: see the route module's own
+        // try/catch around this call.
+        notify: async ({ ownerUserId, threadId, turnId }) =>
+          dispatchNotifyEventForOwner(
+            paymentsLedgerDbForEnv(env),
+            authKvStoreForEnv(env),
+            { kind: 'turn_needs_input', ownerUserId, threadId, turnId },
+          ),
       }),
   },
   {

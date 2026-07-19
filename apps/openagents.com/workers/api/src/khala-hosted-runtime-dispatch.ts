@@ -81,6 +81,7 @@ import {
   type HostedTurnUsage,
   hostedKhalaUsageRef,
 } from './khala-hosted-runtime-metering'
+import type { RuntimeNotifyEventKind } from './push/push-notify-events'
 import {
   currentIsoTimestamp,
   isoTimestampAfterIso,
@@ -160,6 +161,29 @@ export type HostedRuntimeRecordUsageFn = (
   input: HostedTurnMeteringInput,
 ) => Promise<HostedTurnMeteringOutcome>
 
+/** The two terminal notify-event kinds this dispatch tick can honestly
+ * produce. `turn_needs_input` has no analog here — a hosted chat turn always
+ * resolves to a definite answer or a definite failure, it never pauses
+ * mid-turn for owner input (SARAH-PUSH-2 #9063; see the runtime-interaction
+ * "needs input" route for that lifecycle instead). */
+export type HostedRuntimeNotifyKind = Extract<
+  RuntimeNotifyEventKind,
+  'turn_completed' | 'turn_failed'
+>
+
+/** Fire-and-forget push notification on a terminal turn outcome. Injected so
+ * the dispatch tick never imports Postgres/KV bindings directly — the real
+ * implementation (SARAH-PUSH-2) resolves the owner's devices/preference and
+ * calls `dispatchNotifyEvent` in-process, no HTTP hop, no admin bearer. */
+export type HostedRuntimeNotifyFn = (
+  input: Readonly<{
+    kind: HostedRuntimeNotifyKind
+    ownerUserId: string
+    threadId: string
+    turnId: string
+  }>,
+) => Promise<unknown>
+
 /** Injectable inference seam (default: Gemini via `artanisMindComplete`). */
 export type HostedRuntimeCompleteFn = (input: {
   readonly system: string
@@ -214,6 +238,9 @@ export type HostedRuntimeDispatchDependencies = Readonly<{
   log?: ((line: string, fields?: Record<string, unknown>) => void) | undefined
   /** Records exact usage on a completed turn. */
   recordUsage?: HostedRuntimeRecordUsageFn | undefined
+  /** Fail-soft push notification on turn_completed/turn_failed (#9063).
+   * Absent by default so every existing caller/test is unchanged. */
+  notify?: HostedRuntimeNotifyFn | undefined
 }>
 
 export type HostedRuntimeDispatchSummary = Readonly<{
@@ -238,6 +265,7 @@ type ResolvedDeps = Readonly<{
   log: (line: string, fields?: Record<string, unknown>) => void
   recordUsage: HostedRuntimeRecordUsageFn | undefined
   prepareTurn: HostedRuntimePrepareTurnFn | undefined
+  notify: HostedRuntimeNotifyFn | undefined
 }>
 
 const resolveDeps = (
@@ -259,6 +287,7 @@ const resolveDeps = (
       : DEFAULT_HOSTED_RUNTIME_STALE_AFTER_MS,
   log: deps.log ?? (() => undefined),
   model: deps.model ?? DEFAULT_HOSTED_RUNTIME_MODEL,
+  notify: deps.notify,
   now: deps.now ?? currentIsoTimestamp,
   prepareTurn: deps.prepareTurn,
   recordUsage: deps.recordUsage,
@@ -434,6 +463,34 @@ const buildRuntimeEvent = (
 
 const runtimeSafeRef = (prefix: string, value: string): string =>
   `${prefix}.${value.replaceAll(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120)}`
+
+/**
+ * Fail-soft push notification on a terminal turn outcome (#9063). NEVER
+ * throws or rejects — a notify failure (the owner has no devices, the push
+ * provider is down, an unexpected error) must never affect the turn's own
+ * already-recorded outcome, which is durable by the time this is called.
+ */
+const notifyTurnOutcomeFailSoft = async (
+  resolved: ResolvedDeps,
+  kind: HostedRuntimeNotifyKind,
+  turn: QueuedHostedTurn,
+): Promise<void> => {
+  if (resolved.notify === undefined) return
+  try {
+    await resolved.notify({
+      kind,
+      ownerUserId: turn.ownerUserId,
+      threadId: turn.threadId,
+      turnId: turn.turnId,
+    })
+  } catch (error) {
+    resolved.log('hosted_runtime_dispatch_notify_failed', {
+      detail: error instanceof Error ? error.message : 'unknown',
+      kind,
+      turnId: turn.turnId,
+    })
+  }
+}
 
 const sarahToolAuthority = (activity: SarahAgentToolActivity) => ({
   allowed: activity.authorityAllowed ?? true,
@@ -682,6 +739,7 @@ export const dispatchHostedRuntimeTurn = async (
       }),
     )
     if (failedResult.status !== 'applied') return 'skipped'
+    await notifyTurnOutcomeFailSoft(resolved, 'turn_failed', turn)
     return 'failed'
   }
 
@@ -793,6 +851,7 @@ export const dispatchHostedRuntimeTurn = async (
     }),
   )
   if (finishedResult.status !== 'applied') return 'skipped'
+  await notifyTurnOutcomeFailSoft(resolved, 'turn_completed', turn)
   resolved.log('hosted_runtime_dispatch_answered', {
     responseChars: completion.text.length,
     turnId: turn.turnId,

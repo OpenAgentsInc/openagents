@@ -103,6 +103,67 @@ describe('trusted Pylon runtime interaction route', () => {
     })
   })
 
+  // SARAH-PUSH-2 (#9063): a NEW pending interaction is the honest "turn
+  // needs your input" transition — verify the notify hook fires with the
+  // right owner/thread/turn refs, and that it never leaks into the response.
+  test('notifies with the interaction owner/thread/turn refs after a NEW pending interaction is applied', async () => {
+    const notified: Array<{ ownerUserId: string; threadId: string; turnId: string }> = []
+    const response = await Effect.runPromise(handleKhalaSyncRuntimeInteraction(
+      new Request(`https://openagents.com${KHALA_SYNC_RUNTIME_INTERACTION_PATH}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ownerUserId: 'user.1', interaction: pending }),
+      }),
+      dependencies({
+        executeMutation: async () => ({ results: [{ mutationId: 1, status: 'applied' }] }),
+        notify: async (input: { ownerUserId: string; threadId: string; turnId: string }) => {
+          notified.push(input)
+        },
+      }),
+    ))
+    expect(response.status).toBe(200)
+    expect(notified).toEqual([
+      { ownerUserId: 'user.1', threadId: 'thread.runtime.1', turnId: 'turn.runtime.1' },
+    ])
+  })
+
+  test('does not notify when the interaction mutation is rejected', async () => {
+    const notified: Array<unknown> = []
+    const response = await Effect.runPromise(handleKhalaSyncRuntimeInteraction(
+      new Request(`https://openagents.com${KHALA_SYNC_RUNTIME_INTERACTION_PATH}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ownerUserId: 'user.1', interaction: pending }),
+      }),
+      dependencies({
+        executeMutation: async () => ({ results: [{ mutationId: 1, status: 'rejected', errorCode: 'conflict' }] }),
+        notify: async (input: unknown) => {
+          notified.push(input)
+        },
+      }),
+    ))
+    expect(response.status).toBe(409)
+    expect(notified).toEqual([])
+  })
+
+  test('a thrown/rejected notify is fail-soft: the interaction response is unaffected', async () => {
+    const response = await Effect.runPromise(handleKhalaSyncRuntimeInteraction(
+      new Request(`https://openagents.com${KHALA_SYNC_RUNTIME_INTERACTION_PATH}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ownerUserId: 'user.1', interaction: pending }),
+      }),
+      dependencies({
+        executeMutation: async () => ({ results: [{ mutationId: 1, status: 'applied' }] }),
+        notify: async () => {
+          throw new Error('push provider unavailable')
+        },
+      }),
+    ))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({ ok: true })
+  })
+
   test('fails closed before storage for unauthorized or malformed requests', async () => {
     const unauthorized = await Effect.runPromise(handleKhalaSyncRuntimeInteraction(
       new Request(`https://openagents.com${KHALA_SYNC_RUNTIME_INTERACTION_PATH}`),

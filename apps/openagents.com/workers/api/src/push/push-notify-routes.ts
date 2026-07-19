@@ -133,6 +133,30 @@ export const dispatchNotifyEvent = async (
   }
 }
 
+/** SARAH-PUSH-2 (#9063): the reusable OWNER-scoped seam — resolves the
+ * target owner's active devices + preference, then calls
+ * {@link dispatchNotifyEvent}. Both the admin-bearer HTTP ingest route below
+ * AND direct in-process callers (the hosted-runtime dispatch tick, the
+ * runtime-interaction "needs input" route) share this one lookup+dispatch
+ * path, so a real caller never needs the HTTP hop or the admin bearer. */
+export const dispatchNotifyEventForOwner = async (
+  db: PushDeviceTokenDb,
+  authStorage: MobileAccessRevocationStore,
+  event: RuntimeNotifyEvent,
+  fetchImpl?: FetchLike,
+): Promise<NotifyEventOutcome> => {
+  const [devices, preference] = await Promise.all([
+    listActivePushDeviceTokensForUser(db, authStorage, event.ownerUserId),
+    readPushNotificationPreference(db, event.ownerUserId),
+  ])
+  return dispatchNotifyEvent(db, {
+    devices,
+    event,
+    pushEnabled: preference.pushEnabled,
+    ...(fetchImpl === undefined ? {} : { fetchImpl }),
+  })
+}
+
 const routeNotifyEvents = async <Bindings, User>(
   dependencies: PushNotifyRouteDependencies<Bindings, User>,
   request: Request,
@@ -155,19 +179,12 @@ const routeNotifyEvents = async <Bindings, User>(
     )
   }
 
-  const db = dependencies.db(env)
-  const authStorage = dependencies.authStorage(env)
-  const [devices, preference] = await Promise.all([
-    listActivePushDeviceTokensForUser(db, authStorage, event.ownerUserId),
-    readPushNotificationPreference(db, event.ownerUserId),
-  ])
-
-  const outcome = await dispatchNotifyEvent(db, {
-    devices,
+  const outcome = await dispatchNotifyEventForOwner(
+    dependencies.db(env),
+    dependencies.authStorage(env),
     event,
-    pushEnabled: preference.pushEnabled,
-    ...(dependencies.fetchImpl === undefined ? {} : { fetchImpl: dependencies.fetchImpl }),
-  })
+    dependencies.fetchImpl,
+  )
 
   return noStoreJsonResponse(outcome, { status: 200 })
 }

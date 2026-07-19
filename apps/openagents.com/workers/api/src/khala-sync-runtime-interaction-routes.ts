@@ -34,6 +34,16 @@ export const KHALA_SYNC_RUNTIME_INTERACTION_ROUTE_REF =
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/
 
+/** SARAH-PUSH-2 (#9063): fired fail-soft after a NEW pending interaction
+ * (`provider_question` / `tool_approval` / `plan_review`) is durably
+ * recorded — the honest "the turn needs the owner's input" transition for
+ * the runtime lanes that route through this trusted Pylon interaction seam.
+ * A hosted chat turn (`khala-hosted-runtime-dispatch.ts`) never produces this
+ * state; it always resolves to a definite answer or a definite failure. */
+export type KhalaSyncRuntimeInteractionNotifyFn = (
+  input: Readonly<{ ownerUserId: string; threadId: string; turnId: string }>,
+) => Promise<unknown>
+
 export type KhalaSyncRuntimeInteractionDependencies = Readonly<{
   requireOperator: () => Promise<boolean>
   binding: KhalaSyncHyperdriveBinding | undefined
@@ -41,6 +51,8 @@ export type KhalaSyncRuntimeInteractionDependencies = Readonly<{
   makeSqlClient?: MakeKhalaSyncPushSqlClient
   readInteraction?: typeof readRuntimeInteractionByRef
   executeMutation?: typeof executePush
+  /** Absent by default so every existing caller/test is unchanged. */
+  notify?: KhalaSyncRuntimeInteractionNotifyFn
 }>
 
 const connectionString = (
@@ -145,6 +157,19 @@ export const handleKhalaSyncRuntimeInteraction = (
       sql: client.sql,
       userId: body.ownerUserId,
     })).results[0]
+    if (result?.status === 'applied' && deps.notify !== undefined) {
+      // Fail-soft (#9063): a push failure must never affect the
+      // already-durably-recorded interaction or this response.
+      try {
+        await deps.notify({
+          ownerUserId: body.ownerUserId,
+          threadId: interaction.threadId,
+          turnId: interaction.turnId,
+        })
+      } catch {
+        /* best-effort notify only */
+      }
+    }
     return result?.status === 'applied'
       ? noStoreJsonResponse({ ok: true, routeRef: KHALA_SYNC_RUNTIME_INTERACTION_ROUTE_REF })
       : noStoreJsonResponse({ error: result?.errorCode ?? 'mutation_rejected', ok: false, routeRef: KHALA_SYNC_RUNTIME_INTERACTION_ROUTE_REF }, { status: 409 })

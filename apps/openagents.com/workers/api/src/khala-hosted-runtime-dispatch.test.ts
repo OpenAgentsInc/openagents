@@ -641,6 +641,128 @@ describe('dispatchHostedRuntimeTurn', () => {
   })
 })
 
+// SARAH-PUSH-2 (#9063): the hosted dispatch tick calls `notify` in-process
+// (no HTTP hop, no admin bearer) exactly once on each terminal turn outcome.
+describe('turn-settle push notifications', () => {
+  const turn: QueuedHostedTurn = {
+    eventCount: 0,
+    ownerUserId: 'github:14167547',
+    threadId: 'thread.t1',
+    turnId: 'turn.t1',
+  }
+
+  test('a successful turn notifies turn_completed with the owner/thread/turn refs', async () => {
+    const push = makeRecordingExecutePush()
+    const notified: Array<{
+      kind: string
+      ownerUserId: string
+      threadId: string
+      turnId: string
+    }> = []
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, okComplete('Here is the answer.')),
+        notify: async input => {
+          notified.push(input)
+        },
+      },
+      turn,
+    )
+    expect(outcome).toBe('answered')
+    expect(notified).toEqual([
+      {
+        kind: 'turn_completed',
+        ownerUserId: 'github:14167547',
+        threadId: 'thread.t1',
+        turnId: 'turn.t1',
+      },
+    ])
+  })
+
+  test('a failed (inference error) turn notifies turn_failed', async () => {
+    const push = makeRecordingExecutePush()
+    const notified: Array<{ kind: string }> = []
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, () =>
+          Promise.resolve({ detail: 'mind_unavailable', ok: false }),
+        ),
+        notify: async input => {
+          notified.push(input)
+        },
+      },
+      turn,
+    )
+    expect(outcome).toBe('failed')
+    expect(notified.map(n => n.kind)).toEqual(['turn_failed'])
+  })
+
+  test('an unresolved-prompt failure also notifies turn_failed', async () => {
+    const push = makeRecordingExecutePush()
+    const notified: Array<{ kind: string }> = []
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps({ ...oneQueuedTurn, chatMessages: {} }, push, okComplete('x')),
+        notify: async input => {
+          notified.push(input)
+        },
+      },
+      turn,
+    )
+    expect(outcome).toBe('failed')
+    expect(notified.map(n => n.kind)).toEqual(['turn_failed'])
+  })
+
+  test('a claim that never settles (lost race) never notifies', async () => {
+    const push = makeRecordingExecutePush(event =>
+      event.kind === 'turn.started' ? 'rejected' : 'applied',
+    )
+    const notified: Array<unknown> = []
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, okComplete('x')),
+        notify: async input => {
+          notified.push(input)
+        },
+      },
+      turn,
+    )
+    expect(outcome).toBe('skipped')
+    expect(notified).toEqual([])
+  })
+
+  test('a thrown/rejected notify is fail-soft: the recorded turn outcome is unaffected', async () => {
+    const push = makeRecordingExecutePush()
+    const outcome = await dispatchHostedRuntimeTurn(
+      {
+        ...baseDeps(oneQueuedTurn, push, okComplete('Here is the answer.')),
+        notify: async () => {
+          throw new Error('push provider unavailable')
+        },
+      },
+      turn,
+    )
+    // The turn still finishes normally — the push failure never propagates
+    // and never rolls back the already-durably-recorded turn.finished event.
+    expect(outcome).toBe('answered')
+    expect(push.recorded.map(r => r.kind)).toEqual([
+      'turn.started',
+      'text.delta',
+      'text.completed',
+      'turn.finished',
+    ])
+  })
+
+  test('no notify dependency is a clean no-op (every existing caller keeps working)', async () => {
+    const push = makeRecordingExecutePush()
+    const outcome = await dispatchHostedRuntimeTurn(
+      baseDeps(oneQueuedTurn, push, okComplete('Here is the answer.')),
+      turn,
+    )
+    expect(outcome).toBe('answered')
+  })
+})
+
 describe('runHostedRuntimeTurnDispatch', () => {
   test('tallies a batch and is failure-isolated across turns', async () => {
     const tables: FakeTables = {
