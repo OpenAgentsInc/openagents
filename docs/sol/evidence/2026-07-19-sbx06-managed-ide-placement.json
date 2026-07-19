@@ -1,6 +1,6 @@
 {
   "schemaVersion": "openagents.managed_sandbox_sbx06_ide_placement_component.v1",
-  "capturedAt": "2026-07-19T20:40:00Z",
+  "capturedAt": "2026-07-19T21:51:00Z",
   "passed": true,
   "issueRef": "https://github.com/OpenAgentsInc/openagents/issues/9027",
   "proofRung": "deterministic_desktop_consumer_component",
@@ -43,17 +43,18 @@
     "scopedDesktopRegressionTestsPassed": 100,
     "desktopTypecheckPassed": true,
     "ideBoundaryScanPassed": true,
+    "receiptBoundDriftRepairPassed": true,
     "defaultOffNetworkCalls": 0,
     "bearerPresentOnlyInMainHeader": true,
     "bearerAbsentFromRequestBody": true,
     "bearerAbsentFromRendererProjection": true
   },
   "fullDesktopSuite": {
-    "passing": 2690,
+    "passing": 2741,
     "skipped": 39,
-    "baselineFailures": 6,
+    "baselineFailures": 0,
     "scopedFailures": 0,
-    "note": "The six failures are existing main-branch drift in ProductSpec skill digests, MVP evidence digests/projections, and revision-4 assurance prose; none touches an SBX-06 changed path."
+    "note": "The complete Desktop suite passed after the prerequisite repair restored receipt-bound MVP bytes and synchronized the signed AssuranceSpec skill compatibility set."
   },
   "limitations": [
     "The Desktop HTTP gateway is default-off and its authenticated Worker broker is owned by SBX-07.",
