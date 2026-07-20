@@ -311,9 +311,9 @@ describe("startup contract: Finder-open is editor-first", () => {
     expect(bootSource).not.toContain("const laneCapabilities = documentLaunch")
     expect(bootSource).toContain("const refreshLaneCapabilities = async ()")
     // Ordinary launches run availability probes in the BACKGROUND (never awaited
-    // before mount): the fable probe is `void fableLocalBridge.availability()`.
+    // before mount): the claude probe is `void claudeLocalBridge.availability()`.
     expect(bootSource).toContain("if (!documentLaunch) {")
-    expect(bootSource).toContain("void fableLocalBridge.availability()")
+    expect(bootSource).toContain("void claudeLocalBridge.availability()")
     // The initial voice-state query is fired non-blocking, not `yield*`-awaited.
     expect(bootSource).toContain('requestId: "renderer-voice-initial"')
     const voiceIdx = bootSource.indexOf('requestId: "renderer-voice-initial"')

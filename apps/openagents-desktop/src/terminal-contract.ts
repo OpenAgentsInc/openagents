@@ -9,7 +9,7 @@
  * so a compromised renderer can steer stdin but can never choose WHAT is
  * spawned or WHERE.
  *
- * Security boundary law (mirrors mcp-config-contract.ts / fable-local-contract):
+ * Security boundary law (mirrors mcp-config-contract.ts / claude-local-contract):
  * - create/input/resize/interrupt/restart/close carry ONLY a session ref and,
  *   for input/resize, bounded data / integer geometry. No process authority.
  * - The output the renderer sees is BOUNDED (ring buffer, byte cap) and

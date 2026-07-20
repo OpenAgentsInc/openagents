@@ -117,11 +117,11 @@ describe("validateFullAutoLauncherDraft (FA-AC-54)", () => {
     // thread-level cap follows the owner's chosen cap.
     expect(validateFullAutoLauncherDraft({ ...draft, turnCapText: "5" })).toEqual({
       ok: true, title: "Run", doneCondition: "Done", turnCap: 5,
-      routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }], guardrails: { maxTurns: 5 },
+      routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }], guardrails: { maxTurns: 5 },
     })
     expect(validateFullAutoLauncherDraft({ ...draft, turnCapText: "" })).toEqual({
       ok: true, title: "Run", doneCondition: "Done", turnCap: undefined,
-      routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }], guardrails: undefined,
+      routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }], guardrails: undefined,
     })
   })
 
@@ -146,7 +146,7 @@ describe("validateFullAutoLauncherDraft (FA-AC-54)", () => {
     const draft = { ...emptyFullAutoLauncherDraft(), title: "Run", objective: "Do it", doneCondition: "Done", workspaceRef: "/ws", turnCapText: "" }
     expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "90" })).toEqual({
       ok: true, title: "Run", doneCondition: "Done", turnCap: undefined,
-      routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }], guardrails: { maxWallClockMs: 90 * 60_000 },
+      routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }], guardrails: { maxWallClockMs: 90 * 60_000 },
     })
     expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "0" }).ok).toBe(false)
     expect(validateFullAutoLauncherDraft({ ...draft, maxWallClockMinutesText: "ten" }).ok).toBe(false)
@@ -406,7 +406,7 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
     await Effect.runPromise(Effect.gen(function* () {
       const requests: Array<unknown> = []
       const paused = baseRun({ runRef: "run-handoff", state: "paused", lane: "codex-local" })
-      const switched = { ...paused, lane: "fable-local" as const }
+      const switched = { ...paused, lane: "claude-local" as const }
       const { state, registry } = yield* makeHarness({
         handoff: async request => {
           requests.push(request)
@@ -417,7 +417,7 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
               transition: {
                 handoffRef: "handoff-1",
                 from: "codex-local",
-                to: "fable-local",
+                to: "claude-local",
                 disposition: "complete_within_bounds",
                 truncated: false,
                 reason: request.reason ?? "owner handoff",
@@ -428,14 +428,14 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
         get: async () => ({ ok: true, value: switched }),
         report: async () => ({ ok: true, value: { turns: [], providerTransitions: [] } }),
       }, { fullAuto: { ...emptyFullAutoWorkspaceState(), mode: "run", activeRunRef: paused.runRef, runs: [paused] } })
-      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoRunHandoffRequested", StaticPayload("fable-local"))))
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoRunHandoffRequested", StaticPayload("claude-local"))))
       expect(requests).toEqual([{
         runRef: "run-handoff",
-        targetLaneRef: "fable-local",
+        targetLaneRef: "claude-local",
         reason: "Provider handoff requested from the dedicated Full Auto run view.",
       }])
       const next = yield* SubscriptionRef.get(state)
-      expect(next.fullAuto.runs[0]?.lane).toBe("fable-local")
+      expect(next.fullAuto.runs[0]?.lane).toBe("claude-local")
       expect(next.fullAuto.actionError).toBeNull()
     }))
   })
@@ -465,12 +465,12 @@ describe("Full Auto intent loop (FA-UX-01 #8974)", () => {
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherFallbackLaneAdded", StaticPayload("codex-local"))))
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherMaxWallClockChanged", StaticPayload("120"))))
       const draft = (yield* SubscriptionRef.get(state)).fullAuto.launcher
-      expect(draft.fallbackLanes).toEqual(["fable-local", "acp:grok-cli"])
+      expect(draft.fallbackLanes).toEqual(["claude-local", "acp:grok-cli"])
       expect(draft.maxWallClockMinutesText).toBe("120")
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopFullAutoLauncherStartRequested", StaticPayload(null))))
       expect(startRequests).toHaveLength(1)
       expect(startRequests[0]).toMatchObject({
-        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }, { lane: "acp:grok-cli" }],
+        routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }, { lane: "acp:grok-cli" }],
         guardrails: { maxTurns: 5, maxWallClockMs: 120 * 60_000 },
         turnCap: 5,
       })

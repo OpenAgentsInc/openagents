@@ -252,7 +252,7 @@ describe("Full Auto multi-lane routing-policy fields (FA-RT-01 #8987)", () => {
       registry.set("thread-rt", true, { workspaceRef: "/repo/a" })
       const policy = [
         { lane: "codex-local", accountRef: "codex-1" },
-        { lane: "fable-local" },
+        { lane: "claude-local" },
       ]
       expect(registry.bindRoutingPolicy("thread-rt", policy)?.routingPolicy).toEqual(policy)
 
@@ -267,7 +267,7 @@ describe("Full Auto multi-lane routing-policy fields (FA-RT-01 #8987)", () => {
       expect(registry.record("thread-rt")?.routingPolicy).toEqual(policy)
 
       // An enable-time option rebinds it atomically.
-      const rebound = [{ lane: "fable-local" }]
+      const rebound = [{ lane: "claude-local" }]
       registry.set("thread-rt", true, { workspaceRef: "/repo/a", routingPolicy: rebound })
       expect(registry.record("thread-rt")?.routingPolicy).toEqual(rebound)
 
@@ -299,11 +299,11 @@ describe("Full Auto multi-lane routing-policy fields (FA-RT-01 #8987)", () => {
       registry.set("thread-rot", true)
       expect(registry.recordRotation("thread-rot", {
         fromLane: "codex-local",
-        toLane: "fable-local",
+        toLane: "claude-local",
         reason: "account_exhausted",
       })?.rotationHistory).toEqual([{
         fromLane: "codex-local",
-        toLane: "fable-local",
+        toLane: "claude-local",
         reason: "account_exhausted",
         at: expect.stringContaining("2026-07-17T"),
       }])
@@ -348,7 +348,7 @@ describe("Full Auto multi-lane routing-policy fields (FA-RT-01 #8987)", () => {
     try {
       const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
       registry.set("thread-keep", true)
-      registry.recordRotation("thread-keep", { fromLane: "codex-local", toLane: "fable-local", reason: "rate_limited" })
+      registry.recordRotation("thread-keep", { fromLane: "codex-local", toLane: "claude-local", reason: "rate_limited" })
 
       registry.recordFailure("thread-keep", "transient")
       registry.recordSuccess("thread-keep")
@@ -357,7 +357,7 @@ describe("Full Auto multi-lane routing-policy fields (FA-RT-01 #8987)", () => {
 
       expect(registry.record("thread-keep")?.rotationHistory).toEqual([{
         fromLane: "codex-local",
-        toLane: "fable-local",
+        toLane: "claude-local",
         reason: "rate_limited",
         at: expect.any(String),
       }])

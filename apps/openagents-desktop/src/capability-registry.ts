@@ -83,8 +83,8 @@ const MARKDOWN = "apps/openagents-desktop/src/renderer/markdown.test.ts"
 const WORKSPACE = "apps/openagents-desktop/tests/workspace-service.test.ts"
 const WORKSPACE_EDITOR = "apps/openagents-desktop/src/renderer/workspace-editor.test.ts"
 const USAGE = "apps/openagents-desktop/src/usage-ledger.test.ts"
-const FABLE_RT = "apps/openagents-desktop/src/fable-local-runtime.test.ts"
-const FABLE_CAPS_RT = "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts"
+const CLAUDE_RT = "apps/openagents-desktop/src/claude-local-runtime.test.ts"
+const CLAUDE_CAPS_RT = "apps/openagents-desktop/src/claude-local-runtime-caps.test.ts"
 const RUNTIME_CARDS = "apps/openagents-desktop/src/renderer/runtime-cards.test.ts"
 const CODEX_CHILD_RT = "apps/openagents-desktop/src/codex-child-runtime.test.ts"
 const FLEET = "apps/openagents-desktop/src/renderer/fleet-workspace.test.ts"
@@ -176,10 +176,10 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   {
     id: "A3", group: "A", capability: "Queue follow-up while turn runs", status: "partial",
     uiOracleRef: RUNTIME_CARDS, uiOracleWiring: "existing_suite",
-    programmaticOracleRef: FABLE_CAPS_RT, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: CLAUDE_CAPS_RT, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
     // EP250 wave-2: the composer stays usable while a turn streams; a mid-turn
-    // submit enqueues via fableLocal.queueFollowup, renders a queued chip, and
+    // submit enqueues via claudeLocal.queueFollowup, renders a queued chip, and
     // the promoted follow-up becomes the next turn. Residual (still partial):
     // delivery is queue-until-idle, not mid-stream steering (the single-string
     // turn cannot inject), and it is local-lane only.
@@ -190,7 +190,7 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     uiOracleRef: SHELL, uiOracleWiring: "existing_suite",
     programmaticOracleRef: EVALS, programmaticOracleWiring: "headless_wired",
     rung: "fixture",
-    blocker: "audit A4: model pinned to FABLE_LOCAL_MODEL; model_effective visibility exists but there is no picker",
+    blocker: "audit A4: model pinned to CLAUDE_LOCAL_MODEL; model_effective visibility exists but there is no picker",
   },
 
   // --- B. Code reading & search -------------------------------------------
@@ -243,7 +243,7 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   {
     id: "D2", group: "D", capability: "Background processes + monitoring", status: "partial",
     uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: FABLE_RT, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: CLAUDE_RT, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
     blocker: "audit D2: delegate children run async with caps, but there is no general background-process surface/indicator",
   },
@@ -342,23 +342,23 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   {
     id: "G2", group: "G", capability: "Cross-provider delegation", status: "ui_available",
     uiOracleRef: SMOKE, uiOracleWiring: "smoke_step",
-    programmaticOracleRef: FABLE_RT, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: CLAUDE_RT, programmaticOracleWiring: "existing_suite",
     rung: "live",
   },
   {
     id: "G3", group: "G", capability: "Background agents + completion notify", status: "partial",
     uiOracleRef: "", uiOracleWiring: "pending",
-    programmaticOracleRef: FABLE_RT, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: CLAUDE_RT, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
     blocker: "audit G3: children run async with caps/timeouts, but there is no notification-on-complete surface",
   },
   {
     id: "G4", group: "G", capability: "Steer/message running children", status: "partial",
     uiOracleRef: RUNTIME_CARDS, uiOracleWiring: "existing_suite",
-    programmaticOracleRef: FABLE_CAPS_RT, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: CLAUDE_CAPS_RT, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
     // EP250 wave-2: a running child card offers an Interrupt control that drives
-    // fableLocal.steerChild(action:"interrupt") and renders the child_steered
+    // claudeLocal.steerChild(action:"interrupt") and renders the child_steered
     // outcome. Residual (still partial): MESSAGE-ing an in-flight child is
     // capability-unsupported (codex exec is non-interactive; the SDK Agent tool
     // exposes no per-child message API), so only Interrupt is offered.
@@ -376,7 +376,7 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   {
     id: "H1", group: "H", capability: "Resume / continuation", status: "ui_available",
     uiOracleRef: HISTORY_WORKSPACE, uiOracleWiring: "existing_suite",
-    programmaticOracleRef: FABLE_RT, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: CLAUDE_RT, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
   },
   {
@@ -422,13 +422,13 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
     rung: "fixture",
     // Composer image path landed in THIS lane: paperclip picker + drag-drop +
     // paste (bounded ≤8, ≤10MB, PNG/JPEG/WebP/GIF) hold base64 in the renderer,
-    // thread through the additive fable-local start `images` field, and reach
-    // BOTH lanes — Fable as an SDK image content block (streaming-input user
+    // thread through the additive claude-local start `images` field, and reach
+    // BOTH lanes — Claude as an SDK image content block (streaming-input user
     // message), Codex as `codex exec -i <path>` files written to the turn
     // workspace. Residual partial→ui_available: proven at fixture rung (smoke
     // image-attach step + headless payload oracle); a real live provider image
     // turn is deferred to a live-proof run.
-    blocker: "audit I1: image input now UI-driven via composer attach/drop/paste; Fable sends SDK base64 image blocks, Codex passes `-i <path>`; live provider image turn deferred to live-proof",
+    blocker: "audit I1: image input now UI-driven via composer attach/drop/paste; Claude sends SDK base64 image blocks, Codex passes `-i <path>`; live provider image turn deferred to live-proof",
   },
   {
     // Landed EP250 wave-2: the MCP-config SETTINGS UI + persistence host now
@@ -461,7 +461,7 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   {
     id: "J2", group: "J", capability: "Plan mode / plan review", status: "ui_available",
     uiOracleRef: SHELL, uiOracleWiring: "existing_suite",
-    programmaticOracleRef: FABLE_CAPS_RT, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: CLAUDE_CAPS_RT, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
   },
   {
@@ -473,7 +473,7 @@ export const capabilityRegistry: ReadonlyArray<CapabilityRow> = [
   {
     id: "J4", group: "J", capability: "Task/todo progress tracking", status: "partial",
     uiOracleRef: RUNTIME_CARDS, uiOracleWiring: "existing_suite",
-    programmaticOracleRef: FABLE_CAPS_RT, programmaticOracleWiring: "existing_suite",
+    programmaticOracleRef: CLAUDE_CAPS_RT, programmaticOracleWiring: "existing_suite",
     rung: "fixture",
     // EP250 wave-2: TodoWrite plan_updated events render a compact task-progress
     // card (status glyphs from the exact enum) that updates in place live, and

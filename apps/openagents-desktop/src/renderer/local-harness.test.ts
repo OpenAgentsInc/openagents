@@ -1,6 +1,6 @@
 /**
  * Local-mode harness routing (#8712): the renderer half of the
- * no-silent-substitution law. A "fable" send streams through the fableLocal
+ * no-silent-substitution law. A "claude" send streams through the claudeLocal
  * bridge; a "codex" send is an explicit typed refusal; NEITHER ever reaches
  * the base host's legacy gateway sendMessage. Only a laneless send does.
  */
@@ -8,12 +8,12 @@ import { describe, expect, test } from "vite-plus/test"
 
 import type { DesktopThread } from "../chat-contract.ts"
 import { makeComposerSubmitIntent } from "../composer-admission.ts"
-import type { FableLocalEventEnvelope } from "../fable-local-contract.ts"
+import type { ClaudeLocalEventEnvelope } from "../claude-local-contract.ts"
 import type { ChatHost } from "./shell.ts"
 import {
   codexLocalUnavailableMessage,
   makeLocalHarnessChatHost,
-  type FableLocalRendererBridge,
+  type ClaudeLocalRendererBridge,
 } from "./local-harness.ts"
 
 const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 0))
@@ -22,7 +22,7 @@ const threadWithUserNote: DesktopThread = {
   id: "thread-1",
   title: "New chat",
   updatedAt: "2026-07-11T10:00:00.000Z",
-  notes: [{ key: "user-1", role: "user", text: "hello fable", timestamp: "10:00" }],
+  notes: [{ key: "user-1", role: "user", text: "hello claude", timestamp: "10:00" }],
 }
 
 const finalThread: DesktopThread = {
@@ -41,13 +41,13 @@ type Harness = {
   steerCalls: Array<unknown>
   currentSteerCalls: Array<unknown>
   queueCalls: Array<unknown>
-  emit: (envelope: FableLocalEventEnvelope) => void
+  emit: (envelope: ClaudeLocalEventEnvelope) => void
   resolveStart: (value: unknown) => void
   unsubscribed: () => boolean
 }
 
 const makeHarness = (input?: {
-  fableAvailable?: boolean
+  claudeAvailable?: boolean
   bridge?: boolean
   scheduleProjection?: (flush: () => void) => () => void
 }): Harness => {
@@ -57,7 +57,7 @@ const makeHarness = (input?: {
   const steerCalls: Array<unknown> = []
   const currentSteerCalls: Array<unknown> = []
   const queueCalls: Array<unknown> = []
-  let listener: ((envelope: FableLocalEventEnvelope) => void) | null = null
+  let listener: ((envelope: ClaudeLocalEventEnvelope) => void) | null = null
   let resolveStart: (value: unknown) => void = () => {}
   let starts = 0
   let unsubscribed = false
@@ -70,7 +70,7 @@ const makeHarness = (input?: {
       return { ok: true, thread: finalThread }
     },
   }
-  const bridge: FableLocalRendererBridge = {
+  const bridge: ClaudeLocalRendererBridge = {
     availability: async () => ({ state: "available", accountRef: "claude-pylon-b" }),
     start: async value => {
       startCalls.push(value)
@@ -104,9 +104,9 @@ const makeHarness = (input?: {
   }
   const host = makeLocalHarnessChatHost({
     base,
-    fable: input?.bridge === false ? null : bridge,
-    fableAvailability: () =>
-      input?.fableAvailable === false
+    claude: input?.bridge === false ? null : bridge,
+    claudeAvailability: () =>
+      input?.claudeAvailable === false
         ? { state: "unavailable", reason: "no_claude_account" }
         : { state: "available", accountRef: "claude-pylon-b" },
     randomId: () => "fixed",
@@ -136,8 +136,8 @@ describe("makeLocalHarnessChatHost", () => {
     const harness = makeHarness()
     const pending = harness.host.sendMessage({
       id: "thread-1",
-      message: "hello fable",
-      harness: "fable",
+      message: "hello claude",
+      harness: "claude",
     })
     await settle()
 
@@ -145,39 +145,39 @@ describe("makeLocalHarnessChatHost", () => {
     expect(harness.interruptCalls).toEqual([])
     expect(await harness.host.interruptActiveControlIdentity!("thread-1")).toEqual({
       threadRef: "thread-1",
-      intentRef: "intent.desktop.interrupt.turn.fable.fixed",
-      idempotencyKey: "intent.desktop.interrupt.turn.fable.fixed",
+      intentRef: "intent.desktop.interrupt.turn.claude.fixed",
+      idempotencyKey: "intent.desktop.interrupt.turn.claude.fixed",
     })
     expect(await harness.host.interruptActiveControl!("thread-1")).toMatchObject({
       schema: "openagents.runtime_control_outcome.v1",
-      intentRef: "intent.desktop.interrupt.turn.fable.fixed",
+      intentRef: "intent.desktop.interrupt.turn.claude.fixed",
       admission: { status: "accepted" },
       delivery: { status: "applied" },
       terminal: { status: "pending" },
     })
-    expect(harness.interruptCalls).toEqual([{ turnRef: "turn.fable.fixed" }])
+    expect(harness.interruptCalls).toEqual([{ turnRef: "turn.claude.fixed" }])
 
     harness.resolveStart({ ok: false, reason: "interrupted", error: "Turn interrupted." })
     await pending
     expect(await harness.host.interruptActiveControl!()).toBeNull()
   })
 
-  test("fable send streams: progressive text, tool trace lines, finalized thread", async () => {
+  test("claude send streams: progressive text, tool trace lines, finalized thread", async () => {
     const harness = makeHarness()
     const updates: DesktopThread[] = []
     const pending = harness.host.sendMessage({
       id: "thread-1",
-      message: "hello fable",
-      harness: "fable",
+      message: "hello claude",
+      harness: "claude",
       onUpdate: thread => updates.push(thread),
     })
     await settle()
     expect(harness.startCalls).toEqual([
-      { turnRef: "turn.fable.fixed", threadRef: "thread-1", message: "hello fable" },
+      { turnRef: "turn.claude.fixed", threadRef: "thread-1", message: "hello claude" },
     ])
 
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "turn_started", thread: threadWithUserNote },
     })
     await settle()
@@ -185,24 +185,24 @@ describe("makeLocalHarnessChatHost", () => {
     // trace line ("Claude · claude-fable-5") — model identity never comes from
     // the lane brand alone.
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "model_effective", model: "claude-fable-5" },
     })
     await settle()
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "Hello " } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "Hello " } })
     await settle()
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "world" } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "world" } })
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "tool_use", toolName: "Read", summary: "notes.md" },
     })
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "tool_result", toolName: "Read", ok: true, summary: "" },
     })
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "Done." } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "Done." } })
     // A foreign turn's events never touch this stream.
-    harness.emit({ turnRef: "turn.fable.other", event: { kind: "text_delta", text: "IGNORED" } })
+    harness.emit({ turnRef: "turn.claude.other", event: { kind: "text_delta", text: "IGNORED" } })
     await settle()
 
     const last = updates.at(-1)!
@@ -210,7 +210,7 @@ describe("makeLocalHarnessChatHost", () => {
     // Arrival order is exact: text before the tool stays before it, and text
     // after the tool starts a new assistant segment after the tool pair.
     expect(bodies).toEqual([
-      "user:hello fable",
+      "user:hello claude",
       "system:Claude · claude-fable-5",
       "assistant:Hello world",
       "system:Read · started · notes.md",
@@ -224,8 +224,8 @@ describe("makeLocalHarnessChatHost", () => {
     // note already carries lane/turn/effective-model facts.
     const streamedAssistants = last.notes.filter(note => note.role === "assistant")
     expect(streamedAssistants).toHaveLength(2)
-    expect(streamedAssistants.every(note => note.meta?.lane === "fable-local" &&
-      note.meta.turnRef === "turn.fable.fixed" && note.meta.model === "claude-fable-5")).toBe(true)
+    expect(streamedAssistants.every(note => note.meta?.lane === "claude-local" &&
+      note.meta.turnRef === "turn.claude.fixed" && note.meta.model === "claude-fable-5")).toBe(true)
     expect(updates.every(update => update.notes.every(note => !note.text.includes("IGNORED")))).toBe(true)
     // Typed trace facts (EP250 tool cards): trace notes carry the same
     // bounded payload as their text line, so the shell builds typed cards
@@ -248,17 +248,17 @@ describe("makeLocalHarnessChatHost", () => {
     const harness = makeHarness()
     const pending = harness.host.sendMessage({
       id: "thread-1",
-      message: "hello fable",
-      harness: "fable",
+      message: "hello claude",
+      harness: "claude",
       target: { provider: "claude_agent", accountRef: "claude-pylon-b", model: "claude-fable-5" },
       skill: { pluginRef: "plugin.local.0123456789abcdef01234567", name: "review" },
       permissionMode: "plan_only",
     })
     await settle()
     expect(harness.startCalls[0]).toEqual({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       threadRef: "thread-1",
-      message: "hello fable",
+      message: "hello claude",
       target: { provider: "claude_agent", accountRef: "claude-pylon-b", model: "claude-fable-5" },
       skill: { pluginRef: "plugin.local.0123456789abcdef01234567", name: "review" },
       permissionMode: "plan_only",
@@ -271,19 +271,19 @@ describe("makeLocalHarnessChatHost", () => {
     const harness = makeHarness()
     const updates: DesktopThread[] = []
     const pending = harness.host.sendMessage({
-      id: "thread-1", message: "run checks", harness: "fable",
+      id: "thread-1", message: "run checks", harness: "claude",
       onUpdate: thread => updates.push(thread),
     })
     await settle()
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
     const started = {
       kind: "command", source: "codex", command: "pnpm test", cwd: "/safe/repo",
       status: "in_progress",
     } as const
-    harness.emit({ turnRef: "turn.fable.fixed", event: {
+    harness.emit({ turnRef: "turn.claude.fixed", event: {
       kind: "tool_use", toolName: "Bash", itemRef: "cmd-1", summary: "pnpm test", item: started,
     } })
-    harness.emit({ turnRef: "turn.fable.fixed", event: {
+    harness.emit({ turnRef: "turn.claude.fixed", event: {
       kind: "tool_progress", toolName: "Bash", itemRef: "cmd-1", summary: "7 output characters",
       item: { ...started, outputTail: "running" },
     } })
@@ -291,7 +291,7 @@ describe("makeLocalHarnessChatHost", () => {
     const traces = updates.at(-1)!.notes.filter(note => note.meta?.trace !== undefined)
     expect(traces).toHaveLength(1)
     expect(traces[0]).toMatchObject({
-      key: "turn.fable.fixed-tool-cmd-1",
+      key: "turn.claude.fixed-tool-cmd-1",
       meta: { trace: { itemRef: "cmd-1", phase: "progress", item: { outputTail: "running" } } },
     })
     harness.resolveStart({ ok: true, thread: finalThread })
@@ -306,11 +306,11 @@ describe("makeLocalHarnessChatHost", () => {
       return () => { active = false }
     } })
     const updates: DesktopThread[] = []
-    const pending = harness.host.sendMessage({ id: "thread-1", message: "stress", harness: "fable", onUpdate: thread => updates.push(thread) })
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "stress", harness: "claude", onUpdate: thread => updates.push(thread) })
     await settle()
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
     for (let index = 0; index < 10_000; index++) {
-      harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "x" } })
+      harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "x" } })
     }
     expect(scheduled).toHaveLength(1)
     expect(updates).toHaveLength(0)
@@ -327,16 +327,16 @@ describe("makeLocalHarnessChatHost", () => {
     const pending = harness.host.sendMessage({
       id: "thread-1",
       message: "ask me",
-      harness: "fable",
+      harness: "claude",
       onUpdate: thread => updates.push(thread),
     })
     await settle()
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "turn_started", thread: threadWithUserNote },
     })
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: {
         kind: "question_pending",
         questionRef: "question.1",
@@ -352,9 +352,9 @@ describe("makeLocalHarnessChatHost", () => {
     const withQuestion = updates.at(-1)!
     const questionNote = withQuestion.notes.find(note => note.question !== undefined)
     expect(questionNote).toBeDefined()
-    expect(questionNote!.key).toBe("turn.fable.fixed-question-question.1")
+    expect(questionNote!.key).toBe("turn.claude.fixed-question-question.1")
     expect(questionNote!.question).toMatchObject({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       questionRef: "question.1",
       status: "pending",
     })
@@ -365,7 +365,7 @@ describe("makeLocalHarnessChatHost", () => {
     })
     // The runtime-authoritative outcome updates the SAME note in place.
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "question_resolved", questionRef: "question.1", outcome: "timeout" },
     })
     await settle()
@@ -375,7 +375,7 @@ describe("makeLocalHarnessChatHost", () => {
     expect(resolvedNotes[0]!.question!.status).toBe("timeout")
     // A foreign question ref never mutates this turn's notes.
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "question_resolved", questionRef: "question.unknown", outcome: "denied" },
     })
     await settle()
@@ -392,9 +392,9 @@ describe("makeLocalHarnessChatHost", () => {
     expect(harness.startCalls).toEqual([])
   })
 
-  test("fable send with no available account is a typed refusal — never the legacy gateway", async () => {
-    const harness = makeHarness({ fableAvailable: false })
-    const result = await harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "fable" })
+  test("claude send with no available account is a typed refusal — never the legacy gateway", async () => {
+    const harness = makeHarness({ claudeAvailable: false })
+    const result = await harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "claude" })
     expect(result.ok).toBe(false)
     expect(result.error).toContain("no linked Claude account home found")
     expect(result.error).toContain("No message was routed to any other lane.")
@@ -402,9 +402,9 @@ describe("makeLocalHarnessChatHost", () => {
     expect(harness.startCalls).toEqual([])
   })
 
-  test("fable send with no bridge is a typed refusal — never the legacy gateway", async () => {
+  test("claude send with no bridge is a typed refusal — never the legacy gateway", async () => {
     const harness = makeHarness({ bridge: false })
-    const result = await harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "fable" })
+    const result = await harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "claude" })
     expect(result.ok).toBe(false)
     expect(harness.legacySends).toEqual([])
   })
@@ -418,7 +418,7 @@ describe("makeLocalHarnessChatHost", () => {
 
   test("an invalid start response maps to a typed error", async () => {
     const harness = makeHarness()
-    const pending = harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "fable" })
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "claude" })
     await settle()
     harness.resolveStart("garbage")
     const result = await pending
@@ -427,7 +427,7 @@ describe("makeLocalHarnessChatHost", () => {
 
   test("an interrupted provider result remains interrupted at the renderer boundary", async () => {
     const harness = makeHarness()
-    const pending = harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "fable" })
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "hi", harness: "claude" })
     await settle()
     harness.resolveStart({ ok: false, reason: "interrupted", error: "Turn interrupted." })
     expect(await pending).toEqual({
@@ -440,12 +440,12 @@ describe("makeLocalHarnessChatHost", () => {
 
   test("steerChild routes an interrupt to the active lane by exact ref (EP250 wave-2 G4)", async () => {
     const harness = makeHarness()
-    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "fable" })
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "claude" })
     await settle()
-    const outcome = await harness.host.steerChild!({ turnRef: "turn.fable.fixed", childRef: "c1" })
+    const outcome = await harness.host.steerChild!({ turnRef: "turn.claude.fixed", childRef: "c1" })
     expect(outcome).toEqual({ ok: true, outcome: "interrupted" })
     // Only `interrupt` is ever offered (message is capability-unsupported).
-    expect(harness.steerCalls).toEqual([{ turnRef: "turn.fable.fixed", childRef: "c1", action: "interrupt" }])
+    expect(harness.steerCalls).toEqual([{ turnRef: "turn.claude.fixed", childRef: "c1", action: "interrupt" }])
     harness.resolveStart({ ok: true, thread: finalThread })
     await pending
   })
@@ -462,28 +462,28 @@ describe("makeLocalHarnessChatHost", () => {
     const pending = harness.host.sendMessage({
       id: "thread-1",
       message: "delegate",
-      harness: "fable",
+      harness: "claude",
       onUpdate: thread => updates.push(thread),
     })
     await settle()
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "turn_started", thread: threadWithUserNote },
     })
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: {
         kind: "child_started",
-        childRef: "child.codex.turn.fable.fixed.1",
+        childRef: "child.codex.turn.claude.fixed.1",
         summary: "Review the patch",
         prompt: "Review the patch\n\nContext:\nFocus on the failing test.",
       },
     })
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: {
         kind: "child_completed",
-        childRef: "child.codex.turn.fable.fixed.1",
+        childRef: "child.codex.turn.claude.fixed.1",
         accountRef: "codex-current",
         summary: "The stale fixture is the cause.",
         response: "The stale fixture is the cause. Update it and rerun the focused suite.",
@@ -507,7 +507,7 @@ describe("makeLocalHarnessChatHost", () => {
 
   test("queueFollowup routes to the active lane's queue channel (EP250 wave-2 A3)", async () => {
     const harness = makeHarness()
-    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "fable" })
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "claude" })
     await settle()
     const outcome = await harness.host.queueFollowup!({ threadRef: "thread-1", message: "and then this" })
     expect(outcome).toMatchObject({ ok: true, queued: true })
@@ -518,7 +518,7 @@ describe("makeLocalHarnessChatHost", () => {
 
   test("Queue and Steer return typed acknowledgements for only the exact active target", async () => {
     const harness = makeHarness()
-    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "fable" })
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "go", harness: "claude" })
     await settle()
 
     const queue = makeComposerSubmitIntent({
@@ -570,11 +570,11 @@ describe("makeLocalHarnessChatHost", () => {
 
   test("a promoted follow-up is chained as the next turn (A3 queue-until-idle)", async () => {
     const harness = makeHarness()
-    const pending = harness.host.sendMessage({ id: "thread-1", message: "first", harness: "fable" })
+    const pending = harness.host.sendMessage({ id: "thread-1", message: "first", harness: "claude" })
     await settle()
     expect(harness.startCalls).toHaveLength(1)
     // The runtime promotes a queued message on the ending turn's stream…
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "followup_promoted", queueRef: "q1", message: "second" } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "followup_promoted", queueRef: "q1", message: "second" } })
     // …and the turn finalizes; the host must start the promoted message next.
     harness.resolveStart({ ok: true, thread: finalThread })
     await pending
@@ -587,19 +587,19 @@ describe("makeLocalHarnessChatHost", () => {
     const updates: DesktopThread[] = []
     const pending = harness.host.sendMessage({
       id: "thread-1",
-      message: "hello fable",
-      harness: "fable",
+      message: "hello claude",
+      harness: "claude",
       onUpdate: thread => updates.push(thread),
     })
     await settle()
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
     await settle()
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "One continuous " } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "One continuous " } })
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "meter_updated", inputTokens: 100, outputTokens: 20, totalTokens: 120 },
     })
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "sentence." } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "sentence." } })
     await settle()
     const afterFirst = updates.at(-1)!
     expect(afterFirst.meter).toEqual({ inputTokens: 100, outputTokens: 20, totalTokens: 120 })
@@ -611,7 +611,7 @@ describe("makeLocalHarnessChatHost", () => {
     ])
 
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "meter_updated", rateLimits: [{ label: "primary", usedPercent: 12 }] },
     })
     await settle()
@@ -624,7 +624,7 @@ describe("makeLocalHarnessChatHost", () => {
     })
 
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "meter_updated", rateLimits: [{ label: "secondary", usedPercent: 4 }] },
     })
     await settle()
@@ -635,7 +635,7 @@ describe("makeLocalHarnessChatHost", () => {
     ])
 
     harness.emit({
-      turnRef: "turn.fable.fixed",
+      turnRef: "turn.claude.fixed",
       event: { kind: "meter_updated", rateLimits: [{ label: "primary", usedPercent: 30 }] },
     })
     await settle()
@@ -655,25 +655,25 @@ describe("makeLocalHarnessChatHost", () => {
     const pending = harness.host.sendMessage({
       id: "thread-1",
       message: "keep the prose together",
-      harness: "fable",
+      harness: "claude",
       onUpdate: thread => updates.push(thread),
     })
     await settle()
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "Before the command." } })
-    harness.emit({ turnRef: "turn.fable.fixed", event: {
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "turn_started", thread: threadWithUserNote } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "Before the command." } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: {
       kind: "tool_use", toolName: "Bash", itemRef: "cmd-1", summary: "pnpm test",
     } })
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "I will not touch " } })
-    harness.emit({ turnRef: "turn.fable.fixed", event: {
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "I will not touch " } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: {
       kind: "tool_progress", toolName: "Bash", itemRef: "cmd-1", summary: "still running",
       item: { kind: "command", source: "codex", command: "pnpm test", cwd: "/repo", status: "in_progress", outputTail: "still running" },
     } })
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "or hide " } })
-    harness.emit({ turnRef: "turn.fable.fixed", event: {
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "or hide " } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: {
       kind: "tool_result", toolName: "Bash", itemRef: "cmd-1", ok: true, summary: "passed",
     } })
-    harness.emit({ turnRef: "turn.fable.fixed", event: { kind: "text_delta", text: "that work." } })
+    harness.emit({ turnRef: "turn.claude.fixed", event: { kind: "text_delta", text: "that work." } })
     await settle()
 
     expect(updates.at(-1)!.notes.filter(note => note.role === "assistant").map(note => note.text)).toEqual([

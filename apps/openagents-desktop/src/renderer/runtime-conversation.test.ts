@@ -428,9 +428,9 @@ describe("authoritative Runtime Gateway chat adapter", () => {
       }),
     })
 
-    expect(await host.newThread("fable-local")).toEqual(localThread)
-    expect(createdLanes).toEqual(["fable-local"])
-    expect(await host.laneForThread?.(localThread.id)).toBe("fable-local")
+    expect(await host.newThread("claude-local")).toEqual(localThread)
+    expect(createdLanes).toEqual(["claude-local"])
+    expect(await host.laneForThread?.(localThread.id)).toBe("claude-local")
 
     expect(await host.selectLane?.(localThread.id, "codex-local")).toEqual({ ok: true })
     expect(selectedLanes).toEqual([{ threadRef: localThread.id, laneRef: "codex-local" }])
@@ -861,9 +861,9 @@ describe("authoritative Runtime Gateway chat adapter", () => {
     return { chat, startCommands }
   }
 
-  test("harness fable targets the claude_pylon lane on conversation.start", async () => {
+  test("harness claude targets the claude_pylon lane on conversation.start", async () => {
     const { chat, startCommands } = makeHarnessFixture()
-    const result = await chat.sendMessage({ id: "thread.harness.1", message: "Pick a lane", harness: "fable" })
+    const result = await chat.sendMessage({ id: "thread.harness.1", message: "Pick a lane", harness: "claude" })
     expect(result.ok).toBe(true)
     expect(startCommands).toEqual([{
       id: "conversation.start",
@@ -928,7 +928,7 @@ describe("authoritative Runtime Gateway chat adapter", () => {
       request,
       randomId: () => ids.shift() ?? "rejected-extra",
     })
-    const result = await chat.sendMessage({ id: "thread.harness.1", message: "Rejected", harness: "fable" })
+    const result = await chat.sendMessage({ id: "thread.harness.1", message: "Rejected", harness: "claude" })
     expect(result).toEqual({ ok: false, error: "Message was admitted, but agent dispatch was rejected." })
     expect(result.error).not.toContain("Codex")
   })

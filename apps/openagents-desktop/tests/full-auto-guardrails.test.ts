@@ -66,7 +66,7 @@ describe("FA-GD-01 guardrail schema on the durable record", () => {
           routingPolicy: [{ lane: "codex-local" }],
           rotationHistory: [{
             fromLane: "codex-local",
-            toLane: "fable-local",
+            toLane: "claude-local",
             reason: "rate_limited",
             at: "2026-07-16T00:00:00.000Z",
           }],
@@ -212,7 +212,7 @@ describe("FA-GD-01 continuation decision records", () => {
       registry.set("thread-flow", true, {
         workspaceRef: GRANTED_WORKSPACE,
         profile: { lane: "codex-local" },
-        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+        routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }],
         guardrails: { maxTurns: 5 },
       })
       await reconcile(registry, {
@@ -223,7 +223,7 @@ describe("FA-GD-01 continuation decision records", () => {
       })
       const decisions = registry.record("thread-flow")?.decisionHistory ?? []
       expect(decisions.map(entry => entry.decision)).toEqual(["rotate", "continue"])
-      expect(decisions[0]?.reason).toBe("codex-local>fable-local:account_exhausted")
+      expect(decisions[0]?.reason).toBe("codex-local>claude-local:account_exhausted")
       expect(decisions[1]).toMatchObject({ reason: "dispatch_succeeded", budgetRemaining: 4 })
     } finally {
       rmSync(root, { recursive: true, force: true })

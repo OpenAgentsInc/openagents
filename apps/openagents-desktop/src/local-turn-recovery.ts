@@ -1,7 +1,7 @@
 import type { CodexLocalRuntime } from "./codex-local-runtime.ts"
 import type { DesktopThread } from "./chat-contract.ts"
 import type { CodexHistoryCatalog, CodexHistorySearchResponse } from "./codex-history-contract.ts"
-import type { CodexModel } from "./fable-local-contract.ts"
+import type { CodexModel } from "./claude-local-contract.ts"
 import type { LocalTurnJournal, LocalTurnKey, LocalTurnRecord } from "./local-turn-journal.ts"
 import type { makeThreadStore } from "./thread-store.ts"
 
@@ -171,7 +171,7 @@ export const reconcileLocalTurns = async (input: Readonly<{
   for (const candidate of input.journal.nonterminal()) {
     const key: LocalTurnKey = candidate
     // Provider lane SPI (L1 #8899): only the codex-local lane owns durable
-    // provider-session replay; every other lane — fable-local and any SPI
+    // provider-session replay; every other lane — claude-local and any SPI
     // lane that never declared replay — fails CLOSED to an honest
     // interrupted_by_restart disposition instead of guessing a resume path.
     if (candidate.lane !== "codex-local" || candidate.accountRef === null ||

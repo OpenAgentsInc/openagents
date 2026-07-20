@@ -28,7 +28,7 @@ const candidates = (...lanes: ReadonlyArray<string>): ReadonlyArray<FullAutoRout
 
 describe("Full Auto routing-policy validation (FA-RT-01 #8987)", () => {
   test("admits an ordered policy over the four existing Full Auto lanes, preserving order", () => {
-    const policy = candidates("codex-local", "fable-local", "acp:grok-cli", "acp:cursor-agent")
+    const policy = candidates("codex-local", "claude-local", "acp:grok-cli", "acp:cursor-agent")
     const verdict = validateFullAutoRoutingPolicy(policy, admitAll)
     expect(verdict).toEqual({ ok: true, policy })
   })
@@ -37,7 +37,7 @@ describe("Full Auto routing-policy validation (FA-RT-01 #8987)", () => {
     const policy: ReadonlyArray<FullAutoRoutingCandidate> = [
       { lane: "codex-local", accountRef: "codex-1" },
       { lane: "codex-local", accountRef: "codex-2" },
-      { lane: "fable-local" },
+      { lane: "claude-local" },
     ]
     expect(validateFullAutoRoutingPolicy(policy, admitAll)).toEqual({ ok: true, policy })
   })
@@ -94,10 +94,10 @@ describe("Full Auto routing-policy validation (FA-RT-01 #8987)", () => {
       lane: "codex-local",
     })
     const noFullAutoGate: FullAutoRoutingLaneGate = () => ({ admitted: true, fullAuto: false })
-    expect(validateFullAutoRoutingPolicy(candidates("fable-local"), noFullAutoGate)).toEqual({
+    expect(validateFullAutoRoutingPolicy(candidates("claude-local"), noFullAutoGate)).toEqual({
       ok: false,
       reason: "lane_not_admitted",
-      lane: "fable-local",
+      lane: "claude-local",
     })
   })
 
@@ -105,7 +105,7 @@ describe("Full Auto routing-policy validation (FA-RT-01 #8987)", () => {
     const gate: FullAutoRoutingLaneGate = laneRef =>
       laneRef === "acp:grok-cli" ? { admitted: false, fullAuto: false } : { admitted: true, fullAuto: true }
     const verdict = validateFullAutoRoutingPolicy(
-      candidates("codex-local", "acp:grok-cli", "fable-local"),
+      candidates("codex-local", "acp:grok-cli", "claude-local"),
       gate,
     )
     expect(verdict.ok).toBe(false)
@@ -199,18 +199,18 @@ describe("Full Auto control-record projection carries rotation history (FA-RT-01
     const decoded = Schema.decodeUnknownSync(FullAutoControlRecordSchema)({
       ...base,
       rotationHistory: [
-        { fromLane: "codex-local", toLane: "fable-local", reason: "account_exhausted", at: "2026-07-17T01:00:00.000Z" },
+        { fromLane: "codex-local", toLane: "claude-local", reason: "account_exhausted", at: "2026-07-17T01:00:00.000Z" },
       ],
     })
     expect(decoded.rotationHistory).toEqual([
-      { fromLane: "codex-local", toLane: "fable-local", reason: "account_exhausted", at: "2026-07-17T01:00:00.000Z" },
+      { fromLane: "codex-local", toLane: "claude-local", reason: "account_exhausted", at: "2026-07-17T01:00:00.000Z" },
     ])
     // A non-typed reason is refused -- the projection can never smuggle raw
     // provider detail through the reason field.
     expect(() => Schema.decodeUnknownSync(FullAutoControlRecordSchema)({
       ...base,
       rotationHistory: [
-        { fromLane: "codex-local", toLane: "fable-local", reason: "raw provider stack trace", at: "t" },
+        { fromLane: "codex-local", toLane: "claude-local", reason: "raw provider stack trace", at: "t" },
       ],
     })).toThrow()
   })

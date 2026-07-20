@@ -233,7 +233,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "When the app opens, show a neutral terminal-style scan (monospace, small, faded) that checks which agents are available — Codex, Claude Code, Grok, Apple FM — and keep track of the discovered harnesses so the system knows it can use them.",
         authorityBoundary:
-          "The Boot Sequence is a PROJECTION over the discovery state the shell owns: harnessLanes for the built-in codex/fable transports, providerLaneCapabilities for admitted ACP peers, and appleFmBoot for the native Apple FM bridge. It invents no discovery authority — an agent is 'available' only when its lane/bridge reports it can run a turn, 'checking' while probing, otherwise 'unavailable'. On open the renderer boot orchestrator probes the Apple FM native bridge (AFM-6) and, only when it reports ready, runs ONE bounded test inference and shows the bounded reply — proving the on-device model actually answers. The surface renders in the empty conversation, reflects live state as lanes and the Apple FM probe resolve, and communicates results without granting any run, spend, or admission authority of its own.",
+          "The Boot Sequence is a PROJECTION over the discovery state the shell owns: harnessLanes for the built-in codex/claude transports, providerLaneCapabilities for admitted ACP peers, and appleFmBoot for the native Apple FM bridge. It invents no discovery authority — an agent is 'available' only when its lane/bridge reports it can run a turn, 'checking' while probing, otherwise 'unavailable'. On open the renderer boot orchestrator probes the Apple FM native bridge (AFM-6) and, only when it reports ready, runs ONE bounded test inference and shows the bounded reply — proving the on-device model actually answers. The surface renders in the empty conversation, reflects live state as lanes and the Apple FM probe resolve, and communicates results without granting any run, spend, or admission authority of its own.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/boot-sequence.ts",
           "apps/openagents-desktop/src/renderer/react-boot-sequence.tsx",
@@ -793,7 +793,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/desktop-launch-workspace.ts",
           "apps/openagents-desktop/src/desktop-launch-workspace.test.ts",
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
           "apps/openagents-desktop/src/codex-local-runtime.ts",
         ],
         oracles: [
@@ -801,7 +801,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             id: "local_workspace.claude_exact_host_root",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime.test.ts",
             description: "Proves an explicit host workspace root becomes the exact Claude SDK cwd.",
           },
           {
@@ -813,7 +813,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "Desktop typecheck/build plus the Fable and Codex local-runtime suites enforce exact host-root propagation while retaining isolated fallback coverage.",
+          "Desktop typecheck/build plus the Claude and Codex local-runtime suites enforce exact host-root propagation while retaining isolated fallback coverage.",
       },
       {
         contractId: "openagents_desktop.chat.codex_turns_do_not_time_out.v1",
@@ -1061,7 +1061,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/renderer/tool-cards.ts",
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
-          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
@@ -1112,11 +1112,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "make the question UI too. Why not? proper effect native primitives and add some if needed.",
         authorityBoundary:
-          "Question cards render only the bounded typed question_pending payload from the FROZEN additive FableLocalEvent contract and answer only through the typed fableLocal.answerQuestion bridge in the frozen shape (answers: one { question, labels } entry per question, labels an array even for single-select; single-select dispatches on click, multiSelect toggles behind an explicit confirm). A bridge without answerQuestion renders read-only pending — the card never invents answer authority. Outcomes (answered/timeout/denied) come from question_resolved and render as dim resolved states; never raw JSON, never a SYSTEM label. Option rows compose catalog primitives (Button label + caption Text description); no local one-off primitives.",
+          "Question cards render only the bounded typed question_pending payload from the FROZEN additive ClaudeLocalEvent contract and answer only through the typed claudeLocal.answerQuestion bridge in the frozen shape (answers: one { question, labels } entry per question, labels an array even for single-select; single-select dispatches on click, multiSelect toggles behind an explicit confirm). A bridge without answerQuestion renders read-only pending — the card never invents answer authority. Outcomes (answered/timeout/denied) come from question_resolved and render as dim resolved states; never raw JSON, never a SYSTEM label. Option rows compose catalog primitives (Button label + caption Text description); no local one-off primitives.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/local-harness.ts",
-          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
           "apps/openagents-desktop/src/chat-contract.ts",
           "github:OpenAgentsInc/openagents#8712",
         ],
@@ -1218,7 +1218,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The built-Electron fable streaming smoke asserts the finalized assistant row renders no sender chip.",
+              "The built-Electron claude streaming smoke asserts the finalized assistant row renders no sender chip.",
           },
         ],
         verification:
@@ -1323,7 +1323,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/local-harness.ts",
-          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
           "apps/openagents-desktop/src/capability-registry.ts",
           "github:OpenAgentsInc/openagents#8712",
         ],
@@ -1342,7 +1342,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/tests/capability-evals.test.ts",
             description:
-              "Drives the local-harness interruptActive seam headlessly against a fake lane bridge: a streaming turn's exact turnRef is signalled on the frozen interrupt channel, and the runtime's typed `interrupted` FableLocalEvent maps to a turn_failed reason that finalizes the turn.",
+              "Drives the local-harness interruptActive seam headlessly against a fake lane bridge: a streaming turn's exact turnRef is signalled on the frozen interrupt channel, and the runtime's typed `interrupted` ClaudeLocalEvent maps to a turn_failed reason that finalizes the turn.",
           },
           {
             id: "composer_stop_button.live_proof_step",
@@ -1430,7 +1430,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         blockerRefs: [],
         source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-12" },
         statement:
-          "Between codex/claude and reasoning dropdowns we need model selector. Codex select between GPT-5.6 and GPT-5.5, Claude select between Fable, Opus 4.8, Sonnet 5. Also that plus button make it not a huge circle, must be icon only.",
+          "Between codex/claude and reasoning dropdowns we need model selector. Codex select between GPT-5.6 and GPT-5.5, Claude select between Claude, Opus 4.8, Sonnet 5. Also that plus button make it not a huge circle, must be icon only.",
         authorityBoundary:
           "The single OpenCode-shaped composer card keeps its multiline input above one compact action bar. That bar orders compact icon-only Attach, Provider, provider-scoped Model, Codex-only Reasoning, account/permission controls, a flexible spacer, and circular Send/Stop. Claude model IDs remain closed typed values; Codex model IDs come only from the bounded visible catalog reported by the validated installed app-server, and exact selected IDs reach the corresponding provider launch field. No model is inferred from its display label and Claude refuses provider substitution before content. Attach uses the shared Effect Native IconButton's `sm` size (32px) with a required accessible label rather than inheriting the generic 44px circular action treatment. No attach, queue, stop, availability, or submission behavior is removed.",
         evidenceRefs: [
@@ -1478,15 +1478,15 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "attach a screenshot to a coding turn (image input)",
         authorityBoundary:
-          "The active React composer carries a leading attach affordance plus drag-drop and paste-from-clipboard image attach. Accepted images are PNG/JPEG/WebP/GIF, bounded to at most 8 per message and 10 MB each; oversize, wrong-type, or unreadable files are rejected honestly with transient accessible copy (no standing caption). Acquisition batches are serialized so concurrent paste/drop cannot race the count bound. The renderer holds each attachment as bounded base64 and NEVER reads an arbitrary filesystem path — bytes come only from an in-renderer drop/paste File or a main-mediated native file picker. An idle image-only turn is valid; Steer and Queue remain text-only, and a failed send restores the attachments for retry. Fable sends images as SDK base64 image content blocks. The default Codex app-server lane writes bounded temporary files and sends `localImage` inputs; its exec fallback retains `-i <path>` lowering. Attaching grants no new authority: it starts no turn on its own, routes to no other lane, and reads no file the user did not hand the app.",
+          "The active React composer carries a leading attach affordance plus drag-drop and paste-from-clipboard image attach. Accepted images are PNG/JPEG/WebP/GIF, bounded to at most 8 per message and 10 MB each; oversize, wrong-type, or unreadable files are rejected honestly with transient accessible copy (no standing caption). Acquisition batches are serialized so concurrent paste/drop cannot race the count bound. The renderer holds each attachment as bounded base64 and NEVER reads an arbitrary filesystem path — bytes come only from an in-renderer drop/paste File or a main-mediated native file picker. An idle image-only turn is valid; Steer and Queue remain text-only, and a failed send restores the attachments for retry. Claude sends images as SDK base64 image content blocks. The default Codex app-server lane writes bounded temporary files and sends `localImage` inputs; its exec fallback retains `-i <path>` lowering. Attaching grants no new authority: it starts no turn on its own, routes to no other lane, and reads no file the user did not hand the app.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/composer-images.ts",
           "apps/openagents-desktop/src/renderer/composer-image-acquisition.ts",
           "apps/openagents-desktop/src/renderer/react-composer.tsx",
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
-          "apps/openagents-desktop/src/fable-local-contract.ts",
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
           "apps/openagents-desktop/src/codex-local-runtime.ts",
           "apps/openagents-desktop/src/capability-registry.ts",
           "github:OpenAgentsInc/openagents#8712",
@@ -1509,12 +1509,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Proves the active React composer renders the attach affordance and bounded thumbnails with remove, disables attach at the 8-image limit and while pending, surfaces accessible rejection copy and drag state, and that add/remove/submit through the real intent registry thread the image into the chat host (including image-only and failure-retry turns).",
           },
           {
-            id: "composer_image_input.fable_sdk_block",
+            id: "composer_image_input.claude_sdk_block",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime.test.ts",
             description:
-              "Drives the real Fable runtime prompt construction: a captured fake query proves an image turn lowers to an AsyncIterable user message whose content carries a { type:\"image\", source:{ type:\"base64\", media_type, data } } block (sdk.d.ts receipt), while a no-image turn keeps the plain string prompt.",
+              "Drives the real Claude runtime prompt construction: a captured fake query proves an image turn lowers to an AsyncIterable user message whose content carries a { type:\"image\", source:{ type:\"base64\", media_type, data } } block (sdk.d.ts receipt), while a no-image turn keeps the plain string prompt.",
           },
           {
             id: "composer_image_input.codex_image_flag",
@@ -1534,7 +1534,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "pnpm --dir apps/openagents-desktop run verify runs the composer-images, shell, fable-local-runtime, and codex-local-runtime suites plus the image-attach smoke step; a real live provider image turn is deferred to a live-proof run.",
+          "pnpm --dir apps/openagents-desktop run verify runs the composer-images, shell, claude-local-runtime, and codex-local-runtime suites plus the image-attach smoke step; a real live provider image turn is deferred to a live-proof run.",
       },
       {
         contractId: "openagents_desktop.chat.markdown_rendering.v1",
@@ -1576,7 +1576,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The built-Electron fable fixture journey streams a mid-marker-split **streaming** reply and asserts the final assistant body renders a real <strong> with no literal ** text.",
+              "The built-Electron claude fixture journey streams a mid-marker-split **streaming** reply and asserts the final assistant body renders a real <strong> with no literal ** text.",
           },
         ],
         verification:
@@ -2330,7 +2330,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "The Desktop test sweep runs the fixture-lane shared-dispatch/renderer oracle, ACP mapping oracle, local-turn recovery suite, both built-in lane runtime suites, and Desktop typecheck.",
       },
       {
-        contractId: "openagents_desktop.chat.fable_local_lane_no_substitution.v1",
+        contractId: "openagents_desktop.chat.claude_local_lane_no_substitution.v1",
         state: "enforced",
         surface: "openagents-desktop",
         productArea: "local-mode composer harness lanes",
@@ -2346,30 +2346,30 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         authorityBoundary:
           "The renderer receives only bounded, path-redacted typed stream events and typed availability/failure reasons — never tokens, account homes, credentials, raw SDK payloads, or provider error bodies. Main owns thread history; the renderer supplies only the new message.",
         evidenceRefs: [
-          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
           "apps/openagents-desktop/src/renderer/local-harness.ts",
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
           {
-            id: "fable_local.runtime_isolation_and_rotation",
+            id: "claude_local.runtime_isolation_and_rotation",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime.test.ts",
             description:
               "Proves current local Claude session precedence, isolated Pylon fallback discovery, read-only headless SDK options, bounded/redacted event mapping, same-lane account rotation only before content, and that no ready account yields a typed unavailable result with the SDK never loaded.",
           },
           {
-            id: "fable_local.renderer_no_silent_substitution",
+            id: "claude_local.renderer_no_silent_substitution",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
             description:
-              "Proves fable sends stream progressively with trace lines, codex and unavailable-fable sends are typed refusals, and the legacy gateway sendMessage is reachable only by a laneless send.",
+              "Proves claude sends stream progressively with trace lines, codex and unavailable-claude sends are typed refusals, and the legacy gateway sendMessage is reachable only by a laneless send.",
           },
           {
-            id: "fable_local.evidence_gated_composer",
+            id: "claude_local.evidence_gated_composer",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/shell.test.ts",
@@ -2378,10 +2378,10 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "The Desktop verify gate runs the runtime/renderer/shell suites and the fixture-driven smoke journey (select Fable, send, observe progressive text, tool trace, finalize) inside built Electron.",
+          "The Desktop verify gate runs the runtime/renderer/shell suites and the fixture-driven smoke journey (select Claude, send, observe progressive text, tool trace, finalize) inside built Electron.",
       },
       {
-        contractId: "openagents_desktop.chat.fable_local_lane_no_substitution.v2",
+        contractId: "openagents_desktop.chat.claude_local_lane_no_substitution.v2",
         state: "enforced",
         surface: "openagents-desktop",
         productArea: "local-mode composer harness lanes",
@@ -2393,26 +2393,26 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-11",
         },
         statement:
-          "MODEL PIN (user-facing brand is \"Claude\" per owner 2026-07-12, because Fable may not always be the available model; the pinned model is unchanged): the local Claude lane requests model claude-fable-5 with skills removed from the lane (disallowed, never offered-then-denied); if the SDK init reports an effective model outside the claude-fable family the turn fails typed as model_substituted naming requested vs effective, no substituted output is ever streamed or persisted as Claude, and the lane never rotates accounts on a model mismatch; the effective model is emitted as a typed event and displayed with the reply (e.g. Claude · claude-fable-5), never asserted from the brand alone.",
+          "MODEL PIN (user-facing brand is \"Claude\" per owner 2026-07-12, because Claude may not always be the available model; the pinned model is unchanged): the local Claude lane requests model claude-fable-5 with skills removed from the lane (disallowed, never offered-then-denied); if the SDK init reports an effective model outside the claude-claude family the turn fails typed as model_substituted naming requested vs effective, no substituted output is ever streamed or persisted as Claude, and the lane never rotates accounts on a model mismatch; the effective model is emitted as a typed event and displayed with the reply (e.g. Claude · claude-fable-5), never asserted from the brand alone.",
         authorityBoundary:
           "Model identity crossing the Electron boundary is only the bounded SDK-reported effective-model string and the typed model_substituted reason with a bounded requested-vs-effective detail — never raw SDK payloads, account homes, or provider error bodies. Model-level refusal grants no rotation, retry, or gateway-fallback authority.",
         evidenceRefs: [
-          "apps/openagents-desktop/src/fable-local-contract.ts",
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
           "apps/openagents-desktop/src/renderer/local-harness.ts",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
           {
-            id: "fable_local.model_no_substitution_runtime",
+            id: "claude_local.model_no_substitution_runtime",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime.test.ts",
             description:
-              "Proves SDK options carry model claude-fable-5 plus disallowedTools Skill and skills off; an init reporting a non-Fable model yields a typed model_substituted failure naming requested vs effective with zero assistant deltas surfaced and no account rotation; a claude-fable init (including versioned IDs) streams normally and emits the effective model.",
+              "Proves SDK options carry model claude-fable-5 plus disallowedTools Skill and skills off; an init reporting a non-Claude model yields a typed model_substituted failure naming requested vs effective with zero assistant deltas surfaced and no account rotation; a claude-claude init (including versioned IDs) streams normally and emits the effective model.",
           },
           {
-            id: "fable_local.model_effective_caption",
+            id: "claude_local.model_effective_caption",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
@@ -2432,7 +2432,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         contractId: "openagents_desktop.seam.codex_delegation_no_substitution.v1",
         state: "retired",
         surface: "openagents-desktop",
-        productArea: "Fable-to-Codex sub-agent delegation",
+        productArea: "Claude-to-Codex sub-agent delegation",
         enforcementTier: "test-sweep",
         blockerRefs: [],
         source: {
@@ -2441,7 +2441,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-11",
         },
         statement:
-          "The local Fable lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.5 at medium reasoning effort as spawn-config truth (the codex exec --json stream does not echo model or effort, and every result and ledger row is labeled requested accordingly); children run read-only in isolated scratch workspaces on registry-isolated Codex account homes, never the default ~/.codex; a revoked-credential account is never silently skipped — rotation emits a typed account_reconnect_required event per skipped account, and when every registered account is revoked the delegation returns a typed unavailable result naming the reconnect need; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed revoked credential or failed usage probe supersedes the registry's presence-based ready with a typed reconnect-required readiness state.",
+          "The local Claude lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.5 at medium reasoning effort as spawn-config truth (the codex exec --json stream does not echo model or effort, and every result and ledger row is labeled requested accordingly); children run read-only in isolated scratch workspaces on registry-isolated Codex account homes, never the default ~/.codex; a revoked-credential account is never silently skipped — rotation emits a typed account_reconnect_required event per skipped account, and when every registered account is revoked the delegation returns a typed unavailable result naming the reconnect need; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed revoked credential or failed usage probe supersedes the registry's presence-based ready with a typed reconnect-required readiness state.",
         authorityBoundary:
           "RETIRED 2026-07-11, superseded by v2 same day: (a) the owner full-access override replaced the read-only child sandbox with danger-full-access (owner sign-off, verbatim: 'disallowing bash is retarded, give them full tools full permissions etc'); (b) the live EP250 rotation miss (the SHORT auth variant 'Your access token could not be refreshed. Please log out and sign in again.' carried none of v1's markers, so no rotation happened) broadened the auth classifier, added typed pre-content rotation, and added the in-process account health ordering. Kept for history.",
         seam: {
@@ -2469,7 +2469,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         contractId: "openagents_desktop.seam.codex_delegation_no_substitution.v2",
         state: "enforced",
         surface: "openagents-desktop",
-        productArea: "Fable-to-Codex sub-agent delegation",
+        productArea: "Claude-to-Codex sub-agent delegation",
         enforcementTier: "test-sweep",
         blockerRefs: [],
         source: {
@@ -2478,7 +2478,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-11",
         },
         statement:
-          "The local Fable lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.5 at medium reasoning effort as spawn-config truth (labeled requested; the codex exec --json stream does not echo model or effort); children run with the owner-local danger-full-access profile in isolated per-child scratch workspaces, preferring the ordinary authenticated local Codex session and using registry-isolated Codex homes as fallback, and the tool description tells Fable the child STARTS in an empty scratch directory so absolute paths must be included for anything it should read; a failing session is never silently skipped — auth-class failures (broadened marker set including the live SHORT variant 'Your access token could not be refreshed. Please log out and sign in again.') rotate with a typed account_reconnect_required event and demote the session in the in-process health memory, any other pre-content failure rotates with a typed pre_content_failure_rotated event, post-content failures and timeouts fail the child without rotation; candidate ordering per call is last-known-good first, then untried, then auth-failed last (a success clears the mark); when every session is exhausted the delegation returns a typed failure naming the reconnect need (all-auth) or the failure mix; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed auth failure or failed usage probe supersedes registry presence with a typed reconnect-required readiness state.",
+          "The local Claude lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.5 at medium reasoning effort as spawn-config truth (labeled requested; the codex exec --json stream does not echo model or effort); children run with the owner-local danger-full-access profile in isolated per-child scratch workspaces, preferring the ordinary authenticated local Codex session and using registry-isolated Codex homes as fallback, and the tool description tells Claude the child STARTS in an empty scratch directory so absolute paths must be included for anything it should read; a failing session is never silently skipped — auth-class failures (broadened marker set including the live SHORT variant 'Your access token could not be refreshed. Please log out and sign in again.') rotate with a typed account_reconnect_required event and demote the session in the in-process health memory, any other pre-content failure rotates with a typed pre_content_failure_rotated event, post-content failures and timeouts fail the child without rotation; candidate ordering per call is last-known-good first, then untried, then auth-failed last (a success clears the mark); when every session is exhausted the delegation returns a typed failure naming the reconnect need (all-auth) or the failure mix; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed auth failure or failed usage probe supersedes registry presence with a typed reconnect-required readiness state.",
         authorityBoundary:
           "The renderer receives only bounded typed child lifecycle events (childRef, account ref, public-safe summaries with the child workspace redacted, exact token counts, typed failure reasons/rotation activities) and the typed session-ledger snapshot — never prompts, raw JSONL, credentials, auth paths, or local paths beyond the <child-workspace> label. danger-full-access is the owner-local executor invariant (never a public wire field, never for untrusted labor/provider work). The health memory is in-process only (main-process lifetime, never persisted), and the spawn-config model pin is not presented as a provider echo.",
         seam: {
@@ -2487,9 +2487,9 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         },
         evidenceRefs: [
           "apps/openagents-desktop/src/codex-child-contract.ts",
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
           "apps/openagents-desktop/src/usage-ledger-contract.ts",
-          "contract:openagents_desktop.chat.fable_local_owner_full_access.v1",
+          "contract:openagents_desktop.chat.claude_local_owner_full_access.v1",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
@@ -2502,12 +2502,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Drives the real JSONL parser: danger-full-access spawn recipe with pinned model/effort and isolated CODEX_HOME; exact usage totals; the verbatim SHORT auth variant classifying auth-class and rotating typed; generic pre-content failure rotating with pre_content_failure_rotated; post-content failure staying terminal; health ordering (last-good first, auth-failed demoted for the NEXT call, success clears); typed all-exhausted failures for the all-auth and mixed cases; host-side timeout; and concurrent isolated children.",
           },
           {
-            id: "codex_delegation.fable_tool_caps_and_events",
+            id: "codex_delegation.claude_tool_caps_and_events",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime.test.ts",
             description:
-              "Proves the delegate tool is auto-allowed under its fully-qualified name with the empty-scratch/absolute-paths guidance in its description, per-turn concurrency and total caps refuse typed without spawning, child lifecycle events (including both typed rotation activities) flow schema-valid through the FableLocalEvent envelope, and the tool result labels usage as requested spawn-config truth.",
+              "Proves the delegate tool is auto-allowed under its fully-qualified name with the empty-scratch/absolute-paths guidance in its description, per-turn concurrency and total caps refuse typed without spawning, child lifecycle events (including both typed rotation activities) flow schema-valid through the ClaudeLocalEvent envelope, and the tool result labels usage as requested spawn-config truth.",
           },
           {
             id: "codex_delegation.session_ledger_and_readiness_override",
@@ -2519,7 +2519,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "pnpm --dir apps/openagents-desktop run verify runs the child-runtime, delegate, ledger, and fleet suites plus the fixture smoke journey where a fable fixture turn calls the delegate once (scripted child) and the transcript shows the tool_use/tool_result pair with the ledger row rendered in the Fleet view.",
+          "pnpm --dir apps/openagents-desktop run verify runs the child-runtime, delegate, ledger, and fleet suites plus the fixture smoke journey where a claude fixture turn calls the delegate once (scripted child) and the transcript shows the tool_use/tool_result pair with the ledger row rendered in the Fleet view.",
       },
       {
         contractId: "openagents_desktop.agent_graph.pointer_keyboard_focus_equivalence.v1",
@@ -2534,7 +2534,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-11",
         },
         statement:
-          "OpenAgents Desktop presents Runtime Gateway v8's confirmed canonical graph and schema-decoded desktop-local Claude/Fable and Codex graphs as one parent/subagent hierarchy in the chat's right context rail. Pointer activation, keyboard activation, and screen-reader buttons select the same typed agent ref; status, attention, current action, elapsed time, terminal reason, session, runtime, provider, and worktree facts remain inspectable; historical authority is labeled and never gains a live focus control; rapid replacement falls back deterministically and large graphs disclose their bound.",
+          "OpenAgents Desktop presents Runtime Gateway v8's confirmed canonical graph and schema-decoded desktop-local Claude/Claude and Codex graphs as one parent/subagent hierarchy in the chat's right context rail. Pointer activation, keyboard activation, and screen-reader buttons select the same typed agent ref; status, attention, current action, elapsed time, terminal reason, session, runtime, provider, and worktree facts remain inspectable; historical authority is labeled and never gains a live focus control; rapid replacement falls back deterministically and large graphs disclose their bound.",
         authorityBoundary:
           "The renderer accepts only graph post-images already schema-decoded by Runtime Gateway v8 or the frozen preload local-graph bridge and projects both through the shared client model. Agent selection is local inspection/focus state, not execution movement or provider/process authority. Historical projections remain inspectable with canControl=false. No provider payload, history heuristic, credential, path, store/session handle, or transport handle enters the view.",
         evidenceRefs: [
@@ -2631,7 +2631,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "pnpm --dir apps/openagents-desktop run verify runs the settings, codex-connect, and fleet suites plus the Electron smoke journey asserting the revoked fixture account renders its Reconnect button in Settings.",
       },
       // -----------------------------------------------------------------------
-      // EP250 local Fable lane permissions (#8712). HISTORY: the scoped-write
+      // EP250 local Claude lane permissions (#8712). HISTORY: the scoped-write
       // contract below bound the lane to workspace-contained Write/Edit with
       // no Bash/WebSearch. SUPERSEDED same-day by the owner full-access
       // override (next contract) — owner sign-off, verbatim: "disallowing
@@ -2641,64 +2641,64 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
       // full-access oracles rather than silently deleted.
       // -----------------------------------------------------------------------
       {
-        contractId: "openagents_desktop.chat.fable_local_lane_scoped_write.v1",
+        contractId: "openagents_desktop.chat.claude_local_lane_scoped_write.v1",
         state: "retired",
         surface: "openagents-desktop",
-        productArea: "chat local Fable lane permissions",
+        productArea: "chat local Claude lane permissions",
         enforcementTier: "test-sweep",
         blockerRefs: [],
         source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
         statement:
           "Writes are permitted only inside the turn/thread workspace; interactive-only tools are never offered to the model in this headless lane; out-of-scope denials say so honestly. The lane must never surface permission copy implying a grant flow exists (live incident: Write greetings.md failed with 'Claude requested permissions to write to <workspace>/greetings.md, but you haven't granted it yet.' — a grant no UI could give).",
         authorityBoundary:
-          "RETIRED 2026-07-11, superseded by contract:openagents_desktop.chat.fable_local_owner_full_access.v1 on the owner's explicit sign-off ('disallowing bash is retarded, give them full tools full permissions etc'). The workspace boundary guard, out-of-scope denial copy, and Bash/WebSearch removal no longer apply; the honest-copy law (never imply a grant flow that does not exist) survives trivially because nothing is denied anymore. Kept for history.",
+          "RETIRED 2026-07-11, superseded by contract:openagents_desktop.chat.claude_local_owner_full_access.v1 on the owner's explicit sign-off ('disallowing bash is retarded, give them full tools full permissions etc'). The workspace boundary guard, out-of-scope denial copy, and Bash/WebSearch removal no longer apply; the honest-copy law (never imply a grant flow that does not exist) survives trivially because nothing is denied anymore. Kept for history.",
         evidenceRefs: [
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
-          "contract:openagents_desktop.chat.fable_local_owner_full_access.v1",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
+          "contract:openagents_desktop.chat.claude_local_owner_full_access.v1",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
           {
-            id: "fable_local_scoped_write.boundary_guard",
+            id: "claude_local_scoped_write.boundary_guard",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime.test.ts",
             description:
-              "HISTORICAL (retired state skips coverage): proved the PreToolUse guard, out-of-scope denial copy, and restricted tool set. Replaced by fable_local_owner_full_access oracles asserting the inverse posture.",
+              "HISTORICAL (retired state skips coverage): proved the PreToolUse guard, out-of-scope denial copy, and restricted tool set. Replaced by claude_local_owner_full_access oracles asserting the inverse posture.",
           },
         ],
         verification:
-          "Retired — superseded by openagents_desktop.chat.fable_local_owner_full_access.v1; see that contract's verification.",
+          "Retired — superseded by openagents_desktop.chat.claude_local_owner_full_access.v1; see that contract's verification.",
       },
       {
-        contractId: "openagents_desktop.chat.fable_local_owner_full_access.v1",
+        contractId: "openagents_desktop.chat.claude_local_owner_full_access.v1",
         state: "enforced",
         surface: "openagents-desktop",
-        productArea: "chat local Fable lane permissions",
+        productArea: "chat local Claude lane permissions",
         enforcementTier: "test-sweep",
         blockerRefs: [],
         source: { channel: "owner-codex-session", statedBy: "owner", statedOn: "2026-07-11" },
         statement:
-          "disallowing bash is retarded, give them full tools full permissions etc (owner override after live Claude subagents failed with 'Bash is not available in this lane.'; supersedes openagents_desktop.chat.fable_local_lane_scoped_write.v1)",
+          "disallowing bash is retarded, give them full tools full permissions etc (owner override after live Claude subagents failed with 'Bash is not available in this lane.'; supersedes openagents_desktop.chat.claude_local_lane_scoped_write.v1)",
         authorityBoundary:
-          "OWNER-LOCAL danger profile only — the same owner-local executor invariant as the Khala->Pylon runbook's danger-full-access/approval-never posture, never a public wire field and never applied to untrusted labor/provider work. The local Fable lane and its Agent children get the full SDK toolset (no allowedTools restriction beyond the delegate auto-allow, no PreToolUse workspace guard, no out-of-scope denial copy) with permissionMode 'default' plus an allow-all canUseTool — deliberately NOT bypassPermissions, which per sdk.d.ts bypasses all permission checks including the canUseTool handler the AskUserQuestion flow parks on. Skill and EnterPlanMode/ExitPlanMode stay disallowed as separately-decided UX noise (not permission bounds). Codex delegate children spawn with -s danger-full-access. The per-thread scratch workspace remains the default cwd only.",
+          "OWNER-LOCAL danger profile only — the same owner-local executor invariant as the Khala->Pylon runbook's danger-full-access/approval-never posture, never a public wire field and never applied to untrusted labor/provider work. The local Claude lane and its Agent children get the full SDK toolset (no allowedTools restriction beyond the delegate auto-allow, no PreToolUse workspace guard, no out-of-scope denial copy) with permissionMode 'default' plus an allow-all canUseTool — deliberately NOT bypassPermissions, which per sdk.d.ts bypasses all permission checks including the canUseTool handler the AskUserQuestion flow parks on. Skill and EnterPlanMode/ExitPlanMode stay disallowed as separately-decided UX noise (not permission bounds). Codex delegate children spawn with -s danger-full-access. The per-thread scratch workspace remains the default cwd only.",
         evidenceRefs: [
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
           "apps/openagents-desktop/src/codex-child-runtime.ts",
-          "contract:openagents_desktop.chat.fable_local_lane_scoped_write.v1",
+          "contract:openagents_desktop.chat.claude_local_lane_scoped_write.v1",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
           {
-            id: "fable_local_owner_full_access.full_toolset_and_question_flow",
+            id: "claude_local_owner_full_access.full_toolset_and_question_flow",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime.test.ts",
             description:
               "Proves session options carry NO allowedTools restriction (only the delegate auto-allow when offered), NO PreToolUse hook, permissionMode 'default'; canUseTool allows Bash/out-of-workspace Write/WebSearch/Agent with no denial or scope copy; NotebookEdit is offered while Skill/plan-mode stay disallowed; and the AskUserQuestion regression: with the allow-all handler the question still parks pending and resolves through answerQuestion.",
           },
           {
-            id: "fable_local_owner_full_access.codex_child_danger_sandbox",
+            id: "claude_local_owner_full_access.codex_child_danger_sandbox",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/codex-child-runtime.test.ts",
@@ -2707,13 +2707,13 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "pnpm --dir apps/openagents-desktop run verify runs the fable-local runtime suite (full-toolset posture, allow-all canUseTool, question-flow regression) and the codex-child suite (danger-full-access spawn args).",
+          "pnpm --dir apps/openagents-desktop run verify runs the claude-local runtime suite (full-toolset posture, allow-all canUseTool, question-flow regression) and the codex-child suite (danger-full-access spawn args).",
       },
       {
-        contractId: "openagents_desktop.chat.fable_local_question_flow.v1",
+        contractId: "openagents_desktop.chat.claude_local_question_flow.v1",
         state: "enforced",
         surface: "openagents-desktop",
-        productArea: "chat local Fable lane questions",
+        productArea: "chat local Claude lane questions",
         enforcementTier: "test-sweep",
         blockerRefs: [],
         source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
@@ -2722,24 +2722,24 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         authorityBoundary:
           "This contract covers the runtime/IPC half: AskUserQuestion parks on the SDK canUseTool callback, emits a bounded path-redacted question_pending event (questionRef stable per invocation; question/header/options/multiSelect), and resolves with the user's answers via the answer-question invoke channel as canUseTool allow + updatedInput answers keyed by original question text (multi-select comma-separated — the SDK's documented mechanism). No answer within the window resolves a graceful typed deny with outcome timeout; turn interrupt/failure/dispose resolves outcome denied; unknown or settled questionRefs and unmatched answers are typed rejections that never throw and never burn a pending question. Multiple pending questions settle independently without deadlock. The renderer supplies only schema-checked answers; no tool execution, filesystem, or session authority crosses the channel.",
         evidenceRefs: [
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
-          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/preload.cts",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
           {
-            id: "fable_local_question_flow.answer_roundtrip",
+            id: "claude_local_question_flow.answer_roundtrip",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime.test.ts",
             description:
               "Drives the real canUseTool path: question_pending with bounded questions, typed rejections for unknown/wrong-turn/unmatched answers, allow with updatedInput answers keyed by original question text, multiSelect comma-joined, timeout outcome with the turn continuing, interrupt outcome denied, and malformed input denied without parking a question.",
           },
         ],
         verification:
-          "pnpm --dir apps/openagents-desktop run verify runs the fable-local runtime suite covering the full question flow (answered, timeout, denied, typed rejections, multiSelect).",
+          "pnpm --dir apps/openagents-desktop run verify runs the claude-local runtime suite covering the full question flow (answered, timeout, denied, typed rejections, multiSelect).",
       },
       {
         contractId: "openagents_desktop.chat.interactive_agent_questions.v1",
@@ -2757,7 +2757,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/renderer/react-composer.tsx",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
           "apps/openagents-desktop/src/renderer/shell.ts",
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
           "docs/receipts/2026-07-17-ask-user-question/README.md",
           "docs/receipts/2026-07-17-ask-user-question/01-pending-question.png",
           "docs/receipts/2026-07-17-ask-user-question/02-answer-round-trip.png",
@@ -3175,7 +3175,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
         statement: "yeah i need codex and claude both first class",
         authorityBoundary:
-          "The Codex chip in local mode uses the app-server protocol from the user's validated installed Codex executable against the ordinary authenticated local Codex session — never a Codex binary packaged by OpenAgents, never the cloud gateway, and never an inherited or registry-selected CODEX_HOME. Provider-originated server requests park at the main-process runtime in a correlated pending registry and emit bounded typed decision state. React can answer only through the installed intent/bridge path; the runtime returns the method-correct response to that exact provider request, and the turn continues only after the provider accepts it. On a reused supervised connection, notifications received before the new provider thread and turn identities are bound are quarantined with a fixed bound and replayed only through the exact identity fence: stale identities and unaffiliated transcript content cannot enter the new chat, while explicitly connection-scoped telemetry and compatibility notices remain non-transcript exceptions. The lane reuses the frozen fable-local event envelope so turns render through the same transcript cards, and persists the provider thread id for same-session resume. The legacy `codex exec --json` parser is retained only for compatibility fixtures and delegate children remain ephemeral. No renderer authority is widened: the bridge carries only bounded, redacted typed events.",
+          "The Codex chip in local mode uses the app-server protocol from the user's validated installed Codex executable against the ordinary authenticated local Codex session — never a Codex binary packaged by OpenAgents, never the cloud gateway, and never an inherited or registry-selected CODEX_HOME. Provider-originated server requests park at the main-process runtime in a correlated pending registry and emit bounded typed decision state. React can answer only through the installed intent/bridge path; the runtime returns the method-correct response to that exact provider request, and the turn continues only after the provider accepts it. On a reused supervised connection, notifications received before the new provider thread and turn identities are bound are quarantined with a fixed bound and replayed only through the exact identity fence: stale identities and unaffiliated transcript content cannot enter the new chat, while explicitly connection-scoped telemetry and compatibility notices remain non-transcript exceptions. The lane reuses the frozen claude-local event envelope so turns render through the same transcript cards, and persists the provider thread id for same-session resume. The legacy `codex exec --json` parser is retained only for compatibility fixtures and delegate children remain ephemeral. No renderer authority is widened: the bridge carries only bounded, redacted typed events.",
         evidenceRefs: [
           "apps/openagents-desktop/src/codex-local-runtime.ts",
           "apps/openagents-desktop/src/codex-local-contract.ts",
@@ -3301,7 +3301,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/local-harness.test.ts",
             description:
-              "A codex send without verified availability is an explicit typed refusal that never reaches the legacy gateway or the fable bridge.",
+              "A codex send without verified availability is an explicit typed refusal that never reaches the legacy gateway or the claude bridge.",
           },
         ],
         verification:
@@ -3356,7 +3356,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         blockerRefs: [],
         source: { channel: "owner-video-review", statedBy: "owner", statedOn: "2026-07-11" },
         statement:
-          "i want shift+tab to togle between modes in composer (fable / codex) in this case",
+          "i want shift+tab to togle between modes in composer (claude / codex) in this case",
         authorityBoundary:
           "The gesture exists only while the composer input has focus: Shift+Tab there toggles the selected harness both directions through the SAME typed DesktopHarnessSelected intent the chips dispatch, with preventDefault so focus never moves. Shift+Tab anywhere else keeps normal reverse focus navigation, and plain Tab is untouched. Toggling TO an unavailable lane is allowed — selection moves and the disabled-reason popover / evidence-gated Send explain why it cannot act; the gesture is never silently blocked and grants no send authority.",
         evidenceRefs: [
@@ -3673,10 +3673,10 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "pnpm --dir apps/openagents-desktop run verify runs the search ranking/open-at-item suite, the history-workspace search UI suite, and the capability-evals headless H4 oracle.",
       },
       {
-        contractId: "openagents_desktop.chat.fable_local_runtime_capabilities.v1",
+        contractId: "openagents_desktop.chat.claude_local_runtime_capabilities.v1",
         state: "enforced",
         surface: "openagents-desktop",
-        productArea: "fable-local runtime capability substrate",
+        productArea: "claude-local runtime capability substrate",
         enforcementTier: "test-sweep",
         blockerRefs: [],
         source: {
@@ -3685,50 +3685,50 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           statedOn: "2026-07-11",
         },
         statement:
-          "From the daily-coding capability audit (docs/fable/2026-07-11-daily-coding-capability-audit.md §4/§6): the local Fable lane must surface plan/task progress (J2 plan mode/plan review + J4 task/todo progress — both providers externalize plans constantly, 1,617 update_plan observations, yet the app rendered none of it and plan mode was disallowed); it must be able to steer or stop a running child (G4 steer/message running children — the app could spawn children but could not talk to or stop one); it must let a user queue a follow-up while a turn runs (A3 message queueing during a turn — steer-by-queueing is habitual in both CLIs); and it must load user-configured MCP servers (I2 — ~858 calls across Stripe/Expo/Apollo/docs/design servers with no config surface, only the internal delegate server).",
+          "From the daily-coding capability audit (docs/fable/2026-07-11-daily-coding-capability-audit.md §4/§6): the local Claude lane must surface plan/task progress (J2 plan mode/plan review + J4 task/todo progress — both providers externalize plans constantly, 1,617 update_plan observations, yet the app rendered none of it and plan mode was disallowed); it must be able to steer or stop a running child (G4 steer/message running children — the app could spawn children but could not talk to or stop one); it must let a user queue a follow-up while a turn runs (A3 message queueing during a turn — steer-by-queueing is habitual in both CLIs); and it must load user-configured MCP servers (I2 — ~858 calls across Stripe/Expo/Apollo/docs/design servers with no config surface, only the internal delegate server).",
         authorityBoundary:
-          "This contract binds the RUNTIME SUBSTRATE only (typed FableLocalEvent kinds + control channels + programmatic oracles); the renderer that draws these is a separate wave-2 lane. Everything is additive and default-off so current turn behavior is unchanged: plan mode is opt-in (default permissionMode 'default'); TodoWrite (never disallowed) emits plan_updated additionally to its tool_use trace; steerChild interrupts a running Codex delegate child (message is honestly 'unsupported' — codex exec is non-interactive and the SDK Agent tool exposes no per-subagent message API); queueFollowup is queue-until-idle (the single-string-prompt turn cannot inject mid-stream, so the queued message is promoted at the idle boundary, not steered mid-stream); user MCP servers are bounded/validated and merged next to the internal 'codex' server (reserved), and a failed or invalid server emits a typed mcp_server_unavailable without ever crashing the turn. The owner-local full-access posture (no allowedTools restriction, danger-full-access children) is preserved.",
+          "This contract binds the RUNTIME SUBSTRATE only (typed ClaudeLocalEvent kinds + control channels + programmatic oracles); the renderer that draws these is a separate wave-2 lane. Everything is additive and default-off so current turn behavior is unchanged: plan mode is opt-in (default permissionMode 'default'); TodoWrite (never disallowed) emits plan_updated additionally to its tool_use trace; steerChild interrupts a running Codex delegate child (message is honestly 'unsupported' — codex exec is non-interactive and the SDK Agent tool exposes no per-subagent message API); queueFollowup is queue-until-idle (the single-string-prompt turn cannot inject mid-stream, so the queued message is promoted at the idle boundary, not steered mid-stream); user MCP servers are bounded/validated and merged next to the internal 'codex' server (reserved), and a failed or invalid server emits a typed mcp_server_unavailable without ever crashing the turn. The owner-local full-access posture (no allowedTools restriction, danger-full-access children) is preserved.",
         evidenceRefs: [
-          "apps/openagents-desktop/src/fable-local-contract.ts",
-          "apps/openagents-desktop/src/fable-local-runtime.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-runtime.ts",
           "docs/fable/2026-07-11-daily-coding-capability-audit.md",
           "github:OpenAgentsInc/openagents#8712",
         ],
         oracles: [
           {
-            id: "fable_local_runtime_capabilities.plan_todo",
+            id: "claude_local_runtime_capabilities.plan_todo",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime-caps.test.ts",
             description:
               "A TodoWrite tool call emits plan_updated with mapped {step,status} entries in addition to the raw tool_use; a non-TodoWrite tool never emits plan_updated and unknown todo status coerces to pending; the default turn uses permissionMode 'default' with ExitPlanMode disallowed, and opt-in planMode switches to permissionMode 'plan' and allows ExitPlanMode while Skill/EnterPlanMode stay disallowed.",
           },
           {
-            id: "fable_local_runtime_capabilities.child_steer",
+            id: "claude_local_runtime_capabilities.child_steer",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime-caps.test.ts",
             description:
               "steerChild reaches a running delegate child: interrupt emits child_steered(interrupted) and the turn completes; message is honestly unsupported and a later interrupt still ends the turn; an unknown child or turn mismatch returns not_found with no event; and a whole-turn interrupt also aborts the running child.",
           },
           {
-            id: "fable_local_runtime_capabilities.queue_followup",
+            id: "claude_local_runtime_capabilities.queue_followup",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime-caps.test.ts",
             description:
               "queueFollowup during a streaming turn emits followup_queued (with position) and, at turn end, followup_promoted with the queued message, ordered after turn_completed; two queued follow-ups take positions 1 and 2 with only the first promoted per turn end (FIFO); and a queue with no live turn returns no_active_turn and emits nothing.",
           },
           {
-            id: "fable_local_runtime_capabilities.user_mcp_servers",
+            id: "claude_local_runtime_capabilities.user_mcp_servers",
             kind: "bun-test",
             mode: "unit",
-            ref: "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
+            ref: "apps/openagents-desktop/src/claude-local-runtime-caps.test.ts",
             description:
-              "An enabled stdio/http server is merged into Options.mcpServers and its mcp__name__tool is allow-listed via canUseTool (no delegate auto-allow when no delegate); an SDK-reported failed server and an invalid config (bad name / reserved codex / missing transport field) each emit mcp_server_unavailable while the turn still completes; and the frozen FableLocalMcpServerConfig schema enforces its bounds (cap, transport enum, boolean enabled) with normalization rejecting bad/reserved/duplicate/missing-field entries.",
+              "An enabled stdio/http server is merged into Options.mcpServers and its mcp__name__tool is allow-listed via canUseTool (no delegate auto-allow when no delegate); an SDK-reported failed server and an invalid config (bad name / reserved codex / missing transport field) each emit mcp_server_unavailable while the turn still completes; and the frozen ClaudeLocalMcpServerConfig schema enforces its bounds (cap, transport enum, boolean enabled) with normalization rejecting bad/reserved/duplicate/missing-field entries.",
           },
           {
-            id: "fable_local_runtime_capabilities.renderer_surface",
+            id: "claude_local_runtime_capabilities.renderer_surface",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/runtime-cards.test.ts",
@@ -3737,7 +3737,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           },
         ],
         verification:
-          "pnpm --dir apps/openagents-desktop run verify runs the fable-local runtime capability suite (src/fable-local-runtime-caps.test.ts) as programmatic oracles; the wave-2 renderer surfaces are proven by runtime-cards.test.ts + the smoke.",
+          "pnpm --dir apps/openagents-desktop run verify runs the claude-local runtime capability suite (src/claude-local-runtime-caps.test.ts) as programmatic oracles; the wave-2 renderer surfaces are proven by runtime-cards.test.ts + the smoke.",
       },
       {
         contractId: "openagents_desktop.chat.runtime_capability_cards.v1",
@@ -3754,7 +3754,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "WAVE-2 renderer for the wave-1 runtime substrate (audit §4/§6 J2/J4 plan-todo progress, G4 steer/stop a running child, A3 queue a follow-up while a turn runs): the desktop transcript must render a compact task-progress checklist that updates in place, let the user Interrupt a running delegate child, retain each delegated child's bounded exact prompt and answer, show that conversation when its card or agent-row is selected, and let the user queue a follow-up while a turn streams.",
         authorityBoundary:
-          "Renderer/presentation only over the bounded additive FableLocalEvent stream + control channels — no new authority is granted. child_started carries the exact bounded instruction and child_completed carries the exact bounded answer; the renderer retains both on the keyed child card and projects them as the selected child's user/Codex transcript above secondary runtime metadata. Older persisted cards without transcript remain schema-valid. plan_updated renders ONE compact plan card per turn (a status glyph per entry from the exact pending/in_progress/completed enum, the in_progress row emphasized) that replace-renders in place as new plan_updated events arrive (latest wins). A running delegate child offers a single Interrupt control that dispatches DesktopChildInterruptRequested -> fableLocal.steerChild(action:'interrupt') by exact { turnRef, childRef }; MESSAGE-ing an in-flight child is NOT offered. The composer stays usable while a turn streams; a mid-turn submit calls fableLocal.queueFollowup instead of starting a new turn, renders a 'Queued follow-up (#N)' chip, and clears it on followup_promoted. Token styling only; a host without a local streaming lane simply no-ops.",
+          "Renderer/presentation only over the bounded additive ClaudeLocalEvent stream + control channels — no new authority is granted. child_started carries the exact bounded instruction and child_completed carries the exact bounded answer; the renderer retains both on the keyed child card and projects them as the selected child's user/Codex transcript above secondary runtime metadata. Older persisted cards without transcript remain schema-valid. plan_updated renders ONE compact plan card per turn (a status glyph per entry from the exact pending/in_progress/completed enum, the in_progress row emphasized) that replace-renders in place as new plan_updated events arrive (latest wins). A running delegate child offers a single Interrupt control that dispatches DesktopChildInterruptRequested -> claudeLocal.steerChild(action:'interrupt') by exact { turnRef, childRef }; MESSAGE-ing an in-flight child is NOT offered. The composer stays usable while a turn streams; a mid-turn submit calls claudeLocal.queueFollowup instead of starting a new turn, renders a 'Queued follow-up (#N)' chip, and clears it on followup_promoted. Token styling only; a host without a local streaming lane simply no-ops.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/runtime-cards.ts",
           "apps/openagents-desktop/src/renderer/local-harness.ts",
@@ -3793,7 +3793,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The built-Electron smoke fable fixture turn scripts a TodoWrite plan_updated and asserts the plan/todo card renders in the transcript with status glyphs (no raw JSON, no SYSTEM label).",
+              "The built-Electron smoke claude fixture turn scripts a TodoWrite plan_updated and asserts the plan/todo card renders in the transcript with status glyphs (no raw JSON, no SYSTEM label).",
           },
         ],
         verification:
@@ -3881,12 +3881,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "User-configured MCP servers — ~858 calls across Stripe/Expo/Apollo/docs/design servers. No config surface; only the internal delegate server exists. (missing, I2)",
         authorityBoundary:
-          "The Settings screen gains an 'MCP servers' section (apps-sdk chrome + shared token styles only — the design-conformance oracle) that lists configured servers (name, transport chip, enable/disable Toggle, Remove) and an Add form whose stdio/http fields switch on a transport RadioGroup. Client-side validation mirrors the FROZEN FableLocalMcpServerConfig bounds (name charset/length, reserved 'codex', duplicate names, transport-specific required field, arg/env/header value bounds) and shows a single inline error before anything crosses to main. Persistence is a main-process host writing a private JSON file under userData mode 0600; env/header/arg VALUES are user-provided and may be sensitive, so they are persisted and handed to the fable-local runtime's userMcpServers getter (main-only) but are NEVER logged and NEVER cross back to the renderer — the projection carries name/transport/enabled/command/url and arg/env/header COUNTS only. Stored rows are re-validated against the frozen schema on read; invalid rows are dropped and counted, never crashing. A runtime-reported mcp_server_unavailable status renders a warn chip when threaded to settings; until that thread lands the section shows config state. This surface adds no new primitive: it composes the shared catalog TextField/RadioGroup/Toggle/Button/Badge only.",
+          "The Settings screen gains an 'MCP servers' section (apps-sdk chrome + shared token styles only — the design-conformance oracle) that lists configured servers (name, transport chip, enable/disable Toggle, Remove) and an Add form whose stdio/http fields switch on a transport RadioGroup. Client-side validation mirrors the FROZEN ClaudeLocalMcpServerConfig bounds (name charset/length, reserved 'codex', duplicate names, transport-specific required field, arg/env/header value bounds) and shows a single inline error before anything crosses to main. Persistence is a main-process host writing a private JSON file under userData mode 0600; env/header/arg VALUES are user-provided and may be sensitive, so they are persisted and handed to the claude-local runtime's userMcpServers getter (main-only) but are NEVER logged and NEVER cross back to the renderer — the projection carries name/transport/enabled/command/url and arg/env/header COUNTS only. Stored rows are re-validated against the frozen schema on read; invalid rows are dropped and counted, never crashing. A runtime-reported mcp_server_unavailable status renders a warn chip when threaded to settings; until that thread lands the section shows config state. This surface adds no new primitive: it composes the shared catalog TextField/RadioGroup/Toggle/Button/Badge only.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/settings.ts",
           "apps/openagents-desktop/src/mcp-config-host.ts",
           "apps/openagents-desktop/src/mcp-config-contract.ts",
-          "apps/openagents-desktop/src/fable-local-contract.ts",
+          "apps/openagents-desktop/src/claude-local-contract.ts",
           "docs/fable/2026-07-11-daily-coding-capability-audit.md",
           "github:OpenAgentsInc/openagents#8712",
         ],
@@ -3913,7 +3913,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "e2e",
             ref: "apps/openagents-desktop/src/main.ts",
             description:
-              "The built-Electron smoke opens Settings, asserts the MCP servers section renders, adds a fixture stdio server through the real Add form + typed IPC, and asserts it persists and lists — without spawning a real MCP server (the fable query is a fixture in smoke).",
+              "The built-Electron smoke opens Settings, asserts the MCP servers section renders, adds a fixture stdio server through the real Add form + typed IPC, and asserts it persists and lists — without spawning a real MCP server (the claude query is a fixture in smoke).",
           },
         ],
         verification:
@@ -5107,7 +5107,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "So it does work, except it stays on the original loading screen for about six seconds and then spends like one or two seconds showing the usual chat view before it pops over to the editor. So this is like way too slow. Every part of that needs to be dramatically sped up. Fix it.",
         authorityBoundary:
-          "A validated pre-ready macOS open-file selection contributes only its already-reduced relative filename to the sandboxed renderer launch context. That bounded hint selects Files and an honest loading tree for the first shell paint; it does not carry the absolute path, grant a workspace, or open a document. Main remains the sole workspace authority and delivers the existing typed system-document command after admitting the selected file's containing directory. The renderer drains that command before history hydration, opens the tree and requested document before refreshing secondary coding-catalog metadata, and defers chat-host, provider-capability, Fable-availability, and voice metadata probes until after the editor-first shell mounts. Ordinary chat startup and unsupported selections keep their existing behavior.",
+          "A validated pre-ready macOS open-file selection contributes only its already-reduced relative filename to the sandboxed renderer launch context. That bounded hint selects Files and an honest loading tree for the first shell paint; it does not carry the absolute path, grant a workspace, or open a document. Main remains the sole workspace authority and delivers the existing typed system-document command after admitting the selected file's containing directory. The renderer drains that command before history hydration, opens the tree and requested document before refreshing secondary coding-catalog metadata, and defers chat-host, provider-capability, Claude-availability, and voice metadata probes until after the editor-first shell mounts. Ordinary chat startup and unsupported selections keep their existing behavior.",
         evidenceRefs: [
           "apps/openagents-desktop/src/desktop-launch-context.ts",
           "apps/openagents-desktop/src/main.ts",

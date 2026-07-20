@@ -110,7 +110,7 @@ export const buildDesktop = async (): Promise<string> => {
       // The Claude Agent SDK must stay external: it resolves its bundled
       // native `claude` executable relative to its own installed package
       // (require.resolve from sdk.mjs) and is lazy-imported only when the
-      // Fable local lane actually runs a turn (#8712). The delegate tool's
+      // Claude local lane actually runs a turn (#8712). The delegate tool's
       // zod raw shape is resolved through the SDK's OWN installed zod
       // (createRequire from the SDK entry) — zod is deliberately NOT an app
       // dependency (boundary law) and never enters the renderer.

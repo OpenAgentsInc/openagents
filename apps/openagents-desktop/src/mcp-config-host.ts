@@ -3,7 +3,7 @@
  *
  * Reads/writes the user's MCP server list to a private JSON file under the
  * app userData root, and hands the ENABLED-plus-disabled full config list to
- * the fable-local runtime through a main-side getter (`servers()`).
+ * the claude-local runtime through a main-side getter (`servers()`).
  *
  * Security posture:
  * - The file is written mode 0600 (owner read/write only) via temp+rename,
@@ -13,7 +13,7 @@
  *   logged and NEVER included in the renderer projection (`list()` / mutation
  *   results carry counts only, via `toMcpConfigServerView`).
  * - Every stored row is re-validated against the FROZEN
- *   `FableLocalMcpServerConfigSchema` on read; invalid rows are DROPPED and
+ *   `ClaudeLocalMcpServerConfigSchema` on read; invalid rows are DROPPED and
  *   counted (never a throw), so a hand-edited or corrupt file cannot crash the
  *   app or smuggle an out-of-contract server into the runtime.
  */
@@ -22,11 +22,11 @@ import path from "node:path"
 
 import { decode } from "./chat-contract.ts"
 import {
-  FABLE_LOCAL_MCP_NAME_PATTERN,
-  FABLE_LOCAL_MCP_SERVER_LIMIT,
-  FableLocalMcpServerConfigSchema,
-  type FableLocalMcpServerConfig,
-} from "./fable-local-contract.ts"
+  CLAUDE_LOCAL_MCP_NAME_PATTERN,
+  CLAUDE_LOCAL_MCP_SERVER_LIMIT,
+  ClaudeLocalMcpServerConfigSchema,
+  type ClaudeLocalMcpServerConfig,
+} from "./claude-local-contract.ts"
 import {
   mcpReservedServerName,
   toMcpConfigServerView,
@@ -37,25 +37,25 @@ import {
 const FILE_VERSION = 1
 const OWNER_ONLY = 0o600
 
-const decodeOne = (value: unknown): FableLocalMcpServerConfig | null =>
-  decode(FableLocalMcpServerConfigSchema, value) as FableLocalMcpServerConfig | null
+const decodeOne = (value: unknown): ClaudeLocalMcpServerConfig | null =>
+  decode(ClaudeLocalMcpServerConfigSchema, value) as ClaudeLocalMcpServerConfig | null
 
 /**
  * Add-time validation for a SINGLE entry, regardless of `enabled` (the frozen
- * `normalizeFableLocalMcpServers` only validates enabled entries at turn time;
+ * `normalizeClaudeLocalMcpServers` only validates enabled entries at turn time;
  * this rejects bad rows before they are ever persisted). Mirrors that
  * normalizer's rules: name charset, the reserved `codex` name, duplicates
  * against the current list, and the transport-specific required field.
  */
 export const validateMcpServerConfig = (
-  config: FableLocalMcpServerConfig,
+  config: ClaudeLocalMcpServerConfig,
   existingNames: ReadonlyArray<string>,
-): { readonly ok: true; readonly config: FableLocalMcpServerConfig } | {
+): { readonly ok: true; readonly config: ClaudeLocalMcpServerConfig } | {
   readonly ok: false
   readonly reason: string
 } => {
   const name = config.name.trim()
-  if (!FABLE_LOCAL_MCP_NAME_PATTERN.test(name)) {
+  if (!CLAUDE_LOCAL_MCP_NAME_PATTERN.test(name)) {
     return { ok: false, reason: "invalid server name (allowed: letters, digits, _ or -, 1-64 chars)" }
   }
   if (name === mcpReservedServerName) {
@@ -78,10 +78,10 @@ export const validateMcpServerConfig = (
 
 export type McpConfigStore = Readonly<{
   /** MAIN-ONLY full config list (incl. secret values) — the runtime getter. */
-  servers: () => ReadonlyArray<FableLocalMcpServerConfig>
+  servers: () => ReadonlyArray<ClaudeLocalMcpServerConfig>
   /** Public-safe projection for the renderer (no secret values). */
   list: () => McpConfigListResult
-  add: (config: FableLocalMcpServerConfig) => McpConfigMutationResult
+  add: (config: ClaudeLocalMcpServerConfig) => McpConfigMutationResult
   remove: (name: string) => McpConfigMutationResult
   toggle: (name: string, enabled: boolean) => McpConfigMutationResult
 }>
@@ -93,7 +93,7 @@ export type McpConfigStore = Readonly<{
  */
 export const openMcpConfigStore = (filePath: string): McpConfigStore => {
   /** Parse + per-entry validate. Returns valid rows and the dropped count. */
-  const read = (): { servers: FableLocalMcpServerConfig[]; dropped: number } => {
+  const read = (): { servers: ClaudeLocalMcpServerConfig[]; dropped: number } => {
     let raw: unknown
     try {
       raw = JSON.parse(readFileSync(filePath, "utf8"))
@@ -105,13 +105,13 @@ export const openMcpConfigStore = (filePath: string): McpConfigStore => {
       typeof raw === "object" && raw !== null && Array.isArray((raw as { servers?: unknown }).servers)
         ? ((raw as { servers: unknown[] }).servers)
         : []
-    const servers: FableLocalMcpServerConfig[] = []
+    const servers: ClaudeLocalMcpServerConfig[] = []
     let dropped = 0
     const seen = new Set<string>()
     for (const row of rows) {
       const decoded = decodeOne(row)
       // Drop invalid, over-cap, and duplicate-name rows; never crash.
-      if (decoded === null || servers.length >= FABLE_LOCAL_MCP_SERVER_LIMIT) {
+      if (decoded === null || servers.length >= CLAUDE_LOCAL_MCP_SERVER_LIMIT) {
         dropped += 1
         continue
       }
@@ -126,8 +126,8 @@ export const openMcpConfigStore = (filePath: string): McpConfigStore => {
     return { servers, dropped }
   }
 
-  const write = (servers: ReadonlyArray<FableLocalMcpServerConfig>): void => {
-    const bounded = servers.slice(0, FABLE_LOCAL_MCP_SERVER_LIMIT)
+  const write = (servers: ReadonlyArray<ClaudeLocalMcpServerConfig>): void => {
+    const bounded = servers.slice(0, CLAUDE_LOCAL_MCP_SERVER_LIMIT)
     mkdirSync(path.dirname(filePath), { recursive: true })
     const temporary = `${filePath}.tmp`
     // Never log the payload — env/headers/args values may be sensitive.
@@ -144,7 +144,7 @@ export const openMcpConfigStore = (filePath: string): McpConfigStore => {
   }
 
   const okResult = (
-    servers: ReadonlyArray<FableLocalMcpServerConfig>,
+    servers: ReadonlyArray<ClaudeLocalMcpServerConfig>,
     dropped: number,
   ): McpConfigMutationResult => ({
     state: "ok",
@@ -160,8 +160,8 @@ export const openMcpConfigStore = (filePath: string): McpConfigStore => {
     },
     add: (config) => {
       const { servers, dropped } = read()
-      if (servers.length >= FABLE_LOCAL_MCP_SERVER_LIMIT) {
-        return { state: "rejected", reason: `at most ${FABLE_LOCAL_MCP_SERVER_LIMIT} servers` }
+      if (servers.length >= CLAUDE_LOCAL_MCP_SERVER_LIMIT) {
+        return { state: "rejected", reason: `at most ${CLAUDE_LOCAL_MCP_SERVER_LIMIT} servers` }
       }
       const validated = validateMcpServerConfig(
         config,

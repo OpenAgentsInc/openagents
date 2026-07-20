@@ -7,8 +7,8 @@
  * registry's isolated Codex homes — never the default `~/.codex`, never the
  * cloud gateway, never another provider (the no-silent-substitution law).
  *
- * The lane deliberately REUSES the frozen fable-local event envelope
- * (`FableLocalEventSchema` / `FableLocalEventEnvelopeSchema`): codex turns
+ * The lane deliberately REUSES the frozen claude-local event envelope
+ * (`ClaudeLocalEventSchema` / `ClaudeLocalEventEnvelopeSchema`): codex turns
  * stream the same typed kinds (text_delta, tool_use/tool_result, reasoning,
  * turn_completed, turn_failed …) over their OWN channels below, so the
  * existing renderer transcript cards render codex turns identically with no
@@ -31,14 +31,14 @@ import { CODEX_CHILD_REASONING_EFFORT } from "./codex-child-contract.ts"
 import {
   CodexModelSchema,
   CodexReasoningEffortSchema,
-  FableLocalInterruptRequestSchema,
-  FableLocalStartRequestSchema,
+  ClaudeLocalInterruptRequestSchema,
+  ClaudeLocalStartRequestSchema,
   LocalModelSchema,
   isCodexModel,
   type CodexModel,
   type CodexReasoningEffort,
-  type FableLocalFailureReason,
-} from "./fable-local-contract.ts"
+  type ClaudeLocalFailureReason,
+} from "./claude-local-contract.ts"
 
 export const CodexLocalAvailabilityChannel = "openagents:codex-local:availability" as const
 export const CodexLocalStartChannel = "openagents:codex-local:start" as const
@@ -87,7 +87,7 @@ export const CODEX_LOCAL_REASONING_EFFORT = CODEX_CHILD_REASONING_EFFORT
 export const codexLocalRequestedModelLabel = (model: string = CODEX_LOCAL_MODEL): string => `${model} (requested)`
 
 /** Effective-model caption trace line for codex turns ("Codex · gpt-5.6-sol
- * (requested)") — the lane-branded sibling of fableLocalModelNoteText. */
+ * (requested)") — the lane-branded sibling of claudeLocalModelNoteText. */
 export const codexLocalModelNoteText = (model: string): string => `Codex · ${model}`
 
 export const CodexLocalModelOptionSchema = Schema.Struct({
@@ -154,9 +154,9 @@ export const decodeCodexLocalAvailability = (value: unknown): CodexLocalAvailabi
   return decoded.value
 }
 
-/** Start/interrupt/steer/queue requests reuse the frozen fable-local shapes. */
-export const CodexLocalStartRequestSchema = FableLocalStartRequestSchema
-export const CodexLocalInterruptRequestSchema = FableLocalInterruptRequestSchema
+/** Start/interrupt/steer/queue requests reuse the frozen claude-local shapes. */
+export const CodexLocalStartRequestSchema = ClaudeLocalStartRequestSchema
+export const CodexLocalInterruptRequestSchema = ClaudeLocalInterruptRequestSchema
 
 /** Full Auto (#8853) toggle set/get requests, bounded to one thread ref. */
 export const CodexLocalFullAutoSetRequestSchema = Schema.Struct({
@@ -173,7 +173,7 @@ export const decodeCodexLocalFullAutoSetRequest = (value: unknown): CodexLocalFu
  * against the LIVE contract enums before a continuation replays it. The
  * registry stores plain bounded strings (so an enum change can never
  * corrupt-fail the whole registry file); this narrows each field back to the
- * typed value a `FableLocalStartRequest` accepts, dropping any field that no
+ * typed value a `ClaudeLocalStartRequest` accepts, dropping any field that no
  * longer decodes (that field then falls back to lane defaults, exactly the
  * pre-binding behavior).
  */
@@ -310,7 +310,7 @@ export const codexHarnessLaneFromAvailability = (
  * provider text leaks, and ALWAYS states that no other lane was substituted.
  */
 export const codexLocalFailureMessage = (
-  reason: FableLocalFailureReason,
+  reason: ClaudeLocalFailureReason,
   detail: string,
 ): string => {
   const suffix = detail.trim() === "" ? "" : ` (${detail.trim()})`
@@ -329,7 +329,7 @@ export const codexLocalFailureMessage = (
       return "The local Codex turn hit its turn budget before finishing."
     case "session_failed":
       return `The local Codex turn failed${suffix}. No message was routed to any other lane.`
-    // These reasons belong to the fable lane and never originate here; the
+    // These reasons belong to the claude lane and never originate here; the
     // switch stays exhaustive over the shared reason set.
     case "no_claude_account":
     case "sdk_unavailable":

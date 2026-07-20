@@ -1,7 +1,7 @@
 /**
  * Codex local runtime (EP250 #8712 — owner mandate verbatim: "yeah i need
  * codex and claude both first class"): a top-level conversation turn on the
- * composer's Codex chip in local mode, mirroring fable-local-runtime's shape.
+ * composer's Codex chip in local mode, mirroring claude-local-runtime's shape.
  *
  * Spawn recipe (receipted, codex-cli 0.144.1, 2026-07-11 — the child recipe
  * WITHOUT --ephemeral):
@@ -23,7 +23,7 @@
  * the resumed session's recorded working root (the thread workspace from
  * turn 1) plus the spawn cwd. A thread's codex session is pinned to the
  * account that created it; when rotation lands on a DIFFERENT account, the
- * lane falls back to bounded-history prepend (same policy as fable).
+ * lane falls back to bounded-history prepend (same policy as claude).
  *
  * Rotation mirrors codex-child-runtime (same shared health memory, same
  * classifier): auth-class pre-content failures demote the account and rotate
@@ -32,7 +32,7 @@
  * account order is health-ordered, which puts PROBE-VERIFIED accounts first
  * (the preflight records probe successes into the same health memory).
  *
- * Events reuse the FROZEN fable-local envelope (see codex-local-contract.ts)
+ * Events reuse the FROZEN claude-local envelope (see codex-local-contract.ts)
  * so the existing renderer cards render codex turns identically:
  *   agent_message → text_delta; command_execution/mcp_tool_call/file_change/
  *   web_search → tool_use/tool_result cards; reasoning → reasoning lines;
@@ -78,28 +78,28 @@ import {
   type CodexLocalModelOption,
 } from "./codex-local-contract.ts"
 import {
-  FABLE_LOCAL_DELTA_LIMIT,
-  FABLE_LOCAL_FINAL_TEXT_LIMIT,
-  FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT,
-  FABLE_LOCAL_SUMMARY_LIMIT,
+  CLAUDE_LOCAL_DELTA_LIMIT,
+  CLAUDE_LOCAL_FINAL_TEXT_LIMIT,
+  CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT,
+  CLAUDE_LOCAL_SUMMARY_LIMIT,
   isCodexModel,
   isCodexReasoningEffort,
   type CodexModel,
   type CodexReasoningEffort,
-  type FableChildUsage,
-  type FableLocalAnswerQuestionRequest,
-  type FableLocalEvent,
-  type FableLocalFailureReason,
-  type FableLocalImageAttachment,
-  type FableLocalQuestion,
-  type FableLocalQueueFollowupRequest,
-} from "./fable-local-contract.ts"
+  type ClaudeChildUsage,
+  type ClaudeLocalAnswerQuestionRequest,
+  type ClaudeLocalEvent,
+  type ClaudeLocalFailureReason,
+  type ClaudeLocalImageAttachment,
+  type ClaudeLocalQuestion,
+  type ClaudeLocalQueueFollowupRequest,
+} from "./claude-local-contract.ts"
 import {
-  FABLE_LOCAL_HISTORY_MESSAGES,
-  FABLE_LOCAL_HISTORY_MESSAGE_LIMIT,
-  fableThreadWorkspaceSlug,
-  type FableLocalHistoryMessage,
-} from "./fable-local-runtime.ts"
+  CLAUDE_LOCAL_HISTORY_MESSAGES,
+  CLAUDE_LOCAL_HISTORY_MESSAGE_LIMIT,
+  claudeThreadWorkspaceSlug,
+  type ClaudeLocalHistoryMessage,
+} from "./claude-local-runtime.ts"
 import type { CodexPreflight } from "./codex-preflight.ts"
 import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
 import {
@@ -111,7 +111,7 @@ import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
 import type { CodexControlPlaneRegistry } from "./codex-control-plane.ts"
 import type { CodexDurableQueue } from "./codex-durable-queue.ts"
 import type { CodexEcosystem, CodexEcosystemRegistry } from "./codex-ecosystem.ts"
-import type { FableLocalQueueFollowupOutcome } from "./fable-local-runtime.ts"
+import type { ClaudeLocalQueueFollowupOutcome } from "./claude-local-runtime.ts"
 import { fullAutoPrompt } from "./full-auto-lane.ts"
 
 /**
@@ -127,7 +127,7 @@ export const FULL_AUTO_INSTRUCTION =
 export type CodexLocalTurnInput = Readonly<{
   turnRef: string
   threadRef: string
-  history: ReadonlyArray<FableLocalHistoryMessage>
+  history: ReadonlyArray<ClaudeLocalHistoryMessage>
   message: string
   queueRef?: string
   clientUserMessageId?: string
@@ -157,10 +157,10 @@ export type CodexLocalTurnInput = Readonly<{
    * attachment into a bounded per-turn subdir of the thread workspace and
    * passes its path. Absent/empty = the prior no-image invocation, unchanged.
    */
-  images?: ReadonlyArray<FableLocalImageAttachment>
+  images?: ReadonlyArray<ClaudeLocalImageAttachment>
   /** Main-owned startup recovery. Exact account/thread only; never renderer supplied. */
   recovery?: Readonly<{ threadId: string; accountRef: string }>
-  emit: (event: FableLocalEvent) => void
+  emit: (event: ClaudeLocalEvent) => void
 }>
 
 export type CodexLocalTurnResult =
@@ -169,11 +169,11 @@ export type CodexLocalTurnResult =
       text: string
       totalTokens: number | null
       accountRef: string
-      usage?: FableChildUsage
+      usage?: ClaudeChildUsage
       /** The codex thread id (session continuity receipt), when reported. */
       threadId: string | null
     }>
-  | Readonly<{ ok: false; reason: FableLocalFailureReason; detail: string }>
+  | Readonly<{ ok: false; reason: ClaudeLocalFailureReason; detail: string }>
 
 export type CodexLocalRuntimeOptions = Readonly<{
   /** Resolved lazily (Electron's userData path is not final at module load). */
@@ -254,12 +254,12 @@ export type CodexLocalRuntime = Readonly<{
    * the shared dispatcher supplies bounded host-owned history. */
   resetContinuity: (threadRef: string) => void
   interrupt: (turnRef: string) => boolean
-  steerCurrent: (request: FableLocalQueueFollowupRequest) => Promise<Readonly<{
+  steerCurrent: (request: ClaudeLocalQueueFollowupRequest) => Promise<Readonly<{
     ok: boolean
     outcome: "delivered" | "unsupported" | "not_found"
   }>>
-  queueFollowup: (request: FableLocalQueueFollowupRequest) => FableLocalQueueFollowupOutcome
-  answerQuestion: (request: FableLocalAnswerQuestionRequest) => boolean
+  queueFollowup: (request: ClaudeLocalQueueFollowupRequest) => ClaudeLocalQueueFollowupOutcome
+  answerQuestion: (request: ClaudeLocalAnswerQuestionRequest) => boolean
   dispose: () => void
 }>
 
@@ -267,14 +267,14 @@ const bounded = (value: string, limit: number): string =>
   value.length > limit ? `${value.slice(0, limit - 1)}…` : value
 
 const historyPrompt = (
-  history: ReadonlyArray<FableLocalHistoryMessage>,
+  history: ReadonlyArray<ClaudeLocalHistoryMessage>,
   message: string,
 ): string => {
   const window = history
     .filter(note => note.role !== "system")
-    .slice(-FABLE_LOCAL_HISTORY_MESSAGES)
+    .slice(-CLAUDE_LOCAL_HISTORY_MESSAGES)
     .map(note =>
-      `${note.role === "user" ? "User" : "Assistant"}: ${bounded(note.text, FABLE_LOCAL_HISTORY_MESSAGE_LIMIT)}`)
+      `${note.role === "user" ? "User" : "Assistant"}: ${bounded(note.text, CLAUDE_LOCAL_HISTORY_MESSAGE_LIMIT)}`)
   if (window.length === 0) return message
   return [
     "Conversation so far (for context; reply only to the final user message):",
@@ -284,7 +284,7 @@ const historyPrompt = (
 }
 
 /** File extension for a supported image media type (`codex exec -i` path). */
-const codexImageExtension = (mediaType: FableLocalImageAttachment["mediaType"]): string =>
+const codexImageExtension = (mediaType: ClaudeLocalImageAttachment["mediaType"]): string =>
   mediaType === "image/jpeg" ? "jpg" : mediaType.slice("image/".length)
 
 /**
@@ -296,7 +296,7 @@ const codexImageExtension = (mediaType: FableLocalImageAttachment["mediaType"]):
 export const writeCodexTurnImages = (
   workspace: string,
   turnRef: string,
-  images: ReadonlyArray<FableLocalImageAttachment>,
+  images: ReadonlyArray<ClaudeLocalImageAttachment>,
 ): ReadonlyArray<string> => {
   if (images.length === 0) return []
   const slug = turnRef.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120)
@@ -335,7 +335,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
   }>()
   const activeTurnByThread = new Map<string, {
     turnRef: string
-    emit: (event: FableLocalEvent) => void
+    emit: (event: ClaudeLocalEvent) => void
     providerTurnId: string | null
     control: { steer: ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null }
   }>()
@@ -343,7 +343,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
   let followupSequence = 0
   const pendingQuestions = new Map<string, Readonly<{
     turnRef: string
-    accept: (request: FableLocalAnswerQuestionRequest) => boolean
+    accept: (request: ClaudeLocalAnswerQuestionRequest) => boolean
     deny: () => void
   }>>()
   let questionSequence = 0
@@ -509,7 +509,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     fullAuto?: boolean
     /** Full Auto #8884: see CodexLocalTurnInput.autoResolveQuestions. */
     autoResolveQuestions?: boolean
-    emit: (event: FableLocalEvent) => void
+    emit: (event: ClaudeLocalEvent) => void
     control: {
       interrupted: boolean
       child: ChildLike | null
@@ -585,7 +585,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
               kind: "lane_notice",
               text: bounded(
                 `Codex requested approval (${redactChildText(requestSummary, input.workspace)}) during an unattended Full Auto turn — auto-declined because no one is present to answer`,
-                FABLE_LOCAL_SUMMARY_LIMIT,
+                CLAUDE_LOCAL_SUMMARY_LIMIT,
               ),
             })
             return { decision: "decline" }
@@ -600,7 +600,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
               input.emit({ kind: "question_resolved", questionRef, outcome })
               resolve({ decision })
             }
-            const question = bounded(redactChildText(requestSummary, input.workspace), FABLE_LOCAL_SUMMARY_LIMIT)
+            const question = bounded(redactChildText(requestSummary, input.workspace), CLAUDE_LOCAL_SUMMARY_LIMIT)
             pendingQuestions.set(questionRef, {
               turnRef: input.turnRef,
               accept: answer => {
@@ -656,7 +656,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             kind: "lane_notice",
             text: bounded(
               "Codex asked a question during an unattended Full Auto turn — auto-declined because no one is present to answer; the turn continues",
-              FABLE_LOCAL_SUMMARY_LIMIT,
+              CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
           })
           return { answers: {} }
@@ -674,12 +674,12 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             const item = option as Record<string, unknown>
             return typeof item.label === "string"
               ? [{ label: bounded(item.label, 200), ...(typeof item.description === "string"
-                  ? { description: bounded(item.description, FABLE_LOCAL_SUMMARY_LIMIT) }
+                  ? { description: bounded(item.description, CLAUDE_LOCAL_SUMMARY_LIMIT) }
                   : {}) }]
               : []
           }) : []
-          const projected: FableLocalQuestion = {
-            question: bounded(value.question, FABLE_LOCAL_SUMMARY_LIMIT),
+          const projected: ClaudeLocalQuestion = {
+            question: bounded(value.question, CLAUDE_LOCAL_SUMMARY_LIMIT),
             header: bounded(typeof value.header === "string" ? value.header : "Input", 120),
             options,
             multiSelect: false,
@@ -926,7 +926,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       const emitAgentDelta = (): void => {
         let pending = agentText.slice(emittedText.length)
         while (pending.length > 0) {
-          const slice = pending.slice(0, FABLE_LOCAL_DELTA_LIMIT)
+          const slice = pending.slice(0, CLAUDE_LOCAL_DELTA_LIMIT)
           input.emit({ kind: "text_delta", text: slice })
           emittedText += slice
           pending = pending.slice(slice.length)
@@ -938,14 +938,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       ): Readonly<{ toolName: string; summary: string; ok: boolean }> | null => {
         const type = typeof item.type === "string" ? item.type : ""
         if (type === "command_execution") {
-          // Args summaries use the SAME JSON shape the fable lane emits
+          // Args summaries use the SAME JSON shape the claude lane emits
           // (JSON.stringify of the tool input) so the shared tool-card
           // humanizer extracts the command for the card's detail line.
           return {
             toolName: "Bash",
             summary: bounded(
               JSON.stringify({ command: redact(typeof item.command === "string" ? item.command : "") }),
-              FABLE_LOCAL_SUMMARY_LIMIT,
+              CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
             ok: (typeof item.exit_code === "number" ? item.exit_code === 0 : item.status !== "failed"),
           }
@@ -969,7 +969,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             toolName: "WebSearch",
             summary: bounded(
               JSON.stringify({ query: redact(typeof item.query === "string" ? item.query : "") }),
-              FABLE_LOCAL_SUMMARY_LIMIT,
+              CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
             ok: true,
           }
@@ -1009,14 +1009,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
                 : record.text.startsWith(agentText)
                   ? record.text
                   : `${agentText}\n\n${record.text}`
-              agentText = bounded(redact(candidate), FABLE_LOCAL_FINAL_TEXT_LIMIT)
+              agentText = bounded(redact(candidate), CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
               emitAgentDelta()
             }
             return
           }
           if (itemType === "reasoning") {
             if (type === "item.completed" && typeof record.text === "string" && record.text.trim() !== "") {
-              input.emit({ kind: "reasoning", text: bounded(redact(record.text), FABLE_LOCAL_SUMMARY_LIMIT) })
+              input.emit({ kind: "reasoning", text: bounded(redact(record.text), CLAUDE_LOCAL_SUMMARY_LIMIT) })
             }
             return
           }
@@ -1041,7 +1041,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             pendingToolNames.delete(itemId)
             const resultSummary = itemType === "command_execution" &&
               typeof record.aggregated_output === "string"
-              ? bounded(redact(record.aggregated_output), FABLE_LOCAL_SUMMARY_LIMIT)
+              ? bounded(redact(record.aggregated_output), CLAUDE_LOCAL_SUMMARY_LIMIT)
               : facts.summary
             input.emit({ kind: "tool_result", toolName: facts.toolName, ok: facts.ok, summary: resultSummary, ...typed })
           }
@@ -1178,10 +1178,10 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
 
   const runTurn = async (input: CodexLocalTurnInput): Promise<CodexLocalTurnResult> => {
     const failure = (
-      reason: FableLocalFailureReason,
+      reason: ClaudeLocalFailureReason,
       detail: string,
     ): Extract<CodexLocalTurnResult, { ok: false }> =>
-      ({ ok: false, reason, detail: bounded(detail, FABLE_LOCAL_SUMMARY_LIMIT) })
+      ({ ok: false, reason, detail: bounded(detail, CLAUDE_LOCAL_SUMMARY_LIMIT) })
     const emitFailure = (
       result: Extract<CodexLocalTurnResult, { ok: false }>,
     ): CodexLocalTurnResult => {
@@ -1213,7 +1213,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
     // Desktop uses its launch directory for top-level coding turns. The
     // isolated per-thread fallback remains available to tests/other hosts.
     const workspace = options.workspaceRoot?.() ??
-      join(options.scratchRoot(), "threads", fableThreadWorkspaceSlug(input.threadRef))
+      join(options.scratchRoot(), "threads", claudeThreadWorkspaceSlug(input.threadRef))
     let confirmedQuiescence = false
     let providerTurnId: string | null = null
     try {
@@ -1298,7 +1298,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             })
           }
           const usage = attempt.usage
-          const split: FableChildUsage | null = usage === null ? null : {
+          const split: ClaudeChildUsage | null = usage === null ? null : {
             inputTokens: usage.inputTokens,
             cachedInputTokens: usage.cachedInputTokens,
             outputTokens: usage.outputTokens,
@@ -1340,7 +1340,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             kind: "lane_notice",
             text: bounded(
               `Codex account ${account.ref} needs reconnect — rotating to the next candidate account`,
-              FABLE_LOCAL_SUMMARY_LIMIT,
+              CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
           })
           continue
@@ -1365,7 +1365,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
                   : attempt.rateLimited
                     ? `Codex account ${account.ref} is rate-limited (${attempt.detail}) — rotating to the next candidate account`
                     : `Codex account ${account.ref} failed before producing content (${attempt.detail}) — rotating to the next candidate account`,
-              FABLE_LOCAL_SUMMARY_LIMIT,
+              CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
           })
           continue
@@ -1429,7 +1429,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         return { ok: false, outcome: "not_found" }
       }
       const delivered = await active.control.steer(
-        bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+        bounded(request.message, CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
         request.expectedTurnId,
         request.clientUserMessageId,
       )
@@ -1447,7 +1447,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       if (options.durableQueue !== undefined) {
         const queued = options.durableQueue.enqueue(
           request.threadRef,
-          bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+          bounded(request.message, CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
           request.intentRef !== undefined && request.clientUserMessageId !== undefined
             ? { intentRef: request.intentRef, clientUserMessageId: request.clientUserMessageId }
             : undefined,
@@ -1458,11 +1458,11 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       }
       followupSequence += 1
       const queueRef = bounded(
-        `followup.${fableThreadWorkspaceSlug(request.threadRef)}.${followupSequence}`,
+        `followup.${claudeThreadWorkspaceSlug(request.threadRef)}.${followupSequence}`,
         120,
       )
       const queue = followupQueue.get(request.threadRef) ?? []
-      queue.push({ queueRef, message: bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT) })
+      queue.push({ queueRef, message: bounded(request.message, CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT) })
       followupQueue.set(request.threadRef, queue)
       active.emit({ kind: "followup_queued", queueRef, position: queue.length })
       return { ok: true, queued: true, queueRef, position: queue.length }

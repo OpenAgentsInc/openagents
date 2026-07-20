@@ -22,7 +22,7 @@ import {
   installBuiltinProductSpecWorkSkill,
 } from "./builtin-productspec-skill.ts"
 import { ProductSpecDynamicTools } from "./product-spec-app-server-tools.ts"
-import type { FableLocalEvent } from "./fable-local-contract.ts"
+import type { ClaudeLocalEvent } from "./claude-local-contract.ts"
 
 const roots: string[] = []
 afterEach(() => {
@@ -566,7 +566,7 @@ describe("Codex app-server native integration", () => {
 
   test("projects current Codex agent states into one causal child lifecycle", async () => {
     const fake = fakeServer()
-    const events: FableLocalEvent[] = []
+    const events: ClaudeLocalEvent[] = []
     const turn = runCodexAppServerTurn({
       binary: "/usr/bin/codex",
       env: {},

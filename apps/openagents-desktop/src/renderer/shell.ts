@@ -58,7 +58,7 @@ import {
   type CodexModel,
   type CodexReasoningEffort,
   type LocalModel,
-} from "../fable-local-contract.ts"
+} from "../claude-local-contract.ts"
 import {
   composerActionPresentation,
   idleComposerAdmission,
@@ -281,7 +281,7 @@ import {
   toStartImages,
   type ComposerImageAttachment,
 } from "./composer-images.ts"
-import type { FableLocalImageAttachment, LocalProviderTarget } from "../fable-local-contract.ts"
+import type { ClaudeLocalImageAttachment, LocalProviderTarget } from "../claude-local-contract.ts"
 import type { LocalSkillInvocation } from "../plugin-config-contract.ts"
 import type { CodexHandoffOpenResult } from "../codex-handoff-contract.ts"
 import { parseExplicitSkillInvocation } from "./skill-invocation.ts"
@@ -343,7 +343,7 @@ export type DesktopWorkspaceName = (typeof desktopWorkspaceNames)[number]
 export const codingSessionFilters = ["active", "recovery", "archived"] as const
 export type CodingSessionFilter = (typeof codingSessionFilters)[number]
 
-export const desktopHarnessNames = ["fable", "codex"] as const
+export const desktopHarnessNames = ["claude", "codex"] as const
 export type DesktopHarnessName = (typeof desktopHarnessNames)[number]
 export type LocalPermissionMode = "owner_full" | "plan_only"
 
@@ -358,7 +358,7 @@ export type HarnessLaneAvailability = Readonly<{
   diagnostic?: Readonly<{ kind: "invalid_config"; detail: string }>
 }>
 export type HarnessLanes = Readonly<{
-  fable: HarnessLaneAvailability
+  claude: HarnessLaneAvailability
   codex: HarnessLaneAvailability
 }>
 
@@ -471,11 +471,11 @@ export type DesktopShellState = Readonly<{
   selectedHarness: DesktopHarnessName
   /**
    * The exact provider lane bound to the active thread (#8977): "codex-local",
-   * "fable-local", or an admitted ACP peer lane ref such as "acp:grok-cli".
-   * `selectedHarness` stays the coarse codex/fable TRANSPORT choice (which IPC
+   * "claude-local", or an admitted ACP peer lane ref such as "acp:grok-cli".
+   * `selectedHarness` stays the coarse codex/claude TRANSPORT choice (which IPC
    * channel a turn rides); this field is the real first-class provider truth
    * used to resolve displayed capabilities and gate sends against exactly the
-   * bound lane's admitted evidence, never a codex/fable stand-in for an ACP
+   * bound lane's admitted evidence, never a codex/claude stand-in for an ACP
    * lane. Kept in lockstep with `selectedHarness` by every writer.
    */
   activeLaneRef: string
@@ -553,7 +553,7 @@ export type DesktopShellState = Readonly<{
   questionCards: Readonly<Record<string, QuestionCardInteraction>>
   /**
    * Evidence-gated answering: true only when the preload bridge actually
-   * exposes fableLocal.answerQuestion. Absent bridge (runtime lane not
+   * exposes claudeLocal.answerQuestion. Absent bridge (runtime lane not
    * merged yet) renders question cards read-only pending.
    */
   questionAnswerHostAvailable: boolean
@@ -693,7 +693,7 @@ export const initialDesktopShellState = (
   // Unproven until boot's availability probe lands (before first mount):
   // an unproven lane is disabled, not optimistically enabled.
   harnessLanes: {
-    fable: { available: false, reason: "Fable — checking local availability" },
+    claude: { available: false, reason: "Claude — checking local availability" },
     codex: { available: false, reason: "Codex — checking availability" },
   },
   providerLaneCapabilities: [],
@@ -808,7 +808,7 @@ export const DesktopQueueNextRequested = defineIntent("DesktopQueueNextRequested
  * Interrupt the streaming turn (EP250 audit gap #9, "cheapest fix" — 240
  * interrupts observed). Fired by the composer Stop button while `pending`;
  * the handler dispatches the active local lane's already-plumbed interrupt IPC
- * path (FableLocal/CodexLocal interrupt channel). The terminal turn result
+ * path (ClaudeLocal/CodexLocal interrupt channel). The terminal turn result
  * reverts the control to Send.
  */
 export const DesktopTurnInterrupted = defineIntent("DesktopTurnInterrupted", Schema.Null)
@@ -895,9 +895,9 @@ export const DesktopHarnessSelected = defineIntent(
 )
 /**
  * Selects a real first-class provider lane by ref (#8977), including an
- * admitted ACP peer lane that `DesktopHarnessSelected`'s codex/fable-only
+ * admitted ACP peer lane that `DesktopHarnessSelected`'s codex/claude-only
  * payload cannot express. Used by the provider picker's cycle for any target
- * beyond the native codex-local/fable-local pair, which keeps dispatching the
+ * beyond the native codex-local/claude-local pair, which keeps dispatching the
  * SAME `DesktopHarnessSelected` intent Shift+Tab uses (composer-shortcuts.ts),
  * preserving that owner-stated binary toggle unchanged.
  */
@@ -1678,12 +1678,12 @@ export const capabilityForHarness = (
   harness: DesktopHarnessName = state.selectedHarness,
 ): ProviderLaneComposerProjection | null =>
   state.providerLaneCapabilities.find(
-    lane => lane.laneRef === (harness === "codex" ? "codex-local" : "fable-local"),
+    lane => lane.laneRef === (harness === "codex" ? "codex-local" : "claude-local"),
   ) ?? null
 
 /**
  * The capability projection for the REAL bound lane (#8977), which may be an
- * admitted ACP peer -- `capabilityForHarness`'s codex/fable-only mapping can
+ * admitted ACP peer -- `capabilityForHarness`'s codex/claude-only mapping can
  * never resolve one. Composer display and send-gating must use this, not the
  * coarse harness mapping, or an ACP-bound thread silently shows/gates against
  * the wrong lane's evidence.
@@ -1720,13 +1720,13 @@ export const selectableProviderLanes = (state: DesktopShellState): ReadonlyArray
   )
   return [
     { laneRef: "codex-local", harness: "codex" as const, displayName: displayNameFor("codex-local", "Codex") },
-    { laneRef: "fable-local", harness: "fable" as const, displayName: displayNameFor("fable-local", "Claude") },
-    ...admittedAcpLanes.map(lane => ({ laneRef: lane.laneRef, harness: "fable" as const, displayName: lane.displayName })),
+    { laneRef: "claude-local", harness: "claude" as const, displayName: displayNameFor("claude-local", "Claude") },
+    ...admittedAcpLanes.map(lane => ({ laneRef: lane.laneRef, harness: "claude" as const, displayName: lane.displayName })),
   ]
 }
 
 const selectableProviderLaneAvailable = (state: DesktopShellState, lane: SelectableProviderLane): boolean => {
-  if (lane.laneRef === "codex-local" || lane.laneRef === "fable-local") {
+  if (lane.laneRef === "codex-local" || lane.laneRef === "claude-local") {
     const capability = state.providerLaneCapabilities.find(entry => entry.laneRef === lane.laneRef)
     if (capability?.authentication !== undefined) {
       return capability.admission === "admitted" && capability.authentication === "ready"
@@ -1788,7 +1788,7 @@ export type ChatHost = Readonly<{
     reasoningEffort?: CodexReasoningEffort
     model?: LocalModel
     /** Optional image attachments threaded into the turn payload (capability I1). */
-    images?: ReadonlyArray<FableLocalImageAttachment>
+    images?: ReadonlyArray<ClaudeLocalImageAttachment>
     /** Full Auto (#8852): Codex-lane only; ignored on the Claude lane. */
     fullAuto?: boolean
     onUpdate?: (thread: DesktopThread) => void
@@ -1921,9 +1921,9 @@ export const messageWithPreviewContext = (
 
 /**
  * Typed question-answer bridge (EP250 question cards). `answer` is null when
- * the preload surface has no fableLocal.answerQuestion (defensive: cards then
+ * the preload surface has no claudeLocal.answerQuestion (defensive: cards then
  * render read-only pending). The input mirrors the FROZEN
- * FableLocalAnswerQuestionRequest shape.
+ * ClaudeLocalAnswerQuestionRequest shape.
  */
 export type QuestionHost = Readonly<{
   answer:
@@ -1943,7 +1943,7 @@ export type QuestionHost = Readonly<{
  * host resolves to no attachments (drop/paste still work in-renderer).
  */
 export type ComposerImagePickerHost = Readonly<{
-  pick: () => Promise<import("../fable-local-contract.ts").FableLocalPickedImagesResult>
+  pick: () => Promise<import("../claude-local-contract.ts").ClaudeLocalPickedImagesResult>
 }>
 
 export type WorkspaceHost = Readonly<{
@@ -2061,10 +2061,10 @@ export const withTurnResult = (state: DesktopShellState, result: Awaited<ReturnT
       runtimeFailureByThread: { ...state.runtimeFailureByThread, [completedThread.id]: null },
       threads: [completedThread, ...state.threads.filter((thread) => thread.id !== completedThread.id)]
         .slice(0, desktopLocalThreadProjectionLimit),
-      // A successful Fable turn just established/renewed this exact thread's
+      // A successful Claude turn just established/renewed this exact thread's
       // runtime continuity entry. Record it as an H1 picker candidate without
       // adding an asynchronous refresh to history navigation.
-      history: state.selectedHarness === "fable"
+      history: state.selectedHarness === "claude"
         ? {
             ...selected.history,
             localThreads: [result.thread, ...(state.history.localThreads ?? []).filter(thread => thread.id !== result.thread!.id)].slice(0, 5),
@@ -3004,7 +3004,7 @@ export const makeDesktopShellHandlers = (
     // already names the reason. Never substitute another lane silently.
     if (providerPath && !current.harnessLanes[current.selectedHarness].available) return
     // #8977: gate against the REAL bound lane's evidence (which may be an
-    // admitted ACP peer), not the codex/fable-only mapping.
+    // admitted ACP peer), not the codex/claude-only mapping.
     const laneCapabilities = capabilityForActiveLane(current)
     if (providerPath && laneCapabilities !== null && laneCapabilities.admission !== "admitted") return
     if (providerPath && laneCapabilities !== null && current.composerImages.length > 0 && !laneCapabilities.images) return
@@ -3024,7 +3024,7 @@ export const makeDesktopShellHandlers = (
     if (current.activeThreadId === null) {
       const admittedSelectionRevision = selectionRevision
       // #8977: a fresh thread must honor a pre-selected admitted ACP lane
-      // (activeLaneRef), not collapse back to the codex/fable transport pair.
+      // (activeLaneRef), not collapse back to the codex/claude transport pair.
       const thread = yield* Effect.promise(() => chat.newThread(current.activeLaneRef))
       if (thread === null || admittedSelectionRevision !== selectionRevision) return
       const draft = current.input
@@ -3261,12 +3261,12 @@ export const makeDesktopShellHandlers = (
       // #8977: an ACP-bound thread (e.g. one Full Auto created on an admitted
       // acp:* lane) must not silently keep whatever harness was previously
       // selected -- both fields move together so the picker and send-gating
-      // reflect the thread's REAL bound lane, not a codex/fable stand-in.
+      // reflect the thread's REAL bound lane, not a codex/claude stand-in.
       if (laneRef !== null) {
         yield* SubscriptionRef.update(state, current => ({
           ...current,
           activeLaneRef: laneRef,
-          selectedHarness: laneRef === "codex-local" ? "codex" as const : "fable" as const,
+          selectedHarness: laneRef === "codex-local" ? "codex" as const : "claude" as const,
         }))
       }
     }
@@ -3902,7 +3902,7 @@ export const makeDesktopShellHandlers = (
     const revision = ++selectionRevision
     const current = yield* SubscriptionRef.get(state)
     // #8977: honor a pre-selected admitted ACP lane instead of collapsing
-    // back to the codex/fable transport pair.
+    // back to the codex/claude transport pair.
     const thread = yield* Effect.promise(() => chat.newThread(current.activeLaneRef))
     if (thread === null || revision !== selectionRevision) return
     yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
@@ -3911,7 +3911,7 @@ export const makeDesktopShellHandlers = (
   DesktopHarnessSelected: (harness) => Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(state)
     if (current.selectedHarness === harness) return
-    const laneRef = harness === "codex" ? "codex-local" : "fable-local"
+    const laneRef = harness === "codex" ? "codex-local" : "claude-local"
     const liveSelectionVerified = current.activeThreadId !== null && chat.selectLane !== undefined
     if (current.activeThreadId !== null && chat.selectLane !== undefined) {
       const selected = yield* Effect.promise(() => chat.selectLane!(current.activeThreadId!, laneRef))
@@ -3935,7 +3935,7 @@ export const makeDesktopShellHandlers = (
   }),
   /**
    * Selects an admitted provider lane by ref (#8977) -- the composer picker's
-   * cycle uses this for any target beyond the native codex-local/fable-local
+   * cycle uses this for any target beyond the native codex-local/claude-local
    * pair (which keeps going through `DesktopHarnessSelected` above,
    * unchanged). Re-checks admission here too: a stale/adversarial laneRef
    * from the renderer must never move `activeLaneRef` without exact evidence,
@@ -3954,7 +3954,7 @@ export const makeDesktopShellHandlers = (
     yield* SubscriptionRef.update(state, value => ({
       ...value,
       activeLaneRef: laneRef,
-      selectedHarness: laneRef === "codex-local" ? "codex" as const : "fable" as const,
+      selectedHarness: laneRef === "codex-local" ? "codex" as const : "claude" as const,
     }))
   }),
   DesktopCodexReasoningSelected: (reasoningEffort) =>
@@ -4043,7 +4043,7 @@ export const makeDesktopShellHandlers = (
     }),
   DesktopPermissionModeSelected: (permissionMode) =>
     SubscriptionRef.update(state, current =>
-      current.activeThreadId === null || current.selectedHarness !== "fable"
+      current.activeThreadId === null || current.selectedHarness !== "claude"
         ? current
         : { ...current, permissionModeByThread: { ...current.permissionModeByThread, [current.activeThreadId]: permissionMode } }),
   DesktopMessageSelected: (key) =>
@@ -4392,7 +4392,7 @@ export const makeDesktopShellHandlers = (
   }),
   HistorySearchCleared: () => SubscriptionRef.update(state, current => ({ ...current, history: { ...current.history, searchQuery: "", searchResults: [], searchTruncated: false, searchPending: false } })),
   // H1: the picker contains app-local threads only. Selecting one reuses its
-  // exact thread id, so the next turn reaches fable-local's existing
+  // exact thread id, so the next turn reaches claude-local's existing
   // per-thread SDK resume map. No provider-history row is mutated or cloned.
   HistoryResumePickerToggled: () => SubscriptionRef.update(state, current => ({
     ...current,
@@ -4426,7 +4426,7 @@ export const makeDesktopShellHandlers = (
       return
     }
     // A fork has bounded history but no SDK continuity yet, so it must not
-    // enter the H1 picker until its first successful Fable turn.
+    // enter the H1 picker until its first successful Claude turn.
     yield* SubscriptionRef.update(state, current => withNewChat(current, thread))
     yield* recordNavigation({ kind: "local_session", threadRef: thread.id, title: thread.title || "Forked session" })
   }),
@@ -5542,7 +5542,7 @@ export const providerTargetForThread = (state: DesktopShellState): LocalProvider
  */
 export const providerTargetForSubmission = (state: DesktopShellState): LocalProviderTarget | null => {
   if (state.activeThreadId === null) return null
-  if (state.selectedHarness === "fable") {
+  if (state.selectedHarness === "claude") {
     const selected = state.providerTargetsByThread[state.activeThreadId]
     return selected?.provider === "claude_agent" ? { ...selected, model: state.claudeModel } : null
   }
@@ -5551,7 +5551,7 @@ export const providerTargetForSubmission = (state: DesktopShellState): LocalProv
 }
 
 const providerAccountControl = (state: DesktopShellState): View | null => {
-  if (state.selectedHarness === "fable" && state.activeThreadId !== null &&
+  if (state.selectedHarness === "claude" && state.activeThreadId !== null &&
       state.providerTargetsByThread[state.activeThreadId] === undefined) {
     const fallback = state.fleet.accounts.find(account =>
       account.provider === "claude_agent" && account.readiness === "ready")
@@ -5591,7 +5591,7 @@ const providerAccountControl = (state: DesktopShellState): View | null => {
 }
 
 const permissionModeControl = (state: DesktopShellState): View | null => {
-  if (state.selectedHarness !== "fable" || state.activeThreadId === null) return null
+  if (state.selectedHarness !== "claude" || state.activeThreadId === null) return null
   const current = state.permissionModeByThread[state.activeThreadId] ?? "owner_full"
   const next: LocalPermissionMode = current === "owner_full" ? "plan_only" : "owner_full"
   return Button({
@@ -5917,7 +5917,7 @@ const harnessSelect = (state: DesktopShellState): View => Select({
   value: state.selectedHarness,
   options: [
     { value: "codex", label: "Codex", disabled: !state.harnessLanes.codex.available },
-    { value: "fable", label: "Claude", disabled: !state.harnessLanes.fable.available },
+    { value: "claude", label: "Claude", disabled: !state.harnessLanes.claude.available },
   ],
   disabled: state.pending,
   onChange: IntentRef("DesktopHarnessSelected", ComponentValueBinding()),
@@ -5935,7 +5935,7 @@ const modelSelect = (state: DesktopShellState): View => Select({
         label: option.displayName,
       })) ?? [{ value: state.codexModel, label: state.codexModel }])
     : [
-        { value: "claude-fable-5", label: "Fable" },
+        { value: "claude-fable-5", label: "Claude" },
         { value: "claude-opus-4-8", label: "Opus 4.8" },
         { value: "claude-sonnet-5", label: "Sonnet 5" },
       ],
@@ -6033,7 +6033,7 @@ const shellComposer = (state: DesktopShellState): View => {
         // and scrolls internally past that.
         style: { width: "full", minHeight: "2xs" },
       }),
-      // BOTTOM ACTION BAR inside the same container: [+ attach] [Fable|Codex]
+      // BOTTOM ACTION BAR inside the same container: [+ attach] [Claude|Codex]
       // …spacer… [circular send / stop].
       Stack(
         {

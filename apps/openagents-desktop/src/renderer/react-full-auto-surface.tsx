@@ -235,7 +235,7 @@ const FullAutoRunView = ({ state, report }: {
   const canResume = run.state === "paused"
   const canRetryNow = run.state === "stalled" && run.recoveryAction === "retry_now"
   const canStop = !FULL_AUTO_RUN_TERMINAL_STATES.includes(run.state)
-  const handoffTargetLane = run.lane === "fable-local" ? "codex-local" : "fable-local"
+  const handoffTargetLane = run.lane === "claude-local" ? "codex-local" : "claude-local"
   const handoffTargetLabel = fullAutoLauncherLaneLabel(handoffTargetLane)
   return <section className="oa-react-full-auto-run" data-full-auto-run-ref={run.runRef} data-full-auto-run-state={run.state} aria-labelledby="react-full-auto-run-title">
     <header className="oa-react-full-auto-run-header">

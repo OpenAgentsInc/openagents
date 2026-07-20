@@ -55,7 +55,7 @@ export const FULL_AUTO_LAUNCHER_ROUTING_POLICY_LIMIT = 8
  * already uses; the FA-WIRE-01 ordered fallback picker sources from it too. */
 export const fullAutoLauncherLaneOptions: ReadonlyArray<Readonly<{ value: string; label: string }>> = [
   { value: "codex-local", label: "Codex" },
-  { value: "fable-local", label: "Claude" },
+  { value: "claude-local", label: "Claude" },
   { value: "acp:grok-cli", label: "Grok CLI" },
   { value: "acp:cursor-agent", label: "Cursor Agent" },
 ]
@@ -100,7 +100,7 @@ export const emptyFullAutoLauncherDraft = (
   model: "",
   // The default path is Codex with Claude available for typed automatic
   // rotation. Main still re-validates both lanes before admitting the run.
-  fallbackLanes: ["fable-local"],
+  fallbackLanes: ["claude-local"],
   turnCapText: String(FULL_AUTO_LAUNCHER_DEFAULT_TURN_CAP),
   maxWallClockMinutesText: "",
   submitting: false,
@@ -396,8 +396,8 @@ export const makeFullAutoWorkspaceHandlers = <S extends FullAutoCapableState>(
           fallbackLanes: (() => {
             const remaining = current.fullAuto.launcher.fallbackLanes.filter(lane => lane !== value)
             if (remaining.length > 0) return remaining
-            if (value === "codex-local") return ["fable-local"]
-            if (value === "fable-local") return ["codex-local"]
+            if (value === "codex-local") return ["claude-local"]
+            if (value === "claude-local") return ["codex-local"]
             return []
           })(),
           error: null,
@@ -789,7 +789,7 @@ export const fullAutoRunView = (fullAuto: FullAutoWorkspaceState): View => {
   const canResume = run.state === "paused"
   const canRetryNow = run.state === "stalled" && run.recoveryAction === "retry_now"
   const canStop = !["completed", "failed", "stopped", "cap_reached"].includes(run.state)
-  const handoffTargetLane = run.lane === "fable-local" ? "codex-local" : "fable-local"
+  const handoffTargetLane = run.lane === "claude-local" ? "codex-local" : "claude-local"
   const handoffTargetLabel = fullAutoLauncherLaneLabel(handoffTargetLane)
   return Stack(
     {

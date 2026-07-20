@@ -1,6 +1,6 @@
 /**
- * Fable local runtime (#8712) — one real streaming Claude turn on this
- * machine, with zero login flow, for the desktop composer's "Fable" lane in
+ * Claude local runtime (#8712) — one real streaming Claude turn on this
+ * machine, with zero login flow, for the desktop composer's "Claude" lane in
  * local (not-signed-in) mode.
  *
  * Prefers the user's ordinary authenticated Claude Code session in
@@ -56,25 +56,25 @@ import {
 } from "@openagentsinc/pylon-core/custody/account-registry"
 
 import {
-  FABLE_LOCAL_DELTA_LIMIT,
-  FABLE_LOCAL_FINAL_TEXT_LIMIT,
-  FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT,
-  FABLE_LOCAL_PLAN_ENTRY_LIMIT,
-  FABLE_LOCAL_SUMMARY_LIMIT,
-  normalizeFableLocalMcpServers,
-  type FableChildUsage,
-  type FableLocalAnswerQuestionRequest,
-  type FableLocalAvailability,
-  type FableLocalEvent,
-  type FableLocalFailureReason,
+  CLAUDE_LOCAL_DELTA_LIMIT,
+  CLAUDE_LOCAL_FINAL_TEXT_LIMIT,
+  CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT,
+  CLAUDE_LOCAL_PLAN_ENTRY_LIMIT,
+  CLAUDE_LOCAL_SUMMARY_LIMIT,
+  normalizeClaudeLocalMcpServers,
+  type ClaudeChildUsage,
+  type ClaudeLocalAnswerQuestionRequest,
+  type ClaudeLocalAvailability,
+  type ClaudeLocalEvent,
+  type ClaudeLocalFailureReason,
   type ClaudeModel,
-  type FableLocalImageAttachment,
-  type FableLocalMcpServerConfig,
-  type FableLocalPlanEntry,
-  type FableLocalQuestion,
-  type FableLocalQueueFollowupRequest,
-  type FableLocalSteerChildRequest,
-} from "./fable-local-contract.ts"
+  type ClaudeLocalImageAttachment,
+  type ClaudeLocalMcpServerConfig,
+  type ClaudeLocalPlanEntry,
+  type ClaudeLocalQuestion,
+  type ClaudeLocalQueueFollowupRequest,
+  type ClaudeLocalSteerChildRequest,
+} from "./claude-local-contract.ts"
 import {
   CODEX_CHILD_MODEL,
   CODEX_CHILD_REASONING_EFFORT,
@@ -86,12 +86,12 @@ import { resolveBundledClaudeExecutable } from "./provider-runtime-host.ts"
 
 const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
 /**
- * The lane's requested model ("IT HAS TO BE FABLE"): the SDK `Options.model`
+ * The lane's requested model ("IT HAS TO BE CLAUDE"): the SDK `Options.model`
  * key accepts a full model ID and its own docs name `'claude-fable-5'` as an
  * example. Without this the turn silently runs on the account home's default
  * model (seen live: claude-sonnet-4-6).
  */
-export const FABLE_LOCAL_MODEL = "claude-fable-5"
+export const CLAUDE_LOCAL_MODEL = "claude-fable-5"
 /**
  * Tools this headless lane strips from the model's context entirely (never
  * offered, not offered-then-denied — the model must not see tools that can
@@ -107,26 +107,26 @@ export const FABLE_LOCAL_MODEL = "claude-fable-5"
  * deliberately NOT here — it is wired to a real question UI through the
  * canUseTool answer path below.
  */
-export const FABLE_LOCAL_DISALLOWED_TOOLS = [
+export const CLAUDE_LOCAL_DISALLOWED_TOOLS = [
   "Skill",
   "EnterPlanMode",
   "ExitPlanMode",
   "ShowOnboardingRolePicker",
 ] as const
-export const FABLE_LOCAL_MAX_TURNS = 16
-export const FABLE_LOCAL_TIMEOUT_MS = 180_000
+export const CLAUDE_LOCAL_MAX_TURNS = 16
+export const CLAUDE_LOCAL_TIMEOUT_MS = 180_000
 /**
  * How long a pending AskUserQuestion waits for the user before resolving as
  * a graceful typed deny (outcome "timeout"). The turn wall clock is PAUSED
  * while a question is pending — waiting on the user is not model latency.
  */
-export const FABLE_LOCAL_QUESTION_TIMEOUT_MS = 600_000
+export const CLAUDE_LOCAL_QUESTION_TIMEOUT_MS = 600_000
 /** Explicit owner/proof arming for the ordinary Claude Code session. The
  * host performs no Keychain probe: the real SDK either authenticates through
  * its normal custody path or returns a typed provider failure. */
-export const FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV = "OPENAGENTS_DESKTOP_USE_DEFAULT_CLAUDE_SESSION"
+export const CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV = "OPENAGENTS_DESKTOP_USE_DEFAULT_CLAUDE_SESSION"
 /** The one interactive tool this lane answers through a real UI path. */
-export const FABLE_LOCAL_QUESTION_TOOL = "AskUserQuestion"
+export const CLAUDE_LOCAL_QUESTION_TOOL = "AskUserQuestion"
 
 /**
  * Deterministic fallback per-thread workspace directory name under
@@ -135,7 +135,7 @@ export const FABLE_LOCAL_QUESTION_TOOL = "AskUserQuestion"
  * Sanitized (no dots, no separators) plus a digest suffix so distinct
  * threadRefs can never collide or traverse.
  */
-export const fableThreadWorkspaceSlug = (threadRef: string): string => {
+export const claudeThreadWorkspaceSlug = (threadRef: string): string => {
   const digest = createHash("sha256").update(threadRef).digest("hex").slice(0, 12)
   const safe = threadRef.replace(/[^A-Za-z0-9_-]/g, "-").replace(/^-+/, "").slice(0, 40)
   return safe.length === 0 ? `thread-${digest}` : `${safe}-${digest}`
@@ -146,27 +146,27 @@ export const fableThreadWorkspaceSlug = (threadRef: string): string => {
  * Kept in `allowedTools` (auto-allow) whenever the delegate MCP server is
  * offered; every other tool is allowed through the allow-all canUseTool.
  */
-export const FABLE_DELEGATE_TOOL_NAME = "mcp__codex__delegate"
+export const CLAUDE_DELEGATE_TOOL_NAME = "mcp__codex__delegate"
 /** Up to 3 simultaneous delegate calls per turn (the SDK parallelizes
  * concurrency-safe tool calls); at most 6 children per turn total. Over-cap
  * calls return a typed refusal — no child is ever spawned past a cap. */
-export const FABLE_DELEGATE_MAX_CONCURRENT = 3
-export const FABLE_DELEGATE_MAX_CHILDREN_PER_TURN = 6
+export const CLAUDE_DELEGATE_MAX_CONCURRENT = 3
+export const CLAUDE_DELEGATE_MAX_CHILDREN_PER_TURN = 6
 /**
  * SDK MCP tool calls can exceed the CLI's 60s stream-close default and the
  * Codex children run up to 240s, so the child env pins
  * CLAUDE_CODE_STREAM_CLOSE_TIMEOUT above the child budget.
  */
-export const FABLE_STREAM_CLOSE_TIMEOUT_MS = 270_000
+export const CLAUDE_STREAM_CLOSE_TIMEOUT_MS = 270_000
 /** Turn wall clock when delegation is enabled: children may take 240s each. */
-export const FABLE_LOCAL_DELEGATION_TIMEOUT_MS = 600_000
+export const CLAUDE_LOCAL_DELEGATION_TIMEOUT_MS = 600_000
 /**
  * The delegate tool contract shown to the model. LIMITATION (receipted): the
  * codex exec --json stream does not echo model/effort, so the pin is
  * spawn-config truth — the child is REQUESTED as gpt-5.5 at medium
  * reasoning and results are labeled "(requested)".
  */
-export const FABLE_DELEGATE_TOOL_DESCRIPTION =
+export const CLAUDE_DELEGATE_TOOL_DESCRIPTION =
   "Delegate a bounded task to a Codex sub-agent (gpt-5.5, medium reasoning). " +
   "Returns the sub-agent's final answer. Up to 3 delegations may run at once; " +
   "at most 6 per turn. The sub-agent starts in an EMPTY scratch directory (not " +
@@ -175,8 +175,8 @@ export const FABLE_DELEGATE_TOOL_DESCRIPTION =
   "or it will explore an empty directory. " +
   "Model/effort are pinned at spawn config (the Codex exec stream does not echo them back)."
 /** Bounded history window prepended when no resumable session exists. */
-export const FABLE_LOCAL_HISTORY_MESSAGES = 12
-export const FABLE_LOCAL_HISTORY_MESSAGE_LIMIT = 2_000
+export const CLAUDE_LOCAL_HISTORY_MESSAGES = 12
+export const CLAUDE_LOCAL_HISTORY_MESSAGE_LIMIT = 2_000
 
 /**
  * The SDK image content block shape (capability I1). Matches the Anthropic
@@ -184,9 +184,9 @@ export const FABLE_LOCAL_HISTORY_MESSAGE_LIMIT = 2_000
  * source: { type: "base64", media_type, data } }` block. Threaded into the
  * user message content array so the model receives the screenshot.
  */
-export type FableLocalSdkImageBlock = Readonly<{
+export type ClaudeLocalSdkImageBlock = Readonly<{
   type: "image"
-  source: Readonly<{ type: "base64"; media_type: FableLocalImageAttachment["mediaType"]; data: string }>
+  source: Readonly<{ type: "base64"; media_type: ClaudeLocalImageAttachment["mediaType"]; data: string }>
 }>
 
 /**
@@ -196,16 +196,16 @@ export type FableLocalSdkImageBlock = Readonly<{
  * one image block per attachment — because a bare string prompt cannot carry an
  * image (sdk.d.ts: image support requires the content-block array form).
  */
-export type FableLocalSdkUserMessage = Readonly<{
+export type ClaudeLocalSdkUserMessage = Readonly<{
   type: "user"
   message: Readonly<{
     role: "user"
-    content: ReadonlyArray<Readonly<{ type: "text"; text: string }> | FableLocalSdkImageBlock>
+    content: ReadonlyArray<Readonly<{ type: "text"; text: string }> | ClaudeLocalSdkImageBlock>
   }>
   parent_tool_use_id: null
 }>
 
-export type FableLocalQuerySession = AsyncIterable<unknown> & Readonly<{
+export type ClaudeLocalQuerySession = AsyncIterable<unknown> & Readonly<{
   /**
    * Claude Agent SDK Query.close(): forcefully terminate the CLI subprocess
    * and release its resources. Optional only so fixture/test iterables remain
@@ -214,10 +214,10 @@ export type FableLocalQuerySession = AsyncIterable<unknown> & Readonly<{
   close?: () => void
 }>
 
-export type FableLocalQuery = (input: {
-  prompt: string | AsyncIterable<FableLocalSdkUserMessage>
+export type ClaudeLocalQuery = (input: {
+  prompt: string | AsyncIterable<ClaudeLocalSdkUserMessage>
   options: Record<string, unknown>
-}) => FableLocalQuerySession
+}) => ClaudeLocalQuerySession
 
 /**
  * Build the streaming-input user message for an image-carrying turn
@@ -226,16 +226,16 @@ export type FableLocalQuery = (input: {
  * single message and returning ends the input stream, so the SDK runs exactly
  * one assistant turn — identical lifecycle to the string-prompt path.
  */
-export const fableSdkUserMessageWithImages = (
+export const claudeSdkUserMessageWithImages = (
   text: string,
-  images: ReadonlyArray<FableLocalImageAttachment>,
-): FableLocalSdkUserMessage => ({
+  images: ReadonlyArray<ClaudeLocalImageAttachment>,
+): ClaudeLocalSdkUserMessage => ({
   type: "user",
   message: {
     role: "user",
     content: [
       { type: "text", text },
-      ...images.map((image): FableLocalSdkImageBlock => ({
+      ...images.map((image): ClaudeLocalSdkImageBlock => ({
         type: "image",
         source: { type: "base64", media_type: image.mediaType, data: image.data },
       })),
@@ -244,22 +244,22 @@ export const fableSdkUserMessageWithImages = (
   parent_tool_use_id: null,
 })
 
-async function* fableImagePromptStream(
+async function* claudeImagePromptStream(
   text: string,
-  images: ReadonlyArray<FableLocalImageAttachment>,
-): AsyncGenerator<FableLocalSdkUserMessage> {
-  yield fableSdkUserMessageWithImages(text, images)
+  images: ReadonlyArray<ClaudeLocalImageAttachment>,
+): AsyncGenerator<ClaudeLocalSdkUserMessage> {
+  yield claudeSdkUserMessageWithImages(text, images)
 }
 
-export type FableLocalHistoryMessage = Readonly<{
+export type ClaudeLocalHistoryMessage = Readonly<{
   role: "user" | "assistant" | "system"
   text: string
 }>
 
-export type FableLocalTurnInput = Readonly<{
+export type ClaudeLocalTurnInput = Readonly<{
   turnRef: string
   threadRef: string
-  history: ReadonlyArray<FableLocalHistoryMessage>
+  history: ReadonlyArray<ClaudeLocalHistoryMessage>
   message: string
   accountRef?: string
   model?: ClaudeModel
@@ -271,8 +271,8 @@ export type FableLocalTurnInput = Readonly<{
    * `type:"image"` base64 block per attachment. Absent/empty = the prior
    * string-prompt behavior, byte-for-byte unchanged.
    */
-  images?: ReadonlyArray<FableLocalImageAttachment>
-  emit: (event: FableLocalEvent) => void
+  images?: ReadonlyArray<ClaudeLocalImageAttachment>
+  emit: (event: ClaudeLocalEvent) => void
   /**
    * Opt-in plan mode (J2, EP250). Default off — current behavior unchanged.
    * When true the SDK runs with `permissionMode: "plan"` (receipted sdk.d.ts:
@@ -285,7 +285,7 @@ export type FableLocalTurnInput = Readonly<{
   autoResolveQuestions?: boolean
 }>
 
-export type FableLocalTurnResult =
+export type ClaudeLocalTurnResult =
   | Readonly<{
       ok: true
       text: string
@@ -294,11 +294,11 @@ export type FableLocalTurnResult =
        * path) — message-metadata inspector + Lane C ledger attribution. */
       accountRef: string
       /** Additive (#8712 Lane C): exact usage split for the session ledger. */
-      usage?: FableChildUsage
+      usage?: ClaudeChildUsage
     }>
-  | Readonly<{ ok: false; reason: FableLocalFailureReason; detail: string }>
+  | Readonly<{ ok: false; reason: ClaudeLocalFailureReason; detail: string }>
 
-export type FableLocalAccountHome = Readonly<{
+export type ClaudeLocalAccountHome = Readonly<{
   ref: string
   home: string
   /** Ordinary Claude Code login first; isolated Pylon homes are fallback. */
@@ -310,7 +310,7 @@ export type FableLocalAccountHome = Readonly<{
  * ./codex-child-runtime.ts). Injectable so tests and the smoke fixture drive
  * the REAL delegate handler with a scripted child.
  */
-export type FableDelegateRuntime = Readonly<{
+export type ClaudeDelegateRuntime = Readonly<{
   /**
    * G4 substrate: an optional `signal` is threaded so an in-flight child can
    * be interrupted (`steerChild`). The real Codex child runtime ignores the
@@ -327,7 +327,7 @@ export type FableDelegateRuntime = Readonly<{
  * shape for the delegate input). Lazy-loaded from the real SDK by default;
  * injectable so unit tests and the smoke fixture never import the SDK.
  */
-export type FableSdkMcpFactory = Readonly<{
+export type ClaudeSdkMcpFactory = Readonly<{
   createSdkMcpServer: (options: {
     name: string
     version?: string
@@ -342,7 +342,7 @@ export type FableSdkMcpFactory = Readonly<{
   delegateInputShape: Record<string, unknown>
 }>
 
-export type FableLocalRuntimeOptions = Readonly<{
+export type ClaudeLocalRuntimeOptions = Readonly<{
   /** Resolved lazily: Electron's userData path is not final at module load. */
   scratchRoot: () => string
   /**
@@ -353,23 +353,23 @@ export type FableLocalRuntimeOptions = Readonly<{
   workspaceRoot?: () => string
   env?: Record<string, string | undefined>
   /** Injectable SDK loader (tests, smoke fixture). Default lazy-imports the SDK. */
-  queryImpl?: () => Promise<FableLocalQuery>
+  queryImpl?: () => Promise<ClaudeLocalQuery>
   /** Injectable account discovery (tests, smoke fixture). */
-  discoverImpl?: () => Promise<ReadonlyArray<FableLocalAccountHome>>
+  discoverImpl?: () => Promise<ReadonlyArray<ClaudeLocalAccountHome>>
   /** When present, the lane exposes the mcp__codex__delegate tool. */
-  delegate?: FableDelegateRuntime
+  delegate?: ClaudeDelegateRuntime
   /** Injectable MCP construction (tests, smoke fixture). */
-  mcpImpl?: () => Promise<FableSdkMcpFactory>
+  mcpImpl?: () => Promise<ClaudeSdkMcpFactory>
   /**
    * User-configured MCP servers (I2, EP250). A host getter — the SETTINGS UI
    * that edits this is a SEPARATE wave-2 lane; the config CONTRACT is frozen
-   * in fable-local-contract.ts (`FableLocalMcpServerConfigSchema`). Defaults
+   * in claude-local-contract.ts (`ClaudeLocalMcpServerConfigSchema`). Defaults
    * to none, so current behavior is unchanged. Enabled servers are merged into
    * `Options.mcpServers` next to the internal `codex` delegate server; their
    * tools surface as `mcp__<name>__<tool>`. Read fresh per turn so config
    * edits take effect on the next turn without a runtime restart.
    */
-  userMcpServers?: () => ReadonlyArray<FableLocalMcpServerConfig>
+  userMcpServers?: () => ReadonlyArray<ClaudeLocalMcpServerConfig>
   /** Main-owned, validated local Claude plugin directories offered on the next turn. */
   userPlugins?: () => ReadonlyArray<string>
   timeoutMs?: number
@@ -417,7 +417,7 @@ const currentClaudeSessionPresent = async (home: string): Promise<boolean> => {
  * the scratch workspace becomes `<workspace>` and any path under the user's
  * home directory loses its absolute prefix.
  */
-export const redactFableLocalText = (
+export const redactClaudeLocalText = (
   value: string,
   input: Readonly<{ workspace: string; home?: string }>,
 ): string => {
@@ -433,17 +433,17 @@ export const redactFableLocalText = (
  * Claude Code session is first when present; isolated Pylon homes remain
  * deterministic fallback capacity.
  */
-export const discoverReadyFableClaudeHomes = async (
+export const discoverReadyClaudeLocalHomes = async (
   env: Record<string, string | undefined> = process.env,
-): Promise<ReadonlyArray<FableLocalAccountHome>> => {
+): Promise<ReadonlyArray<ClaudeLocalAccountHome>> => {
   const root = (env.PYLON_ACCOUNT_HOME_ROOT ?? "").trim() || homedir()
   const defaultHome = join(root, ".claude")
   const siblings = await discoverPylonSiblingAccountHomes(env)
   const candidates = siblings
     .filter(entry => entry.provider === "claude_agent" && entry.home !== defaultHome)
     .sort((left, right) => left.ref.localeCompare(right.ref))
-  const ready: FableLocalAccountHome[] = []
-  if (env[FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV] === "1" || await currentClaudeSessionPresent(defaultHome)) {
+  const ready: ClaudeLocalAccountHome[] = []
+  if (env[CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV] === "1" || await currentClaudeSessionPresent(defaultHome)) {
     ready.push({ ref: "claude", home: defaultHome, source: "current_session" })
   }
   for (const entry of candidates) {
@@ -455,14 +455,14 @@ export const discoverReadyFableClaudeHomes = async (
 }
 
 const historyPrompt = (
-  history: ReadonlyArray<FableLocalHistoryMessage>,
+  history: ReadonlyArray<ClaudeLocalHistoryMessage>,
   message: string,
 ): string => {
   const window = history
     .filter(note => note.role !== "system")
-    .slice(-FABLE_LOCAL_HISTORY_MESSAGES)
+    .slice(-CLAUDE_LOCAL_HISTORY_MESSAGES)
     .map(note =>
-      `${note.role === "user" ? "User" : "Assistant"}: ${bounded(note.text, FABLE_LOCAL_HISTORY_MESSAGE_LIMIT)}`)
+      `${note.role === "user" ? "User" : "Assistant"}: ${bounded(note.text, CLAUDE_LOCAL_HISTORY_MESSAGE_LIMIT)}`)
   if (window.length === 0) return message
   return [
     "Conversation so far (for context; reply only to the final user message):",
@@ -484,10 +484,10 @@ type SdkRecord = Record<string, unknown> & {
  * and quota facts so Full Auto can rotate immediately and explain why,
  * instead of degrading every refusal to an opaque provider error.
  */
-export const classifyFableSdkResultFailure = (
+export const classifyClaudeSdkResultFailure = (
   subtype: string | null,
   resultText: string | null,
-): Readonly<{ reason: FableLocalFailureReason; detail: string }> => {
+): Readonly<{ reason: ClaudeLocalFailureReason; detail: string }> => {
   const detail = resultText?.trim() || subtype || "provider error"
   const lower = detail.toLowerCase()
   if (
@@ -529,7 +529,7 @@ const usageTotalTokens = (value: unknown): number | null => {
 }
 
 /** Exact SDK result usage split for the ledger (same fields as the total). */
-const usageSplitFromResult = (value: unknown): FableChildUsage | null => {
+const usageSplitFromResult = (value: unknown): ClaudeChildUsage | null => {
   if (value === null || typeof value !== "object") return null
   const usage = value as Record<string, unknown>
   const finite = (candidate: unknown): number =>
@@ -553,7 +553,7 @@ const usageSplitFromResult = (value: unknown): FableChildUsage | null => {
  * SDK's OWN installed zod (createRequire from the SDK entry), so the SDK's
  * schema handling always sees its own zod instances.
  */
-const defaultMcpFactory = async (): Promise<FableSdkMcpFactory> => {
+const defaultMcpFactory = async (): Promise<ClaudeSdkMcpFactory> => {
   const sdk = (await import(CLAUDE_AGENT_SDK_PACKAGE)) as {
     createSdkMcpServer?: unknown
     tool?: unknown
@@ -569,8 +569,8 @@ const defaultMcpFactory = async (): Promise<FableSdkMcpFactory> => {
     string: () => { describe: (text: string) => unknown; optional: () => { describe: (text: string) => unknown } }
   }
   return {
-    createSdkMcpServer: sdk.createSdkMcpServer as FableSdkMcpFactory["createSdkMcpServer"],
-    tool: sdk.tool as FableSdkMcpFactory["tool"],
+    createSdkMcpServer: sdk.createSdkMcpServer as ClaudeSdkMcpFactory["createSdkMcpServer"],
+    tool: sdk.tool as ClaudeSdkMcpFactory["tool"],
     delegateInputShape: {
       task: z.string().describe("The bounded task for the Codex sub-agent."),
       context: z.string().optional().describe("Optional extra context for the task."),
@@ -580,7 +580,7 @@ const defaultMcpFactory = async (): Promise<FableSdkMcpFactory> => {
 
 const childUsageToLedger = (
   usage: Extract<CodexChildResult, { ok: true }>["usage"],
-): FableChildUsage | null =>
+): ClaudeChildUsage | null =>
   usage === null
     ? null
     : {
@@ -599,19 +599,19 @@ const childUsageFooter = (result: Extract<CodexChildResult, { ok: true }>): stri
 }
 
 /** Result of a `steerChild` control (G4). */
-export type FableLocalSteerChildOutcome = Readonly<{
+export type ClaudeLocalSteerChildOutcome = Readonly<{
   ok: boolean
   outcome: "interrupted" | "delivered" | "unsupported" | "not_found"
 }>
 
 /** Result of a `queueFollowup` control (A3). */
-export type FableLocalQueueFollowupOutcome =
+export type ClaudeLocalQueueFollowupOutcome =
   | Readonly<{ ok: true; queued: true; queueRef: string; position: number }>
   | Readonly<{ ok: false; queued: false; reason: "no_active_turn" }>
 
-export type FableLocalRuntime = Readonly<{
-  availability: () => Promise<FableLocalAvailability>
-  runTurn: (input: FableLocalTurnInput) => Promise<FableLocalTurnResult>
+export type ClaudeLocalRuntime = Readonly<{
+  availability: () => Promise<ClaudeLocalAvailability>
+  runTurn: (input: ClaudeLocalTurnInput) => Promise<ClaudeLocalTurnResult>
   /** H1 resume-picker truth: only a thread with a completed SDK session in
    * this runtime can be advertised as using the resume seam. */
   hasContinuity: (threadRef: string) => boolean
@@ -626,7 +626,7 @@ export type FableLocalRuntime = Readonly<{
    * settled questionRef, turnRef mismatch, or no answer matching any asked
    * question — and a still-pending question stays pending.
    */
-  answerQuestion: (request: FableLocalAnswerQuestionRequest) => boolean
+  answerQuestion: (request: ClaudeLocalAnswerQuestionRequest) => boolean
   /**
    * Steer or interrupt a running delegate child (G4). `interrupt` signals the
    * child's abort (and emits `child_steered` outcome `interrupted`);
@@ -634,7 +634,7 @@ export type FableLocalRuntime = Readonly<{
    * non-interactive; SDK Agent subagents expose no per-child message API).
    * An unknown child for the turn returns `not_found` with no event.
    */
-  steerChild: (request: FableLocalSteerChildRequest) => FableLocalSteerChildOutcome
+  steerChild: (request: ClaudeLocalSteerChildRequest) => ClaudeLocalSteerChildOutcome
   /**
    * Enqueue a follow-up message while a turn for the thread is streaming (A3).
    * Delivery is QUEUE-UNTIL-IDLE: the queued message is promoted (emitting
@@ -642,7 +642,7 @@ export type FableLocalRuntime = Readonly<{
    * Returns `no_active_turn` when the thread has no running turn — the caller
    * should just start a normal turn instead.
    */
-  queueFollowup: (request: FableLocalQueueFollowupRequest) => FableLocalQueueFollowupOutcome
+  queueFollowup: (request: ClaudeLocalQueueFollowupRequest) => ClaudeLocalQueueFollowupOutcome
   dispose: () => void
 }>
 
@@ -652,18 +652,18 @@ export type FableLocalRuntime = Readonly<{
  * SDK's exact question strings (the answers record is keyed by question
  * text; truncation must never break that keying).
  */
-type ParsedFableQuestions = Readonly<{
-  eventQuestions: ReadonlyArray<FableLocalQuestion>
+type ParsedClaudeQuestions = Readonly<{
+  eventQuestions: ReadonlyArray<ClaudeLocalQuestion>
   originalByEventText: ReadonlyMap<string, string>
 }>
 
 const parseAskUserQuestions = (
   rawInput: Record<string, unknown>,
   redact: (value: string) => string,
-): ParsedFableQuestions | null => {
+): ParsedClaudeQuestions | null => {
   const rawQuestions = rawInput.questions
   if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) return null
-  const eventQuestions: Array<FableLocalQuestion> = []
+  const eventQuestions: Array<ClaudeLocalQuestion> = []
   const originalByEventText = new Map<string, string>()
   for (const candidate of rawQuestions.slice(0, 4)) {
     if (candidate === null || typeof candidate !== "object") return null
@@ -678,12 +678,12 @@ const parseAskUserQuestions = (
       parsedOptions.push({
         label: bounded(redact(optionRecord.label), 200),
         ...(typeof optionRecord.description === "string" && optionRecord.description.length > 0
-          ? { description: bounded(redact(optionRecord.description), FABLE_LOCAL_SUMMARY_LIMIT) }
+          ? { description: bounded(redact(optionRecord.description), CLAUDE_LOCAL_SUMMARY_LIMIT) }
           : {}),
       })
     }
     if (parsedOptions.length === 0) return null
-    const eventText = bounded(redact(record.question), FABLE_LOCAL_SUMMARY_LIMIT)
+    const eventText = bounded(redact(record.question), CLAUDE_LOCAL_SUMMARY_LIMIT)
     eventQuestions.push({
       question: eventText,
       header: bounded(typeof record.header === "string" ? redact(record.header) : "", 120),
@@ -695,25 +695,25 @@ const parseAskUserQuestions = (
   return { eventQuestions, originalByEventText }
 }
 
-type PendingFableQuestion = Readonly<{
+type PendingClaudeQuestion = Readonly<{
   turnRef: string
-  accept: (answers: FableLocalAnswerQuestionRequest["answers"]) => boolean
+  accept: (answers: ClaudeLocalAnswerQuestionRequest["answers"]) => boolean
   denyForTurnEnd: () => void
 }>
 
-export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableLocalRuntime => {
+export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): ClaudeLocalRuntime => {
   const env = options.env ?? (process.env as Record<string, string | undefined>)
-  const discover = options.discoverImpl ?? (() => discoverReadyFableClaudeHomes(env))
+  const discover = options.discoverImpl ?? (() => discoverReadyClaudeLocalHomes(env))
   // With delegation enabled the turn budget covers up to 240s Codex children.
   const timeoutMs = options.timeoutMs ??
-    (options.delegate === undefined ? FABLE_LOCAL_TIMEOUT_MS : FABLE_LOCAL_DELEGATION_TIMEOUT_MS)
+    (options.delegate === undefined ? CLAUDE_LOCAL_TIMEOUT_MS : CLAUDE_LOCAL_DELEGATION_TIMEOUT_MS)
   const loadMcp = options.mcpImpl ?? defaultMcpFactory
   const loadQuery = options.queryImpl ?? (async () => {
     const sdk = (await import(CLAUDE_AGENT_SDK_PACKAGE)) as { query?: unknown }
     if (typeof sdk.query !== "function") throw new Error("Claude Agent SDK did not expose query().")
-    return sdk.query as FableLocalQuery
+    return sdk.query as ClaudeLocalQuery
   })
-  const questionTimeoutMs = options.questionTimeoutMs ?? FABLE_LOCAL_QUESTION_TIMEOUT_MS
+  const questionTimeoutMs = options.questionTimeoutMs ?? CLAUDE_LOCAL_QUESTION_TIMEOUT_MS
   const activeTurns = new Map<string, { interrupted: boolean; abort: () => void }>()
   /**
    * In-memory continuity: threadRef -> last completed SDK session, pinned to
@@ -732,7 +732,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
    * questions may be pending at once without deadlock — each entry settles
    * independently on answer, timeout, or turn end.
    */
-  const pendingQuestions = new Map<string, PendingFableQuestion>()
+  const pendingQuestions = new Map<string, PendingClaudeQuestion>()
   /**
    * Running delegate children (G4), keyed by childRef. Each entry carries the
    * owning turnRef, an AbortController to interrupt it, and the turn's emit
@@ -740,7 +740,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
    */
   const runningChildren = new Map<
     string,
-    { turnRef: string; controller: AbortController; emit: (event: FableLocalEvent) => void }
+    { turnRef: string; controller: AbortController; emit: (event: ClaudeLocalEvent) => void }
   >()
   /**
    * The turn currently streaming for each thread (A3), so `queueFollowup` can
@@ -748,26 +748,26 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
    */
   const activeTurnByThread = new Map<
     string,
-    { turnRef: string; emit: (event: FableLocalEvent) => void }
+    { turnRef: string; emit: (event: ClaudeLocalEvent) => void }
   >()
   /** Per-thread FIFO of queued follow-ups awaiting the idle boundary (A3). */
   const followupQueue = new Map<string, Array<{ queueRef: string; message: string }>>()
   let followupSequence = 0
 
-  const availability = async (): Promise<FableLocalAvailability> => {
+  const availability = async (): Promise<ClaudeLocalAvailability> => {
     const ready = await discover()
     const first = ready[0]
     if (first === undefined) return { state: "unavailable", reason: "no_claude_account" }
     return { state: "available", accountRef: first.ref }
   }
 
-  const runTurn = async (input: FableLocalTurnInput): Promise<FableLocalTurnResult> => {
+  const runTurn = async (input: ClaudeLocalTurnInput): Promise<ClaudeLocalTurnResult> => {
     const failure = (
-      reason: FableLocalFailureReason,
+      reason: ClaudeLocalFailureReason,
       detail: string,
-    ): Extract<FableLocalTurnResult, { ok: false }> =>
-      ({ ok: false, reason, detail: bounded(detail, FABLE_LOCAL_SUMMARY_LIMIT) })
-    const emitFailure = (result: Extract<FableLocalTurnResult, { ok: false }>): FableLocalTurnResult => {
+    ): Extract<ClaudeLocalTurnResult, { ok: false }> =>
+      ({ ok: false, reason, detail: bounded(detail, CLAUDE_LOCAL_SUMMARY_LIMIT) })
+    const emitFailure = (result: Extract<ClaudeLocalTurnResult, { ok: false }>): ClaudeLocalTurnResult => {
       input.emit({ kind: "turn_failed", reason: result.reason, detail: result.detail })
       return result
     }
@@ -779,7 +779,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
     if (ready.length === 0) {
       return emitFailure(failure("no_claude_account", "no linked Claude account home found"))
     }
-    let query: FableLocalQuery
+    let query: ClaudeLocalQuery
     try {
       query = await loadQuery()
     } catch (error) {
@@ -790,13 +790,13 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
     // from. The per-thread scratch fallback remains for tests/fixtures and
     // hosts that have not selected an execution workspace.
     const workspace = options.workspaceRoot?.() ??
-      join(options.scratchRoot(), "threads", fableThreadWorkspaceSlug(input.threadRef))
+      join(options.scratchRoot(), "threads", claudeThreadWorkspaceSlug(input.threadRef))
     try {
       mkdirSync(workspace, { recursive: true })
     } catch (error) {
       return emitFailure(failure("session_failed", error instanceof Error ? error.name : "workspace unavailable"))
     }
-    const redact = (value: string): string => redactFableLocalText(value, { workspace })
+    const redact = (value: string): string => redactClaudeLocalText(value, { workspace })
     /** Per-turn AskUserQuestion sequence for stable questionRefs. */
     const questionState = { sequence: 0 }
     const planMode = input.planMode === true
@@ -807,12 +807,12 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
      */
     const planEntriesFromTodoWrite = (
       rawInput: unknown,
-    ): ReadonlyArray<FableLocalPlanEntry> | null => {
+    ): ReadonlyArray<ClaudeLocalPlanEntry> | null => {
       if (rawInput === null || typeof rawInput !== "object") return null
       const todos = (rawInput as { todos?: unknown }).todos
       if (!Array.isArray(todos)) return null
-      const entries: Array<FableLocalPlanEntry> = []
-      for (const todo of todos.slice(0, FABLE_LOCAL_PLAN_ENTRY_LIMIT)) {
+      const entries: Array<ClaudeLocalPlanEntry> = []
+      for (const todo of todos.slice(0, CLAUDE_LOCAL_PLAN_ENTRY_LIMIT)) {
         if (todo === null || typeof todo !== "object") continue
         const record = todo as Record<string, unknown>
         const content = typeof record.content === "string" && record.content.trim() !== ""
@@ -822,14 +822,14 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         const status = record.status === "in_progress" || record.status === "completed"
           ? record.status
           : "pending"
-        entries.push({ step: bounded(redact(content), FABLE_LOCAL_SUMMARY_LIMIT), status })
+        entries.push({ step: bounded(redact(content), CLAUDE_LOCAL_SUMMARY_LIMIT), status })
       }
       return entries.length > 0 ? entries : null
     }
     // User MCP servers (I2): normalized once per turn; invalid configs surface
     // as typed mcp_server_unavailable and the turn still runs. `codex` is the
     // reserved internal delegate server name.
-    const userMcp = normalizeFableLocalMcpServers(options.userMcpServers?.() ?? [])
+    const userMcp = normalizeClaudeLocalMcpServers(options.userMcpServers?.() ?? [])
     const userServerNames = new Set(userMcp.valid.map(server => server.name))
     /** SDK-reported MCP failures already surfaced this turn (no dupes). */
     const announcedMcpUnavailable = new Set<string>()
@@ -839,7 +839,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
     // mcp__codex__delegate. The handler runs the injected child runtime with
     // per-turn caps (3 concurrent / 6 total). All caps refuse TYPED — no
     // child is spawned past a cap and the model sees the refusal text.
-    // Per-child lifecycle flows into the SAME FableLocalEvent envelope so
+    // Per-child lifecycle flows into the SAME ClaudeLocalEvent envelope so
     // the UI has live child visibility without new transcript components.
     // -----------------------------------------------------------------------
     const delegation = { active: 0, total: 0, sequence: 0 }
@@ -855,15 +855,15 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       const task = typeof args.task === "string" ? args.task.trim() : ""
       const context = typeof args.context === "string" ? args.context : undefined
       if (task === "") return toolText("Delegation refused: task must be a non-empty string.", true)
-      if (delegation.total >= FABLE_DELEGATE_MAX_CHILDREN_PER_TURN) {
+      if (delegation.total >= CLAUDE_DELEGATE_MAX_CHILDREN_PER_TURN) {
         return toolText(
-          `Delegation refused: this turn already dispatched ${FABLE_DELEGATE_MAX_CHILDREN_PER_TURN} Codex children (per-turn cap). No child was spawned.`,
+          `Delegation refused: this turn already dispatched ${CLAUDE_DELEGATE_MAX_CHILDREN_PER_TURN} Codex children (per-turn cap). No child was spawned.`,
           true,
         )
       }
-      if (delegation.active >= FABLE_DELEGATE_MAX_CONCURRENT) {
+      if (delegation.active >= CLAUDE_DELEGATE_MAX_CONCURRENT) {
         return toolText(
-          `Delegation refused: ${FABLE_DELEGATE_MAX_CONCURRENT} Codex children are already running (concurrency cap). Wait for one to finish, then delegate again. No child was spawned.`,
+          `Delegation refused: ${CLAUDE_DELEGATE_MAX_CONCURRENT} Codex children are already running (concurrency cap). Wait for one to finish, then delegate again. No child was spawned.`,
           true,
         )
       }
@@ -882,10 +882,10 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       input.emit({
         kind: "child_started",
         childRef,
-        summary: bounded(redact(task), FABLE_LOCAL_SUMMARY_LIMIT),
+        summary: bounded(redact(task), CLAUDE_LOCAL_SUMMARY_LIMIT),
         prompt: bounded(
           redact(context === undefined ? task : `${task}\n\nContext:\n${context}`),
-          FABLE_LOCAL_FINAL_TEXT_LIMIT,
+          CLAUDE_LOCAL_FINAL_TEXT_LIMIT,
         ),
       })
       // Resolves to a sentinel the moment the child is interrupted, so the
@@ -918,7 +918,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 accountRef: event.accountRef,
                 summary: bounded(
                   `spawning codex exec on account ${event.accountRef} (${CODEX_CHILD_MODEL}, ${CODEX_CHILD_REASONING_EFFORT} reasoning requested)`,
-                  FABLE_LOCAL_SUMMARY_LIMIT,
+                  CLAUDE_LOCAL_SUMMARY_LIMIT,
                 ),
               })
               return
@@ -928,7 +928,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 kind: "child_activity",
                 childRef,
                 activity: "item",
-                summary: bounded(`${event.itemType}: ${event.summary}`, FABLE_LOCAL_SUMMARY_LIMIT),
+                summary: bounded(`${event.itemType}: ${event.summary}`, CLAUDE_LOCAL_SUMMARY_LIMIT),
               })
               return
             }
@@ -942,7 +942,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 accountRef: event.accountRef,
                 summary: bounded(
                   `account ${event.accountRef} failed before producing content (${event.detail}) — rotating to the next candidate Codex account`,
-                  FABLE_LOCAL_SUMMARY_LIMIT,
+                  CLAUDE_LOCAL_SUMMARY_LIMIT,
                 ),
               })
               return
@@ -956,7 +956,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               accountRef: event.accountRef,
               summary: bounded(
                 `account ${event.accountRef} needs reconnect (${event.detail}) — rotating to the next candidate Codex account`,
-                FABLE_LOCAL_SUMMARY_LIMIT,
+                CLAUDE_LOCAL_SUMMARY_LIMIT,
               ),
             })
           },
@@ -977,8 +977,8 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             kind: "child_completed",
             childRef,
             accountRef: result.accountRef,
-            summary: bounded(redact(result.text), FABLE_LOCAL_SUMMARY_LIMIT),
-            response: bounded(redact(result.text), FABLE_LOCAL_FINAL_TEXT_LIMIT),
+            summary: bounded(redact(result.text), CLAUDE_LOCAL_SUMMARY_LIMIT),
+            response: bounded(redact(result.text), CLAUDE_LOCAL_FINAL_TEXT_LIMIT),
             usage: childUsageToLedger(result.usage),
             durationMs: result.durationMs,
           })
@@ -989,7 +989,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
           childRef,
           accountRef: result.accountRef,
           reason: result.reason,
-          detail: bounded(redact(result.detail), FABLE_LOCAL_SUMMARY_LIMIT),
+          detail: bounded(redact(result.detail), CLAUDE_LOCAL_SUMMARY_LIMIT),
         })
         const failureText = result.reason === "account_reconnect_required"
           ? `Delegation unavailable: ${result.detail} No Codex child produced output.`
@@ -1019,7 +1019,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             tools: [
               mcp.tool(
                 "delegate",
-                FABLE_DELEGATE_TOOL_DESCRIPTION,
+                CLAUDE_DELEGATE_TOOL_DESCRIPTION,
                 mcp.delegateInputShape,
                 (args, _extra) => delegateHandler(args),
               ),
@@ -1045,7 +1045,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       input.emit({
         kind: "mcp_server_unavailable",
         name: bounded(rejected.name, 120),
-        reason: bounded(rejected.reason, FABLE_LOCAL_SUMMARY_LIMIT),
+        reason: bounded(rejected.reason, CLAUDE_LOCAL_SUMMARY_LIMIT),
       })
     }
 
@@ -1078,8 +1078,8 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
     /** One SDK session against one isolated account home. Emits stream events
      * but never turn_failed — the rotation loop below owns finalization. */
     const runAttempt = async (
-      account: FableLocalAccountHome,
-    ): Promise<Readonly<{ result: FableLocalTurnResult; sawContent: boolean }>> => {
+      account: ClaudeLocalAccountHome,
+    ): Promise<Readonly<{ result: ClaudeLocalTurnResult; sawContent: boolean }>> => {
       const selection: ResolvedPylonAccountSelection = {
         provider: "claude_agent",
         selector: "registry_ref",
@@ -1216,7 +1216,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         toolInput: Record<string, unknown>,
         extra: { signal?: AbortSignal } | undefined,
       ): Promise<Record<string, unknown>> => {
-        if (toolName === FABLE_LOCAL_QUESTION_TOOL) {
+        if (toolName === CLAUDE_LOCAL_QUESTION_TOOL) {
           if (input.autoResolveQuestions === true) {
             return {
               behavior: "deny",
@@ -1242,8 +1242,8 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       // user message: the text block plus one base64 image block per
       // attachment. No images = the unchanged string prompt.
       const images = input.images ?? []
-      const prompt: string | AsyncIterable<FableLocalSdkUserMessage> =
-        images.length === 0 ? promptText : fableImagePromptStream(promptText, images)
+      const prompt: string | AsyncIterable<ClaudeLocalSdkUserMessage> =
+        images.length === 0 ? promptText : claudeImagePromptStream(promptText, images)
 
       let sawContent = false
       let sessionId: string | null = null
@@ -1253,21 +1253,21 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       let resultIsError = false
       let resultSubtype: string | null = null
       let totalTokens: number | null = null
-      let usageSplit: FableChildUsage | null = null
+      let usageSplit: ClaudeChildUsage | null = null
       const pendingToolCalls = new Map<string, string>()
       // Raw tool_use inputs by call id so the completion event can carry the
       // same typed args the started event did (#8859 typed item payloads).
       const pendingToolInputs = new Map<string, unknown>()
 
       const finish = (
-        result: FableLocalTurnResult,
-      ): Readonly<{ result: FableLocalTurnResult; sawContent: boolean }> => {
+        result: ClaudeLocalTurnResult,
+      ): Readonly<{ result: ClaudeLocalTurnResult; sawContent: boolean }> => {
         if (clock.timer !== null) clearTimeout(clock.timer)
         return { result, sawContent }
       }
 
       try {
-        const requestedModel = input.model ?? FABLE_LOCAL_MODEL
+        const requestedModel = input.model ?? CLAUDE_LOCAL_MODEL
         options.onDispatch?.({
           threadRef: input.threadRef,
           turnRef: input.turnRef,
@@ -1294,11 +1294,11 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               // 60s stream-close default while a child is still working.
               ...(mcpServers === null
                 ? {}
-                : { CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: String(FABLE_STREAM_CLOSE_TIMEOUT_MS) }),
+                : { CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: String(CLAUDE_STREAM_CLOSE_TIMEOUT_MS) }),
             },
             abortController: abort,
             includePartialMessages: true,
-            maxTurns: FABLE_LOCAL_MAX_TURNS,
+            maxTurns: CLAUDE_LOCAL_MAX_TURNS,
             model: requestedModel,
             ...(claudeExecutable === null ? {} : { pathToClaudeCodeExecutable: claudeExecutable }),
             // Owner full-access lane, but NOT bypassPermissions: bypass
@@ -1312,10 +1312,10 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             // (when a delegate server is offered) stays auto-allowed;
             // everything else — including user MCP tools — flows through the
             // allow-all canUseTool below.
-            ...(delegateOffered ? { allowedTools: [FABLE_DELEGATE_TOOL_NAME] } : {}),
+            ...(delegateOffered ? { allowedTools: [CLAUDE_DELEGATE_TOOL_NAME] } : {}),
             // Plan mode allows ExitPlanMode so the model can present a plan;
             // otherwise the interactive-only plan tools stay disallowed.
-            disallowedTools: FABLE_LOCAL_DISALLOWED_TOOLS.filter(tool =>
+            disallowedTools: CLAUDE_LOCAL_DISALLOWED_TOOLS.filter(tool =>
               (planMode && tool === "ExitPlanMode") || (input.skillName !== undefined && tool === "Skill")
                 ? false
                 : true),
@@ -1396,10 +1396,10 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               })
             }
             emitStarted()
-            // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE FABLE"): the init
+            // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE CLAUDE"): the init
             // message reports the effective model. Emit it for renderer
             // visibility, then fail typed — before any content can stream —
-            // if it is outside the Fable family. This is a provider-side
+            // if it is outside the Claude family. This is a provider-side
             // substitution, not an account failure, so it never rotates.
             const effectiveModel = typeof (record as { model?: unknown }).model === "string"
               ? (record as { model: string }).model
@@ -1438,7 +1438,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 input.emit({
                   kind: "mcp_server_unavailable",
                   name: bounded(name, 120),
-                  reason: bounded(status === "" ? "server failed to connect" : status, FABLE_LOCAL_SUMMARY_LIMIT),
+                  reason: bounded(status === "" ? "server failed to connect" : status, CLAUDE_LOCAL_SUMMARY_LIMIT),
                 })
               }
             }
@@ -1451,8 +1451,8 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
               typeof delta.text === "string" && delta.text.length > 0) {
               emitStarted()
               sawContent = true
-              const text = bounded(redact(delta.text), FABLE_LOCAL_DELTA_LIMIT)
-              deltaText = bounded(deltaText + text, FABLE_LOCAL_FINAL_TEXT_LIMIT)
+              const text = bounded(redact(delta.text), CLAUDE_LOCAL_DELTA_LIMIT)
+              deltaText = bounded(deltaText + text, CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
               input.emit({ kind: "text_delta", text })
             }
             continue
@@ -1461,7 +1461,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             emitStarted()
             for (const block of contentBlocks(record.message)) {
               if (block.type === "text" && typeof block.text === "string") {
-                assistantText = bounded(assistantText + block.text, FABLE_LOCAL_FINAL_TEXT_LIMIT)
+                assistantText = bounded(assistantText + block.text, CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
                 continue
               }
               if (block.type === "tool_use") {
@@ -1472,7 +1472,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 pendingToolInputs.set(toolCallId, block.input ?? {})
                 const summary = bounded(
                   redact(JSON.stringify(block.input ?? {}) ?? ""),
-                  FABLE_LOCAL_SUMMARY_LIMIT,
+                  CLAUDE_LOCAL_SUMMARY_LIMIT,
                 )
                 input.emit({
                   kind: "tool_use",
@@ -1511,7 +1511,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
                 kind: "tool_result",
                 toolName,
                 ok,
-                summary: bounded(redact(content), FABLE_LOCAL_SUMMARY_LIMIT),
+                summary: bounded(redact(content), CLAUDE_LOCAL_SUMMARY_LIMIT),
                 // Typed item (#8859): completion-side payload keeps the
                 // started args (from the pending map) plus the result/error.
                 item: workbenchToolCallFromSdkUse(
@@ -1532,7 +1532,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
             resultSubtype = typeof record.subtype === "string" ? record.subtype : null
             resultIsError = record.is_error === true
             if (typeof record.result === "string" && record.result.length > 0) {
-              resultText = bounded(redact(record.result), FABLE_LOCAL_FINAL_TEXT_LIMIT)
+              resultText = bounded(redact(record.result), CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
             }
             totalTokens = usageTotalTokens(record.usage)
             usageSplit = usageSplitFromResult(record.usage)
@@ -1554,7 +1554,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         return finish(failure("budget_exceeded", "turn budget reached"))
       }
       if (resultIsError || (resultSubtype !== null && resultSubtype.startsWith("error"))) {
-        const classified = classifyFableSdkResultFailure(resultSubtype, resultText)
+        const classified = classifyClaudeSdkResultFailure(resultSubtype, resultText)
         return finish(failure(classified.reason, classified.detail))
       }
       // The final text authority order: the SDK result text, then complete
@@ -1621,7 +1621,7 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
         input.emit({
           kind: "followup_promoted",
           queueRef: next.queueRef,
-          message: bounded(next.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+          message: bounded(next.message, CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
         })
       }
     }
@@ -1689,10 +1689,10 @@ export const makeFableLocalRuntime = (options: FableLocalRuntimeOptions): FableL
       if (active === undefined) return { ok: false, queued: false, reason: "no_active_turn" }
       followupSequence += 1
       const queueRef = bounded(
-        `followup.${fableThreadWorkspaceSlug(request.threadRef)}.${followupSequence}`,
+        `followup.${claudeThreadWorkspaceSlug(request.threadRef)}.${followupSequence}`,
         120,
       )
-      const message = bounded(request.message, FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT)
+      const message = bounded(request.message, CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT)
       const queue = followupQueue.get(request.threadRef) ?? []
       queue.push({ queueRef, message })
       followupQueue.set(request.threadRef, queue)
@@ -1720,17 +1720,17 @@ const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
  * deltas so the smoke journey proves both markdown rendering and graceful
  * unterminated-marker streaming (#8712 owner directive 4).
  */
-export const FABLE_LOCAL_FIXTURE_TEXT = "Fable local **streaming** proof."
-export const FABLE_LOCAL_FIXTURE_ACCOUNT: FableLocalAccountHome = {
+export const CLAUDE_LOCAL_FIXTURE_TEXT = "Claude local **streaming** proof."
+export const CLAUDE_LOCAL_FIXTURE_ACCOUNT: ClaudeLocalAccountHome = {
   // Shares the fleet's claude account identity (the provider-accounts fixture
   // advertises `claude-pylon-3` as the ready claude_agent account). The
   // exact-provider-target feature (#8701 CUT-21) binds the fleet-selected
   // accountRef and the runtime filters discovered homes by it, so the smoke's
-  // fleet identity and the fable-local discover identity MUST be the same
+  // fleet identity and the claude-local discover identity MUST be the same
   // account — exactly the production invariant (the account you pick in the
   // fleet is the account the turn runs on).
   ref: "claude-pylon-3",
-  home: "/nonexistent/fable-local-fixture-home",
+  home: "/nonexistent/claude-local-fixture-home",
 }
 
 /**
@@ -1739,14 +1739,14 @@ export const FABLE_LOCAL_FIXTURE_ACCOUNT: FableLocalAccountHome = {
  * can find the delegate tool handler and CALL it — driving the REAL delegate
  * path (caps, child runtime, child events, ledger feed) with zero SDK import.
  */
-export type FixtureFableMcpTool = Readonly<{
+export type FixtureClaudeMcpTool = Readonly<{
   name: string
   description: string
   inputSchema: Record<string, unknown>
   handler: (args: Record<string, unknown>, extra: unknown) => Promise<unknown>
 }>
 
-export const makeFixtureFableMcpFactory = (): FableSdkMcpFactory => ({
+export const makeFixtureClaudeMcpFactory = (): ClaudeSdkMcpFactory => ({
   createSdkMcpServer: options => ({
     type: "sdk-fixture",
     name: options.name,
@@ -1754,12 +1754,12 @@ export const makeFixtureFableMcpFactory = (): FableSdkMcpFactory => ({
     tools: options.tools,
   }),
   tool: (name, description, inputSchema, handler) =>
-    ({ name, description, inputSchema, handler }) satisfies FixtureFableMcpTool,
+    ({ name, description, inputSchema, handler }) satisfies FixtureClaudeMcpTool,
   delegateInputShape: { task: "string", context: "string?" },
 })
 
 /** Finds the fixture-shaped delegate tool inside session options, if any. */
-const fixtureDelegateTool = (options: Record<string, unknown>): FixtureFableMcpTool | null => {
+const fixtureDelegateTool = (options: Record<string, unknown>): FixtureClaudeMcpTool | null => {
   const servers = options.mcpServers as Record<string, unknown> | undefined
   const codex = servers?.codex as { type?: unknown; tools?: unknown } | undefined
   if (codex?.type !== "sdk-fixture" || !Array.isArray(codex.tools)) return null
@@ -1767,10 +1767,10 @@ const fixtureDelegateTool = (options: Record<string, unknown>): FixtureFableMcpT
     typeof candidate === "object" && candidate !== null &&
     (candidate as { name?: unknown }).name === "delegate" &&
     typeof (candidate as { handler?: unknown }).handler === "function")
-  return (tool as FixtureFableMcpTool | undefined) ?? null
+  return (tool as FixtureClaudeMcpTool | undefined) ?? null
 }
 
-export const FABLE_FIXTURE_DELEGATE_TASK = "Summarize the fixture delegation task"
+export const CLAUDE_FIXTURE_DELEGATE_TASK = "Summarize the fixture delegation task"
 
 /**
  * Scripted smoke fixture (OPENAGENTS_DESKTOP_SMOKE=1): a canned SDK message
@@ -1783,10 +1783,10 @@ export const FABLE_FIXTURE_DELEGATE_TASK = "Summarize the fixture delegation tas
  */
 /** Marker the image-aware fixture appends so the smoke can prove the image
  * content block reached the SDK query input (capability I1). */
-export const FABLE_LOCAL_FIXTURE_IMAGE_MARKER = (count: number): string =>
+export const CLAUDE_LOCAL_FIXTURE_IMAGE_MARKER = (count: number): string =>
   ` [fixture-received-images:${count}]`
 
-export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
+export const makeFixtureClaudeLocalQuery = (): ClaudeLocalQuery =>
   async function* fixture(input): AsyncGenerator<unknown> {
     // Capability I1: when the turn carries images the prompt is a streaming
     // AsyncIterable of user messages (not a string). Draining it — exactly
@@ -1803,7 +1803,7 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
       typeof prompt !== "string" && prompt !== null && prompt !== undefined &&
       typeof (prompt as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
     ) {
-      for await (const message of prompt as AsyncIterable<FableLocalSdkUserMessage>) {
+      for await (const message of prompt as AsyncIterable<ClaudeLocalSdkUserMessage>) {
         const content = message?.message?.content
         if (Array.isArray(content)) {
           imageCount += content.filter((block) => block?.type === "image").length
@@ -1813,12 +1813,12 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
     yield {
       type: "system",
       subtype: "init",
-      session_id: "fable-local-fixture-session",
-      model: FABLE_LOCAL_MODEL,
+      session_id: "claude-local-fixture-session",
+      model: CLAUDE_LOCAL_MODEL,
     }
     yield {
       type: "stream_event",
-      event: { type: "content_block_delta", delta: { type: "text_delta", text: "Fable local **stream" } },
+      event: { type: "content_block_delta", delta: { type: "text_delta", text: "Claude local **stream" } },
     }
     await sleep(150)
     yield {
@@ -1904,12 +1904,12 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
           content: [{
             type: "tool_use",
             id: "fixture-delegate-1",
-            name: FABLE_DELEGATE_TOOL_NAME,
-            input: { task: FABLE_FIXTURE_DELEGATE_TASK },
+            name: CLAUDE_DELEGATE_TOOL_NAME,
+            input: { task: CLAUDE_FIXTURE_DELEGATE_TASK },
           }],
         },
       }
-      const raw = await delegate.handler({ task: FABLE_FIXTURE_DELEGATE_TASK }, {})
+      const raw = await delegate.handler({ task: CLAUDE_FIXTURE_DELEGATE_TASK }, {})
       const record = raw as { content?: Array<{ type?: unknown; text?: unknown }>; isError?: unknown }
       const text = Array.isArray(record.content)
         ? record.content.map(part => typeof part.text === "string" ? part.text : "").join(" ")
@@ -1936,7 +1936,7 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
           text: questionRoundTrip
             ? `proof. Answer received: ${questionAnswer}.`
             : imageCount > 0
-              ? `proof.${FABLE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)}`
+              ? `proof.${CLAUDE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)}`
               : "proof.",
         },
       },
@@ -1946,10 +1946,10 @@ export const makeFixtureFableLocalQuery = (): FableLocalQuery =>
       subtype: "success",
       is_error: false,
       result: questionRoundTrip
-        ? `${FABLE_LOCAL_FIXTURE_TEXT} Answer received: ${questionAnswer}.`
+        ? `${CLAUDE_LOCAL_FIXTURE_TEXT} Answer received: ${questionAnswer}.`
         : imageCount > 0
-        ? FABLE_LOCAL_FIXTURE_TEXT + FABLE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)
-        : FABLE_LOCAL_FIXTURE_TEXT,
+        ? CLAUDE_LOCAL_FIXTURE_TEXT + CLAUDE_LOCAL_FIXTURE_IMAGE_MARKER(imageCount)
+        : CLAUDE_LOCAL_FIXTURE_TEXT,
       usage: { input_tokens: 42, output_tokens: 7 },
     }
   }

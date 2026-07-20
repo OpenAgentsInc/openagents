@@ -1,4 +1,4 @@
-import type { FableLocalEvent } from "./fable-local-contract.ts"
+import type { ClaudeLocalEvent } from "./claude-local-contract.ts"
 
 export type FullAutoPromotedFollowup = Readonly<{
   queueRef: string
@@ -19,7 +19,7 @@ export const makeFullAutoFollowupHandoff = () => {
       threadRef: string
       background: boolean
       fullAuto: boolean
-      event: FableLocalEvent
+      event: ClaudeLocalEvent
     }>): void => {
       if (
         !input.background || !input.fullAuto ||

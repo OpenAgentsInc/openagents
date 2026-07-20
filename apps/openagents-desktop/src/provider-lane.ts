@@ -4,12 +4,12 @@
  * One typed adapter interface every desktop agent lane implements, modeled on
  * T3 Code's ProviderAdapterShape/ProviderInstance pattern (drivers are plain
  * values behind one interface; everything above them is provider-agnostic).
- * The two existing lanes — codex-local and fable-local (`claude_agent`) — are
+ * The two existing lanes — codex-local and claude-local (`claude_agent`) — are
  * plain `ProviderLane` values constructed in main.ts; the ACP runtime bridge
  * lanes (#8891/#8892, Grok + Cursor) land as further implementations.
  *
- * STREAM ENVELOPE: the SPI's streaming envelope IS the frozen fable-local
- * event envelope (`FableLocalEvent` / `FableLocalEventEnvelopeSchema`) —
+ * STREAM ENVELOPE: the SPI's streaming envelope IS the frozen claude-local
+ * event envelope (`ClaudeLocalEvent` / `ClaudeLocalEventEnvelopeSchema`) —
  * plan (`plan_updated`), reasoning (`reasoning`), tool/exec
  * (`tool_use`/`tool_progress`/`tool_result` + typed WorkbenchItem payloads),
  * approval/question (`question_pending`/`question_resolved`), item deltas
@@ -47,16 +47,16 @@ import { randomUUID } from "node:crypto"
 
 import type { DesktopMessage, DesktopMessageMeta, DesktopThread } from "./chat-contract.ts"
 import {
-  FABLE_LOCAL_FINAL_TEXT_LIMIT,
-  fableLocalTraceNoteMeta,
-  fableLocalTraceNoteText,
+  CLAUDE_LOCAL_FINAL_TEXT_LIMIT,
+  claudeLocalTraceNoteMeta,
+  claudeLocalTraceNoteText,
   makeTranscriptOrderingBoundaryTracker,
   startRequestHasContent,
-  type FableChildUsage,
-  type FableLocalEvent,
-  type FableLocalFailureReason,
-  type FableLocalStartRequest,
-} from "./fable-local-contract.ts"
+  type ClaudeChildUsage,
+  type ClaudeLocalEvent,
+  type ClaudeLocalFailureReason,
+  type ClaudeLocalStartRequest,
+} from "./claude-local-contract.ts"
 import type { LocalTurnJournal } from "./local-turn-journal.ts"
 import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
 import {
@@ -104,20 +104,20 @@ export type ProviderLaneTurnSuccess = Readonly<{
   /** The account the turn actually ran on (a ref, never a path). */
   accountRef?: string
   /** Exact provider token split, when the provider reports one. */
-  usage?: FableChildUsage
+  usage?: ClaudeChildUsage
   /** Provider-native session/thread continuity ref, when reported. */
   providerSessionRef?: string | null
 }>
 export type ProviderLaneTurnFailure = Readonly<{
   ok: false
-  reason: FableLocalFailureReason
+  reason: ClaudeLocalFailureReason
   detail: string
 }>
 export type ProviderLaneTurnResult = ProviderLaneTurnSuccess | ProviderLaneTurnFailure
 
 /** Facts available while a turn streams (meta hooks + the turn projector). */
 export type ProviderLaneTurnContext<Context> = Readonly<{
-  request: FableLocalStartRequest
+  request: ClaudeLocalStartRequest
   requestedModel: string
   context: Context
   /** The provider-reported effective model so far (null before init). */
@@ -127,7 +127,7 @@ export type ProviderLaneTurnContext<Context> = Readonly<{
 }>
 
 export type ProviderLaneRunInput<Context> = Readonly<{
-  request: FableLocalStartRequest
+  request: ClaudeLocalStartRequest
   model: string
   context: Context
   /** Host-owned prior history (the just-appended user note excluded). */
@@ -138,7 +138,7 @@ export type ProviderLaneRunInput<Context> = Readonly<{
   /** True when no renderer initiated the turn (a main-owned background
    * continuation) — such a turn has nothing that could answer a question. */
   background: boolean
-  emit: (event: FableLocalEvent) => void
+  emit: (event: ClaudeLocalEvent) => void
 }>
 
 /**
@@ -161,18 +161,18 @@ export type ProviderLane<Context = null> = Readonly<{
    * (skills, plan-only, …), and lane-private context resolution. Runs before
    * any durable write; a refusal never reaches the journal.
    */
-  admit: (request: FableLocalStartRequest) => ProviderLaneAdmission<Context>
+  admit: (request: ClaudeLocalStartRequest) => ProviderLaneAdmission<Context>
   /** Optional hook after thread-existence passes, before the journal accept
    * (codex-local binds the Full Auto execution profile here). Receives the
    * admitted model so the durable profile records spawn-config truth. */
   prepare?: (
-    request: FableLocalStartRequest,
+    request: ClaudeLocalStartRequest,
     sender: ProviderLaneEventSender | null,
     model: string,
   ) => void
   /** Optional hook after the journal accepted the turn, before the user note
    * persists (codex-local binds the ProductSpec handoff turn here). */
-  bound?: (request: FableLocalStartRequest) => void
+  bound?: (request: ClaudeLocalStartRequest) => void
   /** Streaming assistant-note metadata (persisted by the text checkpointer). */
   streamMeta: (ctx: ProviderLaneTurnContext<Context>) => DesktopMessageMeta
   /** Lane-branded effective-model transcript caption. */
@@ -187,13 +187,13 @@ export type ProviderLane<Context = null> = Readonly<{
   interrupt: (turnRef: string) => boolean
   /**
    * Optional per-turn projector factory for lane-specific durable projection
-   * beyond the shared trace/model notes (fable-local: final plan card, child
+   * beyond the shared trace/model notes (claude-local: final plan card, child
    * usage attribution; codex-local: reasoning/lane-notice lines, structured
    * runtime-card persistence). Called once per dispatched turn; the returned
    * function runs for every stream event AFTER the shared projection and
    * BEFORE the renderer forward, so persisted-note ordering is stable.
    */
-  makeTurnProjector?: (ctx: ProviderLaneTurnContext<Context>) => (event: FableLocalEvent) => void
+  makeTurnProjector?: (ctx: ProviderLaneTurnContext<Context>) => (event: ClaudeLocalEvent) => void
   /** Final assistant-note metadata for the completed turn. */
   finalMeta: (
     ctx: ProviderLaneTurnContext<Context> & Readonly<{
@@ -202,10 +202,10 @@ export type ProviderLane<Context = null> = Readonly<{
     }>,
   ) => DesktopMessageMeta
   /** Lane-branded renderer copy for a typed turn failure. */
-  failureMessage: (reason: FableLocalFailureReason, detail: string) => string
+  failureMessage: (reason: ClaudeLocalFailureReason, detail: string) => string
   /** Optional hook after a completed dispatch settled durably (codex-local
    * kicks the Full Auto reconciliation loop for flagged turns). */
-  completed?: (request: FableLocalStartRequest) => void
+  completed?: (request: ClaudeLocalStartRequest) => void
 }>
 
 export type ProviderLaneDispatchResult = Readonly<{
@@ -213,7 +213,7 @@ export type ProviderLaneDispatchResult = Readonly<{
   thread?: DesktopThread | null
   error?: string
   /** Preserve the provider's typed terminal reason across the IPC boundary. */
-  reason?: FableLocalFailureReason
+  reason?: ClaudeLocalFailureReason
   /** Host-store ownership is not a provider session failure. Keep this
    * machine-readable so Full Auto liveness never infers from display copy. */
   failureCause?: "host_thread_missing"
@@ -226,7 +226,7 @@ export type ProviderLaneDispatcherDeps = Readonly<{
   journal: LocalTurnJournal
   liveAgentGraph: Readonly<{
     beginTurn: (input: Readonly<{ turnRef: string; threadRef: string; lane: string }>) => void
-    applyEvent: (threadRef: string, envelope: Readonly<{ turnRef: string; event: FableLocalEvent }>) => void
+    applyEvent: (threadRef: string, envelope: Readonly<{ turnRef: string; event: ClaudeLocalEvent }>) => void
   }>
   usageLedger: Readonly<{
     record: (input: Readonly<{
@@ -234,7 +234,7 @@ export type ProviderLaneDispatcherDeps = Readonly<{
       accountRef: string
       requestedModel: string | null
       kind: "turn"
-      usage: FableChildUsage | null
+      usage: ClaudeChildUsage | null
     }>) => void
   }>
   captureTurnCheckpoint: (
@@ -250,10 +250,10 @@ export type ProviderLaneDispatcherDeps = Readonly<{
   /** L7: host-owned spec projection/revalidation. Providers receive bounded
    * context only; they never parse specs or produce verdicts. */
   specWorkflow?: Readonly<{
-    beforeTurn: (laneRef: string, request: FableLocalStartRequest) => SpecLaneTurnProjection
+    beforeTurn: (laneRef: string, request: ClaudeLocalStartRequest) => SpecLaneTurnProjection
     afterTurn: (
       laneRef: string,
-      request: FableLocalStartRequest,
+      request: ClaudeLocalStartRequest,
       before: SpecLaneTurnProjection,
     ) => void
   }>
@@ -262,8 +262,8 @@ export type ProviderLaneDispatcherDeps = Readonly<{
    * uses this to publish bounded progress and own queued-message promotion
    * without pretending a renderer initiated the turn. */
   onTurnEventProjected?: (
-    request: FableLocalStartRequest,
-    event: FableLocalEvent,
+    request: ClaudeLocalStartRequest,
+    event: ClaudeLocalEvent,
     background: boolean,
   ) => void
 }>
@@ -297,7 +297,7 @@ export const turnPromptText = (message: string, images?: ReadonlyArray<unknown>)
 export type ProviderLaneDispatcher = Readonly<{
   dispatchTurn: <Context>(
     lane: ProviderLane<Context>,
-    request: FableLocalStartRequest,
+    request: ClaudeLocalStartRequest,
     sender: ProviderLaneEventSender | null,
   ) => Promise<ProviderLaneDispatchResult>
 }>
@@ -311,7 +311,7 @@ export const makeProviderLaneDispatcher = (
 
   const dispatchTurn = async <Context>(
     lane: ProviderLane<Context>,
-    request: FableLocalStartRequest,
+    request: ClaudeLocalStartRequest,
     sender: ProviderLaneEventSender | null,
   ): Promise<ProviderLaneDispatchResult> => {
     if (!startRequestHasContent(request)) {
@@ -392,7 +392,7 @@ export const makeProviderLaneDispatcher = (
     // before the model can write files. Awaited so the snapshot cannot race
     // the turn's first edit.
     await deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")
-    const emitTurnEvent = (turnEvent: FableLocalEvent): void => {
+    const emitTurnEvent = (turnEvent: ClaudeLocalEvent): void => {
         // CUT-11 (#8691): fold the SAME typed envelope the renderer receives
         // into the canonical live agent graph.
         deps.liveAgentGraph.applyEvent(request.threadRef, {
@@ -435,11 +435,11 @@ export const makeProviderLaneDispatcher = (
               ? randomUUID()
               : `${request.turnRef}-tool-${turnEvent.itemRef}${turnEvent.kind === "tool_result" ? "-result" : ""}`,
             role: "system",
-            text: fableLocalTraceNoteText(turnEvent),
+            text: claudeLocalTraceNoteText(turnEvent),
             timestamp: timestamp(),
             // Typed trace facts (EP250 tool cards): the persisted note carries
             // the same typed payload the live stream note does.
-            meta: { trace: fableLocalTraceNoteMeta(turnEvent) },
+            meta: { trace: claudeLocalTraceNoteMeta(turnEvent) },
           } as const
           if (turnEvent.itemRef === undefined) store.append(request.threadRef, traceNote)
           else store.upsert(request.threadRef, traceNote)
@@ -504,7 +504,7 @@ export const makeProviderLaneDispatcher = (
         error: lane.failureMessage(result.reason, result.detail),
       }
     }
-    textPersistence.complete(result.text.slice(0, FABLE_LOCAL_FINAL_TEXT_LIMIT))
+    textPersistence.complete(result.text.slice(0, CLAUDE_LOCAL_FINAL_TEXT_LIMIT))
     deps.localTurnFlushers.delete(textPersistence.flush)
     const finalMeta = lane.finalMeta({
       ...turnContext,

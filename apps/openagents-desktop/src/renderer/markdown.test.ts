@@ -45,12 +45,12 @@ describe("parseChatInlineMarkdown", () => {
   })
 
   test("MID-STREAM: an unterminated ** renders literally as plain text until closed", () => {
-    expect(parseChatInlineMarkdown("Fable local **streaming")).toEqual([
-      { kind: "text", text: "Fable local **streaming" },
+    expect(parseChatInlineMarkdown("Claude local **streaming")).toEqual([
+      { kind: "text", text: "Claude local **streaming" },
     ])
     // …and once the closing marker arrives, it becomes strong.
-    expect(parseChatInlineMarkdown("Fable local **streaming** proof.")).toEqual([
-      { kind: "text", text: "Fable local " },
+    expect(parseChatInlineMarkdown("Claude local **streaming** proof.")).toEqual([
+      { kind: "text", text: "Claude local " },
       { kind: "strong", children: [{ kind: "text", text: "streaming" }] },
       { kind: "text", text: " proof." },
     ])
@@ -143,7 +143,7 @@ describe("chatMarkdownBody (segments -> catalog views)", () => {
   })
 
   test("re-rendering per streamed append is stable and never throws mid-token", () => {
-    const stream = ["Fable ", "local ", "**stream", "ing** ", "proof.\n", "```", "ts\nconst ", "x = 1\n```"]
+    const stream = ["Claude ", "local ", "**stream", "ing** ", "proof.\n", "```", "ts\nconst ", "x = 1\n```"]
     let text = ""
     for (const delta of stream) {
       text += delta

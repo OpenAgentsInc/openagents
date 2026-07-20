@@ -5,7 +5,7 @@
  * projects Grok/Cursor peer sessions into a canonical event vocabulary
  * (`AcpProjectionEvent` = `KhalaRuntimeEvent` runtime events + bounded
  * canonical state snapshots). The provider lane SPI's stream envelope is the
- * frozen fable-local event envelope (see ./provider-lane.ts) — deliberately
+ * frozen claude-local event envelope (see ./provider-lane.ts) — deliberately
  * NOT a third vocabulary. This module is the explicit, typed mapping between
  * the two, so the ACP session lanes (#8892) implement `ProviderLane` by
  * folding their projector output through ONE audited function instead of
@@ -23,11 +23,11 @@
  */
 import type { AcpCanonicalStateEvent, AcpProjectionEvent } from "@openagentsinc/agent-client-runtime-bridge"
 import {
-  FABLE_LOCAL_DELTA_LIMIT,
-  FABLE_LOCAL_PLAN_ENTRY_LIMIT,
-  FABLE_LOCAL_SUMMARY_LIMIT,
-  type FableLocalEvent,
-} from "./fable-local-contract.ts"
+  CLAUDE_LOCAL_DELTA_LIMIT,
+  CLAUDE_LOCAL_PLAN_ENTRY_LIMIT,
+  CLAUDE_LOCAL_SUMMARY_LIMIT,
+  type ClaudeLocalEvent,
+} from "./claude-local-contract.ts"
 import {
   type ProviderLane,
   type ProviderLaneCapabilityReport,
@@ -35,7 +35,7 @@ import {
   type ProviderLaneTurnResult,
 } from "./provider-lane.ts"
 
-const summary = (value: string): string => value.slice(0, FABLE_LOCAL_SUMMARY_LIMIT)
+const summary = (value: string): string => value.slice(0, CLAUDE_LOCAL_SUMMARY_LIMIT)
 const itemRef = (value: string): string => value.slice(0, 120)
 const toolName = (value: string): string => value.slice(0, 120)
 
@@ -54,7 +54,7 @@ const planStatus = (value: unknown): PlanEntryStatus =>
  */
 export const acpProjectionEventToLaneEvent = (
   event: AcpProjectionEvent,
-): FableLocalEvent | null => {
+): ClaudeLocalEvent | null => {
   if (isCanonicalState(event)) {
     switch (event.kind) {
       // Plan replacement snapshot → the envelope's replace-rendered plan
@@ -67,7 +67,7 @@ export const acpProjectionEventToLaneEvent = (
           : []
         return {
           kind: "plan_updated",
-          entries: entries.slice(0, FABLE_LOCAL_PLAN_ENTRY_LIMIT).map(entry => ({
+          entries: entries.slice(0, CLAUDE_LOCAL_PLAN_ENTRY_LIMIT).map(entry => ({
             step: summary(String(entry.contentRef ?? entry.entryRef ?? "")),
             status: planStatus(entry.status),
           })),
@@ -122,7 +122,7 @@ export const acpProjectionEventToLaneEvent = (
     case "turn.interrupted":
       return { kind: "turn_failed", reason: "interrupted", detail: summary(event.reasonRef ?? "turn interrupted") }
     case "text.delta":
-      return { kind: "text_delta", text: event.text.slice(0, FABLE_LOCAL_DELTA_LIMIT) }
+      return { kind: "text_delta", text: event.text.slice(0, CLAUDE_LOCAL_DELTA_LIMIT) }
     case "reasoning.delta":
       return { kind: "reasoning", text: summary(event.text) }
     case "tool.call":

@@ -15,7 +15,7 @@ export type ProviderLaneAuthentication = "ready" | "missing" | "unknown"
 
 /**
  * Bug #8998: the live-authentication mapping every native lane (`codex-local`,
- * `fable-local`) must use to compute its `ProviderLaneRegistryEntry.authentication`
+ * `claude-local`) must use to compute its `ProviderLaneRegistryEntry.authentication`
  * field. `switchThread` below refuses any lane whose `authentication !== "ready"`
  * with `missing_auth` -- so a caller that never probes live (or that trusts a
  * cache nothing populates) permanently strands a genuinely-authenticated

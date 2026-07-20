@@ -11,7 +11,7 @@
 import { describe, expect, test } from "vite-plus/test"
 
 import type { DesktopThread } from "../chat-contract.ts"
-import type { FableLocalEventEnvelope } from "../fable-local-contract.ts"
+import type { ClaudeLocalEventEnvelope } from "../claude-local-contract.ts"
 import {
   childInterruptable,
   childSteerLine,
@@ -27,7 +27,7 @@ import {
   runtimeCardMessage,
   type DesktopNoteEntry,
 } from "./shell.ts"
-import { makeLocalHarnessChatHost, type FableLocalRendererBridge } from "./local-harness.ts"
+import { makeLocalHarnessChatHost, type ClaudeLocalRendererBridge } from "./local-harness.ts"
 
 // ---------------------------------------------------------------------------
 // View-tree inspection helpers.
@@ -147,7 +147,7 @@ describe("child card render (G4)", () => {
   test("a running child offers Interrupt that dispatches the exact ref; NO message action", () => {
     const runtime = {
       kind: "child" as const,
-      turnRef: "turn.fable.7",
+      turnRef: "turn.claude.7",
       childRef: "child.9",
       status: "running" as const,
       title: "Summarize the task",
@@ -161,7 +161,7 @@ describe("child card render (G4)", () => {
     }
     expect(open?.label).toBe("Summarize the task")
     expect(open?.onPress?.name).toBe("DesktopAgentAction")
-    expect(JSON.stringify(open?.onPress)).toContain("agent.local.turn.fable.7.child.child.9")
+    expect(JSON.stringify(open?.onPress)).toContain("agent.local.turn.claude.7.child.child.9")
     const interrupt = byKey(message.body, "child-interrupt-c1") as {
       label?: string
       onPress?: { name?: string; payload?: unknown }
@@ -169,7 +169,7 @@ describe("child card render (G4)", () => {
     expect(interrupt?.label).toBe("Interrupt")
     expect(interrupt?.onPress?.name).toBe("DesktopChildInterruptRequested")
     const payload = JSON.stringify(interrupt?.onPress)
-    expect(payload).toContain("turn.fable.7")
+    expect(payload).toContain("turn.claude.7")
     expect(payload).toContain("child.9")
     // Capability-truthful: messaging an in-flight child is NOT offered.
     const labels = collect(message.body).map((n) => n["label"]).filter((l) => typeof l === "string")
@@ -226,14 +226,14 @@ const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve,
 
 type Harness = {
   updates: DesktopThread[]
-  emit: (event: FableLocalEventEnvelope["event"]) => void
+  emit: (event: ClaudeLocalEventEnvelope["event"]) => void
   finish: () => Promise<void>
 }
 const runHarness = async (): Promise<Harness> => {
-  let listener: ((envelope: FableLocalEventEnvelope) => void) | null = null
+  let listener: ((envelope: ClaudeLocalEventEnvelope) => void) | null = null
   let resolveStart: (value: unknown) => void = () => {}
   let starts = 0
-  const bridge: FableLocalRendererBridge = {
+  const bridge: ClaudeLocalRendererBridge = {
     availability: async () => ({ state: "available", accountRef: "claude-pylon-b" }),
     // The first turn is driven manually; a CHAINED promoted-follow-up turn (A3)
     // resolves immediately so the harness `finish()` never hangs.
@@ -253,8 +253,8 @@ const runHarness = async (): Promise<Harness> => {
       openThread: async () => thread,
       sendMessage: async () => ({ ok: true, thread }),
     },
-    fable: bridge,
-    fableAvailability: () => ({ state: "available", accountRef: "claude-pylon-b" }),
+    claude: bridge,
+    claudeAvailability: () => ({ state: "available", accountRef: "claude-pylon-b" }),
     randomId: () => "fixed",
     scheduleProjection: flush => {
       let active = true
@@ -265,10 +265,10 @@ const runHarness = async (): Promise<Harness> => {
   const updates: DesktopThread[] = []
   // A closure so `listener` keeps its declared type (a straight-line call would
   // have CFA narrow the `= null` init to never).
-  const emit = (event: FableLocalEventEnvelope["event"]): void => {
-    listener?.({ turnRef: "turn.fable.fixed", event })
+  const emit = (event: ClaudeLocalEventEnvelope["event"]): void => {
+    listener?.({ turnRef: "turn.claude.fixed", event })
   }
-  const pending = host.sendMessage({ id: "thread-1", message: "go", harness: "fable", onUpdate: (t) => updates.push(t) })
+  const pending = host.sendMessage({ id: "thread-1", message: "go", harness: "claude", onUpdate: (t) => updates.push(t) })
   await settle()
   emit({ kind: "turn_started", thread })
   await settle()

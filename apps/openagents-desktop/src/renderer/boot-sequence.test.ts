@@ -102,13 +102,13 @@ describe("boot sequence agent scan", () => {
     const agents = projectBootSequenceAgents(
       withState({
         harnessLanes: {
-          fable: { available: true, reason: null },
+          claude: { available: true, reason: null },
           codex: { available: false, reason: CODEX_CHIP_REASON_VERIFYING },
         },
       }),
     )
     expect(bootSequenceScanning(agents)).toBe(true)
-    // Claude Code (fable) available; codex still checking; grok/apple-fm off.
+    // Claude Code (claude) available; codex still checking; grok/apple-fm off.
     expect(bootSequenceReadyCount(agents)).toBe(1)
   })
 })

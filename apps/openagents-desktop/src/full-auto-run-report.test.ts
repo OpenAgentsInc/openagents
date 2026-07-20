@@ -760,8 +760,8 @@ describe("FA-RPT-01 thread failure history + rotation passthrough", () => {
         handoffs: [],
         threadRecord: makeThreadRecord({
           rotationHistory: [
-            { fromLane: "codex-local", toLane: "fable-local", reason: "x".repeat(500), at: "2026-07-17T00:05:00.000Z" },
-            { fromLane: "fable-local", toLane: "codex-local", reason: "rate limited", at: "2026-07-17T00:20:00.000Z" },
+            { fromLane: "codex-local", toLane: "claude-local", reason: "x".repeat(500), at: "2026-07-17T00:05:00.000Z" },
+            { fromLane: "claude-local", toLane: "codex-local", reason: "rate limited", at: "2026-07-17T00:20:00.000Z" },
             { garbage: true }, // invalid entries are skipped, never guessed into shape
           ],
         }),
@@ -769,7 +769,7 @@ describe("FA-RPT-01 thread failure history + rotation passthrough", () => {
       expect(report.rotationHistory).toHaveLength(2)
       expect(report.rotationHistory![0]!.reason).toHaveLength(FULL_AUTO_RUN_REPORT_ROTATION_REASON_LIMIT)
       expect(report.rotationHistory![1]).toEqual({
-        fromLane: "fable-local",
+        fromLane: "claude-local",
         toLane: "codex-local",
         reason: "rate limited",
         at: "2026-07-17T00:20:00.000Z",

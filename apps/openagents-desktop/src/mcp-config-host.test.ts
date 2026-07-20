@@ -13,14 +13,14 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import { openMcpConfigStore, validateMcpServerConfig } from "./mcp-config-host.ts"
-import type { FableLocalMcpServerConfig } from "./fable-local-contract.ts"
+import type { ClaudeLocalMcpServerConfig } from "./claude-local-contract.ts"
 
 const tempStore = () => {
   const dir = mkdtempSync(path.join(tmpdir(), "mcp-config-host-"))
   return { dir, file: path.join(dir, "mcp", "servers.json") }
 }
 
-const stdio = (over: Partial<FableLocalMcpServerConfig> = {}): FableLocalMcpServerConfig => ({
+const stdio = (over: Partial<ClaudeLocalMcpServerConfig> = {}): ClaudeLocalMcpServerConfig => ({
   name: "docs",
   transport: "stdio",
   enabled: true,

@@ -12,7 +12,7 @@
  *
  * Honesty rules: every step is bounded by a timeout; a failing step captures
  * a failure screenshot and journals `{ step, ok: false, detail }` instead of
- * crashing; the harness-lane steps (Fable/Codex) degrade to journaled failure
+ * crashing; the harness-lane steps (Claude/Codex) degrade to journaled failure
  * when a lane is absent or disabled — the driver never fakes a receipt. The
  * process exits nonzero when the structural shell spine or either named
  * provider acceptance lane fails. A zero exit is therefore a real CUT-21
@@ -35,8 +35,8 @@ export type LiveProofStepName =
   | "fleet-workspace"
   | "fleet-usage-check"
   | "new-chat"
-  | "fable-chip"
-  | "fable-turn"
+  | "claude-chip"
+  | "claude-turn"
   | "codex-chip"
   | "codex-turn"
   // EP250 capability-eval harness (#8712): new rung-4 UI receipts for
@@ -72,8 +72,8 @@ export const liveProofSteps: ReadonlyArray<LiveProofStep> = [
   { name: "fleet-workspace", required: true, timeoutMs: 150_000 },
   { name: "fleet-usage-check", required: false, timeoutMs: 60_000 },
   { name: "new-chat", required: true, timeoutMs: 30_000 },
-  { name: "fable-chip", required: true, timeoutMs: 15_000 },
-  { name: "fable-turn", required: true, timeoutMs: 180_000 },
+  { name: "claude-chip", required: true, timeoutMs: 15_000 },
+  { name: "claude-turn", required: true, timeoutMs: 180_000 },
   { name: "codex-chip", required: true, timeoutMs: 15_000 },
   { name: "codex-turn", required: true, timeoutMs: 180_000 },
   // EP250 capability-eval rung-4 UI receipts. All optional: a missing lane or
@@ -122,12 +122,17 @@ const accountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
  */
 export const resolveLiveProofAccountRef = (
   env: Readonly<Record<string, string | undefined>>,
-  harness: "fable" | "codex",
+  harness: "claude" | "codex",
 ): string | null => {
-  const key = harness === "fable"
-    ? "OPENAGENTS_DESKTOP_LIVE_PROOF_FABLE_ACCOUNT_REF"
-    : "OPENAGENTS_DESKTOP_LIVE_PROOF_CODEX_ACCOUNT_REF"
-  const value = env[key]?.trim() ?? ""
+  // The Claude lane's env var was renamed from ...FABLE_ACCOUNT_REF to
+  // ...CLAUDE_ACCOUNT_REF ("Fable" is a Claude model, not the lane). Accept the
+  // legacy name as a read-only fallback so existing ops env stays valid.
+  const value =
+    harness === "claude"
+      ? (env.OPENAGENTS_DESKTOP_LIVE_PROOF_CLAUDE_ACCOUNT_REF
+          ?? env.OPENAGENTS_DESKTOP_LIVE_PROOF_FABLE_ACCOUNT_REF
+          ?? "").trim()
+      : (env.OPENAGENTS_DESKTOP_LIVE_PROOF_CODEX_ACCOUNT_REF ?? "").trim()
   return accountRefPattern.test(value) ? value : null
 }
 
@@ -637,8 +642,8 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
     }
   }
 
-  const stepChip = async (harness: "fable" | "codex"): Promise<boolean> => {
-    const stepName: LiveProofStepName = harness === "fable" ? "fable-chip" : "codex-chip"
+  const stepChip = async (harness: "claude" | "codex"): Promise<boolean> => {
+    const stepName: LiveProofStepName = harness === "claude" ? "claude-chip" : "codex-chip"
     const probe = asRec(await evalIn(probeChipScript(harness)))
     if (probe["present"] !== true) {
       await capture(`harness-${harness}-failed`)
@@ -715,8 +720,8 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
     return false
   }
 
-  const stepTurn = async (harness: "fable" | "codex"): Promise<void> => {
-    const stepName: LiveProofStepName = harness === "fable" ? "fable-turn" : "codex-turn"
+  const stepTurn = async (harness: "claude" | "codex"): Promise<void> => {
+    const stepName: LiveProofStepName = harness === "claude" ? "claude-turn" : "codex-turn"
     const baseline = asRec(await evalIn(probeTurnScript))
     const baselineAssistant = typeof baseline["assistantLength"] === "number" ? baseline["assistantLength"] as number : 0
     const baselineSystem = typeof baseline["systemCount"] === "number" ? baseline["systemCount"] as number : 0
@@ -792,7 +797,7 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
   // EP250 capability A2: submit a real turn, click Stop the moment the
   // composer reports a Stoppable pending state, and prove the turn ends with a
   // typed interrupted notice while the control reverts from Stop to Send.
-  const stepInterruptStop = async (harness: "fable" | "codex"): Promise<void> => {
+  const stepInterruptStop = async (harness: "claude" | "codex"): Promise<void> => {
     const submitted = asRec(await evalIn(submitTurnScript(liveProofTurnMessage)))
     if (submitted["submitted"] !== true) {
       await capture("interrupt-stop-failed")
@@ -972,11 +977,11 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
       const rows = await stepFleet()
       await stepUsage(rows)
       await stepNewChat()
-      const fableSelected = await stepChip("fable")
-      if (fableSelected) {
-        await stepTurn("fable")
+      const claudeSelected = await stepChip("claude")
+      if (claudeSelected) {
+        await stepTurn("claude")
       } else {
-        record("fable-turn", false, { reason: "skipped: Fable chip unavailable (see fable-chip)" })
+        record("claude-turn", false, { reason: "skipped: Claude chip unavailable (see claude-chip)" })
       }
       const codexSelected = await stepChip("codex")
       if (codexSelected) {
@@ -985,9 +990,9 @@ export const runLiveProof = (window: BrowserWindow, options: LiveProofRunOptions
         record("codex-turn", false, { reason: "codex-unavailable (see codex-chip)" })
       }
       // EP250 capability-eval rung-4 receipts.
-      if (fableSelected || codexSelected) {
-        const interruptHarness: "fable" | "codex" = fableSelected ? "fable" : "codex"
-        if (fableSelected) await evalIn(clickScript("shell-harness-fable"))
+      if (claudeSelected || codexSelected) {
+        const interruptHarness: "claude" | "codex" = claudeSelected ? "claude" : "codex"
+        if (claudeSelected) await evalIn(clickScript("shell-harness-claude"))
         await stepInterruptStop(interruptHarness)
       } else {
         record("interrupt-stop", false, { reason: "skipped: no local lane available to interrupt" })

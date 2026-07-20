@@ -18,7 +18,7 @@ export const LOCAL_TURN_RECORD_LIMIT = 128
 
 /**
  * Provider lane SPI (L1 #8899): the journal records turns for ANY registered
- * lane, keyed by its bounded lane ref — the built-in `fable-local` /
+ * lane, keyed by its bounded lane ref — the built-in `claude-local` /
  * `codex-local` values plus future SPI lanes (ACP peers, fixtures). Widened
  * from the original two-literal union; every previously valid journal file
  * still decodes, and restart recovery fails closed for any lane that does not

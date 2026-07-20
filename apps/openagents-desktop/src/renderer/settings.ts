@@ -33,7 +33,7 @@ import {
   mcpServerNamePattern,
   type McpConfigServerView,
 } from "../mcp-config-contract.ts"
-import type { FableLocalMcpServerConfig } from "../fable-local-contract.ts"
+import type { ClaudeLocalMcpServerConfig } from "../claude-local-contract.ts"
 import { PluginRefSchema, decodePluginConfigResult, type PluginConfigView, type PluginRef } from "../plugin-config-contract.ts"
 import {
   unifiedExtensionLifecycle,
@@ -241,7 +241,7 @@ export const initialSettingsState = (): SettingsState => ({
 const accountRefPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/
 const userCodePattern = /^[A-Z0-9]{4}-[A-Z0-9]{4,6}$/
 
-// Frozen-schema field bounds (fable-local-contract.ts) mirrored client-side so
+// Frozen-schema field bounds (claude-local-contract.ts) mirrored client-side so
 // the Add form fails fast with an inline reason before anything crosses to
 // main; main re-validates against the same frozen schema regardless.
 const MCP_NAME_MAX = 64
@@ -289,7 +289,7 @@ export const parseMcpKeyValueLines = (text: string, separator: "=" | ":"): Recor
 export const buildMcpConfigFromDraft = (
   draft: McpAddDraft,
   existingNames: ReadonlyArray<string>,
-): { readonly ok: true; readonly config: FableLocalMcpServerConfig } | {
+): { readonly ok: true; readonly config: ClaudeLocalMcpServerConfig } | {
   readonly ok: false
   readonly error: string
 } => {
@@ -627,7 +627,7 @@ export const unavailableOpenAgentsSessionSettingsBridge: OpenAgentsSessionSettin
 
 export type McpConfigSettingsBridge = Readonly<{
   list: () => Promise<unknown>
-  add: (config: FableLocalMcpServerConfig) => Promise<unknown>
+  add: (config: ClaudeLocalMcpServerConfig) => Promise<unknown>
   remove: (name: string) => Promise<unknown>
   toggle: (name: string, enabled: boolean) => Promise<unknown>
 }>

@@ -3,7 +3,7 @@
  * canonical live agent graph assembler.
  *
  * Every test drives the assembler with a fixed typed event stream (the same
- * envelope shape the live fable-local/codex-local runtimes emit) and asserts
+ * envelope shape the live claude-local/codex-local runtimes emit) and asserts
  * canonical `openagents.live_agent_graph.v1` assembly through the shared
  * reducer: node/edge shape, ordering, orphan refusal, interrupt settlement,
  * after-terminal refusal, permutation convergence, and exact usage
@@ -11,7 +11,7 @@
  */
 import { describe, expect, test } from "vite-plus/test"
 
-import type { FableChildUsage, FableLocalEvent } from "./fable-local-contract.ts"
+import type { ClaudeChildUsage, ClaudeLocalEvent } from "./claude-local-contract.ts"
 import {
   createLocalAgentGraphAssembler,
   isLocalAgentGraphApplied,
@@ -23,7 +23,7 @@ import {
 const at = (minute: number): string =>
   `2026-07-12T05:${String(minute).padStart(2, "0")}:00.000Z`
 
-const usageFixture: FableChildUsage = {
+const usageFixture: ClaudeChildUsage = {
   inputTokens: 1_200,
   cachedInputTokens: 900,
   outputTokens: 180,
@@ -31,7 +31,7 @@ const usageFixture: FableChildUsage = {
   totalTokens: 1_440,
 }
 
-const rootUsageFixture: FableChildUsage = {
+const rootUsageFixture: ClaudeChildUsage = {
   inputTokens: 10,
   cachedInputTokens: 2,
   outputTokens: 5,
@@ -49,7 +49,7 @@ const makeAssembler = (): LocalAgentGraphAssembler =>
 const apply = (
   assembler: LocalAgentGraphAssembler,
   turnRef: string,
-  event: FableLocalEvent,
+  event: ClaudeLocalEvent,
   minute: number,
 ): LocalAgentGraphResult => assembler.applyEvent({ turnRef, event }, at(minute))
 
@@ -94,10 +94,10 @@ describe("createLocalAgentGraphAssembler", () => {
     }))
   })
 
-  test("assembles a fable root with codex delegate children into one canonical graph", () => {
+  test("assembles a claude root with codex delegate children into one canonical graph", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-1", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-1", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     expectApplied(apply(assembler, "turn-1", { kind: "turn_started" }, 2))
@@ -307,7 +307,7 @@ describe("createLocalAgentGraphAssembler", () => {
     if (!unknownTurn.applied) expect(unknownTurn.refusal.reason).toBe("unknown_turn")
 
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-o", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-o", threadRef: "thread.local.test", lane: "claude_local" },
       at(2),
     ))
     const unknownChild = apply(assembler, "turn-o", {
@@ -337,7 +337,7 @@ describe("createLocalAgentGraphAssembler", () => {
   test("child activity without an observed start creates a loss-accounted child", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-l", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-l", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     expectApplied(apply(assembler, "turn-l", { kind: "turn_started" }, 2))
@@ -362,7 +362,7 @@ describe("createLocalAgentGraphAssembler", () => {
   test("events after a settled node are refused, never reopened", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-t", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-t", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     expectApplied(apply(assembler, "turn-t", { kind: "turn_started" }, 2))
@@ -413,7 +413,7 @@ describe("createLocalAgentGraphAssembler", () => {
   test("interrupt settles the root and every still-running child honestly", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-i", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-i", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     expectApplied(apply(assembler, "turn-i", { kind: "turn_started" }, 2))
@@ -452,7 +452,7 @@ describe("createLocalAgentGraphAssembler", () => {
   test("steer-interrupt settles exactly the targeted child", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-s", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-s", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     expectApplied(apply(assembler, "turn-s", { kind: "turn_started" }, 2))
@@ -474,7 +474,7 @@ describe("createLocalAgentGraphAssembler", () => {
   test("question attention follows pending/resolved and clears at terminal", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-q", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-q", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     expectApplied(apply(assembler, "turn-q", { kind: "turn_started" }, 2))
@@ -510,18 +510,18 @@ describe("createLocalAgentGraphAssembler", () => {
   test("duplicate turns and cross-thread turns are refused", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-d", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-d", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     const duplicate = assembler.startTurn(
-      { turnRef: "turn-d", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-d", threadRef: "thread.local.test", lane: "claude_local" },
       at(2),
     )
     expect(duplicate.applied).toBe(false)
     if (!duplicate.applied) expect(duplicate.refusal.reason).toBe("duplicate_turn")
 
     const crossThread = assembler.startTurn(
-      { turnRef: "turn-x", threadRef: "thread.local.other", lane: "fable_claude" },
+      { turnRef: "turn-x", threadRef: "thread.local.other", lane: "claude_local" },
       at(3),
     )
     expect(crossThread.applied).toBe(false)
@@ -533,7 +533,7 @@ describe("createLocalAgentGraphAssembler", () => {
     const run = (order: ReadonlyArray<"c1" | "c2">): string => {
       const assembler = makeAssembler()
       expectApplied(assembler.startTurn(
-        { turnRef: "turn-p", threadRef: "thread.local.test", lane: "fable_claude" },
+        { turnRef: "turn-p", threadRef: "thread.local.test", lane: "claude_local" },
         at(1),
       ))
       expectApplied(apply(assembler, "turn-p", { kind: "turn_started" }, 2))
@@ -576,7 +576,7 @@ describe("createLocalAgentGraphAssembler", () => {
 
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn one/with spaces", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn one/with spaces", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     expectApplied(assembler.applyEvent(
@@ -591,7 +591,7 @@ describe("createLocalAgentGraphAssembler", () => {
   test("tool edges track called/completed lifecycle with a bounded current tool", () => {
     const assembler = makeAssembler()
     expectApplied(assembler.startTurn(
-      { turnRef: "turn-w", threadRef: "thread.local.test", lane: "fable_claude" },
+      { turnRef: "turn-w", threadRef: "thread.local.test", lane: "claude_local" },
       at(1),
     ))
     expectApplied(apply(assembler, "turn-w", { kind: "turn_started" }, 2))

@@ -1,7 +1,7 @@
 /**
  * Session usage ledger contract (#8712 Lane C).
  *
- * Main owns an in-memory per-session token ledger fed from (a) local Fable
+ * Main owns an in-memory per-session token ledger fed from (a) local Claude
  * turn completions (exact SDK result usage) and (b) Codex sub-agent child
  * completions (exact `turn.completed` usage from `codex exec --json`). The
  * renderer reads it two ways, following the provider-accounts pattern:
@@ -38,7 +38,7 @@ export const UsageLedgerRowSchema = Schema.Struct({
   provider: Schema.Literals(usageLedgerProviders),
   /** Spawn-config truth (never a stream echo); null when unknown. */
   requestedModel: Schema.NullOr(Schema.String),
-  /** Completed top-level Fable turns attributed to this account. */
+  /** Completed top-level Claude turns attributed to this account. */
   turns: Schema.Number,
   /** Completed Codex sub-agent children attributed to this account. */
   children: Schema.Number,

@@ -124,11 +124,11 @@ const main = async (): Promise<void> => {
       document.querySelector('[data-en-key="shell-provider-select"]')?.textContent?.trim() === "Claude")
 
     // A real shell send establishes the exact active-thread provider target.
-    // The subsequent IDE-08 manifest therefore carries fable-local, the
+    // The subsequent IDE-08 manifest therefore carries claude-local, the
     // currently selected Claude model, and claude-pylon-3 instead of an
     // invented account.
     const composer = page.locator('[data-en-key="shell-input"] [contenteditable="true"]')
-    await composer.fill("Establish the packaged IDE-09 Fable fixture turn.")
+    await composer.fill("Establish the packaged IDE-09 Claude fixture turn.")
     await page.getByRole("button", { name: "Send", exact: true }).click()
     try {
       // The fixture deliberately streams a markdown marker across deltas. The
@@ -142,7 +142,7 @@ const main = async (): Promise<void> => {
         provider: document.querySelector('[data-en-key="shell-provider-select"]')?.textContent ?? null,
         sendDisabled: (document.querySelector('[aria-label="Send"]') as HTMLButtonElement | null)?.disabled ?? null,
       }))
-      throw new Error(`IDE-09 Fable fixture turn did not settle: ${JSON.stringify(diagnostic)}`, { cause: error })
+      throw new Error(`IDE-09 Claude fixture turn did not settle: ${JSON.stringify(diagnostic)}`, { cause: error })
     }
 
     await page.getByLabel("Project actions").getByRole("button", { name: "Files", exact: true }).click()
@@ -158,7 +158,7 @@ const main = async (): Promise<void> => {
     await page.waitForFunction(async () => {
       const snapshot = await (globalThis as any).openagentsDesktop.ideAgentCode.snapshot()
       const manifest = snapshot.manifests.at(-1)
-      return manifest?.effectiveRuntime?.providerRef === "fable-local" &&
+      return manifest?.effectiveRuntime?.providerRef === "claude-local" &&
         manifest?.effectiveRuntime?.accountRef === "claude-pylon-3"
     }, undefined, { timeout: 30_000 })
     // Add context intentionally returns to the conversation where the tray is
@@ -257,7 +257,7 @@ const main = async (): Promise<void> => {
     const disclosure = ai.locator("details")
     await disclosure.locator("summary").click()
     const disclosureText = await disclosure.textContent() ?? ""
-    const identityDisclosed = disclosureText.includes("fable") &&
+    const identityDisclosed = disclosureText.includes("claude") &&
       disclosureText.includes("claude-pylon-3") &&
       disclosureText.includes("ide.placement.desktop-local")
     const noRemoteIndexDependencyDisclosed = disclosureText.includes("No remote index dependency")
@@ -312,7 +312,7 @@ const main = async (): Promise<void> => {
       schemaVersion: "openagents.ide-cursor-packaged-trace.v1",
       candidateCommitSha,
       fixtureCohort: "deterministic_claude_query",
-      steps: ["fable_turn", "manifest", "completion", "partial_accept", "undo", "next_edit", "compare", "retry", "ask", "escape", "proposal", "disclosure"],
+      steps: ["claude_turn", "manifest", "completion", "partial_accept", "undo", "next_edit", "compare", "retry", "ask", "escape", "proposal", "disclosure"],
       sequences: {
         completion: completion.latestSequence,
         nextEdit: nextEdit.latestSequence,
@@ -320,7 +320,7 @@ const main = async (): Promise<void> => {
         ask: answer.latestSequence,
         proposal: proposal.latestSequence,
       },
-      provider: "fable-local",
+      provider: "claude-local",
       account: "claude-pylon-3",
       proposalRef: proposalCandidate?.proposalRef ?? null,
       finalReceiptCount: submitted.receipts.length,

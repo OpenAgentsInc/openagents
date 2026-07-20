@@ -46,7 +46,7 @@ export const FA_QA_MARKER_LANTERN = "LANTERN-42" as const
 
 /** The two built-in provider lanes the six tests exercise. */
 export const FA_QA_CODEX_LANE = "codex-local" as const
-export const FA_QA_CLAUDE_LANE = "fable-local" as const
+export const FA_QA_CLAUDE_LANE = "claude-local" as const
 
 // -----------------------------------------------------------------------
 // Test identity (issue section "Pinned test identity").

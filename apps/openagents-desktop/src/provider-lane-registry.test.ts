@@ -74,11 +74,11 @@ describe("provider lane registry", () => {
   test("persists a per-thread selection atomically and survives reconstruction", () => {
     const { file, registry } = setup()
     expect(registry.selection("thread.one")).toBe("codex-local")
-    registry.bind("thread.one", "fable-local")
-    expect(makeProviderLaneRegistry({ file }).selection("thread.one")).toBe("fable-local")
+    registry.bind("thread.one", "claude-local")
+    expect(makeProviderLaneRegistry({ file }).selection("thread.one")).toBe("claude-local")
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({
       version: 1,
-      selections: [{ threadRef: "thread.one", laneRef: "fable-local" }],
+      selections: [{ threadRef: "thread.one", laneRef: "claude-local" }],
     })
   })
 
@@ -117,14 +117,14 @@ describe("provider lane registry", () => {
     const { registry } = setup()
     const result = registry.switchThread({
       threadRef: "thread.one",
-      laneRef: "fable-local",
-      lanes: [lane("fable-local")],
+      laneRef: "claude-local",
+      lanes: [lane("claude-local")],
       thread: thread(PROVIDER_SWITCH_HISTORY_MESSAGES + 5),
       requiredCapabilities: ["interrupt"],
     })
     expect(result).toMatchObject({
       ok: true,
-      laneRef: "fable-local",
+      laneRef: "claude-local",
       previousLaneRef: "codex-local",
       truncated: true,
     })
@@ -133,11 +133,11 @@ describe("provider lane registry", () => {
       expect(result.history[0]?.text).toBe("message 5")
       expect(result.history.at(-1)?.text).toBe(`message ${PROVIDER_SWITCH_HISTORY_MESSAGES + 4}`)
     }
-    expect(registry.selection("thread.one")).toBe("fable-local")
+    expect(registry.selection("thread.one")).toBe("claude-local")
   })
 
   // Bug #8998: a live-P0 regression where every ordinary (non-Full-Auto)
-  // provider switch to a native lane (codex-local, fable-local) was refused
+  // provider switch to a native lane (codex-local, claude-local) was refused
   // with `missing_auth` regardless of real login state. Root cause: the
   // caller (main.ts's `providerLaneEntries()`) sourced `authentication` from
   // a passive cache that nothing populated after #8974 removed the last
@@ -170,10 +170,10 @@ describe("provider lane registry", () => {
     // stale-cache refusal as long as the live probe keeps reporting available.
     expect(registry.switchThread({
       threadRef: "thread.one",
-      laneRef: "fable-local",
-      lanes: [lane("fable-local", nativeLaneAuthenticationFromAvailability({ state: "available" }))],
+      laneRef: "claude-local",
+      lanes: [lane("claude-local", nativeLaneAuthenticationFromAvailability({ state: "available" }))],
       thread: thread(),
-    })).toMatchObject({ ok: true, laneRef: "fable-local" })
+    })).toMatchObject({ ok: true, laneRef: "claude-local" })
   })
 
   test("a native lane still stuck at the pre-#8998-fix stale 'unknown' default is correctly refused (proves the bug shape)", () => {

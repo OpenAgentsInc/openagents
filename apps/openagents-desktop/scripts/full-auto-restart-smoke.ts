@@ -93,7 +93,7 @@ const main = async (): Promise<void> => {
     await runPhase(claudeUserData, "seed-claude")
     const claude = parseReceipt("resume-claude", await runPhase(claudeUserData, "resume-claude"))
     if (claude.ok !== true || claude.seeded !== true || claude.resumed !== true ||
-      claude.dispatchedTurnRefPresent !== true || claude.dispatchedLane !== "fable-local") {
+      claude.dispatchedTurnRefPresent !== true || claude.dispatchedLane !== "claude-local") {
       throw new Error(`Claude-lane receipt failed assertions: ${JSON.stringify(claude)}`)
     }
     console.log(`[openagents-desktop full-auto-restart] two-process smoke OK ${JSON.stringify({

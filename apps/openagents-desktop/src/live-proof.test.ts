@@ -42,9 +42,9 @@ describe("live-proof persisted journal verdict", () => {
   test("rejects failed and missing required steps even after a clean child exit", () => {
     const journal = successfulJournal
       .filter(entry => entry.step !== "codex-turn")
-      .map(entry => entry.step === "fable-turn" ? { ...entry, ok: false } : entry)
+      .map(entry => entry.step === "claude-turn" ? { ...entry, ok: false } : entry)
     expect(liveProofJournalVerdict(journal)).toEqual({
-      failed: ["fable-turn"],
+      failed: ["claude-turn"],
       missing: ["codex-turn"],
       ok: false,
     })
@@ -59,8 +59,8 @@ describe("live-proof step list (EP250 journey)", () => {
       "fleet-workspace",
       "fleet-usage-check",
       "new-chat",
-      "fable-chip",
-      "fable-turn",
+      "claude-chip",
+      "claude-turn",
       "codex-chip",
       "codex-turn",
       "interrupt-stop",
@@ -77,8 +77,8 @@ describe("live-proof step list (EP250 journey)", () => {
       "shell-mounted",
       "fleet-workspace",
       "new-chat",
-      "fable-chip",
-      "fable-turn",
+      "claude-chip",
+      "claude-turn",
       "codex-chip",
       "codex-turn",
     ])
@@ -193,14 +193,14 @@ describe("live-proof config resolution", () => {
 
   test("accepts only bounded exact named-account targets per harness", () => {
     const env = {
-      OPENAGENTS_DESKTOP_LIVE_PROOF_FABLE_ACCOUNT_REF: " claude-pylon-3 ",
+      OPENAGENTS_DESKTOP_LIVE_PROOF_CLAUDE_ACCOUNT_REF: " claude-pylon-3 ",
       OPENAGENTS_DESKTOP_LIVE_PROOF_CODEX_ACCOUNT_REF: "codex-5",
     }
-    expect(resolveLiveProofAccountRef(env, "fable")).toBe("claude-pylon-3")
+    expect(resolveLiveProofAccountRef(env, "claude")).toBe("claude-pylon-3")
     expect(resolveLiveProofAccountRef(env, "codex")).toBe("codex-5")
     expect(resolveLiveProofAccountRef({
-      OPENAGENTS_DESKTOP_LIVE_PROOF_FABLE_ACCOUNT_REF: "bad ref with spaces",
-    }, "fable")).toBeNull()
+      OPENAGENTS_DESKTOP_LIVE_PROOF_CLAUDE_ACCOUNT_REF: "bad ref with spaces",
+    }, "claude")).toBeNull()
     expect(resolveLiveProofAccountRef({}, "codex")).toBeNull()
   })
 })

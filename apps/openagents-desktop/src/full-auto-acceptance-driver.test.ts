@@ -37,7 +37,7 @@ const fixtureIdentity = (): FullAutoAcceptanceIdentity => captureFullAutoAccepta
   profileClass: "fixture",
   providerVersions: [
     { laneRef: "codex-local", runtime: "fixture-executor", version: "1", authReadiness: "unknown" },
-    { laneRef: "fable-local", runtime: "fixture-executor", version: "1", authReadiness: "unknown" },
+    { laneRef: "claude-local", runtime: "fixture-executor", version: "1", authReadiness: "unknown" },
   ],
   telemetry: "disabled",
 })
@@ -77,7 +77,7 @@ describe("TEST 01 · Codex → Claude · context (headless fixture mode)", () =>
       // real handoff registry, in the Codex -> Claude direction.
       expect(execution.evidence.transitions).toHaveLength(1)
       expect(execution.evidence.transitions[0]!.from).toBe("codex-local")
-      expect(execution.evidence.transitions[0]!.to).toBe("fable-local")
+      expect(execution.evidence.transitions[0]!.to).toBe("claude-local")
 
       // The sidebar row carries the disposition prefix (applied strictly
       // after evaluation) and the durable thread agrees.
@@ -86,10 +86,10 @@ describe("TEST 01 · Codex → Claude · context (headless fixture mode)", () =>
       expect(thread?.title).toBe("PASS · TEST 01 · Codex → Claude · context")
       // The visible in-thread transition event exists alongside the receipt.
       expect(thread?.notes.some(note =>
-        note.role === "system" && note.text.includes("codex-local → fable-local"),
+        note.role === "system" && note.text.includes("codex-local → claude-local"),
       )).toBe(true)
       // The lane selection durably moved to the target lane.
-      expect(harness.laneRegistry.selection(execution.threadRef!)).toBe("fable-local")
+      expect(harness.laneRegistry.selection(execution.threadRef!)).toBe("claude-local")
     })
   })
 
@@ -122,7 +122,7 @@ describe("TEST 01 · Codex → Claude · context (headless fixture mode)", () =>
       const harness = await openFullAutoAcceptanceHarness(root)
       const fixture = makeFixtureLaneExecutor()
       const outageOnTarget: AcceptanceLaneExecutor = async input =>
-        input.laneRef === "fable-local"
+        input.laneRef === "claude-local"
           ? { ok: false, reason: "provider runtime unavailable" }
           : fixture(input)
       const execution = await executeFullAutoAcceptanceTest({
@@ -151,7 +151,7 @@ describe("TEST 02 · Claude → Codex · context (headless fixture mode)", () =>
       expect(execution.verdict.disposition).toBe("PASS")
       expect(execution.evidence.targetMarkerStatement).toContain("LANTERN-42")
       expect(execution.evidence.transitions).toHaveLength(1)
-      expect(execution.evidence.transitions[0]!.from).toBe("fable-local")
+      expect(execution.evidence.transitions[0]!.from).toBe("claude-local")
       expect(execution.evidence.transitions[0]!.to).toBe("codex-local")
       expect(execution.finalTitle).toBe("PASS · TEST 02 · Claude → Codex · context")
     })

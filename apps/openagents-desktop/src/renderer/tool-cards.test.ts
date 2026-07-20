@@ -6,7 +6,7 @@
  */
 import { describe, expect, test } from "vite-plus/test"
 
-import { parseFableLocalTraceNoteText } from "../fable-local-contract.ts"
+import { parseClaudeLocalTraceNoteText } from "../claude-local-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
 import {
   compactArgSummary,
@@ -26,19 +26,19 @@ const note = (input: Partial<DesktopNoteEntry> & Pick<DesktopNoteEntry, "key" | 
   ...input,
 } as DesktopNoteEntry)
 
-describe("parseFableLocalTraceNoteText (deterministic inverse of the serializer)", () => {
+describe("parseClaudeLocalTraceNoteText (deterministic inverse of the serializer)", () => {
   test("round-trips started / ok / failed trace lines", () => {
-    expect(parseFableLocalTraceNoteText('Read · started · {"file_path":"notes.md"}')).toEqual({
+    expect(parseClaudeLocalTraceNoteText('Read · started · {"file_path":"notes.md"}')).toEqual({
       toolName: "Read",
       phase: "started",
       summary: '{"file_path":"notes.md"}',
     })
-    expect(parseFableLocalTraceNoteText("Read · ok")).toEqual({
+    expect(parseClaudeLocalTraceNoteText("Read · ok")).toEqual({
       toolName: "Read",
       phase: "ok",
       summary: "",
     })
-    expect(parseFableLocalTraceNoteText("mcp__codex__delegate · failed · revoked token")).toEqual({
+    expect(parseClaudeLocalTraceNoteText("mcp__codex__delegate · failed · revoked token")).toEqual({
       toolName: "mcp__codex__delegate",
       phase: "failed",
       summary: "revoked token",
@@ -46,9 +46,9 @@ describe("parseFableLocalTraceNoteText (deterministic inverse of the serializer)
   })
 
   test("non-trace system text never parses as a tool trace", () => {
-    expect(parseFableLocalTraceNoteText("Claude · claude-fable-5")).toBeNull()
-    expect(parseFableLocalTraceNoteText("The model request failed.")).toBeNull()
-    expect(parseFableLocalTraceNoteText("hello")).toBeNull()
+    expect(parseClaudeLocalTraceNoteText("Claude · claude-fable-5")).toBeNull()
+    expect(parseClaudeLocalTraceNoteText("The model request failed.")).toBeNull()
+    expect(parseClaudeLocalTraceNoteText("hello")).toBeNull()
   })
 })
 
@@ -212,7 +212,7 @@ describe("projectTranscriptEntries (started + completion = ONE updating card)", 
       key: "q1",
       text: "Which path?",
       question: {
-        turnRef: "turn.fable.x",
+        turnRef: "turn.claude.x",
         questionRef: "question.1",
         status: "pending",
         questions: [{ question: "Which path?", header: "Fixture", multiSelect: false, options: [{ label: "A" }] }],

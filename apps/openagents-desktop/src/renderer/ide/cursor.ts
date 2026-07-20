@@ -409,7 +409,7 @@ export const buildIdeCursorProviderInput = (
           ? ("local" as const)
           : ("remote" as const),
     // Provider execution and semantic indexing are independent dimensions.
-    // A Fable/Codex/ACP model call is networked even when optional semantic
+    // A Claude/Codex/ACP model call is networked even when optional semantic
     // retrieval is disabled; collapsing these would falsely reject the
     // remote-embeddings-disabled mode required by IDE-09.
     networkPosture: "networked" as const,

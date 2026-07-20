@@ -30,7 +30,7 @@ export const FULL_AUTO_LANE_POLICIES: Readonly<Record<string, FullAutoLanePolicy
     instruction: `${SHARED_INSTRUCTION} Use the repository's own agent instructions and documentation as authority.`,
     autoResolveQuestions: true,
   },
-  "fable-local": {
+  "claude-local": {
     instruction: `${SHARED_INSTRUCTION} Use available Claude Code skills only when they are already enabled for this workspace.`,
     autoResolveQuestions: true,
   },

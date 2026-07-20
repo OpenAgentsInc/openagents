@@ -1048,7 +1048,7 @@ describe("plan unification across all three sources (T8 #8865)", () => {
 // ---------------------------------------------------------------------------
 // Delegated-agent collab states + subagent activity (#8867 T10, epic #8857
 // Wave 2). Today's live `child_started`/`child_activity`/`child_completed`/
-// `child_failed` FableLocalEvents (codex-app-server-turn.ts's
+// `child_failed` ClaudeLocalEvents (codex-app-server-turn.ts's
 // `collabAgentToolCall`/`subAgentActivity` handling) project as a
 // `runtime: {kind:"child"}` note (local-harness.ts); before this change that
 // note fell through to a flat system-notice line on the PRIMARY React

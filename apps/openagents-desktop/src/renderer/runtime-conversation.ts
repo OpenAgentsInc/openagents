@@ -67,7 +67,7 @@ const nextId = (kind: "thread" | "message", randomId: () => string): string =>
  */
 export const laneForConfirmedRun = (
   runtime: string | undefined,
-  harness?: "fable" | "codex",
+  harness?: "claude" | "codex",
 ): DesktopRuntimeControlLane | null =>
   runtime === "claude_code"
     ? "claude_pylon"
@@ -75,7 +75,7 @@ export const laneForConfirmedRun = (
       ? "hosted_khala"
       : runtime === "codex" || runtime === "opencode_codex"
         ? "codex_app_server"
-        : harness === "fable"
+        : harness === "claude"
           ? "claude_pylon"
           : harness === "codex"
             ? "codex_app_server"
@@ -213,7 +213,7 @@ type LiveThreadObserver = Readonly<{
 type ActiveDurableSend = Readonly<{
   threadRef: string
   runRef: string
-  harness?: "fable" | "codex"
+  harness?: "claude" | "codex"
   observer: LiveThreadObserver | null
 }>
 
@@ -371,7 +371,7 @@ export const makeRuntimeConversationChatHost = (
   const runDurableTurn = async (input: Readonly<{
     threadRef: string
     message: string
-    harness?: "fable" | "codex"
+    harness?: "claude" | "codex"
     observer: LiveThreadObserver | null
     messageRef?: string
     runRef?: string
@@ -420,7 +420,7 @@ export const makeRuntimeConversationChatHost = (
         runRef,
         threadRef: input.threadRef,
         ...(input.harness === undefined ? {} : {
-          lane: input.harness === "fable" ? "claude_pylon" as const : "codex_app_server" as const,
+          lane: input.harness === "claude" ? "claude_pylon" as const : "codex_app_server" as const,
         }),
       },
     })
@@ -700,7 +700,7 @@ export type DesktopChatHostSelection = Readonly<{
    * "runtime" when the authoritative Khala Sync conversation catalog is live
    * (signed in); "local" otherwise. Callers gate harness-lane availability on
    * this evidence (#8712) — the runtime host serves both lanes, the local
-   * host serves only the fable-local lane.
+   * host serves only the claude-local lane.
    */
   mode: "runtime" | "local"
 }>

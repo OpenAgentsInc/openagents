@@ -60,7 +60,15 @@ export type DesktopFontScale = (typeof desktopFontScaleValues)[number]
 export const desktopReducedMotionValues = ["system", "always", "never"] as const
 export type DesktopReducedMotion = (typeof desktopReducedMotionValues)[number]
 
-/** Default coding provider for a new turn. `auto` keeps existing routing. */
+/**
+ * Default coding provider for a new turn. `auto` keeps existing routing.
+ *
+ * `claude` is the canonical value for the Claude coding lane. `fable` is a
+ * RETAINED legacy alias for that same Claude lane (the harness was formerly
+ * mislabeled "fable" — "Fable" is one Claude MODEL, not the lane). It is kept
+ * ONLY so a preferences.json written by an older desktop build still validates;
+ * new writes use `claude`. Do not add new meaning to `fable` here.
+ */
 export const desktopDefaultProviderValues = ["auto", "codex", "claude", "fable"] as const
 export type DesktopDefaultProvider = (typeof desktopDefaultProviderValues)[number]
 

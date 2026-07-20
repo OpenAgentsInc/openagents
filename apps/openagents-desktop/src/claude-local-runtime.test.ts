@@ -1,11 +1,11 @@
 /**
- * Fable local runtime (#8712 + EP250 owner full-access override): account-
+ * Claude local runtime (#8712 + EP250 owner full-access override): account-
  * home discovery, SDK option posture, event mapping, bounds, redaction,
  * continuity, and the no-silent-substitution law at the runtime level (no
  * ready account -> typed unavailable, the SDK is never loaded, nothing falls
  * through to any gateway).
  *
- * Enforces openagents_desktop.chat.fable_local_owner_full_access.v1 (owner
+ * Enforces openagents_desktop.chat.claude_local_owner_full_access.v1 (owner
  * statement verbatim 2026-07-11: "disallowing bash is retarded, give them
  * full tools full permissions etc"): the full SDK toolset is offered (no
  * allowedTools restriction, no PreToolUse workspace guard, no out-of-scope
@@ -19,27 +19,27 @@ import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs"
 import { tmpdir, homedir } from "node:os"
 import { join } from "node:path"
 
-import { FABLE_LOCAL_DELTA_LIMIT, type FableLocalEvent } from "./fable-local-contract.ts"
+import { CLAUDE_LOCAL_DELTA_LIMIT, type ClaudeLocalEvent } from "./claude-local-contract.ts"
 import {
-  FABLE_DELEGATE_MAX_CHILDREN_PER_TURN,
-  FABLE_DELEGATE_MAX_CONCURRENT,
-  FABLE_DELEGATE_TOOL_NAME,
-  FABLE_FIXTURE_DELEGATE_TASK,
-  FABLE_LOCAL_DISALLOWED_TOOLS,
-  FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV,
-  FABLE_LOCAL_MODEL,
-  FABLE_STREAM_CLOSE_TIMEOUT_MS,
-  classifyFableSdkResultFailure,
-  discoverReadyFableClaudeHomes,
-  fableThreadWorkspaceSlug,
-  makeFableLocalRuntime,
-  makeFixtureFableLocalQuery,
-  makeFixtureFableMcpFactory,
-  redactFableLocalText,
-  type FableDelegateRuntime,
-  type FableLocalQuery,
-  type FixtureFableMcpTool,
-} from "./fable-local-runtime.ts"
+  CLAUDE_DELEGATE_MAX_CHILDREN_PER_TURN,
+  CLAUDE_DELEGATE_MAX_CONCURRENT,
+  CLAUDE_DELEGATE_TOOL_NAME,
+  CLAUDE_FIXTURE_DELEGATE_TASK,
+  CLAUDE_LOCAL_DISALLOWED_TOOLS,
+  CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV,
+  CLAUDE_LOCAL_MODEL,
+  CLAUDE_STREAM_CLOSE_TIMEOUT_MS,
+  classifyClaudeSdkResultFailure,
+  discoverReadyClaudeLocalHomes,
+  claudeThreadWorkspaceSlug,
+  makeClaudeLocalRuntime,
+  makeFixtureClaudeLocalQuery,
+  makeFixtureClaudeMcpFactory,
+  redactClaudeLocalText,
+  type ClaudeDelegateRuntime,
+  type ClaudeLocalQuery,
+  type FixtureClaudeMcpTool,
+} from "./claude-local-runtime.ts"
 import {
   FIXTURE_CODEX_CHILD_TEXT,
   fixtureCodexRevokedStderr,
@@ -51,7 +51,7 @@ import {
 } from "./codex-child-runtime.ts"
 
 const makeAccountRoot = (): string => {
-  const root = mkdtempSync(join(tmpdir(), "fable-local-homes-"))
+  const root = mkdtempSync(join(tmpdir(), "claude-local-homes-"))
   // Default `~/.claude` analogue; individual tests opt it into auth.
   mkdirSync(join(root, ".claude"))
   // Sibling without a pooled token: discovered but not ready.
@@ -64,11 +64,11 @@ const makeAccountRoot = (): string => {
   return root
 }
 
-describe("discoverReadyFableClaudeHomes", () => {
+describe("discoverReadyClaudeLocalHomes", () => {
   test("prefers the current Claude session before ready Pylon fallbacks", async () => {
     const root = makeAccountRoot()
     writeFileSync(join(root, ".claude", ".credentials.json"), "{}\n")
-    const ready = await discoverReadyFableClaudeHomes({ PYLON_ACCOUNT_HOME_ROOT: root })
+    const ready = await discoverReadyClaudeLocalHomes({ PYLON_ACCOUNT_HOME_ROOT: root })
     expect(ready).toEqual([
       { ref: "claude", home: join(root, ".claude"), source: "current_session" },
       { ref: "claude-pylon-b", home: join(root, ".claude-pylon-b"), source: "pylon" },
@@ -76,25 +76,25 @@ describe("discoverReadyFableClaudeHomes", () => {
   })
 
   test("returns empty when neither a current session nor a Pylon token exists", async () => {
-    const root = mkdtempSync(join(tmpdir(), "fable-local-empty-"))
+    const root = mkdtempSync(join(tmpdir(), "claude-local-empty-"))
     mkdirSync(join(root, ".claude-pylon-a"))
-    expect(await discoverReadyFableClaudeHomes({ PYLON_ACCOUNT_HOME_ROOT: root })).toEqual([])
+    expect(await discoverReadyClaudeLocalHomes({ PYLON_ACCOUNT_HOME_ROOT: root })).toEqual([])
   })
 
   test("explicit proof arming admits the ordinary SDK session without a credential file or probe", async () => {
-    const root = mkdtempSync(join(tmpdir(), "fable-local-owner-session-"))
+    const root = mkdtempSync(join(tmpdir(), "claude-local-owner-session-"))
     mkdirSync(join(root, ".claude"))
-    expect(await discoverReadyFableClaudeHomes({
+    expect(await discoverReadyClaudeLocalHomes({
       PYLON_ACCOUNT_HOME_ROOT: root,
-      [FABLE_LOCAL_DEFAULT_SESSION_ARM_ENV]: "1",
+      [CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV]: "1",
     })).toEqual([{ ref: "claude", home: join(root, ".claude"), source: "current_session" }])
   })
 })
 
-describe("redactFableLocalText", () => {
+describe("redactClaudeLocalText", () => {
   test("replaces the workspace and home prefixes", () => {
     const text = `Read /work/scratch/turns/a.md and ${homedir()}/notes/b.md`
-    expect(redactFableLocalText(text, { workspace: "/work/scratch/turns" }))
+    expect(redactClaudeLocalText(text, { workspace: "/work/scratch/turns" }))
       .toBe("Read <workspace>/a.md and ~/notes/b.md")
   })
 })
@@ -117,12 +117,12 @@ const makeRuntimeHarness = (input: {
 }) => {
   const root = input.root ?? makeAccountRoot()
   const captured: CapturedQuery[] = []
-  const query: FableLocalQuery = call => {
+  const query: ClaudeLocalQuery = call => {
     captured.push(call)
     return input.script(call)
   }
-  const scratch = mkdtempSync(join(tmpdir(), "fable-local-scratch-"))
-  const runtime = makeFableLocalRuntime({
+  const scratch = mkdtempSync(join(tmpdir(), "claude-local-scratch-"))
+  const runtime = makeClaudeLocalRuntime({
     scratchRoot: () => scratch,
     ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: () => input.workspaceRoot! }),
     env: { PYLON_ACCOUNT_HOME_ROOT: root },
@@ -136,13 +136,13 @@ const makeRuntimeHarness = (input: {
 }
 
 const collect = () => {
-  const events: FableLocalEvent[] = []
-  return { events, emit: (event: FableLocalEvent) => events.push(event) }
+  const events: ClaudeLocalEvent[] = []
+  return { events, emit: (event: ClaudeLocalEvent) => events.push(event) }
 }
 
-describe("makeFableLocalRuntime.runTurn", () => {
+describe("makeClaudeLocalRuntime.runTurn", () => {
   test("an explicit workspace root is the exact Claude cwd", async () => {
-    const workspace = mkdtempSync(join(tmpdir(), "fable-local-workspace-"))
+    const workspace = mkdtempSync(join(tmpdir(), "claude-local-workspace-"))
     const harness = makeRuntimeHarness({
       workspaceRoot: workspace,
       script: async function* () {
@@ -157,7 +157,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
   })
 
   test("streams a real turn: conservative SDK options, mapped events, usage, final text", async () => {
-    const longDelta = "x".repeat(FABLE_LOCAL_DELTA_LIMIT + 500)
+    const longDelta = "x".repeat(CLAUDE_LOCAL_DELTA_LIMIT + 500)
     const harness = makeRuntimeHarness({
       script: async function* () {
         yield { type: "system", subtype: "init", session_id: "session-1" }
@@ -198,13 +198,13 @@ describe("makeFableLocalRuntime.runTurn", () => {
       "tool_result",
       "turn_completed",
     ])
-    const secondDelta = sink.events[2] as Extract<FableLocalEvent, { kind: "text_delta" }>
-    expect(secondDelta.text.length).toBeLessThanOrEqual(FABLE_LOCAL_DELTA_LIMIT)
-    const toolUse = sink.events[3] as Extract<FableLocalEvent, { kind: "tool_use" }>
+    const secondDelta = sink.events[2] as Extract<ClaudeLocalEvent, { kind: "text_delta" }>
+    expect(secondDelta.text.length).toBeLessThanOrEqual(CLAUDE_LOCAL_DELTA_LIMIT)
+    const toolUse = sink.events[3] as Extract<ClaudeLocalEvent, { kind: "tool_use" }>
     expect(toolUse.toolName).toBe("Read")
     expect(toolUse.summary).not.toContain(homedir())
     expect(toolUse.summary).toContain("~/secret/notes.md")
-    const toolResult = sink.events[4] as Extract<FableLocalEvent, { kind: "tool_result" }>
+    const toolResult = sink.events[4] as Extract<ClaudeLocalEvent, { kind: "tool_result" }>
     expect(toolResult.ok).toBe(false)
     expect(toolResult.toolName).toBe("Read")
     // Typed item payloads (#8859): the Claude lane maps into the same
@@ -225,7 +225,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
       status: "failed",
       errorMessage: "permission denied by policy",
     })
-    const completed = sink.events[5] as Extract<FableLocalEvent, { kind: "turn_completed" }>
+    const completed = sink.events[5] as Extract<ClaudeLocalEvent, { kind: "turn_completed" }>
     expect(completed.totalTokens).toBe(17)
 
     // Owner full-access posture (EP250 override, verbatim: "disallowing
@@ -243,16 +243,16 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(call.options.tools).toBeUndefined()
     expect(call.options.hooks).toBeUndefined()
     expect(typeof call.options.canUseTool).toBe("function")
-    // IT HAS TO BE FABLE: the requested model is pinned, never the account
+    // IT HAS TO BE CLAUDE: the requested model is pinned, never the account
     // home's default. Skills are removed from the lane entirely (the Skill
     // tool is disallowed and no skills are enabled), so a bundled skill can
     // never auto-trigger and fail against the whitelist.
-    expect(call.options.model).toBe(FABLE_LOCAL_MODEL)
+    expect(call.options.model).toBe(CLAUDE_LOCAL_MODEL)
     expect(call.options.model).toBe("claude-fable-5")
     // Interactive-only UX-noise tools stay disallowed (separately decided,
     // not reversed by the full-access override); NotebookEdit is now
     // OFFERED; AskUserQuestion IS offered (it has a real answer path).
-    expect(call.options.disallowedTools).toEqual([...FABLE_LOCAL_DISALLOWED_TOOLS])
+    expect(call.options.disallowedTools).toEqual([...CLAUDE_LOCAL_DISALLOWED_TOOLS])
     expect(call.options.disallowedTools).toContain("Skill")
     expect(call.options.disallowedTools).toContain("EnterPlanMode")
     expect(call.options.disallowedTools).toContain("ExitPlanMode")
@@ -280,7 +280,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
         yield { type: "result", subtype: "success", is_error: false, result: "ok", usage: null }
       },
     })
-    const runtime = makeFableLocalRuntime({
+    const runtime = makeClaudeLocalRuntime({
       scratchRoot: () => harness.scratch,
       env: { PYLON_ACCOUNT_HOME_ROOT: harness.root },
       queryImpl: async () => (call => { harness.captured.push(call); return (async function* () {
@@ -396,7 +396,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
     const observed: Array<Record<string, string>> = []
     const harness = makeRuntimeHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "session-durable", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "session-durable", model: CLAUDE_LOCAL_MODEL }
         yield { type: "result", subtype: "success", is_error: false, result: "continued" }
       },
       initialSessions: [{
@@ -451,18 +451,18 @@ describe("makeFableLocalRuntime.runTurn", () => {
   })
 
   test("preserves Claude authentication and organization-access refusals as account recovery facts", () => {
-    expect(classifyFableSdkResultFailure(
+    expect(classifyClaudeSdkResultFailure(
       "success",
       "Failed to authenticate: OAuth session expired and could not be refreshed",
     )).toEqual({
       reason: "account_reconnect_required",
       detail: "Failed to authenticate: OAuth session expired and could not be refreshed",
     })
-    expect(classifyFableSdkResultFailure(
+    expect(classifyClaudeSdkResultFailure(
       "success",
       "Your organization has disabled Claude subscription access for Claude Code · Use an Anthropic API key instead",
     )).toMatchObject({ reason: "account_reconnect_required" })
-    expect(classifyFableSdkResultFailure("success", "Usage limit reached")).toMatchObject({
+    expect(classifyClaudeSdkResultFailure("success", "Usage limit reached")).toMatchObject({
       reason: "budget_exceeded",
     })
   })
@@ -508,13 +508,13 @@ describe("makeFableLocalRuntime.runTurn", () => {
   })
 
   test("rotates to the next ready Claude home when an account fails before any content (live pylon-2 org-disabled shape)", async () => {
-    const root = mkdtempSync(join(tmpdir(), "fable-local-rotate-"))
+    const root = mkdtempSync(join(tmpdir(), "claude-local-rotate-"))
     for (const name of [".claude-pylon-a", ".claude-pylon-b"]) {
       mkdirSync(join(root, name))
       writeFileSync(join(root, name, "claude-oauth-token"), `token-${name}\n`)
     }
     const captured: CapturedQuery[] = []
-    const query: FableLocalQuery = call => {
+    const query: ClaudeLocalQuery = call => {
       captured.push(call)
       return captured.length === 1
         ? (async function* () {
@@ -532,8 +532,8 @@ describe("makeFableLocalRuntime.runTurn", () => {
             yield { type: "result", subtype: "success", is_error: false, result: "rotated", usage: null }
           })()
     }
-    const runtime = makeFableLocalRuntime({
-      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-scratch-")),
+    const runtime = makeClaudeLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "claude-local-scratch-")),
       env: { PYLON_ACCOUNT_HOME_ROOT: root },
       queryImpl: async () => query,
     })
@@ -550,21 +550,21 @@ describe("makeFableLocalRuntime.runTurn", () => {
   })
 
   test("an exact account target never rotates to another ready Claude home", async () => {
-    const root = mkdtempSync(join(tmpdir(), "fable-local-exact-"))
+    const root = mkdtempSync(join(tmpdir(), "claude-local-exact-"))
     for (const name of [".claude-pylon-a", ".claude-pylon-b"]) {
       mkdirSync(join(root, name))
       writeFileSync(join(root, name, "claude-oauth-token"), `token-${name}\n`)
     }
     const captured: CapturedQuery[] = []
-    const query: FableLocalQuery = call => {
+    const query: ClaudeLocalQuery = call => {
       captured.push(call)
       return (async function* () {
         yield { type: "system", subtype: "init", session_id: "session-exact-fail" }
         yield { type: "result", subtype: "error_during_execution", is_error: true }
       })()
     }
-    const runtime = makeFableLocalRuntime({
-      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-scratch-")),
+    const runtime = makeClaudeLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "claude-local-scratch-")),
       env: { PYLON_ACCOUNT_HOME_ROOT: root },
       queryImpl: async () => query,
     })
@@ -580,13 +580,13 @@ describe("makeFableLocalRuntime.runTurn", () => {
   })
 
   test("does not rotate once content streamed: a partial reply fails honestly", async () => {
-    const root = mkdtempSync(join(tmpdir(), "fable-local-norotate-"))
+    const root = mkdtempSync(join(tmpdir(), "claude-local-norotate-"))
     for (const name of [".claude-pylon-a", ".claude-pylon-b"]) {
       mkdirSync(join(root, name))
       writeFileSync(join(root, name, "claude-oauth-token"), `token-${name}\n`)
     }
     let calls = 0
-    const query: FableLocalQuery = () => {
+    const query: ClaudeLocalQuery = () => {
       calls += 1
       return (async function* () {
         yield { type: "system", subtype: "init", session_id: "session-partial" }
@@ -594,8 +594,8 @@ describe("makeFableLocalRuntime.runTurn", () => {
         yield { type: "result", subtype: "error_during_execution", is_error: true }
       })()
     }
-    const runtime = makeFableLocalRuntime({
-      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-scratch-")),
+    const runtime = makeClaudeLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "claude-local-scratch-")),
       env: { PYLON_ACCOUNT_HOME_ROOT: root },
       queryImpl: async () => query,
     })
@@ -608,27 +608,27 @@ describe("makeFableLocalRuntime.runTurn", () => {
     expect(sink.events.at(-1)?.kind).toBe("turn_failed")
   })
 
-  test("MODEL-LEVEL NO SUBSTITUTION: an init reporting a non-Fable model fails typed, streams nothing, and never rotates", async () => {
+  test("MODEL-LEVEL NO SUBSTITUTION: an init reporting a non-Claude model fails typed, streams nothing, and never rotates", async () => {
     // Two ready homes prove the no-rotation half: a model substitution is a
     // provider-side refusal, not an account failure, so the second home must
     // never be tried.
-    const root = mkdtempSync(join(tmpdir(), "fable-local-model-sub-"))
+    const root = mkdtempSync(join(tmpdir(), "claude-local-model-sub-"))
     for (const name of [".claude-pylon-a", ".claude-pylon-b"]) {
       mkdirSync(join(root, name))
       writeFileSync(join(root, name, "claude-oauth-token"), `token-${name}\n`)
     }
     let calls = 0
-    const query: FableLocalQuery = () => {
+    const query: ClaudeLocalQuery = () => {
       calls += 1
       return (async function* () {
         yield { type: "system", subtype: "init", session_id: "session-sub", model: "claude-sonnet-4-6" }
-        // A substituted model's output must NEVER surface as Fable text.
+        // A substituted model's output must NEVER surface as Claude text.
         yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "substituted output" } } }
         yield { type: "result", subtype: "success", is_error: false, result: "substituted output" }
       })()
     }
-    const runtime = makeFableLocalRuntime({
-      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-scratch-")),
+    const runtime = makeClaudeLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "claude-local-scratch-")),
       env: { PYLON_ACCOUNT_HOME_ROOT: root },
       queryImpl: async () => query,
     })
@@ -653,21 +653,21 @@ describe("makeFableLocalRuntime.runTurn", () => {
     })
   })
 
-  test("an init reporting the Fable model streams normally and emits the effective model", async () => {
+  test("an init reporting the Claude model streams normally and emits the effective model", async () => {
     const harness = makeRuntimeHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "session-fable", model: "claude-fable-5" }
-        yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "I am Fable." } } }
-        yield { type: "result", subtype: "success", is_error: false, result: "I am Fable.", usage: { input_tokens: 3, output_tokens: 4 } }
+        yield { type: "system", subtype: "init", session_id: "session-claude", model: "claude-fable-5" }
+        yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "I am Claude." } } }
+        yield { type: "result", subtype: "success", is_error: false, result: "I am Claude.", usage: { input_tokens: 3, output_tokens: 4 } }
       },
     })
     const sink = collect()
     const result = await harness.runtime.runTurn({
-      turnRef: "turn-fable", threadRef: "thread-fable", history: [], message: "WHAT MODEL ARE YOU", emit: sink.emit,
+      turnRef: "turn-claude", threadRef: "thread-claude", history: [], message: "WHAT MODEL ARE YOU", emit: sink.emit,
     })
     expect(result).toEqual({
       ok: true,
-      text: "I am Fable.",
+      text: "I am Claude.",
       totalTokens: 7,
       accountRef: "claude-pylon-b",
       usage: { inputTokens: 3, cachedInputTokens: 0, outputTokens: 4, reasoningTokens: 0, totalTokens: 7 },
@@ -700,7 +700,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
                   type: "system",
                   subtype: "init",
                   session_id: "session-stuck-close",
-                  model: FABLE_LOCAL_MODEL,
+                  model: CLAUDE_LOCAL_MODEL,
                 },
               }
             }
@@ -774,7 +774,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
     }
   })
 
-  test("prefix-match tolerates versioned Fable model IDs and dedupes repeated init model reports", async () => {
+  test("prefix-match tolerates versioned Claude model IDs and dedupes repeated init model reports", async () => {
     const harness = makeRuntimeHarness({
       script: async function* () {
         yield { type: "system", subtype: "init", session_id: "session-vers", model: "claude-fable-5-20260701" }
@@ -794,10 +794,10 @@ describe("makeFableLocalRuntime.runTurn", () => {
   })
 
   test("NO SILENT SUBSTITUTION: no ready account means a typed unavailable result and the SDK is never loaded", async () => {
-    const root = mkdtempSync(join(tmpdir(), "fable-local-none-"))
+    const root = mkdtempSync(join(tmpdir(), "claude-local-none-"))
     let sdkLoaded = false
-    const runtime = makeFableLocalRuntime({
-      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-scratch-")),
+    const runtime = makeClaudeLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "claude-local-scratch-")),
       env: { PYLON_ACCOUNT_HOME_ROOT: root },
       queryImpl: async () => {
         sdkLoaded = true
@@ -822,7 +822,7 @@ describe("makeFableLocalRuntime.runTurn", () => {
 
 // ---------------------------------------------------------------------------
 // EP250 owner full access (contract:
-// openagents_desktop.chat.fable_local_owner_full_access.v1) + per-thread
+// openagents_desktop.chat.claude_local_owner_full_access.v1) + per-thread
 // workspace persistence (the workspace remains the default cwd, not a bound)
 // ---------------------------------------------------------------------------
 
@@ -845,7 +845,7 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
     const decisions: Array<Record<string, unknown>> = []
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-allow", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-allow", model: CLAUDE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
         decisions.push(await canUse("Bash", { command: "echo full access" }, { signal: new AbortController().signal }))
         decisions.push(await canUse("Write", { file_path: join(homedir(), "anywhere.md") }, { signal: new AbortController().signal }))
@@ -879,7 +879,7 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
     const written: string[] = []
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-write", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-write", model: CLAUDE_LOCAL_MODEL }
         // Drive the REAL permission path the runtime installed for this
         // session: canUseTool must allow the Write (full-access lane).
         const canUse = captured.options.canUseTool as CanUseToolFn
@@ -905,7 +905,7 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
     expect(result.ok).toBe(true)
     expect(existsSync(written[0]!)).toBe(true)
     const toolResult = sink.events.find(event => event.kind === "tool_result") as
-      Extract<FableLocalEvent, { kind: "tool_result" }>
+      Extract<ClaudeLocalEvent, { kind: "tool_result" }>
     expect(toolResult.ok).toBe(true)
     expect(toolResult.toolName).toBe("Write")
   })
@@ -936,17 +936,17 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
     expect(cwds[1]).toBe(cwds[0]!)
     expect(cwds[2]).not.toBe(cwds[0]!)
     expect(cwds[0]!.startsWith(join(harness.scratch, "threads"))).toBe(true)
-    expect(cwds[0]!).toContain(fableThreadWorkspaceSlug("thread-persist"))
+    expect(cwds[0]!).toContain(claudeThreadWorkspaceSlug("thread-persist"))
     expect(existsSync(join(cwds[1]!, "greetings.md"))).toBe(true)
   })
 
   test("thread workspace slugs are sanitized, bounded, and collision-safe", () => {
-    expect(fableThreadWorkspaceSlug("thread-a")).toBe(fableThreadWorkspaceSlug("thread-a"))
-    expect(fableThreadWorkspaceSlug("thread-a")).not.toBe(fableThreadWorkspaceSlug("thread-b"))
-    const hostile = fableThreadWorkspaceSlug("../../../etc/passwd")
+    expect(claudeThreadWorkspaceSlug("thread-a")).toBe(claudeThreadWorkspaceSlug("thread-a"))
+    expect(claudeThreadWorkspaceSlug("thread-a")).not.toBe(claudeThreadWorkspaceSlug("thread-b"))
+    const hostile = claudeThreadWorkspaceSlug("../../../etc/passwd")
     expect(hostile).not.toContain("/")
     expect(hostile).not.toContain("..")
-    expect(fableThreadWorkspaceSlug("x".repeat(500)).length).toBeLessThanOrEqual(60)
+    expect(claudeThreadWorkspaceSlug("x".repeat(500)).length).toBeLessThanOrEqual(60)
   })
 
   test("REGRESSION: with the allow-all canUseTool, AskUserQuestion STILL parks on the question flow (never blanket-allowed)", async () => {
@@ -955,7 +955,7 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
     const sink = collect()
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-q-park", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-q-park", model: CLAUDE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
         // Bash allowed instantly…
         const bash = await canUse("Bash", { command: "ls" }, { signal: new AbortController().signal })
@@ -970,7 +970,7 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
           }],
         }, { signal: new AbortController().signal })
         const pendingEvent = sink.events.find(event => event.kind === "question_pending") as
-          Extract<FableLocalEvent, { kind: "question_pending" }>
+          Extract<ClaudeLocalEvent, { kind: "question_pending" }>
         expect(pendingEvent).toBeDefined()
         expect(harness.runtime.answerQuestion({
           turnRef: "turn-q-park", questionRef: pendingEvent.questionRef,
@@ -997,7 +997,7 @@ describe("EP250 owner full access: full toolset, no workspace guard", () => {
     const decisions: Array<Record<string, unknown>> = []
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-q-full-auto", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-q-full-auto", model: CLAUDE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
         decisions.push(await canUse("AskUserQuestion", singleQuestionInput(), {
           signal: new AbortController().signal,
@@ -1045,12 +1045,12 @@ describe("EP250 AskUserQuestion flow", () => {
     const rawInput = singleQuestionInput()
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-q1", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-q1", model: CLAUDE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
         const pendingDecision = canUse("AskUserQuestion", rawInput, { signal: new AbortController().signal })
         // The pending event is emitted synchronously when the tool parks.
         const pendingEvent = sink.events.find(event => event.kind === "question_pending") as
-          Extract<FableLocalEvent, { kind: "question_pending" }>
+          Extract<ClaudeLocalEvent, { kind: "question_pending" }>
         expect(pendingEvent).toBeDefined()
         expect(pendingEvent.questionRef).toBe("q.turn-q1.1")
         expect(pendingEvent.questions.length).toBe(1)
@@ -1122,11 +1122,11 @@ describe("EP250 AskUserQuestion flow", () => {
     }
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-q-multi", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-q-multi", model: CLAUDE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
         const pendingDecision = canUse("AskUserQuestion", rawInput, { signal: new AbortController().signal })
         const pendingEvent = sink.events.find(event => event.kind === "question_pending") as
-          Extract<FableLocalEvent, { kind: "question_pending" }>
+          Extract<ClaudeLocalEvent, { kind: "question_pending" }>
         expect(pendingEvent.questions[0]!.multiSelect).toBe(true)
         expect(harness.runtime.answerQuestion({
           turnRef: "turn-q-multi", questionRef: pendingEvent.questionRef,
@@ -1150,7 +1150,7 @@ describe("EP250 AskUserQuestion flow", () => {
     const harness = makeRuntimeHarness({
       questionTimeoutMs: 30,
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-q-timeout", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-q-timeout", model: CLAUDE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
         decisions.push(await canUse("AskUserQuestion", singleQuestionInput(), { signal: new AbortController().signal }))
         yield { type: "result", subtype: "success", is_error: false, result: "proceeded without input" }
@@ -1176,7 +1176,7 @@ describe("EP250 AskUserQuestion flow", () => {
     const sink = collect()
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-q-int", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-q-int", model: CLAUDE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
         const decision = await canUse("AskUserQuestion", singleQuestionInput(), { signal: new AbortController().signal })
         expect((decision as { behavior?: unknown }).behavior).toBe("deny")
@@ -1201,7 +1201,7 @@ describe("EP250 AskUserQuestion flow", () => {
     const sink = collect()
     const harness = makeRuntimeHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "s-q-bad", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s-q-bad", model: CLAUDE_LOCAL_MODEL }
         const canUse = captured.options.canUseTool as CanUseToolFn
         decisions.push(await canUse("AskUserQuestion", { questions: [] }, { signal: new AbortController().signal }))
         decisions.push(await canUse("AskUserQuestion", { questions: [{ question: "No options?" }] }, { signal: new AbortController().signal }))
@@ -1226,31 +1226,31 @@ describe("EP250 AskUserQuestion flow", () => {
 
 const makeDelegateHarness = (input: {
   script: (captured: CapturedQuery) => AsyncIterable<unknown>
-  delegate: FableDelegateRuntime
+  delegate: ClaudeDelegateRuntime
 }) => {
   const root = makeAccountRoot()
   const captured: CapturedQuery[] = []
-  const query: FableLocalQuery = call => {
+  const query: ClaudeLocalQuery = call => {
     captured.push(call)
     return input.script(call)
   }
-  const scratch = mkdtempSync(join(tmpdir(), "fable-delegate-scratch-"))
-  const runtime = makeFableLocalRuntime({
+  const scratch = mkdtempSync(join(tmpdir(), "claude-delegate-scratch-"))
+  const runtime = makeClaudeLocalRuntime({
     scratchRoot: () => scratch,
     env: { PYLON_ACCOUNT_HOME_ROOT: root },
     queryImpl: async () => query,
     delegate: input.delegate,
-    mcpImpl: async () => makeFixtureFableMcpFactory(),
+    mcpImpl: async () => makeFixtureClaudeMcpFactory(),
   })
   return { runtime, captured, scratch }
 }
 
-const delegateToolFrom = (captured: CapturedQuery): FixtureFableMcpTool => {
-  const servers = captured.options.mcpServers as Record<string, { tools: Array<FixtureFableMcpTool> }>
+const delegateToolFrom = (captured: CapturedQuery): FixtureClaudeMcpTool => {
+  const servers = captured.options.mcpServers as Record<string, { tools: Array<FixtureClaudeMcpTool> }>
   return servers.codex!.tools[0]!
 }
 
-const okChild = (accountRef: string): ReturnType<FableDelegateRuntime["runChild"]> =>
+const okChild = (accountRef: string): ReturnType<ClaudeDelegateRuntime["runChild"]> =>
   Promise.resolve({
     ok: true,
     text: "child answer",
@@ -1262,11 +1262,11 @@ const okChild = (accountRef: string): ReturnType<FableDelegateRuntime["runChild"
     durationMs: 5,
   })
 
-describe("Codex delegation through the Fable lane", () => {
+describe("Codex delegation through the Claude lane", () => {
   test("delegation-enabled sessions auto-allow mcp__codex__delegate, expose the codex SDK MCP server, the scratch-dir guidance, and the raised stream-close timeout", async () => {
     const harness = makeDelegateHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "session-del", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "session-del", model: CLAUDE_LOCAL_MODEL }
         yield { type: "result", subtype: "success", is_error: false, result: "ok" }
       },
       delegate: { runChild: () => okChild("codex") },
@@ -1279,7 +1279,7 @@ describe("Codex delegation through the Fable lane", () => {
     const call = harness.captured[0]!
     // Full-access lane: the ONLY allowedTools entry is the delegate
     // auto-allow — no restriction on the rest of the toolset.
-    expect(call.options.allowedTools).toEqual([FABLE_DELEGATE_TOOL_NAME])
+    expect(call.options.allowedTools).toEqual([CLAUDE_DELEGATE_TOOL_NAME])
     const servers = call.options.mcpServers as Record<string, { name?: string; tools?: Array<{ name?: string; description?: string }> }>
     expect(servers.codex).toBeDefined()
     expect(servers.codex!.tools![0]!.name).toBe("delegate")
@@ -1288,12 +1288,12 @@ describe("Codex delegation through the Fable lane", () => {
     expect(description).toContain("gpt-5.5, medium reasoning")
     expect(description).toContain("spawn config")
     // EP250 empty-scratch guidance: children START in an empty scratch dir,
-    // so Fable must pass absolute paths for anything they should read —
+    // so Claude must pass absolute paths for anything they should read —
     // this is what fixes "explore this codebase" yielding empty-dir walks.
     expect(description).toContain("EMPTY scratch directory")
     expect(description).toContain("absolute paths")
     const env = call.options.env as Record<string, string | undefined>
-    expect(env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT).toBe(String(FABLE_STREAM_CLOSE_TIMEOUT_MS))
+    expect(env.CLAUDE_CODE_STREAM_CLOSE_TIMEOUT).toBe(String(CLAUDE_STREAM_CLOSE_TIMEOUT_MS))
   })
 
   test("without a delegate there is no allowlist at all (no mcpServers, no delegate name, no stream-close env)", async () => {
@@ -1329,7 +1329,7 @@ describe("Codex delegation through the Fable lane", () => {
     const toolResults: Array<Record<string, unknown>> = []
     const harness = makeDelegateHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "session-e2e", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "session-e2e", model: CLAUDE_LOCAL_MODEL }
         const raw = await delegateToolFrom(captured).handler({ task: "summarize the notes" }, {})
         toolResults.push(raw as Record<string, unknown>)
         yield { type: "result", subtype: "success", is_error: false, result: "done" }
@@ -1346,16 +1346,16 @@ describe("Codex delegation through the Fable lane", () => {
     expect(kinds).toContain("child_started")
     expect(kinds).toContain("child_activity")
     expect(kinds).toContain("child_completed")
-    const started = sink.events.find(event => event.kind === "child_started") as Extract<FableLocalEvent, { kind: "child_started" }>
+    const started = sink.events.find(event => event.kind === "child_started") as Extract<ClaudeLocalEvent, { kind: "child_started" }>
     expect(started.childRef).toBe("child.codex.turn-e2e.1")
     expect(started.summary).toContain("summarize the notes")
     expect(started.prompt).toContain("summarize the notes")
     // The revoked account was skipped VISIBLY — typed activity, never silent.
     const reconnect = sink.events.find(event =>
-      event.kind === "child_activity" && event.activity === "account_reconnect_required") as Extract<FableLocalEvent, { kind: "child_activity" }>
+      event.kind === "child_activity" && event.activity === "account_reconnect_required") as Extract<ClaudeLocalEvent, { kind: "child_activity" }>
     expect(reconnect.accountRef).toBe("codex")
     expect(reconnect.summary).toContain("reconnect")
-    const completed = sink.events.find(event => event.kind === "child_completed") as Extract<FableLocalEvent, { kind: "child_completed" }>
+    const completed = sink.events.find(event => event.kind === "child_completed") as Extract<ClaudeLocalEvent, { kind: "child_completed" }>
     expect(completed.accountRef).toBe("codex-2")
     expect(completed.response).toBe(FIXTURE_CODEX_CHILD_TEXT)
     expect(completed.usage).toEqual({
@@ -1390,7 +1390,7 @@ describe("Codex delegation through the Fable lane", () => {
     const toolResults: Array<Record<string, unknown>> = []
     const harness = makeDelegateHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "session-revoked", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "session-revoked", model: CLAUDE_LOCAL_MODEL }
         toolResults.push(await delegateToolFrom(captured).handler({ task: "anything" }, {}) as Record<string, unknown>)
         yield { type: "result", subtype: "success", is_error: false, result: "done" }
       },
@@ -1401,7 +1401,7 @@ describe("Codex delegation through the Fable lane", () => {
       turnRef: "turn-revoked", threadRef: "thread-revoked", history: [], message: "go", emit: sink.emit,
     })
     expect(result.ok).toBe(true)
-    const failed = sink.events.find(event => event.kind === "child_failed") as Extract<FableLocalEvent, { kind: "child_failed" }>
+    const failed = sink.events.find(event => event.kind === "child_failed") as Extract<ClaudeLocalEvent, { kind: "child_failed" }>
     expect(failed.reason).toBe("account_reconnect_required")
     expect(failed.detail).toContain("reconnect")
     expect(toolResults[0]!.isError).toBe(true)
@@ -1419,7 +1419,7 @@ describe("Codex delegation through the Fable lane", () => {
     const gate = new Promise<void>(resolve => {
       release = resolve
     })
-    const delegate: FableDelegateRuntime = {
+    const delegate: ClaudeDelegateRuntime = {
       runChild: async input => {
         started += 1
         await gate
@@ -1429,7 +1429,7 @@ describe("Codex delegation through the Fable lane", () => {
     const toolResults: Array<Record<string, unknown>> = []
     const harness = makeDelegateHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "session-conc", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "session-conc", model: CLAUDE_LOCAL_MODEL }
         const tool = delegateToolFrom(captured)
         const first3 = [
           tool.handler({ task: "a" }, {}),
@@ -1450,7 +1450,7 @@ describe("Codex delegation through the Fable lane", () => {
       turnRef: "turn-conc", threadRef: "thread-conc", history: [], message: "go", emit: sink.emit,
     })
     expect(result.ok).toBe(true)
-    expect(started).toBe(FABLE_DELEGATE_MAX_CONCURRENT)
+    expect(started).toBe(CLAUDE_DELEGATE_MAX_CONCURRENT)
     const refusal = (toolResults[0]!.content as Array<{ text: string }>)[0]!.text
     expect(toolResults[0]!.isError).toBe(true)
     expect(refusal).toContain("concurrency cap")
@@ -1461,7 +1461,7 @@ describe("Codex delegation through the Fable lane", () => {
 
   test("the 7th child in one turn is refused by the per-turn cap (6 spawned, typed refusal text)", async () => {
     let spawned = 0
-    const delegate: FableDelegateRuntime = {
+    const delegate: ClaudeDelegateRuntime = {
       runChild: async () => {
         spawned += 1
         return okChild("codex") as never
@@ -1470,9 +1470,9 @@ describe("Codex delegation through the Fable lane", () => {
     const toolResults: Array<Record<string, unknown>> = []
     const harness = makeDelegateHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "session-cap", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "session-cap", model: CLAUDE_LOCAL_MODEL }
         const tool = delegateToolFrom(captured)
-        for (let index = 0; index < FABLE_DELEGATE_MAX_CHILDREN_PER_TURN + 1; index += 1) {
+        for (let index = 0; index < CLAUDE_DELEGATE_MAX_CHILDREN_PER_TURN + 1; index += 1) {
           toolResults.push(await tool.handler({ task: `task ${index}` }, {}) as Record<string, unknown>)
         }
         yield { type: "result", subtype: "success", is_error: false, result: "done" }
@@ -1484,7 +1484,7 @@ describe("Codex delegation through the Fable lane", () => {
       turnRef: "turn-cap", threadRef: "thread-cap", history: [], message: "go", emit: sink.emit,
     })
     expect(result.ok).toBe(true)
-    expect(spawned).toBe(FABLE_DELEGATE_MAX_CHILDREN_PER_TURN)
+    expect(spawned).toBe(CLAUDE_DELEGATE_MAX_CHILDREN_PER_TURN)
     const last = toolResults.at(-1)!
     expect(last.isError).toBe(true)
     expect((last.content as Array<{ text: string }>)[0]!.text).toContain("per-turn cap")
@@ -1492,7 +1492,7 @@ describe("Codex delegation through the Fable lane", () => {
 
   test("an empty task is refused typed without spawning", async () => {
     let spawned = 0
-    const delegate: FableDelegateRuntime = {
+    const delegate: ClaudeDelegateRuntime = {
       runChild: async () => {
         spawned += 1
         return okChild("codex") as never
@@ -1501,7 +1501,7 @@ describe("Codex delegation through the Fable lane", () => {
     const toolResults: Array<Record<string, unknown>> = []
     const harness = makeDelegateHarness({
       script: async function* (captured) {
-        yield { type: "system", subtype: "init", session_id: "session-empty", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "session-empty", model: CLAUDE_LOCAL_MODEL }
         toolResults.push(await delegateToolFrom(captured).handler({ task: "   " }, {}) as Record<string, unknown>)
         yield { type: "result", subtype: "success", is_error: false, result: "done" }
       },
@@ -1516,14 +1516,14 @@ describe("Codex delegation through the Fable lane", () => {
   })
 })
 
-describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
+describe("makeFixtureClaudeLocalQuery (smoke fixture)", () => {
   test("drives the AskUserQuestion smoke round trip when history wraps the exact fixture message", async () => {
-    const runtime = makeFableLocalRuntime({
-      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-fixture-question-")),
-      queryImpl: async () => makeFixtureFableLocalQuery(),
+    const runtime = makeClaudeLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "claude-local-fixture-question-")),
+      queryImpl: async () => makeFixtureClaudeLocalQuery(),
       discoverImpl: async () => [{ ref: "claude-pylon-fixture", home: "/nonexistent" }],
     })
-    const events: FableLocalEvent[] = []
+    const events: ClaudeLocalEvent[] = []
     const result = await runtime.runTurn({
       turnRef: "turn-fixture-question",
       threadRef: "thread-fixture-question",
@@ -1549,10 +1549,10 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
   })
 
   test("drives the real mapping to a streamed, tool-traced, completed turn", async () => {
-    const scratch = mkdtempSync(join(tmpdir(), "fable-local-fixture-"))
-    const runtime = makeFableLocalRuntime({
+    const scratch = mkdtempSync(join(tmpdir(), "claude-local-fixture-"))
+    const runtime = makeClaudeLocalRuntime({
       scratchRoot: () => scratch,
-      queryImpl: async () => makeFixtureFableLocalQuery(),
+      queryImpl: async () => makeFixtureClaudeLocalQuery(),
       discoverImpl: async () => [{ ref: "claude-pylon-fixture", home: "/nonexistent" }],
     })
     const sink = collect()
@@ -1561,7 +1561,7 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
     })
     expect(result).toEqual({
       ok: true,
-      text: "Fable local **streaming** proof.",
+      text: "Claude local **streaming** proof.",
       totalTokens: 49,
       accountRef: "claude-pylon-fixture",
       usage: { inputTokens: 42, cachedInputTokens: 0, outputTokens: 7, reasoningTokens: 0, totalTokens: 49 },
@@ -1582,7 +1582,7 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
       "turn_completed",
     ])
     expect(sink.events[1]).toEqual({ kind: "model_effective", model: "claude-fable-5" })
-    const plan = sink.events.find(event => event.kind === "plan_updated") as Extract<FableLocalEvent, { kind: "plan_updated" }>
+    const plan = sink.events.find(event => event.kind === "plan_updated") as Extract<ClaudeLocalEvent, { kind: "plan_updated" }>
     expect(plan.entries).toEqual([
       { step: "Read the fixture notes", status: "completed" },
       { step: "Summarize for the user", status: "in_progress" },
@@ -1602,12 +1602,12 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
       ],
       health: makeCodexAccountHealth(),
     })
-    const runtime = makeFableLocalRuntime({
-      scratchRoot: () => mkdtempSync(join(tmpdir(), "fable-local-fixture-")),
-      queryImpl: async () => makeFixtureFableLocalQuery(),
+    const runtime = makeClaudeLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "claude-local-fixture-")),
+      queryImpl: async () => makeFixtureClaudeLocalQuery(),
       discoverImpl: async () => [{ ref: "claude-pylon-fixture", home: "/nonexistent" }],
       delegate,
-      mcpImpl: async () => makeFixtureFableMcpFactory(),
+      mcpImpl: async () => makeFixtureClaudeMcpFactory(),
     })
     const sink = collect()
     const result = await runtime.runTurn({
@@ -1618,10 +1618,10 @@ describe("makeFixtureFableLocalQuery (smoke fixture)", () => {
     // The mapped pair the transcript renders (existing tool_use/tool_result
     // rendering — no new transcript components needed)…
     const delegateUse = sink.events.find(event =>
-      event.kind === "tool_use" && event.toolName === FABLE_DELEGATE_TOOL_NAME) as Extract<FableLocalEvent, { kind: "tool_use" }>
-    expect(delegateUse.summary).toContain(FABLE_FIXTURE_DELEGATE_TASK)
+      event.kind === "tool_use" && event.toolName === CLAUDE_DELEGATE_TOOL_NAME) as Extract<ClaudeLocalEvent, { kind: "tool_use" }>
+    expect(delegateUse.summary).toContain(CLAUDE_FIXTURE_DELEGATE_TASK)
     const delegateResult = sink.events.find(event =>
-      event.kind === "tool_result" && event.toolName === FABLE_DELEGATE_TOOL_NAME) as Extract<FableLocalEvent, { kind: "tool_result" }>
+      event.kind === "tool_result" && event.toolName === CLAUDE_DELEGATE_TOOL_NAME) as Extract<ClaudeLocalEvent, { kind: "tool_result" }>
     expect(delegateResult.ok).toBe(true)
     expect(delegateResult.summary).toContain(FIXTURE_CODEX_CHILD_TEXT)
     // …plus the child lifecycle events for the fleet/ledger side.

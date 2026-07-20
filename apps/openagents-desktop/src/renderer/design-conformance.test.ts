@@ -376,7 +376,7 @@ describe("design conformance (c): per-surface structural recipes", () => {
     const state: DesktopShellState = {
       ...baseState(),
       harnessLanes: {
-        fable: { available: true, reason: null },
+        claude: { available: true, reason: null },
         codex: { available: true, reason: null },
       },
     }
@@ -412,7 +412,7 @@ describe("design conformance (c): per-surface structural recipes", () => {
     const available: DesktopShellState = {
       ...providerPath,
       harnessLanes: {
-        fable: { available: true, reason: null },
+        claude: { available: true, reason: null },
         codex: { available: true, reason: null },
       },
     }

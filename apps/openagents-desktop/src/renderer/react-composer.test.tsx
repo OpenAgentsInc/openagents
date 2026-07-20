@@ -77,9 +77,9 @@ const fixtureState = (extra: Partial<DesktopShellState> = {}): DesktopShellState
     threads: [{ id: "thread-1", title: "Test", updatedAt: "2026-07-14T12:00:00.000Z", notes: [] }],
     selectedHarness,
     // Mirrors the pre-#8977 implicit assumption that activeLaneRef always
-    // matched selectedHarness's codex/fable mapping; a test exercising an
+    // matched selectedHarness's codex/claude mapping; a test exercising an
     // ACP-bound lane overrides `activeLaneRef` explicitly via `extra`.
-    activeLaneRef: selectedHarness === "codex" ? "codex-local" : "fable-local",
+    activeLaneRef: selectedHarness === "codex" ? "codex-local" : "claude-local",
     harnessLanes: { ...base.harnessLanes, codex: { available: true, reason: null } },
     ...extra,
   };

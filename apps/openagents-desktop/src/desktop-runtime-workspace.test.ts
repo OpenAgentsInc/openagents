@@ -17,7 +17,7 @@ describe("desktopRuntimeWorkspaceRoot", () => {
       userDataPath: "/tmp/profile",
       selectedWorkspaceRoot: "/work/openagents",
       launchFallbackRoot: "/Users/owner",
-    })).toBe("/tmp/profile/fable-local/fixture-workspace")
+    })).toBe("/tmp/profile/claude-local/fixture-workspace")
     expect(desktopRuntimeWorkspaceRoot({
       fixtureMode: false,
       userDataPath: "/tmp/profile",

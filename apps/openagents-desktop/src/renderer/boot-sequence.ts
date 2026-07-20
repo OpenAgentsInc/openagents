@@ -6,7 +6,7 @@ import type { DesktopShellState, HarnessLaneAvailability } from "./shell.ts"
  * neutral, terminal-style scan of which coding agents/models are available —
  * Codex, Claude Code, Grok, Apple FM — so the user (and the system) knows which
  * harnesses can be used. This is a pure PROJECTION over the discovery state the
- * shell already tracks (`harnessLanes` for the built-in codex/fable transports,
+ * shell already tracks (`harnessLanes` for the built-in codex/claude transports,
  * `providerLaneCapabilities` for admitted ACP peers). It invents no authority:
  * an agent is "available" only when its lane reports it can actually run a turn.
  */
@@ -43,13 +43,13 @@ export const projectBootSequenceAgents = (
   const laneFor = (ref: string) =>
     state.providerLaneCapabilities.find((lane) => lane.laneRef === ref)
   const codexLane = state.harnessLanes.codex
-  const fableLane = state.harnessLanes.fable
+  const claudeLane = state.harnessLanes.claude
   const codexCap = laneFor("codex-local")
-  const fableCap = laneFor("fable-local")
+  const claudeCap = laneFor("claude-local")
   const grokCap = laneFor("acp:grok-cli")
 
   const codexStatus = laneStatus(codexLane)
-  const fableStatus = laneStatus(fableLane)
+  const claudeStatus = laneStatus(claudeLane)
   const grokStatus: BootSequenceStatus =
     grokCap === undefined ? "unavailable" : grokCap.admission === "admitted" ? "available" : "unavailable"
 
@@ -68,13 +68,13 @@ export const projectBootSequenceAgents = (
     {
       id: "claude-code",
       label: "Claude Code",
-      status: fableStatus,
+      status: claudeStatus,
       detail:
-        fableStatus === "available"
-          ? (fableCap?.models[0] ?? fableCap?.displayName ?? "ready")
-          : fableStatus === "checking"
+        claudeStatus === "available"
+          ? (claudeCap?.models[0] ?? claudeCap?.displayName ?? "ready")
+          : claudeStatus === "checking"
             ? "verifying accounts…"
-            : (fableLane.reason ?? "not detected"),
+            : (claudeLane.reason ?? "not detected"),
     },
     {
       id: "grok",

@@ -105,8 +105,8 @@ describe("IDE-08 rendered agent-code surfaces", () => {
     const assembled = await assembleActiveFileAgentManifest({
       ...initial,
       activeThreadId: "thread-observed-account",
-      activeLaneRef: "fable-local",
-      selectedHarness: "fable",
+      activeLaneRef: "claude-local",
+      selectedHarness: "claude",
       threads: [{
         id: "thread-observed-account",
         title: "Observed account",
@@ -117,10 +117,10 @@ describe("IDE-08 rendered agent-code surfaces", () => {
           text: "done",
           timestamp: "12:00 PM",
           meta: {
-            lane: "fable-local",
+            lane: "claude-local",
             model: "claude-fable-5",
             accountRef: "claude-pylon-3",
-            turnRef: "turn.fable.observed-account",
+            turnRef: "turn.claude.observed-account",
           },
         }],
       }],

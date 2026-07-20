@@ -60,7 +60,7 @@ import type { ProviderLaneHistoryMessage } from "./provider-lane.ts"
  *
  * What is FIXTURE here: only the PROVIDER (the model that would answer). The
  * `AcceptanceLaneExecutor` seam is where a later owner-armed run plugs the
- * real codex-local/fable-local lanes in; `makeFixtureLaneExecutor` is a
+ * real codex-local/claude-local lanes in; `makeFixtureLaneExecutor` is a
  * deterministic stand-in whose target-side behavior depends ONLY on the
  * history the real handoff seam handed it -- so a broken handoff genuinely
  * fails the marker-retention rule instead of being papered over.
@@ -187,7 +187,7 @@ const fixtureLaneEntry = (
 
 export const FIXTURE_ACCEPTANCE_LANES: ReadonlyArray<ProviderLaneRegistryEntry> = [
   fixtureLaneEntry("codex-local", "codex", "Codex (fixture)"),
-  fixtureLaneEntry("fable-local", "claude", "Claude (fixture)"),
+  fixtureLaneEntry("claude-local", "claude", "Claude (fixture)"),
 ]
 
 export const openFullAutoAcceptanceHarness = async (

@@ -161,7 +161,7 @@ const startHarness = async (): Promise<Harness> => {
           extensions: [], evidence: "experimental",
         },
       }],
-      isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "fable-local",
+      isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "claude-local",
     },
     controlFilePath: path.join(root, "full-auto", "control.json"),
   })
@@ -346,11 +346,11 @@ describe("Full Auto control surface (FA-H13 #8886)", () => {
     const harness = await startHarness()
     try {
       const enabled = await harness.request("POST", "/v1/full-auto/thread.claude/enable", {
-        body: { workspaceRef: GRANTED_WORKSPACE, lane: "fable-local" },
+        body: { workspaceRef: GRANTED_WORKSPACE, lane: "claude-local" },
       })
       expect(enabled.status).toBe(200)
-      expect(enabled.body.record.lane).toBe("fable-local")
-      expect(harness.registry.record("thread.claude")?.profile?.lane).toBe("fable-local")
+      expect(enabled.body.record.lane).toBe("claude-local")
+      expect(harness.registry.record("thread.claude")?.profile?.lane).toBe("claude-local")
 
       const refused = await harness.request("POST", "/v1/full-auto/thread.peer/enable", {
         body: { workspaceRef: GRANTED_WORKSPACE, lane: "acp-unadmitted" },
@@ -612,7 +612,7 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
       const result = await harness.request("POST", "/v1/full-auto/thread.policy/enable", {
         body: {
           workspaceRef: GRANTED_WORKSPACE,
-          routingPolicy: [{ lane: "codex-local", accountRef: "acct.a" }, { lane: "fable-local" }],
+          routingPolicy: [{ lane: "codex-local", accountRef: "acct.a" }, { lane: "claude-local" }],
           guardrails: { maxTurns: 5, maxWallClockMs: 60_000 },
         },
       })
@@ -624,7 +624,7 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
       expect(decoded.record.accountRef).toBe("acct.a")
       expect(decoded.record.routingPolicy).toEqual([
         { lane: "codex-local", accountRef: "acct.a" },
-        { lane: "fable-local" },
+        { lane: "claude-local" },
       ])
       expect(decoded.record.guardrails).toEqual({ maxTurns: 5, maxWallClockMs: 60_000 })
       expect(decoded.record.rotationHistory).toEqual([])
@@ -633,7 +633,7 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
       const record = harness.registry.record("thread.policy")
       expect(record?.routingPolicy).toEqual([
         { lane: "codex-local", accountRef: "acct.a" },
-        { lane: "fable-local" },
+        { lane: "claude-local" },
       ])
       expect(record?.guardrails).toEqual({ maxTurns: 5, maxWallClockMs: 60_000 })
     } finally { await harness.dispose() }
@@ -715,13 +715,13 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
     try {
       const operations = controlOperations({ url: harness.server.url, token: harness.server.credential.token })
       const enabled = await operations.enable("thread.client", GRANTED_WORKSPACE, undefined, {
-        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+        routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }],
         guardrails: { maxTurns: 3 },
       })
       expect(enabled.status).toBe(200)
       expect(harness.registry.record("thread.client")?.routingPolicy).toEqual([
         { lane: "codex-local" },
-        { lane: "fable-local" },
+        { lane: "claude-local" },
       ])
       harness.registry.pause("thread.client", "no_progress:test")
       const resumed = await operations.resume("thread.client")
@@ -738,10 +738,10 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
     // One bare lane keeps the legacy single-lane shape (no routingPolicy).
     expect(buildFullAutoPolicyOptions({ lanes: ["codex-local"] })).toEqual({ lane: "codex-local", options: {} })
     // Two lanes (or one pinned account) become the ordered policy.
-    expect(buildFullAutoPolicyOptions({ lanes: ["codex-local", "fable-local"], maxTurns: 5, maxWallClockMs: 1000 })).toEqual({
+    expect(buildFullAutoPolicyOptions({ lanes: ["codex-local", "claude-local"], maxTurns: 5, maxWallClockMs: 1000 })).toEqual({
       lane: "codex-local",
       options: {
-        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+        routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }],
         guardrails: { maxTurns: 5, maxWallClockMs: 1000 },
       },
     })
@@ -762,7 +762,7 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
           title: "AFK window",
           objective: "Keep shipping the roadmap unattended.",
           doneCondition: "The owner returns.",
-          routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+          routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }],
           guardrails: { maxTurns: 10 },
         },
       })
@@ -771,11 +771,11 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
       const threadRef = started.body.run.threadRef as string
       expect(started.body.run.lane).toBe("codex-local")
       const bound = harness.registry.record(threadRef)
-      expect(bound?.routingPolicy).toEqual([{ lane: "codex-local" }, { lane: "fable-local" }])
+      expect(bound?.routingPolicy).toEqual([{ lane: "codex-local" }, { lane: "claude-local" }])
       expect(bound?.guardrails).toEqual({ maxTurns: 10 })
       expect(harness.reconciliationBindings().at(-1)).toEqual({
         threadRef,
-        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+        routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }],
         guardrails: { maxTurns: 10 },
       })
 
@@ -795,7 +795,7 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
             : { ok: true }
         },
       })
-      expect(dispatchedLanes).toEqual(["codex-local", "fable-local"])
+      expect(dispatchedLanes).toEqual(["codex-local", "claude-local"])
       expect(dispatched).toEqual([threadRef])
 
       // 3. The rotation is visible in the control API's record projection...
@@ -805,10 +805,10 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
       expect(record.rotationHistory).toHaveLength(1)
       expect(record.rotationHistory![0]).toMatchObject({
         fromLane: "codex-local",
-        toLane: "fable-local",
+        toLane: "claude-local",
         reason: "account_exhausted",
       })
-      expect(record.lane).toBe("fable-local")
+      expect(record.lane).toBe("claude-local")
       expect(record.decisionHistory!.map(decision => decision.decision)).toEqual(["rotate", "continue"])
 
       // 4. ...and in the run report's rotation passthrough.
@@ -817,7 +817,7 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
       expect(report.body.report.rotationHistory).toHaveLength(1)
       expect(report.body.report.rotationHistory[0]).toMatchObject({
         fromLane: "codex-local",
-        toLane: "fable-local",
+        toLane: "claude-local",
         reason: "account_exhausted",
       })
     } finally { await harness.dispose() }

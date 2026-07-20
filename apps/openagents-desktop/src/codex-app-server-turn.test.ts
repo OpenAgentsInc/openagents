@@ -4,7 +4,7 @@ import { PassThrough } from "node:stream"
 
 import type { CodexAppServerSpawn } from "./codex-app-server-client.ts"
 import { runCodexAppServerTurn } from "./codex-app-server-turn.ts"
-import type { FableLocalEvent } from "./fable-local-contract.ts"
+import type { ClaudeLocalEvent } from "./claude-local-contract.ts"
 import type {
   WorkbenchCommandItem,
   WorkbenchCompactionItem,
@@ -134,7 +134,7 @@ const makeTypedPayloadSpawn = (): CodexAppServerSpawn => () => {
 
 describe("codex-app-server-turn typed item payloads (#8859)", () => {
   test("item/started + item/completed emit typed WorkbenchItem payloads alongside the string summaries", async () => {
-    const events: Array<FableLocalEvent> = []
+    const events: Array<ClaudeLocalEvent> = []
     const outcome = await runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: {},
@@ -157,11 +157,11 @@ describe("codex-app-server-turn typed item payloads (#8859)", () => {
     expect(outcome.text).toBe("done")
 
     const toolUses = events.filter(event => event.kind === "tool_use") as
-      Array<Extract<FableLocalEvent, { kind: "tool_use" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "tool_use" }>>
     const toolResults = events.filter(event => event.kind === "tool_result") as
-      Array<Extract<FableLocalEvent, { kind: "tool_result" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "tool_result" }>>
     const toolProgress = events.filter(event => event.kind === "tool_progress") as
-      Array<Extract<FableLocalEvent, { kind: "tool_progress" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "tool_progress" }>>
     expect(toolUses).toHaveLength(4)
     expect(toolResults).toHaveLength(5)
     expect(toolProgress).toHaveLength(4)
@@ -289,7 +289,7 @@ const makePlanItemSpawn = (): CodexAppServerSpawn => () => {
 
 describe("codex-app-server-turn `plan` ThreadItem projection (T8 #8865)", () => {
   test("the dropped `plan` ThreadItem now emits plan_updated, merging onto the SAME plan note as the structured checklist", async () => {
-    const events: Array<FableLocalEvent> = []
+    const events: Array<ClaudeLocalEvent> = []
     const outcome = await runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: {},
@@ -311,7 +311,7 @@ describe("codex-app-server-turn `plan` ThreadItem projection (T8 #8865)", () => 
     expect(outcome.outcome).toBe("success")
 
     const planEvents = events.filter(event => event.kind === "plan_updated") as
-      Array<Extract<FableLocalEvent, { kind: "plan_updated" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "plan_updated" }>>
     expect(planEvents).toHaveLength(2)
     // turn/plan/updated: the structured checklist, no prose.
     expect(planEvents[0]).toMatchObject({ entries: [{ step: "Reproduce the bug", status: "completed" }] })
@@ -460,7 +460,7 @@ const makeGuardianReviewSpawn = (): CodexAppServerSpawn => () => {
 
 describe("codex-app-server-turn context/usage meter (T11 #8868)", () => {
   test("emits meter_updated events with exact wire values (no fabricated zeros) alongside existing accounting", async () => {
-    const events: Array<FableLocalEvent> = []
+    const events: Array<ClaudeLocalEvent> = []
     const outcome = await runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: {},
@@ -491,7 +491,7 @@ describe("codex-app-server-turn context/usage meter (T11 #8868)", () => {
     })
 
     const meterEvents = events.filter(event => event.kind === "meter_updated") as
-      Array<Extract<FableLocalEvent, { kind: "meter_updated" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "meter_updated" }>>
     expect(meterEvents).toHaveLength(4)
 
     // First tokenUsage update: honest partial snapshot — no cachedInputTokens
@@ -531,7 +531,7 @@ describe("codex-app-server-turn context/usage meter (T11 #8868)", () => {
   })
 
   test("emits no meter_updated event when a tokenUsage notification carries no usable fields", async () => {
-    const events: Array<FableLocalEvent> = []
+    const events: Array<ClaudeLocalEvent> = []
     await runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: {},
@@ -655,7 +655,7 @@ describe("codex app-server turn ownership", () => {
       return child as never
     }
 
-    const events: Array<FableLocalEvent> = []
+    const events: Array<ClaudeLocalEvent> = []
     const outcome = await runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: {},
@@ -780,7 +780,7 @@ const makeReasoningStreamSpawn = (): CodexAppServerSpawn => () => {
 
 describe("codex-app-server-turn streaming reasoning disclosure (#8863)", () => {
   test("reasoning text/summary deltas stream an in-progress card that collapses to the completed summary", async () => {
-    const events: Array<FableLocalEvent> = []
+    const events: Array<ClaudeLocalEvent> = []
     const outcome = await runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: {},
@@ -801,8 +801,8 @@ describe("codex-app-server-turn streaming reasoning disclosure (#8863)", () => {
     })
     expect(outcome.outcome).toBe("success")
 
-    type ReasoningTraceEvent = Extract<FableLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>
-    const isReasoningTraceEvent = (event: FableLocalEvent): event is ReasoningTraceEvent =>
+    type ReasoningTraceEvent = Extract<ClaudeLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>
+    const isReasoningTraceEvent = (event: ClaudeLocalEvent): event is ReasoningTraceEvent =>
       (event.kind === "tool_use" || event.kind === "tool_progress" || event.kind === "tool_result") &&
       event.toolName === "Reasoning"
     const reasoningEvents = events.filter(isReasoningTraceEvent)
@@ -865,7 +865,7 @@ describe("codex-app-server-turn streaming reasoning disclosure (#8863)", () => {
 
 describe("codex-app-server-turn guardian approval-review notices (T9 #8866)", () => {
   test("item/autoApprovalReview/started|completed project as bounded lane_notice events, not a fabricated approval decision", async () => {
-    const events: Array<FableLocalEvent> = []
+    const events: Array<ClaudeLocalEvent> = []
     const outcome = await runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: {},
@@ -891,7 +891,7 @@ describe("codex-app-server-turn guardian approval-review notices (T9 #8866)", ()
     // compatibility receipts, but connection diagnostics must never become
     // transcript notices.
     const guardianNotices = (events.filter(event => event.kind === "lane_notice") as
-      Array<Extract<FableLocalEvent, { kind: "lane_notice" }>>)
+      Array<Extract<ClaudeLocalEvent, { kind: "lane_notice" }>>)
       .filter(event => event.text.startsWith("Guardian review"))
     expect(guardianNotices).toHaveLength(2)
     expect(guardianNotices[0]!.text).toBe("Guardian review started: command: rm -rf /tmp/scratch")
@@ -980,7 +980,7 @@ const makeLongTailAndNoticeSpawn = (): CodexAppServerSpawn => () => {
 
 describe("codex-app-server-turn long-tail + notice honesty (#8869, T12 epic #8857 wave 2)", () => {
   test("hookPrompt, sleep, review-mode, contextCompaction, and every notice-class notification produce a rendering artifact — none are silently dropped", async () => {
-    const events: Array<FableLocalEvent> = []
+    const events: Array<ClaudeLocalEvent> = []
     const outcome = await runCodexAppServerTurn({
       binary: "/packaged/codex",
       env: {},
@@ -1002,7 +1002,7 @@ describe("codex-app-server-turn long-tail + notice honesty (#8869, T12 epic #885
     expect(outcome.outcome).toBe("success")
 
     const toolResults = events.filter(event => event.kind === "tool_result") as
-      Array<Extract<FableLocalEvent, { kind: "tool_result" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "tool_result" }>>
     const itemOfKind = <K extends string>(kind: K): unknown =>
       toolResults.find(event => event.item?.kind === kind)?.item
 

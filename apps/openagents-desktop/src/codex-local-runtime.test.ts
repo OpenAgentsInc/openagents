@@ -6,7 +6,7 @@ import { setTimeout as sleep } from "node:timers/promises"
  * <thread_id>` continuation on the SAME account (receipted live 2026-07-11:
  * codeword recall + identical thread_id), bounded-history fallback when
  * rotation lands on a different account, streaming mapping into the frozen
- * fable-local envelope (reasoning lines, Bash tool cards, text deltas, exact
+ * claude-local envelope (reasoning lines, Bash tool cards, text deltas, exact
  * usage), typed visible rotation, interrupt, and PROBE-VERIFIED availability.
  */
 import { describe, expect, test } from "vite-plus/test"
@@ -30,8 +30,8 @@ import {
   makeCodexLocalRuntime,
 } from "./codex-local-runtime.ts"
 import type { CodexProbeResult } from "./codex-preflight.ts"
-import type { FableLocalEvent } from "./fable-local-contract.ts"
-import { fableThreadWorkspaceSlug } from "./fable-local-runtime.ts"
+import type { ClaudeLocalEvent } from "./claude-local-contract.ts"
+import { claudeThreadWorkspaceSlug } from "./claude-local-runtime.ts"
 
 const accounts: ReadonlyArray<CodexChildAccount> = [
   { ref: "codex", home: "/isolated/accounts/codex/codex" },
@@ -43,8 +43,8 @@ type SpawnCapture = { args: ReadonlyArray<string>; env: Record<string, string | 
 const scratch = (): string => mkdtempSync(join(tmpdir(), "codex-local-"))
 
 const collect = () => {
-  const events: FableLocalEvent[] = []
-  return { events, emit: (event: FableLocalEvent) => events.push(event) }
+  const events: ClaudeLocalEvent[] = []
+  return { events, emit: (event: ClaudeLocalEvent) => events.push(event) }
 }
 
 const verifiedPreflight = (
@@ -344,7 +344,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(sink.events.some(event => event.kind === "question_resolved")).toBe(false)
     // The auto-decline is visible in the transcript as typed lane notices.
     const notices = sink.events.filter(event => event.kind === "lane_notice") as
-      Array<Extract<FableLocalEvent, { kind: "lane_notice" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "lane_notice" }>>
     expect(notices.some(notice =>
       notice.text.includes("asked a question") && notice.text.includes("auto-declined"))).toBe(true)
     expect(notices.some(notice =>
@@ -661,7 +661,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       emit: sink.emit,
     })
     if (!result.ok) throw new Error(`expected success, got ${result.reason}: ${result.detail}`)
-    const workspace = join(root, "threads", fableThreadWorkspaceSlug("thread-1"))
+    const workspace = join(root, "threads", claudeThreadWorkspaceSlug("thread-1"))
     expect(captured[0]!.args).toEqual([
       "exec",
       "--json",
@@ -762,19 +762,19 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(kinds[0]).toBe("turn_started")
     // Spawn-config truth caption — never an unlabeled provider echo.
     const model = sink.events.find(event => event.kind === "model_effective") as
-      Extract<FableLocalEvent, { kind: "model_effective" }>
+      Extract<ClaudeLocalEvent, { kind: "model_effective" }>
     expect(model.model).toBe("gpt-5.6-sol (requested)")
     const reasoning = sink.events.find(event => event.kind === "reasoning") as
-      Extract<FableLocalEvent, { kind: "reasoning" }>
+      Extract<ClaudeLocalEvent, { kind: "reasoning" }>
     expect(reasoning.text).toBe("planned the fixture reply")
     const toolUse = sink.events.find(event => event.kind === "tool_use") as
-      Extract<FableLocalEvent, { kind: "tool_use" }>
+      Extract<ClaudeLocalEvent, { kind: "tool_use" }>
     expect(toolUse.toolName).toBe("Bash")
-    // JSON-args shape (same as the fable lane) so the shared tool-card
+    // JSON-args shape (same as the claude lane) so the shared tool-card
     // humanizer extracts the command for the card detail line.
     expect(toolUse.summary).toBe('{"command":"echo fixture"}')
     const toolResult = sink.events.find(event => event.kind === "tool_result") as
-      Extract<FableLocalEvent, { kind: "tool_result" }>
+      Extract<ClaudeLocalEvent, { kind: "tool_result" }>
     expect(toolResult.ok).toBe(true)
     expect(toolResult.summary).toBe("fixture")
     // Typed item payloads (#8859): the exec lane emits the same structured
@@ -794,10 +794,10 @@ describe("makeCodexLocalRuntime.runTurn", () => {
       outputTail: "fixture",
     })
     const deltas = sink.events.filter(event => event.kind === "text_delta") as
-      Array<Extract<FableLocalEvent, { kind: "text_delta" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "text_delta" }>>
     expect(deltas.map(delta => delta.text).join("")).toBe(FIXTURE_CODEX_LOCAL_TEXT)
     const completed = sink.events.find(event => event.kind === "turn_completed") as
-      Extract<FableLocalEvent, { kind: "turn_completed" }>
+      Extract<ClaudeLocalEvent, { kind: "turn_completed" }>
     expect(completed.accountRef).toBe("codex")
     expect(completed.usage?.totalTokens).toBe(952)
   })
@@ -1013,7 +1013,7 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.reason).toBe("interrupted")
     const failed = sink.events.find(event => event.kind === "turn_failed") as
-      Extract<FableLocalEvent, { kind: "turn_failed" }>
+      Extract<ClaudeLocalEvent, { kind: "turn_failed" }>
     expect(failed.reason).toBe("interrupted")
     expect(runtime.interrupt("turn-unknown")).toBe(false)
   })

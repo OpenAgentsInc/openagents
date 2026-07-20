@@ -3,7 +3,7 @@
  *
  * The renderer holds pending image attachments as bounded base64 in shell
  * state, shows thumbnails with a remove affordance, and threads them into the
- * fable-local start payload on submit. This module owns the pure, testable
+ * claude-local start payload on submit. This module owns the pure, testable
  * pieces: media-type/size classification, honest rejection copy, base64
  * decoding of an in-renderer `File`/`Blob` (drop or paste — never an arbitrary
  * filesystem read), thumbnail data URLs, and the bounded add/remove state
@@ -11,21 +11,21 @@
  * user-driven drop/paste or a main-mediated file picker.
  */
 import {
-  FABLE_LOCAL_IMAGE_BYTES_LIMIT,
-  FABLE_LOCAL_IMAGE_COUNT_LIMIT,
-  FABLE_LOCAL_IMAGE_MEDIA_TYPES,
-  type FableLocalImageAttachment,
-  type FableLocalImageMediaType,
-} from "../fable-local-contract.ts"
+  CLAUDE_LOCAL_IMAGE_BYTES_LIMIT,
+  CLAUDE_LOCAL_IMAGE_COUNT_LIMIT,
+  CLAUDE_LOCAL_IMAGE_MEDIA_TYPES,
+  type ClaudeLocalImageAttachment,
+  type ClaudeLocalImageMediaType,
+} from "../claude-local-contract.ts"
 
-export const COMPOSER_IMAGE_COUNT_LIMIT = FABLE_LOCAL_IMAGE_COUNT_LIMIT
-export const COMPOSER_IMAGE_BYTES_LIMIT = FABLE_LOCAL_IMAGE_BYTES_LIMIT
+export const COMPOSER_IMAGE_COUNT_LIMIT = CLAUDE_LOCAL_IMAGE_COUNT_LIMIT
+export const COMPOSER_IMAGE_BYTES_LIMIT = CLAUDE_LOCAL_IMAGE_BYTES_LIMIT
 
 /** A pending composer attachment: base64 payload plus bounded display facts. */
 export type ComposerImageAttachment = Readonly<{
   /** Stable id for keying thumbnails and the remove intent. */
   id: string
-  mediaType: FableLocalImageMediaType
+  mediaType: ClaudeLocalImageMediaType
   /** Raw base64, no `data:` prefix (matches the boundary contract). */
   data: string
   /** Bounded display name (never a filesystem path). */
@@ -35,7 +35,7 @@ export type ComposerImageAttachment = Readonly<{
 }>
 
 export type ImageClassification =
-  | Readonly<{ ok: true; mediaType: FableLocalImageMediaType }>
+  | Readonly<{ ok: true; mediaType: ClaudeLocalImageMediaType }>
   | Readonly<{ ok: false; reason: ImageRejectionReason }>
 
 export type ImageRejectionReason = "wrong_type" | "too_large" | "count_limit" | "unreadable"
@@ -51,8 +51,8 @@ export const classifyImageFile = (
   if (currentCount >= COMPOSER_IMAGE_COUNT_LIMIT) {
     return { ok: false, reason: "count_limit" }
   }
-  const mediaType = (FABLE_LOCAL_IMAGE_MEDIA_TYPES as ReadonlyArray<string>).includes(file.type)
-    ? (file.type as FableLocalImageMediaType)
+  const mediaType = (CLAUDE_LOCAL_IMAGE_MEDIA_TYPES as ReadonlyArray<string>).includes(file.type)
+    ? (file.type as ClaudeLocalImageMediaType)
     : null
   if (mediaType === null) return { ok: false, reason: "wrong_type" }
   if (file.size <= 0 || file.size > COMPOSER_IMAGE_BYTES_LIMIT) {
@@ -126,10 +126,10 @@ export const readImageFile = async (
   }
 }
 
-const extensionFor = (mediaType: FableLocalImageMediaType): string =>
+const extensionFor = (mediaType: ClaudeLocalImageMediaType): string =>
   mediaType === "image/jpeg" ? "jpg" : mediaType.slice("image/".length)
 
-const boundedName = (name: string | undefined, mediaType: FableLocalImageMediaType): string => {
+const boundedName = (name: string | undefined, mediaType: ClaudeLocalImageMediaType): string => {
   const trimmed = (name ?? "").trim()
   if (trimmed !== "") return trimmed.slice(0, 256)
   return `image.${extensionFor(mediaType)}`
@@ -159,7 +159,7 @@ export const canAttachMoreImages = (list: ReadonlyArray<ComposerImageAttachment>
 /** Project pending attachments to the frozen boundary shape (drops renderer-only fields). */
 export const toStartImages = (
   list: ReadonlyArray<ComposerImageAttachment>,
-): ReadonlyArray<FableLocalImageAttachment> =>
+): ReadonlyArray<ClaudeLocalImageAttachment> =>
   list.map((item) => ({ mediaType: item.mediaType, data: item.data, name: item.name }))
 
 /** Human byte-size label for a thumbnail caption. */

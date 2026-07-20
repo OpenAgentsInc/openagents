@@ -1,24 +1,24 @@
 /**
- * Fable local lane contract (#8712).
+ * Claude local lane contract (#8712).
  *
- * In local (not-signed-in) mode the "Fable" harness chip must run a REAL
+ * In local (not-signed-in) mode the "Claude" harness chip must run a REAL
  * streaming Claude turn on this machine — never the legacy cloud gateway and
  * never another provider (the no-silent-substitution law). These channels
  * carry that lane across the Electron boundary:
  *
- * - `openagents:fable-local:availability` (invoke, no args): typed lane
+ * - `openagents:claude-local:availability` (invoke, no args): typed lane
  *   availability, probing the ordinary authenticated `~/.claude` session
  *   first and the isolated `~/.claude-pylon-*` homes used by the Pylon
  *   supervisor as fallback capacity.
- * - `openagents:fable-local:start` (invoke): starts one turn. Main appends
+ * - `openagents:claude-local:start` (invoke): starts one turn. Main appends
  *   the user message to its own thread store and reads prior history from
  *   that store — the renderer cannot inject synthetic history. Resolves with
  *   the same `{ ok, thread?, error? }` shape as the legacy chat channel once
  *   the turn finishes.
- * - `openagents:fable-local:event` (webContents.send): typed incremental
+ * - `openagents:claude-local:event` (webContents.send): typed incremental
  *   events `{ turnRef, event }` while the turn streams. Every payload is
  *   bounded and path-redacted before it crosses this boundary.
- * - `openagents:fable-local:interrupt` (invoke): aborts a running turn.
+ * - `openagents:claude-local:interrupt` (invoke): aborts a running turn.
  */
 import { Schema } from "@effect-native/core/effect"
 
@@ -30,99 +30,99 @@ import {
 import { LocalSkillInvocationSchema } from "./plugin-config-contract.ts"
 import { WorkbenchItemSchema } from "./workbench-item-contract.ts"
 
-export const FableLocalAvailabilityChannel = "openagents:fable-local:availability" as const
-export const FableLocalStartChannel = "openagents:fable-local:start" as const
-export const FableLocalInterruptChannel = "openagents:fable-local:interrupt" as const
-export const FableLocalEventChannel = "openagents:fable-local:event" as const
+export const ClaudeLocalAvailabilityChannel = "openagents:claude-local:availability" as const
+export const ClaudeLocalStartChannel = "openagents:claude-local:start" as const
+export const ClaudeLocalInterruptChannel = "openagents:claude-local:interrupt" as const
+export const ClaudeLocalEventChannel = "openagents:claude-local:event" as const
 /**
  * Image file picker (capability I1). The renderer invokes this to open the
  * native file dialog in MAIN (never a renderer filesystem read); main reads the
  * chosen images, bounds and base64-encodes them, and returns the decoded
  * attachments. Drop/paste `File` objects stay renderer-side (already in-memory).
  */
-export const FableLocalPickImagesChannel = "openagents:fable-local:pick-images" as const
+export const ClaudeLocalPickImagesChannel = "openagents:claude-local:pick-images" as const
 /**
  * Interactive question flow (EP250): the renderer answers a pending
- * AskUserQuestion via this invoke channel (`fableLocal.answerQuestion`).
+ * AskUserQuestion via this invoke channel (`claudeLocal.answerQuestion`).
  * Resolves `true` when a pending question with that turnRef/questionRef
  * accepted the answers; `false` is a typed rejection (unknown ref, already
  * settled, or no answer matched a question) and the question stays pending.
  */
-export const FableLocalAnswerQuestionChannel = "openagents:fable-local:answer-question" as const
+export const ClaudeLocalAnswerQuestionChannel = "openagents:claude-local:answer-question" as const
 /**
  * Runtime-capability channels (EP250 wave-1 substrate; renderer UI is wave-2).
  * These carry additive control across the Electron boundary and default to
  * NO-OP behavior when the renderer never calls them, so current turn behavior
  * is unchanged.
  *
- * - `openagents:fable-local:steer-child` (invoke): steer/interrupt a running
+ * - `openagents:claude-local:steer-child` (invoke): steer/interrupt a running
  *   delegate child ({ turnRef, childRef, action, body? }).
- * - `openagents:fable-local:queue-followup` (invoke): enqueue a follow-up
+ * - `openagents:claude-local:queue-followup` (invoke): enqueue a follow-up
  *   message while a turn for the thread is streaming
  *   ({ threadRef, message }); promoted at the next idle boundary.
  */
-export const FableLocalSteerChildChannel = "openagents:fable-local:steer-child" as const
-export const FableLocalQueueFollowupChannel = "openagents:fable-local:queue-followup" as const
+export const ClaudeLocalSteerChildChannel = "openagents:claude-local:steer-child" as const
+export const ClaudeLocalQueueFollowupChannel = "openagents:claude-local:queue-followup" as const
 
 /** Bound on a single streamed text-delta event payload. */
-export const FABLE_LOCAL_DELTA_LIMIT = 2_000
+export const CLAUDE_LOCAL_DELTA_LIMIT = 2_000
 /** Bound on tool summaries and failure detail crossing the boundary. */
-export const FABLE_LOCAL_SUMMARY_LIMIT = 400
+export const CLAUDE_LOCAL_SUMMARY_LIMIT = 400
 /** Bound on the persisted final assistant message text. */
-export const FABLE_LOCAL_FINAL_TEXT_LIMIT = 32_000
+export const CLAUDE_LOCAL_FINAL_TEXT_LIMIT = 32_000
 /** Max plan/todo entries surfaced in one plan_updated event. */
-export const FABLE_LOCAL_PLAN_ENTRY_LIMIT = 64
+export const CLAUDE_LOCAL_PLAN_ENTRY_LIMIT = 64
 /** Max rate-limit windows carried per meter_updated event (T11 #8868;
  * Codex's `account/rateLimits/updated` reports at most `primary`+`secondary`). */
-export const FABLE_LOCAL_RATE_LIMIT_WINDOW_LIMIT = 4
+export const CLAUDE_LOCAL_RATE_LIMIT_WINDOW_LIMIT = 4
 /** Max user-configured MCP servers accepted per turn (bounded passthrough). */
-export const FABLE_LOCAL_MCP_SERVER_LIMIT = 16
+export const CLAUDE_LOCAL_MCP_SERVER_LIMIT = 16
 /** Bound on a queued follow-up message crossing the boundary. */
-export const FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT = 8_000
+export const CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT = 8_000
 /**
  * Image input bounds (capability I1). The renderer holds each attachment as
  * base64 (no `data:` prefix) and passes it across the start boundary; main
- * threads it into the SDK image content block (Fable) or writes it to the turn
+ * threads it into the SDK image content block (Claude) or writes it to the turn
  * workspace and passes `-i <path>` (Codex). The four media types are exactly
  * the Anthropic `Base64ImageSource` set (sdk.d.ts `media_type`).
  */
-export const FABLE_LOCAL_IMAGE_COUNT_LIMIT = 8
+export const CLAUDE_LOCAL_IMAGE_COUNT_LIMIT = 8
 /** Max decoded bytes per attachment (10 MB) — oversize is rejected honestly. */
-export const FABLE_LOCAL_IMAGE_BYTES_LIMIT = 10 * 1024 * 1024
+export const CLAUDE_LOCAL_IMAGE_BYTES_LIMIT = 10 * 1024 * 1024
 /**
  * Bound on the base64 string crossing the boundary. Base64 expands ~4/3 over
  * the raw bytes; this caps the encoded length with headroom so an oversize
  * blob fails schema decode instead of silently crossing.
  */
-export const FABLE_LOCAL_IMAGE_DATA_LIMIT =
-  Math.ceil((FABLE_LOCAL_IMAGE_BYTES_LIMIT * 4) / 3) + 1_024
+export const CLAUDE_LOCAL_IMAGE_DATA_LIMIT =
+  Math.ceil((CLAUDE_LOCAL_IMAGE_BYTES_LIMIT * 4) / 3) + 1_024
 /** Accepted image media types (Anthropic Base64ImageSource + codex -i). */
-export const FABLE_LOCAL_IMAGE_MEDIA_TYPES = [
+export const CLAUDE_LOCAL_IMAGE_MEDIA_TYPES = [
   "image/png",
   "image/jpeg",
   "image/webp",
   "image/gif",
 ] as const
 
-export const FableLocalImageMediaTypeSchema = Schema.Literals(FABLE_LOCAL_IMAGE_MEDIA_TYPES)
-export type FableLocalImageMediaType = typeof FableLocalImageMediaTypeSchema.Type
+export const ClaudeLocalImageMediaTypeSchema = Schema.Literals(CLAUDE_LOCAL_IMAGE_MEDIA_TYPES)
+export type ClaudeLocalImageMediaType = typeof ClaudeLocalImageMediaTypeSchema.Type
 
 /**
  * One image attachment crossing the start boundary (capability I1). `data` is
  * raw base64 (no `data:` URL prefix); `name` is a bounded display label only
  * (never a filesystem path — the renderer never reads arbitrary files).
  */
-export const FableLocalImageAttachmentSchema = Schema.Struct({
-  mediaType: FableLocalImageMediaTypeSchema,
+export const ClaudeLocalImageAttachmentSchema = Schema.Struct({
+  mediaType: ClaudeLocalImageMediaTypeSchema,
   data: Schema.String.check(
     Schema.isMinLength(1),
-    Schema.isMaxLength(FABLE_LOCAL_IMAGE_DATA_LIMIT),
+    Schema.isMaxLength(CLAUDE_LOCAL_IMAGE_DATA_LIMIT),
   ),
   name: Schema.optional(Schema.String.check(Schema.isMaxLength(256))),
 })
-export type FableLocalImageAttachment = typeof FableLocalImageAttachmentSchema.Type
+export type ClaudeLocalImageAttachment = typeof ClaudeLocalImageAttachmentSchema.Type
 
-export const FableLocalAvailabilitySchema = Schema.Union([
+export const ClaudeLocalAvailabilitySchema = Schema.Union([
   Schema.Struct({
     state: Schema.Literal("available"),
     accountRef: Schema.String,
@@ -132,9 +132,9 @@ export const FableLocalAvailabilitySchema = Schema.Union([
     reason: Schema.Literals(["no_claude_account", "sdk_unavailable"]),
   }),
 ])
-export type FableLocalAvailability = typeof FableLocalAvailabilitySchema.Type
+export type ClaudeLocalAvailability = typeof ClaudeLocalAvailabilitySchema.Type
 
-export const FableLocalFailureReasonSchema = Schema.Literals([
+export const ClaudeLocalFailureReasonSchema = Schema.Literals([
   "no_claude_account",
   "sdk_unavailable",
   "budget_exceeded",
@@ -142,9 +142,9 @@ export const FableLocalFailureReasonSchema = Schema.Literals([
   "timeout",
   "session_failed",
   /**
-   * The SDK init reported an effective model outside the Fable family
-   * ("IT HAS TO BE FABLE"): the turn fails typed with requested vs effective
-   * in the detail, no substituted output is ever streamed as Fable, and the
+   * The SDK init reported an effective model outside the Claude family
+   * ("IT HAS TO BE CLAUDE"): the turn fails typed with requested vs effective
+   * in the detail, no substituted output is ever streamed as Claude, and the
    * lane never rotates accounts on it (rotation is for account/session
    * failures before content only).
    */
@@ -152,27 +152,27 @@ export const FableLocalFailureReasonSchema = Schema.Literals([
   // Codex-local lane reasons (EP250 codex-first-class, additive): the direct
   // local Codex chat lane shares this envelope so the existing renderer
   // stream path renders codex turns identically. `account_reconnect_required`
-  // is also emitted by Fable when Claude reports an expired/disabled account;
+  // is also emitted by Claude when Claude reports an expired/disabled account;
   // `no_codex_account` remains Codex-only.
   "no_codex_account",
   "account_reconnect_required",
   "incompatible_workflow",
 ])
-export type FableLocalFailureReason = typeof FableLocalFailureReasonSchema.Type
+export type ClaudeLocalFailureReason = typeof ClaudeLocalFailureReasonSchema.Type
 
 /**
  * Exact token split (#8712 Lane C) shared by turn_completed (SDK result
  * usage) and child_completed (codex `turn.completed` usage; total = input +
  * output + reasoning, cached reported separately).
  */
-export const FableChildUsageSchema = Schema.Struct({
+export const ClaudeChildUsageSchema = Schema.Struct({
   inputTokens: Schema.Number,
   cachedInputTokens: Schema.Number,
   outputTokens: Schema.Number,
   reasoningTokens: Schema.Number,
   totalTokens: Schema.Number,
 })
-export type FableChildUsage = typeof FableChildUsageSchema.Type
+export type ClaudeChildUsage = typeof ClaudeChildUsageSchema.Type
 
 /**
  * One AskUserQuestion question as projected to the renderer (EP250 question
@@ -180,19 +180,19 @@ export type FableChildUsage = typeof FableChildUsageSchema.Type
  * header chip, 2-4 options with label + description, multiSelect) with every
  * string bounded/redacted before it crosses the boundary.
  */
-export const FableLocalQuestionOptionSchema = Schema.Struct({
+export const ClaudeLocalQuestionOptionSchema = Schema.Struct({
   label: Schema.String.check(Schema.isMaxLength(200)),
-  description: Schema.optional(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT))),
+  description: Schema.optional(Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT))),
 })
-export type FableLocalQuestionOption = typeof FableLocalQuestionOptionSchema.Type
+export type ClaudeLocalQuestionOption = typeof ClaudeLocalQuestionOptionSchema.Type
 
-export const FableLocalQuestionSchema = Schema.Struct({
-  question: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+export const ClaudeLocalQuestionSchema = Schema.Struct({
+  question: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   header: Schema.String.check(Schema.isMaxLength(120)),
-  options: Schema.Array(FableLocalQuestionOptionSchema).check(Schema.isMaxLength(4)),
+  options: Schema.Array(ClaudeLocalQuestionOptionSchema).check(Schema.isMaxLength(4)),
   multiSelect: Schema.Boolean,
 })
-export type FableLocalQuestion = typeof FableLocalQuestionSchema.Type
+export type ClaudeLocalQuestion = typeof ClaudeLocalQuestionSchema.Type
 
 /**
  * One plan/todo entry (EP250 J2/J4). Sourced from the SDK's high-frequency
@@ -201,11 +201,11 @@ export type FableLocalQuestion = typeof FableLocalQuestionSchema.Type
  * from the daily-coding audit. `step` is the todo `content` (bounded/redacted);
  * `status` mirrors the SDK's exact three-state enum.
  */
-export const FableLocalPlanEntrySchema = Schema.Struct({
-  step: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+export const ClaudeLocalPlanEntrySchema = Schema.Struct({
+  step: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   status: Schema.Literals(["pending", "in_progress", "completed"]),
 })
-export type FableLocalPlanEntry = typeof FableLocalPlanEntrySchema.Type
+export type ClaudeLocalPlanEntry = typeof ClaudeLocalPlanEntrySchema.Type
 
 /**
  * One rolling rate-limit window from Codex's `account/rateLimits/updated`
@@ -215,20 +215,20 @@ export type FableLocalPlanEntry = typeof FableLocalPlanEntrySchema.Type
  * wire values (`ServerNotification__RateLimitWindow`); a field the server
  * omitted stays absent here too.
  */
-export const FableLocalRateLimitWindowSchema = Schema.Struct({
+export const ClaudeLocalRateLimitWindowSchema = Schema.Struct({
   label: Schema.Literals(["primary", "secondary"]),
   usedPercent: Schema.Number,
   resetsAt: Schema.optional(Schema.Number),
   windowDurationMins: Schema.optional(Schema.Number),
 })
-export type FableLocalRateLimitWindow = typeof FableLocalRateLimitWindowSchema.Type
+export type ClaudeLocalRateLimitWindow = typeof ClaudeLocalRateLimitWindowSchema.Type
 
-export const FableLocalEventSchema = Schema.Union([
+export const ClaudeLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("composer_admission"),
     state: Schema.Literals(["active_steerable", "active_nonsteerable", "interrupting", "repairing"]),
     activeTurnId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
-    reason: Schema.NullOr(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT))),
+    reason: Schema.NullOr(Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT))),
   }),
   Schema.Struct({
     kind: Schema.Literal("turn_started"),
@@ -241,12 +241,12 @@ export const FableLocalEventSchema = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("text_delta"),
-    text: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_DELTA_LIMIT)),
+    text: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_DELTA_LIMIT)),
   }),
   Schema.Struct({
     kind: Schema.Literal("tool_use"),
     toolName: Schema.String.check(Schema.isMaxLength(120)),
-    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    summary: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
     itemRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     /** Typed item payload (#8859, additive): structured tool fields the
      * bounded summary string flattens. Absent on pre-#8859 emitters. */
@@ -255,7 +255,7 @@ export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("tool_progress"),
     toolName: Schema.String.check(Schema.isMaxLength(120)),
-    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    summary: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
     itemRef: Schema.String.check(Schema.isMaxLength(120)),
     item: WorkbenchItemSchema,
   }),
@@ -263,7 +263,7 @@ export const FableLocalEventSchema = Schema.Union([
     kind: Schema.Literal("tool_result"),
     toolName: Schema.String.check(Schema.isMaxLength(120)),
     ok: Schema.Boolean,
-    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    summary: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
     itemRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     /** Typed item payload (#8859, additive): completion-side structured
      * fields (exit code, duration, output tail, diffs, results). */
@@ -272,7 +272,7 @@ export const FableLocalEventSchema = Schema.Union([
   /**
    * Effective-model visibility: the model the SDK init actually reported for
    * this turn. Capability-truthful — the renderer shows model identity from
-   * this event, never from the "Fable" brand alone.
+   * this event, never from the "Claude" brand alone.
    */
   Schema.Struct({
     kind: Schema.Literal("model_effective"),
@@ -287,12 +287,12 @@ export const FableLocalEventSchema = Schema.Union([
      * tokens per account. Both optional — older emitters stay schema-valid.
      */
     accountRef: Schema.optional(Schema.String),
-    usage: Schema.optional(FableChildUsageSchema),
+    usage: Schema.optional(ClaudeChildUsageSchema),
   }),
   Schema.Struct({
     kind: Schema.Literal("turn_failed"),
-    reason: FableLocalFailureReasonSchema,
-    detail: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    reason: ClaudeLocalFailureReasonSchema,
+    detail: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   }),
   /**
    * Reasoning treatment (EP250 codex-first-class, additive): the codex-local
@@ -302,7 +302,7 @@ export const FableLocalEventSchema = Schema.Union([
    */
   Schema.Struct({
     kind: Schema.Literal("reasoning"),
-    text: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    text: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   }),
   /**
    * Typed, VISIBLE lane notice (EP250 codex-first-class, additive): the
@@ -312,7 +312,7 @@ export const FableLocalEventSchema = Schema.Union([
    */
   Schema.Struct({
     kind: Schema.Literal("lane_notice"),
-    text: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    text: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   }),
   // -------------------------------------------------------------------------
   // Codex sub-agent (child) lifecycle (#8712 Lane C) — additive. The renderer
@@ -328,9 +328,9 @@ export const FableLocalEventSchema = Schema.Union([
     /** Exact provider child whose thread caused this child, absent for root children. */
     parentChildRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     accountRef: Schema.optional(Schema.String),
-    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    summary: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
     /** Exact bounded instruction sent to the child, for its transcript. */
-    prompt: Schema.optional(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FINAL_TEXT_LIMIT))),
+    prompt: Schema.optional(Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_FINAL_TEXT_LIMIT))),
   }),
   Schema.Struct({
     kind: Schema.Literal("child_activity"),
@@ -349,17 +349,17 @@ export const FableLocalEventSchema = Schema.Union([
       "pre_content_failure_rotated",
     ]),
     accountRef: Schema.optional(Schema.String),
-    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    summary: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   }),
   Schema.Struct({
     kind: Schema.Literal("child_completed"),
     childRef: Schema.String.check(Schema.isMaxLength(120)),
     parentChildRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     accountRef: Schema.String,
-    summary: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    summary: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
     /** Exact bounded child answer, rather than the compact card summary. */
-    response: Schema.optional(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FINAL_TEXT_LIMIT))),
-    usage: Schema.NullOr(FableChildUsageSchema),
+    response: Schema.optional(Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_FINAL_TEXT_LIMIT))),
+    usage: Schema.NullOr(ClaudeChildUsageSchema),
     durationMs: Schema.Number,
   }),
   Schema.Struct({
@@ -373,7 +373,7 @@ export const FableLocalEventSchema = Schema.Union([
       "child_timeout",
       "child_failed",
     ]),
-    detail: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    detail: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   }),
   // -------------------------------------------------------------------------
   // Interactive question flow (EP250, owner scope change: "make the question
@@ -389,7 +389,7 @@ export const FableLocalEventSchema = Schema.Union([
     questionRef: Schema.String.check(Schema.isMaxLength(120)),
     interactionKind: Schema.optional(Schema.Literals(["provider_question", "tool_approval", "plan_review"])),
     decisionRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
-    questions: Schema.Array(FableLocalQuestionSchema).check(Schema.isMaxLength(4)),
+    questions: Schema.Array(ClaudeLocalQuestionSchema).check(Schema.isMaxLength(4)),
   }),
   Schema.Struct({
     kind: Schema.Literal("question_resolved"),
@@ -415,8 +415,8 @@ export const FableLocalEventSchema = Schema.Union([
    */
   Schema.Struct({
     kind: Schema.Literal("plan_updated"),
-    entries: Schema.Array(FableLocalPlanEntrySchema).check(
-      Schema.isMaxLength(FABLE_LOCAL_PLAN_ENTRY_LIMIT),
+    entries: Schema.Array(ClaudeLocalPlanEntrySchema).check(
+      Schema.isMaxLength(CLAUDE_LOCAL_PLAN_ENTRY_LIMIT),
     ),
     /**
      * Free-form plan narrative (T8 #8865 unification): additive so the
@@ -439,7 +439,7 @@ export const FableLocalEventSchema = Schema.Union([
     childRef: Schema.String.check(Schema.isMaxLength(120)),
     action: Schema.Literals(["message", "interrupt"]),
     outcome: Schema.Literals(["interrupted", "delivered", "unsupported", "not_found"]),
-    detail: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    detail: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   }),
   /**
    * A follow-up was enqueued while this turn was streaming (A3). Delivery
@@ -463,7 +463,7 @@ export const FableLocalEventSchema = Schema.Union([
     queueRef: Schema.String.check(Schema.isMaxLength(120)),
     intentRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
     clientUserMessageId: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
-    message: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT)),
+    message: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT)),
   }),
   /**
    * A user-configured MCP server (I2) could not be offered: either its config
@@ -474,7 +474,7 @@ export const FableLocalEventSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("mcp_server_unavailable"),
     name: Schema.String.check(Schema.isMaxLength(120)),
-    reason: Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+    reason: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   }),
   /**
    * Context/usage meter update (T11 #8868). Emitted ADDITIVELY alongside the
@@ -494,13 +494,13 @@ export const FableLocalEventSchema = Schema.Union([
     reasoningTokens: Schema.optional(Schema.Number),
     totalTokens: Schema.optional(Schema.Number),
     rateLimits: Schema.optional(
-      Schema.Array(FableLocalRateLimitWindowSchema).check(
-        Schema.isMaxLength(FABLE_LOCAL_RATE_LIMIT_WINDOW_LIMIT),
+      Schema.Array(ClaudeLocalRateLimitWindowSchema).check(
+        Schema.isMaxLength(CLAUDE_LOCAL_RATE_LIMIT_WINDOW_LIMIT),
       ),
     ),
   }),
 ])
-export type FableLocalEvent = typeof FableLocalEventSchema.Type
+export type ClaudeLocalEvent = typeof ClaudeLocalEventSchema.Type
 
 /**
  * Tracks whether a provider event creates a NEW visible timeline position.
@@ -516,7 +516,7 @@ export type FableLocalEvent = typeof FableLocalEventSchema.Type
  * so the live transcript cannot heal and then regress when the finalized
  * thread replaces it.
  */
-export const makeTranscriptOrderingBoundaryTracker = (): ((event: FableLocalEvent) => boolean) => {
+export const makeTranscriptOrderingBoundaryTracker = (): ((event: ClaudeLocalEvent) => boolean) => {
   const openToolsByRef = new Set<string>()
   const openToolsByName = new Map<string, number>()
   const runtimeKeys = new Set<string>()
@@ -597,11 +597,11 @@ export const makeTranscriptOrderingBoundaryTracker = (): ((event: FableLocalEven
   }
 }
 
-export const FableLocalEventEnvelopeSchema = Schema.Struct({
+export const ClaudeLocalEventEnvelopeSchema = Schema.Struct({
   turnRef: Schema.String,
-  event: FableLocalEventSchema,
+  event: ClaudeLocalEventSchema,
 })
-export type FableLocalEventEnvelope = typeof FableLocalEventEnvelopeSchema.Type
+export type ClaudeLocalEventEnvelope = typeof ClaudeLocalEventEnvelopeSchema.Type
 
 /**
  * Codex model ids are app-server catalog data, not an OpenAgents release
@@ -638,7 +638,7 @@ export type CodexReasoningEffort = typeof CodexReasoningEffortSchema.Type
 export const isCodexReasoningEffort = (value: string): value is CodexReasoningEffort =>
   (CODEX_REASONING_EFFORTS as ReadonlyArray<string>).includes(value)
 
-export const FableLocalStartRequestSchema = Schema.Struct({
+export const ClaudeLocalStartRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   /** Durable queue admission identity; host validates this pair before provider dispatch. */
@@ -655,8 +655,8 @@ export const FableLocalStartRequestSchema = Schema.Struct({
    * size by the schema. Additive — absent on every pre-I1 caller.
    */
   images: Schema.optional(
-    Schema.Array(FableLocalImageAttachmentSchema).check(
-      Schema.isMaxLength(FABLE_LOCAL_IMAGE_COUNT_LIMIT),
+    Schema.Array(ClaudeLocalImageAttachmentSchema).check(
+      Schema.isMaxLength(CLAUDE_LOCAL_IMAGE_COUNT_LIMIT),
     ),
   ),
   /** Exact owner-selected target; absent preserves automatic health ordering. */
@@ -683,7 +683,7 @@ export const FableLocalStartRequestSchema = Schema.Struct({
    */
   fullAuto: Schema.optional(Schema.Boolean),
 })
-export type FableLocalStartRequest = typeof FableLocalStartRequestSchema.Type
+export type ClaudeLocalStartRequest = typeof ClaudeLocalStartRequestSchema.Type
 
 /**
  * A start request carries content iff it has non-empty message text OR at
@@ -695,10 +695,10 @@ export const startRequestHasContent = (
   request: Readonly<{ message: string; images?: ReadonlyArray<unknown> }>,
 ): boolean => request.message.trim() !== "" || (request.images?.length ?? 0) > 0
 
-export const FableLocalInterruptRequestSchema = Schema.Struct({
+export const ClaudeLocalInterruptRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
 })
-export type FableLocalInterruptRequest = typeof FableLocalInterruptRequestSchema.Type
+export type ClaudeLocalInterruptRequest = typeof ClaudeLocalInterruptRequestSchema.Type
 
 /**
  * Renderer answer to a pending question (EP250). One entry per answered
@@ -708,97 +708,97 @@ export type FableLocalInterruptRequest = typeof FableLocalInterruptRequestSchema
  * for multiSelect (the runtime joins them comma-separated, the SDK's
  * documented multi-select answer encoding).
  */
-export const FableLocalQuestionAnswerSchema = Schema.Struct({
-  question: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(FABLE_LOCAL_SUMMARY_LIMIT)),
+export const ClaudeLocalQuestionAnswerSchema = Schema.Struct({
+  question: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
   labels: Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(8)),
 })
-export type FableLocalQuestionAnswer = typeof FableLocalQuestionAnswerSchema.Type
+export type ClaudeLocalQuestionAnswer = typeof ClaudeLocalQuestionAnswerSchema.Type
 
-export const FableLocalAnswerQuestionRequestSchema = Schema.Struct({
+export const ClaudeLocalAnswerQuestionRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   questionRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
-  answers: Schema.Array(FableLocalQuestionAnswerSchema).check(Schema.isMaxLength(4)),
+  answers: Schema.Array(ClaudeLocalQuestionAnswerSchema).check(Schema.isMaxLength(4)),
 })
-export type FableLocalAnswerQuestionRequest = typeof FableLocalAnswerQuestionRequestSchema.Type
+export type ClaudeLocalAnswerQuestionRequest = typeof ClaudeLocalAnswerQuestionRequestSchema.Type
 
-export const decodeFableLocalStartRequest = (value: unknown): FableLocalStartRequest | null =>
-  decode(FableLocalStartRequestSchema, value) as FableLocalStartRequest | null
+export const decodeClaudeLocalStartRequest = (value: unknown): ClaudeLocalStartRequest | null =>
+  decode(ClaudeLocalStartRequestSchema, value) as ClaudeLocalStartRequest | null
 
 /** Bounded array of picked image attachments (capability I1). */
-export const FableLocalPickedImagesSchema = Schema.Array(FableLocalImageAttachmentSchema).check(
-  Schema.isMaxLength(FABLE_LOCAL_IMAGE_COUNT_LIMIT),
+export const ClaudeLocalPickedImagesSchema = Schema.Array(ClaudeLocalImageAttachmentSchema).check(
+  Schema.isMaxLength(CLAUDE_LOCAL_IMAGE_COUNT_LIMIT),
 )
-export type FableLocalPickedImages = typeof FableLocalPickedImagesSchema.Type
+export type ClaudeLocalPickedImages = typeof ClaudeLocalPickedImagesSchema.Type
 
-export const FableLocalPickedImagesResultSchema = Schema.Struct({
-  images: FableLocalPickedImagesSchema,
+export const ClaudeLocalPickedImagesResultSchema = Schema.Struct({
+  images: ClaudeLocalPickedImagesSchema,
   rejection: Schema.NullOr(Schema.Literals(["wrong_type", "too_large", "count_limit", "unreadable"])),
 })
-export type FableLocalPickedImagesResult = typeof FableLocalPickedImagesResultSchema.Type
+export type ClaudeLocalPickedImagesResult = typeof ClaudeLocalPickedImagesResultSchema.Type
 
-export const decodeFableLocalPickedImages = (
+export const decodeClaudeLocalPickedImages = (
   value: unknown,
-): FableLocalPickedImagesResult | null =>
-  decode(FableLocalPickedImagesResultSchema, value) as FableLocalPickedImagesResult | null
+): ClaudeLocalPickedImagesResult | null =>
+  decode(ClaudeLocalPickedImagesResultSchema, value) as ClaudeLocalPickedImagesResult | null
 
-export const decodeFableLocalInterruptRequest = (
+export const decodeClaudeLocalInterruptRequest = (
   value: unknown,
-): FableLocalInterruptRequest | null =>
-  decode(FableLocalInterruptRequestSchema, value) as FableLocalInterruptRequest | null
+): ClaudeLocalInterruptRequest | null =>
+  decode(ClaudeLocalInterruptRequestSchema, value) as ClaudeLocalInterruptRequest | null
 
-export const decodeFableLocalAnswerQuestionRequest = (
+export const decodeClaudeLocalAnswerQuestionRequest = (
   value: unknown,
-): FableLocalAnswerQuestionRequest | null =>
-  decode(FableLocalAnswerQuestionRequestSchema, value) as FableLocalAnswerQuestionRequest | null
+): ClaudeLocalAnswerQuestionRequest | null =>
+  decode(ClaudeLocalAnswerQuestionRequestSchema, value) as ClaudeLocalAnswerQuestionRequest | null
 
 // ---------------------------------------------------------------------------
 // Child steering (G4) + follow-up queueing (A3) request contracts (EP250).
 // ---------------------------------------------------------------------------
-export const FableLocalSteerChildRequestSchema = Schema.Struct({
+export const ClaudeLocalSteerChildRequestSchema = Schema.Struct({
   turnRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   childRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   action: Schema.Literals(["message", "interrupt"]),
   /** Only meaningful for `action: "message"`; ignored for interrupt. */
-  body: Schema.optional(Schema.String.check(Schema.isMaxLength(FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT))),
+  body: Schema.optional(Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT))),
 })
-export type FableLocalSteerChildRequest = typeof FableLocalSteerChildRequestSchema.Type
+export type ClaudeLocalSteerChildRequest = typeof ClaudeLocalSteerChildRequestSchema.Type
 
-export const FableLocalQueueFollowupRequestSchema = Schema.Struct({
+export const ClaudeLocalQueueFollowupRequestSchema = Schema.Struct({
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
   message: Schema.String.check(
     Schema.isMinLength(1),
-    Schema.isMaxLength(FABLE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+    Schema.isMaxLength(CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
   ),
   intentRef: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
   clientUserMessageId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
   /** Required for steer; ignored by queue. Prevents stale-turn delivery. */
   expectedTurnId: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
 })
-export type FableLocalQueueFollowupRequest = typeof FableLocalQueueFollowupRequestSchema.Type
+export type ClaudeLocalQueueFollowupRequest = typeof ClaudeLocalQueueFollowupRequestSchema.Type
 
-export const decodeFableLocalSteerChildRequest = (
+export const decodeClaudeLocalSteerChildRequest = (
   value: unknown,
-): FableLocalSteerChildRequest | null =>
-  decode(FableLocalSteerChildRequestSchema, value) as FableLocalSteerChildRequest | null
+): ClaudeLocalSteerChildRequest | null =>
+  decode(ClaudeLocalSteerChildRequestSchema, value) as ClaudeLocalSteerChildRequest | null
 
-export const decodeFableLocalQueueFollowupRequest = (
+export const decodeClaudeLocalQueueFollowupRequest = (
   value: unknown,
-): FableLocalQueueFollowupRequest | null =>
-  decode(FableLocalQueueFollowupRequestSchema, value) as FableLocalQueueFollowupRequest | null
+): ClaudeLocalQueueFollowupRequest | null =>
+  decode(ClaudeLocalQueueFollowupRequestSchema, value) as ClaudeLocalQueueFollowupRequest | null
 
 // ===========================================================================
 // FROZEN user-MCP-server config contract (I2) — EP250 wave-1.
 //
 // This is the schema the SEPARATE wave-2 settings-UI lane must build against.
 // The desktop host reads a list of these (from settings/config) and hands it
-// to the fable-local runtime, which merges the ENABLED ones into the SDK's
+// to the claude-local runtime, which merges the ENABLED ones into the SDK's
 // `Options.mcpServers` alongside the internal `codex` delegate server. Their
 // tools then surface to the model as `mcp__<name>__<tool>`.
 //
 // FROZEN FIELDS (do not repurpose; add new optional fields only):
 // - name       server id; becomes the `mcp__<name>__…` tool prefix. Charset
-//              is validated in `normalizeFableLocalMcpServers`
-//              (`FABLE_LOCAL_MCP_NAME_PATTERN`); "codex" is RESERVED.
+//              is validated in `normalizeClaudeLocalMcpServers`
+//              (`CLAUDE_LOCAL_MCP_NAME_PATTERN`); "codex" is RESERVED.
 // - transport  "stdio" | "http" (SSE is not exposed in wave-1).
 // - enabled    disabled entries are skipped entirely (default posture: none).
 // - command    stdio: the executable to spawn (required for stdio).
@@ -813,9 +813,9 @@ export const decodeFableLocalQueueFollowupRequest = (
  * to 64 chars of letters/digits/underscore/hyphen, not starting/ending with a
  * separator so the `mcp__<name>__<tool>` prefix stays well-formed.
  */
-export const FABLE_LOCAL_MCP_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$/
+export const CLAUDE_LOCAL_MCP_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_-]{0,62}[A-Za-z0-9])?$/
 
-export const FableLocalMcpServerConfigSchema = Schema.Struct({
+export const ClaudeLocalMcpServerConfigSchema = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(64)),
   transport: Schema.Literals(["stdio", "http"]),
   enabled: Schema.Boolean,
@@ -829,28 +829,28 @@ export const FableLocalMcpServerConfigSchema = Schema.Struct({
     Schema.Record(Schema.String, Schema.String.check(Schema.isMaxLength(4_096))),
   ),
 })
-export type FableLocalMcpServerConfig = typeof FableLocalMcpServerConfigSchema.Type
+export type ClaudeLocalMcpServerConfig = typeof ClaudeLocalMcpServerConfigSchema.Type
 
-export const FableLocalMcpServerConfigsSchema = Schema.Array(FableLocalMcpServerConfigSchema).check(
-  Schema.isMaxLength(FABLE_LOCAL_MCP_SERVER_LIMIT),
+export const ClaudeLocalMcpServerConfigsSchema = Schema.Array(ClaudeLocalMcpServerConfigSchema).check(
+  Schema.isMaxLength(CLAUDE_LOCAL_MCP_SERVER_LIMIT),
 )
 
-export const decodeFableLocalMcpServerConfigs = (
+export const decodeClaudeLocalMcpServerConfigs = (
   value: unknown,
-): ReadonlyArray<FableLocalMcpServerConfig> | null =>
-  decode(FableLocalMcpServerConfigsSchema, value) as
-    | ReadonlyArray<FableLocalMcpServerConfig>
+): ReadonlyArray<ClaudeLocalMcpServerConfig> | null =>
+  decode(ClaudeLocalMcpServerConfigsSchema, value) as
+    | ReadonlyArray<ClaudeLocalMcpServerConfig>
     | null
 
 /** One normalized, ready-to-pass SDK server (`mcpServers[name] = sdkConfig`). */
-export type FableLocalNormalizedMcpServer = Readonly<{
+export type ClaudeLocalNormalizedMcpServer = Readonly<{
   name: string
   /** A `McpStdioServerConfig` / `McpHttpServerConfig` shape (sdk.d.ts). */
   sdkConfig: Record<string, unknown>
 }>
 
-export type FableLocalMcpNormalizeResult = Readonly<{
-  valid: ReadonlyArray<FableLocalNormalizedMcpServer>
+export type ClaudeLocalMcpNormalizeResult = Readonly<{
+  valid: ReadonlyArray<ClaudeLocalNormalizedMcpServer>
   invalid: ReadonlyArray<{ name: string; reason: string }>
 }>
 
@@ -861,16 +861,16 @@ export type FableLocalMcpNormalizeResult = Readonly<{
  * fields. A failed/invalid server NEVER blocks the turn — the runtime emits a
  * typed `mcp_server_unavailable` for each `invalid` entry and continues.
  */
-export const normalizeFableLocalMcpServers = (
-  configs: ReadonlyArray<FableLocalMcpServerConfig>,
-): FableLocalMcpNormalizeResult => {
-  const valid: Array<FableLocalNormalizedMcpServer> = []
+export const normalizeClaudeLocalMcpServers = (
+  configs: ReadonlyArray<ClaudeLocalMcpServerConfig>,
+): ClaudeLocalMcpNormalizeResult => {
+  const valid: Array<ClaudeLocalNormalizedMcpServer> = []
   const invalid: Array<{ name: string; reason: string }> = []
   const seen = new Set<string>()
-  for (const config of configs.slice(0, FABLE_LOCAL_MCP_SERVER_LIMIT)) {
+  for (const config of configs.slice(0, CLAUDE_LOCAL_MCP_SERVER_LIMIT)) {
     if (config.enabled !== true) continue
     const name = config.name.trim()
-    if (!FABLE_LOCAL_MCP_NAME_PATTERN.test(name)) {
+    if (!CLAUDE_LOCAL_MCP_NAME_PATTERN.test(name)) {
       invalid.push({ name, reason: "invalid server name (allowed: letters, digits, _ or -, 1-64 chars)" })
       continue
     }
@@ -922,19 +922,19 @@ export const normalizeFableLocalMcpServers = (
   return { valid, invalid }
 }
 
-export const decodeFableLocalEventEnvelope = (value: unknown): FableLocalEventEnvelope | null =>
-  decode(FableLocalEventEnvelopeSchema, value) as FableLocalEventEnvelope | null
+export const decodeClaudeLocalEventEnvelope = (value: unknown): ClaudeLocalEventEnvelope | null =>
+  decode(ClaudeLocalEventEnvelopeSchema, value) as ClaudeLocalEventEnvelope | null
 
-export const decodeFableLocalAvailability = (value: unknown): FableLocalAvailability | null =>
-  decode(FableLocalAvailabilitySchema, value) as FableLocalAvailability | null
+export const decodeClaudeLocalAvailability = (value: unknown): ClaudeLocalAvailability | null =>
+  decode(ClaudeLocalAvailabilitySchema, value) as ClaudeLocalAvailability | null
 
 /**
  * One compact trace line per tool event — the SAME text in the renderer's
  * live stream and in the persisted thread notes main appends, so the
  * transcript does not change shape when the turn finalizes.
  */
-export const fableLocalTraceNoteText = (
-  event: Extract<FableLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>,
+export const claudeLocalTraceNoteText = (
+  event: Extract<ClaudeLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>,
 ): string => {
   const status = event.kind === "tool_use" ? "started"
     : event.kind === "tool_progress" ? "running"
@@ -944,8 +944,8 @@ export const fableLocalTraceNoteText = (
 }
 
 /** The typed trace metadata carried on the same note (EP250 tool cards). */
-export const fableLocalTraceNoteMeta = (
-  event: Extract<FableLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>,
+export const claudeLocalTraceNoteMeta = (
+  event: Extract<ClaudeLocalEvent, { kind: "tool_use" | "tool_progress" | "tool_result" }>,
 ): DesktopToolTrace => ({
   toolName: event.toolName,
   phase: event.kind === "tool_use" ? "started"
@@ -959,18 +959,18 @@ export const fableLocalTraceNoteMeta = (
 })
 
 /**
- * Deterministic inverse of `fableLocalTraceNoteText`, for persisted system
+ * Deterministic inverse of `claudeLocalTraceNoteText`, for persisted system
  * notes written before typed `meta.trace` existed. This parses only our own
  * bounded serialization format (`<toolName> · <status>[ · <summary>]`) — it
  * is a fallback for historical thread-store rows, not an intent router.
  */
-export const parseFableLocalTraceNoteText = (text: string): DesktopToolTrace | null => {
+export const parseClaudeLocalTraceNoteText = (text: string): DesktopToolTrace | null => {
   const match = /^([A-Za-z0-9_.:/-]{1,120}) · (started|running|ok|failed)(?: · ([\s\S]*))?$/.exec(text)
   if (match === null) return null
   return {
     toolName: match[1] ?? "",
     phase: match[2] === "running" ? "progress" : (match[2] ?? "started") as DesktopToolTrace["phase"],
-    summary: (match[3] ?? "").slice(0, FABLE_LOCAL_SUMMARY_LIMIT),
+    summary: (match[3] ?? "").slice(0, CLAUDE_LOCAL_SUMMARY_LIMIT),
   }
 }
 
@@ -980,11 +980,11 @@ export const parseFableLocalTraceNoteText = (text: string): DesktopToolTrace | n
  * SDK-reported effective model, so the caption is capability-truthful even
  * though it also carries the lane brand.
  */
-export const fableLocalModelNoteText = (model: string): string => `Claude · ${model}`
+export const claudeLocalModelNoteText = (model: string): string => `Claude · ${model}`
 
 /** Renderer-facing copy for a typed lane failure — no provider text leaks. */
-export const fableLocalFailureMessage = (
-  reason: FableLocalFailureReason,
+export const claudeLocalFailureMessage = (
+  reason: ClaudeLocalFailureReason,
   detail: string,
 ): string => {
   const suffix = detail.trim() === "" ? "" : ` (${detail.trim()})`
@@ -1003,7 +1003,7 @@ export const fableLocalFailureMessage = (
       return `The local Claude turn failed${suffix}.`
     case "model_substituted":
       return `The Claude lane refused a substituted model${suffix}. No substituted output was shown as Claude.`
-    // Codex-local reasons never reach this fable-branded formatter in the
+    // Codex-local reasons never reach this claude-branded formatter in the
     // renderer (the codex lane formats through codexLocalFailureMessage), but
     // the switch stays exhaustive over the shared reason set.
     case "no_codex_account":

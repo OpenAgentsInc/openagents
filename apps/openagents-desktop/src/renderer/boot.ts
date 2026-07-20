@@ -40,7 +40,7 @@ import {
   unavailableAcpProviderSettingsBridge,
   type AcpProviderSettingsBridge,
 } from "../acp-provider-contract.ts"
-import type { FableLocalMcpServerConfig } from "../fable-local-contract.ts"
+import type { ClaudeLocalMcpServerConfig } from "../claude-local-contract.ts"
 import {
   unavailableFleetAccountsBridge,
   type FleetAccountsBridge,
@@ -111,18 +111,18 @@ import {
 } from "../runtime-control-outcome-contract.ts"
 import {
   makeLocalHarnessChatHost,
-  type FableLocalRendererBridge,
+  type ClaudeLocalRendererBridge,
 } from "./local-harness.ts"
 import { withHarnessLanes, type AppleFmBootState, type DesktopAppleFmChatHost, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
 import type { AppleFmStartTurnRequest, AppleFmStatus, AppleFmStopResult, AppleFmTurnResult } from "../apple-fm-contract.ts"
 import { unavailableFullAutoRunOutcome, type FullAutoRunRendererHost } from "../full-auto-run-ipc-contract.ts"
 import { decodeProviderLaneComposerProjections } from "../provider-lane-capabilities.ts"
 import {
-  decodeFableLocalAvailability,
-  type FableLocalAvailability,
-  type FableLocalEventEnvelope,
-  type FableLocalImageAttachment,
-} from "../fable-local-contract.ts"
+  decodeClaudeLocalAvailability,
+  type ClaudeLocalAvailability,
+  type ClaudeLocalEventEnvelope,
+  type ClaudeLocalImageAttachment,
+} from "../claude-local-contract.ts"
 import { installComposerImageAcquisition } from "./composer-image-acquisition.ts"
 import {
   codexHarnessLaneFromAvailability,
@@ -283,25 +283,25 @@ type DesktopBridge = Readonly<{
     select?: (value: unknown) => Promise<unknown>
   }>
   fleetRuns?: Readonly<{ list?: () => Promise<unknown> }>
-  fableLocal?: Readonly<{
+  claudeLocal?: Readonly<{
     availability?: () => Promise<unknown>
     start?: (value: unknown) => Promise<unknown>
     interrupt?: (value: unknown) => Promise<unknown>
-    onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
+    onEvent?: (listener: (envelope: ClaudeLocalEventEnvelope) => void) => () => void
     /** FROZEN question-answer bridge (EP250) — ships with the runtime lane. */
     answerQuestion?: (value: unknown) => Promise<unknown>
     /** EP250 wave-2 runtime-capability channels (G4 child steer, A3 queue). */
     steerChild?: (value: unknown) => Promise<unknown>
     queueFollowup?: (value: unknown) => Promise<unknown>
     /** Image file picker (capability I1) — main-mediated, returns attachments. */
-    pickImages?: () => Promise<import("../fable-local-contract.ts").FableLocalPickedImagesResult>
+    pickImages?: () => Promise<import("../claude-local-contract.ts").ClaudeLocalPickedImagesResult>
   }>
   /** Codex local lane (EP250 codex-first-class): same bridge shape. */
   codexLocal?: Readonly<{
     availability?: () => Promise<unknown>
     start?: (value: unknown) => Promise<unknown>
     interrupt?: (value: unknown) => Promise<unknown>
-    onEvent?: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
+    onEvent?: (listener: (envelope: ClaudeLocalEventEnvelope) => void) => () => void
     steerCurrent?: (value: unknown) => Promise<unknown>
     steerChild?: (value: unknown) => Promise<unknown>
     queueFollowup?: (value: unknown) => Promise<unknown>
@@ -797,7 +797,7 @@ const mcpConfigSettingsBridge: McpConfigSettingsBridge = {
       ? bridge.mcpConfig.list()
       : unavailableMcpConfigSettingsBridge.list()
   },
-  add: (config: FableLocalMcpServerConfig) => {
+  add: (config: ClaudeLocalMcpServerConfig) => {
     const bridge = readBridge()
     return typeof bridge?.mcpConfig?.add === "function"
       ? bridge.mcpConfig.add(config)
@@ -1016,44 +1016,44 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         return { ok: false, error: "Desktop chat returned an invalid response." }
       },
     }
-    // Fable local lane (#8712): narrow bridge over the preload surface. The
-    // local-mode chat host routes "fable" through it and refuses "codex"
+    // Claude local lane (#8712): narrow bridge over the preload surface. The
+    // local-mode chat host routes "claude" through it and refuses "codex"
     // explicitly — never the legacy cloud gateway (no silent substitution).
-    const fableLocalBridge: FableLocalRendererBridge | null =
-      typeof bridge?.fableLocal?.start === "function" &&
-      typeof bridge.fableLocal.availability === "function" &&
-      typeof bridge.fableLocal.interrupt === "function" &&
-      typeof bridge.fableLocal.onEvent === "function"
+    const claudeLocalBridge: ClaudeLocalRendererBridge | null =
+      typeof bridge?.claudeLocal?.start === "function" &&
+      typeof bridge.claudeLocal.availability === "function" &&
+      typeof bridge.claudeLocal.interrupt === "function" &&
+      typeof bridge.claudeLocal.onEvent === "function"
         ? {
-            availability: bridge.fableLocal.availability,
-            start: bridge.fableLocal.start,
-            interrupt: bridge.fableLocal.interrupt,
-            onEvent: bridge.fableLocal.onEvent as (
-              listener: (envelope: FableLocalEventEnvelope) => void,
+            availability: bridge.claudeLocal.availability,
+            start: bridge.claudeLocal.start,
+            interrupt: bridge.claudeLocal.interrupt,
+            onEvent: bridge.claudeLocal.onEvent as (
+              listener: (envelope: ClaudeLocalEventEnvelope) => void,
             ) => () => void,
             // EP250 wave-2: additive child-steer (G4) + queue-followup (A3)
             // channels; absent on older preloads (the shell degrades to no-op).
-            ...(typeof bridge.fableLocal.steerChild === "function"
-              ? { steerChild: bridge.fableLocal.steerChild }
+            ...(typeof bridge.claudeLocal.steerChild === "function"
+              ? { steerChild: bridge.claudeLocal.steerChild }
               : {}),
-            ...(typeof bridge.fableLocal.queueFollowup === "function"
-              ? { queueFollowup: bridge.fableLocal.queueFollowup }
+            ...(typeof bridge.claudeLocal.queueFollowup === "function"
+              ? { queueFollowup: bridge.claudeLocal.queueFollowup }
               : {}),
           }
         : null
     // Interactive question cards (EP250): the FROZEN answer bridge is
-    // fableLocal.answerQuestion({ turnRef, questionRef, answers }) with
+    // claudeLocal.answerQuestion({ turnRef, questionRef, answers }) with
     // answers as [{ question, labels }]. Defensive: if the bridge is absent,
     // cards render read-only pending (evidence-gated).
-    const answerQuestion = bridge?.fableLocal?.answerQuestion
+    const answerQuestion = bridge?.claudeLocal?.answerQuestion
     const localQuestionHost = typeof answerQuestion === "function"
       ? { answer: (input: Readonly<{ turnRef: string; questionRef: string; answers: ReadonlyArray<{ readonly question: string; readonly labels: ReadonlyArray<string> }> }>) => answerQuestion({ turnRef: input.turnRef, questionRef: input.questionRef, answers: input.answers }) }
       : { answer: null }
-    let fableAvailability: FableLocalAvailability | null = null
+    let claudeAvailability: ClaudeLocalAvailability | null = null
     // Codex local lane (EP250): same narrow bridge shape over its own
     // channels; the local-mode chat host routes "codex" through it over
     // PROBE-VERIFIED evidence only — never the legacy cloud gateway.
-    const codexLocalBridge: FableLocalRendererBridge | null =
+    const codexLocalBridge: ClaudeLocalRendererBridge | null =
       typeof bridge?.codexLocal?.start === "function" &&
       typeof bridge.codexLocal.availability === "function" &&
       typeof bridge.codexLocal.interrupt === "function" &&
@@ -1063,7 +1063,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             start: bridge.codexLocal.start,
             interrupt: bridge.codexLocal.interrupt,
             onEvent: bridge.codexLocal.onEvent as (
-              listener: (envelope: FableLocalEventEnvelope) => void,
+              listener: (envelope: ClaudeLocalEventEnvelope) => void,
             ) => () => void,
             ...(typeof bridge.codexLocal.steerCurrent === "function"
               ? { steerCurrent: bridge.codexLocal.steerCurrent }
@@ -1082,8 +1082,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     let codexAvailability: CodexLocalAvailability | null = null
     const localHarnessChat = makeLocalHarnessChatHost({
       base: localChat,
-      fable: fableLocalBridge,
-      fableAvailability: () => fableAvailability,
+      claude: claudeLocalBridge,
+      claudeAvailability: () => claudeAvailability,
       codex: codexLocalBridge,
       codexAvailability: () => codexAvailability,
       onComposerAdmission: (threadRef, admission) => {
@@ -1204,9 +1204,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     // account, and a failed decode settles on the reconnect reason rather than
     // parking on "verifying…" forever.
     const localLanes = (): HarnessLanes => ({
-      fable: fableAvailability?.state === "available"
+      claude: claudeAvailability?.state === "available"
         ? { available: true, reason: null }
-        : { available: false, reason: "Fable — unavailable: no linked Claude account" },
+        : { available: false, reason: "Claude — unavailable: no linked Claude account" },
       codex: codexLocalBridge === null
         ? { available: false, reason: "Codex — no verified account · Reconnect in Settings" }
         : codexHarnessLaneFromAvailability(codexAvailability),
@@ -1222,11 +1222,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }
     }
     if (!documentLaunch) {
-      if (fableLocalBridge !== null) {
-        void fableLocalBridge.availability()
+      if (claudeLocalBridge !== null) {
+        void claudeLocalBridge.availability()
           .catch(() => null)
           .then(async raw => {
-            fableAvailability = decodeFableLocalAvailability(raw)
+            claudeAvailability = decodeClaudeLocalAvailability(raw)
             await Effect.runPromise(SubscriptionRef.update(state, current => withHarnessLanes(current, localLanes())))
             await refreshLaneCapabilities()
           })
@@ -1462,7 +1462,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         // Image file picker (capability I1): main-mediated native dialog. Absent
         // bridge degrades to no attachments (drop/paste still work in-renderer).
         pick: async () => {
-          const pick = readBridge()?.fableLocal?.pickImages
+          const pick = readBridge()?.claudeLocal?.pickImages
           return typeof pick === "function" ? await pick() : { images: [], rejection: null }
         },
       }, terminalRendererBridge, noticeController, {
@@ -1724,9 +1724,9 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     })
     const hydrateDocumentLaunchMetadata = (): void => {
       if (!documentLaunch) return
-      if (fableLocalBridge !== null) {
-        void fableLocalBridge.availability().catch(() => null).then(async raw => {
-          fableAvailability = decodeFableLocalAvailability(raw)
+      if (claudeLocalBridge !== null) {
+        void claudeLocalBridge.availability().catch(() => null).then(async raw => {
+          claudeAvailability = decodeClaudeLocalAvailability(raw)
           await Effect.runPromise(SubscriptionRef.update(state, current =>
             withHarnessLanes(current, localLanes())))
         })

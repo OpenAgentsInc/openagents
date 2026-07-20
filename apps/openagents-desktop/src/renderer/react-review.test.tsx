@@ -196,8 +196,8 @@ describe("React status projection", () => {
   test("#8998: a Claude signed-out turn never asks the owner to sign in to Codex", async () => {
     const { projectReactStatusNotices } = await import("./react-review.tsx")
     const notice = projectReactStatusNotices(fixtureState({
-      selectedHarness: "fable",
-      activeLaneRef: "fable-local",
+      selectedHarness: "claude",
+      activeLaneRef: "claude-local",
       runtimeFailure: "signed_out",
     }))[0]
     expect(notice).toMatchObject({

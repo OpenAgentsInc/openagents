@@ -2,9 +2,9 @@
  * CUT-11 (#8691): desktop-local canonical live agent graph emission.
  *
  * The desktop already streams one typed local runtime event envelope
- * (`FableLocalEventEnvelope`) for BOTH local lanes:
+ * (`ClaudeLocalEventEnvelope`) for BOTH local lanes:
  *
- * - fable-local Claude root turns, including their Codex delegate children
+ * - claude-local Claude root turns, including their Codex delegate children
  *   (`child_started` / `child_activity` / `child_completed` / `child_failed`
  *   from the delegate MCP tool); and
  * - codex-local root turns (the direct Codex chat lane shares the envelope).
@@ -52,11 +52,11 @@ import {
 } from "@openagentsinc/khala-sync"
 
 import {
-  decodeFableLocalEventEnvelope,
-  type FableChildUsage,
-  type FableLocalEvent,
-  type FableLocalEventEnvelope,
-} from "./fable-local-contract.ts"
+  decodeClaudeLocalEventEnvelope,
+  type ClaudeChildUsage,
+  type ClaudeLocalEvent,
+  type ClaudeLocalEventEnvelope,
+} from "./claude-local-contract.ts"
 
 type CanonicalDelta = Parameters<typeof advanceLiveAgentGraphPostImage>[1]
 type CanonicalNode = LiveAgentGraphEntity["nodes"][number]
@@ -65,8 +65,8 @@ type CanonicalToolEdge = Extract<CanonicalEdge, { kind: "tool" }>
 
 const SCHEMA = "openagents.live_agent_graph.v1" as const
 
-/** The two desktop-local lanes that share the fable-local event envelope. */
-export type LocalAgentGraphLane = "fable_claude" | "codex_local"
+/** The two desktop-local lanes that share the claude-local event envelope. */
+export type LocalAgentGraphLane = "claude_local" | "codex_local"
 
 export type LocalAgentGraphTurnStart = Readonly<{
   turnRef: string
@@ -107,7 +107,7 @@ export type LocalAgentGraphUsageAttribution = Readonly<{
   provider: "claude_agent" | "codex"
   accountRef: string | null
   usageTruth: "exact" | "unreported"
-  usage: FableChildUsage | null
+  usage: ClaudeChildUsage | null
   recordedAt: string
 }>
 
@@ -115,7 +115,7 @@ export type LocalAgentGraphAssembler = Readonly<{
   /** Register a root turn before its stream events arrive. */
   startTurn: (start: LocalAgentGraphTurnStart, at: string) => LocalAgentGraphResult
   /** Fold one typed local runtime event envelope into the graph. */
-  applyEvent: (envelope: FableLocalEventEnvelope, at: string) => LocalAgentGraphResult
+  applyEvent: (envelope: ClaudeLocalEventEnvelope, at: string) => LocalAgentGraphResult
   /** Decode an untyped envelope (raw stream payload) and fold it. */
   applyEnvelopeValue: (value: unknown, at: string) => LocalAgentGraphResult
   /** Current validated canonical post-image. */
@@ -255,7 +255,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
   }
 
   const laneRuntime = (lane: LocalAgentGraphLane): CanonicalNode["runtime"] =>
-    lane === "fable_claude"
+    lane === "claude_local"
       ? {
           state: "known",
           kind: "claude_agent_sdk",
@@ -444,7 +444,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
     return { agentRef, created: node, edge }
   }
 
-  const applyEvent = (envelope: FableLocalEventEnvelope, atInput: string): LocalAgentGraphResult => {
+  const applyEvent = (envelope: ClaudeLocalEventEnvelope, atInput: string): LocalAgentGraphResult => {
     const at = clamp(atInput)
     const turn = turns.get(envelope.turnRef)
     if (turn === undefined) {
@@ -663,7 +663,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
       case "turn_completed": {
         const provider = event.accountRef === undefined
           ? root.provider
-          : knownProvider(turn.lane === "fable_claude" ? "claude" : "codex", event.accountRef)
+          : knownProvider(turn.lane === "claude_local" ? "claude" : "codex", event.accountRef)
         const settledChildren = settleChildren(turn, at)
         const settledEdges = settleOpenToolEdge(turn)
         const result = commit(
@@ -676,7 +676,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
             agentRef: turn.rootAgentRef,
             turnRef: envelope.turnRef,
             childRef: null,
-            provider: turn.lane === "fable_claude" ? "claude_agent" : "codex",
+            provider: turn.lane === "claude_local" ? "claude_agent" : "codex",
             accountRef: event.accountRef ?? null,
             usageTruth: event.usage === undefined ? "unreported" : "exact",
             usage: event.usage ?? null,
@@ -706,7 +706,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
             agentRef: turn.rootAgentRef,
             turnRef: envelope.turnRef,
             childRef: null,
-            provider: turn.lane === "fable_claude" ? "claude_agent" : "codex",
+            provider: turn.lane === "claude_local" ? "claude_agent" : "codex",
             accountRef: null,
             usageTruth: "unreported",
             usage: null,
@@ -719,7 +719,7 @@ export const createLocalAgentGraphAssembler = (input: Readonly<{
   }
 
   const applyEnvelopeValue = (value: unknown, at: string): LocalAgentGraphResult => {
-    const envelope = decodeFableLocalEventEnvelope(value)
+    const envelope = decodeClaudeLocalEventEnvelope(value)
     if (envelope === null) {
       return refuse("invalid_event", "envelope failed contract decode", clamp(at))
     }
@@ -742,4 +742,4 @@ export const isLocalAgentGraphApplied = (
   result: LocalAgentGraphResult,
 ): result is Extract<LocalAgentGraphResult, { applied: true }> => result.applied
 
-export type { FableLocalEvent as LocalAgentGraphSourceEvent }
+export type { ClaudeLocalEvent as LocalAgentGraphSourceEvent }

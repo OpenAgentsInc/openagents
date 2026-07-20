@@ -282,7 +282,7 @@ const sampledStates = (): ReadonlyArray<DesktopShellState> => [
   {
     ...baseState(),
     harnessLanes: {
-      fable: { available: true, reason: null },
+      claude: { available: true, reason: null },
       codex: { available: true, reason: null },
     },
   },

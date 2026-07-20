@@ -137,7 +137,7 @@ describe("lane-independent spec workflow", () => {
     writeFileSync(join(root, "specs", "lane.assurance-evidence-index.json"), `${JSON.stringify(evidence)}\n`)
     const after = projectSpecLaneTurn(root).snapshot
 
-    for (const laneRef of ["codex-local", "fable-local"]) {
+    for (const laneRef of ["codex-local", "claude-local"]) {
       const note = specLaneRevalidationNote(laneRef, before, after)
       expect(note).toContain(`Spec revalidation · ${laneRef}`)
       expect(note).toContain("→ confirmed")
@@ -150,7 +150,7 @@ describe("lane-independent spec workflow", () => {
     const unchanged = projectSpecLaneTurn(root).snapshot
 
     expect(specLaneRevalidationNote("codex-local", unchanged, unchanged)).toBeNull()
-    expect(specLaneRevalidationNote("fable-local", unchanged, unchanged)).toBeNull()
+    expect(specLaneRevalidationNote("claude-local", unchanged, unchanged)).toBeNull()
   })
 
   test("fails evidence closed when its index is malformed", () => {

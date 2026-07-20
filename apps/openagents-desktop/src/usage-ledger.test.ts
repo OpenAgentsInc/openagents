@@ -1,6 +1,6 @@
 /**
  * Session usage ledger tests (#8712 Lane C): exact per-account accumulation
- * for Fable turns and Codex children, the typed reconnect flag (probe/child
+ * for Claude turns and Codex children, the typed reconnect flag (probe/child
  * evidence superseding presence-based "ready"), deterministic snapshot
  * order, push notification, and disposal.
  */

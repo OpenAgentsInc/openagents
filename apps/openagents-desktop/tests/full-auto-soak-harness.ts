@@ -171,7 +171,7 @@ const makeSoakEvents = (): SoakEvents => ({
 
 export const SOAK_WORKSPACE_REF = "/granted/soak-workspace"
 export const SOAK_DEFAULT_LANE = "codex-local"
-export const SOAK_ALTERNATE_LANE = "fable-local"
+export const SOAK_ALTERNATE_LANE = "claude-local"
 
 type SoakRuntime = Readonly<{
   store: ReturnType<typeof makeThreadStore>

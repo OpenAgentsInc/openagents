@@ -1,8 +1,8 @@
 /**
  * Runtime-capability transcript cards (EP250 wave-2, #8712).
  *
- * The wave-1 substrate (fable-local-contract.ts / fable-local-runtime.ts)
- * emits typed control events on the fable-local stream — `plan_updated`
+ * The wave-1 substrate (claude-local-contract.ts / claude-local-runtime.ts)
+ * emits typed control events on the claude-local stream — `plan_updated`
  * (J2/J4 task progress), `child_started/activity/completed/failed` +
  * `child_steered` (G4 steer/stop a running delegate child), and
  * `followup_queued/promoted` (A3 queue-until-idle follow-ups). This module is

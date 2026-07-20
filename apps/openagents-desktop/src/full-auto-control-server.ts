@@ -190,7 +190,7 @@ export type FullAutoControlCapabilities = Readonly<{
    * directly. */
   runRegistry: FullAutoRunRegistry
   /** FA-AC-44 Pause: best-effort request to interrupt the thread's actively
-   * running turn (the exact same three-way codexLocal/fableLocal/ACP-driver
+   * running turn (the exact same three-way codexLocal/claudeLocal/ACP-driver
    * interrupt chain the existing CodexLocalFullAutoInterruptChannel IPC
    * handler already uses). Returns false when nothing was running or no
    * lane accepted the interrupt; Pause still transitions to Pausing and

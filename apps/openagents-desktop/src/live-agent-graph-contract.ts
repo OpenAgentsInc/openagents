@@ -2,7 +2,7 @@
  * CUT-11 (#8691): canonical live agent graph IPC contract — the additive
  * main -> renderer delivery seam for the desktop-local
  * `openagents.live_agent_graph.v1` post-images assembled by
- * `live-agent-graph-host.ts` from the REAL fable-local / codex-local event
+ * `live-agent-graph-host.ts` from the REAL claude-local / codex-local event
  * streams.
  *
  * Delivery follows the established desktop seams exactly:

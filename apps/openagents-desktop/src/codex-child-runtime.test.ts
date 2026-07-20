@@ -1,7 +1,7 @@
 /**
  * Codex child runtime tests (#8712 Lane C + EP250 rotation fix). Enforces
  * openagents_desktop.seam.codex_delegation_no_substitution.v2 and the child
- * half of openagents_desktop.chat.fable_local_owner_full_access.v1: the
+ * half of openagents_desktop.chat.claude_local_owner_full_access.v1: the
  * receipted spawn recipe (danger-full-access owner-local profile), exact usage
  * accounting from turn.completed, BROADENED auth-class classification
  * (including the live SHORT variant that the original marker set missed),

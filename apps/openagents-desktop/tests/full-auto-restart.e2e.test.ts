@@ -277,7 +277,7 @@ describe("Full Auto exactly-once dispatch (FA-H3 #8876)", () => {
     try {
       const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
       registry.set("thread-codex", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "codex-local" } })
-      registry.set("thread-claude", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "fable-local" } })
+      registry.set("thread-claude", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "claude-local" } })
 
       const started: string[] = []
       let resolveBothStarted: (() => void) | null = null
@@ -331,7 +331,7 @@ describe("Full Auto exactly-once dispatch (FA-H3 #8876)", () => {
 
       const firstPass = reconcile(registry, { dispatch })
       await firstStarted
-      registry.set("thread-second", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "fable-local" } })
+      registry.set("thread-second", true, { workspaceRef: GRANTED_WORKSPACE, profile: { lane: "claude-local" } })
       const secondPass = reconcile(registry, { dispatch })
       await Promise.race([
         secondStarted,
@@ -616,7 +616,7 @@ describe("Full Auto execution-profile continuity (FA-H6 #8879)", () => {
       const registryA = openFullAutoRegistry(registryFile)
       registryA.set("thread-claude", true, {
         workspaceRef: GRANTED_WORKSPACE,
-        profile: { lane: "fable-local", accountRef: "claude", model: "claude-sonnet-5" },
+        profile: { lane: "claude-local", accountRef: "claude", model: "claude-sonnet-5" },
       })
 
       const registryB = openFullAutoRegistry(registryFile)
@@ -625,7 +625,7 @@ describe("Full Auto execution-profile continuity (FA-H6 #8879)", () => {
         dispatch: async input => { profiles.push(input.profile); return { ok: true } },
       })).toEqual(["thread-claude"])
       expect(profiles).toEqual([{
-        lane: "fable-local",
+        lane: "claude-local",
         accountRef: "claude",
         model: "claude-sonnet-5",
       }])
@@ -706,7 +706,7 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
         const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
         enableWithPolicy(registry, "thread-rotate", [
           { lane: "codex-local", accountRef: "codex-1" },
-          { lane: "fable-local", accountRef: "claude-1" },
+          { lane: "claude-local", accountRef: "claude-1" },
         ])
 
         const attempts: Array<{ turnRef: string; lane: string | undefined; accountRef: string | undefined }> = []
@@ -733,15 +733,15 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
         expect(dispatched).toEqual(["thread-rotate"])
         expect(attempts).toHaveLength(2)
         expect(attempts[0]).toMatchObject({ lane: "codex-local", accountRef: "codex-1" })
-        expect(attempts[1]).toMatchObject({ lane: "fable-local", accountRef: "claude-1" })
+        expect(attempts[1]).toMatchObject({ lane: "claude-local", accountRef: "claude-1" })
         // Each attempt is its own leased turn identity.
         expect(attempts[0]!.turnRef).not.toBe(attempts[1]!.turnRef)
         // The rotation is a typed, persisted, owner-visible fact.
-        expect(rotations).toEqual([{ fromLane: "codex-local", toLane: "fable-local", reason: failureClass }])
+        expect(rotations).toEqual([{ fromLane: "codex-local", toLane: "claude-local", reason: failureClass }])
         const record = registry.record("thread-rotate")
         expect(record?.rotationHistory).toEqual([{
           fromLane: "codex-local",
-          toLane: "fable-local",
+          toLane: "claude-local",
           reason: failureClass,
           at: expect.any(String),
         }])
@@ -756,7 +756,7 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
         expect(record?.pendingTurnRef ?? null).toBe(null)
         // The durable profile now points at the lane that actually worked,
         // so the NEXT continuation starts there.
-        expect(record?.profile?.lane).toBe("fable-local")
+        expect(record?.profile?.lane).toBe("claude-local")
         expect(record?.profile?.accountRef).toBe("claude-1")
       } finally {
         rmSync(root, { recursive: true, force: true })
@@ -770,7 +770,7 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
       const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
       enableWithPolicy(registry, "thread-cycle", [
         { lane: "codex-local" },
-        { lane: "fable-local" },
+        { lane: "claude-local" },
         { lane: "acp:grok-cli" },
       ])
 
@@ -797,8 +797,8 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
       // Two rotations happened (1->2, 2->3); the final failure is budget, not
       // a rotation.
       expect(record?.rotationHistory?.map(entry => `${entry.fromLane}>${entry.toLane}`)).toEqual([
-        "codex-local>fable-local",
-        "fable-local>acp:grok-cli",
+        "codex-local>claude-local",
+        "claude-local>acp:grok-cli",
       ])
       // A failed cycle never consumes a cap slot (FA-H5 pinned decision).
       expect(record?.continuationCount).toBe(0)
@@ -831,7 +831,7 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-rotate-untyped-"))
     try {
       const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
-      enableWithPolicy(registry, "thread-untyped", [{ lane: "codex-local" }, { lane: "fable-local" }])
+      enableWithPolicy(registry, "thread-untyped", [{ lane: "codex-local" }, { lane: "claude-local" }])
 
       let attempts = 0
       const failures: Array<string> = []
@@ -846,7 +846,7 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
 
       // A THROWN dispatch is equally untyped: no rotation.
       const thrownRegistry = openFullAutoRegistry(path.join(root, "full-auto", "registry2.json"))
-      enableWithPolicy(thrownRegistry, "thread-thrown", [{ lane: "codex-local" }, { lane: "fable-local" }])
+      enableWithPolicy(thrownRegistry, "thread-thrown", [{ lane: "codex-local" }, { lane: "claude-local" }])
       let thrownAttempts = 0
       await reconcile(thrownRegistry, {
         dispatch: async () => { thrownAttempts += 1; throw new Error("socket closed") },
@@ -897,7 +897,7 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
       enableWithPolicy(
         registry,
         "thread-start",
-        [{ lane: "fable-local" }, { lane: "codex-local", accountRef: "codex-2" }, { lane: "acp:grok-cli" }],
+        [{ lane: "claude-local" }, { lane: "codex-local", accountRef: "codex-2" }, { lane: "acp:grok-cli" }],
         { lane: "codex-local", accountRef: "codex-2", model: "gpt-5.5" },
       )
 
@@ -911,7 +911,7 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
         },
       })
       expect(dispatched).toEqual(["thread-start"])
-      expect(attempts.map(attempt => attempt.lane)).toEqual(["codex-local", "acp:grok-cli", "fable-local"])
+      expect(attempts.map(attempt => attempt.lane)).toEqual(["codex-local", "acp:grok-cli", "claude-local"])
       // Same lane as the bound profile: model carries over. Foreign lanes:
       // model falls back to lane defaults (undefined), never another lane's
       // model string.
@@ -919,8 +919,8 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
       expect(attempts[1]!.model).toBeUndefined()
       expect(attempts[2]!.model).toBeUndefined()
       expect(registry.record("thread-start")?.rotationHistory?.map(entry => entry.toLane))
-        .toEqual(["acp:grok-cli", "fable-local"])
-      expect(registry.record("thread-start")?.profile?.lane).toBe("fable-local")
+        .toEqual(["acp:grok-cli", "claude-local"])
+      expect(registry.record("thread-start")?.profile?.lane).toBe("claude-local")
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -934,7 +934,7 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
       registryA.set("thread-rt-restart", true, {
         workspaceRef: GRANTED_WORKSPACE,
         profile: { lane: "codex-local" },
-        routingPolicy: [{ lane: "codex-local" }, { lane: "fable-local" }],
+        routingPolicy: [{ lane: "codex-local" }, { lane: "claude-local" }],
       })
       await reconcile(registryA, {
         dispatch: async input =>
@@ -945,13 +945,13 @@ describe("Full Auto multi-lane never-halt rotation (FA-RT-01 #8987)", () => {
 
       const registryB = openFullAutoRegistry(registryFile)
       const record = registryB.record("thread-rt-restart")
-      expect(record?.profile?.lane).toBe("fable-local")
+      expect(record?.profile?.lane).toBe("claude-local")
       expect(record?.rotationHistory).toHaveLength(1)
       const lanes: Array<string | undefined> = []
       await reconcile(registryB, {
         dispatch: async input => { lanes.push(input.profile?.lane); return { ok: true } },
       })
-      expect(lanes).toEqual(["fable-local"])
+      expect(lanes).toEqual(["claude-local"])
       expect(registryB.record("thread-rt-restart")?.continuationCount).toBe(2)
     } finally {
       rmSync(root, { recursive: true, force: true })

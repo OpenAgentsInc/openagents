@@ -2,7 +2,7 @@
  * Harness-neutral typed workbench item model (#8859, epic #8857 wave 0).
  *
  * `WorkbenchItem` is the ONE typed presentation contract between every
- * provider harness (Codex app-server, Codex exec, the Claude/Fable SDK lane)
+ * provider harness (Codex app-server, Codex exec, the Claude/Claude SDK lane)
  * and the timeline renderer. It replaces the string-flattening loss point in
  * `toolFacts()` (codex-app-server-turn.ts) without breaking the existing
  * string contract: typed items ride ADDITIVELY on the same tool trace events
@@ -142,7 +142,7 @@ export const WorkbenchReasoningItemSchema = Schema.Struct({
    * text/summary deltas are still arriving, "completed" once the item
    * finalizes. Both states use the same quiet Markdown-body presentation.
    * Absent defaults to "completed" so pre-#8863 emitters (history, the
-   * Claude/Fable lane) keep decoding unchanged.
+   * Claude/Claude lane) keep decoding unchanged.
    */
   status: Schema.optional(WorkbenchItemStatusSchema),
 })
@@ -825,7 +825,7 @@ export const workbenchNoticeItem = (
 })
 
 /**
- * Typed toolCall projection for the Claude/Fable SDK lane's `tool_use`
+ * Typed toolCall projection for the Claude/Claude SDK lane's `tool_use`
  * content blocks (source-tagged "claude"). `mcp__server__tool` names project
  * as MCP calls with the server segment; every other SDK tool is a dynamic
  * call whose args come from the block input.

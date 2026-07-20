@@ -118,7 +118,7 @@ describe("FA-SOAK-01: long-window Full Auto soak matrix + SM-10 (#8992)", () => 
         expect(rotation.report.rotationHistory).toEqual([
           expect.objectContaining({
             fromLane: "codex-local",
-            toLane: "fable-local",
+            toLane: "claude-local",
             reason: "account_exhausted",
           }),
         ])

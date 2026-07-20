@@ -1,5 +1,5 @@
 /**
- * Fable local runtime — EP250 wave-1 capability substrate (programmatic
+ * Claude local runtime — EP250 wave-1 capability substrate (programmatic
  * oracles, no Electron window). Covers the four daily-coding capability gaps
  * this lane builds the typed runtime for:
  *
@@ -9,7 +9,7 @@
  * - I2 user MCP servers: enabled stdio/http passthrough, failed-start and
  *   invalid-config -> mcp_server_unavailable with the turn still completing.
  *
- * These enforce openagents_desktop.chat.fable_local_runtime_capabilities.v1.
+ * These enforce openagents_desktop.chat.claude_local_runtime_capabilities.v1.
  */
 import { describe, expect, test } from "vite-plus/test"
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
@@ -17,29 +17,29 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import {
-  FABLE_LOCAL_MCP_SERVER_LIMIT,
-  decodeFableLocalMcpServerConfigs,
-  normalizeFableLocalMcpServers,
-  type FableLocalEvent,
-  type FableLocalMcpServerConfig,
-} from "./fable-local-contract.ts"
+  CLAUDE_LOCAL_MCP_SERVER_LIMIT,
+  decodeClaudeLocalMcpServerConfigs,
+  normalizeClaudeLocalMcpServers,
+  type ClaudeLocalEvent,
+  type ClaudeLocalMcpServerConfig,
+} from "./claude-local-contract.ts"
 import {
-  FABLE_DELEGATE_TOOL_NAME,
-  FABLE_LOCAL_MODEL,
-  makeFableLocalRuntime,
-  makeFixtureFableMcpFactory,
-  type FableDelegateRuntime,
-  type FableLocalQuery,
-  type FableLocalRuntime,
-  type FixtureFableMcpTool,
-} from "./fable-local-runtime.ts"
+  CLAUDE_DELEGATE_TOOL_NAME,
+  CLAUDE_LOCAL_MODEL,
+  makeClaudeLocalRuntime,
+  makeFixtureClaudeMcpFactory,
+  type ClaudeDelegateRuntime,
+  type ClaudeLocalQuery,
+  type ClaudeLocalRuntime,
+  type FixtureClaudeMcpTool,
+} from "./claude-local-runtime.ts"
 
 // ---------------------------------------------------------------------------
 // Shared harness
 // ---------------------------------------------------------------------------
 
 const makeReadyRoot = (): string => {
-  const root = mkdtempSync(join(tmpdir(), "fable-caps-homes-"))
+  const root = mkdtempSync(join(tmpdir(), "claude-caps-homes-"))
   mkdirSync(join(root, ".claude-pylon-b"))
   writeFileSync(join(root, ".claude-pylon-b", "claude-oauth-token"), "sk-ant-oat01-b\n")
   return root
@@ -48,27 +48,27 @@ const makeReadyRoot = (): string => {
 type CapturedQuery = { prompt: string | AsyncIterable<unknown>; options: Record<string, unknown> }
 
 type Harness = {
-  runtime: FableLocalRuntime
+  runtime: ClaudeLocalRuntime
   captured: CapturedQuery[]
 }
 
 const makeHarness = (input: {
   script: (captured: CapturedQuery) => AsyncIterable<unknown>
-  delegate?: FableDelegateRuntime
-  userMcpServers?: () => ReadonlyArray<FableLocalMcpServerConfig>
+  delegate?: ClaudeDelegateRuntime
+  userMcpServers?: () => ReadonlyArray<ClaudeLocalMcpServerConfig>
 }): Harness => {
   const root = makeReadyRoot()
   const captured: CapturedQuery[] = []
-  const query: FableLocalQuery = call => {
+  const query: ClaudeLocalQuery = call => {
     captured.push(call)
     return input.script(call)
   }
-  const scratch = mkdtempSync(join(tmpdir(), "fable-caps-scratch-"))
-  const runtime = makeFableLocalRuntime({
+  const scratch = mkdtempSync(join(tmpdir(), "claude-caps-scratch-"))
+  const runtime = makeClaudeLocalRuntime({
     scratchRoot: () => scratch,
     env: { PYLON_ACCOUNT_HOME_ROOT: root },
     queryImpl: async () => query,
-    mcpImpl: async () => makeFixtureFableMcpFactory(),
+    mcpImpl: async () => makeFixtureClaudeMcpFactory(),
     ...(input.delegate === undefined ? {} : { delegate: input.delegate }),
     ...(input.userMcpServers === undefined ? {} : { userMcpServers: input.userMcpServers }),
   })
@@ -76,24 +76,24 @@ const makeHarness = (input: {
 }
 
 const collect = () => {
-  const events: FableLocalEvent[] = []
-  return { events, emit: (event: FableLocalEvent) => events.push(event) }
+  const events: ClaudeLocalEvent[] = []
+  return { events, emit: (event: ClaudeLocalEvent) => events.push(event) }
 }
 
 /** A deferred that resolves the first time `emit` sees a matching event. */
-const waitFor = <K extends FableLocalEvent["kind"]>(kind: K) => {
-  let resolve!: (event: Extract<FableLocalEvent, { kind: K }>) => void
-  const promise = new Promise<Extract<FableLocalEvent, { kind: K }>>(r => {
+const waitFor = <K extends ClaudeLocalEvent["kind"]>(kind: K) => {
+  let resolve!: (event: Extract<ClaudeLocalEvent, { kind: K }>) => void
+  const promise = new Promise<Extract<ClaudeLocalEvent, { kind: K }>>(r => {
     resolve = r
   })
-  const onEmit = (event: FableLocalEvent): void => {
-    if (event.kind === kind) resolve(event as Extract<FableLocalEvent, { kind: K }>)
+  const onEmit = (event: ClaudeLocalEvent): void => {
+    if (event.kind === kind) resolve(event as Extract<ClaudeLocalEvent, { kind: K }>)
   }
   return { promise, onEmit }
 }
 
-const fixtureDelegateTool = (options: Record<string, unknown>): FixtureFableMcpTool => {
-  const servers = options.mcpServers as Record<string, { tools: Array<FixtureFableMcpTool> }>
+const fixtureDelegateTool = (options: Record<string, unknown>): FixtureClaudeMcpTool => {
+  const servers = options.mcpServers as Record<string, { tools: Array<FixtureClaudeMcpTool> }>
   const tool = servers.codex!.tools.find(candidate => candidate.name === "delegate")
   return tool!
 }
@@ -113,7 +113,7 @@ describe("plan_updated (J2/J4): TodoWrite surfaces structured plan entries", () 
   test("a TodoWrite tool call emits plan_updated with mapped entries AND the raw tool_use", async () => {
     const harness = makeHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL }
         yield {
           type: "assistant",
           message: {
@@ -142,7 +142,7 @@ describe("plan_updated (J2/J4): TodoWrite surfaces structured plan entries", () 
     // The raw tool_use trace is still emitted (additive, not replaced).
     expect(sink.events.some(e => e.kind === "tool_use")).toBe(true)
     const plan = sink.events.find(e => e.kind === "plan_updated") as
-      Extract<FableLocalEvent, { kind: "plan_updated" }> | undefined
+      Extract<ClaudeLocalEvent, { kind: "plan_updated" }> | undefined
     expect(plan).toBeDefined()
     expect(plan!.entries).toEqual([
       { step: "Read the audit", status: "completed" },
@@ -154,7 +154,7 @@ describe("plan_updated (J2/J4): TodoWrite surfaces structured plan entries", () 
   test("a non-TodoWrite tool never emits plan_updated; unknown todo status coerces to pending", async () => {
     const harness = makeHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL }
         yield {
           type: "assistant",
           message: { content: [{ type: "tool_use", id: "r1", name: "Read", input: { file_path: "x" } }] },
@@ -176,7 +176,7 @@ describe("plan_updated (J2/J4): TodoWrite surfaces structured plan entries", () 
       turnRef: "t-plan2", threadRef: "th-plan2", history: [], message: "go", emit: sink.emit,
     })
     const plans = sink.events.filter(e => e.kind === "plan_updated") as
-      Array<Extract<FableLocalEvent, { kind: "plan_updated" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "plan_updated" }>>
     expect(plans.length).toBe(1)
     expect(plans[0]!.entries).toEqual([{ step: "step", status: "pending" }])
   })
@@ -184,7 +184,7 @@ describe("plan_updated (J2/J4): TodoWrite surfaces structured plan entries", () 
   test("default turn uses permissionMode default with ExitPlanMode disallowed", async () => {
     const harness = makeHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL }
         yield { type: "result", subtype: "success", is_error: false, result: "ok" }
       },
     })
@@ -199,7 +199,7 @@ describe("plan_updated (J2/J4): TodoWrite surfaces structured plan entries", () 
   test("opt-in plan mode switches to permissionMode plan and allows ExitPlanMode", async () => {
     const harness = makeHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL }
         yield { type: "result", subtype: "success", is_error: false, result: "ok" }
       },
     })
@@ -221,7 +221,7 @@ describe("plan_updated (J2/J4): TodoWrite surfaces structured plan entries", () 
 
 describe("steerChild (G4): reach a running delegate child", () => {
   /** A delegate whose child hangs until its abort signal fires. */
-  const hangingDelegate = (): FableDelegateRuntime => ({
+  const hangingDelegate = (): ClaudeDelegateRuntime => ({
     runChild: input =>
       new Promise(resolve => {
         input.signal?.addEventListener("abort", () =>
@@ -230,20 +230,20 @@ describe("steerChild (G4): reach a running delegate child", () => {
   })
 
   const runWithHangingChild = (input: {
-    delegate: FableDelegateRuntime
+    delegate: ClaudeDelegateRuntime
     turnRef: string
-    onChildStarted: (childRef: string, runtime: FableLocalRuntime) => void
+    onChildStarted: (childRef: string, runtime: ClaudeLocalRuntime) => void
   }) => {
     const started = waitFor("child_started")
-    const events: FableLocalEvent[] = []
+    const events: ClaudeLocalEvent[] = []
     const harness = makeHarness({
       delegate: input.delegate,
       script: async function* (call) {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL }
         const tool = fixtureDelegateTool(call.options)
         yield {
           type: "assistant",
-          message: { content: [{ type: "tool_use", id: "d1", name: FABLE_DELEGATE_TOOL_NAME, input: { task: "long job" } }] },
+          message: { content: [{ type: "tool_use", id: "d1", name: CLAUDE_DELEGATE_TOOL_NAME, input: { task: "long job" } }] },
         }
         const raw = await tool.handler({ task: "long job" }, {})
         yield {
@@ -277,7 +277,7 @@ describe("steerChild (G4): reach a running delegate child", () => {
     const result = await flow.donePromise
     expect(result.ok).toBe(true)
     const steered = flow.events.find(e => e.kind === "child_steered") as
-      Extract<FableLocalEvent, { kind: "child_steered" }> | undefined
+      Extract<ClaudeLocalEvent, { kind: "child_steered" }> | undefined
     expect(steered).toBeDefined()
     expect(steered!.action).toBe("interrupt")
     expect(steered!.outcome).toBe("interrupted")
@@ -296,7 +296,7 @@ describe("steerChild (G4): reach a running delegate child", () => {
     flow.harness.runtime.steerChild({ turnRef: "t-msg", childRef: child.childRef, action: "interrupt" })
     await flow.donePromise
     const steered = flow.events.filter(e => e.kind === "child_steered") as
-      Array<Extract<FableLocalEvent, { kind: "child_steered" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "child_steered" }>>
     expect(steered.map(e => e.outcome)).toEqual(["unsupported", "interrupted"])
     expect(steered[0]!.action).toBe("message")
   })
@@ -337,16 +337,16 @@ describe("queueFollowup (A3): enqueue during a turn, promote on idle", () => {
       releaseGate = r
     })
     const started = waitFor("turn_started")
-    const events: FableLocalEvent[] = []
+    const events: ClaudeLocalEvent[] = []
     const harness = makeHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL }
         yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "working" } } }
         await gate
         yield { type: "result", subtype: "success", is_error: false, result: "done" }
       },
     })
-    return { harness, events, gate: releaseGate, turnStarted: started, emit: (e: FableLocalEvent) => { events.push(e); started.onEmit(e) } }
+    return { harness, events, gate: releaseGate, turnStarted: started, emit: (e: ClaudeLocalEvent) => { events.push(e); started.onEmit(e) } }
   }
 
   test("enqueue -> followup_queued; on turn end -> followup_promoted (ordered)", async () => {
@@ -364,7 +364,7 @@ describe("queueFollowup (A3): enqueue during a turn, promote on idle", () => {
     expect(kinds.indexOf("followup_queued")).toBeGreaterThanOrEqual(0)
     expect(kinds.indexOf("followup_promoted")).toBeGreaterThan(kinds.indexOf("turn_completed"))
     const promoted = h.events.find(e => e.kind === "followup_promoted") as
-      Extract<FableLocalEvent, { kind: "followup_promoted" }>
+      Extract<ClaudeLocalEvent, { kind: "followup_promoted" }>
     expect(promoted.message).toBe("second message")
     expect(promoted.queueRef).toBe(queued.ok ? queued.queueRef : "")
   })
@@ -382,7 +382,7 @@ describe("queueFollowup (A3): enqueue during a turn, promote on idle", () => {
     h.gate()
     await done
     const promoted = h.events.filter(e => e.kind === "followup_promoted") as
-      Array<Extract<FableLocalEvent, { kind: "followup_promoted" }>>
+      Array<Extract<ClaudeLocalEvent, { kind: "followup_promoted" }>>
     expect(promoted.length).toBe(1)
     expect(promoted[0]!.message).toBe("msg A")
   })
@@ -402,14 +402,14 @@ describe("queueFollowup (A3): enqueue during a turn, promote on idle", () => {
 
 describe("user MCP servers (I2): passthrough, failed-start, invalid config", () => {
   test("an enabled stdio server is merged into mcpServers and its tools are allow-listed via canUseTool", async () => {
-    const configs: ReadonlyArray<FableLocalMcpServerConfig> = [
+    const configs: ReadonlyArray<ClaudeLocalMcpServerConfig> = [
       { name: "docs", transport: "stdio", enabled: true, command: "docs-mcp", args: ["--stdio"], env: { TOKEN: "x" } },
       { name: "off", transport: "stdio", enabled: false, command: "nope" },
     ]
     const harness = makeHarness({
       userMcpServers: () => configs,
       script: async function* (call) {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL, mcp_servers: [{ name: "docs", status: "connected" }] }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL, mcp_servers: [{ name: "docs", status: "connected" }] }
         // A tool from the configured server surfaces as mcp__docs__<tool>.
         yield {
           type: "assistant",
@@ -442,7 +442,7 @@ describe("user MCP servers (I2): passthrough, failed-start, invalid config", () 
         { name: "remote", transport: "http", enabled: true, url: "https://mcp.example.com", headers: { Authorization: "Bearer y" } },
       ],
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL, mcp_servers: [{ name: "remote", status: "connected" }] }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL, mcp_servers: [{ name: "remote", status: "connected" }] }
         yield { type: "result", subtype: "success", is_error: false, result: "ok" }
       },
     })
@@ -456,7 +456,7 @@ describe("user MCP servers (I2): passthrough, failed-start, invalid config", () 
       userMcpServers: () => [{ name: "docs", transport: "stdio", enabled: true, command: "docs-mcp" }],
       script: async function* () {
         yield {
-          type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL,
+          type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL,
           mcp_servers: [{ name: "docs", status: "failed" }],
         }
         yield { type: "result", subtype: "success", is_error: false, result: "turn still ran" }
@@ -469,7 +469,7 @@ describe("user MCP servers (I2): passthrough, failed-start, invalid config", () 
     expect(result.ok).toBe(true)
     expect(result.ok && result.text).toBe("turn still ran")
     const unavailable = sink.events.find(e => e.kind === "mcp_server_unavailable") as
-      Extract<FableLocalEvent, { kind: "mcp_server_unavailable" }> | undefined
+      Extract<ClaudeLocalEvent, { kind: "mcp_server_unavailable" }> | undefined
     expect(unavailable).toBeDefined()
     expect(unavailable!.name).toBe("docs")
     expect(unavailable!.reason).toBe("failed")
@@ -483,7 +483,7 @@ describe("user MCP servers (I2): passthrough, failed-start, invalid config", () 
         { name: "codex", transport: "stdio", enabled: true, command: "x" },
       ],
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "s", model: FABLE_LOCAL_MODEL }
+        yield { type: "system", subtype: "init", session_id: "s", model: CLAUDE_LOCAL_MODEL }
         yield { type: "result", subtype: "success", is_error: false, result: "ok" }
       },
     })
@@ -493,7 +493,7 @@ describe("user MCP servers (I2): passthrough, failed-start, invalid config", () 
     })
     expect(result.ok).toBe(true)
     const names = (sink.events.filter(e => e.kind === "mcp_server_unavailable") as
-      Array<Extract<FableLocalEvent, { kind: "mcp_server_unavailable" }>>).map(e => e.name)
+      Array<Extract<ClaudeLocalEvent, { kind: "mcp_server_unavailable" }>>).map(e => e.name)
     expect(names).toContain("bad name!")
     expect(names).toContain("nostdio")
     expect(names).toContain("codex")
@@ -506,9 +506,9 @@ describe("user MCP servers (I2): passthrough, failed-start, invalid config", () 
 // FROZEN config-schema validation bounds
 // ---------------------------------------------------------------------------
 
-describe("FableLocalMcpServerConfig schema + normalization bounds", () => {
+describe("ClaudeLocalMcpServerConfig schema + normalization bounds", () => {
   test("decodes a well-formed config list", () => {
-    const decoded = decodeFableLocalMcpServerConfigs([
+    const decoded = decodeClaudeLocalMcpServerConfigs([
       { name: "a", transport: "stdio", enabled: true, command: "a" },
       { name: "b", transport: "http", enabled: false, url: "https://b" },
     ])
@@ -517,19 +517,19 @@ describe("FableLocalMcpServerConfig schema + normalization bounds", () => {
   })
 
   test("rejects a list longer than the server cap", () => {
-    const many = Array.from({ length: FABLE_LOCAL_MCP_SERVER_LIMIT + 1 }, (_v, i) => ({
+    const many = Array.from({ length: CLAUDE_LOCAL_MCP_SERVER_LIMIT + 1 }, (_v, i) => ({
       name: `s${i}`, transport: "stdio" as const, enabled: true, command: "x",
     }))
-    expect(decodeFableLocalMcpServerConfigs(many)).toBeNull()
+    expect(decodeClaudeLocalMcpServerConfigs(many)).toBeNull()
   })
 
   test("rejects an unknown transport and a non-boolean enabled", () => {
-    expect(decodeFableLocalMcpServerConfigs([{ name: "a", transport: "sse", enabled: true, url: "https://a" }])).toBeNull()
-    expect(decodeFableLocalMcpServerConfigs([{ name: "a", transport: "stdio", enabled: "yes", command: "a" }])).toBeNull()
+    expect(decodeClaudeLocalMcpServerConfigs([{ name: "a", transport: "sse", enabled: true, url: "https://a" }])).toBeNull()
+    expect(decodeClaudeLocalMcpServerConfigs([{ name: "a", transport: "stdio", enabled: "yes", command: "a" }])).toBeNull()
   })
 
   test("normalize: skips disabled, rejects bad name / reserved / duplicate / missing transport fields", () => {
-    const result = normalizeFableLocalMcpServers([
+    const result = normalizeClaudeLocalMcpServers([
       { name: "good", transport: "stdio", enabled: true, command: "g" },
       { name: "good", transport: "stdio", enabled: true, command: "dup" },
       { name: "disabled", transport: "stdio", enabled: false, command: "x" },

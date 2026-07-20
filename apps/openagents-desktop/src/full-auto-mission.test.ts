@@ -50,7 +50,7 @@ describe("Full Auto mission packet", () => {
         run: started.run,
         record: lowLevelRecord(),
         threadRef: "thread.mission",
-        profile: { lane: "fable-local", accountRef: "claude-account" },
+        profile: { lane: "claude-local", accountRef: "claude-account" },
         turnCap: 7,
         priorAcceptedOutcome: null,
         previousHandoff: null,
@@ -60,7 +60,7 @@ describe("Full Auto mission packet", () => {
         runRef: started.run.runRef,
         objective: "Fix issue #9000 exactly; keep punctuation & casing.",
         doneCondition: "Tests pass and the real provider receipt names #9000.",
-        currentLane: "fable-local",
+        currentLane: "claude-local",
         continuationOrdinal: 3,
         turnCap: 7,
         remainingTurnsIncludingThisOne: 5,
@@ -97,7 +97,7 @@ describe("Full Auto mission packet", () => {
       run: null,
       record: lowLevelRecord(),
       threadRef: "thread.mission",
-      profile: { lane: "fable-local" },
+      profile: { lane: "claude-local" },
       turnCap: 20,
       priorAcceptedOutcome: {
         schema: "openagents.desktop.local_turn_record.v1",
@@ -123,7 +123,7 @@ describe("Full Auto mission packet", () => {
         runRef: "run.1",
         threadRef: "thread.mission",
         from: "codex-local",
-        to: "fable-local",
+        to: "claude-local",
         actor: "turn_resolution",
         at: "2026-07-18T00:01:30.000Z",
         reason: "private detail is deliberately not copied",
@@ -138,7 +138,7 @@ describe("Full Auto mission packet", () => {
       disposition: "completed",
       updatedAt: "2026-07-18T00:01:00.000Z",
     });
-    expect(packet.previousHandoff).toMatchObject({ from: "codex-local", to: "fable-local" });
+    expect(packet.previousHandoff).toMatchObject({ from: "codex-local", to: "claude-local" });
     expect(rendered).not.toContain("provider-private-session");
     expect(rendered).not.toContain("raw assistant text");
     expect(rendered).not.toContain("private detail");
@@ -154,7 +154,7 @@ describe("Full Auto mission packet", () => {
       });
       registry.bindRoutingPolicy("thread.mission", [
         { lane: "codex-local" },
-        { lane: "fable-local" },
+        { lane: "claude-local" },
       ]);
       let handoffRecorded = false;
       const compiled: string[] = [];
@@ -171,14 +171,14 @@ describe("Full Auto mission packet", () => {
         dispatch: async ({ profile, message }) =>
           profile?.lane === "codex-local"
             ? { ok: false, reason: "provider failed", failureClass: "provider_error" }
-            : { ok: message === "mission:fable-local:handoff=true" },
+            : { ok: message === "mission:claude-local:handoff=true" },
         onRotated: () => {
           handoffRecorded = true;
         },
       });
       expect(compiled).toEqual([
         "mission:codex-local:handoff=false",
-        "mission:fable-local:handoff=true",
+        "mission:claude-local:handoff=true",
       ]);
       expect(appendFullAutoQueuedInstruction(compiled[1]!, "also inspect issue #9001")).toContain(
         compiled[1]!,

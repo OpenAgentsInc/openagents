@@ -229,7 +229,7 @@ export const projectLocalTimelineRecords = (
         kind: "agent",
         // Delegate-child events ride the codex-app-server collab wire today
         // (`collabAgentToolCall`/`subAgentActivity`); revisit if another
-        // harness starts emitting `child_*` FableLocalEvents.
+        // harness starts emitting `child_*` ClaudeLocalEvents.
         source: "codex",
         status: coarseStatus,
         children: [{
@@ -313,7 +313,7 @@ export const projectLocalTimelineRecords = (
     resultRef: null,
     resultBody: null,
     resultStatus: null,
-    // Older persisted local/Fable notes predate the typed reasoning payload.
+    // Older persisted local/Claude notes predate the typed reasoning payload.
     // The existing bounded legacy classifier above has already selected the
     // semantic route; adapt that body into the same typed presentation used by
     // current live and history records so restarts do not restore old chrome.

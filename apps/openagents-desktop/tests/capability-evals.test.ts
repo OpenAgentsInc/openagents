@@ -37,17 +37,17 @@ import {
 } from "../src/capability-registry.ts"
 import {
   makeLocalHarnessChatHost,
-  type FableLocalRendererBridge,
+  type ClaudeLocalRendererBridge,
 } from "../src/renderer/local-harness.ts"
 import type { DesktopThread } from "../src/chat-contract.ts"
 import type {
-  FableLocalEvent,
-  FableLocalEventEnvelope,
-} from "../src/fable-local-contract.ts"
+  ClaudeLocalEvent,
+  ClaudeLocalEventEnvelope,
+} from "../src/claude-local-contract.ts"
 import {
-  decodeFableLocalInterruptRequest,
-  fableLocalFailureMessage,
-} from "../src/fable-local-contract.ts"
+  decodeClaudeLocalInterruptRequest,
+  claudeLocalFailureMessage,
+} from "../src/claude-local-contract.ts"
 import {
   readWorkspaceFile,
   saveWorkspaceFile,
@@ -175,11 +175,11 @@ const evalThread: DesktopThread = {
 }
 
 /** A scripted local-lane bridge: `start` replays events then resolves. */
-const makeScriptedFableBridge = (
-  events: (turnRef: string) => ReadonlyArray<FableLocalEvent>,
+const makeScriptedClaudeBridge = (
+  events: (turnRef: string) => ReadonlyArray<ClaudeLocalEvent>,
   result: Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string }>,
-): FableLocalRendererBridge => {
-  let listener: ((envelope: FableLocalEventEnvelope) => void) | null = null
+): ClaudeLocalRendererBridge => {
+  let listener: ((envelope: ClaudeLocalEventEnvelope) => void) | null = null
   return {
     availability: async () => ({ state: "available", accountRef: "acct.capability-eval" }),
     start: async (value: unknown) => {
@@ -192,7 +192,7 @@ const makeScriptedFableBridge = (
   }
 }
 
-const buildFableHost = (bridge: FableLocalRendererBridge) =>
+const buildClaudeHost = (bridge: ClaudeLocalRendererBridge) =>
   makeLocalHarnessChatHost({
     base: {
       listThreads: async () => [],
@@ -200,8 +200,8 @@ const buildFableHost = (bridge: FableLocalRendererBridge) =>
       openThread: async () => null,
       sendMessage: async () => ({ ok: false, error: "base host not exercised" }),
     },
-    fable: bridge,
-    fableAvailability: () => ({ state: "available", accountRef: "acct.capability-eval" }),
+    claude: bridge,
+    claudeAvailability: () => ({ state: "available", accountRef: "acct.capability-eval" }),
   })
 
 // ---------------------------------------------------------------------------
@@ -214,7 +214,7 @@ describe("A1 multi-turn streaming chat + A4 effective model (programmatic oracle
       ...evalThread,
       notes: [...evalThread.notes, { key: "a1", role: "assistant", text: "Hello world", timestamp: "18:00" }],
     }
-    const bridge = makeScriptedFableBridge(
+    const bridge = makeScriptedClaudeBridge(
       () => [
         { kind: "turn_started", thread: evalThread },
         { kind: "model_effective", model: "claude-fable-5" },
@@ -224,10 +224,10 @@ describe("A1 multi-turn streaming chat + A4 effective model (programmatic oracle
       { ok: true, thread: finalThread },
     )
     const updates: DesktopThread[] = []
-    const result = await buildFableHost(bridge).sendMessage({
+    const result = await buildClaudeHost(bridge).sendMessage({
       id: evalThread.id,
       message: "hi",
-      harness: "fable",
+      harness: "claude",
       onUpdate: (thread) => updates.push(thread),
     })
 
@@ -240,8 +240,8 @@ describe("A1 multi-turn streaming chat + A4 effective model (programmatic oracle
     expect(last.notes.some((note) => note.role === "system" && note.text === "Claude · claude-fable-5")).toBe(true)
   })
 
-  test("A4: a substituted model is a typed failure, never streamed as Fable", () => {
-    expect(fableLocalFailureMessage("model_substituted", "requested claude-fable-5, got other")).toContain(
+  test("A4: a substituted model is a typed failure, never streamed as Claude", () => {
+    expect(claudeLocalFailureMessage("model_substituted", "requested claude-fable-5, got other")).toContain(
       "refused a substituted model",
     )
   })
@@ -253,12 +253,12 @@ describe("A2 mid-turn interrupt (programmatic oracle) — openagents_desktop.cha
     let interruptedTurnRef: string | null = null
     let resolveStart: (() => void) | null = null
     let subscribed = false
-    const bridge: FableLocalRendererBridge = {
+    const bridge: ClaudeLocalRendererBridge = {
       availability: async () => ({ state: "available", accountRef: "acct.capability-eval" }),
       start: (value: unknown) => new Promise((resolve) => {
         startedTurnRef = (value as { turnRef: string }).turnRef
         // Interrupt resolves the pending turn with the typed interrupted failure.
-        resolveStart = () => resolve({ ok: false, error: fableLocalFailureMessage("interrupted", "") })
+        resolveStart = () => resolve({ ok: false, error: claudeLocalFailureMessage("interrupted", "") })
       }),
       interrupt: async (value: unknown) => {
         interruptedTurnRef = (value as { turnRef: string }).turnRef
@@ -267,9 +267,9 @@ describe("A2 mid-turn interrupt (programmatic oracle) — openagents_desktop.cha
       },
       onEvent: () => { subscribed = true; return () => {} },
     }
-    const host = buildFableHost(bridge)
+    const host = buildClaudeHost(bridge)
 
-    const pending = host.sendMessage({ id: evalThread.id, message: "hi", harness: "fable" })
+    const pending = host.sendMessage({ id: evalThread.id, message: "hi", harness: "claude" })
     // Let sendMessage reach the awaiting bridge.start (activeTurn is now set).
     await new Promise((resolve) => setTimeout(resolve, 0))
     const interrupted = await host.interruptActive?.()
@@ -284,21 +284,21 @@ describe("A2 mid-turn interrupt (programmatic oracle) — openagents_desktop.cha
   })
 
   test("interruptActive is a no-op (false) when no turn is active", async () => {
-    const bridge = makeScriptedFableBridge(() => [], { ok: true, thread: evalThread })
-    const host = buildFableHost(bridge)
+    const bridge = makeScriptedClaudeBridge(() => [], { ok: true, thread: evalThread })
+    const host = buildClaudeHost(bridge)
     expect(await host.interruptActive?.()).toBe(false)
   })
 
   test("the frozen interrupt request shape decodes exactly { turnRef }", () => {
-    expect(decodeFableLocalInterruptRequest({ turnRef: "turn.fable.abc" })).toEqual({ turnRef: "turn.fable.abc" })
-    expect(decodeFableLocalInterruptRequest({})).toBeNull()
+    expect(decodeClaudeLocalInterruptRequest({ turnRef: "turn.claude.abc" })).toEqual({ turnRef: "turn.claude.abc" })
+    expect(decodeClaudeLocalInterruptRequest({})).toBeNull()
   })
 })
 
 describe("I1 image input (programmatic oracle) — openagents_desktop.chat.composer_image_input.v1", () => {
   test("sendMessage threads composer images into the frozen start request", async () => {
     let startedValue: unknown = null
-    const bridge: FableLocalRendererBridge = {
+    const bridge: ClaudeLocalRendererBridge = {
       availability: async () => ({ state: "available", accountRef: "acct.capability-eval" }),
       start: async (value: unknown) => {
         startedValue = value
@@ -307,11 +307,11 @@ describe("I1 image input (programmatic oracle) — openagents_desktop.chat.compo
       interrupt: async () => true,
       onEvent: () => () => {},
     }
-    const host = buildFableHost(bridge)
+    const host = buildClaudeHost(bridge)
     const images = [
       { mediaType: "image/png" as const, data: "aGVsbG8=", name: "shot.png" },
     ]
-    const result = await host.sendMessage({ id: evalThread.id, message: "what's wrong here?", harness: "fable", images })
+    const result = await host.sendMessage({ id: evalThread.id, message: "what's wrong here?", harness: "claude", images })
     expect(result.ok).toBe(true)
     const started = startedValue as { message?: unknown; images?: ReadonlyArray<{ mediaType?: string; data?: string }> }
     // The image rode the additive `images` field, not the text: the start
@@ -324,13 +324,13 @@ describe("I1 image input (programmatic oracle) — openagents_desktop.chat.compo
 
   test("a text-only turn carries no images field (additive, unchanged)", async () => {
     let startedValue: unknown = null
-    const bridge: FableLocalRendererBridge = {
+    const bridge: ClaudeLocalRendererBridge = {
       availability: async () => ({ state: "available", accountRef: "acct.capability-eval" }),
       start: async (value: unknown) => { startedValue = value; return { ok: true, thread: evalThread } },
       interrupt: async () => true,
       onEvent: () => () => {},
     }
-    await buildFableHost(bridge).sendMessage({ id: evalThread.id, message: "plain text", harness: "fable" })
+    await buildClaudeHost(bridge).sendMessage({ id: evalThread.id, message: "plain text", harness: "claude" })
     expect((startedValue as { images?: unknown }).images).toBeUndefined()
   })
 })

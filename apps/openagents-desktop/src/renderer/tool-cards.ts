@@ -13,7 +13,7 @@
  * reachable behind a compact expand affordance — never the default rendering.
  *
  * Pairing honesty: the trace notes carry no tool-invocation id across the
- * note boundary (the fable-local events are toolName + summary only), so
+ * note boundary (the claude-local events are toolName + summary only), so
  * completion notes pair with the OLDEST still-open card of the same toolName
  * in note order (FIFO). That matches how the SDK emits tool_use/tool_result
  * sequences today; if typed invocation ids ever ride the events, key on them
@@ -26,7 +26,7 @@
 import type { IconName } from "@effect-native/core"
 
 import type { DesktopToolTrace } from "../chat-contract.ts"
-import { parseFableLocalTraceNoteText } from "../fable-local-contract.ts"
+import { parseClaudeLocalTraceNoteText } from "../claude-local-contract.ts"
 import type { WorkbenchItem } from "../workbench-item-contract.ts"
 import type { DesktopNoteEntry } from "./shell.ts"
 
@@ -93,7 +93,7 @@ const isHistoricalNoOpSpecRevalidationNote = (note: DesktopNoteEntry): boolean =
 export const toolTraceFromNote = (note: DesktopNoteEntry): DesktopToolTrace | null => {
   if (note.role !== "system") return null
   if (note.meta?.trace !== undefined) return note.meta.trace
-  return parseFableLocalTraceNoteText(note.text)
+  return parseClaudeLocalTraceNoteText(note.text)
 }
 
 const makeContextGroup = (cards: ReadonlyArray<ToolCardModel>): ContextGroupModel => ({

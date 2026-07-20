@@ -25,7 +25,7 @@ export const DesktopRenameLocalThreadChannel = "openagents-desktop/history-renam
 /**
  * Per-message host metadata (#8712, EP250: "if I click on the message, I see
  * the metadata of the message in the right sidebar"). Additive and optional:
- * only facts the host actually observed are recorded — the fable-local lane
+ * only facts the host actually observed are recorded — the claude-local lane
  * stamps the SDK-reported effective model, the lane name, the account ref
  * used, the turn ref, the exact reported token total, and the wall-clock
  * duration. Bounded public-safe strings only; never prompts, paths, tokens,
@@ -77,7 +77,7 @@ export type DesktopMessageMeta = typeof DesktopMessageMetaSchema.Type
 /**
  * Interactive question card payload (EP250 scope addition: "make the question
  * UI too. Why not? proper effect native primitives and add some if needed.").
- * The question/option shapes mirror the FROZEN additive FableLocalEvent
+ * The question/option shapes mirror the FROZEN additive ClaudeLocalEvent
  * question_pending contract; the card status tracks the resolved outcome.
  */
 export const DesktopQuestionOptionSchema = Schema.Struct({
@@ -114,7 +114,7 @@ export const DesktopQuestionCardSchema = Schema.Struct({
   threadRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   questionRef: Schema.String.check(Schema.isMaxLength(120)),
   status: DesktopQuestionCardStatusSchema,
-  /** Absent on the frozen Fable-local bridge; canonical on Sync cards. */
+  /** Absent on the frozen Claude-local bridge; canonical on Sync cards. */
   source: Schema.optional(Schema.Literal("runtime")),
   kind: Schema.optional(Schema.Literals(["provider_question", "tool_approval", "plan_review"])),
   decisionRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
@@ -127,7 +127,7 @@ export type DesktopQuestionCard = typeof DesktopQuestionCardSchema.Type
  * note may carry ONE of these typed `runtime` payloads so the renderer draws a
  * plan/todo checklist (J2/J4), a delegate-child lifecycle card with an
  * Interrupt control (G4), or a queued-follow-up chip (A3) — projected from the
- * frozen additive FableLocalEvent stream, never raw JSON. The glyph/model
+ * frozen additive ClaudeLocalEvent stream, never raw JSON. The glyph/model
  * vocabulary lives in `renderer/runtime-cards.ts`; the View render in
  * `renderer/shell.ts`, exactly like the tool/question cards.
  */
@@ -212,7 +212,7 @@ export const DesktopThreadSchema = Schema.Struct({
  * windows) — never a synthesized value. Carried on `DesktopThread` the same
  * way `agentGraph` is: a renderer-local projection field, not part of the
  * `DesktopThreadSchema` IPC boundary (the boundary-crossing shape lives on
- * the `meter_updated` FableLocalEvent in `fable-local-contract.ts`).
+ * the `meter_updated` ClaudeLocalEvent in `claude-local-contract.ts`).
  */
 export type DesktopMeterRateLimitWindow = Readonly<{
   label: "primary" | "secondary"
@@ -240,8 +240,8 @@ export const DesktopThreadRequestSchema = Schema.Struct({ id: Schema.String })
 export const DesktopTurnRequestSchema = Schema.Struct({ id: Schema.String, message: Schema.String })
 export type DesktopTurnRequest = typeof DesktopTurnRequestSchema.Type
 
-/** H1: select an existing app-local Fable thread. Reusing its exact ref is
- * what reaches fable-local-runtime's existing per-thread SDK resume map. */
+/** H1: select an existing app-local Claude thread. Reusing its exact ref is
+ * what reaches claude-local-runtime's existing per-thread SDK resume map. */
 export const DesktopResumeLocalThreadRequestSchema = Schema.Struct({
   threadRef: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120)),
 })

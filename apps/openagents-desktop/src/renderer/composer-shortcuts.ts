@@ -1,6 +1,6 @@
 /**
  * Composer keyboard shortcuts (EP250 owner statement, verbatim: "i want
- * shift+tab to togle between modes in composer (fable / codex) in this
+ * shift+tab to togle between modes in composer (claude / codex) in this
  * case").
  *
  * Scope law: the gesture exists ONLY while the composer input has focus —
@@ -15,7 +15,7 @@
 import type { DesktopHarnessName } from "./shell.ts"
 
 export const nextComposerHarness = (current: DesktopHarnessName): DesktopHarnessName =>
-  current === "fable" ? "codex" : "fable"
+  current === "claude" ? "codex" : "claude"
 
 export type ComposerShiftTabHooks = Readonly<{
   /** True when the event target is the composer input (shell-input). */

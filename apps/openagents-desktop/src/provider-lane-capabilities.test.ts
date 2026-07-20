@@ -55,7 +55,7 @@ describe("provider lane composer capability projection", () => {
       },
     }))
     const claude = projectProviderLaneCapabilities(report({
-      laneRef: "fable-local",
+      laneRef: "claude-local",
       provider: "claude_agent",
       models: ["claude-fable-5", "claude-opus-4-8"],
       features: {

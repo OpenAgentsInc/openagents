@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test"
 import { decodeCodexLocalContinuationProfile } from "./codex-local-contract.ts"
-import { isCodexModel } from "./fable-local-contract.ts"
+import { isCodexModel } from "./claude-local-contract.ts"
 
 describe("Codex local continuation contract", () => {
   test("admits a non-default model from the installed app-server catalog", () => {

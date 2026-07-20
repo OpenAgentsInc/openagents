@@ -8,7 +8,7 @@
  * projection.
  */
 import { describe, expect, test } from "vite-plus/test"
-import { decodeFableLocalPickedImages } from "../fable-local-contract.ts"
+import { decodeClaudeLocalPickedImages } from "../claude-local-contract.ts"
 import {
   COMPOSER_IMAGE_BYTES_LIMIT,
   COMPOSER_IMAGE_COUNT_LIMIT,
@@ -134,7 +134,7 @@ describe("composer image state helpers (capability I1)", () => {
 
 describe("native picker result boundary (capability I1)", () => {
   test("decodes accepted images together with the first typed rejection", () => {
-    expect(decodeFableLocalPickedImages({
+    expect(decodeClaudeLocalPickedImages({
       images: [{ mediaType: "image/png", data: "aGVsbG8=", name: "shot.png" }],
       rejection: "count_limit",
     }))?.toEqual({
@@ -144,7 +144,7 @@ describe("native picker result boundary (capability I1)", () => {
   })
 
   test("rejects the legacy untyped array and unknown rejection reasons", () => {
-    expect(decodeFableLocalPickedImages([])).toBeNull()
-    expect(decodeFableLocalPickedImages({ images: [], rejection: "mystery" })).toBeNull()
+    expect(decodeClaudeLocalPickedImages([])).toBeNull()
+    expect(decodeClaudeLocalPickedImages({ images: [], rejection: "mystery" })).toBeNull()
   })
 })

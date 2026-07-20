@@ -56,7 +56,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     const envelope = buildProviderHandoffEnvelope({
       run: makeRun(),
       sourceLaneRef: "codex-local",
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       thread,
       reason: "Owner requested a switch.",
       actor: "control_api",
@@ -67,7 +67,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     expect(decoded.runRef).toBe("run.full-auto.handoff-1")
     expect(decoded.threadRef).toBe("thread.handoff")
     expect(decoded.sourceLaneRef).toBe("codex-local")
-    expect(decoded.targetLaneRef).toBe("fable-local")
+    expect(decoded.targetLaneRef).toBe("claude-local")
     expect(decoded.objective).toBe("Make tests/flaky.test.ts stop flaking.")
     expect(decoded.doneCondition).toBe("The test passes 20 consecutive local runs.")
     expect(decoded.runStateRevision).toBe(3)
@@ -87,7 +87,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     const envelope = buildProviderHandoffEnvelope({
       run: makeRun(),
       sourceLaneRef: "codex-local",
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       thread,
       reason: "Owner requested a switch.",
       actor: "control_api",
@@ -101,7 +101,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     const envelope = buildProviderHandoffEnvelope({
       run: makeRun(),
       sourceLaneRef: "codex-local",
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       thread: null,
       reason: "Owner requested a switch.",
       actor: "control_api",
@@ -115,7 +115,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     const envelope = buildProviderHandoffEnvelope({
       run: null,
       sourceLaneRef: "codex-local",
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       thread,
       reason: "Manual provider switch requested from the composer.",
       actor: "owner_ui",
@@ -139,7 +139,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     const envelope = buildProviderHandoffEnvelope({
       run: makeRun(),
       sourceLaneRef: "codex-local",
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       thread,
       reason: "Owner requested a switch.",
       actor: "control_api",
@@ -160,7 +160,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     const envelope = buildProviderHandoffEnvelope({
       run: makeRun(),
       sourceLaneRef: "codex-local",
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       thread,
       reason: "Owner requested a switch.",
       actor: "control_api",
@@ -179,7 +179,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     const envelope = buildProviderHandoffEnvelope({
       run: makeRun(),
       sourceLaneRef: "codex-local",
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       thread,
       reason: "Owner requested a switch.",
       actor: "control_api",
@@ -195,7 +195,7 @@ describe("buildProviderHandoffEnvelope (FA-HO-01 #8975)", () => {
     const envelope = buildProviderHandoffEnvelope({
       run: makeRun(),
       sourceLaneRef: "codex-local",
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       thread: null,
       reason: "Owner requested a switch.",
       actor: "control_api",
@@ -217,7 +217,7 @@ describe("openProviderHandoffRegistry (durable receipt store, FA-HO-01 #8975)", 
         runRef: "run.full-auto.handoff-1",
         threadRef: "thread.handoff",
         from: "codex-local",
-        to: "fable-local",
+        to: "claude-local",
         actor: "control_api",
         at: "2026-07-17T02:00:00.000Z",
         reason: "Owner requested a switch.",
@@ -227,7 +227,7 @@ describe("openProviderHandoffRegistry (durable receipt store, FA-HO-01 #8975)", 
       const decoded = Schema.decodeUnknownSync(ProviderHandoffTransitionRecordSchema)(recorded)
       expect(decoded.handoffRef.length).toBeGreaterThan(0)
       expect(decoded.from).toBe("codex-local")
-      expect(decoded.to).toBe("fable-local")
+      expect(decoded.to).toBe("claude-local")
       if (process.platform !== "win32") {
         expect(statSync(file).mode & 0o777).toBe(0o600)
       }
@@ -254,7 +254,7 @@ describe("openProviderHandoffRegistry (durable receipt store, FA-HO-01 #8975)", 
           runRef: "run.full-auto.bound",
           threadRef: "thread.bound",
           from: "codex-local",
-          to: "fable-local",
+          to: "claude-local",
           actor: "control_api",
           at: `2026-07-17T02:00:${String(index % 60).padStart(2, "0")}.000Z`,
           reason: `switch ${index}`,

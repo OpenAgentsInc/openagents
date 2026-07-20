@@ -43,7 +43,7 @@ const FIXTURE_CREATED_AT = "2026-07-15T09:40:00.000Z";
 
 const fixtureBase = (): DesktopShellState =>
   withHarnessLanes(initialDesktopShellState(FIXTURE_HOST, FIXTURE_CLOCK), {
-    fable: { available: true, reason: null },
+    claude: { available: true, reason: null },
     codex: { available: true, reason: null },
   });
 

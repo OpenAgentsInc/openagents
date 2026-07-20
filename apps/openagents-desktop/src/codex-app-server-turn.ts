@@ -11,7 +11,7 @@ import {
   type CodexAppServerLease,
   type CodexAppServerSupervisor,
 } from "./codex-app-server-supervisor.ts"
-import { FABLE_LOCAL_SUMMARY_LIMIT, type FableLocalEvent, type FableLocalRateLimitWindow } from "./fable-local-contract.ts"
+import { CLAUDE_LOCAL_SUMMARY_LIMIT, type ClaudeLocalEvent, type ClaudeLocalRateLimitWindow } from "./claude-local-contract.ts"
 import { makeCodexTurnState } from "./codex-turn-state.ts"
 import {
   WORKBENCH_OUTPUT_TAIL_LIMIT,
@@ -79,7 +79,7 @@ export type RunCodexAppServerTurnInput = Readonly<{
   includeProductSpecSkill?: boolean
   approvalPolicy?: "never" | "on-request"
   control: CodexAppServerTurnControl
-  emit: (event: FableLocalEvent) => void
+  emit: (event: ClaudeLocalEvent) => void
   spawnImpl?: CodexAppServerSpawn
   requestTimeoutMs?: number
   turnTimeoutMs?: number
@@ -162,7 +162,7 @@ const usageFromNotification = (params: Record<string, unknown>): CodexChildUsage
  */
 const meterFromTokenUsageNotification = (
   params: Record<string, unknown>,
-): Extract<FableLocalEvent, { kind: "meter_updated" }> | null => {
+): Extract<ClaudeLocalEvent, { kind: "meter_updated" }> | null => {
   const tokenUsage = record(params.tokenUsage)
   const last = record(tokenUsage?.last)
   if (last === null) return null
@@ -194,10 +194,10 @@ const meterFromTokenUsageNotification = (
  */
 const meterFromRateLimitsNotification = (
   params: Record<string, unknown>,
-): Extract<FableLocalEvent, { kind: "meter_updated" }> | null => {
+): Extract<ClaudeLocalEvent, { kind: "meter_updated" }> | null => {
   const rateLimits = record(params.rateLimits)
   if (rateLimits === null) return null
-  const windows: Array<FableLocalRateLimitWindow> = []
+  const windows: Array<ClaudeLocalRateLimitWindow> = []
   for (const label of ["primary", "secondary"] as const) {
     const window = record(rateLimits[label])
     const usedPercent = number(window?.usedPercent)
@@ -676,7 +676,7 @@ export const runCodexAppServerTurn = async (
       const text = message.method === "item/autoApprovalReview/started"
         ? `Guardian review started: ${actionLabel}`
         : `Guardian review ${guardianReviewStatusLabel(status)}: ${actionLabel}${rationale === null ? "" : ` — ${rationale}`}`
-      input.emit({ kind: "lane_notice", text: text.slice(0, FABLE_LOCAL_SUMMARY_LIMIT) })
+      input.emit({ kind: "lane_notice", text: text.slice(0, CLAUDE_LOCAL_SUMMARY_LIMIT) })
       return
     }
     if (message.method === "turn/plan/updated") {

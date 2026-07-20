@@ -4,7 +4,7 @@ const endpoint = (): string => `${(process.env.OPENAGENTS_INFERENCE_GATEWAY_BASE
 
 /**
  * Legacy non-streaming gateway turn. Explicit laneless fallback ONLY (#8712):
- * harness sends ("fable"/"codex") never reach this path — the local Fable
+ * harness sends ("claude"/"codex") never reach this path — the local Claude
  * lane and the runtime host own those. The model slug is the single public
  * Khala model `openagents/khala` (khala-mini/pro/code and the old
  * "openagents-gateway-default" placeholder are dead slugs the gateway 400s).

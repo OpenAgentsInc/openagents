@@ -94,17 +94,17 @@ describe("local turn process restart", () => {
     }
   })
 
-  test("Fable Runtime B records one explicit interruption and never silently starts another SDK query", async () => {
-    const root = mkdtempSync(path.join(tmpdir(), "oa-local-turn-restart-fable-"))
+  test("Claude Runtime B records one explicit interruption and never silently starts another SDK query", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-local-turn-restart-claude-"))
     try {
-      const seeded = seedRuntimeA(root, "fable-local")
+      const seeded = seedRuntimeA(root, "claude-local")
       const journalB = openLocalTurnJournal(path.join(root, "local-turns", "journal.json"))
       const storeB = makeThreadStore(path.join(root, "threads.json"))
       let starts = 0
       const codex: Pick<CodexLocalRuntime, "runTurn"> = {
         runTurn: async () => {
           starts += 1
-          throw new Error("Fable recovery must not dispatch Codex")
+          throw new Error("Claude recovery must not dispatch Codex")
         },
       }
       expect(await reconcileLocalTurns({ journal: journalB, store: storeB, codex })).toMatchObject([

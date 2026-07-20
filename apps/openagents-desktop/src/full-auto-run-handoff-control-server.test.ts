@@ -30,26 +30,26 @@ const CODEX_LOCAL_LANE = {
   },
 }
 
-const FABLE_LOCAL_LANE = {
+const CLAUDE_LOCAL_LANE = {
   ...CODEX_LOCAL_LANE,
-  laneRef: "fable-local",
-  provider: "fable",
-  profileRef: "fable-local",
+  laneRef: "claude-local",
+  provider: "claude",
+  profileRef: "claude-local",
   capabilities: {
     ...CODEX_LOCAL_LANE.capabilities,
-    laneRef: "fable-local",
-    provider: "fable",
+    laneRef: "claude-local",
+    provider: "claude",
     models: ["claude-sonnet-5"],
   },
 }
 
 const UNAUTHENTICATED_LANE = {
   ...CODEX_LOCAL_LANE,
-  laneRef: "fable-local-unauthenticated",
-  provider: "fable",
-  profileRef: "fable-local-unauthenticated",
+  laneRef: "claude-local-unauthenticated",
+  provider: "claude",
+  profileRef: "claude-local-unauthenticated",
   authentication: "missing" as const,
-  capabilities: { ...CODEX_LOCAL_LANE.capabilities, laneRef: "fable-local-unauthenticated", provider: "fable" },
+  capabilities: { ...CODEX_LOCAL_LANE.capabilities, laneRef: "claude-local-unauthenticated", provider: "claude" },
 }
 
 const UNADMITTED_PEER_LANE = {
@@ -115,11 +115,11 @@ const startHarness = async (): Promise<Harness> => {
         threads.set(threadRef, { id: threadRef, title: "Handoff run", updatedAt: new Date().toISOString(), notes: [] })
         return threadRef
       },
-      isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "fable-local",
+      isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "claude-local",
       isModelEligible: (laneRef, model) =>
         (laneRef === "codex-local" && model === "gpt-5.4")
-        || (laneRef === "fable-local" && model === "claude-sonnet-5"),
-      listLanes: async () => [CODEX_LOCAL_LANE, FABLE_LOCAL_LANE, UNADMITTED_PEER_LANE, UNAUTHENTICATED_LANE],
+        || (laneRef === "claude-local" && model === "claude-sonnet-5"),
+      listLanes: async () => [CODEX_LOCAL_LANE, CLAUDE_LOCAL_LANE, UNADMITTED_PEER_LANE, UNAUTHENTICATED_LANE],
       providerLaneRegistry: { switchThread: providerLaneRegistry.switchThread },
       getThread: threadRef => threads.get(threadRef) ?? null,
       providerHandoffRegistry,
@@ -163,7 +163,7 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       const runRef = started.body.run.runRef
 
       const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
-        body: { targetLaneRef: "fable-local" },
+        body: { targetLaneRef: "claude-local" },
       })
       expect(handoff.status).toBe(409)
       expect(handoff.body.error).toBe("illegal_transition")
@@ -235,7 +235,7 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
 
       const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
-        body: { targetLaneRef: "fable-local-unauthenticated" },
+        body: { targetLaneRef: "claude-local-unauthenticated" },
       })
       expect(handoff.status).toBe(409)
       expect(handoff.body.handoffRefusalReason).toBe("missing_auth")
@@ -246,19 +246,19 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
     }
   })
 
-  test("the reverse direction (fable-local -> codex-local) uses the exact same handoff contract", async () => {
+  test("the reverse direction (claude-local -> codex-local) uses the exact same handoff contract", async () => {
     const harness = await startHarness()
     try {
-      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: { ...START_BODY, lane: "fable-local" } })
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: { ...START_BODY, lane: "claude-local" } })
       const runRef = started.body.run.runRef
-      expect(started.body.run.lane).toBe("fable-local")
+      expect(started.body.run.lane).toBe("claude-local")
       await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
 
       const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
         body: { targetLaneRef: "codex-local" },
       })
       expect(handoff.status).toBe(200)
-      expect(handoff.body.transition.from).toBe("fable-local")
+      expect(handoff.body.transition.from).toBe("claude-local")
       expect(handoff.body.transition.to).toBe("codex-local")
       expect(handoff.body.run.lane).toBe("codex-local")
     } finally {
@@ -283,7 +283,7 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       })
       await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
       const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
-        body: { targetLaneRef: "fable-local" },
+        body: { targetLaneRef: "claude-local" },
       })
       expect(handoff.status).toBe(200)
       // The receipt is compact (from/to/actor/time/reason/disposition) --
@@ -305,34 +305,34 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
 
       const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
-        body: { targetLaneRef: "fable-local", reason: "Owner wants a second opinion from Claude." },
+        body: { targetLaneRef: "claude-local", reason: "Owner wants a second opinion from Claude." },
       })
       expect(handoff.status).toBe(200)
-      expect(handoff.body.run.lane).toBe("fable-local")
+      expect(handoff.body.run.lane).toBe("claude-local")
       expect(handoff.body.run.state).toBe("paused")
       expect(handoff.body.transition.from).toBe("codex-local")
-      expect(handoff.body.transition.to).toBe("fable-local")
+      expect(handoff.body.transition.to).toBe("claude-local")
       expect(handoff.body.transition.actor).toBe("control_api")
       expect(handoff.body.transition.disposition).toBe("complete_within_bounds")
       expect(handoff.body.transition.reason).toBe("Owner wants a second opinion from Claude.")
       expect(handoff.body.transition.handoffRef.length).toBeGreaterThan(0)
 
       // Durable: reflected in the run registry itself.
-      expect(harness.runRegistry.get(runRef)?.profile?.lane).toBe("fable-local")
+      expect(harness.runRegistry.get(runRef)?.profile?.lane).toBe("claude-local")
       // Durable: reflected in the independent receipt store, restart-safe.
       const receipts = harness.providerHandoffRegistry.list({ runRef })
       expect(receipts).toHaveLength(1)
       expect(receipts[0]!.from).toBe("codex-local")
-      expect(receipts[0]!.to).toBe("fable-local")
+      expect(receipts[0]!.to).toBe("claude-local")
       expect(receipts[0]!.threadRef).toBe(threadRef)
       // Visible transcript note.
-      expect(harness.notes.some(note => note.threadRef === threadRef && note.text.includes("codex-local") && note.text.includes("fable-local"))).toBe(true)
+      expect(harness.notes.some(note => note.threadRef === threadRef && note.text.includes("codex-local") && note.text.includes("claude-local"))).toBe(true)
 
       // Resume dispatches on the NEW lane -- the thread-level record was rebound.
       const resumed = await harness.request("POST", `/v1/full-auto/runs/${runRef}/resume`)
       expect(resumed.status).toBe(200)
-      expect(resumed.body.run.lane).toBe("fable-local")
-      expect(harness.registry.record(threadRef)?.profile?.lane).toBe("fable-local")
+      expect(resumed.body.run.lane).toBe("claude-local")
+      expect(harness.registry.record(threadRef)?.profile?.lane).toBe("claude-local")
     } finally {
       await harness.dispose()
     }
@@ -349,18 +349,18 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
 
       const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
-        body: { targetLaneRef: "fable-local", model: "claude-sonnet-5" },
+        body: { targetLaneRef: "claude-local", model: "claude-sonnet-5" },
       })
       expect(handoff.status).toBe(200)
       expect(harness.runRegistry.get(runRef)?.profile).toEqual({
-        lane: "fable-local",
+        lane: "claude-local",
         model: "claude-sonnet-5",
       })
 
       const resumed = await harness.request("POST", `/v1/full-auto/runs/${runRef}/resume`)
       expect(resumed.status).toBe(200)
       expect(harness.registry.record(threadRef)?.profile).toEqual({
-        lane: "fable-local",
+        lane: "claude-local",
         model: "claude-sonnet-5",
       })
 
@@ -385,7 +385,7 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
 
       const handoff = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
-        body: { targetLaneRef: "fable-local", model: "gpt-5.4" },
+        body: { targetLaneRef: "claude-local", model: "gpt-5.4" },
       })
       expect(handoff.status).toBe(409)
       expect(handoff.body.error).toBe("model_not_eligible")
@@ -405,7 +405,7 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
       const runRef = started.body.run.runRef
       await harness.request("POST", `/v1/full-auto/runs/${runRef}/pause`)
-      await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, { body: { targetLaneRef: "fable-local" } })
+      await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, { body: { targetLaneRef: "claude-local" } })
 
       const status = await harness.request("GET", `/v1/full-auto/runs/${runRef}`)
       // The run's own lifecycle transitions (draft->running, running->paused)
@@ -427,7 +427,7 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
       const runRef = started.body.run.runRef
       const response = await harness.request("POST", `/v1/full-auto/runs/${runRef}/handoff`, {
         token: null,
-        body: { targetLaneRef: "fable-local" },
+        body: { targetLaneRef: "claude-local" },
       })
       expect(response.status).toBe(401)
     } finally {
@@ -454,7 +454,7 @@ describe("Provider handoff control route (FA-HO-01 #8975)", () => {
     const harness = await startHarness()
     try {
       const response = await harness.request("POST", "/v1/full-auto/runs/run.does-not-exist/handoff", {
-        body: { targetLaneRef: "fable-local" },
+        body: { targetLaneRef: "claude-local" },
       })
       expect(response.status).toBe(404)
       expect(response.body.error).toBe("not_found")

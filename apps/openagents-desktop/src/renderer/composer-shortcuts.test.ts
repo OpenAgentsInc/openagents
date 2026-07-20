@@ -1,6 +1,6 @@
 /**
  * Composer Shift+Tab harness toggle (EP250 owner statement, verbatim: "i
- * want shift+tab to togle between modes in composer (fable / codex) in this
+ * want shift+tab to togle between modes in composer (claude / codex) in this
  * case"). Enforces: focused-composer Shift+Tab toggles BOTH directions and
  * preventDefaults (focus never moves); Shift+Tab with focus elsewhere never
  * toggles; plain Tab is untouched; toggling TO an unavailable lane is
@@ -58,33 +58,33 @@ const makeHooks = (selected: DesktopHarnessName) => {
 
 describe("nextComposerHarness", () => {
   test("toggles both directions", () => {
-    expect(nextComposerHarness("fable")).toBe("codex")
-    expect(nextComposerHarness("codex")).toBe("fable")
+    expect(nextComposerHarness("claude")).toBe("codex")
+    expect(nextComposerHarness("codex")).toBe("claude")
   })
 })
 
 describe("handleComposerShiftTab", () => {
-  test("focused-composer Shift+Tab toggles fable -> codex and preventDefaults", () => {
-    const { hooks, calls } = makeHooks("fable")
+  test("focused-composer Shift+Tab toggles claude -> codex and preventDefaults", () => {
+    const { hooks, calls } = makeHooks("claude")
     const event = makeEvent()
     expect(handleComposerShiftTab(event, hooks)).toBe(true)
     expect(event.prevented).toBe(true)
     expect(calls).toEqual(["codex"])
   })
 
-  test("focused-composer Shift+Tab toggles codex -> fable (both directions)", () => {
+  test("focused-composer Shift+Tab toggles codex -> claude (both directions)", () => {
     const { hooks, calls, current } = makeHooks("codex")
     const first = makeEvent()
     expect(handleComposerShiftTab(first, hooks)).toBe(true)
-    expect(calls).toEqual(["fable"])
+    expect(calls).toEqual(["claude"])
     const second = makeEvent()
     expect(handleComposerShiftTab(second, hooks)).toBe(true)
-    expect(calls).toEqual(["fable", "codex"])
+    expect(calls).toEqual(["claude", "codex"])
     expect(current()).toBe("codex")
   })
 
   test("Shift+Tab with focus OUTSIDE the composer does NOT toggle and does NOT preventDefault (normal focus navigation)", () => {
-    const { hooks, calls } = makeHooks("fable")
+    const { hooks, calls } = makeHooks("claude")
     const event = makeEvent({ target: "sidebar-button" })
     expect(handleComposerShiftTab(event, hooks)).toBe(false)
     expect(event.prevented).toBe(false)
@@ -92,7 +92,7 @@ describe("handleComposerShiftTab", () => {
   })
 
   test("plain Tab (no shift) in the composer is untouched", () => {
-    const { hooks, calls } = makeHooks("fable")
+    const { hooks, calls } = makeHooks("claude")
     const event = makeEvent({ shiftKey: false })
     expect(handleComposerShiftTab(event, hooks)).toBe(false)
     expect(event.prevented).toBe(false)
@@ -100,7 +100,7 @@ describe("handleComposerShiftTab", () => {
   })
 
   test("an already-consumed event is left alone", () => {
-    const { hooks, calls } = makeHooks("fable")
+    const { hooks, calls } = makeHooks("claude")
     const event = makeEvent({ defaultPrevented: true })
     expect(handleComposerShiftTab(event, hooks)).toBe(false)
     expect(calls).toEqual([])
@@ -110,7 +110,7 @@ describe("handleComposerShiftTab", () => {
     // The hooks expose no availability at all: selection moves regardless;
     // the disabled-reason popover and evidence-gated Send explain why the
     // lane cannot act. The gesture is never silently blocked.
-    const { hooks, calls } = makeHooks("fable")
+    const { hooks, calls } = makeHooks("claude")
     expect(handleComposerShiftTab(makeEvent(), hooks)).toBe(true)
     expect(calls).toEqual(["codex"])
   })

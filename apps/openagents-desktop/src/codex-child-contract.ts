@@ -1,5 +1,5 @@
 /**
- * Codex sub-agent (child) contract (#8712 Lane C — Fable delegates to Codex).
+ * Codex sub-agent (child) contract (#8712 Lane C — Claude delegates to Codex).
  *
  * One bounded `codex exec --json` child per call, pinned to model
  * `gpt-5.5` at reasoning effort `medium`. IMPORTANT LIMITATION (receipted

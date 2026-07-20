@@ -7,7 +7,7 @@
  * canonical `openagents.live_agent_graph.v1` post-images.
  *
  * Wiring shape (deliberately one-callback per lane):
- * - `beginTurn` is called by the fable-local / codex-local start handlers
+ * - `beginTurn` is called by the claude-local / codex-local start handlers
  *   right before `runTurn`, registering the root turn on the owning thread's
  *   assembler.
  * - `applyEvent` is called once inside each lane's existing `emit` callback
@@ -23,7 +23,7 @@
  */
 import { randomUUID } from "node:crypto"
 
-import type { FableLocalEventEnvelope } from "./fable-local-contract.ts"
+import type { ClaudeLocalEventEnvelope } from "./claude-local-contract.ts"
 import type { LiveAgentGraphHostSnapshotWire, LiveAgentGraphUpdateWire } from "./live-agent-graph-contract.ts"
 import {
   createLocalAgentGraphAssembler,
@@ -58,7 +58,7 @@ export type LiveAgentGraphHost = Readonly<{
     lane: LocalAgentGraphLane
   }>) => LocalAgentGraphResult
   /** Fold one typed local runtime event envelope from the REAL emit path. */
-  applyEvent: (threadRef: string, envelope: FableLocalEventEnvelope) => LocalAgentGraphResult | null
+  applyEvent: (threadRef: string, envelope: ClaudeLocalEventEnvelope) => LocalAgentGraphResult | null
   /** Current retained canonical graphs (encoded snapshots, oldest first). */
   snapshot: () => LiveAgentGraphHostSnapshotWire
 }>
@@ -125,7 +125,7 @@ export const makeLiveAgentGraphHost = (options: LiveAgentGraphHostOptions): Live
     return created
   }
 
-  const isTerminalRootEvent = (envelope: FableLocalEventEnvelope): boolean =>
+  const isTerminalRootEvent = (envelope: ClaudeLocalEventEnvelope): boolean =>
     envelope.event.kind === "turn_completed" || envelope.event.kind === "turn_failed"
 
   return {

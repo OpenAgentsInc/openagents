@@ -253,23 +253,23 @@ import {
   decodeDesktopRuntimeControlOutcomeRecordResult,
 } from "./runtime-control-outcome-contract.ts"
 import {
-  FableLocalAnswerQuestionChannel,
-  FableLocalAvailabilityChannel,
-  FableLocalEventChannel,
-  FableLocalInterruptChannel,
-  FableLocalPickImagesChannel,
-  FableLocalQueueFollowupChannel,
-  FableLocalStartChannel,
-  FableLocalSteerChildChannel,
-  decodeFableLocalAnswerQuestionRequest,
-  decodeFableLocalEventEnvelope,
-  decodeFableLocalInterruptRequest,
-  decodeFableLocalPickedImages,
-  decodeFableLocalQueueFollowupRequest,
-  decodeFableLocalStartRequest,
-  decodeFableLocalSteerChildRequest,
-  type FableLocalEventEnvelope,
-} from "./fable-local-contract.ts"
+  ClaudeLocalAnswerQuestionChannel,
+  ClaudeLocalAvailabilityChannel,
+  ClaudeLocalEventChannel,
+  ClaudeLocalInterruptChannel,
+  ClaudeLocalPickImagesChannel,
+  ClaudeLocalQueueFollowupChannel,
+  ClaudeLocalStartChannel,
+  ClaudeLocalSteerChildChannel,
+  decodeClaudeLocalAnswerQuestionRequest,
+  decodeClaudeLocalEventEnvelope,
+  decodeClaudeLocalInterruptRequest,
+  decodeClaudeLocalPickedImages,
+  decodeClaudeLocalQueueFollowupRequest,
+  decodeClaudeLocalStartRequest,
+  decodeClaudeLocalSteerChildRequest,
+  type ClaudeLocalEventEnvelope,
+} from "./claude-local-contract.ts"
 import {
   CodexLocalAvailabilityChannel,
   CodexLocalEventChannel,
@@ -1052,21 +1052,21 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     ) ?? unavailableAppleFmStopResult(),
   },
   /**
-   * Fable local lane (#8712): schema-checked on both sides of the boundary.
+   * Claude local lane (#8712): schema-checked on both sides of the boundary.
    * The renderer never sees tokens, account homes, or raw SDK payloads —
    * only bounded, redacted typed events and the typed availability/result.
    */
-  fableLocal: {
-    availability: () => ipcRenderer.invoke(FableLocalAvailabilityChannel),
+  claudeLocal: {
+    availability: () => ipcRenderer.invoke(ClaudeLocalAvailabilityChannel),
     start: (value: unknown) => {
-      const request = decodeFableLocalStartRequest(value)
+      const request = decodeClaudeLocalStartRequest(value)
       return request === null
         ? Promise.resolve({ ok: false, error: "That message could not be sent." })
-        : ipcRenderer.invoke(FableLocalStartChannel, request)
+        : ipcRenderer.invoke(ClaudeLocalStartChannel, request)
     },
     interrupt: (value: unknown) => {
-      const request = decodeFableLocalInterruptRequest(value)
-      return request === null ? Promise.resolve(false) : ipcRenderer.invoke(FableLocalInterruptChannel, request)
+      const request = decodeClaudeLocalInterruptRequest(value)
+      return request === null ? Promise.resolve(false) : ipcRenderer.invoke(ClaudeLocalInterruptChannel, request)
     },
     /**
      * Image file picker (capability I1): opens the native dialog in main and
@@ -1075,8 +1075,8 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
      * invalid response resolves to a typed unreadable rejection.
      */
     pickImages: async () => {
-      const raw = await ipcRenderer.invoke(FableLocalPickImagesChannel)
-      return decodeFableLocalPickedImages(raw) ?? { images: [], rejection: "unreadable" }
+      const raw = await ipcRenderer.invoke(ClaudeLocalPickImagesChannel)
+      return decodeClaudeLocalPickedImages(raw) ?? { images: [], rejection: "unreadable" }
     },
     /**
      * EP250 question flow: answers a pending AskUserQuestion
@@ -1084,10 +1084,10 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
      * Resolves false (typed rejection) on schema-invalid or unknown refs.
      */
     answerQuestion: (value: unknown) => {
-      const request = decodeFableLocalAnswerQuestionRequest(value)
+      const request = decodeClaudeLocalAnswerQuestionRequest(value)
       return request === null
         ? Promise.resolve(false)
-        : ipcRenderer.invoke(FableLocalAnswerQuestionChannel, request)
+        : ipcRenderer.invoke(ClaudeLocalAnswerQuestionChannel, request)
     },
     /**
      * G4 substrate: steer/interrupt a running delegate child
@@ -1095,10 +1095,10 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
      * outcome on schema-invalid input, never throws.
      */
     steerChild: (value: unknown) => {
-      const request = decodeFableLocalSteerChildRequest(value)
+      const request = decodeClaudeLocalSteerChildRequest(value)
       return request === null
         ? Promise.resolve({ ok: false, outcome: "not_found" })
-        : ipcRenderer.invoke(FableLocalSteerChildChannel, request)
+        : ipcRenderer.invoke(ClaudeLocalSteerChildChannel, request)
     },
     /**
      * A3 substrate: enqueue a follow-up while a turn streams
@@ -1106,45 +1106,45 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
      * input; delivery is queue-until-idle (followup_promoted event on end).
      */
     queueFollowup: (value: unknown) => {
-      const request = decodeFableLocalQueueFollowupRequest(value)
+      const request = decodeClaudeLocalQueueFollowupRequest(value)
       return request === null
         ? Promise.resolve({ ok: false, queued: false, reason: "no_active_turn" })
-        : ipcRenderer.invoke(FableLocalQueueFollowupChannel, request)
+        : ipcRenderer.invoke(ClaudeLocalQueueFollowupChannel, request)
     },
-    onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => {
+    onEvent: (listener: (envelope: ClaudeLocalEventEnvelope) => void) => {
       const handler = (_event: unknown, value: unknown): void => {
-        const decoded = decodeFableLocalEventEnvelope(value)
+        const decoded = decodeClaudeLocalEventEnvelope(value)
         if (decoded !== null) listener(decoded)
       }
-      ipcRenderer.on(FableLocalEventChannel, handler)
-      return () => ipcRenderer.removeListener(FableLocalEventChannel, handler)
+      ipcRenderer.on(ClaudeLocalEventChannel, handler)
+      return () => ipcRenderer.removeListener(ClaudeLocalEventChannel, handler)
     },
   },
   /**
-   * Codex local lane (EP250 codex-first-class): mirrors the fableLocal
+   * Codex local lane (EP250 codex-first-class): mirrors the claudeLocal
    * bridge exactly — same frozen request/event schemas, its own channels.
    * The renderer never sees tokens, account homes, or raw exec payloads.
    */
   codexLocal: {
     availability: () => ipcRenderer.invoke(CodexLocalAvailabilityChannel),
     start: (value: unknown) => {
-      const request = decodeFableLocalStartRequest(value)
+      const request = decodeClaudeLocalStartRequest(value)
       return request === null
         ? Promise.resolve({ ok: false, error: "That message could not be sent." })
         : ipcRenderer.invoke(CodexLocalStartChannel, request)
     },
     interrupt: (value: unknown) => {
-      const request = decodeFableLocalInterruptRequest(value)
+      const request = decodeClaudeLocalInterruptRequest(value)
       return request === null ? Promise.resolve(false) : ipcRenderer.invoke(CodexLocalInterruptChannel, request)
     },
     steerCurrent: (value: unknown) => {
-      const request = decodeFableLocalQueueFollowupRequest(value)
+      const request = decodeClaudeLocalQueueFollowupRequest(value)
       return request === null
         ? Promise.resolve({ ok: false, outcome: "not_found" })
         : ipcRenderer.invoke(CodexLocalSteerTurnChannel, request)
     },
     queueFollowup: (value: unknown) => {
-      const request = decodeFableLocalQueueFollowupRequest(value)
+      const request = decodeClaudeLocalQueueFollowupRequest(value)
       return request === null
         ? Promise.resolve({ ok: false, queued: false, reason: "no_active_turn" })
         : ipcRenderer.invoke(CodexLocalQueueFollowupChannel, request)
@@ -1160,9 +1160,9 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       const request = decodeCodexQueueMutation(value)
       return request === null ? Promise.resolve({ ok: false, reason: "invalid" }) : ipcRenderer.invoke(CodexLocalQueueCancelChannel, request)
     },
-    onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => {
+    onEvent: (listener: (envelope: ClaudeLocalEventEnvelope) => void) => {
       const handler = (_event: unknown, value: unknown): void => {
-        const decoded = decodeFableLocalEventEnvelope(value)
+        const decoded = decodeClaudeLocalEventEnvelope(value)
         if (decoded !== null) listener(decoded)
       }
       ipcRenderer.on(CodexLocalEventChannel, handler)
@@ -1265,7 +1265,7 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   },
   /**
    * CUT-11 (#8691): canonical desktop-local live agent graph — validated
-   * openagents.live_agent_graph.v1 post-images per thread (fable roots,
+   * openagents.live_agent_graph.v1 post-images per thread (claude roots,
    * codex delegate children, codex-local roots), snapshot on invoke and
    * push on change. Presentation stays CUT-12; this only delivers the
    * canonical contract.

@@ -2,7 +2,7 @@
  * FA-QA-01 / FA-ASAP-03 owner-armed real-provider acceptance batch.
  *
  * Drives the normal OpenAgents Dev owner profile through Playwright, invokes
- * the real codex-local and fable-local lanes, reviews durable evidence, and
+ * the real codex-local and claude-local lanes, reviews durable evidence, and
  * only then renames each sidebar row PASS/FAIL/BLOCKED. Raw prompts,
  * responses, paths, account identities, and provider-private sessions stay
  * in the local private receipt; public-receipt.json contains only bounded
@@ -95,7 +95,7 @@ const identityStarted = captureFullAutoAcceptanceIdentity({
       authReadiness: "ready",
     },
     {
-      laneRef: "fable-local",
+      laneRef: "claude-local",
       runtime: "@anthropic-ai/claude-agent-sdk",
       version: "0.3.172",
       authReadiness: "ready",
@@ -163,7 +163,7 @@ const setProvider = async (page: Page, label: "Codex" | "Claude"): Promise<void>
   await button.waitFor({ state: "visible", timeout: 30_000 })
   if ((await button.innerText()).trim().startsWith(label)) return
   const threadRef = await selectedThreadRef(page)
-  const laneRef = label === "Codex" ? "codex-local" : "fable-local"
+  const laneRef = label === "Codex" ? "codex-local" : "claude-local"
   // The visible chip is a cycle affordance over every admitted native/ACP
   // lane. A real owner profile can contain enough hydrated peers that cycling
   // is not a deterministic way to name a native target. Use the exact same
@@ -471,10 +471,10 @@ const startRun = async (input: Readonly<{
   title: string
   objective: string
   doneCondition: string
-  lane: "codex-local" | "fable-local"
+  lane: "codex-local" | "claude-local"
   turnCap: number
   model?: string
-  fallback?: "codex-local" | "fable-local"
+  fallback?: "codex-local" | "claude-local"
   pauseImmediately?: boolean
 }>): Promise<Readonly<{ runRef: string; threadRef: string }>> => {
   await openFullAutoLauncher(input.page)
@@ -695,7 +695,7 @@ const executeSixRows = async (): Promise<void> => {
   const before03 = openFullAutoRunRegistry(profileFile("full-auto", "runs.json")).get(run03.runRef)!
   // Bind the exact provider + admitted target model atomically through the
   // same owner-UI IPC action the visible handoff control uses. This keeps the
-  // run/profile authority in main and avoids the currently throttled Fable
+  // run/profile authority in main and avoids the currently throttled Claude
   // default while preserving Claude as the target lane.
   const handoffOutcome = await page.evaluate(async ({ runRef }) => {
     const bridge = (globalThis as typeof globalThis & {
@@ -703,7 +703,7 @@ const executeSixRows = async (): Promise<void> => {
     }).openagentsDesktop
     return await bridge?.fullAutoRun?.handoff?.({
       runRef,
-      targetLaneRef: "fable-local",
+      targetLaneRef: "claude-local",
       model: "claude-opus-4-8",
       reason: "Bind the admitted Claude model for the real owner acceptance run.",
     })
@@ -718,7 +718,7 @@ const executeSixRows = async (): Promise<void> => {
   }
   await refreshRun(page)
   await page.waitForFunction(() =>
-    document.querySelector(".oa-react-full-auto-run-meta")?.textContent?.includes("Provider: fable-local") === true,
+    document.querySelector(".oa-react-full-auto-run-meta")?.textContent?.includes("Provider: claude-local") === true,
   undefined, { timeout: 30_000 })
   await page.locator('[data-en-key="full-auto-run-resume"]').click()
   await waitForTerminal(page, 2)
@@ -782,7 +782,7 @@ const executeSixRows = async (): Promise<void> => {
     title: test05.title,
     objective: "Complete one missing restart packet per turn: create TEST05_PACKET_1.txt, then _2, then _3; each contains exactly RESTART-PACKET-N-COMPLETE.",
     doneCondition: "All three TEST05 packet files exist exactly, across a complete Desktop quit/relaunch after packet one.",
-    lane: "fable-local",
+    lane: "claude-local",
     model: "claude-opus-4-8",
     turnCap: 3,
     pauseImmediately: true,
@@ -898,7 +898,7 @@ const executeAutomaticRotation = async (): Promise<Readonly<{
     title: "FA-ASAP-03 automatic Claude to Codex rotation",
     objective: "Create AUTO_ROTATION_PROOF.txt containing exactly AUTOMATIC-SAME-PASS-ROTATION-OK.",
     doneCondition: "AUTO_ROTATION_PROOF.txt exists with the exact expected single line.",
-    lane: "fable-local",
+    lane: "claude-local",
     fallback: "codex-local",
     turnCap: 1,
   })
@@ -906,7 +906,7 @@ const executeAutomaticRotation = async (): Promise<Readonly<{
   const transitions = handoffsFor({ runRef: run.runRef })
   const transition = transitions.find(candidate =>
     candidate.actor === "turn_resolution" &&
-    candidate.from === "fable-local" &&
+    candidate.from === "claude-local" &&
     candidate.to === "codex-local")
   if (transition === undefined) throw new Error("automatic same-pass Claude to Codex transition was not recorded")
   const content = readArtifact("AUTO_ROTATION_PROOF.txt").trim()

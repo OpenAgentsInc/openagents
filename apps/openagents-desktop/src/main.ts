@@ -135,28 +135,28 @@ import {
 import { desktopRuntimeWorkspaceRoot } from "./desktop-runtime-workspace.ts"
 import { desktopLaunchWorkspaceRoot } from "./desktop-launch-workspace.ts"
 import {
-  FableLocalAnswerQuestionChannel,
-  FableLocalAvailabilityChannel,
-  FableLocalEventChannel,
-  FableLocalInterruptChannel,
-  FABLE_LOCAL_IMAGE_BYTES_LIMIT,
-  FABLE_LOCAL_IMAGE_COUNT_LIMIT,
-  FABLE_LOCAL_IMAGE_MEDIA_TYPES,
+  ClaudeLocalAnswerQuestionChannel,
+  ClaudeLocalAvailabilityChannel,
+  ClaudeLocalEventChannel,
+  ClaudeLocalInterruptChannel,
+  CLAUDE_LOCAL_IMAGE_BYTES_LIMIT,
+  CLAUDE_LOCAL_IMAGE_COUNT_LIMIT,
+  CLAUDE_LOCAL_IMAGE_MEDIA_TYPES,
   CLAUDE_MODELS,
-  FableLocalPickImagesChannel,
-  FableLocalQueueFollowupChannel,
-  FableLocalStartChannel,
-  FableLocalSteerChildChannel,
-  decodeFableLocalAnswerQuestionRequest,
-  decodeFableLocalInterruptRequest,
-  decodeFableLocalQueueFollowupRequest,
-  decodeFableLocalStartRequest,
-  decodeFableLocalSteerChildRequest,
-  fableLocalFailureMessage,
-  fableLocalModelNoteText,
+  ClaudeLocalPickImagesChannel,
+  ClaudeLocalQueueFollowupChannel,
+  ClaudeLocalStartChannel,
+  ClaudeLocalSteerChildChannel,
+  decodeClaudeLocalAnswerQuestionRequest,
+  decodeClaudeLocalInterruptRequest,
+  decodeClaudeLocalQueueFollowupRequest,
+  decodeClaudeLocalStartRequest,
+  decodeClaudeLocalSteerChildRequest,
+  claudeLocalFailureMessage,
+  claudeLocalModelNoteText,
   isClaudeModel,
   isCodexModel,
-} from "./fable-local-contract.ts"
+} from "./claude-local-contract.ts"
 import { makeProviderLaneDispatcher, type ProviderLane } from "./provider-lane.ts"
 import { makeAcpProviderLane } from "./provider-lane-acp.ts"
 import {
@@ -218,14 +218,14 @@ import {
 } from "./desktop-preferences-contract.ts"
 import { openDesktopPreferencesStore } from "./desktop-preferences-host.ts"
 import {
-  FABLE_LOCAL_FIXTURE_ACCOUNT,
-  FABLE_LOCAL_MODEL,
-  discoverReadyFableClaudeHomes,
-  makeFableLocalRuntime,
-  makeFixtureFableLocalQuery,
-  makeFixtureFableMcpFactory,
-  type FableLocalAccountHome,
-} from "./fable-local-runtime.ts"
+  CLAUDE_LOCAL_FIXTURE_ACCOUNT,
+  CLAUDE_LOCAL_MODEL,
+  discoverReadyClaudeLocalHomes,
+  makeClaudeLocalRuntime,
+  makeFixtureClaudeLocalQuery,
+  makeFixtureClaudeMcpFactory,
+  type ClaudeLocalAccountHome,
+} from "./claude-local-runtime.ts"
 import {
   fixtureCodexRevokedStderr,
   fixtureCodexRevokedStdout,
@@ -1454,7 +1454,7 @@ const providerLaneRegistry = makeProviderLaneRegistry({
   file: path.join(app.getPath("userData"), "provider-lanes", "registry.json"),
 })
 const providerLaneAuthentication = new Map<string, "ready" | "missing" | "unknown">([
-  ["fable-local", "unknown"],
+  ["claude-local", "unknown"],
   ["codex-local", "unknown"],
 ])
 /** Full Auto (#8853): broadcasts an updated thread the same way local turn
@@ -1571,7 +1571,7 @@ const drainDesktopUpdateRuntimes = async () => {
   return await drainChildRuntimes({
     timeoutMs: 15_000,
     drainers: [
-      { kind: "agent", drain: async () => { fableLocal.dispose(); codexLocal.dispose(); await acpProviderHost.shutdown() } },
+      { kind: "agent", drain: async () => { claudeLocal.dispose(); codexLocal.dispose(); await acpProviderHost.shutdown() } },
       { kind: "pty", drain: () => { terminalHost.dispose(); disposeIdeRunHost() } },
       { kind: "local_server", drain: () => { codexControlPlanes.close(); codexThreadLifecycles.close(); codexEcosystems.close(); codexHostServices.close(); codexExperimentalRuntimes.close(); codexAppServerSupervisor.close() } },
       { kind: "helper", drain: () => {
@@ -1934,7 +1934,7 @@ const ideCursorFixtureQuery = (): IdeCursorClaudeQuery => ({ prompt, options }) 
 }
 
 const ideCursorClaudeQueryFor = async (
-  account: FableLocalAccountHome,
+  account: ClaudeLocalAccountHome,
 ): Promise<IdeCursorClaudeQuery> => {
   if (smokeMode) return ideCursorFixtureQuery()
   const sdk = await import("@anthropic-ai/claude-agent-sdk") as { query?: unknown }
@@ -1977,8 +1977,8 @@ let ideCursorHostEntry: Readonly<{
 }> | null = null
 let ideCursorHostTransition: Promise<void> = Promise.resolve()
 
-const cursorAccounts = async (): Promise<ReadonlyArray<FableLocalAccountHome>> =>
-  smokeMode ? [FABLE_LOCAL_FIXTURE_ACCOUNT] : discoverReadyFableClaudeHomes()
+const cursorAccounts = async (): Promise<ReadonlyArray<ClaudeLocalAccountHome>> =>
+  smokeMode ? [CLAUDE_LOCAL_FIXTURE_ACCOUNT] : discoverReadyClaudeLocalHomes()
 
 const currentIdeCursorHost = (requestedAccountRef: string | null = null): Promise<IdeCursorHost | null> => {
   const result = ideCursorHostTransition.then(async () => {
@@ -2018,9 +2018,9 @@ const currentIdeCursorHost = (requestedAccountRef: string | null = null): Promis
     const provider = makeIdeCursorClaudeProvider({
       query: await ideCursorClaudeQueryFor(account),
       isolatedCwd,
-      providerRef: "fable-local",
+      providerRef: "claude-local",
       modelRefs: [...CLAUDE_MODELS],
-      harnessRef: "fable",
+      harnessRef: "claude",
       accountRef: account.ref,
     })
     const documentAuthority = makeIdeCursorWorkspaceAuthority(workspace)
@@ -2513,7 +2513,7 @@ ipcMain.handle(DesktopIdeCursorCommandChannel, async (event, value: unknown) => 
       ? {
           _tag: "Refused",
           reason: "unavailable",
-          message: "Choose an admitted workspace and linked Fable account before using AI editing.",
+          message: "Choose an admitted workspace and linked Claude account before using AI editing.",
           snapshot: emptyIdeCursorSnapshot(),
         }
       : host.command(command)
@@ -3087,7 +3087,7 @@ ipcMain.handle(DesktopNewThreadChannel, (_event, value: unknown) => {
   return thread
 })
 // H1 resume picker: app-local threads only. Returning the exact persisted
-// thread id lets the next local turn hit fable/codex-local's existing
+// thread id lets the next local turn hit claude/codex-local's existing
 // per-thread SDK resume seam; imported provider history is never mutated.
 ipcMain.handle(DesktopLocalThreadsChannel, () => threads().list())
 ipcMain.handle(DesktopRenameLocalThreadChannel, (event, value: unknown) => {
@@ -3200,16 +3200,16 @@ ipcMain.handle(DesktopChatTurnChannel, async (_event, value: unknown) => {
   }
 })
 
-// Fable local lane (#8712): a REAL streaming Claude turn on this machine in
+// Claude local lane (#8712): a REAL streaming Claude turn on this machine in
 // local (not-signed-in) mode, on an isolated `~/.claude-pylon-*` account home
 // — never the default `~/.claude`, never a login flow, never the cloud
 // gateway. Smoke runs a scripted fixture (clearly logged; never normal runs).
 if (smokeMode) {
-  console.log("[openagents-desktop] fable-local running in SMOKE FIXTURE mode (no real Claude SDK session)")
+  console.log("[openagents-desktop] claude-local running in SMOKE FIXTURE mode (no real Claude SDK session)")
   console.log("[openagents-desktop] codex-child running in SMOKE FIXTURE mode (scripted codex exec, no real spawn)")
 }
 // Session usage ledger (#8712 Lane C): exact per-account token attribution
-// for local Fable turns and Codex delegate children. Main-owned; the
+// for local Claude turns and Codex delegate children. Main-owned; the
 // renderer sees only the typed snapshot ("session ledger" evidence label).
 const usageLedger = makeUsageLedger()
 // Owner-approved at 8809f79b56 (#8911). The control now ships in ordinary
@@ -3247,7 +3247,7 @@ const liveAgentGraph = makeLiveAgentGraphHost({ emit: broadcastLiveAgentGraphUpd
 // fails with the exact revoked-refresh-token shape (typed rotation), the
 // second completes with exact usage totals.
 const codexChildren = makeCodexChildRuntime({
-  scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  scratchRoot: () => path.join(app.getPath("userData"), "claude-local"),
   ...(smokeMode
     ? {
         spawnImpl: makeFixtureCodexChildSpawn([
@@ -3302,7 +3302,7 @@ const codexExperimentalRuntimes = makeCodexExperimentalRuntimeRegistry({
 codexLifecycleAuthority = async () => {
   const binary = codexRuntimeAuthority.executable()
   if (binary === null) throw new Error("Codex runtime is unavailable")
-  const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
+  const runtimeCwd = path.join(app.getPath("userData"), "claude-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
   return codexThreadLifecycles.forTarget({
     binary,
@@ -3315,7 +3315,7 @@ codexLifecycleAuthority = async () => {
 const currentCodexEcosystem = async () => {
   const binary = codexRuntimeAuthority.executable()
   if (binary === null) throw new Error("Codex runtime is unavailable")
-  const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
+  const runtimeCwd = path.join(app.getPath("userData"), "claude-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
   return codexEcosystems.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" })
 }
@@ -3323,14 +3323,14 @@ const currentCodexHostServices = async () => {
   const binary = codexRuntimeAuthority.executable()
   const workroom = currentProductSpecWorkroom()
   if (binary === null || workroom === null) throw new Error("Codex runtime and WorkContext are required")
-  const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
+  const runtimeCwd = path.join(app.getPath("userData"), "claude-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
   return codexHostServices.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" }, workroom.workspaceRoot)
 }
 const currentCodexExperimentalRuntime = async () => {
   const binary = codexRuntimeAuthority.executable()
   if (binary === null) throw new Error("Codex runtime is unavailable")
-  const runtimeCwd = path.join(app.getPath("userData"), "fable-local", "codex-app-server-runtime")
+  const runtimeCwd = path.join(app.getPath("userData"), "claude-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
   return codexExperimentalRuntimes.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" })
 }
@@ -3406,7 +3406,7 @@ const smokeProbeSpawnByHome: Record<string, ReturnType<typeof makeFixtureCodexCh
   ]),
 }
 const codexPreflight = makeCodexPreflight({
-  scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  scratchRoot: () => path.join(app.getPath("userData"), "claude-local"),
   onResult: recordProbeEvidence,
   ...(!smokeMode ? {
       configCheck: async (account: { home: string; source?: "current_session" | "pylon" }) => {
@@ -3470,7 +3470,7 @@ const resolveDesktopLocalWorkspaceRoot = (): string => desktopRuntimeWorkspaceRo
 // thread-resume continuity. Pylon accounts are fleet-only, not MVP fallback.
 // Smoke alone keeps the legacy scripted JSON fixture parser.
 const codexLocal = makeCodexLocalRuntime({
-  scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+  scratchRoot: () => path.join(app.getPath("userData"), "claude-local"),
   workspaceRoot: resolveDesktopLocalWorkspaceRoot,
   preflight: codexPreflight,
   durableQueue: codexDurableQueue,
@@ -3524,7 +3524,7 @@ const codexLocal = makeCodexLocalRuntime({
 // the private JSON file under userData (mode 0600; secret env/header values
 // never logged); the settings UI edits it through additive IPC. The runtime
 // reads the ENABLED entries fresh per turn via this getter — no restart needed
-// for config edits to take effect. In smoke the fable query is a fixture that
+// for config edits to take effect. In smoke the claude query is a fixture that
 // never constructs real SDK MCP servers, so no MCP server is ever spawned.
 const mcpConfigStore = openMcpConfigStore(
   path.join(app.getPath("userData"), "mcp", "servers.json"),
@@ -3532,14 +3532,14 @@ const mcpConfigStore = openMcpConfigStore(
 const pluginConfigStore = openPluginConfigStore(
   path.join(app.getPath("userData"), "plugins", "registry.json"),
 )
-const fableLocal = makeFableLocalRuntime({
-  scratchRoot: () => path.join(app.getPath("userData"), "fable-local"),
+const claudeLocal = makeClaudeLocalRuntime({
+  scratchRoot: () => path.join(app.getPath("userData"), "claude-local"),
   workspaceRoot: resolveDesktopLocalWorkspaceRoot,
   delegate: codexChildren,
   userMcpServers: () => mcpConfigStore.servers(),
   userPlugins: () => pluginConfigStore.enabledPaths(),
   initialSessions: localTurnJournal.list().flatMap(record =>
-    record.lane === "fable-local" && record.providerSessionRef !== null && record.accountRef !== null
+    record.lane === "claude-local" && record.providerSessionRef !== null && record.accountRef !== null
       ? [{
           threadRef: record.threadRef,
           sessionId: record.providerSessionRef,
@@ -3547,19 +3547,19 @@ const fableLocal = makeFableLocalRuntime({
         }]
       : []),
   onDispatch: input => {
-    localTurnJournal.recordDispatch({ ...input, lane: "fable-local" }, input.accountRef)
+    localTurnJournal.recordDispatch({ ...input, lane: "claude-local" }, input.accountRef)
   },
   onProviderSession: input => {
     localTurnJournal.recordProviderSession(
-      { ...input, lane: "fable-local" },
+      { ...input, lane: "claude-local" },
       { accountRef: input.accountRef, providerSessionRef: input.sessionId },
     )
   },
   ...(smokeMode
     ? {
-        queryImpl: async () => makeFixtureFableLocalQuery(),
-        discoverImpl: async () => [FABLE_LOCAL_FIXTURE_ACCOUNT],
-        mcpImpl: async () => makeFixtureFableMcpFactory(),
+        queryImpl: async () => makeFixtureClaudeLocalQuery(),
+        discoverImpl: async () => [CLAUDE_LOCAL_FIXTURE_ACCOUNT],
+        mcpImpl: async () => makeFixtureClaudeMcpFactory(),
       }
     : {}),
 })
@@ -3916,25 +3916,25 @@ ipcMain.handle(DiagnosticsActionChannel, (_event, value: unknown) => {
   return action === null ? { ok: false, notice: "Unknown action" } : diagnosticsHost.runAction(action)
 })
 
-ipcMain.handle(FableLocalAvailabilityChannel, async () => {
-  const availability = await fableLocal.availability()
-  providerLaneAuthentication.set("fable-local", nativeLaneAuthenticationFromAvailability(availability))
+ipcMain.handle(ClaudeLocalAvailabilityChannel, async () => {
+  const availability = await claudeLocal.availability()
+  providerLaneAuthentication.set("claude-local", nativeLaneAuthenticationFromAvailability(availability))
   return availability
 })
 // Image file picker (capability I1): open the native dialog in MAIN, read the
 // chosen images from disk here (never the renderer), bound size + count, and
 // return decoded base64 attachments plus the first honest rejection. Smoke and
 // live-proof headless runs cannot open a dialog; the picker returns no images.
-ipcMain.handle(FableLocalPickImagesChannel, async (event) => {
+ipcMain.handle(ClaudeLocalPickImagesChannel, async (event) => {
   if (smokeMode || liveProofDriverMode) return { images: [], rejection: null }
   const window = BrowserWindow.fromWebContents(event.sender)
-  const extensions = FABLE_LOCAL_IMAGE_MEDIA_TYPES.map(type =>
+  const extensions = CLAUDE_LOCAL_IMAGE_MEDIA_TYPES.map(type =>
     type === "image/jpeg" ? "jpg" : type.slice("image/".length))
   const result = await (window === null
     ? dialog.showOpenDialog({ properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: [...extensions, "jpeg"] }] })
     : dialog.showOpenDialog(window, { properties: ["openFile", "multiSelections"], filters: [{ name: "Images", extensions: [...extensions, "jpeg"] }] }))
   if (result.canceled) return { images: [], rejection: null }
-  const mediaTypeForPath = (filePath: string): (typeof FABLE_LOCAL_IMAGE_MEDIA_TYPES)[number] | null => {
+  const mediaTypeForPath = (filePath: string): (typeof CLAUDE_LOCAL_IMAGE_MEDIA_TYPES)[number] | null => {
     const lower = filePath.toLowerCase()
     if (lower.endsWith(".png")) return "image/png"
     if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg"
@@ -3944,8 +3944,8 @@ ipcMain.handle(FableLocalPickImagesChannel, async (event) => {
   }
   const attachments: Array<{ mediaType: string; data: string; name: string }> = []
   let rejection: "wrong_type" | "too_large" | "count_limit" | "unreadable" | null =
-    result.filePaths.length > FABLE_LOCAL_IMAGE_COUNT_LIMIT ? "count_limit" : null
-  for (const filePath of result.filePaths.slice(0, FABLE_LOCAL_IMAGE_COUNT_LIMIT)) {
+    result.filePaths.length > CLAUDE_LOCAL_IMAGE_COUNT_LIMIT ? "count_limit" : null
+  for (const filePath of result.filePaths.slice(0, CLAUDE_LOCAL_IMAGE_COUNT_LIMIT)) {
     const mediaType = mediaTypeForPath(filePath)
     if (mediaType === null) {
       rejection ??= "wrong_type"
@@ -3953,12 +3953,12 @@ ipcMain.handle(FableLocalPickImagesChannel, async (event) => {
     }
     try {
       const sizeBytes = statSync(filePath).size
-      if (sizeBytes <= 0 || sizeBytes > FABLE_LOCAL_IMAGE_BYTES_LIMIT) {
+      if (sizeBytes <= 0 || sizeBytes > CLAUDE_LOCAL_IMAGE_BYTES_LIMIT) {
         rejection ??= "too_large"
         continue
       }
       const bytes = readFileSync(filePath)
-      if (bytes.length === 0 || bytes.length > FABLE_LOCAL_IMAGE_BYTES_LIMIT) {
+      if (bytes.length === 0 || bytes.length > CLAUDE_LOCAL_IMAGE_BYTES_LIMIT) {
         rejection ??= "too_large"
         continue
       }
@@ -3969,11 +3969,11 @@ ipcMain.handle(FableLocalPickImagesChannel, async (event) => {
   }
   return { images: attachments, rejection }
 })
-ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
-  const request = decodeFableLocalInterruptRequest(value)
+ipcMain.handle(ClaudeLocalInterruptChannel, (_event, value: unknown) => {
+  const request = decodeClaudeLocalInterruptRequest(value)
   return request === null
     ? false
-    : fableLocal.interrupt(request.turnRef) ||
+    : claudeLocal.interrupt(request.turnRef) ||
       grokAcpDriver.interrupt(request.turnRef) ||
       cursorAcpDriver.interrupt(request.turnRef)
 })
@@ -3981,25 +3981,25 @@ ipcMain.handle(FableLocalInterruptChannel, (_event, value: unknown) => {
 // routes to the runtime's pending-question registry. Schema-checked; an
 // unknown/settled questionRef or unmatched answers resolve false (typed
 // rejection) and never throw.
-ipcMain.handle(FableLocalAnswerQuestionChannel, (_event, value: unknown) => {
-  const request = decodeFableLocalAnswerQuestionRequest(value)
-  return request === null ? false : fableLocal.answerQuestion(request) || codexLocal.answerQuestion(request)
+ipcMain.handle(ClaudeLocalAnswerQuestionChannel, (_event, value: unknown) => {
+  const request = decodeClaudeLocalAnswerQuestionRequest(value)
+  return request === null ? false : claudeLocal.answerQuestion(request) || codexLocal.answerQuestion(request)
 })
 // EP250 runtime-capability substrate (additive; renderer UI is a wave-2 lane).
 // Steer/interrupt a running delegate child (G4). Schema-checked; an unknown
 // child or turn mismatch returns a typed not_found outcome, never a throw.
-ipcMain.handle(FableLocalSteerChildChannel, (_event, value: unknown) => {
-  const request = decodeFableLocalSteerChildRequest(value)
-  return request === null ? { ok: false, outcome: "not_found" } : fableLocal.steerChild(request)
+ipcMain.handle(ClaudeLocalSteerChildChannel, (_event, value: unknown) => {
+  const request = decodeClaudeLocalSteerChildRequest(value)
+  return request === null ? { ok: false, outcome: "not_found" } : claudeLocal.steerChild(request)
 })
 // Enqueue a follow-up while a turn streams (A3). Delivery is queue-until-idle:
 // the runtime emits followup_queued now and followup_promoted when the current
 // turn ends. Starting the promoted next turn is a wave-2 renderer/host step.
-ipcMain.handle(FableLocalQueueFollowupChannel, (_event, value: unknown) => {
-  const request = decodeFableLocalQueueFollowupRequest(value)
+ipcMain.handle(ClaudeLocalQueueFollowupChannel, (_event, value: unknown) => {
+  const request = decodeClaudeLocalQueueFollowupRequest(value)
   return request === null
     ? { ok: false, queued: false, reason: "no_active_turn" }
-    : fableLocal.queueFollowup(request)
+    : claudeLocal.queueFollowup(request)
 })
 // ---------------------------------------------------------------------------
 // Provider lane SPI (L1 #8899, epic #8898): every local agent lane dispatches
@@ -4019,7 +4019,7 @@ const laneDispatcher = makeProviderLaneDispatcher({
     // built-in lanes; an SPI lane outside that set skips graph registration
     // rather than corrupting the typed graph vocabulary.
     beginTurn: ({ turnRef, threadRef, lane }) => {
-      if (lane === "fable_claude" || lane === "codex_local") {
+      if (lane === "claude_local" || lane === "codex_local") {
         liveAgentGraph.beginTurn({ turnRef, threadRef, lane })
       }
     },
@@ -4070,13 +4070,13 @@ const laneDispatcher = makeProviderLaneDispatcher({
  * effective model, lane, account ref, turn ref, exact token total, and
  * wall-clock duration. Bounded public-safe strings only.
  */
-const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
-  laneRef: "fable-local",
-  graphLaneRef: "fable_claude",
-  eventChannel: FableLocalEventChannel,
+const claudeLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
+  laneRef: "claude-local",
+  graphLaneRef: "claude_local",
+  eventChannel: ClaudeLocalEventChannel,
   usageProvider: "claude_agent",
   capabilities: () => ({
-    laneRef: "fable-local",
+    laneRef: "claude-local",
     provider: "claude_agent",
     // Spawn-config truth: the ClaudeModelSchema contract literals.
     models: ["claude-fable-5", "claude-opus-4-8", "claude-sonnet-5"],
@@ -4110,7 +4110,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
     recovery: "interrupt_on_restart",
   }),
   admit: request => {
-    const requestedModel = request.model ?? request.target?.model ?? FABLE_LOCAL_MODEL
+    const requestedModel = request.model ?? request.target?.model ?? CLAUDE_LOCAL_MODEL
     if ((request.target !== undefined && request.target.provider !== "claude_agent") || !isClaudeModel(requestedModel)) {
       return { ok: false, error: "That provider target is not available on the Claude lane." }
     }
@@ -4125,7 +4125,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
   prepare: (request, sender, model) => {
     if (request.fullAuto === true && sender !== null) {
       fullAutoRegistry.bindProfile(request.threadRef, {
-        lane: "fable-local",
+        lane: "claude-local",
         ...(request.target?.accountRef === undefined ? {} : { accountRef: request.target.accountRef }),
         model,
       })
@@ -4134,21 +4134,21 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
   streamMeta: ctx => {
     const model = ctx.effectiveModel()
     return {
-      lane: "fable-local",
+      lane: "claude-local",
       turnRef: ctx.request.turnRef,
       ...(model === null ? {} : { model }),
     }
   },
-  modelNoteText: fableLocalModelNoteText,
+  modelNoteText: claudeLocalModelNoteText,
   runTurn: async ({ request, model, context, history, message, background, emit }) => {
     if (!isClaudeModel(model)) {
       return { ok: false, reason: "session_failed", detail: "non-Claude model admitted to the Claude lane" }
     }
-    return fableLocal.runTurn({
+    return claudeLocal.runTurn({
       turnRef: request.turnRef,
       threadRef: request.threadRef,
       history,
-      message: request.fullAuto === true ? fullAutoPrompt("fable-local", message) : message,
+      message: request.fullAuto === true ? fullAutoPrompt("claude-local", message) : message,
       ...(request.queueRef === undefined ? {} : { queueRef: request.queueRef }),
       ...(request.clientUserMessageId === undefined ? {} : { clientUserMessageId: request.clientUserMessageId }),
       ...(request.target === undefined ? {} : { accountRef: request.target.accountRef }),
@@ -4162,7 +4162,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
       emit,
     })
   },
-  interrupt: turnRef => fableLocal.interrupt(turnRef),
+  interrupt: turnRef => claudeLocal.interrupt(turnRef),
   makeTurnProjector: ctx => {
     // EP250 wave-2 (J2/J4): track the latest plan/todo list so the FINAL plan
     // state persists into the finalized transcript (the live in-place plan
@@ -4210,7 +4210,7 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
   finalMeta: ctx => {
     const model = ctx.effectiveModel()
     return {
-      lane: "fable-local",
+      lane: "claude-local",
       turnRef: ctx.request.turnRef,
       ...(model === null ? {} : { model }),
       ...(ctx.result.accountRef === undefined ? {} : { accountRef: ctx.result.accountRef }),
@@ -4218,19 +4218,19 @@ const fableLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
       durationMs: ctx.durationMs,
     }
   },
-  failureMessage: fableLocalFailureMessage,
+  failureMessage: claudeLocalFailureMessage,
   completed: request => {
     if (request.fullAuto === true) void runFullAutoReconciliation()
   },
 }
 
-ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
-  const request = decodeFableLocalStartRequest(value)
+ipcMain.handle(ClaudeLocalStartChannel, async (event, value: unknown) => {
+  const request = decodeClaudeLocalStartRequest(value)
   if (request === null) return { ok: false, error: "That message could not be sent." }
   const laneRef = providerLaneRegistry.selection(request.threadRef)
-  if (laneRef === "fable-local") return laneDispatcher.dispatchTurn(fableLocalLane, request, event.sender)
-  if (laneRef === "acp:grok-cli") return laneDispatcher.dispatchTurn(grokAcpFableEventLane, request, event.sender)
-  if (laneRef === "acp:cursor-agent") return laneDispatcher.dispatchTurn(cursorAcpFableEventLane, request, event.sender)
+  if (laneRef === "claude-local") return laneDispatcher.dispatchTurn(claudeLocalLane, request, event.sender)
+  if (laneRef === "acp:grok-cli") return laneDispatcher.dispatchTurn(grokAcpClaudeEventLane, request, event.sender)
+  if (laneRef === "acp:cursor-agent") return laneDispatcher.dispatchTurn(cursorAcpClaudeEventLane, request, event.sender)
   return { ok: false, error: "This thread is assigned to a different provider lane." }
 })
 
@@ -4239,13 +4239,13 @@ ipcMain.handle(FableLocalStartChannel, async (event, value: unknown) => {
 // session is preferred; isolated registry homes are fallback capacity. The
 // cloud gateway is never used. Availability is
 // PROBE-VERIFIED evidence (see codexPreflight above). Events reuse the
-// frozen fable-local envelope over the codex-local channels.
+// frozen claude-local envelope over the codex-local channels.
 // SMOKE sequencing gate: the built-Electron journey must assert BOTH chip
 // states deterministically — the disabled-reason popover on the codex chip
 // (chrome contract, asserted while the chip still reads "verifying") and
 // then the verified-enabled chip + streamed codex turn (codex-first-class
 // contract). In smoke, the availability invoke parks until the runner
-// releases it right after the fable step's popover assertions. Never active
+// releases it right after the claude step's popover assertions. Never active
 // in normal runs.
 let releaseSmokeCodexAvailability: (() => void) | null = null
 const smokeCodexAvailabilityGate: Promise<void> | null = smokeMode
@@ -4267,7 +4267,7 @@ ipcMain.handle(CodexLocalAvailabilityChannel, async () => {
   return availability
 })
 ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
-  const request = decodeFableLocalInterruptRequest(value)
+  const request = decodeClaudeLocalInterruptRequest(value)
   return request === null
     ? false
     : codexLocal.interrupt(request.turnRef) ||
@@ -4275,13 +4275,13 @@ ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
       cursorAcpDriver.interrupt(request.turnRef)
 })
 ipcMain.handle(CodexLocalSteerTurnChannel, async (_event, value: unknown) => {
-  const request = decodeFableLocalQueueFollowupRequest(value)
+  const request = decodeClaudeLocalQueueFollowupRequest(value)
   return request === null
     ? { ok: false, outcome: "not_found" }
     : codexLocal.steerCurrent(request)
 })
 ipcMain.handle(CodexLocalQueueFollowupChannel, (_event, value: unknown) => {
-  const request = decodeFableLocalQueueFollowupRequest(value)
+  const request = decodeClaudeLocalQueueFollowupRequest(value)
   return request === null
     ? { ok: false, queued: false, reason: "no_active_turn" }
     : codexLocal.queueFollowup(request)
@@ -4667,39 +4667,39 @@ const cursorAcpLane = makeAcpProviderLane({
 // keep an ACP-selected thread stream visible regardless of which built-in
 // harness was selected before the registry switch; execution remains the one
 // shared main-owned driver and ProviderLane implementation.
-const grokAcpFableEventLane: ProviderLane<null> = {
+const grokAcpClaudeEventLane: ProviderLane<null> = {
   ...grokAcpLane,
-  eventChannel: FableLocalEventChannel,
+  eventChannel: ClaudeLocalEventChannel,
 }
-const cursorAcpFableEventLane: ProviderLane<null> = {
+const cursorAcpClaudeEventLane: ProviderLane<null> = {
   ...cursorAcpLane,
-  eventChannel: FableLocalEventChannel,
+  eventChannel: ClaudeLocalEventChannel,
 }
 
 const providerLaneCapabilityByRef = (laneRef: string) =>
   laneRef === "codex-local" ? codexLocalLane.capabilities()
-    : laneRef === "fable-local" ? fableLocalLane.capabilities()
+    : laneRef === "claude-local" ? claudeLocalLane.capabilities()
       : laneRef === "acp:grok-cli" ? grokAcpLane.capabilities()
         : laneRef === "acp:cursor-agent" ? cursorAcpLane.capabilities()
           : null
 
 // Bug #8998: nativeEntries previously sourced `authentication` from the
 // passive `providerLaneAuthentication` Map, which is only ever populated by
-// the `CodexLocalAvailabilityChannel`/`FableLocalAvailabilityChannel` IPC
+// the `CodexLocalAvailabilityChannel`/`ClaudeLocalAvailabilityChannel` IPC
 // handlers above -- i.e. only when the renderer explicitly invokes them.
 // #8974 removed the last renderer caller (the old composer-embedded Codex
 // chip), so the Map stayed stuck at its permanent "unknown" default and
 // every ordinary provider switch was refused for `missing_auth` regardless
 // of real login state. Fix: probe live here, exactly like the ACP lanes a
 // few lines below already do via `ensureAcpProviders()`/`acpProviderHost.status()`.
-// `codexLocal.availability()`/`fableLocal.availability()` are safe to call on
+// `codexLocal.availability()`/`claudeLocal.availability()` are safe to call on
 // every `providerLaneEntries()` invocation -- Codex's underlying preflight
 // (`ensureProbed`) is itself memoized after the first probe round, and
 // Claude's `discover()` is a lightweight local account-registry read, not a
 // fresh network/subprocess probe per call.
 const providerLaneEntries = async (): Promise<ReadonlyArray<ProviderLaneRegistryEntry>> => {
   const nativeLanes = [
-    { lane: fableLocalLane, availability: () => fableLocal.availability() },
+    { lane: claudeLocalLane, availability: () => claudeLocal.availability() },
     { lane: codexLocalLane, availability: () => codexLocal.availability() },
   ] as const
   const nativeEntries: ReadonlyArray<ProviderLaneRegistryEntry> = await Promise.all(
@@ -4797,7 +4797,7 @@ ipcMain.handle(ProviderLaneRegistrySelectChannel, async (event, value: unknown) 
   })
   if (result.ok && result.previousLaneRef !== result.laneRef) {
     if (result.laneRef === "codex-local") codexLocal.resetContinuity(result.threadRef)
-    if (result.laneRef === "fable-local") fableLocal.resetContinuity(result.threadRef)
+    if (result.laneRef === "claude-local") claudeLocal.resetContinuity(result.threadRef)
     // FA-HO-01 (#8975): every successful switch appends a durable receipt --
     // exact from/to identities, actor, time, reason, and truncation
     // disposition -- naming the SAME host-owned bounded projection the
@@ -4870,24 +4870,24 @@ ipcMain.handle(ProviderLaneRegistrySelectChannel, async (event, value: unknown) 
  * dispatcher over the codex lane value above.
  */
 const dispatchCodexLocalTurn = async (
-  request: import("./fable-local-contract.ts").FableLocalStartRequest,
+  request: import("./claude-local-contract.ts").ClaudeLocalStartRequest,
   sender: WebContents | null,
 ): Promise<Readonly<{
   ok: boolean
   thread?: DesktopThread | null
   error?: string
-  reason?: import("./fable-local-contract.ts").FableLocalFailureReason
+  reason?: import("./claude-local-contract.ts").ClaudeLocalFailureReason
 }>> => laneDispatcher.dispatchTurn(codexLocalLane, request, sender)
 
-const dispatchFableLocalTurn = async (
-  request: import("./fable-local-contract.ts").FableLocalStartRequest,
+const dispatchClaudeLocalTurn = async (
+  request: import("./claude-local-contract.ts").ClaudeLocalStartRequest,
   sender: WebContents | null,
 ): Promise<Readonly<{
   ok: boolean
   thread?: DesktopThread | null
   error?: string
-  reason?: import("./fable-local-contract.ts").FableLocalFailureReason
-}>> => laneDispatcher.dispatchTurn(fableLocalLane, request, sender)
+  reason?: import("./claude-local-contract.ts").ClaudeLocalFailureReason
+}>> => laneDispatcher.dispatchTurn(claudeLocalLane, request, sender)
 
 /** Owner-visible Full Auto outcome notes reuse the same system-note +
  * recovery-broadcast shape the cap note already shipped with. */
@@ -5001,12 +5001,12 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
                 : {}),
             }, null)
           })()
-        : laneRef === "fable-local"
+        : laneRef === "claude-local"
         ? await (async () => {
             const model = profile?.model !== undefined && isClaudeModel(profile.model)
               ? profile.model
-              : FABLE_LOCAL_MODEL
-            return dispatchFableLocalTurn({
+              : CLAUDE_LOCAL_MODEL
+            return dispatchClaudeLocalTurn({
               turnRef,
               threadRef,
               message,
@@ -5235,7 +5235,7 @@ fullAutoLivenessWatchdog.unref?.()
 void localTurnRecovery.then(() => runFullAutoReconciliation({ startup: true })).catch(() => {})
 
 ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
-  const request = decodeFableLocalStartRequest(value)
+  const request = decodeClaudeLocalStartRequest(value)
   if (request === null) return { ok: false, error: "That message could not be sent." }
   const laneRef = providerLaneRegistry.selection(request.threadRef)
   if (laneRef === "codex-local") return dispatchCodexLocalTurn(request, event.sender)
@@ -5773,35 +5773,35 @@ const smokeReactWorkbench = `(async () => {
  * (#8974 removed the last renderer caller of the availability IPC channels),
  * so this switch always failed with `missing_auth` regardless of real login
  * state. Post-fix, `providerLaneEntries()` probes `codexLocal.availability()`
- * / `fableLocal.availability()` live on every call, matching this fixture's
+ * / `claudeLocal.availability()` live on every call, matching this fixture's
  * genuinely-available accounts.
  */
 const smokeReactProviderAuthSwitch = `(async () => {
   const bridge = globalThis.openagentsDesktop
-  const thread = await bridge?.newThread?.({ laneRef: "fable-local" })
+  const thread = await bridge?.newThread?.({ laneRef: "claude-local" })
   if (typeof thread?.id !== "string") {
     return { ok: false, step: "new-thread", thread }
   }
   const lanes = await bridge?.providerLanes?.list?.()
   const laneEntries = Array.isArray(lanes?.lanes) ? lanes.lanes : []
   const codexEntry = laneEntries.find((entry) => entry?.laneRef === "codex-local")
-  const fableEntry = laneEntries.find((entry) => entry?.laneRef === "fable-local")
-  if (codexEntry?.authentication !== "ready" || fableEntry?.authentication !== "ready") {
-    return { ok: false, step: "lane-authentication", codexEntry, fableEntry }
+  const claudeEntry = laneEntries.find((entry) => entry?.laneRef === "claude-local")
+  if (codexEntry?.authentication !== "ready" || claudeEntry?.authentication !== "ready") {
+    return { ok: false, step: "lane-authentication", codexEntry, claudeEntry }
   }
   const toCodex = await bridge?.providerLanes?.select?.({ threadRef: thread.id, laneRef: "codex-local" })
   if (toCodex?.ok !== true) {
     return { ok: false, step: "switch-to-codex", result: toCodex }
   }
-  const backToFable = await bridge?.providerLanes?.select?.({ threadRef: thread.id, laneRef: "fable-local" })
-  if (backToFable?.ok !== true) {
-    return { ok: false, step: "switch-back-to-fable", result: backToFable }
+  const backToClaude = await bridge?.providerLanes?.select?.({ threadRef: thread.id, laneRef: "claude-local" })
+  if (backToClaude?.ok !== true) {
+    return { ok: false, step: "switch-back-to-claude", result: backToClaude }
   }
   return {
     ok: true,
     threadRef: thread.id,
     codexAuthentication: codexEntry.authentication,
-    fableAuthentication: fableEntry.authentication,
+    claudeAuthentication: claudeEntry.authentication,
   }
 })()`
 
@@ -6922,7 +6922,7 @@ const smokeMvpSurfaceAllowlist = `(() => {
 // wave-2): the built-Electron settings screen renders the MCP servers section,
 // and adding a fixture stdio server through the REAL Add form + typed IPC
 // persists it to the real userData store and lists it. No MCP server is ever
-// spawned — the fable query is a fixture in smoke.
+// spawned — the claude query is a fixture in smoke.
 const smokeMcpAddServer = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const title = document.querySelector('[data-en-key="settings-mcp-title"]')
@@ -7087,7 +7087,7 @@ const smokeNewChatFromHistory = `(async () => {
 })()`
 
 // Composer gestures (EP250 owner statements): "i want shift+tab to togle
-// between modes in composer (fable / codex) in this case" and "airplane icon
+// between modes in composer (claude / codex) in this case" and "airplane icon
 // in composer OUTSIDE of the button is stupid. put it in , remove text
 // 'send'". From the fresh chat: the send control is ONE icon-only button
 // (plane INSIDE, no "Send" text anywhere in the composer); with the composer
@@ -7125,16 +7125,16 @@ const smokeComposerGestures = `(async () => {
   const selectedHarness = () => {
     const select = document.querySelector('[data-en-key="shell-harness-select"]')
     if (select instanceof HTMLSelectElement) return select.value
-    const fable = document.querySelector('[data-en-key="shell-harness-fable"]')
+    const claude = document.querySelector('[data-en-key="shell-harness-claude"]')
     const codex = document.querySelector('[data-en-key="shell-harness-codex"]')
-    if (fable?.getAttribute("data-en-variant") === "secondary") return "fable"
+    if (claude?.getAttribute("data-en-variant") === "secondary") return "claude"
     if (codex?.getAttribute("data-en-variant") === "secondary") return "codex"
     return null
   }
   input.focus()
   const before = selectedHarness()
-  if (before !== "fable" && before !== "codex") return { ok: false, reason: "no harness selected before toggle: " + before }
-  const other = before === "fable" ? "codex" : "fable"
+  if (before !== "claude" && before !== "codex") return { ok: false, reason: "no harness selected before toggle: " + before }
+  const other = before === "claude" ? "codex" : "claude"
   const dispatchShiftTab = (target) => target.dispatchEvent(
     new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }),
   )
@@ -7161,12 +7161,12 @@ const smokeComposerGestures = `(async () => {
   if (selectedHarness() !== before) return { ok: false, reason: "Shift+Tab outside the composer hijacked the harness selection" }
   if (outsideNotPrevented !== true) return { ok: false, reason: "Shift+Tab outside the composer was preventDefaulted (focus navigation hijacked)" }
   input.focus()
-  if (selectedHarness() !== "fable") {
+  if (selectedHarness() !== "claude") {
     dispatchShiftTab(input)
-    const fableDeadline = Date.now() + 5000
-    while (Date.now() < fableDeadline && selectedHarness() !== "fable") await wait(25)
+    const claudeDeadline = Date.now() + 5000
+    while (Date.now() < claudeDeadline && selectedHarness() !== "claude") await wait(25)
   }
-  if (selectedHarness() !== "fable") return { ok: false, reason: "could not restore Fable for the following smoke turn" }
+  if (selectedHarness() !== "claude") return { ok: false, reason: "could not restore Claude for the following smoke turn" }
   return { ok: true, iconOnlySend: true, toggledBoth: true, outsideUntouched: true }
 })()`
 
@@ -7206,8 +7206,8 @@ const smokeVoiceMode = `(async () => {
   return { ok: registeredFocus && muted && bargeInOutcome && truth.includes("Not retained") && find("shell-voice-hud") === null, truth, registeredFocus, muted, bargeInOutcome, stopped: find("shell-voice-hud") === null }
 })()`
 
-// Fable local streaming journey (#8712, EP250 owner fixes): from the fresh
-// chat, the Fable chip must be enabled (fixture account) and Codex visibly
+// Claude local streaming journey (#8712, EP250 owner fixes): from the fresh
+// chat, the Claude chip must be enabled (fixture account) and Codex visibly
 // disabled with its reason ONLY in the accessible label — NO caption text
 // anywhere in the composer ("Don't put that shit in the UI ever."). A send
 // must stream PROGRESSIVE text (a partial snapshot with a still-unterminated
@@ -7216,14 +7216,14 @@ const smokeVoiceMode = `(async () => {
 // ASSISTANT sender label, and the composer re-enabled. Fixture-driven; the
 // event mapping, IPC bridge, thread persistence, and renderer streaming path
 // are all real.
-const smokeFableLocalStreaming = `(async () => {
+const smokeClaudeLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const harness = document.querySelector('[data-en-key="shell-harness-select"]')
   if (!(harness instanceof HTMLSelectElement)) return { ok: false, reason: "provider select never mounted" }
-  const fable = Array.from(harness.options).find((option) => option.value === "fable")
+  const claude = Array.from(harness.options).find((option) => option.value === "claude")
   const codex = Array.from(harness.options).find((option) => option.value === "codex")
-  if (fable === undefined || codex === undefined) return { ok: false, reason: "provider options missing" }
-  if (fable.disabled !== false) return { ok: false, reason: "Fable option disabled despite fixture account" }
+  if (claude === undefined || codex === undefined) return { ok: false, reason: "provider options missing" }
+  if (claude.disabled !== false) return { ok: false, reason: "Claude option disabled despite fixture account" }
   // EP250 chip-verified-evidence rule: the codex availability invoke is
   // GATED in smoke (released after this step), so at this point the chip is
   // deterministically disabled with its "verifying" reason — the state the
@@ -7243,13 +7243,13 @@ const smokeFableLocalStreaming = `(async () => {
       visibleComposerText.includes("requires OpenAgents session")) {
     return { ok: false, reason: "composer still renders a standing disabled-reason caption" }
   }
-  harness.value = "fable"
+  harness.value = "claude"
   harness.dispatchEvent(new Event("change", { bubbles: true }))
   await wait(50)
   const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
-  input.value = "Stream a fable-local proof"
+  input.value = "Stream a claude-local proof"
   input.dispatchEvent(new Event("input", { bubbles: true }))
   const assistantBodies = () => {
     const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
@@ -7270,7 +7270,7 @@ const smokeFableLocalStreaming = `(async () => {
       .join(" ")
   }
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-  const finalText = "Fable local streaming proof."
+  const finalText = "Claude local streaming proof."
   let sawPartial = false
   const deadline = Date.now() + 20000
   while (Date.now() < deadline) {
@@ -7344,16 +7344,16 @@ const smokeFableLocalStreaming = `(async () => {
 
 // Capability I1 image attach: drop a fixture PNG onto the composer, assert the
 // thumbnail renders, submit a text+image turn, and assert the assistant reply
-// carries the fable fixture's image-received marker — proving the image
-// content block reached the SDK query payload end-to-end (the fable fixture
+// carries the claude fixture's image-received marker — proving the image
+// content block reached the SDK query payload end-to-end (the claude fixture
 // drains the streaming-input prompt and counts image blocks). Runs on a fresh
 // chat so its Read-triggered fixture question card does not collide with the
-// earlier question-card step. Fable-lane only (the fixture query is Fable's).
-const smokeFableImageAttach = `(async () => {
+// earlier question-card step. Claude-lane only (the fixture query is Claude's).
+const smokeClaudeImageAttach = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const harness = document.querySelector('[data-en-key="shell-harness-select"]')
-  if (harness instanceof HTMLSelectElement && harness.value !== "fable") {
-    harness.value = "fable"
+  if (harness instanceof HTMLSelectElement && harness.value !== "claude") {
+    harness.value = "claude"
     harness.dispatchEvent(new Event("change", { bubbles: true }))
     await wait(50)
   }
@@ -7458,7 +7458,7 @@ const smokeAskUserQuestionOpen = `(async () => {
   const harness = document.querySelector('[data-en-key="shell-harness-select"]')
   const providerButton = document.querySelector('[data-en-key="shell-provider-select"], button[aria-label^="Provider:"]')
   if (harness instanceof HTMLSelectElement) {
-    harness.value = "fable"
+    harness.value = "claude"
     harness.dispatchEvent(new Event("change", { bubbles: true }))
   } else if (providerButton instanceof HTMLButtonElement) {
     const providerLabel = () => providerButton.getAttribute("aria-label") ?? providerButton.textContent ?? ""
@@ -7466,7 +7466,7 @@ const smokeAskUserQuestionOpen = `(async () => {
     const providerDeadline = Date.now() + 5000
     while (Date.now() < providerDeadline && providerLabel().includes("Provider: Codex")) await wait(50)
     if (providerLabel().includes("Provider: Codex")) {
-      return { ok: false, reason: "Fable provider was not selectable", disabled: providerButton.disabled, providerLabel: providerLabel() }
+      return { ok: false, reason: "Claude provider was not selectable", disabled: providerButton.disabled, providerLabel: providerLabel() }
     }
   } else return { ok: false, reason: "provider control unavailable" }
   await wait(50)
@@ -8721,10 +8721,10 @@ void app.whenReady().then(async () => {
         const key = {
           threadRef: thread.id,
           turnRef: seedTurnRef,
-          lane: claudeVariant ? "fable-local" as const : "codex-local" as const,
+          lane: claudeVariant ? "claude-local" as const : "codex-local" as const,
         }
-        const accountRef = claudeVariant ? FABLE_LOCAL_FIXTURE_ACCOUNT.ref : FIXTURE_CODEX_LOCAL_ACCOUNT.ref
-        const model = claudeVariant ? FABLE_LOCAL_MODEL : CODEX_LOCAL_MODEL
+        const accountRef = claudeVariant ? CLAUDE_LOCAL_FIXTURE_ACCOUNT.ref : FIXTURE_CODEX_LOCAL_ACCOUNT.ref
+        const model = claudeVariant ? CLAUDE_LOCAL_MODEL : CODEX_LOCAL_MODEL
         localTurnJournal.accept({
           ...key,
           userMessageKey: `${seedTurnRef}-user`,
@@ -8757,7 +8757,7 @@ void app.whenReady().then(async () => {
         fullAutoRegistry.set(thread.id, true, {
           workspaceRef: grantedWorkspaceRef,
           ...(claudeVariant
-            ? { profile: { lane: "fable-local", accountRef, model } }
+            ? { profile: { lane: "claude-local", accountRef, model } }
             : {}),
         })
         // Happy path: consume all but ONE cap slot so the resume phase
@@ -8819,9 +8819,9 @@ void app.whenReady().then(async () => {
           typeof record.pendingTurnRef !== "string" &&
           continuationRecords.length === 1 && continuationRecords[0]!.phase === "completed" &&
           dispatchedTurnRef !== null &&
-          dispatchedLane === (expectClaude ? "fable-local" : "codex-local") &&
+          dispatchedLane === (expectClaude ? "claude-local" : "codex-local") &&
           (expectClaude
-            ? continuationAssistantText.includes("Fable local")
+            ? continuationAssistantText.includes("Claude local")
             : continuationAssistantText.includes("fixture")) &&
           notes.some(note => note.key === `${dispatchedTurnRef}-user`)
       console.log(`[openagents-desktop full-auto-restart] phase-b ${JSON.stringify({
@@ -9112,7 +9112,7 @@ app.on("before-quit", () => {
   disposeIdeRunHost()
   hostLifecycle.dispose()
   providerAccounts.dispose()
-  fableLocal.dispose()
+  claudeLocal.dispose()
   codexLocal.dispose()
   codexControlPlanes.close()
   codexThreadLifecycles.close()

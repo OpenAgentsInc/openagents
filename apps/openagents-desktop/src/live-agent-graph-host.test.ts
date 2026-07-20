@@ -1,6 +1,6 @@
 /**
  * CUT-11 (#8691) main-process wiring tests: the live-agent-graph host fed by
- * the REAL local runtime emit path — an actual `makeFableLocalRuntime` turn
+ * the REAL local runtime emit path — an actual `makeClaudeLocalRuntime` turn
  * (fixture Claude SDK query + REAL `makeCodexChildRuntime` delegate children
  * on fixture spawns) and an actual `makeCodexLocalRuntime` turn (fixture
  * `codex exec --json` stdout) — exactly the callback shape `main.ts` wires.
@@ -22,13 +22,13 @@ import {
   fixtureCodexLocalTurnStdout,
   makeCodexLocalRuntime,
 } from "./codex-local-runtime.ts"
-import type { FableLocalEvent } from "./fable-local-contract.ts"
+import type { ClaudeLocalEvent } from "./claude-local-contract.ts"
 import {
-  makeFableLocalRuntime,
-  makeFixtureFableMcpFactory,
-  type FableLocalQuery,
-  type FixtureFableMcpTool,
-} from "./fable-local-runtime.ts"
+  makeClaudeLocalRuntime,
+  makeFixtureClaudeMcpFactory,
+  type ClaudeLocalQuery,
+  type FixtureClaudeMcpTool,
+} from "./claude-local-runtime.ts"
 import {
   decodeLiveAgentGraphHostSnapshot,
   decodeLiveAgentGraphUpdate,
@@ -43,15 +43,15 @@ const makeAccountRoot = (): string => {
   return root
 }
 
-type CapturedQuery = Parameters<FableLocalQuery>[0]
+type CapturedQuery = Parameters<ClaudeLocalQuery>[0]
 
 const ticker = () => {
   let tick = 0
   return () => new Date(Date.UTC(2026, 6, 12, 0, 0, 0, tick += 1)).toISOString()
 }
 
-describe("makeLiveAgentGraphHost through the REAL fable-local emit path", () => {
-  test("one fable turn with a real codex delegate child becomes one canonical graph", async () => {
+describe("makeLiveAgentGraphHost through the REAL claude-local emit path", () => {
+  test("one claude turn with a real codex delegate child becomes one canonical graph", async () => {
     const pushes: Array<unknown> = []
     const host = makeLiveAgentGraphHost({ emit: update => pushes.push(update), now: ticker() })
 
@@ -64,34 +64,34 @@ describe("makeLiveAgentGraphHost through the REAL fable-local emit path", () => 
       health: makeCodexAccountHealth(),
     })
     const captured: CapturedQuery[] = []
-    const runtime = makeFableLocalRuntime({
+    const runtime = makeClaudeLocalRuntime({
       scratchRoot: () => mkdtempSync(join(tmpdir(), "graph-host-scratch-")),
       env: { PYLON_ACCOUNT_HOME_ROOT: makeAccountRoot() },
       queryImpl: async () => (call => {
         captured.push(call)
         return (async function* () {
           yield { type: "system", subtype: "init", session_id: "session-g1" }
-          const servers = call.options.mcpServers as Record<string, { tools: Array<FixtureFableMcpTool> }>
+          const servers = call.options.mcpServers as Record<string, { tools: Array<FixtureClaudeMcpTool> }>
           await servers.codex!.tools[0]!.handler({ task: "summarize the notes" }, {})
           yield { type: "result", subtype: "success", is_error: false, result: "done", usage: { input_tokens: 10, output_tokens: 5 } }
         })()
       }),
       delegate,
-      mcpImpl: async () => makeFixtureFableMcpFactory(),
+      mcpImpl: async () => makeFixtureClaudeMcpFactory(),
     })
 
     const threadRef = "thread-graph-1"
     const turnRef = "turn-graph-1"
     // EXACTLY the two calls main.ts makes: beginTurn before runTurn, one
     // applyEvent line inside the existing emit callback.
-    const begun = host.beginTurn({ turnRef, threadRef, lane: "fable_claude" })
+    const begun = host.beginTurn({ turnRef, threadRef, lane: "claude_local" })
     expect(begun.applied).toBe(true)
     const result = await runtime.runTurn({
       turnRef,
       threadRef,
       history: [],
       message: "go",
-      emit: (event: FableLocalEvent) => {
+      emit: (event: ClaudeLocalEvent) => {
         host.applyEvent(threadRef, { turnRef, event })
       },
     })
@@ -161,7 +161,7 @@ describe("makeLiveAgentGraphHost through the REAL fable-local emit path", () => 
       threadRef,
       history: [],
       message: "hello codex",
-      emit: (event: FableLocalEvent) => {
+      emit: (event: ClaudeLocalEvent) => {
         host.applyEvent(threadRef, { turnRef, event })
       },
     })

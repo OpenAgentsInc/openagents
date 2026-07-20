@@ -1,13 +1,13 @@
 /**
  * Provider lane SPI (L1 #8899): a FIXTURE lane — a provider that has never
  * been hand-wired anywhere in main.ts — implements the typed adapter and runs
- * through the SAME shared dispatch engine as codex-local and fable-local.
+ * through the SAME shared dispatch engine as codex-local and claude-local.
  *
  * What this suite proves:
  * - the durable local-turn journal lifecycle (accept → streaming → terminal)
  *   works for a never-hand-wired lane ref;
  * - every envelope the dispatcher forwards to the renderer decodes against
- *   the FROZEN fable-local event envelope schema (no third vocabulary);
+ *   the FROZEN claude-local event envelope schema (no third vocabulary);
  * - the renderer's shared projection path renders the fixture lane's stream
  *   through the exact same transcript notes as the built-in lanes;
  * - interrupt, exact usage attribution, capability reporting, duplicate-turn
@@ -21,11 +21,11 @@ import { describe, expect, test } from "vite-plus/test"
 
 import type { DesktopThread } from "./chat-contract.ts"
 import {
-  FableLocalEventEnvelopeSchema,
-  decodeFableLocalEventEnvelope,
-  type FableLocalEvent,
-  type FableLocalStartRequest,
-} from "./fable-local-contract.ts"
+  ClaudeLocalEventEnvelopeSchema,
+  decodeClaudeLocalEventEnvelope,
+  type ClaudeLocalEvent,
+  type ClaudeLocalStartRequest,
+} from "./claude-local-contract.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { reconcileLocalTurns } from "./local-turn-recovery.ts"
 import {
@@ -35,7 +35,7 @@ import {
   type ProviderLane,
   type ProviderLaneDispatcherDeps,
 } from "./provider-lane.ts"
-import { makeLocalHarnessChatHost, type FableLocalRendererBridge } from "./renderer/local-harness.ts"
+import { makeLocalHarnessChatHost, type ClaudeLocalRendererBridge } from "./renderer/local-harness.ts"
 import { makeThreadStore } from "./thread-store.ts"
 
 const FIXTURE_LANE_REF = "fixture-acp"
@@ -124,7 +124,7 @@ const makeFixtureHarness = (root: string, options?: Readonly<{
         })
         return { ok: false, reason: "interrupted", detail: "turn interrupted" }
       }
-      const events: ReadonlyArray<FableLocalEvent> = [
+      const events: ReadonlyArray<ClaudeLocalEvent> = [
         { kind: "turn_started" },
         { kind: "model_effective", model: "fixture-model-1" },
         { kind: "text_delta", text: "Hello from " },
@@ -213,7 +213,7 @@ const fakeSender = (forwarded: Array<{ channel: string; payload: unknown }>) => 
   send: (channel: string, payload: unknown) => forwarded.push({ channel, payload }),
 })
 
-const startRequest = (threadRef: string, turnRef = "turn-fixture-1"): FableLocalStartRequest => ({
+const startRequest = (threadRef: string, turnRef = "turn-fixture-1"): ClaudeLocalStartRequest => ({
   turnRef,
   threadRef,
   message: "run the fixture",
@@ -296,7 +296,7 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
           afterTurn: laneRef => revalidated.push(laneRef),
         },
       })
-      for (const [index, laneRef] of ["codex-local", "fable-local"].entries()) {
+      for (const [index, laneRef] of ["codex-local", "claude-local"].entries()) {
         const thread = harness.store.newThread()
         const lane = {
           ...harness.lane,
@@ -314,7 +314,7 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
         "SPEC WORK CONTEXT (bounded)\nUNMET AO-1: Prove the failing case\n\nOWNER TURN INSTRUCTION:\nrun the fixture",
         "SPEC WORK CONTEXT (bounded)\nUNMET AO-1: Prove the failing case\n\nOWNER TURN INSTRUCTION:\nrun the fixture",
       ])
-      expect(revalidated).toEqual(["codex-local", "fable-local"])
+      expect(revalidated).toEqual(["codex-local", "claude-local"])
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -347,9 +347,9 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
       expect(harness.forwarded.length).toBeGreaterThan(0)
       for (const entry of harness.forwarded) {
         expect(entry.channel).toBe(FIXTURE_CHANNEL)
-        expect(decodeFableLocalEventEnvelope(entry.payload)).not.toBeNull()
+        expect(decodeClaudeLocalEventEnvelope(entry.payload)).not.toBeNull()
       }
-      void FableLocalEventEnvelopeSchema
+      void ClaudeLocalEventEnvelopeSchema
 
       // The persisted transcript carries the SAME shared notes the built-in
       // lanes persist: user note, tool trace (typed meta), lane-branded model
@@ -414,7 +414,7 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
       const lane: ProviderLane<null> = {
         ...harness.lane,
         runTurn: async ({ emit }) => {
-          const events: ReadonlyArray<FableLocalEvent> = [
+          const events: ReadonlyArray<ClaudeLocalEvent> = [
             { kind: "model_effective", model: "fixture-model-1" },
             { kind: "text_delta", text: "Before the command." },
             { kind: "tool_use", toolName: "Bash", itemRef: "cmd-1", summary: "pnpm test" },
@@ -495,7 +495,7 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
         note.role === "assistant" && note.text === "Partial reply."
       )).toBe(true)
 
-      const finalEnvelope = decodeFableLocalEventEnvelope(harness.forwarded.at(-1)?.payload)
+      const finalEnvelope = decodeClaudeLocalEventEnvelope(harness.forwarded.at(-1)?.payload)
       expect(finalEnvelope?.event).toEqual({
         kind: "turn_failed",
         reason: "session_failed",
@@ -525,15 +525,15 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
       const thread = harness.store.newThread()
       const dispatcher = makeProviderLaneDispatcher(harness.deps)
       await dispatcher.dispatchTurn(harness.lane, startRequest(thread.id), fakeSender(harness.forwarded))
-      const captured = harness.forwarded.map(entry => decodeFableLocalEventEnvelope(entry.payload))
+      const captured = harness.forwarded.map(entry => decodeClaudeLocalEventEnvelope(entry.payload))
       expect(captured.every(envelope => envelope !== null)).toBe(true)
       const finalThread = harness.store.open(thread.id) as DesktopThread
 
       // Replay the fixture lane's EXACT captured envelopes through the
       // renderer's one shared local-lane projection (the same code path both
       // built-in lanes render through) — no fixture-specific renderer wiring.
-      let listener: ((envelope: { turnRef: string; event: FableLocalEvent }) => void) | null = null
-      const bridge: FableLocalRendererBridge = {
+      let listener: ((envelope: { turnRef: string; event: ClaudeLocalEvent }) => void) | null = null
+      const bridge: ClaudeLocalRendererBridge = {
         availability: async () => ({ state: "available", accountRef: "fixture-account-1" }),
         start: async value => {
           const turnRef = (value as { turnRef: string }).turnRef
@@ -555,8 +555,8 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
           openThread: async () => finalThread,
           sendMessage: async () => ({ ok: false, error: "legacy path must not be used" }),
         },
-        fable: bridge,
-        fableAvailability: () => ({ state: "available", accountRef: "fixture-account-1" }),
+        claude: bridge,
+        claudeAvailability: () => ({ state: "available", accountRef: "fixture-account-1" }),
         randomId: () => "fixture",
         scheduleProjection: flush => {
           let active = true
@@ -572,7 +572,7 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
       const result = await host.sendMessage({
         id: thread.id,
         message: "run the fixture",
-        harness: "fable",
+        harness: "claude",
         onUpdate: projected => updates.push(projected),
       })
       await settle()

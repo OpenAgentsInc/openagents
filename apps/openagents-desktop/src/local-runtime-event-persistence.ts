@@ -1,5 +1,5 @@
 import type { DesktopMessage } from "./chat-contract.ts"
-import type { FableLocalEvent } from "./fable-local-contract.ts"
+import type { ClaudeLocalEvent } from "./claude-local-contract.ts"
 
 export type LocalRuntimePersistenceOperation =
   | Readonly<{ kind: "upsert"; note: DesktopMessage }>
@@ -35,7 +35,7 @@ const note = (
  */
 export const localRuntimePersistenceOperation = (input: Readonly<{
   turnRef: string
-  event: FableLocalEvent
+  event: ClaudeLocalEvent
   notes: ReadonlyArray<DesktopMessage>
   timestamp: string
 }>): LocalRuntimePersistenceOperation => {

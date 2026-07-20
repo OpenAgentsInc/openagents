@@ -87,7 +87,7 @@ describe("visual-baseline fixture states", () => {
     expect(state.notes).toHaveLength(0);
     expect(state.activeThreadId).toBeNull();
     expect(state.harnessLanes.codex.available).toBe(true);
-    expect(state.harnessLanes.fable.available).toBe(true);
+    expect(state.harnessLanes.claude.available).toBe(true);
   });
 
   test("thread-plan-card carries a typed runtime plan card", () => {

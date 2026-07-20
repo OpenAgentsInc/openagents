@@ -28,14 +28,14 @@ Tailwind/CSS-var values translated to concrete numbers:
 | input (editor) | `min-h-[52px]`, `px-4`/`pt-4`/`pb-2` (16/16/8), `text-[13px]`, `leading-5` (20px), `font-[440]`, scroll container `max-h-[180px]` | multiline `TextField` (textarea) on TOP, `minHeight: 64` (documented dimension), body typeScale, app.css `resize:none` + internal scroll |
 | bottom action bar | `flex h-11 items-center px-2` (height 44px, px 8px), left group `gap-1` (4px) | `Stack` row `shell-composer-bar`, `gap "1"`, min-height `--en-control-xl-height` (40) |
 | attach `+` | `IconButton` `size-7` (28px), `rounded-md` (6px), ghost, `text-v2-icon-icon-muted`, `icon="plus"` | `shell-attach-image` `IconButton` (fixed 44px), `Plus` glyph, `surfaceRaised`/`textMuted`, radius `md` |
-| harness/model controls | live in the left area of the bar, after `+` | Fable\|Codex recessed segmented `shell-harness-row`, relocated into the bar after `+` (owner directive) |
+| harness/model controls | live in the left area of the bar, after `+` | Claude\|Codex recessed segmented `shell-harness-row`, relocated into the bar after `+` (owner directive) |
 | send | `IconButton` `size-7` `rounded-md`, `variant="primary"`, gradient `bg-contrast` fill, `disabled:opacity-50`, `icon="arrow-up"` (or `stop`) | circular `shell-note` (radius `full` on the 44px `IconButton` square), `accent`/`textInverse` when the input has text/images, `surfaceRaised`/`textMuted` ghost when blank. `Stop` shares the circle while streaming |
 
 Layout change: OpenCode already stacks the editor above a bottom action bar
 inside one container. The owner target is that exact shape plus the
 codex/claude toggle moved into the bar. We flipped our previous
 toggle-on-top / inline `[+ input send]` row into `[image thumbnails]` →
-`[multiline input]` → `[+  Fable|Codex  ⇢spacer⇢  ●send]`. Every prior feature
+`[multiline input]` → `[+  Claude|Codex  ⇢spacer⇢  ●send]`. Every prior feature
 (attach picker + drop/paste, harness toggle + Shift+Tab + evidence gating,
 image thumbnails, Stop-while-streaming, queue-until-idle, disabled-reason
 popovers, `DesktopInputChanged`/`DesktopNoteSubmitted` wiring) is preserved,

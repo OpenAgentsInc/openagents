@@ -5,7 +5,7 @@
  *
  * The law this module enforces in code: selecting a harness can never route
  * to the cloud gateway or another provider.
- * - "fable" streams a real local Claude turn through the fableLocal bridge
+ * - "claude" streams a real local Claude turn through the claudeLocal bridge
  *   (typed unavailable error when no linked Claude account home exists).
  * - "codex" streams a real local `codex exec` turn through the codexLocal
  *   bridge (EP250: typed refusal naming the verified-account rule when no
@@ -15,22 +15,22 @@
  *   base host's legacy `completeChatTurn` fallback.
  *
  * Both lanes share ONE event-projection path (the codex lane reuses the
- * frozen fable-local event envelope), so codex turns render through the
+ * frozen claude-local event envelope), so codex turns render through the
  * exact same transcript cards.
  */
 import type { DesktopMessage, DesktopMeterRateLimitWindow, DesktopMeterSnapshot, DesktopThread } from "../chat-contract.ts"
 import {
-  fableLocalFailureMessage,
-  fableLocalModelNoteText,
-  fableLocalTraceNoteMeta,
-  fableLocalTraceNoteText,
+  claudeLocalFailureMessage,
+  claudeLocalModelNoteText,
+  claudeLocalTraceNoteMeta,
+  claudeLocalTraceNoteText,
   makeTranscriptOrderingBoundaryTracker,
-  type FableLocalAvailability,
-  type FableLocalEvent,
-  type FableLocalEventEnvelope,
-  type FableLocalImageAttachment,
+  type ClaudeLocalAvailability,
+  type ClaudeLocalEvent,
+  type ClaudeLocalEventEnvelope,
+  type ClaudeLocalImageAttachment,
   type LocalProviderTarget,
-} from "../fable-local-contract.ts"
+} from "../claude-local-contract.ts"
 import type { LocalSkillInvocation } from "../plugin-config-contract.ts"
 import {
   makeComposerInterruptIntent,
@@ -44,11 +44,11 @@ import {
 } from "../codex-local-contract.ts"
 import type { ChatHost, DesktopRuntimeFailureKind } from "./shell.ts"
 
-export type FableLocalRendererBridge = Readonly<{
+export type ClaudeLocalRendererBridge = Readonly<{
   availability: () => Promise<unknown>
   start: (value: unknown) => Promise<unknown>
   interrupt: (value: unknown) => Promise<unknown>
-  onEvent: (listener: (envelope: FableLocalEventEnvelope) => void) => () => void
+  onEvent: (listener: (envelope: ClaudeLocalEventEnvelope) => void) => () => void
   /**
    * EP250 wave-2 runtime-capability channels (additive; absent on older
    * bridges). `steerChild` interrupts a running delegate child (G4);
@@ -81,7 +81,7 @@ const noteTimestamp = (now: Date = new Date()): string =>
  */
 const mergeMeterSnapshot = (
   previous: DesktopMeterSnapshot | null,
-  event: Extract<FableLocalEvent, { kind: "meter_updated" }>,
+  event: Extract<ClaudeLocalEvent, { kind: "meter_updated" }>,
 ): DesktopMeterSnapshot => {
   const rateLimitsByLabel = new Map<DesktopMeterRateLimitWindow["label"], DesktopMeterRateLimitWindow>()
   for (const window of previous?.rateLimits ?? []) rateLimitsByLabel.set(window.label, window)
@@ -121,10 +121,10 @@ const decodeTurnResult = (
 
 export type MakeLocalHarnessChatHostInput = Readonly<{
   base: ChatHost
-  fable: FableLocalRendererBridge | null
-  fableAvailability: () => FableLocalAvailability | null
+  claude: ClaudeLocalRendererBridge | null
+  claudeAvailability: () => ClaudeLocalAvailability | null
   /** Codex local lane (EP250) — same bridge shape, its own channels. */
-  codex?: FableLocalRendererBridge | null
+  codex?: ClaudeLocalRendererBridge | null
   codexAvailability?: () => CodexLocalAvailability | null
   randomId?: () => string
   now?: () => Date
@@ -147,23 +147,23 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
    * composer Stop button (EP250) can drive the lane's already-plumbed
    * interrupt IPC path by its exact turnRef. One local turn runs at a time.
    */
-  let activeTurn: { bridge: FableLocalRendererBridge; turnRef: string; threadRef: string } | null = null
+  let activeTurn: { bridge: ClaudeLocalRendererBridge; turnRef: string; threadRef: string } | null = null
 
   /** One shared streaming projection for both local lanes: trace lines
    * first, growing assistant bubble last — the same order the finalized
    * persisted thread carries, so finalize never reshuffles the transcript. */
   const runLaneTurn = async (
-    lane: "fable" | "codex",
-    bridge: FableLocalRendererBridge,
+    lane: "claude" | "codex",
+    bridge: ClaudeLocalRendererBridge,
     send: Readonly<{
       id: string
       message: string
-      images?: ReadonlyArray<FableLocalImageAttachment>
+      images?: ReadonlyArray<ClaudeLocalImageAttachment>
       target?: LocalProviderTarget
       skill?: LocalSkillInvocation
       permissionMode?: "owner_full" | "plan_only"
-      reasoningEffort?: import("../fable-local-contract.ts").CodexReasoningEffort
-      model?: import("../fable-local-contract.ts").LocalModel
+      reasoningEffort?: import("../claude-local-contract.ts").CodexReasoningEffort
+      model?: import("../claude-local-contract.ts").LocalModel
       queueRef?: string
       clientUserMessageId?: string
       /** Full Auto (#8852): Codex-lane only; ignored on the Claude lane. */
@@ -171,14 +171,14 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
       onUpdate?: (thread: DesktopThread) => void
     }>,
   ): Promise<Readonly<{ ok: boolean; thread?: DesktopThread | null; error?: string; failureKind?: DesktopRuntimeFailureKind }>> => {
-    const laneLabel = lane === "fable" ? "Claude" : "Codex"
+    const laneLabel = lane === "claude" ? "Claude" : "Codex"
     const turnRef = `turn.${lane}.${randomId().replace(/[^A-Za-z0-9._:-]/g, "")}`
     let baseThread: DesktopThread | null = null
     const orderedNotes: DesktopMessage[] = []
     let activeAssistantIndex: number | null = null
     let assistantSequence = 0
     let effectiveModel: string | null = null
-    const laneName = lane === "fable" ? "fable-local" : "codex-local"
+    const laneName = lane === "claude" ? "claude-local" : "codex-local"
     let pendingAssistantChunks: string[] = []
     let cancelProjection: (() => void) | null = null
     let projectionDirty = false
@@ -316,8 +316,8 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         return
       }
       if (event.kind === "model_effective") {
-        // Effective-model caption above the assistant reply ("Fable ·
-        // claude-fable-5" / "Codex · gpt-5.5 (requested)"). For fable the
+        // Effective-model caption above the assistant reply ("Claude ·
+        // claude-fable-5" / "Codex · gpt-5.5 (requested)"). For claude the
         // value is the SDK init report; for codex it is spawn-config truth
         // and arrives already "(requested)"-labeled. Main persists the same
         // line, so finalize does not reshuffle the transcript.
@@ -330,8 +330,8 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
           }
         }
         closeAssistantSegment()
-        pushSystemNote(lane === "fable"
-          ? fableLocalModelNoteText(event.model)
+        pushSystemNote(lane === "claude"
+          ? claudeLocalModelNoteText(event.model)
           : codexLocalModelNoteText(event.model))
         return
       }
@@ -347,12 +347,12 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         const note = {
           key,
           role: "system",
-          text: fableLocalTraceNoteText(event),
+          text: claudeLocalTraceNoteText(event),
           timestamp: noteTimestamp(now()),
           // Typed trace facts (EP250 tool cards): same bounded payload as
           // the text line, so the renderer builds typed cards without
           // re-parsing display strings.
-          meta: { trace: fableLocalTraceNoteMeta(event) },
+          meta: { trace: claudeLocalTraceNoteMeta(event) },
         } as const
         const existing = orderedNotes.findIndex(entry => entry.key === key)
         if (existing === -1) orderedNotes.push(note)
@@ -796,17 +796,17 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
         }
         return runLaneTurn("codex", bridge, send)
       }
-      const availability = input.fableAvailability()
-      if (input.fable === null || availability === null || availability.state !== "available") {
+      const availability = input.claudeAvailability()
+      if (input.claude === null || availability === null || availability.state !== "available") {
         return {
           ok: false,
-          error: fableLocalFailureMessage("no_claude_account", ""),
+          error: claudeLocalFailureMessage("no_claude_account", ""),
           failureKind: availability?.state === "unavailable" && availability.reason === "no_claude_account"
             ? "signed_out" as const
             : "failed" as const,
         }
       }
-      return runLaneTurn("fable", input.fable, send)
+      return runLaneTurn("claude", input.claude, send)
     },
   }
 }

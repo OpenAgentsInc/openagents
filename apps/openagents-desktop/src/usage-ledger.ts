@@ -1,7 +1,7 @@
 /**
  * Main-process session usage ledger (#8712 Lane C). In-memory, per desktop
  * session, aggregated per (provider, accountRef). Fed by main.ts from the
- * typed Fable/Codex-child completion events; read through the snapshot
+ * typed Claude/Codex-child completion events; read through the snapshot
  * channel and pushed through the event channel (see usage-ledger-contract).
  *
  * This module never imports `electron` (unit-testable under `pnpm exec vp test`).

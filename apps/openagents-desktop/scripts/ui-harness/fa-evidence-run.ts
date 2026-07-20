@@ -61,7 +61,7 @@ const main = async (): Promise<void> => {
   record("launching_isolated_app", { launchCwd });
   const desktop = await launchIsolatedDesktopApp({
     launchCwd,
-    ...(laneRef === "fable-local"
+    ...(laneRef === "claude-local"
       ? { extraEnv: { OPENAGENTS_DESKTOP_USE_DEFAULT_CLAUDE_SESSION: "1" } }
       : {}),
   });

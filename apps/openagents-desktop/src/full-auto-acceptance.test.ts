@@ -143,7 +143,7 @@ describe("FA-QA-01 verdict evaluation", () => {
       handoffRef: "handoff.provider.x.y",
       threadRef: "thread-1",
       from: "codex-local",
-      to: "fable-local",
+      to: "claude-local",
       actor: "owner_ui" as const,
       at: "2026-07-17T00:00:00.000Z",
       reason: "scripted switch",
@@ -208,11 +208,11 @@ describe("FA-QA-01 verdict evaluation", () => {
   test("BLOCKED takes precedence over rule outcomes -- an outage is never PASS and never FAIL", () => {
     const verdict = evaluateFullAutoAcceptance(fullAutoAcceptanceTest("test-01"), {
       ...passingContextEvidence("ORBIT-17"),
-      blockedReason: "target lane fable-local unavailable: provider outage",
+      blockedReason: "target lane claude-local unavailable: provider outage",
     })
     expect(verdict.disposition).toBe("BLOCKED")
     expect(verdict.reasons).toEqual([
-      "blocked: target lane fable-local unavailable: provider outage",
+      "blocked: target lane claude-local unavailable: provider outage",
     ])
   })
 

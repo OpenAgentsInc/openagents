@@ -266,7 +266,7 @@ test("local chat rename contains rejected hosts and ignores a dismissed stale su
 })
 /** Both lanes evidence-available: the pre-#8712 composer behavior baseline. */
 const availableHarnessLanes = {
-  fable: { available: true, reason: null },
+  claude: { available: true, reason: null },
   codex: { available: true, reason: null },
 } as const
 // `openAgentsStandby: false` keeps these fixtures on the preserved Codex/Claude
@@ -315,7 +315,7 @@ test.skip("retired out-of-scope Claude/Pylon composer target control", () => {
       { ref: "claude-pylon-3", provider: "claude_agent", email: null, readiness: "ready" as const },
     ],
   }
-  const implicit = { ...baseState, selectedHarness: "fable" as const, fleet }
+  const implicit = { ...baseState, selectedHarness: "claude" as const, fleet }
   expect(providerTargetForThread(implicit)).toEqual({
     provider: "claude_agent", accountRef: "claude-pylon-3", model: "claude-fable-5",
   })
@@ -338,14 +338,14 @@ test.skip("retired out-of-scope Claude/Pylon composer target control", () => {
 })
 
 // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
-test.skip("retired out-of-scope Fable permission control", () => {
-  const fable = desktopShellView({ ...baseState, selectedHarness: "fable" })
-  expect(nodeByKey(fable, "shell-permission-mode")?.label).toBe("Full tools")
-  expect((nodeByKey(fable, "shell-permission-mode")?.onPress as { name?: string })?.name)
+test.skip("retired out-of-scope Claude permission control", () => {
+  const claude = desktopShellView({ ...baseState, selectedHarness: "claude" })
+  expect(nodeByKey(claude, "shell-permission-mode")?.label).toBe("Full tools")
+  expect((nodeByKey(claude, "shell-permission-mode")?.onPress as { name?: string })?.name)
     .toBe("DesktopPermissionModeSelected")
   const planned = desktopShellView({
     ...baseState,
-    selectedHarness: "fable",
+    selectedHarness: "claude",
     permissionModeByThread: { [testThread.id]: "plan_only" },
   })
   expect(nodeByKey(planned, "shell-permission-mode")?.label).toBe("Plan only")
@@ -1066,7 +1066,7 @@ describe("desktopShellView (state -> component tree)", () => {
       ...baseState,
       openAgentsStandby: undefined,
       // Codex lane is unavailable (still verifying/loading) — this must NOT block.
-      harnessLanes: { fable: { available: false, reason: "loading" }, codex: { available: false, reason: "Codex — verifying availability" } },
+      harnessLanes: { claude: { available: false, reason: "loading" }, codex: { available: false, reason: "Codex — verifying availability" } },
       notes: [],
     }))
     const chatHost = {
@@ -2271,9 +2271,9 @@ describe("pure transitions", () => {
     expect(withPending(pending, false).pending).toBe(false)
   })
 
-  test("H1 successful Fable turns become resume-picker candidates without a history-navigation refresh", () => {
+  test("H1 successful Claude turns become resume-picker candidates without a history-navigation refresh", () => {
     const completed = { ...testThread, title: "Continuity ready", notes: [{ key: "a1", role: "assistant" as const, text: "ready", timestamp: "18:05" }] }
-    const next = withTurnResult({ ...baseState, selectedHarness: "fable" }, { ok: true, thread: completed }, "18:05")
+    const next = withTurnResult({ ...baseState, selectedHarness: "claude" }, { ok: true, thread: completed }, "18:05")
     expect(next.history.localThreads?.map(thread => thread.id)).toEqual([testThread.id])
     expect(next.history.localThreads?.[0]?.notes).toEqual(completed.notes)
   })
@@ -3313,8 +3313,8 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
         const provider = nodeByKey(view, "shell-harness-select") as {
           onChange: Parameters<typeof resolveIntentRef>[0]
         }
-        yield* registry.dispatch(resolveIntentRef(provider.onChange, "fable"))
-        expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("fable")
+        yield* registry.dispatch(resolveIntentRef(provider.onChange, "claude"))
+        expect((yield* SubscriptionRef.get(state)).selectedHarness).toBe("claude")
 
         const claudeView = desktopShellView(yield* SubscriptionRef.get(state))
         const claudeModel = nodeByKey(claudeView, "shell-model-select") as { onChange: Parameters<typeof resolveIntentRef>[0] }
@@ -3324,7 +3324,7 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
           onSubmit: Parameters<typeof resolveIntentRef>[0]
         }
         yield* registry.dispatch(resolveIntentRef(input.onSubmit, "route me"))
-        expect(sent).toEqual([{ id: testThread.id, message: "route me", harness: "fable", model: "claude-opus-4-8", reasoningEffort: undefined }])
+        expect(sent).toEqual([{ id: testThread.id, message: "route me", harness: "claude", model: "claude-opus-4-8", reasoningEffort: undefined }])
 
         const codexProvider = nodeByKey(view, "shell-harness-select") as {
           onChange: Parameters<typeof resolveIntentRef>[0]
@@ -3761,17 +3761,17 @@ describe("typed chat intent loop end-to-end (registry -> state -> re-render)", (
 
 describe("capability-gated composer lanes (#8712, evidence-gated affordances)", () => {
   const localModeLanes: HarnessLanes = {
-    fable: { available: true, reason: null },
+    claude: { available: true, reason: null },
     codex: { available: false, reason: "Codex — requires OpenAgents session" },
   }
   const noLanes: HarnessLanes = {
-    fable: { available: false, reason: "Fable — unavailable: no linked Claude account" },
+    claude: { available: false, reason: "Claude — unavailable: no linked Claude account" },
     codex: { available: false, reason: "Codex — requires OpenAgents session" },
   }
 
   test("the initial state proves nothing: both lanes start unavailable until boot lands evidence", () => {
     const initial = initialDesktopShellState("electron/darwin", "18:04")
-    expect(initial.harnessLanes.fable.available).toBe(false)
+    expect(initial.harnessLanes.claude.available).toBe(false)
     expect(initial.harnessLanes.codex.available).toBe(false)
   })
 
@@ -3779,8 +3779,8 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
     const next = withHarnessLanes(baseState, localModeLanes)
     expect(baseState.selectedHarness).toBe("codex")
     expect(next.selectedHarness).toBe("codex")
-    const kept = withHarnessLanes({ ...baseState, selectedHarness: "fable" }, localModeLanes)
-    expect(kept.selectedHarness).toBe("fable")
+    const kept = withHarnessLanes({ ...baseState, selectedHarness: "claude" }, localModeLanes)
+    expect(kept.selectedHarness).toBe("claude")
     expect(withHarnessLanes(baseState, noLanes).selectedHarness).toBe("codex")
   })
 
@@ -3792,7 +3792,7 @@ describe("capability-gated composer lanes (#8712, evidence-gated affordances)", 
     const state = withHarnessLanes(baseState, localModeLanes)
     const view = desktopShellView(state)
     const provider = nodeByKey(view, "shell-harness-select") as { options?: ReadonlyArray<{ value: string; disabled?: boolean }> }
-    expect(provider.options?.find(option => option.value === "fable")?.disabled).toBe(false)
+    expect(provider.options?.find(option => option.value === "claude")?.disabled).toBe(false)
     expect(provider.options?.find(option => option.value === "codex")?.disabled).toBe(true)
     // The caption node no longer exists in ANY lane state…
     expect(nodeByKey(view, "shell-harness-caption")).toBeUndefined()
@@ -3860,8 +3860,8 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
     permissionModes: ["owner_full"], approvals: "host_mediated", questions: true, skills: false,
     images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant",
   }
-  const fableCapability: ProviderLaneComposerProjection = {
-    laneRef: "fable-local", provider: "claude_agent", displayName: "Claude", admission: "admitted",
+  const claudeCapability: ProviderLaneComposerProjection = {
+    laneRef: "claude-local", provider: "claude_agent", displayName: "Claude", admission: "admitted",
     reason: null, models: ["claude-fable-5"], reasoningEfforts: [],
     permissionModes: ["owner_full", "plan_only"], approvals: "provider_native", questions: true, skills: true,
     images: true, fullAuto: false, interrupt: true, queueFollowup: true, steerTurn: false, extensions: ["skills"], evidence: "conformant",
@@ -3896,9 +3896,9 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
   })
 
   test("selectableProviderLanes lists native lanes plus only ADMITTED ACP peers, in stable order", () => {
-    const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok, quarantinedCursor])
+    const state = withProviderLaneCapabilities(baseState, [codexCapability, claudeCapability, admittedGrok, quarantinedCursor])
     const lanes = selectableProviderLanes(state)
-    expect(lanes.map(lane => lane.laneRef)).toEqual(["codex-local", "fable-local", "acp:grok-cli"])
+    expect(lanes.map(lane => lane.laneRef)).toEqual(["codex-local", "claude-local", "acp:grok-cli"])
     expect(lanes.find(lane => lane.laneRef === "acp:grok-cli")?.displayName).toBe("Grok CLI")
     // The quarantined peer never appears -- no more, no less than the real
     // evidence-derived admission truth main already computed.
@@ -3906,43 +3906,43 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
   })
 
   test("an unrecognized/unknown lane ref never appears in the picker", () => {
-    const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability])
+    const state = withProviderLaneCapabilities(baseState, [codexCapability, claudeCapability])
     const lanes = selectableProviderLanes(state)
-    expect(lanes.map(lane => lane.laneRef)).toEqual(["codex-local", "fable-local"])
+    expect(lanes.map(lane => lane.laneRef)).toEqual(["codex-local", "claude-local"])
     expect(lanes.some(lane => lane.laneRef === "acp:grok-cli")).toBe(false)
   })
 
-  test("nextSelectableProviderLane cycles codex -> fable -> admitted ACP peer -> back to codex, skipping quarantined peers", () => {
-    const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok, quarantinedCursor])
-    expect(nextSelectableProviderLane(state, "codex-local")?.laneRef).toBe("fable-local")
-    expect(nextSelectableProviderLane(state, "fable-local")?.laneRef).toBe("acp:grok-cli")
+  test("nextSelectableProviderLane cycles codex -> claude -> admitted ACP peer -> back to codex, skipping quarantined peers", () => {
+    const state = withProviderLaneCapabilities(baseState, [codexCapability, claudeCapability, admittedGrok, quarantinedCursor])
+    expect(nextSelectableProviderLane(state, "codex-local")?.laneRef).toBe("claude-local")
+    expect(nextSelectableProviderLane(state, "claude-local")?.laneRef).toBe("acp:grok-cli")
     expect(nextSelectableProviderLane(state, "acp:grok-cli")?.laneRef).toBe("codex-local")
   })
 
-  test("nextSelectableProviderLane falls back to the plain codex<->fable toggle when no ACP lane is admitted (no regression)", () => {
-    const state = withProviderLaneCapabilities(baseState, [codexCapability, fableCapability])
-    expect(nextSelectableProviderLane(state, "codex-local")?.laneRef).toBe("fable-local")
-    expect(nextSelectableProviderLane(state, "fable-local")?.laneRef).toBe("codex-local")
+  test("nextSelectableProviderLane falls back to the plain codex<->claude toggle when no ACP lane is admitted (no regression)", () => {
+    const state = withProviderLaneCapabilities(baseState, [codexCapability, claudeCapability])
+    expect(nextSelectableProviderLane(state, "codex-local")?.laneRef).toBe("claude-local")
+    expect(nextSelectableProviderLane(state, "claude-local")?.laneRef).toBe("codex-local")
   })
 
   test("#8998: live authentication overrides a stale boot snapshot and skips unauthenticated ACP dead ends", () => {
     const state = withHarnessLanes(
       withProviderLaneCapabilities(baseState, [
         { ...codexCapability, authentication: "ready" },
-        { ...fableCapability, authentication: "ready" },
+        { ...claudeCapability, authentication: "ready" },
         { ...admittedGrok, authentication: "missing" },
       ]),
-      { fable: { available: true, reason: null }, codex: { available: false, reason: "stale boot result" } },
+      { claude: { available: true, reason: null }, codex: { available: false, reason: "stale boot result" } },
     )
-    expect(selectableProviderLanes(state).map(lane => lane.laneRef)).toEqual(["codex-local", "fable-local"])
-    expect(nextSelectableProviderLane(state, "fable-local")?.laneRef).toBe("codex-local")
+    expect(selectableProviderLanes(state).map(lane => lane.laneRef)).toEqual(["codex-local", "claude-local"])
+    expect(nextSelectableProviderLane(state, "claude-local")?.laneRef).toBe("codex-local")
   })
 
   test("capabilityForActiveLane resolves the REAL bound lane, including an admitted ACP peer", () => {
     const state: DesktopShellState = {
-      ...withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok]),
+      ...withProviderLaneCapabilities(baseState, [codexCapability, claudeCapability, admittedGrok]),
       activeLaneRef: "acp:grok-cli",
-      selectedHarness: "fable",
+      selectedHarness: "claude",
     }
     expect(capabilityForActiveLane(state)?.displayName).toBe("Grok CLI")
     expect(capabilityForActiveLane(state)?.laneRef).toBe("acp:grok-cli")
@@ -3956,14 +3956,14 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
       selectLane: async (threadRef, laneRef) => { selectCalls.push({ threadRef, laneRef }); return { ok: true } },
     }
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
-      withProviderLaneCapabilities({ ...baseState, activeLaneRef: "fable-local", selectedHarness: "fable" }, [codexCapability, fableCapability, admittedGrok]),
+      withProviderLaneCapabilities({ ...baseState, activeLaneRef: "claude-local", selectedHarness: "claude" }, [codexCapability, claudeCapability, admittedGrok]),
     ))
     const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopProviderLaneSelected", StaticPayload("acp:grok-cli")))))
     expect(selectCalls).toEqual([{ threadRef: testThread.id, laneRef: "acp:grok-cli" }])
     const next = await Effect.runPromise(SubscriptionRef.get(state))
     expect(next.activeLaneRef).toBe("acp:grok-cli")
-    expect(next.selectedHarness).toBe("fable")
+    expect(next.selectedHarness).toBe("claude")
   })
 
   test("DesktopProviderLaneSelected refuses an unadmitted/unknown lane ref: no chat.selectLane call, no state change", async () => {
@@ -3974,7 +3974,7 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
       selectLane: async (threadRef, laneRef) => { selectCalls.push({ threadRef, laneRef }); return { ok: true } },
     }
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
-      withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, quarantinedCursor]),
+      withProviderLaneCapabilities(baseState, [codexCapability, claudeCapability, quarantinedCursor]),
     ))
     const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
     // Quarantined -- must not switch.
@@ -3994,7 +3994,7 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
       selectLane: async () => ({ ok: false, reason: "missing_auth", message: "That provider lane has no verified authentication." }),
     }
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
-      withProviderLaneCapabilities(baseState, [codexCapability, fableCapability, admittedGrok]),
+      withProviderLaneCapabilities(baseState, [codexCapability, claudeCapability, admittedGrok]),
     ))
     const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopProviderLaneSelected", StaticPayload("acp:grok-cli")))))
@@ -4002,7 +4002,7 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
     expect(next.activeLaneRef).toBe("codex-local")
   })
 
-  test("opening a thread bound to an admitted ACP lane hydrates activeLaneRef+selectedHarness to the REAL lane, not a codex/fable stand-in", async () => {
+  test("opening a thread bound to an admitted ACP lane hydrates activeLaneRef+selectedHarness to the REAL lane, not a codex/claude stand-in", async () => {
     const acpThread = { id: "acp-thread", title: "Grok session", updatedAt: "2026-07-17T12:00:00.000Z", notes: [] } as const
     const chatHost: ChatHost = {
       listThreads: async () => [acpThread], newThread: async () => null,
@@ -4011,18 +4011,18 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
       laneForThread: async (threadRef: string) => (threadRef === acpThread.id ? "acp:grok-cli" : "codex-local"),
     }
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
-      withProviderLaneCapabilities({ ...baseState, threads: [testThread, acpThread] }, [codexCapability, fableCapability, admittedGrok]),
+      withProviderLaneCapabilities({ ...baseState, threads: [testThread, acpThread] }, [codexCapability, claudeCapability, admittedGrok]),
     ))
     const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopChatSelected", StaticPayload(acpThread.id)))))
     const next = await Effect.runPromise(SubscriptionRef.get(state))
     expect(next.activeLaneRef).toBe("acp:grok-cli")
-    // ACP lanes ride the fable transport (FableLocalStartChannel resolves the
+    // ACP lanes ride the claude transport (ClaudeLocalStartChannel resolves the
     // real lane server-side); selectedHarness must never stay stale "codex".
-    expect(next.selectedHarness).toBe("fable")
+    expect(next.selectedHarness).toBe("claude")
   })
 
-  test("a fresh thread honors a pre-selected admitted ACP lane instead of collapsing to fable-local", async () => {
+  test("a fresh thread honors a pre-selected admitted ACP lane instead of collapsing to claude-local", async () => {
     const newThreadCalls: Array<string | undefined> = []
     const acpThread = { id: "acp-new-thread", title: "Grok session", updatedAt: "2026-07-17T12:00:00.000Z", notes: [] } as const
     const chatHost: ChatHost = {
@@ -4031,7 +4031,7 @@ describe("first-class provider picker admits real ACP lanes (#8977)", () => {
       sendMessage: async () => ({ ok: false, error: "unused" }),
     }
     const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>(
-      withProviderLaneCapabilities({ ...baseState, activeThreadId: null, activeLaneRef: "acp:grok-cli", selectedHarness: "fable" }, [codexCapability, fableCapability, admittedGrok]),
+      withProviderLaneCapabilities({ ...baseState, activeThreadId: null, activeLaneRef: "acp:grok-cli", selectedHarness: "claude" }, [codexCapability, claudeCapability, admittedGrok]),
     ))
     const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNewChat", StaticPayload(null)))))
@@ -4048,10 +4048,10 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     text: "Here is **the** answer.",
     timestamp: "18:06",
     meta: {
-      lane: "fable-local",
+      lane: "claude-local",
       model: "claude-fable-5",
       accountRef: "claude-pylon-b",
-      turnRef: "turn.fable.abc",
+      turnRef: "turn.claude.abc",
       totalTokens: 49,
       durationMs: 2500,
     },
@@ -4074,9 +4074,9 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     expect(fields).toEqual([
       { label: "Role", value: "assistant" },
       { label: "Time", value: "18:06" },
-      { label: "Lane", value: "fable-local" },
+      { label: "Lane", value: "claude-local" },
       { label: "Effective model", value: "claude-fable-5" },
-      { label: "Turn", value: "turn.fable.abc" },
+      { label: "Turn", value: "turn.claude.abc" },
       { label: "Tokens (total)", value: "49" },
       { label: "Duration", value: "2.5s" },
     ])
@@ -4113,7 +4113,7 @@ describe("message metadata inspector (#8712, EP250 owner fix 2)", () => {
     const texts = collectNodes(nodeByKey(open, "chat-message-inspector"))
       .filter((node) => node._tag === "Text")
       .map((node) => String(node.content ?? ""))
-    for (const expected of ["fable-local", "claude-fable-5", "turn.fable.abc", "49", "2.5s"]) {
+    for (const expected of ["claude-local", "claude-fable-5", "turn.claude.abc", "49", "2.5s"]) {
       expect(texts.some((content) => content === expected)).toBe(true)
     }
     expect(texts).not.toContain("claude-pylon-b")
@@ -4388,12 +4388,12 @@ describe("EP250 typed tool-call cards (owner: 'not these JSON blobs')", () => {
 
 describe("EP250 interactive question cards (owner: 'make the question UI too')", () => {
   const singleSelectNote = {
-    key: "turn.fable.x-question-question.1",
+    key: "turn.claude.x-question-question.1",
     role: "system" as const,
     text: "Which path should we take?",
     timestamp: "18:06",
     question: {
-      turnRef: "turn.fable.x",
+      turnRef: "turn.claude.x",
       questionRef: "question.1",
       status: "pending" as const,
       questions: [{
@@ -4409,7 +4409,7 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
   }
   const multiSelectNote = {
     ...singleSelectNote,
-    key: "turn.fable.x-question-question.2",
+    key: "turn.claude.x-question-question.2",
     question: {
       ...singleSelectNote.question,
       questionRef: "question.2",
@@ -4469,7 +4469,7 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
         // FROZEN bridge shape: one { question, labels } entry per question,
         // labels an array even for single-select.
         expect(calls).toEqual([{
-          turnRef: "turn.fable.x",
+          turnRef: "turn.claude.x",
           questionRef: "question.1",
           answers: [{ question: "Which path should we take?", labels: ["Streamed"] }],
         }])
@@ -4514,7 +4514,7 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
         const confirm = nodeByKey(selectedView, "question-question.2-confirm") as { onPress: Parameters<typeof resolveIntentRef>[0] }
         yield* registry.dispatch(resolveIntentRef(confirm.onPress, null))
         expect(calls).toEqual([{
-          turnRef: "turn.fable.x",
+          turnRef: "turn.claude.x",
           questionRef: "question.2",
           answers: [{ question: "Which lanes should run?", labels: ["A"] }],
         }])
@@ -4659,7 +4659,7 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
     }
     const planNote = {
       ...singleSelectNote,
-      key: "turn.fable.x-question-plan.1",
+      key: "turn.claude.x-question-plan.1",
       question: {
         ...singleSelectNote.question,
         questionRef: "plan.1",
@@ -4686,7 +4686,7 @@ describe("EP250 interactive question cards (owner: 'make the question UI too')",
       )
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopApprovalDenied", StaticPayload(null))))
     }))
-    expect(calls).toEqual([{ turnRef: "turn.fable.x", threadRef: testThread.id, questionRef: "question.1", answers: [{ question: "Allow this tool?", labels: ["Deny"] }] }])
+    expect(calls).toEqual([{ turnRef: "turn.claude.x", threadRef: testThread.id, questionRef: "question.1", answers: [{ question: "Allow this tool?", labels: ["Deny"] }] }])
   })
 
   test("bridge-absent degradation: options render disabled read-only and dispatch nothing", async () => {

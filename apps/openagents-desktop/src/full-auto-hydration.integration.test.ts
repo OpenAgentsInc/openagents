@@ -83,7 +83,7 @@ describe("Full Auto control enable -> later renderer hydration (#8928)", () => {
       const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
         ...initialDesktopShellState("electron/darwin", "11:00"),
         harnessLanes: {
-          fable: { available: true, reason: null },
+          claude: { available: true, reason: null },
           codex: { available: true, reason: null },
         },
         threads: [thread],

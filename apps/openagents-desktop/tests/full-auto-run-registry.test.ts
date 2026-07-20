@@ -228,7 +228,7 @@ describe("FullAutoRun registry: concurrent runs, draft/start, rerun, eviction (F
       const started = registry.startNew({
         ...draftInput(),
         threadRef: "thread-rotated",
-        profile: { lane: "fable-local", model: "claude-opus-4-8" },
+        profile: { lane: "claude-local", model: "claude-opus-4-8" },
         actor: "control_api",
         reason: "start on Claude",
       })

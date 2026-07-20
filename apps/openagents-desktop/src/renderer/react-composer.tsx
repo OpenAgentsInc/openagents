@@ -452,7 +452,7 @@ export const ReactComposer = ({
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
   const lane = state.harnessLanes[state.selectedHarness];
   // #8977: reflects the REAL bound lane (which may be an admitted ACP peer),
-  // not a codex/fable stand-in -- this drives the chip label and image-support
+  // not a codex/claude stand-in -- this drives the chip label and image-support
   // gating below.
   const capabilities = capabilityForActiveLane(state);
   const capabilityAdmitted = capabilities === null || capabilities.admission === "admitted";

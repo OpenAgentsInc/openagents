@@ -738,7 +738,7 @@ const fleetAccountsTable = (fleet: FleetWorkspaceState): View =>
 /**
  * Session usage (#8712 Lane C): a compact evidence-labeled section fed from
  * main's session ledger — exact tokens this desktop session dispatched
- * (Fable turns + Codex delegate children), per account. Codex rows show the
+ * (Claude turns + Codex delegate children), per account. Codex rows show the
  * requested model (spawn-config truth: gpt-5.5). Labeled "session
  * ledger" so it is never confused with the per-account "probe" numbers in
  * the table above.
