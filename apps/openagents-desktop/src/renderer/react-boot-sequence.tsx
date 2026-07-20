@@ -26,7 +26,7 @@ export const ReactBootSequence = ({
     <section className="oa-react-boot-sequence" aria-label="BOOT SEQUENCE: available agents">
       <ol className="oa-react-boot-lines">
         <li className="oa-react-boot-line" data-kind="title">BOOT SEQUENCE</li>
-        <li className="oa-react-boot-line" data-kind="banner">OpenAgents — initializing</li>
+        <li className="oa-react-boot-line" data-kind="banner">Initializing OpenAgents</li>
         <li className="oa-react-boot-line" data-kind="scan">scanning for available agents</li>
         {agents.map((agent) => (
           <Fragment key={agent.id}>
