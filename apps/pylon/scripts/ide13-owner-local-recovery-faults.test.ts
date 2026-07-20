@@ -31,7 +31,12 @@ test("recovers truthful owner-local worker and checkpoint store faults", async (
       "duplicate_event",
       "lease_expiry_clock_skew",
     ]);
-    expect(receipt.cases.every((row) => row.evidenceClass === "real_local")).toBe(true);
+    expect(receipt.cases.map((row) => row.evidenceClass)).toEqual([
+      "simulator",
+      "real_local",
+      "simulator",
+      "simulator",
+    ]);
     expect(receipt.safety).toEqual({
       completionCount: 2,
       duplicateExecutionObserved: false,

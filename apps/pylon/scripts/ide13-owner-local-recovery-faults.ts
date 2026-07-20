@@ -35,7 +35,7 @@ const RecoveryCaseSchema = Schema.Struct({
     "duplicate_event",
     "lease_expiry_clock_skew",
   ]),
-  evidenceClass: Schema.Literal("real_local"),
+  evidenceClass: Schema.Literals(["real_local", "simulator"]),
   outcome: Schema.Literal("passed"),
   productionBoundaryRef: REF,
   injectedFaultRef: REF,
@@ -374,7 +374,7 @@ export const runIde13OwnerLocalRecoveryFaults = async (
     const cases = [
       {
         scenario: "coordinator_crash" as const,
-        evidenceClass: "real_local" as const,
+        evidenceClass: "simulator" as const,
         outcome: "passed" as const,
         productionBoundaryRef: "boundary.pylon.owner-local.worker.claim-durable",
         injectedFaultRef: "injected-fault.ide13.owner-local.coordinator-crash",
@@ -383,7 +383,7 @@ export const runIde13OwnerLocalRecoveryFaults = async (
         elapsedMilliseconds: workerElapsed,
         deadlineMilliseconds: DEADLINE_MILLISECONDS,
         disclosure:
-          "A source-controlled fault hook raised an exception after the production worker made its claimed lease durable. A new worker object recovered the file journal and completed the operation exactly once. This was not an external process death.",
+          "A source-controlled fault hook raised an exception after the production worker made its claimed lease durable. A new worker object recovered the file journal and completed the operation exactly once against an in-memory control-plane fixture. This was not an external process death or a real owner-local cohort.",
       },
       {
         scenario: "checkpoint_store_crash" as const,
@@ -404,7 +404,7 @@ export const runIde13OwnerLocalRecoveryFaults = async (
       },
       {
         scenario: "duplicate_event" as const,
-        evidenceClass: "real_local" as const,
+        evidenceClass: "simulator" as const,
         outcome: "passed" as const,
         productionBoundaryRef: "boundary.pylon.owner-local.worker.pending-batch",
         injectedFaultRef: "injected-fault.ide13.owner-local.duplicate-pending-operation",
@@ -413,11 +413,11 @@ export const runIde13OwnerLocalRecoveryFaults = async (
         elapsedMilliseconds: workerElapsed,
         deadlineMilliseconds: DEADLINE_MILLISECONDS,
         disclosure:
-          "The production worker received the same operation twice in one pending batch. Operation-ref admission executed and completed it once.",
+          "The production worker received the same operation twice from an in-memory control-plane fixture. Operation-ref admission executed and completed it once. This was not a real owner-local cohort.",
       },
       {
         scenario: "lease_expiry_clock_skew" as const,
-        evidenceClass: "real_local" as const,
+        evidenceClass: "simulator" as const,
         outcome: "passed" as const,
         productionBoundaryRef: "boundary.pylon.owner-local.worker.lease-expiry",
         injectedFaultRef: "injected-fault.ide13.owner-local.clock-after-request-expiry",
@@ -426,7 +426,7 @@ export const runIde13OwnerLocalRecoveryFaults = async (
         elapsedMilliseconds: workerElapsed,
         deadlineMilliseconds: DEADLINE_MILLISECONDS,
         disclosure:
-          "The production worker clock was later than the request expiry. The worker refused the claim before a server mutation or executor call.",
+          "The production worker clock was later than the fixture request expiry. The worker refused the claim before a control-plane mutation or executor call. This was not a real owner-local cohort.",
       },
     ];
     if (cases.some((row) => row.elapsedMilliseconds > row.deadlineMilliseconds)) {
