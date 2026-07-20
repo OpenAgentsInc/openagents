@@ -26620,6 +26620,28 @@
       }
     },
     {
+      "path": "docs/ide/2026-07-19-porting-zed-to-effect-status.md",
+      "sha256": "cc6fb4fcc07cc83a2fd54f072aaee98a664433ee5bd3f26f8aed9bb6b9a1b954",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/ide/2026-07-19-sbx-06-managed-ide-placement.md",
       "sha256": "526e827f077a4a368a33ead308896d42e2a7ad0cc8242dcc72e08c25d0ed3285",
       "reason": "Final review of a converted document",

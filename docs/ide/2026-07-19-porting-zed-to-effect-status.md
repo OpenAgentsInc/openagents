@@ -59,8 +59,8 @@ The take/skip split from the roadmap, verbatim:
 
 | Source | What OpenAgents takes | What OpenAgents does not take |
 | --- | --- | --- |
-| Zed | one coherent project/document/language/Git/terminal/agent graph; agent context and code evidence as native IDE concepts | GPUI, a Rust application core, or Zed's editor implementation |
-| VS Code | Monaco; focused URI, language, LSP, terminal, debug lessons | a Code-OSS fork, workbench internals, or trusted extension host |
+| Zed | one coherent project/document/language/Git/terminal/agent graph, plus agent context and code evidence as native IDE concepts | GPUI, a Rust application core, or Zed's editor implementation |
+| VS Code | Monaco, plus focused URI, language, LSP, terminal, debug lessons | a Code-OSS fork, workbench internals, or trusted extension host |
 | Pierre | React tree and diff kernels, theming seams, virtualized review | filesystem, Git, document, mutation, session, or policy authority |
 
 The architecture the port lands in is fixed by
@@ -177,7 +177,7 @@ IDE-11 and IDE-12 together close the "integrated OpenAgents agent IDE" rung
 
 Running in parallel at P1 is the managed-sandbox program, epic #9023
 (SBX-00 through SBX-10, issues #9024–#9034). Most SBX packets have landed as
-default-off components; SBX-06 (#9027) already shipped the managed placement
+default-off components. SBX-06 (#9027) already shipped the managed placement
 consumer that IDE-13 and IDE-17 will later depend on. SBX-09 (#9033) remains the
 live acceptance gate before any managed-execution release claim.
 
@@ -213,18 +213,18 @@ decision" list), the ones still open:
 
 - The first non-TypeScript **LSP implementation** and the local/remote placement
   split for language capabilities. Today the project-aware gate accepts only
-  TypeScript/JavaScript; every other language is an explicit gap.
+  TypeScript/JavaScript. Every other language is an explicit gap.
 - Whether main persists **canonical incremental text** or checkpointed snapshots
   around Monaco.
 - The **worktree creation/archive retention and recovery policy** (Zed's
-  `thread_worktree_archive` logic is the reference; IDE-12 owns our version).
+  `thread_worktree_archive` logic is the reference. IDE-12 owns our version).
 - **Local lexical/semantic index** implementations and defaults. The port
   deliberately rejects "repository embeddings required for code understanding"
   and instead reserves a typed context-candidate portfolio (BM25-style lexical,
   recent edits, diagnostics, Git co-change) — but the concrete index and its
   custody/retention/disclosure contract are unbuilt.
 - **Writable multi-file excerpt editing.** `ExcerptRef`/`ExcerptSet` identity is
-  reserved read-only; the writable MultiBuffer analogue (Zed's strongest
+  reserved read-only. The writable MultiBuffer analogue (Zed's strongest
   long-term idea) is explicitly deferred until coordinate mapping,
   stale-generation behavior, undo, and authority have dedicated proof.
 - The **extension component ABI** and any collaboration consistency model.
@@ -234,13 +234,13 @@ packet:
 
 - **Command palette query** — add a query input, fuzzy ranking, result count,
   and no-result state on top of the existing command registry (keep the registry
-  as authority; do not let the palette invent a second command universe).
+  as authority. Do not let the palette invent a second command universe).
 - **Project search** — regex/replace/globs/scope plus preview-before-replace and
   operation receipts, without letting a text replacement bypass workspace
   mutation authority.
 - **Tasks then debug** — both need explicit execution authority, environment
   identity, cancellation, output, and evidence. IDE-10 landed the tasks/Output
-  substrate; the visible task runner UI and IDE-11's DAP graph are the remaining
+  substrate. The visible task runner UI and IDE-11's DAP graph are the remaining
   design.
 - **AI editing visual layout** — `react-cursor.tsx` needs a real production
   layout for request controls, candidate navigation, decision controls, errors,
@@ -272,7 +272,7 @@ The clean arc for "Porting Zed to Effect":
    services, schema-first with branded refs and explicit generations — and put
    Monaco and Pierre on top as replaceable components.
 4. **We went one better than Zed on authority.** Same refs, different privilege.
-   An agent proposes; the project service applies. A harness never mutates
+   An agent proposes. The project service applies. A harness never mutates
    Monaco. External agents ride the ACP layer without inheriting native session
    authority.
 5. **We shipped the agent loop first** (IDE-08/09), which is the part we care
