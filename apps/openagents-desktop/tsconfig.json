@@ -12,5 +12,6 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": false
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.cts", "scripts/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.cts", "scripts/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["scripts/managed-sandbox-live-acceptance.ts"]
 }

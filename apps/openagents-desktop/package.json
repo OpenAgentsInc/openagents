@@ -20,6 +20,7 @@
     "dev:preview": "node --import tsx scripts/dev.ts",
     "full-auto": "node --import tsx scripts/full-auto-cli.ts",
     "live-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-live-proof.ts",
+    "accept:managed-sandbox-live": "pnpm run typecheck:managed-sandbox-live && node --import tsx scripts/managed-sandbox-live-acceptance.ts",
     "mvp-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-mvp-proof.ts",
     "release-acceptance": "node --import tsx scripts/run-release-acceptance.ts",
     "smoke:codex-supervisor": "node --import tsx scripts/codex-app-server-supervisor-smoke.ts",
@@ -83,6 +84,7 @@
     "verify:ide-12": "pnpm run typecheck && vp test --run --root ../.. src/ide/source-control-service.test.ts src/ide/source-control-host.test.ts src/ide/source-control-git-adapter.test.ts src/renderer/git-panel.test.ts src/renderer/react-review.test.tsx tests/electron-boundary.test.ts tests/accessibility.test.ts scripts/check-ide-boundaries.test.ts packages/behavior-contracts/src/behavior-contracts.test.ts && pnpm run check:ide-boundaries && pnpm run ide:source-control-benchmark && pnpm run package:mac && pnpm run ide:source-control-packaged-journey && pnpm run ide:source-control-acceptance",
     "test": "vp test --run --max-concurrency 1 --root ../.. apps/openagents-desktop",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:managed-sandbox-live": "tsc -p tsconfig.managed-sandbox-live.json --noEmit",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run build && OPENAGENTS_DESKTOP_SMOKE=1 pnpm run smoke && pnpm run smoke:react"
   },
   "dependencies": {

@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vite/client", "vite-plus-matchers", "openagents-platform"]
+  },
+  "include": ["scripts/managed-sandbox-live-acceptance.ts"],
+  "exclude": []
+}
