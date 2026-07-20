@@ -52,9 +52,19 @@ The change adds a typed context and renders a small block.
 - A new type `AppleFmEnvironmentContext` holds the host-owned facts. Each field
   is optional. Each field is fail-soft. A missing field omits its line.
 - A new helper `renderAppleFmEnvironmentContext` renders the block. The block
-  starts with the line "Context you can rely on (state these as facts if asked,
-  do not invent beyond them):". The block lists one line for each present fact.
-  The block ends with the durable-memory honesty line.
+  starts with the line "Here is the context you have about the user and this
+  session. Treat every line as a true fact you know:". The block lists one line
+  for each present fact. The block ends with an active instruction.
+- The active instruction tells the model to answer from these facts. It applies
+  when the user asks who they are or about their setup. It forbids the refusal
+  that the model has no information. It keeps the honesty rules: the model must
+  not invent facts, and the model does not remember facts across past sessions.
+  The public identity belongs to the user, not to the model.
+- A test against the live on-device model showed a defect in the earlier passive
+  wording. The passive wording asked the model to state the facts only if asked.
+  The small model ignored the block. The small model gave a canned refusal about
+  access to personal data. The active wording makes the model report the real
+  facts. The active wording is the verified fix, not a guess.
 - The prompt builder `buildOpenAgentsAppleFmPrompt` takes the context as a new
   parameter. The builder puts the block after the honesty base and before the
   connected-agent list. The history stays last. The history still drops the

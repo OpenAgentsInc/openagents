@@ -109,13 +109,27 @@ export const renderAppleFmEnvironmentContext = (
     facts.push(`- Working directory: ${environment.workingDirectory.trim()}`);
   if (environment.isOwnerDevice === true) facts.push("- This is the owner's own device.");
   if (environment.identityNpub !== undefined && isPublicNpub(environment.identityNpub))
-    facts.push(`- Sovereign identity (public npub): ${environment.identityNpub.trim()}`);
+    facts.push(`- The user's public identity (npub): ${environment.identityNpub.trim()}`);
   if (facts.length === 0) return "";
+  // Active framing (proven against the live on-device model): a passive "state
+  // these if asked" block is IGNORED — the small model fires its canned "I don't
+  // have access to your personal data" refusal. Telling it these ARE facts it
+  // knows, and to ANSWER by sharing them and never claim it has no information,
+  // makes it report the real environment/identity. The final clause keeps the
+  // honesty contract (no invented facts, no cross-session memory).
   return (
-    "\n\nContext you can rely on (state these as facts if asked, do not invent beyond them):\n" +
+    "\n\nHere is the context you have about the user and this session. Treat every line as a true " +
+    "fact you know:\n" +
     `${facts.join("\n")}\n` +
-    "You do not yet remember personal facts about the user across sessions; only the context " +
-    "above. Do not invent personal facts about the user."
+    "When the user asks who they are, what you know about them, or about their setup, environment, " +
+    "device, identity, working directory, or this session, ANSWER using the facts above in plain " +
+    'words (for example, if asked "who am I", tell them they are the owner of this device with the ' +
+    "public identity above, working in that directory). You DO have this information — never reply " +
+    "that you have no information or cannot access it. The public identity above belongs to the " +
+    "USER, not to you; when the user asks who YOU are, you are OpenAgents and must not claim the " +
+    "user's identity as your own. You do not remember personal facts across past sessions, and you " +
+    "know nothing about the user beyond the context above; never invent facts that are not listed " +
+    "above."
   );
 };
 
@@ -200,8 +214,8 @@ const buildPreamble = (
  * delegate-capable ones — instructs the model how to emit the delegation JSON.
  *
  * `environment` is the host-owned ambient-context set (never renderer input).
- * When present it seeds a compact "Context you can rely on" block so the model
- * can answer environment/identity questions truthfully; absent → no block.
+ * When present it seeds a compact "context you have about the user" block so the
+ * model answers environment/identity questions truthfully; absent → no block.
  */
 export const buildOpenAgentsAppleFmPrompt = (
   turns: ReadonlyArray<AppleFmPromptTurn>,

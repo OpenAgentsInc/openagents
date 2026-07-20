@@ -89,7 +89,7 @@ describe("buildOpenAgentsAppleFmPrompt — ambient environment context", () => {
     // pre-existing plain preamble, so no live behavior regresses.
     expect(withEmptyEnv).toBe(withNothing)
     expect(withUndefinedEnv).toBe(withNothing)
-    expect(withNothing).not.toContain("Context you can rely on")
+    expect(withNothing).not.toContain("Here is the context you have about the user")
   })
 
   test("includes each present fact as a stated-truth context block (deterministic)", () => {
@@ -98,18 +98,21 @@ describe("buildOpenAgentsAppleFmPrompt — ambient environment context", () => {
       [],
       fixtureEnvironment,
     )
-    expect(prompt).toContain("Context you can rely on")
+    expect(prompt).toContain("Here is the context you have about the user and this session")
     expect(prompt).toContain("Current date: Monday, July 20, 2026")
     expect(prompt).toContain("Operating system: macOS")
     expect(prompt).toContain("Application: OpenAgents Dev")
     expect(prompt).toContain("Working directory: /Users/owner/work/openagents")
     expect(prompt).toContain("This is the owner's own device.")
     expect(prompt).toContain(
-      "Sovereign identity (public npub): npub1exampleownerpublickey00000000000000000000000000000000000",
+      "The user's public identity (npub): npub1exampleownerpublickey00000000000000000000000000000000000",
     )
-    // Honesty about durable memory: real environment/identity, no invented facts.
-    expect(prompt).toContain("You do not yet remember personal facts about the user across sessions")
-    expect(prompt).toContain("Do not invent personal facts about the user")
+    // Active framing (proven against the live model): the model must ANSWER from
+    // the context and never claim it has no information; honesty about no durable
+    // cross-session memory and no invented facts is retained.
+    expect(prompt).toContain("never reply that you have no information or cannot access it")
+    expect(prompt).toContain("never invent facts that are not listed above")
+    expect(prompt).toContain("You do not remember personal facts across past sessions")
     // Fully deterministic (no wall-clock): the same inputs render the same prompt.
     expect(buildOpenAgentsAppleFmPrompt(
       [{ role: "user", text: "what do you know about me" }],
