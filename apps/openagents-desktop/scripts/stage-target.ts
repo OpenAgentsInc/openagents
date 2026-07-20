@@ -93,6 +93,13 @@ const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const checkoutRoot = path.resolve(appRoot, "../..");
 const DESKTOP_PACKAGE_FILTER = "@openagentsinc/openagents-desktop";
 
+/**
+ * Apple Foundation Models Swift sidecar (AFM-7 #9076). Version mirrors the
+ * bridge identity in `apps/pylon/swift/foundation-bridge` (main.swift 0.1.1)
+ * and the manifest written by the dev build + release staging steps.
+ */
+const APPLE_FM_BRIDGE_VERSION = "0.1.1";
+
 // ---------------------------------------------------------------------------
 // Staging plan — pure projection of a descriptor into worker commands
 // ---------------------------------------------------------------------------
@@ -415,6 +422,11 @@ export interface StagingViolation {
 export const executableDestinationAllowlist: ReadonlyArray<RegExp> = [
   /^node_modules\/@anthropic-ai\/claude-agent-sdk-(?:darwin|win32|linux)-(?:arm64|x64)(?:-musl)?\/claude(?:\.exe)?$/,
   /^native\/(?:arm64|x64)\/oa-desktop-audio(?:\.exe)?$/,
+  // Apple Foundation Models Swift sidecar (AFM-7 #9076): macOS-arm64 ONLY.
+  // The path is pinned to arm64; the arch/foreign-binary oracle still fails
+  // closed if a non-arm64 Mach-O ever lands here, and non-darwin targets never
+  // build or stage it (see buildNativeHelper).
+  /^native\/arm64\/foundation-bridge$/,
 ];
 
 const nativeArtifactExtension = /\.(?:node|dylib|so(?:\.\d+)*|dll)$/u;
@@ -651,6 +663,11 @@ export const closureOwnerForDestination = (
       version: packageVersions.get(name) ?? "unknown",
       provenance: "locked-dependency",
     };
+  }
+  if (/\/foundation-bridge$/.test(destination)) {
+    // Owned in-tree Swift package built from source (AFM-7 #9076); the closest
+    // honest provenance is the in-tree owned-source class used for helpers.
+    return { name: "foundation-bridge", version: APPLE_FM_BRIDGE_VERSION, provenance: "workspace-crate" };
   }
   if (/^native\//.test(destination)) {
     return { name: "oa-desktop-audio", version: helperVersion, provenance: "workspace-crate" };
@@ -1584,6 +1601,30 @@ export const hostStageTargetIo = (workerRef: string): StageTargetIo => {
         })}\n`,
         { mode: 0o644 },
       );
+      // Apple Foundation Models Swift sidecar (AFM-7 #9076): macOS-arm64 ONLY.
+      // Build the owned in-tree Swift package from the EXPORTED source and stage
+      // it beside the voice helper with its OWN manifest so the two never
+      // collide. Non-darwin/non-arm64 targets never build or stage it.
+      if (plan.targetKey === "darwin-arm64") {
+        const bridgeDir = path.join(sourceRoot, "apps", "pylon", "swift", "foundation-bridge");
+        run("xcrun", ["swift", "build", "-c", "release", "--package-path", bridgeDir], { cwd: sourceRoot });
+        const bridgeBuilt = path.join(bridgeDir, ".build", "release", "foundation-bridge");
+        const bridgeDestination = path.join(stagedTreePath(workspace), "native", "arm64", "foundation-bridge");
+        await mkdir(path.dirname(bridgeDestination), { recursive: true });
+        await cp(bridgeBuilt, bridgeDestination);
+        await chmod(bridgeDestination, 0o755);
+        const bridgeBytes = await readFile(bridgeDestination);
+        await writeFile(
+          path.join(path.dirname(bridgeDestination), "foundation-bridge.manifest.json"),
+          `${JSON.stringify({
+            protocolVersion: 1,
+            helperVersion: APPLE_FM_BRIDGE_VERSION,
+            architecture: "arm64",
+            sha256: sha256Hex(bridgeBytes),
+          })}\n`,
+          { mode: 0o644 },
+        );
+      }
       return { version, sha256: sha256Hex(bytes), byteLength: bytes.byteLength };
     },
     collectStagedFiles: async (workspace) => collectStagedTreeFiles(stagedTreePath(workspace)),

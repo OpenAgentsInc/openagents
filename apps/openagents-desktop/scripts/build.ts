@@ -41,6 +41,36 @@ const stageDevelopmentVoiceHelper = async (dist: string): Promise<void> => {
   )
 }
 
+/**
+ * Apple Foundation Models Swift bridge (AFM-7 #9076). macOS-arm64 ONLY: builds
+ * the `foundation-bridge` sidecar and stages it beside the voice helper at
+ * `dist/native/<arch>/foundation-bridge` with its OWN manifest
+ * (`foundation-bridge.manifest.json`, so it never collides with the voice
+ * helper's `manifest.json`). `electron .` and the packaged app both resolve the
+ * sidecar from `native/<arch>/`. Skips cleanly on any other platform/arch.
+ */
+const stageDevelopmentAppleFmBridge = async (dist: string): Promise<void> => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") return
+  if (process.env.OA_DESKTOP_SKIP_DEV_APPLE_FM_BRIDGE === "1") return
+  const workspaceRoot = path.resolve(appRoot, "../..")
+  const bridgeDir = path.join(workspaceRoot, "apps", "pylon", "swift", "foundation-bridge")
+  // Build the SwiftPM release target directly (build.sh also installs a wrapper
+  // we do not need here). `xcrun swift build` matches the bridge's toolchain.
+  execFileSync("xcrun", ["swift", "build", "-c", "release", "--package-path", bridgeDir], { stdio: "pipe" })
+  const built = path.join(bridgeDir, ".build", "release", "foundation-bridge")
+  const destinationDirectory = path.join(dist, "native", process.arch)
+  const destination = path.join(destinationDirectory, "foundation-bridge")
+  await mkdir(destinationDirectory, { recursive: true })
+  await copyFile(built, destination)
+  chmodSync(destination, 0o755)
+  const sha256 = createHash("sha256").update(readFileSync(destination)).digest("hex")
+  writeFileSync(
+    path.join(destinationDirectory, "foundation-bridge.manifest.json"),
+    JSON.stringify({ protocolVersion: 1, helperVersion: "0.1.1", architecture: process.arch, sha256 }) + "\n",
+    { mode: 0o644 },
+  )
+}
+
 const assertSuccess = (label: string, result: Awaited<ReturnType<typeof Runtime.build>>): void => {
   if (!result.success) {
     for (const log of result.logs) console.error(`[build:${label}]`, log)
@@ -284,6 +314,9 @@ export const buildDesktop = async (): Promise<string> => {
   // must therefore stage a real helper too; otherwise voice.start can only
   // fail after the UI reaches "Connecting voice".
   await stageDevelopmentVoiceHelper(dist)
+  // `electron .` resolves the Apple FM sidecar from dist/, just as the packaged
+  // app resolves it from Resources (AFM-7 #9076). macOS-arm64 only.
+  await stageDevelopmentAppleFmBridge(dist)
   return dist
 }
 

@@ -221,6 +221,9 @@ const macCodeSignableBasenames = new Set([
   "ShipIt",
   "zsh",
   "oa-desktop-audio",
+  // Apple Foundation Models Swift sidecar (AFM-7 #9076): deep-signed under the
+  // same Developer ID + hardened runtime, else it is Gatekeeper-dead.
+  "foundation-bridge",
 ]);
 
 const isMacCodeSignablePath = (file: string): boolean =>

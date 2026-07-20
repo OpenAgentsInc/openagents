@@ -3,4 +3,8 @@
 <plist version="1.0"><dict>
   <key>com.apple.security.cs.allow-jit</key><true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+  <!-- Apple Foundation Models Swift sidecar (AFM-7 #9076): the helper listens
+       on a loopback HTTP port and makes loopback tool-callback requests. -->
+  <key>com.apple.security.network.server</key><true/>
+  <key>com.apple.security.network.client</key><true/>
 </dict></plist>
