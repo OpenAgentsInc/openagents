@@ -110,6 +110,18 @@ export class PortableSessionCommandConsumer {
   ): Promise<PortableSessionCommandConsumerResult> {
     const claimed = await this.config.queue.claim(request);
     const claim = claimed.claim;
+    if (claim.state === "terminal") {
+      const status =
+        claim.terminalStatus === "completed"
+          ? "completed"
+          : claim.terminalStatus === "rejected"
+            ? "rejected"
+            : "failed";
+      return { status, claim };
+    }
+    if (claim.state === "pending_reconcile") {
+      return { status: "pending_reconcile", claim };
+    }
     let input: PortableSessionMoveRuntimeInput;
     try {
       input = await this.config.resolver.resolve(claim);

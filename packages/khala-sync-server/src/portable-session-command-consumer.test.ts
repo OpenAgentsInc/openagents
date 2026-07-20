@@ -261,4 +261,27 @@ describe("portable session command consumer", () => {
     expect(runtime.move).toHaveBeenCalledTimes(2);
     expect(targetEffects).toBe(1);
   });
+
+  it("returns a durable terminal replay without resolving or re-entering runtime", async () => {
+    const durableQueue = queue();
+    durableQueue.claim.mockResolvedValueOnce({
+      status: "claimed",
+      claim: advancedClaim("terminal", "completed"),
+    });
+    const resolve = vi.fn(async () => runtimeInput());
+    const move = vi.fn(async () => moveResult("completed"));
+    const consumer = new PortableSessionCommandConsumer({
+      queue: durableQueue,
+      resolver: { resolve },
+      runtime: { move },
+      now: () => now,
+    });
+
+    const result = await consumer.execute(request);
+
+    expect(result.status).toBe("completed");
+    expect(resolve).not.toHaveBeenCalled();
+    expect(move).not.toHaveBeenCalled();
+    expect(durableQueue.terminal).not.toHaveBeenCalled();
+  });
 });

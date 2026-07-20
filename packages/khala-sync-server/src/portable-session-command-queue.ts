@@ -248,15 +248,16 @@ export class PostgresPortableSessionCommandQueue {
       `;
       const existing = existingRows[0];
       if (existing) {
-        if (
+        const exactClaim =
           existing.claim_fingerprint === claimDigest &&
           existing.command_fingerprint === commandDigest &&
           existing.claim_ref === request.claimRef &&
           existing.executor_environment_ref === request.executorEnvironmentRef &&
-          existing.worker_instance_ref === request.workerInstanceRef &&
-          existing.state !== "terminal" &&
-          existing.state !== "expired" &&
-          new Date(existing.lease_expires_at) > now
+          existing.worker_instance_ref === request.workerInstanceRef;
+        if (
+          exactClaim &&
+          (existing.state === "terminal" ||
+            (existing.state !== "expired" && new Date(existing.lease_expires_at) > now))
         ) {
           return { status: "replayed", claim: executionFromRow(existing) };
         }

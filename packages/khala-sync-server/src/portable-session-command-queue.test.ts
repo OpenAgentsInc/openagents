@@ -6,6 +6,7 @@ import {
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 
 import { runMigrations } from "./migrate.js";
+import { PortableSessionCommandConsumer } from "./portable-session-command-consumer.js";
 import {
   PortableSessionCommandQueueError,
   PostgresPortableSessionCommandQueue,
@@ -195,6 +196,28 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable command execution queue", 
       claim: { leaseRevision: 3, state: "terminal", terminalStatus: "completed" },
     });
     expect(await queue.terminal(terminal)).toEqual({ status: "replayed", claim: completed.claim });
+    expect(await queue.claim(claimInput(commandRef, "lifecycle"))).toEqual({
+      status: "replayed",
+      claim: completed.claim,
+    });
+    const replayConsumer = new PortableSessionCommandConsumer({
+      queue,
+      resolver: {
+        resolve: async () => {
+          throw new Error("terminal replay must not resolve");
+        },
+      },
+      runtime: {
+        move: async () => {
+          throw new Error("terminal replay must not run");
+        },
+      },
+      now: () => baseNow,
+    });
+    expect(await replayConsumer.execute(claimInput(commandRef, "lifecycle"))).toEqual({
+      status: "completed",
+      claim: completed.claim,
+    });
     await expect(
       queue.terminal({
         ...terminal,
