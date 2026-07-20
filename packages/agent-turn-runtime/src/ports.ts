@@ -9,6 +9,7 @@ import type {
   ReleasedArtifact,
   RouteDecision,
   RouteRecommendation,
+  SafeMessageChainEntry,
   TurnCandidate,
   TurnIntent,
   TurnProviderRef,
@@ -54,9 +55,19 @@ export class TurnJournalError extends S.TaggedErrorClass<TurnJournalError>()(
  * event nor the renderer projection: it is the minimal advisory terminal-or-
  * progress signal the kernel folds. `Completed` carries a typed advisory
  * candidate, never a host command.
+ *
+ * `Chain` carries the LATEST full, already-redacted safe message-chain snapshot
+ * an adapter has observed for the run. The adapter is the redaction boundary: it
+ * builds each `SafeMessageChainEntry` from safe fields only (role, bounded text,
+ * a tool LABEL, a file-change COUNT, and a command-output BYTE COUNT), never a
+ * raw command argument, raw output, a local path, a token, or a secret. The
+ * kernel stores the latest snapshot and includes it in the safe projection; it
+ * neither advances the lifecycle nor terminates the drain. A `Chain` event is a
+ * live-only advisory signal.
  */
 export type ProviderStreamEvent = Data.TaggedEnum<{
   Progress: Record<never, never>;
+  Chain: { readonly entries: ReadonlyArray<SafeMessageChainEntry> };
   Completed: { readonly candidate: TurnCandidate };
   Refused: { readonly reason: TurnRefusalReason };
   Failed: { readonly detail: string };

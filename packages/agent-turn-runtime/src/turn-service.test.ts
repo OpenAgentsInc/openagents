@@ -33,6 +33,16 @@ describe("TurnService", () => {
     expect(result.refusal).toBeNull();
   });
 
+  test("a provider chain snapshot reaches the safe projection message chain", async () => {
+    const result = await runStart({ outcome: "completes_with_chain" });
+    expect(result.projection.cardState).toBe("done");
+    expect(result.projection.messageChain.length).toBe(2);
+    expect(result.projection.messageChain[0]!.role).toBe("assistant");
+    expect(result.projection.messageChain[1]!.toolLabel).toBe("shell");
+    // The chain carries labels and counts only — never raw command or output.
+    expect(result.projection.messageChain[1]!.commandOutputByteCount).toBe(12);
+  });
+
   test("a fixture provider failure produces a failed terminal", async () => {
     const result = await runStart({ outcome: "fails" });
     expect(result.projection.cardState).toBe("failed");

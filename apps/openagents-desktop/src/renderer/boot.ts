@@ -86,6 +86,7 @@ import {
   formatShellTimestamp,
   initialDesktopShellState,
   makeDesktopShellHandlers,
+  withDelegationFrame,
   withFullAutoLiveState,
   withInput,
   withLiveAgentGraph,
@@ -115,7 +116,7 @@ import {
 } from "./local-harness.ts"
 import { withHarnessLanes, type AppleFmBootState, type DesktopTurnRendererHost, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
 import type { AppleFmStartTurnRequest, AppleFmStatus, AppleFmStopResult, AppleFmTurnResult } from "../apple-fm-contract.ts"
-import type { DesktopTurnSubmitResult } from "../turn/desktop-turn-ipc.ts"
+import type { DesktopTurnEventFrame, DesktopTurnSubmitResult } from "../turn/desktop-turn-ipc.ts"
 import { unavailableFullAutoRunOutcome, type FullAutoRunRendererHost } from "../full-auto-run-ipc-contract.ts"
 import { decodeProviderLaneComposerProjections } from "../provider-lane-capabilities.ts"
 import {
@@ -201,6 +202,8 @@ type DesktopBridge = Readonly<{
   /** AFS-03 (#9081) shared turn kernel submit bridge. Optional across preload rolls. */
   turn?: Readonly<{
     submit?: (value: unknown) => Promise<DesktopTurnSubmitResult>
+    /** AFS-04 (#9082): subagent-delegation `turn:event` frames (progress/terminal). */
+    onEvent?: (listener: (frame: DesktopTurnEventFrame) => void) => () => void
   }>
   runtimeRequest?: (value: unknown) => Promise<DesktopRuntimeGatewayResponse>
   runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
@@ -1692,6 +1695,15 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     if (typeof bridge?.liveAgentGraph?.onUpdate === "function") {
       const unsubscribeGraph = bridge.liveAgentGraph.onUpdate(applyLocalGraph)
       window.addEventListener("pagehide", () => unsubscribeGraph(), { once: true })
+    }
+    // AFS-04 (#9082): apply codex subagent-delegation `turn:event` frames onto the
+    // matching delegation card (status + redacted message chain). No matching
+    // card → the frame is ignored (a non-delegation kernel turn).
+    if (typeof bridge?.turn?.onEvent === "function") {
+      const unsubscribeDelegation = bridge.turn.onEvent((frame) => {
+        void Effect.runPromise(SubscriptionRef.update(state, current => withDelegationFrame(current, frame)))
+      })
+      window.addEventListener("pagehide", () => unsubscribeDelegation(), { once: true })
     }
     // 2026-07-13 startup incident
     // (`openagents_desktop.startup.window_first_no_blank_frame.v1`):

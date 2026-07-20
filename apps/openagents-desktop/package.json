@@ -100,6 +100,7 @@
     "@openagentsinc/agent-client-protocol-conformance": "workspace:*",
     "@openagentsinc/agent-client-runtime-bridge": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/agent-surface": "workspace:*",
     "@openagentsinc/agent-turn-runtime": "workspace:*",
     "@openagentsinc/agent-turn-store": "workspace:*",
     "@openagentsinc/apple-fm-runtime": "workspace:*",

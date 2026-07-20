@@ -368,9 +368,12 @@ import {
   unavailableAppleFmStopResult,
 } from "./apple-fm-contract.ts"
 import {
+  DesktopTurnEventChannel,
   DesktopTurnSubmitChannel,
+  decodeDesktopTurnEventFrame,
   decodeDesktopTurnSubmitRequest,
   decodeDesktopTurnSubmitResult,
+  type DesktopTurnEventFrame,
   type DesktopTurnSubmitResult,
 } from "./turn/desktop-turn-ipc.ts"
 import {
@@ -1080,6 +1083,21 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       const raw = await ipcRenderer.invoke(DesktopTurnSubmitChannel, request.value)
       const decoded = decodeDesktopTurnSubmitResult(raw)
       return decoded._tag === "Some" ? decoded.value : failed
+    },
+    /**
+     * AFS-04 subagent-delegation frames. Main pushes bounded, generation-fenced
+     * `progress`/`terminal` frames for every kernel turn (including a codex
+     * delegation) over `openagents:turn:event`. Each frame carries only the safe
+     * turn projection (card state + redacted message chain) — never a raw
+     * command, output, path, token, or secret. A malformed frame is dropped.
+     */
+    onEvent: (listener: (frame: DesktopTurnEventFrame) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const decoded = decodeDesktopTurnEventFrame(value)
+        if (decoded._tag === "Some") listener(decoded.value)
+      }
+      ipcRenderer.on(DesktopTurnEventChannel, handler)
+      return () => ipcRenderer.removeListener(DesktopTurnEventChannel, handler)
     },
   },
   /**

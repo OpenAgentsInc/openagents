@@ -49,7 +49,8 @@ import {
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import { compareDesktopThreadsByCreatedAt, type DesktopMessageMeta, type DesktopMeterSnapshot, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
-import type { DesktopTurnSubmitResult } from "../turn/desktop-turn-ipc.ts"
+import type { DesktopTurnEventFrame, DesktopTurnSubmitResult } from "../turn/desktop-turn-ipc.ts"
+import type { SafeMessageChainEntry, SafeTurnProjection } from "@openagentsinc/agent-runtime-schema"
 import {
   CodexReasoningEffortSchema,
   LocalModelSchema,
@@ -3070,6 +3071,31 @@ export const makeDesktopShellHandlers = (
         ? null
         : yield* Effect.promise(() =>
             turnHost.submit({ threadRef: submissionThreadId, message }).catch(() => null))
+      // AFS-04: the host started ONE real codex subagent turn. Seed the delegation
+      // card (after the start receipt) — its lifecycle then follows the fenced
+      // `turn:event` frames. It cannot show running before the host said so.
+      if (result !== null && result.outcome === "delegated" && result.delegationRequestRef != null) {
+        const delegationRef = result.delegationRequestRef
+        const objective = result.objective ?? message
+        yield* SubscriptionRef.update(state, (cur) => ({
+          ...cur,
+          pending: false,
+          ...(cur.activeThreadId === null ? {} : {
+            pendingByThread: { ...cur.pendingByThread, [cur.activeThreadId]: false },
+          }),
+          notes: [
+            ...cur.notes,
+            {
+              key: `delegation-${delegationRef}`,
+              role: "system" as const,
+              text: "",
+              timestamp: now(),
+              runtime: seedDelegationCard(delegationRef, objective),
+            },
+          ],
+        }))
+        return
+      }
       const answered = result !== null && result.outcome === "answered" &&
         result.text !== null && result.text.trim() !== ""
       const finalText = answered ? result!.text!.trim() : "Stand by."
@@ -5106,6 +5132,158 @@ export const delegateTranscriptForAgent = (
   return child?.kind === "child" ? child.transcript ?? null : null
 }
 
+// ---------------------------------------------------------------------------
+// AFS-04 (#9082): the codex subagent-delegation card + message chain.
+//
+// A delegated codex turn runs on the shared turn kernel and streams bounded,
+// generation-fenced `turn:event` frames carrying only the safe projection
+// (card state + REDACTED message chain — labels and counts, never a raw
+// command, output, path, or token). The renderer projects each frame onto a
+// `child` runtime card keyed by the delegation request ref, so the existing
+// child card + inspector surfaces render it with ZERO new card subsystem.
+// ---------------------------------------------------------------------------
+
+/** The stable child ref for a codex delegation card (one subagent per delegation turn). */
+export const AFS_DELEGATION_CHILD_REF = "codex" as const
+
+const DELEGATION_TRANSCRIPT_TEXT_LIMIT = 4000
+
+/** Render one safe message-chain entry as a transcript line (labels and counts only). */
+const delegationTranscriptText = (entry: SafeMessageChainEntry): string => {
+  if (entry.text.trim() !== "") return entry.text.slice(0, DELEGATION_TRANSCRIPT_TEXT_LIMIT)
+  const parts: Array<string> = []
+  if (entry.toolLabel !== undefined) parts.push(entry.toolLabel)
+  if (entry.fileChangeCount !== undefined) parts.push(`${entry.fileChangeCount} file${entry.fileChangeCount === 1 ? "" : "s"}`)
+  if (entry.commandOutputByteCount !== undefined) parts.push(`${entry.commandOutputByteCount} bytes`)
+  return parts.join(" · ").slice(0, DELEGATION_TRANSCRIPT_TEXT_LIMIT)
+}
+
+/** Map the safe card state to the child card lifecycle status. */
+const delegationChildStatus = (
+  cardState: SafeTurnProjection["cardState"],
+): RuntimeChildCardPayload["status"] =>
+  cardState === "done" ? "completed" : cardState === "queued" || cardState === "running" ? "running" : "failed"
+
+/** Project a safe turn projection into a codex delegation child card. */
+export const delegationCardFromProjection = (
+  projection: SafeTurnProjection,
+  title: string,
+  detail: string,
+): RuntimeChildCardPayload => ({
+  kind: "child",
+  turnRef: projection.requestRef.slice(0, 120),
+  childRef: AFS_DELEGATION_CHILD_REF,
+  status: delegationChildStatus(projection.cardState),
+  title: title.slice(0, 400),
+  detail: detail.slice(0, 400),
+  transcript: projection.messageChain.map((entry) => ({
+    role: entry.role === "tool" ? ("system" as const) : entry.role,
+    text: delegationTranscriptText(entry),
+  })),
+  steered: null,
+})
+
+/** Build the initial (seeded) delegation card, shown after the host start receipt. */
+export const seedDelegationCard = (delegationRef: string, objective: string): RuntimeChildCardPayload => ({
+  kind: "child",
+  turnRef: delegationRef.slice(0, 120),
+  childRef: AFS_DELEGATION_CHILD_REF,
+  status: "running",
+  title: "Codex subagent",
+  detail: objective.slice(0, 400),
+  transcript: [{ role: "user", text: objective.slice(0, DELEGATION_TRANSCRIPT_TEXT_LIMIT) }],
+  steered: null,
+})
+
+/**
+ * Apply one delegation `turn:event` frame to the shell state. It updates the
+ * matching delegation card's status and redacted message chain. A frame with no
+ * matching card (a non-delegation kernel turn) is ignored. The card can never
+ * be created here — only after the host `delegated` start receipt seeds it — so
+ * a card never shows a running subagent that the host did not start.
+ */
+export const withDelegationFrame = (
+  state: DesktopShellState,
+  frame: DesktopTurnEventFrame,
+): DesktopShellState => {
+  const requestRef = frame.requestRef
+  const index = state.notes.findIndex(
+    (note) =>
+      note.runtime?.kind === "child" &&
+      note.runtime.childRef === AFS_DELEGATION_CHILD_REF &&
+      note.runtime.turnRef === requestRef,
+  )
+  if (index === -1) return state
+  const existing = state.notes[index]!
+  const priorTitle = existing.runtime?.kind === "child" ? existing.runtime.title : "Codex subagent"
+  const priorDetail = existing.runtime?.kind === "child" ? existing.runtime.detail : ""
+  const card = delegationCardFromProjection(frame.projection, priorTitle, priorDetail)
+  const notes = state.notes.slice()
+  notes[index] = { ...existing, runtime: card }
+  return { ...state, notes }
+}
+
+const delegationRoleLabel = (role: "user" | "assistant" | "system"): string =>
+  role === "user" ? "You" : role === "assistant" ? "Codex" : "Activity"
+
+/**
+ * The right-pane message chain for a selected codex delegation. It renders the
+ * bounded, redacted transcript directly, so the subagent's message chain opens
+ * even when no live khala agent graph is mounted. Escape deselects the agent.
+ */
+export const delegationInspectorView = (
+  agentRef: string,
+  transcript: NonNullable<RuntimeChildCardPayload["transcript"]>,
+): View =>
+  Stack(
+    {
+      key: `delegation-inspector-${agentRef}`,
+      direction: "column",
+      gap: "3",
+      style: {
+        width: "full",
+        minWidth: 0,
+        padding: "3",
+        borderColor: "border",
+        borderWidth: 1,
+        borderRadius: "lg",
+      },
+      a11y: { role: "region", label: "Subagent message chain" },
+      interactions: {
+        onKey: [{
+          key: "Escape",
+          preventDefault: true,
+          intent: IntentRef("DesktopAgentAction", StaticPayload({ kind: "inspect_agent", agentRef: "" })),
+        }],
+      },
+    },
+    [
+      Text({ key: `delegation-inspector-title-${agentRef}`, content: "Codex subagent", variant: "label", color: "textPrimary" }),
+      ...transcript.map((entry, index) => Stack(
+        {
+          key: `delegation-inspector-entry-${agentRef}-${index}`,
+          direction: "column",
+          gap: "1",
+          style: { width: "full" },
+        },
+        [
+          Text({
+            key: `delegation-inspector-role-${agentRef}-${index}`,
+            content: delegationRoleLabel(entry.role),
+            variant: "caption",
+            color: entry.role === "assistant" ? "accent" : "textMuted",
+          }),
+          Text({
+            key: `delegation-inspector-text-${agentRef}-${index}`,
+            content: entry.text,
+            variant: "body",
+            color: entry.role === "system" ? "textMuted" : "textPrimary",
+          }),
+        ],
+      )),
+    ],
+  )
+
 /**
  * Queued follow-up chip (EP250 wave-2 A3). A compact "Queued follow-up (#N)"
  * badge shown while the follow-up sits in the queue-until-idle queue; it clears
@@ -6252,14 +6430,19 @@ const chatTranscriptArea = (state: DesktopShellState): ReadonlyArray<View> => {
   const selected = state.selectedMessageKey === null
     ? undefined
     : state.notes.find((note) => note.key === state.selectedMessageKey)
-  const graph = state.agentGraph === null
-    ? null
-    : runtimeAgentGraphView({
+  const delegateTranscript = delegateTranscriptForAgent(state.notes, state.selectedAgentRef)
+  const graph = state.agentGraph !== null
+    ? runtimeAgentGraphView({
         graph: state.agentGraph,
         expanded: state.agentGraphExpanded,
         selectedAgentRef: state.selectedAgentRef,
-        selectedTranscript: delegateTranscriptForAgent(state.notes, state.selectedAgentRef),
+        selectedTranscript: delegateTranscript,
       })
+    // AFS-04: with no live khala graph, a selected codex delegation still opens
+    // its redacted message chain in the right pane.
+    : state.selectedAgentRef === null || delegateTranscript == null
+      ? null
+      : delegationInspectorView(state.selectedAgentRef, delegateTranscript)
   if (selected === undefined && graph === null) return [transcript, shellComposer(state)]
   const rightRail = Stack(
     {

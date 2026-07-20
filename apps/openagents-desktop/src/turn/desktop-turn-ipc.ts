@@ -60,14 +60,26 @@ export type DesktopTurnPlacement = typeof DesktopTurnPlacement.Type
  * assistant text and the effective route disclosure (selected/effective
  * provider, placement, data destination, and usage truth). Every non-answered
  * outcome preserves the user entry in the renderer and shows the exact reason.
+ *
+ * AFS-04 adds `delegated`: the host started ONE real subagent turn (Codex)
+ * through the shared kernel. The renderer creates an agent card bound to
+ * `delegationRequestRef` and drives its lifecycle from the `turn:event` frames
+ * for that request. The host never claims a subagent ran in prose; the card
+ * reflects the true kernel state. A `delegated` result implies a start receipt
+ * exists, so the card is admitted; it still shows `queued` until the first
+ * running frame arrives.
  */
 export const DesktopTurnSubmitResult = S.Struct({
-  outcome: S.Literals(["answered", "refused", "failed", "cancelled", "unavailable"]),
+  outcome: S.Literals(["answered", "delegated", "refused", "failed", "cancelled", "unavailable"]),
   text: S.NullOr(S.String.check(S.isMaxLength(MAX_TURN_OUTPUT_CHARS))),
   provider: S.NullOr(TurnProviderCandidate),
   placement: S.NullOr(DesktopTurnPlacement),
   dataDestination: S.NullOr(TurnDataDestination),
   usageTruth: S.NullOr(TurnUsageTruth),
+  /** The delegated subagent turn's request ref (AFS-04). Null for every non-delegated outcome. */
+  delegationRequestRef: S.optionalKey(S.NullOr(TurnRequestRef)),
+  /** The bounded objective handed to the subagent (AFS-04). Null when not delegated. */
+  objective: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(MAX_TURN_INPUT_CHARS)))),
 })
 export type DesktopTurnSubmitResult = typeof DesktopTurnSubmitResult.Type
 

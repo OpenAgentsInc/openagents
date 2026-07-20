@@ -321,6 +321,7 @@ import { localRuntimePersistenceOperation } from "./local-runtime-event-persiste
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { desktopAfsTurnKernelEnabled, installDesktopTurnKernel } from "./turn/desktop-turn-main.ts"
 import { makeDesktopAppleFmProviderRegistry } from "./turn/desktop-apple-fm-provider.ts"
+import { makeCodexProviderRegistry, type CodexLaneReadiness } from "./turn/desktop-codex-provider.ts"
 import {
   filterLocallyOwnedCodexHistoryCatalog,
   filterLocallyOwnedCodexHistorySearch,
@@ -1354,6 +1355,25 @@ const localTurnJournal = openLocalTurnJournal(
 // is constructed later in this module, so it is resolved lazily through
 // `appleFmHostRef`, set once the host exists.
 let appleFmHostRef: AppleFmHost | null = null
+// AFS-04 (#9082): the codex-local runtime + lane are constructed later in this
+// module; resolve them lazily so the router recommendation can start one real
+// codex delegation turn through the existing lane once they exist.
+let codexLocalRuntimeRef: ReturnType<typeof makeCodexLocalRuntime> | null = null
+let codexLocalLaneRef: ProviderLane<null> | null = null
+const codexDelegationReadiness = async (): Promise<CodexLaneReadiness> => {
+  const runtime = codexLocalRuntimeRef
+  if (runtime === null) return { ready: false, unavailableReason: "not_ready" }
+  try {
+    const availability = await runtime.availability()
+    if (availability.state === "available") return { ready: true, accountRef: availability.accountRef }
+    return {
+      ready: false,
+      unavailableReason: availability.reason === "invalid_config" ? "invalid_config" : availability.reason,
+    }
+  } catch {
+    return { ready: false, unavailableReason: "not_ready" }
+  }
+}
 if (desktopAfsTurnKernelEnabled()) {
   installDesktopTurnKernel({
     ipcMain: {
@@ -1367,6 +1387,32 @@ if (desktopAfsTurnKernelEnabled()) {
     threadStore: threads(),
     journalFilePath: path.join(app.getPath("userData"), "agent-turns", "journal.json"),
     providerRegistry: makeDesktopAppleFmProviderRegistry(() => appleFmHostRef, () => threads()),
+    codexProvider: makeCodexProviderRegistry({
+      readiness: codexDelegationReadiness,
+      runTurn: async ({ requestRef, threadRef, message, emit }) => {
+        const lane = codexLocalLaneRef
+        if (lane === null) return { ok: false, reason: "session_failed", detail: "codex lane not ready" }
+        const request = decodeClaudeLocalStartRequest({
+          turnRef: requestRef.slice(0, 120),
+          threadRef,
+          message,
+          fullAuto: true,
+        })
+        if (request === null) return { ok: false, reason: "session_failed", detail: "invalid delegation request" }
+        const admission = lane.admit(request)
+        if (!admission.ok) return { ok: false, reason: "session_failed", detail: admission.error }
+        const result = await lane.runTurn({
+          request,
+          model: admission.model,
+          context: admission.context,
+          history: [],
+          message,
+          background: true,
+          emit,
+        })
+        return result.ok ? { ok: true, text: result.text } : { ok: false, reason: result.reason, detail: result.detail }
+      },
+    }),
   })
 }
 const fullAutoRegistry = openFullAutoRegistry(
@@ -3545,6 +3591,9 @@ const codexLocal = makeCodexLocalRuntime({
       }
     : {}),
 })
+// AFS-04 (#9082): expose the codex runtime to the shared turn kernel's codex
+// delegate provider (constructed earlier, resolved lazily).
+codexLocalRuntimeRef = codexLocal
 // User-configured MCP servers (I2, EP250 wave-2). The persistence host owns
 // the private JSON file under userData (mode 0600; secret env/header values
 // never logged); the settings UI edits it through additive IPC. The runtime
@@ -4632,6 +4681,9 @@ const codexLocalLane: ProviderLane<null> = {
     if (request.fullAuto === true) void runFullAutoReconciliation()
   },
 }
+// AFS-04 (#9082): expose the codex lane to the shared turn kernel's codex
+// delegate provider (resolved lazily by the delegation runTurn).
+codexLocalLaneRef = codexLocalLane
 
 const acpLaneCapabilities = (
   provider: "grok" | "cursor",

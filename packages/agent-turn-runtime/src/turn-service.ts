@@ -13,6 +13,7 @@ import {
   RouteDecisionRef,
   type OwnerBoundCandidateSet,
   type RouteRecommendation,
+  type SafeMessageChainEntry,
   type SafeTurnProjection,
   type TurnCandidate,
   type TurnDataDestination,
@@ -147,7 +148,11 @@ export const layer = Layer.effect(
     );
 
     /** Persist (best effort) and publish a projection for the current record. */
-    const publish = (record: TurnStateRecord, facts: EffectiveFacts) =>
+    const publish = (
+      record: TurnStateRecord,
+      facts: EffectiveFacts,
+      messageChain: ReadonlyArray<SafeMessageChainEntry>,
+    ) =>
       Effect.gen(function* () {
         yield* journal.record(record).pipe(Effect.catch(() => Effect.void));
         const updatedAt = yield* timestamp;
@@ -157,6 +162,7 @@ export const layer = Layer.effect(
           usageTruth: facts.usageTruth,
           localOnly: facts.localOnly,
           ...(facts.candidate === undefined ? {} : { candidate: facts.candidate }),
+          messageChain,
           updatedAt,
         });
         yield* Ref.update(latest, (map) => new Map(map).set(record.requestRef, projection));
@@ -176,6 +182,8 @@ export const layer = Layer.effect(
       const stateRef = yield* Ref.make(initialTurnState(input.requestRef, input.threadRef));
       const lastCandidate = yield* Ref.make<TurnCandidate | null>(null);
       const factsRef = yield* Ref.make<EffectiveFacts>(DEFAULT_FACTS);
+      // The latest redacted safe message chain the provider adapter reported.
+      const chainRef = yield* Ref.make<ReadonlyArray<SafeMessageChainEntry>>([]);
 
       const applyAt = (generation: number, transition: TurnTransition) =>
         Effect.gen(function* () {
@@ -184,7 +192,8 @@ export const layer = Layer.effect(
           if (outcome.ok) {
             yield* Ref.set(stateRef, outcome.record);
             const facts = yield* Ref.get(factsRef);
-            yield* publish(outcome.record, facts);
+            const chain = yield* Ref.get(chainRef);
+            yield* publish(outcome.record, facts, chain);
           }
           return outcome;
         });
@@ -196,6 +205,7 @@ export const layer = Layer.effect(
         Effect.gen(function* () {
           const record = yield* Ref.get(stateRef);
           const facts = yield* Ref.get(factsRef);
+          const messageChain = yield* Ref.get(chainRef);
           const updatedAt = yield* timestamp;
           const projection = deriveSafeProjection({
             record,
@@ -203,6 +213,7 @@ export const layer = Layer.effect(
             usageTruth: facts.usageTruth,
             localOnly: facts.localOnly,
             ...(facts.candidate === undefined ? {} : { candidate: facts.candidate }),
+            messageChain,
             updatedAt,
           });
           const receipt = buildTurnReceipt({
@@ -217,6 +228,17 @@ export const layer = Layer.effect(
       const foldProviderEvent = (generation: number, event: ProviderStreamEvent) =>
         ProviderStreamEvent.$match(event, {
           Progress: () => applyAt(generation, TurnTransition.Progress()),
+          // A chain snapshot never advances the lifecycle; it republishes the
+          // current record with the latest redacted message chain.
+          Chain: ({ entries }) =>
+            Effect.gen(function* () {
+              yield* Ref.set(chainRef, entries);
+              const record = yield* Ref.get(stateRef);
+              // Fence a late snapshot from a superseded generation.
+              if (record.generation !== generation) return;
+              const facts = yield* Ref.get(factsRef);
+              yield* publish(record, facts, entries);
+            }),
           Completed: ({ candidate }) =>
             Effect.gen(function* () {
               const outcome = yield* applyAt(
@@ -327,10 +349,13 @@ export const layer = Layer.effect(
         );
 
         // Consumer: fold gateway events until the first terminal provider event.
-        // A `Progress` event continues; `Completed`, `Refused`, and `Failed`
-        // stop the drain after they are folded.
+        // `Progress` and `Chain` events continue; `Completed`, `Refused`, and
+        // `Failed` stop the drain after they are folded.
         const consumer = gateway.stream.pipe(
-          Stream.takeUntil((event) => event._tag !== "Progress"),
+          Stream.takeUntil(
+            (event) =>
+              event._tag === "Completed" || event._tag === "Refused" || event._tag === "Failed",
+          ),
           Stream.runForEach((event) => foldProviderEvent(runGeneration, event)),
         );
 

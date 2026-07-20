@@ -10,6 +10,7 @@ import {
   ProviderTurnRef,
   ROUTE_DECISION_SCHEMA_LITERAL,
   RouteDecision,
+  SafeMessageChainEntry,
   TurnCandidate,
   WorkContextEnvelope,
   type ReleasedArtifact,
@@ -163,13 +164,40 @@ export const turnPolicyFixtureLayer = (options: { readonly closed?: boolean } = 
     }),
   );
 
-export type ProviderFixtureOutcome = "completes" | "fails" | "refuses" | "hangs" | "start_unavailable";
+const decodeChainEntry = S.decodeUnknownSync(SafeMessageChainEntry);
+
+export const fixtureChainEntries: ReadonlyArray<SafeMessageChainEntry> = [
+  decodeChainEntry({ entryRef: "request.fixture.1.chain.0", role: "assistant", text: "working" }),
+  decodeChainEntry({
+    entryRef: "request.fixture.1.chain.1",
+    role: "tool",
+    text: "",
+    toolLabel: "shell",
+    commandOutputByteCount: 12,
+  }),
+];
+
+export type ProviderFixtureOutcome =
+  | "completes"
+  | "completes_with_chain"
+  | "fails"
+  | "refuses"
+  | "hangs"
+  | "start_unavailable";
 
 const outcomeStream = (outcome: ProviderFixtureOutcome): Stream.Stream<ProviderStreamEvent> => {
   switch (outcome) {
     case "completes": {
       const events: ReadonlyArray<ProviderStreamEvent> = [
         ProviderStreamEvent.Progress(),
+        ProviderStreamEvent.Completed({ candidate: fixtureAnswerCandidate }),
+      ];
+      return Stream.fromIterable(events);
+    }
+    case "completes_with_chain": {
+      const events: ReadonlyArray<ProviderStreamEvent> = [
+        ProviderStreamEvent.Progress(),
+        ProviderStreamEvent.Chain({ entries: fixtureChainEntries }),
         ProviderStreamEvent.Completed({ candidate: fixtureAnswerCandidate }),
       ];
       return Stream.fromIterable(events);
