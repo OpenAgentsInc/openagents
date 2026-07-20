@@ -20,7 +20,10 @@ const sandboxRef = 'sandbox.sbx09.live'
 const turnRef = 'turn.sbx09.live.codex'
 const capabilityRef = 'capability.sbx09.live.turn'
 
-const resource = (state: 'active' | 'revoked' = 'active') =>
+const resource = (
+  state: 'active' | 'revoked' = 'active',
+  lifecycle: 'ready' | 'idle' | 'running' | 'stopping' = 'running',
+) =>
   ({
     schema: 'openagents.managed_sandbox.v1',
     sandboxRef,
@@ -69,13 +72,13 @@ const resource = (state: 'active' | 'revoked' = 'active') =>
       },
     ],
     facts: {
-      lifecycle: 'ready',
+      lifecycle,
       leaseState: 'active',
       guestState: 'present',
       filesystemState: 'attached',
       ingressState: 'closed',
       runtimeState: 'running',
-      acceptingWork: true,
+      acceptingWork: lifecycle !== 'stopping',
       cleanupComplete: false,
     },
     createdAt: '2026-07-19T19:55:00.000Z',
@@ -214,6 +217,54 @@ describe('managed-sandbox provider capability broker', () => {
       env,
     )
     const response = await Effect.runPromise(effect!)
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: 'capability_revoked' })
+  })
+
+  test('admits dispatch transition states and refuses a quiescing resource', async () => {
+    const capability = await token()
+    for (const lifecycle of ['ready', 'idle', 'running'] as const) {
+      const routes = makeManagedSandboxProviderBrokerRoutes({
+        store: () => store(() => resource('active', lifecycle)),
+        nowMs: () => nowMs + 1,
+        fetchImpl: async () => Response.json({ id: `response-${lifecycle}` }),
+      })
+      const response = await Effect.runPromise(
+        routes.route(
+          new Request(
+            `https://openagents.test${managedSandboxProviderBrokerPaths.openai}`,
+            {
+              method: 'POST',
+              headers: { authorization: `Bearer ${capability}` },
+              body: JSON.stringify({ input: lifecycle }),
+            },
+          ),
+          env,
+        )!,
+      )
+      expect(response.status).toBe(200)
+    }
+
+    const routes = makeManagedSandboxProviderBrokerRoutes({
+      store: () => store(() => resource('active', 'stopping')),
+      nowMs: () => nowMs + 1,
+      fetchImpl: async () => {
+        throw new Error('quiescing resources must not reach the provider')
+      },
+    })
+    const response = await Effect.runPromise(
+      routes.route(
+        new Request(
+          `https://openagents.test${managedSandboxProviderBrokerPaths.openai}`,
+          {
+            method: 'POST',
+            headers: { authorization: `Bearer ${capability}` },
+            body: JSON.stringify({ input: 'forbidden' }),
+          },
+        ),
+        env,
+      )!,
+    )
     expect(response.status).toBe(403)
     expect(await response.json()).toEqual({ error: 'capability_revoked' })
   })

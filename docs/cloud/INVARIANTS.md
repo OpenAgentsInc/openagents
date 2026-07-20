@@ -240,6 +240,10 @@ design context only.
   relays that capability without learning or storing a provider credential.
   Every provider request
   rechecks the native resource, turn, active lease, generation, and capability.
+  Redemption admits only a work-accepting `ready`, `idle`, or `running`
+  resource, covering the bounded race between provider startup and durable
+  `RuntimeStarted` application. Quiescing, terminal, non-accepting, or
+  cleanup-complete resources refuse before a provider effect.
   The Worker then injects its OpenAI key or mints a Vertex access token.
   Revoked, expired, cross-provider, stale-generation, or changed-model tokens
   fail before a provider effect.

@@ -218,7 +218,9 @@ const resourceAdmits = (
     resource.tenantRef === claims.tenantRef &&
     resource.sandboxRef === claims.sandboxRef &&
     resource.resourceGeneration === claims.resourceGeneration &&
-    resource.facts.lifecycle === 'ready' &&
+    resource.facts.acceptingWork &&
+    ['ready', 'idle', 'running'].includes(resource.facts.lifecycle) &&
+    !resource.facts.cleanupComplete &&
     resource.lease.state === 'active' &&
     Date.parse(resource.lease.expiresAt) > nowMs &&
     capability?.kind === 'agent_turn' &&

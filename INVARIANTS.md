@@ -89,6 +89,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   the guest adapter persists the first terminal observation and drops all
   trailing provider events, while the durable lifecycle still rejects a second
   terminal transition rather than reopening or rewriting the turn.
+- Provider-capability redemption remains valid across the exact dispatch race:
+  a work-accepting resource may be `ready`, `idle`, or `running` while its turn
+  is pending or running. Quiescing, terminal, non-accepting, expired, revoked,
+  or cleanup-complete resources refuse before any provider effect.
 
 ## Preserved Transcript Archive
 

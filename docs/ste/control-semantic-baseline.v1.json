@@ -602,7 +602,7 @@
       ]
     },
     "INVARIANTS.md": {
-      "sourceSha256": "0a9c46980cc40437966f9922d15876ac6510236edbbe8acb9302cfa14bc1d6b1",
+      "sourceSha256": "c4d8a252e141d12363d528f57ff71d2e24a259f6d34a84426f8a104e923d8cce",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -908,6 +908,7 @@
         "hosted_khala",
         "http://127.0.0.1:{ephemeral-port}/auth/callback",
         "https://openagents.com/forum/f/product-promises",
+        "idle",
         "ignored",
         "inbound_webhook",
         "incompatible_version",
@@ -1078,6 +1079,7 @@
         "react-agent-code.test.tsx",
         "react-timeline.test.tsx",
         "react-timeline.test.tsx",
+        "ready",
         "recovery_required",
         "release.json",
         "renderer/react-composer.tsx",
@@ -1102,6 +1104,7 @@
         "runRef",
         "runRef",
         "runRef",
+        "running",
         "running",
         "running",
         "running",
@@ -11365,7 +11368,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "16e28ec8e4469368e727cc984509943b8343a79b1f672864dfeab24dc650045f",
+      "sourceSha256": "073a381ce841fc36933b29db09cd4f6061d6c6e94dab7afd21f17f04493718f2",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -11405,6 +11408,7 @@
         "RuntimeInterruptRequested",
         "RuntimeInterrupted",
         "RuntimeSettled",
+        "RuntimeStarted",
         "apps/openagents.com",
         "apps/openagents.com/workers/api/src/khala-cloud-runtime-usage-routes.ts",
         "apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts",
@@ -11451,6 +11455,7 @@
         "git push",
         "git-writeback.json",
         "github_write_grant_ref",
+        "idle",
         "instances list",
         "isOwnerSubscriptionCapacityReceipt",
         "live_gce",
@@ -11478,6 +11483,7 @@
         "provision -> exec -> copyOut -> teardown",
         "pylon-claude-org-capacity",
         "pylon-codex-org-capacity",
+        "ready",
         "ready:true",
         "recovery_required",
         "recovery_required",
@@ -11485,6 +11491,7 @@
         "release_at − acquire_at",
         "repository_clone_url",
         "repository_ref",
+        "running",
         "scripts/cloud/managed-sandbox-live-acceptance.ts",
         "subscriptionCapacityResale: false",
         "tokenChargeMetered: false",
