@@ -2029,6 +2029,26 @@ describe("pure transitions", () => {
     expect(restored.pending).toBe(true)
   })
 
+  test("thread hydration never wipes a live conversation with an empty catalog thread (owner directive 2026-07-20)", () => {
+    // Repro: submitting before the BOOT SEQUENCE finished lost the message. The
+    // OpenAgents-authority reply is renderer-only (not persisted), so the
+    // freshly-created catalog thread comes back with NO notes; withThreads must
+    // keep the live turn rather than drop back to the empty state (which
+    // re-showed the BOOT SEQUENCE and discarded the message).
+    const liveNotes = [
+      { key: "u0", role: "user" as const, text: "who are you", timestamp: "18:00" },
+      { key: "a0", role: "assistant" as const, text: "I'm OpenAgents.", timestamp: "18:00" },
+    ]
+    const emptyCatalogThread = {
+      id: "t1", title: "New chat",
+      createdAt: "2026-07-20T18:00:00.000Z", updatedAt: "2026-07-20T18:00:00.000Z", notes: [],
+    } as const
+    const next = withThreads({ ...baseState, activeThreadId: "t1", notes: liveNotes }, [emptyCatalogThread])
+    expect(next.activeThreadId).toBe("t1")
+    expect(next.notes).toEqual(liveNotes)
+    expect(next.pending).toBe(false)
+  })
+
   test("review context is visible, removable, and sent as bounded untrusted provider context", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const context = {

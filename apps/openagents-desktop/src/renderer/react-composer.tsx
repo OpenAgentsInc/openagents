@@ -74,7 +74,6 @@ import {
   composerImageDataUrl,
   formatImageSize,
 } from "./composer-images.ts";
-import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
 import { capabilityForActiveLane, formatRelativeTimestamp, questionAnswersReady, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 import {
@@ -464,9 +463,19 @@ export const ReactComposer = ({
   const pendingAction = composerActionPresentation(state.composerAdmission, activeSubmitMode);
   const hasText = state.input.trim() !== "";
   const hasBoundedContext = state.composerImages.length > 0 || state.composerReviewContext !== null || state.composerFileContext !== null || state.composerTerminalContext !== null || state.composerPreviewContext !== null;
+  // Owner directive 2026-07-20: on the OpenAgents-authority path (the current
+  // default) provider-lane readiness must NEVER block send — the user submits
+  // immediately while Codex is still loading, and no "Checking Codex…" status
+  // appears in the composer. The lane-evidence gate + its refusal reason survive
+  // ONLY on the explicit provider path (openAgentsStandby === false).
+  const providerPath = state.openAgentsStandby === false;
+  const laneRefused = providerPath && (!lane.available || !capabilityAdmitted);
+  const refusalReason = laneRefused
+    ? capabilities?.reason ?? lane.reason ?? `${capabilities?.displayName ?? "Provider"} unavailable`
+    : null;
   const canSubmit = state.pending
     ? state.activeThreadId !== null && hasText && pendingAction.enabled
-    : lane.available && capabilityAdmitted && (hasText || hasBoundedContext);
+    : !laneRefused && (hasText || hasBoundedContext);
   const atImageLimit = !canAttachMoreImages(state.composerImages);
   const imageSupported = capabilities?.images ?? true;
   const attachmentDisabled = state.pending || atImageLimit || !imageSupported;
@@ -672,18 +681,11 @@ export const ReactComposer = ({
         />
         <DesktopComposerBar>
         <span className="oa-react-composer-spacer" />
-        {!state.pending && (!lane.available || !capabilityAdmitted) ? (
-          <Badge
-            className="oa-react-composer-status"
-            variant="outline"
-            role="status"
-            aria-live="polite"
-            data-codex-status={lane.reason === CODEX_CHIP_REASON_VERIFYING ? "checking" : "unavailable"}
-          >
-            <span className="oa-react-composer-status-dot" aria-hidden="true" />
-            {lane.reason === CODEX_CHIP_REASON_VERIFYING ? "Checking Codex…" : capabilities?.reason ?? lane.reason ?? `${capabilities?.displayName ?? "Provider"} unavailable`}
-          </Badge>
-        ) : null}
+        {/* Owner directive 2026-07-20: provider-lane readiness ("Checking
+            Codex…", "… unavailable") must NEVER appear as a standing status in
+            the composer/input bar — it belongs ONLY in the BOOT SEQUENCE. On the
+            provider path, the reason a refused Send is disabled survives on the
+            Send button's accessible label (below), not as a status badge. */}
         {state.pending && (capabilities?.interrupt ?? true) ? (
           <DesktopComposerButton
             kind="stop"
@@ -700,9 +702,9 @@ export const ReactComposer = ({
           type="button"
           disabled={!canSubmit}
           onClick={() => submit(editorRef.current?.readValue() ?? state.input)}
-          aria-label={submitLabel} title={submitLabel}>
+          aria-label={refusalReason ?? submitLabel} title={refusalReason ?? submitLabel}>
           <ArrowUp data-icon-name={composerIconNames.submit} aria-hidden="true" />
-          <span className="sr-only">{submitLabel}</span>
+          <span className="sr-only">{refusalReason ?? submitLabel}</span>
         </DesktopComposerButton>
       </DesktopComposerBar>
       </DesktopComposerInput>

@@ -111,7 +111,7 @@ const interact = async (interaction: () => void): Promise<void> => {
 };
 
 describe("React Codex composer", () => {
-  test("keeps initial Codex probing compact and local to the composer", async () => {
+  test("never shows provider-lane status in the composer — it belongs only to the BOOT SEQUENCE, and submit stays enabled while Codex loads (owner directive 2026-07-20)", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { report } = recorder();
@@ -119,12 +119,16 @@ describe("React Codex composer", () => {
     const base = fixtureState();
     await render(root, <ReactComposer state={{
       ...base,
+      input: "hello",
       harnessLanes: { ...base.harnessLanes, codex: { available: false, reason: CODEX_CHIP_REASON_VERIFYING } },
     }} report={report} />);
-    const status = container.querySelector('[data-codex-status="checking"]');
-    expect(status?.getAttribute("data-slot")).toBe("badge");
-    expect(status?.textContent).toBe("Checking Codex…");
-    expect(status?.querySelector(".oa-react-composer-status-dot")).not.toBeNull();
+    // No "Checking Codex…"/"… unavailable" standing status badge in the input bar.
+    expect(container.querySelector("[data-codex-status]")).toBeNull();
+    expect(container.querySelector(".oa-react-composer-status")).toBeNull();
+    expect(container.textContent ?? "").not.toContain("Checking Codex");
+    // On the OpenAgents-authority path (default), Send is NOT blocked by Codex
+    // loading — the user submits immediately.
+    expect((container.querySelector('[data-composer-button-kind="submit"]') as HTMLButtonElement).disabled).toBe(false);
   });
 
   test("keeps first-submit enabled while startup thread admission is still pending", async () => {
@@ -499,13 +503,16 @@ describe("React Codex composer", () => {
     expect(received).toContainEqual({ name: "DesktopTurnInterrupted", payload: null });
   });
 
-  test("L2 refuses an over-claiming lane and exposes its quarantine reason", async () => {
+  test("L2 refuses an over-claiming lane and exposes its quarantine reason on the Send button (provider path)", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { report } = recorder();
     const root = createTestRoot(container);
     await render(root, <ReactComposer state={fixtureState({
       input: "must not send",
+      // Quarantine gating applies on the explicit provider path (the OpenAgents
+      // authority default never routes to the provider lane, so it is not gated).
+      openAgentsStandby: false,
       providerLaneCapabilities: [{
         laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "quarantined", reason: "Lane capability over-claim quarantined (feature:fullAuto).",
         models: [], reasoningEfforts: [], permissionModes: [], approvals: "none", questions: false, skills: false, images: false,
@@ -514,7 +521,13 @@ describe("React Codex composer", () => {
     })} report={report} />);
     expect(container.querySelector('[data-en-key="shell-attach-image"]')).toBeNull();
     expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
-    expect((container.querySelector('[data-composer-button-kind="submit"]') as HTMLButtonElement).disabled).toBe(true);
+    const submit = container.querySelector('[data-composer-button-kind="submit"]') as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    // The refusal reason is NOT a standing status badge — it lives on the Send
+    // button's accessible label (aria-label/title/sr-only), so it stays in the
+    // accessibility tree without a persistent input-bar caption.
+    expect(container.querySelector("[data-codex-status]")).toBeNull();
+    expect(submit.getAttribute("aria-label")).toContain("Lane capability over-claim quarantined");
     expect(container.textContent).toContain("Lane capability over-claim quarantined");
   });
 });

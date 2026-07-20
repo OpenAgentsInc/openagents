@@ -2007,10 +2007,20 @@ export const withThreads = (state: DesktopShellState, threads: ReadonlyArray<Des
         ...state,
         threads: orderedThreads.slice(0, desktopLocalThreadProjectionLimit),
         activeThreadId: active.id,
-        notes: active.notes,
+        // A catalog/metadata refresh must never DESTROY the live conversation.
+        // Owner directive 2026-07-20: submitting before the BOOT SEQUENCE
+        // finished wiped the message because the OpenAgents-authority reply is
+        // renderer-only (not persisted), so the freshly-created catalog thread
+        // came back with empty notes and clobbered the live turn — dropping the
+        // conversation back to empty and re-showing the BOOT SEQUENCE. Keep the
+        // live notes whenever the catalog version has fewer (recovery still
+        // works: an empty live renderer takes the catalog's recovered notes,
+        // since length 0 is never greater than the catalog length).
+        notes: active.notes.length >= state.notes.length ? active.notes : state.notes,
         // Main persists this projection before a restarted renderer asks for
         // its catalog. Recover pending from durable truth, not process memory.
-        pending: active.notes.some(note => note.meta?.recovery?.state === "recovering"),
+        pending: (active.notes.length >= state.notes.length ? active.notes : state.notes)
+          .some(note => note.meta?.recovery?.state === "recovering"),
         agentGraph: active.agentGraph ?? null,
         agentGraphExpanded: active.agentGraph === undefined
           ? false
