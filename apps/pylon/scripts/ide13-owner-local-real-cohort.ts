@@ -41,6 +41,7 @@ import {
 import { createPylonPortableLocalRehydrator } from "../src/portable-session-local-rehydrator.js";
 import {
   createPylonOwnerLocalDestinationLifecycle,
+  PylonPortableDestinationError,
   type PylonPortableAuthorityAttachment,
 } from "../src/portable-session-destination.js";
 import {
@@ -123,8 +124,30 @@ export type Ide13OwnerLocalAuthorityFaultProof = Readonly<{
   disclosure: string;
 }>;
 
+export type Ide13OwnerLocalEventFaultScenario = "duplicate_event" | "reordered_event";
+
+export type Ide13OwnerLocalEventFaultProof = Readonly<{
+  scenario: Ide13OwnerLocalEventFaultScenario;
+  productionBoundaryRef: string;
+  injectedFaultRef: string;
+  recoveryPointRef: string;
+  receiptRef: string;
+  disclosure: string;
+}>;
+
 const sha256 = (value: string | Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
+
+const canonical = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+};
 
 const stableRef = (prefix: string, value: string): string =>
   `${prefix}.${sha256(value).slice(0, 32)}`;
@@ -264,8 +287,10 @@ export const runIde13OwnerLocalRealCohort = async (
     candidateCommitSha?: string;
     injectedAuthorityFaultScenario?: Ide13OwnerLocalAuthorityFaultScenario;
     injectedCheckpointStoreCrash?: boolean;
+    injectedEventFaultScenario?: Ide13OwnerLocalEventFaultScenario;
     injectedTransitionPartitionPhase?: Phase;
     onInjectedAuthorityFaultProof?: (proof: Ide13OwnerLocalAuthorityFaultProof) => void;
+    onInjectedEventFaultProof?: (proof: Ide13OwnerLocalEventFaultProof) => void;
     outputPath?: string;
     repositoryRoot?: string;
   }> = {},
@@ -306,11 +331,18 @@ export const runIde13OwnerLocalRealCohort = async (
   let injectedCheckpointStoreCrash = false;
   let injectedSourceCleanupFailure = false;
   let authorityFaultProof: Ide13OwnerLocalAuthorityFaultProof | null = null;
+  let eventFaultProof: Ide13OwnerLocalEventFaultProof | null = null;
   const recordAuthorityFaultProof = (proof: Ide13OwnerLocalAuthorityFaultProof): void => {
     if (authorityFaultProof !== null) {
       throw new Error("owner-local authority fault produced more than one proof");
     }
     authorityFaultProof = proof;
+  };
+  const recordEventFaultProof = (proof: Ide13OwnerLocalEventFaultProof): void => {
+    if (eventFaultProof !== null) {
+      throw new Error("owner-local event fault produced more than one proof");
+    }
+    eventFaultProof = proof;
   };
   const runPhase = async <A>(phase: Phase, operation: () => Promise<A>): Promise<A> => {
     if (input.injectedTransitionPartitionPhase === phase && injectedTransitionPartition === false) {
@@ -330,11 +362,20 @@ export const runIde13OwnerLocalRealCohort = async (
   try {
     const ledger = new PylonPortableSessionOperationLedger(database);
     const helpers = makePylonPortableDestinationProductionHelpers();
+    const helperStartCounts = new Map<string, number>();
     const supervisor = makePylonPortableDestinationHelperSupervisor({
       authenticator: makeEvidenceBoundPortableDestinationAuthenticator(),
-      adapters: helpers.adapters,
+      adapters: helpers.adapters.map((adapter) => ({
+        ...adapter,
+        start: async (startInput) => {
+          helperStartCounts.set(adapter.kind, (helperStartCounts.get(adapter.kind) ?? 0) + 1);
+          return adapter.start(startInput);
+        },
+      })),
       unsupportedOmissionRefs: helpers.unsupportedOmissionRefs,
     });
+    const helperStartCount = (): number =>
+      [...helperStartCounts.values()].reduce((sum, count) => sum + count, 0);
     let executorReady: (() => void) | undefined;
     const ready = new Promise<void>((resolveReady) => {
       executorReady = resolveReady;
@@ -472,12 +513,20 @@ export const runIde13OwnerLocalRealCohort = async (
         : {}),
     };
     const custodyA = new PylonPortableCheckpointArtifactStore(custodyAConfig);
-    const rehydratorB = createPylonPortableLocalRehydrator({
+    const productionRehydratorB = createPylonPortableLocalRehydrator({
       targetRef: targetBRef,
       custodyRoot: join(root, "rehydrated-b"),
       artifacts: new PylonPortableCheckpointArtifactStore(custodyAConfig),
       lifecycle: actions.portable,
     });
+    let destinationStageWriterCount = 0;
+    const rehydratorB = {
+      ...productionRehydratorB,
+      stage: async (operation: Parameters<typeof productionRehydratorB.stage>[0]) => {
+        destinationStageWriterCount += 1;
+        return productionRehydratorB.stage(operation);
+      },
+    };
     const destinationB = createPylonOwnerLocalDestinationLifecycle({
       targetRef: targetBRef,
       ledger,
@@ -604,16 +653,67 @@ export const runIde13OwnerLocalRealCohort = async (
       destinationGeneration: 2,
       capabilityLeaseRefs,
     };
+    const activateBInput = {
+      operationRef: "operation.ide13.owner-local.move.destination.activate",
+      checkpointRef: checkpointA.value.checkpoint.checkpointRef,
+      sessionRef,
+      executionBinding,
+      destinationAttachmentRef: attachmentB2,
+      destinationGeneration: 2,
+      capabilityLeaseRefs,
+    };
+    if (input.injectedEventFaultScenario === "reordered_event") {
+      const authorityBefore = JSON.stringify(authority);
+      const helperStartsBefore = helperStartCount();
+      const stageWritersBefore = destinationStageWriterCount;
+      let rejected: PylonPortableDestinationError | null = null;
+      try {
+        await destinationB.activate(activateBInput);
+      } catch (error) {
+        if (
+          !(error instanceof PylonPortableDestinationError) ||
+          error.reason !== "conflicting_replay" ||
+          error.message !== "activation does not have a completed runner reservation"
+        ) {
+          throw error;
+        }
+        rejected = error;
+      }
+      if (rejected === null) {
+        throw new Error("owner-local reordered activation was accepted before stage");
+      }
+      const [stageRecord, activationRecord] = await Promise.all([
+        Effect.runPromise(ledger.readOperation(stageBInput.operationRef)),
+        Effect.runPromise(ledger.readOperation(activateBInput.operationRef)),
+      ]);
+      if (
+        stageRecord !== null ||
+        activationRecord !== null ||
+        destinationStageWriterCount !== stageWritersBefore ||
+        helperStartCount() !== helperStartsBefore ||
+        JSON.stringify(authority) !== authorityBefore
+      ) {
+        throw new Error("owner-local reordered activation changed durable destination state");
+      }
+    }
     const stageB = await measure(() =>
       runPhase("redeem", () => destinationB.stageCheckpoint(stageBInput)),
     );
     phaseMilliseconds.set("redeem", stageB.milliseconds);
+    const stageWriterCountBeforeReplay = destinationStageWriterCount;
     const replayedStageB = await destinationB.stageCheckpoint(stageBInput);
+    const exactStageReplay = canonical(replayedStageB) === canonical(stageB.value);
+    const exactStageReservation =
+      replayedStageB.destinationRunnerSessionReservationRef ===
+      stageB.value.destinationRunnerSessionReservationRef;
+    const noSecondStageWriter = destinationStageWriterCount === stageWriterCountBeforeReplay;
     if (
-      replayedStageB.destinationRunnerSessionReservationRef !==
-      stageB.value.destinationRunnerSessionReservationRef
+      !exactStageReplay ||
+      !exactStageReservation ||
+      stageWriterCountBeforeReplay !== 1 ||
+      !noSecondStageWriter
     ) {
-      throw new Error("owner-local destination stage replay changed its runner reservation");
+      throw new Error("owner-local destination stage replay changed its exact result or writer");
     }
     let staleGenerationRejected = false;
     try {
@@ -674,15 +774,6 @@ export const runIde13OwnerLocalRealCohort = async (
       checkpointRef: checkpointA.value.checkpoint.checkpointRef,
       authorityEvidenceRef: "evidence.ide13.owner-local.authority.b.2",
     });
-    const activateBInput = {
-      operationRef: "operation.ide13.owner-local.move.destination.activate",
-      checkpointRef: checkpointA.value.checkpoint.checkpointRef,
-      sessionRef,
-      executionBinding,
-      destinationAttachmentRef: attachmentB2,
-      destinationGeneration: 2,
-      capabilityLeaseRefs,
-    };
     const activatedB = await measure(() =>
       runPhase("attach", () => destinationB.activate(activateBInput)),
     );
@@ -691,9 +782,46 @@ export const runIde13OwnerLocalRealCohort = async (
       runPhase("helper_readiness", async () => exactHelperMatrix(activatedB.value.helpers)),
     );
     phaseMilliseconds.set("helper_readiness", helperReadiness.milliseconds);
+    const helperStartsBeforeReplay = helperStartCount();
+    const readyHelperCount = activatedB.value.helpers.filter(
+      (helper) => helper.readiness === "ready",
+    ).length;
     const replayedActivationB = await destinationB.activate(activateBInput);
-    if (replayedActivationB.receiptRef !== activatedB.value.receiptRef) {
-      throw new Error("owner-local activation replay changed its receipt");
+    if (
+      canonical(replayedActivationB) !== canonical(activatedB.value) ||
+      replayedActivationB.receiptRef !== activatedB.value.receiptRef ||
+      helperStartsBeforeReplay !== readyHelperCount ||
+      helperStartCount() !== helperStartsBeforeReplay ||
+      replayedActivationB.acceptedWorkRefs.length !== 0
+    ) {
+      throw new Error("owner-local activation replay changed its exact result or helper set");
+    }
+    if (input.injectedEventFaultScenario === "duplicate_event") {
+      recordEventFaultProof({
+        scenario: "duplicate_event",
+        productionBoundaryRef: "boundary.pylon.owner-local.destination-stage-and-activation",
+        injectedFaultRef: "injected-fault.ide13.owner-local.duplicate-stage-and-activation",
+        recoveryPointRef: activatedB.value.receiptRef,
+        receiptRef: stableRef(
+          "receipt.ide13.owner-local.duplicate-event-replay",
+          `${candidateCommitSha}:${stageB.value.destinationRunnerSessionReservationRef}:${activatedB.value.receiptRef}`,
+        ),
+        disclosure:
+          "The source-controlled harness replayed identical stage and activation calls at the production owner-local destination lifecycle. The replay returned the same reservation and receipt, did not run a second stage writer or start a second helper, and then completed failback and teardown. This was not an external network event.",
+      });
+    } else if (input.injectedEventFaultScenario === "reordered_event") {
+      recordEventFaultProof({
+        scenario: "reordered_event",
+        productionBoundaryRef: "boundary.pylon.owner-local.destination-activation-before-stage",
+        injectedFaultRef: "injected-fault.ide13.owner-local.activation-before-stage",
+        recoveryPointRef: activatedB.value.receiptRef,
+        receiptRef: stableRef(
+          "receipt.ide13.owner-local.reordered-event-refused",
+          `${candidateCommitSha}:${activateBInput.operationRef}:${activatedB.value.receiptRef}`,
+        ),
+        disclosure:
+          "The source-controlled harness called production owner-local activation before stage. The lifecycle rejected it as conflicting_replay without an operation, reservation, helper, stage writer, or authority change. The normal stage, activation, failback, and teardown then completed. This was not an external network event.",
+      });
     }
     if (input.injectedAuthorityFaultScenario === "old_generation_command") {
       try {
@@ -967,6 +1095,12 @@ export const runIde13OwnerLocalRealCohort = async (
         throw new Error("owner-local authority fault did not produce an exact proof");
       }
       input.onInjectedAuthorityFaultProof?.(authorityFaultProof);
+    }
+    if (input.injectedEventFaultScenario !== undefined) {
+      if (eventFaultProof === null) {
+        throw new Error("owner-local event fault did not produce an exact proof");
+      }
+      input.onInjectedEventFaultProof?.(eventFaultProof);
     }
     const metricReceipt = stableRef(
       "receipt.ide13.owner-local.metrics",

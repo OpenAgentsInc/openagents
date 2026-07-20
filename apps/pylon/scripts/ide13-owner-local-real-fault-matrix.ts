@@ -15,6 +15,8 @@ import {
 import {
   type Ide13OwnerLocalAuthorityFaultProof,
   type Ide13OwnerLocalAuthorityFaultScenario,
+  type Ide13OwnerLocalEventFaultProof,
+  type Ide13OwnerLocalEventFaultScenario,
   runIde13OwnerLocalRealCohort,
 } from "./ide13-owner-local-real-cohort.js";
 import {
@@ -122,6 +124,11 @@ const AUTHORITY_FAULT_SCENARIOS = new Set<Ide13OwnerLocalAuthorityFaultScenario>
   "old_generation_command",
   "dual_attachment_claim",
   "source_revocation_failure",
+]);
+
+const EVENT_FAULT_SCENARIOS = new Set<Ide13OwnerLocalEventFaultScenario>([
+  "duplicate_event",
+  "reordered_event",
 ]);
 
 const loadCheckpointStoreCrashProof = async (
@@ -252,6 +259,51 @@ export const runIde13OwnerLocalRealFaultMatrix = async (
           }
           if (faultProof === null || faultProof.scenario !== scenario) {
             throw new Error(`owner-local ${identity(fault)} lacks an exact authority fault proof`);
+          }
+          const resourceCleanup = cohort.cohort.metrics.find(
+            (row) => row.metric === "resource_cleanup",
+          );
+          const queue = cohort.cohort.metrics.find((row) => row.metric === "queue");
+          if (resourceCleanup?.p99 !== 0 || queue?.p99 !== 0) {
+            throw new Error(`owner-local ${identity(fault)} left resource or session residue`);
+          }
+          safetyProofRefs.add(faultProof.receiptRef);
+          safetyProofRefs.add(cohort.proofs.teardownReceiptRef);
+          safetyProofRefs.add(cohort.proofs.sourceCustodyDeletionReceiptRef);
+          safetyProofRefs.add(cohort.proofs.failbackCustodyDeletionReceiptRef);
+          return {
+            faultRef: `fault.ide13.owner-local.${scenario}`,
+            scenario,
+            phase: null,
+            evidenceClass: "real_local",
+            outcome: "passed",
+            productionBoundaryRef: faultProof.productionBoundaryRef,
+            injectedFaultRef: faultProof.injectedFaultRef,
+            recoveryPointRef: faultProof.recoveryPointRef,
+            receiptRef: faultProof.receiptRef,
+            elapsedMilliseconds,
+            deadlineMilliseconds: DEADLINE_MILLISECONDS,
+            disclosure: faultProof.disclosure,
+          };
+        }
+        if (EVENT_FAULT_SCENARIOS.has(fault.scenario as Ide13OwnerLocalEventFaultScenario)) {
+          const scenario = fault.scenario as Ide13OwnerLocalEventFaultScenario;
+          const startedAt = performance.now();
+          let faultProof: Ide13OwnerLocalEventFaultProof | null = null;
+          const cohort = await runIde13OwnerLocalRealCohort({
+            candidateCommitSha,
+            injectedEventFaultScenario: scenario,
+            onInjectedEventFaultProof: (proof) => {
+              faultProof = proof;
+            },
+            repositoryRoot,
+          });
+          const elapsedMilliseconds = performance.now() - startedAt;
+          if (elapsedMilliseconds > DEADLINE_MILLISECONDS) {
+            throw new Error(`owner-local ${identity(fault)} exceeded its cleanup deadline`);
+          }
+          if (faultProof === null || faultProof.scenario !== scenario) {
+            throw new Error(`owner-local ${identity(fault)} lacks an exact event fault proof`);
           }
           const resourceCleanup = cohort.cohort.metrics.find(
             (row) => row.metric === "resource_cleanup",

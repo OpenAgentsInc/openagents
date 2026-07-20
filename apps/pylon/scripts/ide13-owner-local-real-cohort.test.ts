@@ -6,6 +6,7 @@ import { Schema } from "effect";
 import { expect, test } from "vite-plus/test";
 
 import {
+  type Ide13OwnerLocalEventFaultProof,
   Ide13OwnerLocalRealCohortReceiptSchema,
   runIde13OwnerLocalRealCohort,
 } from "./ide13-owner-local-real-cohort.js";
@@ -63,6 +64,31 @@ test("runs a real owner-local move, failback, abort, replay, and teardown cohort
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["duplicate_event", "reordered_event"] as const)(
+  "runs the source-controlled %s fault through the full owner-local composition",
+  async (scenario) => {
+    let proof: Ide13OwnerLocalEventFaultProof | null = null;
+    const receipt = await runIde13OwnerLocalRealCohort({
+      injectedEventFaultScenario: scenario,
+      onInjectedEventFaultProof: (value) => {
+        proof = value;
+      },
+      repositoryRoot: resolve(import.meta.dirname, "../../.."),
+    });
+    expect(proof).toMatchObject({
+      scenario,
+      productionBoundaryRef: expect.stringContaining("boundary.pylon.owner-local.destination"),
+      injectedFaultRef: expect.stringContaining(`injected-fault.ide13.owner-local`),
+      recoveryPointRef: receipt.cohort.journeys.mainJourneyReceiptRef,
+    });
+    expect(receipt.cohort.metrics.find((metric) => metric.metric === "resource_cleanup")?.p99).toBe(
+      0,
+    );
+    expect(receipt.cohort.metrics.find((metric) => metric.metric === "queue")?.p99).toBe(0);
+  },
+  120_000,
+);
 
 test("rejects a candidate that omits later implementation changes", async () => {
   await expect(

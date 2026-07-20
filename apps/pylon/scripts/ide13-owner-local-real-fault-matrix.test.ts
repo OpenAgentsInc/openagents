@@ -31,12 +31,12 @@ test("runs honest owner-local injected faults and records the missing seams", as
     expect(receipt.cases).toHaveLength(IDE_PORTABLE_REQUIRED_FAULT_CASES.length);
     expect(receipt.summary).toEqual({
       requiredCaseCount: IDE_PORTABLE_REQUIRED_FAULT_CASES.length,
-      passedRealLocalCount: 12,
-      notRunCount: 15,
+      passedRealLocalCount: 14,
+      notRunCount: 13,
       acceptanceReady: false,
     });
-    expect(receipt.cases.filter((fault) => fault.outcome === "passed")).toHaveLength(12);
-    expect(receipt.cases.filter((fault) => fault.outcome === "not_run")).toHaveLength(15);
+    expect(receipt.cases.filter((fault) => fault.outcome === "passed")).toHaveLength(14);
+    expect(receipt.cases.filter((fault) => fault.outcome === "not_run")).toHaveLength(13);
     const recoveryReceipt = decodeRecoveryReceipt(
       JSON.parse(
         await readFile(
@@ -78,6 +78,14 @@ test("runs honest owner-local injected faults and records the missing seams", as
       ["old_generation_command", "real_local", "passed"],
       ["source_revocation_failure", "real_local", "passed"],
       ["dual_attachment_claim", "real_local", "passed"],
+    ]);
+    expect(
+      receipt.cases
+        .filter((fault) => ["duplicate_event", "reordered_event"].includes(fault.scenario))
+        .map((fault) => [fault.scenario, fault.evidenceClass, fault.outcome]),
+    ).toEqual([
+      ["duplicate_event", "real_local", "passed"],
+      ["reordered_event", "real_local", "passed"],
     ]);
     expect(
       receipt.cases
