@@ -23748,7 +23748,7 @@
     },
     {
       "path": "docs/fable/2026-07-19-verifiable-software.md",
-      "sha256": "948c50a2b5ae079cee33ff52edb1f86425860f067c30f3af1604e066db1dd167",
+      "sha256": "dabc0e9107172781bb7837d74af46e1d89202fc9bf7eb365150b8a2ae2300cbf",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -47612,11 +47612,12 @@
     {
       "path": "packages/local-secret-store/README.md",
       "sha256": "bdc3a3139aca38a1d33f9da770ac3585a0c436a5e4c2fdf6902b84266112e023",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -47624,7 +47625,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
