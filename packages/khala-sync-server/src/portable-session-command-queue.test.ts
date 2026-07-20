@@ -51,7 +51,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable command execution queue", 
     if (pg !== undefined) await pg.stop();
   });
 
-  const seedCommand = async () => {
+  const seedCommand = async (expiresAt = "2026-07-20T13:00:00.000Z") => {
     sequence += 1;
     const suffix = String(sequence);
     const sessionRef = `session.ide13.queue.${suffix}`;
@@ -69,7 +69,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable command execution queue", 
       expectedGeneration: 1,
       destinationTargetRef,
       checkpointRef,
-      expiresAt: "2026-07-20T13:00:00.000Z",
+      expiresAt,
     };
     await sql.begin(async (tx) => {
       await tx`
@@ -135,6 +135,110 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable command execution queue", 
     expect(rejected).toMatchObject({
       reason: expect.objectContaining({ code: "claim_conflict" }),
     });
+  });
+
+  test("discovers and claims each accepted command once across concurrent ticks", async () => {
+    const commands = await Promise.all([seedCommand(), seedCommand(), seedCommand()]);
+    const first = new PostgresPortableSessionCommandQueue(sql as unknown as SyncSql, () => baseNow);
+    const second = new PostgresPortableSessionCommandQueue(
+      sql as unknown as SyncSql,
+      () => baseNow,
+    );
+    const workerInstanceRef = "worker.ide13.dispatch.stable";
+    const [left, right] = await Promise.all([
+      first.claimAcceptedBatch({ workerInstanceRef, limit: 2, leaseDurationMs: 300_000 }),
+      second.claimAcceptedBatch({ workerInstanceRef, limit: 2, leaseDurationMs: 300_000 }),
+    ]);
+    const claims = [...left.claims, ...right.claims];
+    expect(claims).toHaveLength(3);
+    expect(new Set(claims.map((claim) => claim.commandRef))).toEqual(
+      new Set(commands.map((command) => command.commandRef)),
+    );
+    expect(new Set(claims.map((claim) => claim.claimRequest.claimRef)).size).toBe(3);
+    expect(
+      claims.every(
+        (claim) =>
+          claim.claimRequest.workerInstanceRef === workerInstanceRef &&
+          claim.claimRequest.leaseExpiresAt === "2026-07-20T12:05:00.000Z",
+      ),
+    ).toBe(true);
+    expect(
+      await first.claimAcceptedBatch({ workerInstanceRef, limit: 3, leaseDurationMs: 300_000 }),
+    ).toEqual({ claims: [], skippedCommandRefs: [] });
+  });
+
+  test("clamps a discovered execution lease to the command expiry", async () => {
+    const command = await seedCommand("2026-07-20T12:02:00.000Z");
+    const queue = new PostgresPortableSessionCommandQueue(sql as unknown as SyncSql, () => baseNow);
+    const batch = await queue.claimAcceptedBatch({
+      workerInstanceRef: "worker.ide13.dispatch.expiry-bound",
+      limit: 1,
+      leaseDurationMs: 300_000,
+    });
+    expect(batch.claims).toHaveLength(1);
+    expect(batch.claims[0]).toMatchObject({
+      commandRef: command.commandRef,
+      claimRequest: { leaseExpiresAt: "2026-07-20T12:02:00.000Z" },
+    });
+  });
+
+  test("skips expired, stale, unbound, and pending-reconcile commands", async () => {
+    const expired = await seedCommand();
+    const stale = await seedCommand();
+    const unbound = await seedCommand();
+    const pending = await seedCommand();
+    await sql`
+      UPDATE khala_sync_portable_commands
+      SET expires_at = '2026-07-20T11:59:59.000Z'
+      WHERE command_ref = ${expired.commandRef}
+    `;
+    await sql`
+      UPDATE khala_sync_portable_sessions
+      SET current_attachment_generation = 2
+      WHERE session_ref = ${stale.sessionRef}
+    `;
+    await sql`
+      DELETE FROM khala_sync_portable_session_targets
+      WHERE session_ref = ${unbound.sessionRef} AND target_ref = ${destinationTargetRef}
+    `;
+    const queue = new PostgresPortableSessionCommandQueue(sql as unknown as SyncSql, () => baseNow);
+    const pendingClaim = await queue.claim(claimInput(pending.commandRef, "pending-discovery"));
+    await queue.markPendingReconcile({
+      schema: PORTABLE_COMMAND_EXECUTION_SCHEMA_VERSION,
+      claimRef: pendingClaim.claim.claimRef,
+      executorEnvironmentRef: sourceTargetRef,
+      workerInstanceRef: "worker.ide13.pending-discovery",
+      claimGeneration: 1,
+      expectedLeaseRevision: 1,
+      pendingReconcileRef: "reconcile.ide13.pending-discovery",
+      evidenceRefs: ["evidence.ide13.pending-discovery"],
+      observedAt: baseNow,
+    });
+    expect(
+      await queue.claimAcceptedBatch({
+        workerInstanceRef: "worker.ide13.dispatch.filter",
+        limit: 10,
+        leaseDurationMs: 300_000,
+      }),
+    ).toEqual({ claims: [], skippedCommandRefs: [] });
+  });
+
+  test("isolates malformed accepted command bytes from another discovery item", async () => {
+    const malformed = await seedCommand();
+    const eligible = await seedCommand();
+    await sql`
+      UPDATE khala_sync_portable_commands
+      SET owner_user_id = 'owner.ide13.foreign'
+      WHERE command_ref = ${malformed.commandRef}
+    `;
+    const queue = new PostgresPortableSessionCommandQueue(sql as unknown as SyncSql, () => baseNow);
+    const batch = await queue.claimAcceptedBatch({
+      workerInstanceRef: "worker.ide13.dispatch.isolation",
+      limit: 10,
+      leaseDurationMs: 300_000,
+    });
+    expect(batch.skippedCommandRefs).toEqual([malformed.commandRef]);
+    expect(batch.claims.map((claim) => claim.commandRef)).toEqual([eligible.commandRef]);
   });
 
   test("replays the same claim bytes and refuses a conflicting executor", async () => {

@@ -9,6 +9,7 @@ import {
   PortableCommandExecutionTerminalRequestSchema,
   PortableSessionCommandSchema,
   type PortableCommandExecutionClaim,
+  type PortableCommandExecutionClaimRequest,
   type PortableCommandExecutionClaimResult,
   type PortableCommandExecutionPendingReconcileResult,
   type PortableCommandExecutionRenewResult,
@@ -27,6 +28,7 @@ type CommandRow = {
   expected_attachment_ref: string;
   expected_generation: string | number;
   destination_target_ref: string | null;
+  checkpoint_ref: string | null;
   expires_at: Date | string;
   command_json: unknown;
   status: string;
@@ -81,6 +83,22 @@ export class PortableSessionCommandQueueError extends Error {
   }
 }
 
+export type PortableSessionAcceptedCommandClaimRequest = Readonly<{
+  commandRef: string;
+  claimRequest: PortableCommandExecutionClaimRequest;
+}>;
+
+export type PortableSessionAcceptedCommandClaimBatch = Readonly<{
+  claims: ReadonlyArray<PortableSessionAcceptedCommandClaimRequest>;
+  skippedCommandRefs: ReadonlyArray<string>;
+}>;
+
+export type PortableSessionAcceptedCommandDiscovery = Readonly<{
+  workerInstanceRef: string;
+  limit: number;
+  leaseDurationMs: number;
+}>;
+
 const decodeClaimRequest = Schema.decodeUnknownSync(PortableCommandExecutionClaimRequestSchema);
 const decodeRenewRequest = Schema.decodeUnknownSync(PortableCommandExecutionRenewRequestSchema);
 const decodePendingRequest = Schema.decodeUnknownSync(
@@ -119,6 +137,9 @@ const assertPublicSafe = (value: unknown): void => {
 
 const fingerprint = (value: unknown): string =>
   `sha256:${createHash("sha256").update(canonical(value)).digest("hex")}`;
+
+const deterministicRef = (prefix: string, value: string): string =>
+  `${prefix}.${createHash("sha256").update(value).digest("hex")}`;
 
 const parseJson = (value: unknown): unknown =>
   typeof value === "string" ? JSON.parse(value) : value;
@@ -186,6 +207,137 @@ export class PostgresPortableSessionCommandQueue {
     private readonly now: () => string = () => new Date().toISOString(),
   ) {}
 
+  /**
+   * Claims a bounded set of accepted commands in one transaction. The row
+   * locks prevent concurrent dispatcher ticks from selecting the same command.
+   * Existing executions, including pending reconciliation, are not selected.
+   */
+  async claimAcceptedBatch(
+    input: PortableSessionAcceptedCommandDiscovery,
+  ): Promise<PortableSessionAcceptedCommandClaimBatch> {
+    assertPublicSafe(input);
+    if (
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u.test(input.workerInstanceRef) ||
+      !Number.isSafeInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > 100 ||
+      !Number.isSafeInteger(input.leaseDurationMs) ||
+      input.leaseDurationMs < 1_000 ||
+      input.leaseDurationMs > 60 * 60 * 1_000
+    ) {
+      throw new PortableSessionCommandQueueError(
+        "invalid",
+        "portable accepted-command discovery input is invalid",
+      );
+    }
+    const now = new Date(this.now());
+    if (Number.isNaN(now.valueOf())) {
+      throw new PortableSessionCommandQueueError(
+        "invalid",
+        "portable accepted-command discovery instant is invalid",
+      );
+    }
+
+    return this.sql.begin(async (tx) => {
+      const rows: CommandRow[] = await tx`
+        SELECT c.command_ref, c.owner_user_id, c.session_ref, c.kind,
+               c.expected_attachment_ref, c.expected_generation,
+               c.destination_target_ref, c.checkpoint_ref, c.expires_at,
+               c.command_json, c.status,
+               s.current_attachment_ref, s.current_attachment_generation,
+               source.target_ref AS source_target_ref,
+               destination.health AS destination_health
+        FROM khala_sync_portable_commands c
+        JOIN khala_sync_portable_sessions s ON s.session_ref = c.session_ref
+        JOIN khala_sync_portable_attachments source
+          ON source.attachment_ref = s.current_attachment_ref
+        JOIN khala_sync_portable_session_targets authorized_destination
+          ON authorized_destination.session_ref = c.session_ref
+         AND authorized_destination.target_ref = c.destination_target_ref
+        JOIN khala_sync_portable_targets destination
+          ON destination.target_ref = authorized_destination.target_ref
+        LEFT JOIN khala_sync_portable_command_executions execution
+          ON execution.command_ref = c.command_ref
+        WHERE c.status = 'accepted'
+          AND c.kind IN ('attach', 'move', 'failback')
+          AND c.expires_at > ${now.toISOString()}
+          AND c.checkpoint_ref IS NOT NULL
+          AND c.destination_target_ref IS NOT NULL
+          AND c.destination_target_ref <> source.target_ref
+          AND c.expected_attachment_ref = s.current_attachment_ref
+          AND c.expected_generation = s.current_attachment_generation
+          AND destination.health = 'ready'
+          AND execution.command_ref IS NULL
+        ORDER BY c.created_at, c.command_ref
+        FOR UPDATE OF c SKIP LOCKED
+        LIMIT ${input.limit}
+      `;
+      const claims: PortableSessionAcceptedCommandClaimRequest[] = [];
+      const skippedCommandRefs: string[] = [];
+      for (const row of rows) {
+        let command: PortableSessionCommand;
+        let request: ReturnType<typeof decodeClaimRequest>;
+        let destinationTargetRef: string;
+        try {
+          const rawCommand = parseJson(row.command_json);
+          assertPublicSafe(rawCommand);
+          command = decodeCommand(rawCommand);
+          this.assertCommandBytes(row, command);
+          const commandExpiry = new Date(row.expires_at);
+          const leaseExpiresAt = new Date(
+            Math.min(now.valueOf() + input.leaseDurationMs, commandExpiry.valueOf()),
+          ).toISOString();
+          request = decodeClaimRequest({
+            schema: PORTABLE_COMMAND_EXECUTION_SCHEMA_VERSION,
+            commandRef: command.commandRef,
+            claimRef: deterministicRef("claim.portable-command", command.commandRef),
+            executorEnvironmentRef: row.source_target_ref,
+            workerInstanceRef: input.workerInstanceRef,
+            leaseExpiresAt,
+          });
+          this.assertCommandClaimable(
+            row,
+            command,
+            request.executorEnvironmentRef,
+            now,
+            new Date(request.leaseExpiresAt),
+          );
+          destinationTargetRef = command.destinationTargetRef;
+        } catch (cause) {
+          if (cause instanceof PortableSessionCommandQueueError || cause instanceof Error) {
+            skippedCommandRefs.push(row.command_ref);
+            continue;
+          }
+          throw cause;
+        }
+        const commandDigest = fingerprint(command);
+        const claimDigest = fingerprint(request);
+        // One transaction owns these locked command rows. Sequential writes keep
+        // the driver transaction protocol ordered and preserve item attribution.
+        // eslint-disable-next-line no-await-in-loop
+        const inserted: ExecutionRow[] = await tx`
+          INSERT INTO khala_sync_portable_command_executions
+            (command_ref, claim_ref, owner_user_id, session_ref, command_kind,
+             command_fingerprint, claim_fingerprint, source_attachment_ref,
+             source_generation, destination_target_ref, executor_environment_ref,
+             worker_instance_ref, claim_generation, lease_revision, state,
+             claimed_at, lease_expires_at, updated_at)
+          VALUES
+            (${command.commandRef}, ${request.claimRef}, ${command.ownerRef},
+             ${command.sessionRef}, ${command.kind}, ${commandDigest}, ${claimDigest},
+             ${command.expectedAttachmentRef}, ${command.expectedGeneration},
+             ${destinationTargetRef}, ${request.executorEnvironmentRef},
+             ${request.workerInstanceRef}, 1, 1, 'claimed', ${now.toISOString()},
+             ${request.leaseExpiresAt}, ${now.toISOString()})
+          RETURNING *
+        `;
+        executionFromRow(inserted[0]!);
+        claims.push({ commandRef: command.commandRef, claimRequest: request });
+      }
+      return { claims, skippedCommandRefs };
+    });
+  }
+
   async claim(input: unknown): Promise<PortableCommandExecutionClaimResult> {
     assertPublicSafe(input);
     let request: ReturnType<typeof decodeClaimRequest>;
@@ -210,7 +362,8 @@ export class PostgresPortableSessionCommandQueue {
       const commands: CommandRow[] = await tx`
         SELECT c.command_ref, c.owner_user_id, c.session_ref, c.kind,
                c.expected_attachment_ref, c.expected_generation,
-               c.destination_target_ref, c.expires_at, c.command_json, c.status,
+               c.destination_target_ref, c.checkpoint_ref, c.expires_at,
+               c.command_json, c.status,
                s.current_attachment_ref, s.current_attachment_generation,
                source.target_ref AS source_target_ref,
                destination.health AS destination_health
@@ -519,7 +672,9 @@ export class PostgresPortableSessionCommandQueue {
       command.kind !== row.kind ||
       command.expectedAttachmentRef !== row.expected_attachment_ref ||
       command.expectedGeneration !== Number(row.expected_generation) ||
-      command.destinationTargetRef !== row.destination_target_ref
+      command.destinationTargetRef !== row.destination_target_ref ||
+      command.checkpointRef !== row.checkpoint_ref ||
+      !sameInstant(row.expires_at, command.expiresAt)
     ) {
       throw new PortableSessionCommandQueueError(
         "invalid",
