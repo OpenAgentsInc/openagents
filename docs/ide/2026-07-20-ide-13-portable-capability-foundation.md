@@ -77,9 +77,9 @@ projection issues and are not used as authority.
 
 The current evidence receipt is
 `apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json`.
-Candidate commit `233993911ab23c54c0ad68e60ef2470cedd2be9b` produced the
+Candidate commit `2a966237bfb1bd86bb84776506eb387a8ae5066f` produced the
 current real owner-local receipt on macOS arm64 with Node 24.13.1. Evidence
-commit `7bcb816b2f` records the aggregate non-acceptance receipt.
+commit `28e9829167` records the aggregate non-acceptance receipt.
 
 The real owner-local cohort completed one move from generation 1 to generation
 2 and one failback to generation 3. It also completed activation replay, stale
@@ -87,11 +87,11 @@ generation refusal, abort cleanup, encrypted artifact deletion, and final
 helper cleanup. The destination started a real PTY, the signed TypeScript LSP,
 and a filesystem watcher. DAP and native helpers stayed unsupported.
 
-The cohort checkpoint was 1,377 bytes. The measured move phase values were
-5.84 ms for quiesce, 52.29 ms for checkpoint, 66.73 ms for upload, 128.57 ms
-for redeem, 68.35 ms for attach, and 0.04 ms for helper readiness. Failback was
-565.42 ms. Teardown was 314.79 ms. These are one-sample values. They do not
-ratify p50, p95, or p99 distributions.
+The performance cohort completed 10 full runs. The p95 values were 0.75 ms for
+quiesce, 62.35 ms for checkpoint, 77.75 ms for upload, 140.27 ms for redeem,
+67.18 ms for attach, and 0.01 ms for helper readiness. Failback p95 was 636.40
+ms. Teardown p95 was 326.08 ms. All 16 phase and resource metric rows passed.
+The checked-in receipt records the raw values and p50, p95, and p99 values.
 
 Focused verification passed the real cohort, packaged owner-local LSP,
 managed LSP, executable-profile, authority, Google Cloud, Pylon typecheck, and
@@ -104,7 +104,7 @@ The current placement evidence is not the IDE-13 acceptance matrix.
 
 | Target class | Evidence | Current result |
 | --- | --- | --- |
-| owner local | real local production composition on macOS arm64 | A same-device target move and failback passed with real PTY, signed TypeScript LSP, watcher, encrypted custody, replay, stale-generation refusal, and cleanup. No cross-host claim is made. |
+| owner local | real local production composition on macOS arm64 | Ten same-device target moves and failbacks passed with real PTY, signed TypeScript LSP, watcher, encrypted custody, replay, stale-generation refusal, cleanup, and complete phase and resource distributions. No cross-host claim is made. |
 | owner managed | deterministic simulator | No real owner-managed host cohort ran. |
 | OpenAgents managed | deterministic simulator and source-wired signed TypeScript LSP | The Linux x64 root filesystem was not rebuilt. No live Firecracker cohort ran. |
 | managed provider | not run | No audited provider is admitted or claimed. |
@@ -124,7 +124,7 @@ Issue `#9041` stays open. These items are not complete:
 - packaged move journeys on each claimed target.
 - end-to-end quiesce, checkpoint, upload, redeem, attach, helper readiness,
   failback, size, CPU, memory, network, lease, and teardown distributions on
-  each claimed target.
+  each other claimed target.
 - independent owner and AssuranceSpec review.
 
 Do not describe this state as a portable IDE platform or Cursor parity.
