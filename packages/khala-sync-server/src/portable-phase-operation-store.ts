@@ -9,6 +9,16 @@ import {
   type PortablePhaseOperationRecord,
   type PortablePhaseOperationRequest,
 } from "@openagentsinc/portable-session-contract";
+
+export {
+  PortablePhaseOperationClaimRequestSchema,
+  PortablePhaseOperationRenewRequestSchema,
+  PortablePhaseOperationResultRequestSchema,
+  type PortablePhaseOperationClaimRequest,
+  type PortablePhaseOperationRecord,
+  type PortablePhaseOperationRenewRequest,
+  type PortablePhaseOperationResultRequest,
+} from "@openagentsinc/portable-session-contract";
 import { Schema } from "effect";
 
 import type { SyncSql, SyncTransactionSql } from "./sql.js";

@@ -1,5 +1,6 @@
 import {
   FleetRunAuthorityError,
+  PostgresPortablePhaseOperationStore,
   RUNTIME_START_TURN_MUTATOR_NAME,
   type FleetRunAuthorityRepositoryShape,
   type FleetSteeringExchangeRepositoryShape,
@@ -1090,6 +1091,10 @@ import {
 } from './pylon-agent-runner-status-store'
 import { type PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
+import {
+  makePortablePhaseOperationRoutes,
+  resolvePortablePhaseTarget,
+} from './portable-phase-operation-routes'
 import {
   type PylonCapacityFunnelSnapshotStore,
   handlePylonCapacityFunnelApi,
@@ -9572,6 +9577,54 @@ const dispatchManagedFleetUnitForEnv = async (
   }
 }
 
+const portablePhaseOperationRoutes =
+  makePortablePhaseOperationRoutes<WorkerBindings>({
+    authenticate: async (request, env) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        agentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    readPylonOwnerAgentUserId: async (env, pylonRef) =>
+      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
+        ?.ownerAgentUserId,
+    withExchange: async (env, use) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable phase exchange storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await use(new PostgresPortablePhaseOperationStore(client.sql))
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    resolveExactTarget: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable phase target storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await resolvePortablePhaseTarget(client.sql, input)
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+  })
+
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
@@ -9671,6 +9724,8 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     ),
   requireAdminApiToken,
   requireBrowserSession,
+  routePortablePhaseOperationRequest:
+    portablePhaseOperationRoutes.routePortablePhaseOperationRequest,
 })
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({

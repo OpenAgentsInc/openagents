@@ -233,6 +233,10 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
     env: Bindings,
     ctx: ExecutionContext,
   ) => Promise<PylonApiBrowserSession | undefined>
+  routePortablePhaseOperationRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
 }>
 
 type PylonApiRouteEnv = Readonly<Record<string, unknown>>
@@ -3461,6 +3465,12 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
     ctx: ExecutionContext,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
+
+    const portablePhaseRoute =
+      dependencies.routePortablePhaseOperationRequest?.(request, env)
+    if (portablePhaseRoute !== undefined) {
+      return Effect.promise(() => portablePhaseRoute)
+    }
 
     if (url.pathname === '/api/account/pylons') {
       if (request.method !== 'GET') {
