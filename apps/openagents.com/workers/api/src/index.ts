@@ -1028,6 +1028,10 @@ import {
 import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
 import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
 import { resolvePortableCapabilityGrantFacts } from './portable-capability-grant-facts'
+import {
+  PORTABLE_SESSION_COMMAND_DISPATCH_FLAG,
+  makePortableSessionCommandDispatchScheduled,
+} from './portable-session-command-dispatch-scheduled'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
@@ -9748,6 +9752,34 @@ const portableTargetPylonBindingRoutes =
     },
   })
 
+const portableSessionCommandDispatchScheduled =
+  makePortableSessionCommandDispatchScheduled<OpenAgentsWorkerEnv>({
+    connectionString: env => env.KHALA_SYNC_DB?.connectionString,
+    openSqlClient: defaultMakeKhalaSyncSqlClient,
+    capabilityAuthority: env => {
+      const postgres = postgresIdentityAuthStoreForEnv(env)
+      if (postgres === undefined) return undefined
+      const provider = makeAuthoritativePostgresProviderGrantRepository(
+        makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+        postgres.queryRows,
+      )
+      const github = makeGitHubWriteRepositoryForEnv(env)
+      return {
+        resolve: ({ ownerUserId, grantRefs }) =>
+          resolvePortableCapabilityGrantFacts({
+            ownerUserId,
+            grantRefs,
+            provider,
+            github,
+          }),
+      }
+    },
+    // IDE-13 fail-closed boundary: the only existing full runtime broker
+    // builder imports owner-local Node/Pylon state and is excluded from the
+    // Worker build. A Cloud Run runtime broker plus committed artifact custody
+    // reader/decryptor factory must land before this flag can be enabled.
+  })
+
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
@@ -15019,6 +15051,17 @@ export default {
       observedEffect(
         'ManagedCloudRuntimeTurnDispatch.tick',
         Effect.promise(() => runManagedCloudRuntimeTurnDispatchForEnv(env)),
+      ),
+      observedEffect(
+        'PortableSessionCommandDispatch.tick',
+        portableSessionCommandDispatchScheduled({
+          env,
+          enabled: (
+            env as OpenAgentsWorkerEnv &
+              Readonly<Record<typeof PORTABLE_SESSION_COMMAND_DISPATCH_FLAG, string | undefined>>
+          )[PORTABLE_SESSION_COMMAND_DISPATCH_FLAG],
+          scheduledTimeMs: event.scheduledTime,
+        }).pipe(Effect.asVoid),
       ),
       observedEffect(
         'PylonCapacityFunnel.recordSnapshots',
