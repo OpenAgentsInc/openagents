@@ -18214,19 +18214,6 @@
       ]
     },
     {
-      "path": "docs/bootup/2026-07-20-apple-fm-analyzer-boot-sequence-audit.md",
-      "ste_issue": 9,
-      "ste_mode": "source-data",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "source-data",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
-      "owner": "OpenAgents documentation",
-      "risk": "source-data",
-      "source": "Immutable historical or evidence source data",
-      "replacement": null
-    },
-    {
       "path": "docs/business/2026-06-20-business-offering-promise-coverage.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
@@ -20639,6 +20626,19 @@
         "STE-2.4",
         "STE-3.6"
       ]
+    },
+    {
+      "path": "docs/deploy/receipts/2026-07-20-linux-signed-candidate.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
     },
     {
       "path": "docs/deploy/receipts/2026-07-20-macos-arm64-signed-candidate.md",

@@ -15049,12 +15049,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -15063,12 +15061,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -18720,20 +18716,6 @@
       }
     },
     {
-      "path": "docs/bootup/2026-07-20-apple-fm-analyzer-boot-sequence-audit.md",
-      "sha256": "4f3e438380996a38e3b7ee454f550951d9e77c1f547a9c822c6f8dbd3a897e25",
-      "reason": "Immutable historical or evidence source data",
-      "profile": {
-        "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
-        "risk": "source-data",
-        "source": "Immutable historical or evidence source data",
-        "replacement": null
-      }
-    },
-    {
       "path": "docs/business/2026-06-20-business-offering-promise-coverage.md",
       "sha256": "2d777aa167c8519966b85100dd1deac5209cee80c79da6224fee4caef25037d7",
       "reason": "Final review of a converted document",
@@ -19772,7 +19754,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md",
-      "sha256": "12e4c862abbfedd7a6100a31bef497b1b6fb94a352b815dfe53cc889f36c49ba",
+      "sha256": "4ac84b79bec55d7d52bd102d5012367c9481a55f91166360690b47004cc63724",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -21230,6 +21212,20 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/deploy/receipts/2026-07-20-linux-signed-candidate.md",
+      "sha256": "66971d58d10c8574c299b75432ec090365f9f477925efb12d4f6134595b0120f",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
       }
     },
     {
