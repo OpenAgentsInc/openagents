@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { Effect } from "effect";
@@ -130,6 +130,7 @@ export interface IdeSourceControlGitAdapterOptions {
   readonly seed: IdeSourceControlSnapshot;
   readonly now?: () => string;
   readonly worktreePath?: (worktreeRef: WorktreeRef) => string;
+  readonly recoveryRoot?: string;
 }
 
 export const makeIdeSourceControlGitAdapter = (
@@ -141,11 +142,17 @@ export const makeIdeSourceControlGitAdapter = (
   let generation = Number(options.seed.version.repositoryGeneration);
   let stopped = false;
   let verifiedPush: Readonly<{ headOid: string; upstream: string }> | null = null;
+  const managedWorktrees = new Map<string, Readonly<{ worktreeRef: WorktreeRef; ownerRef: string; creationHead: string | null }>>();
+  const recoveryRoot = options.recoveryRoot === undefined ? null : path.resolve(options.recoveryRoot);
+  if (recoveryRoot !== null) mkdirSync(recoveryRoot, { recursive: true, mode: 0o700 });
+  const recoveryFile = (recoveryRef: string): string | null => recoveryRoot === null
+    ? null
+    : path.join(recoveryRoot, `${digest(recoveryRef)}.patch`);
 
   const snapshot = (): IdeSourceControlSnapshot => {
     if (stopped) return IdeSourceControlSnapshotSchema.make({ ...options.seed, stopped: true });
     const raw = assertGit(
-      runGit(root, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all"]),
+      runGit(root, ["status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--ignored=matching"]),
       "Git status is unavailable.",
       null,
       null,
@@ -167,7 +174,7 @@ export const makeIdeSourceControlGitAdapter = (
     let upstream: string | null = null;
     let ahead = 0;
     let behind = 0;
-    const paths: Array<IdeSourceControlSnapshot["paths"][number]> = [];
+    let paths: Array<IdeSourceControlSnapshot["paths"][number]> = [];
     const fields = raw.split("\0");
     for (let index = 0; index < fields.length; index++) {
       const record = fields[index]!;
@@ -197,6 +204,8 @@ export const makeIdeSourceControlGitAdapter = (
           ignored: false,
           binary: false,
           truncated: false,
+          stagedDiffRef: null,
+          unstagedDiffRef: null,
         });
       } else if (record.startsWith("u ")) {
         const parts = record.split(" ");
@@ -207,6 +216,7 @@ export const makeIdeSourceControlGitAdapter = (
           worktreeOid: parts[9] ?? null, modeBefore: parts[3] ?? null, modeAfter: parts[6] ?? null,
           conflict: { baseOid: (parts[7] ?? null) as never, oursOid: (parts[8] ?? null) as never, theirsOid: (parts[9] ?? null) as never },
           secretWithheld: false, ignored: false, binary: false, truncated: false,
+          stagedDiffRef: null, unstagedDiffRef: null,
         });
       } else if (record.startsWith("? ")) {
         const relative = record.slice(2);
@@ -216,26 +226,63 @@ export const makeIdeSourceControlGitAdapter = (
           worktreeOid: existsSync(path.join(root, relative)) ? digest(`${relative}\0${statSync(path.join(root, relative)).size}`) : null,
           modeBefore: null, modeAfter: null, conflict: null, secretWithheld: false,
           ignored: false, binary: false, truncated: false,
+          stagedDiffRef: null, unstagedDiffRef: null,
+        });
+      } else if (record.startsWith("! ")) {
+        const relative = record.slice(2);
+        paths.push({
+          path: relative, priorPath: null, indexState: "ignored", worktreeState: "ignored",
+          baseOid: null, indexOid: null, worktreeOid: null, modeBefore: null, modeAfter: null,
+          conflict: null, secretWithheld: true, ignored: true, binary: false, truncated: false,
+          stagedDiffRef: null, unstagedDiffRef: null,
         });
       }
     }
+    paths = paths.map((entry) => ({
+      ...entry,
+      stagedDiffRef: entry.indexState !== "unmodified" && entry.indexState !== "ignored"
+        ? opaque("ide.scm-diff", `${headOid ?? "unborn"}\0${indexOid}\0${entry.path}\0staged`) as never
+        : null,
+      unstagedDiffRef: entry.worktreeState !== "unmodified" && entry.worktreeState !== "ignored"
+        ? opaque("ide.scm-diff", `${indexOid}\0${worktreeOid}\0${entry.path}\0unstaged`) as never
+        : null,
+    }));
     const worktreeRaw = assertGit(runGit(root, ["worktree", "list", "--porcelain", "-z"]), "Worktrees are unavailable.", null, null);
-    const blocks = worktreeRaw.split("\0\0").filter(Boolean);
-    const worktrees = blocks.map((block, index) => {
-      const lines = block.split("\0");
+    const blocks: string[][] = [];
+    for (const field of worktreeRaw.split("\0").filter(Boolean)) {
+      if (field.startsWith("worktree ")) blocks.push([field]);
+      else blocks.at(-1)?.push(field);
+    }
+    const worktrees = blocks.map((lines, index) => {
       const worktreePath = lines.find((line) => line.startsWith("worktree "))?.slice(9) ?? root;
       const branchRef = lines.find((line) => line.startsWith("branch "))?.slice(7) ?? null;
+      const worktreeHead = lines.find((line) => line.startsWith("HEAD "))?.slice(5) ?? null;
+      const managed = managedWorktrees.get(worktreePath);
+      const status = runGit(worktreePath, ["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
+      const dirty = !status.ok || status.stdout !== "";
+      const upstreamProbe = runGit(worktreePath, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]);
+      const aheadProbe = upstreamProbe.ok ? runGit(worktreePath, ["rev-list", "--count", "@{upstream}..HEAD"]) : null;
+      const changed = managed !== undefined && (dirty || worktreeHead !== managed.creationHead);
+      const unpushed = changed && (!upstreamProbe.ok || !aheadProbe?.ok || Number(aheadProbe.stdout.trim()) > 0);
       return {
-        worktreeRef: index === 0 ? options.seed.binding.worktreeRef : `ide.worktree.${digest(worktreePath)}` as WorktreeRef,
+        worktreeRef: index === 0 ? options.seed.binding.worktreeRef : managed?.worktreeRef ?? `ide.worktree.${digest(worktreePath)}` as WorktreeRef,
         branch: branchRef?.replace(/^refs\/heads\//u, "") ?? null,
-        headOid: (lines.find((line) => line.startsWith("HEAD "))?.slice(5) ?? null) as never,
+        headOid: worktreeHead as never,
         detached: lines.includes("detached"), locked: lines.some((line) => line.startsWith("locked")),
-        prunable: lines.some((line) => line.startsWith("prunable")), ownerRef: null, activeSessionRef: null,
+        prunable: lines.some((line) => line.startsWith("prunable")), ownerRef: managed?.ownerRef ?? null, activeSessionRef: null,
         removalPreviewRef: index === 0 ? null : opaque("ide.scm-worktree-preview", `${worktreePath}\0${headOid ?? "unborn"}`),
+        managed: managed !== undefined, dirty, changed, unpushed,
       };
     });
     generation += 1;
     const statusRef = opaque("ide.scm-status", `${headOid ?? "unborn"}\0${indexOid}\0${worktreeOid}\0${raw}\0${untrackedFacts}`);
+    const gitDirectory = assertGit(runGit(root, ["rev-parse", "--git-dir"]), "Git metadata is unavailable.", null, null).trim();
+    const metadataRoot = path.resolve(root, gitDirectory);
+    const operation = existsSync(path.join(metadataRoot, "MERGE_HEAD")) ? { _tag: "Merge" as const, headName: null }
+      : existsSync(path.join(metadataRoot, "rebase-merge")) || existsSync(path.join(metadataRoot, "rebase-apply")) ? { _tag: "Rebase" as const, onto: null, currentStep: 0 }
+      : existsSync(path.join(metadataRoot, "CHERRY_PICK_HEAD")) ? { _tag: "CherryPick" as const, commitOid: null }
+      : existsSync(path.join(metadataRoot, "REVERT_HEAD")) ? { _tag: "Revert" as const, commitOid: null }
+      : { _tag: "Idle" as const };
     const delivery = [
       { phase: "changed" as const, proven: paths.length > 0, evidenceRefs: [statusRef], observedAt: now(), freshness: "current" as const },
       { phase: "committed" as const, proven: headOid !== null, evidenceRefs: headOid === null ? [] : [headOid], observedAt: now(), freshness: "current" as const },
@@ -251,7 +298,7 @@ export const makeIdeSourceControlGitAdapter = (
         remoteGeneration: IdeSourceControlRemoteGenerationSchema.make(generation),
         credentialHelperGeneration: IdeSourceControlCredentialHelperGenerationSchema.make(1),
       },
-      branch, upstream, detached: branch === null, ahead, behind, operation: { _tag: "Idle" },
+      branch, upstream, detached: branch === null, ahead, behind, operation,
       paths, worktrees, delivery, observedAt: now(), stopped: false,
     });
   };
@@ -280,7 +327,10 @@ export const makeIdeSourceControlGitAdapter = (
       }
       return value;
     };
-    const validatePatch = (selection: Extract<IdeSourceControlCommand, { readonly _tag: "Stage" }> ["selection"] & { readonly _tag: "Patch" }): string => {
+    const validatePatch = (
+      selection: Extract<IdeSourceControlCommand, { readonly _tag: "Stage" }>["selection"] & { readonly _tag: "Patch" },
+      source: "staged" | "unstaged",
+    ): string => {
       const selectedPath = safeRelative(root, selection.path);
       if (selectedPath === null || (selection.selectedHunks.length === 0 && selection.selectedLines.length === 0)) {
         throw failure("policy_refused", "The partial selection is empty or leaves the worktree.", current, op);
@@ -291,22 +341,46 @@ export const makeIdeSourceControlGitAdapter = (
       if (headers.length === 0 || headers.some((value) => safeRelative(root, value) !== selectedPath)) {
         throw failure("policy_refused", "The partial patch does not match its selected path.", current, op);
       }
+      const entry = current.paths.find((candidate) => candidate.path === selectedPath);
+      const expectedDiffRef = source === "staged" ? entry?.stagedDiffRef : entry?.unstagedDiffRef;
+      if (expectedDiffRef === null || expectedDiffRef === undefined || selection.diffRef !== expectedDiffRef) {
+        throw failure("stale_version", "The partial patch does not match the canonical diff version.", current, op, true);
+      }
+      const canonical = source === "staged"
+        ? runGit(root, ["diff", "--cached", "--binary", "--", selectedPath])
+        : runGit(root, ["diff", "--binary", "--", selectedPath]);
+      const changedLines = selection.patch.split("\n").filter((line) =>
+        (line.startsWith("+") || line.startsWith("-")) &&
+        !line.startsWith("+++") && !line.startsWith("---"));
+      if (!canonical.ok || changedLines.some((line) => !canonical.stdout.includes(line))) {
+        throw failure("partial_application", "The selected lines are not in the canonical diff.", current, op, true);
+      }
       return selection.patch;
     };
     let recoveryRef: IdeSourceControlAdapterResult["recoveryRef"] = null;
     const run = (args: ReadonlyArray<string>, message: string, input?: string) =>
       assertGit(runGit(root, args, input), message, current, op);
     switch (command._tag) {
-      case "Stage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--unidiff-zero", "-"], "The selected patch could not be staged.", validatePatch(command.selection)) : run(["add", "--", ...(paths as string[])], "The paths could not be staged."); break;
-      case "Unstage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be unstaged.", validatePatch(command.selection)) : run(["restore", "--staged", "--", ...(paths as string[])], "The paths could not be unstaged."); break;
+      case "Stage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--unidiff-zero", "-"], "The selected patch could not be staged.", validatePatch(command.selection, "unstaged")) : run(["add", "--", ...(paths as string[])], "The paths could not be staged."); break;
+      case "Unstage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be unstaged.", validatePatch(command.selection, "staged")) : run(["restore", "--staged", "--", ...(paths as string[])], "The paths could not be unstaged."); break;
       case "Discard": {
-        const patch = command.selection._tag === "Patch" ? validatePatch(command.selection) : run(["diff", "--binary", "--", ...(paths as string[])], "The recovery patch could not be created.");
+        const patch = command.selection._tag === "Patch" ? validatePatch(command.selection, "unstaged") : run(["diff", "--binary", "--", ...(paths as string[])], "The recovery patch could not be created.");
         recoveryRef = IdeSourceControlRecoveryRefSchema.make(`ide.scm-recovery.${digest(`${op}\0${patch}`)}`);
         recoveries.set(recoveryRef, patch);
+        const persistedRecovery = recoveryFile(recoveryRef);
+        if (persistedRecovery !== null) writeFileSync(persistedRecovery, patch, { encoding: "utf8", mode: 0o600, flag: "wx" });
         command.selection._tag === "Patch" ? run(["apply", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be discarded.", patch) : run(["restore", "--worktree", "--", ...(paths as string[])], "The paths could not be discarded.");
         break;
       }
-      case "Recover": { const patch = recoveries.get(command.recoveryRef); if (patch === undefined) throw failure("recovery_unavailable", "The recovery record is unavailable.", current, op); run(["apply", "-"], "The recovery patch could not be applied.", patch); recoveries.delete(command.recoveryRef); break; }
+      case "Recover": {
+        const persistedRecovery = recoveryFile(command.recoveryRef);
+        const patch = recoveries.get(command.recoveryRef) ?? (persistedRecovery !== null && existsSync(persistedRecovery) ? readFileSync(persistedRecovery, "utf8") : undefined);
+        if (patch === undefined) throw failure("recovery_unavailable", "The recovery record is unavailable.", current, op);
+        run(["apply", "-"], "The recovery patch could not be applied.", patch);
+        recoveries.delete(command.recoveryRef);
+        if (persistedRecovery !== null) rmSync(persistedRecovery, { force: true });
+        break;
+      }
       case "Commit": run(["commit", ...(command.amend ? ["--amend"] : []), ...(command.sign ? ["-S"] : []), ...(command.runHooks ? [] : ["--no-verify"]), "-m", command.message], "The commit could not be created."); break;
       case "BranchCreate": run([command.checkout ? "switch" : "branch", ...(command.checkout ? ["-c"] : []), safeArgument(command.name, "Branch name")], "The branch could not be created."); break;
       case "TagCreate": run(["tag", ...(command.sign ? ["-s", "-m", command.name] : []), safeArgument(command.name, "Tag name"), command.targetOid], "The tag could not be created."); break;
@@ -331,8 +405,25 @@ export const makeIdeSourceControlGitAdapter = (
         verifiedPush = { headOid: head, upstream: `${remote}/${destination.replace(/^refs\/heads\//u, "")}` };
         break;
       }
-      case "WorktreeCreate": { const target = options.worktreePath?.(command.worktreeRef); if (target === undefined) throw failure("policy_refused", "No admitted worktree placement exists.", current, op); run(["worktree", "add", target, command.branch], "The worktree could not be created."); break; }
-      case "WorktreeRemove": { const entry = current.worktrees.find((item) => item.worktreeRef === command.worktreeRef); const target = options.worktreePath?.(command.worktreeRef); if (entry?.removalPreviewRef !== command.previewRef || target === undefined || !command.recoverable) throw failure("policy_refused", "The worktree removal preview is stale or not recoverable.", current, op); run(["worktree", "remove", target], "The worktree could not be removed."); break; }
+      case "WorktreeCreate": {
+        const target = options.worktreePath?.(command.worktreeRef);
+        if (target === undefined || command.ownerRef === null || existsSync(target)) throw failure("policy_refused", "No unoccupied admitted worktree placement exists.", current, op);
+        const creationHead = run(["rev-parse", "--verify", command.branch], "The worktree branch is unavailable.").trim();
+        run(["worktree", "add", target, command.branch], "The worktree could not be created.");
+        managedWorktrees.set(realpathSync(target), { worktreeRef: command.worktreeRef, ownerRef: command.ownerRef, creationHead });
+        break;
+      }
+      case "WorktreeRemove": {
+        const entry = current.worktrees.find((item) => item.worktreeRef === command.worktreeRef);
+        const target = options.worktreePath?.(command.worktreeRef);
+        if (entry?.removalPreviewRef !== command.previewRef || target === undefined || !command.recoverable || !entry.managed || entry.ownerRef === null || entry.activeSessionRef !== null || entry.dirty || entry.unpushed) {
+          throw failure("policy_refused", "The worktree is occupied, changed without a pushed ref, dirty, unmanaged, or has a stale preview.", current, op);
+        }
+        const canonicalTarget = realpathSync(target);
+        run(["worktree", "remove", target], "The worktree could not be removed.");
+        managedWorktrees.delete(canonicalTarget);
+        break;
+      }
       case "WorktreeRepair": run(["worktree", "repair"], "Worktree metadata could not be repaired."); break;
       case "History": run(["log", `--max-count=${command.limit}`, "--format=%H%x00%P%x00%an%x00%aI%x00%s", command.commitish], "History is unavailable."); break;
       case "Blame": run(["blame", "--line-porcelain", command.commitOid, "--", command.path], "Blame is unavailable."); break;

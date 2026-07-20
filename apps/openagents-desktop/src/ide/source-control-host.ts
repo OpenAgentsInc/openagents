@@ -42,6 +42,7 @@ export type IdeSourceControlHost = Readonly<{
 export type IdeSourceControlHostOptions = Readonly<{
   workspace: () => IdeSourceControlWorkspaceBinding | null;
   now?: () => string;
+  recoveryRoot?: string;
 }>;
 
 type Runtime = Readonly<{
@@ -149,7 +150,7 @@ export const openIdeSourceControlHost = async (
     const binding = ideSourceControlBindingFor({ root, grantRef: workspace.grantRef });
     const seed = seedSnapshot(binding, now);
     const scope = await Effect.runPromise(Scope.make());
-    const adapter = makeIdeSourceControlGitAdapter({ root, seed, now });
+    const adapter = makeIdeSourceControlGitAdapter({ root, seed, now, recoveryRoot: options.recoveryRoot });
     const context = await Effect.runPromise(Layer.buildWithScope(
       makeIdeSourceControlServiceLayer(seed, adapter, { now }),
       scope,

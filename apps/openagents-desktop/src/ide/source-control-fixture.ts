@@ -4,6 +4,7 @@ import {
   IdeSourceControlBindingSchema,
   IdeSourceControlConfigGenerationSchema,
   IdeSourceControlCredentialHelperGenerationSchema,
+  IdeSourceControlDiffRefSchema,
   IdeSourceControlRefGenerationSchema,
   IdeSourceControlRemoteGenerationSchema,
   IdeSourceControlSnapshotSchema,
@@ -61,6 +62,8 @@ export const ideSourceControlFixtureSnapshot = (
     ignored: false,
     binary: false,
     truncated: false,
+    stagedDiffRef: null,
+    unstagedDiffRef: IdeSourceControlDiffRefSchema.make(`ide.scm-diff.fixture-${repositoryGeneration}`),
   }],
   worktrees: [{
     worktreeRef: IdeWorktreeRefSchema.make("ide.worktree.fixture"),
@@ -72,6 +75,10 @@ export const ideSourceControlFixtureSnapshot = (
     ownerRef: "owner.fixture",
     activeSessionRef: "session.fixture",
     removalPreviewRef: null,
+    managed: false,
+    dirty: false,
+    changed: false,
+    unpushed: false,
   }],
   delivery: [{
     phase: "changed",

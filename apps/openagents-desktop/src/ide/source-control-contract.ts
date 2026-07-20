@@ -151,6 +151,8 @@ export const IdeSourceControlPathSchema = Schema.Struct({
   ignored: Schema.Boolean,
   binary: Schema.Boolean,
   truncated: Schema.Boolean,
+  stagedDiffRef: Schema.NullOr(IdeSourceControlDiffRefSchema),
+  unstagedDiffRef: Schema.NullOr(IdeSourceControlDiffRefSchema),
 }).annotate({ identifier: "IdeSourceControlPath" });
 export interface IdeSourceControlPath extends Schema.Schema.Type<
   typeof IdeSourceControlPathSchema
@@ -199,6 +201,10 @@ export const IdeSourceControlWorktreeSchema = Schema.Struct({
   ownerRef: Schema.NullOr(nonEmptyText(192)),
   activeSessionRef: Schema.NullOr(nonEmptyText(192)),
   removalPreviewRef: Schema.NullOr(nonEmptyText(192)),
+  managed: Schema.Boolean,
+  dirty: Schema.Boolean,
+  changed: Schema.Boolean,
+  unpushed: Schema.Boolean,
 }).annotate({ identifier: "IdeSourceControlWorktree" });
 
 export const IdeSourceControlSnapshotSchema = Schema.Struct({

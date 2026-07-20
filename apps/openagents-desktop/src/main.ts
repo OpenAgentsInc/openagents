@@ -2859,6 +2859,7 @@ const ideSourceControlHost = openIdeSourceControlHost({
     }
     return smokeMode ? { root: smokeGitRoot, grantRef: "workspace.grant.smoke" } : null
   },
+  recoveryRoot: path.join(app.getPath("userData"), "ide-source-control", "recovery"),
 })
 const legacyGitMutationOps = new Set(["discard", "stage", "unstage", "commit", "push", "branchCreate", "checkout"])
 ipcMain.handle(GitGithubChannel, (_event, value: unknown) => {
