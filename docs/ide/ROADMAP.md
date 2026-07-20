@@ -711,16 +711,19 @@ with clear unsupported/degraded states.
 
 ### IDE-12 — Complete Git, worktrees, and delivery
 
-Extend truthful read-only Git/review into expected-version staging, partial
-staging, discard, commit, branch, merge/rebase/conflict, fetch/pull/push, PR,
-blame/history, and worktree create/archive/cleanup flows. Keep mutation,
-delivery, verification, and owner acceptance distinct.
+Implemented on 2026-07-20. The main-owned Effect source-control graph now
+supplies expected-version staging, partial staging, discard and recovery,
+commit, branch, tag, merge, rebase, conflict, fetch, pull, push, pull-request,
+blame, history, and worktree flows. Mutation, delivery, verification, owner
+acceptance, and release remain distinct.
 
 Parallel agents receive collision-safe claims and isolated worktrees. Best-of-N
 candidates remain separate until an explicit comparison and acceptance step.
 
-Exit: a proposal can become a reviewed commit/push/PR with exact receipts, and
-neither agent prose nor Git process exit alone can claim delivery.
+Exit evidence: deterministic real-Git tests, local bare-remote tests, decoded
+provider tests, latency and resource receipts, and an exact macOS arm64
+packaged journey prove the candidate. Independent owner review remains
+unreviewed. Neither agent text nor a Git process exit can claim delivery.
 
 ### IDE-13 — Make project capabilities portable
 
@@ -969,17 +972,16 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Immediate next work
 
-IDE-00 through IDE-11 are implemented with exact issue receipts through
-IDE-10 and an exact IDE-11 candidate receipt pending issue closeout.
+IDE-00 through IDE-12 are implemented with exact issue receipts.
 IDE-07 accepted only the “OpenAgents basic IDE” rung for its exact macOS arm64
 candidate. It preserved the TypeScript-only project-language limit, every
 later packet gap, and the epic's separate owner-acceptance boundary.
 
-IDE-08, IDE-09, IDE-10, and IDE-11 are implemented with exact evidence records.
+IDE-08, IDE-09, IDE-10, IDE-11, and IDE-12 are implemented with exact evidence records.
 SBX-06 has also landed the default-off managed placement component without
-bypassing IDE-12, IDE-13, IDE-17, or SBX-09. The next packet is IDE-12: add safe
-SCM mutation, worktrees, and delivery without combining mutation, verification,
-delivery, or owner-acceptance authority.
+bypassing IDE-13, IDE-17, or SBX-09. The next packet is IDE-13: make project
+capabilities portable without combining placement, verification, delivery, or
+owner-acceptance authority.
 
 In parallel at P1, managed-sandbox epic
 [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) has begun with

@@ -58,8 +58,17 @@ const main = async (): Promise<void> => {
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`); const page = await waitForRenderer(browser);
     page.on("console", message => events.push({ kind: `console:${message.type()}`, message: safe(message.text()) })); page.on("pageerror", error => events.push({ kind: "pageerror", message: safe(error.message) }));
     await page.locator("[data-react-workspace]").first().waitFor({ state: "visible", timeout: 30_000 });
-    await page.evaluate(() => localStorage.setItem("openagents.desktop.surface-layout.v1:unbound", JSON.stringify({ version: 1, surfaces: ["review"], active: "review", maximized: false, width: 520 })));
-    await page.reload(); await page.locator("[data-react-workspace]").first().waitFor({ state: "visible", timeout: 30_000 });
+    const closeFiles = page.getByRole("button", { name: "Close Files", exact: true });
+    if (await closeFiles.isVisible()) await closeFiles.click();
+    await page.locator('[data-react-workspace="chat"]').waitFor({ state: "visible", timeout: 10_000 });
+    await page.evaluate(() => {
+      const prefix = "openagents.desktop.surface-layout.v1:";
+      const layout = JSON.stringify({ version: 1, surfaces: ["review"], active: "review", maximized: false, width: 520 });
+      for (const key of Object.keys(localStorage).filter(key => key.startsWith(prefix))) localStorage.setItem(key, layout);
+      localStorage.setItem(`${prefix}unbound`, layout);
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    if (await closeFiles.isVisible()) await closeFiles.click();
     const surface = page.getByLabel("Review surface"); await surface.waitFor({ state: "visible", timeout: 30_000 });
     await surface.getByRole("button", { name: "Refresh changes" }).click();
     const stage = surface.getByRole("button", { name: "Stage source.txt" }); await stage.waitFor({ state: "visible", timeout: 20_000 }); await stage.click();
@@ -71,7 +80,8 @@ const main = async (): Promise<void> => {
     await surface.getByRole("button", { name: "Discard change" }).click(); await poll(() => readFileSync(path.join(workspace, "recover.txt"), "utf8") === "recover base\n", "IDE-12 packaged discard failed");
     const recover = surface.getByRole("button", { name: "Recover discarded change" }); await recover.waitFor({ state: "visible", timeout: 20_000 }); await recover.click(); await poll(() => readFileSync(path.join(workspace, "recover.txt"), "utf8") === "discard then recover\n", "IDE-12 packaged recovery failed");
     const delivery = await surface.getByLabel("Delivery phase evidence").textContent() ?? "";
-    await stage.focus(); const keyboardFocus = await stage.evaluate(element => element === element.ownerDocument.activeElement);
+    const refresh = surface.getByRole("button", { name: "Refresh changes" });
+    await refresh.focus(); const keyboardFocus = await refresh.evaluate(element => element === element.ownerDocument.activeElement);
     await page.screenshot({ path: screenshotPath, fullPage: true });
     const checks = { stage: true, commit: true, pushRemoteOid: true, discard: true, restartSafeRecovery: true, deliveryDistinct: delivery.includes("committed") && delivery.includes("pushed") && delivery.includes("owner accepted") && delivery.includes("released"), keyboardFocus, privatePathsWithheld: !(await surface.textContent() ?? "").includes(workspace) };
     if (Object.values(checks).some(value => !value)) throw new Error(`IDE-12 packaged checks failed: ${JSON.stringify(checks)}`);

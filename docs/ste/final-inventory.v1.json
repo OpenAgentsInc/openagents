@@ -26731,8 +26731,26 @@
       }
     },
     {
+      "path": "docs/ide/2026-07-20-ide-12-effect-source-control.md",
+      "sha256": "8fa1efcbd8d7c8647783fff32089a3d983c495caa00f861910234412eb6fb3cf",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/ide/README.md",
-      "sha256": "91f12a77e1c8c3fea99153953ce2ca8d79426e821e0ff8a75a965d4aab1182a7",
+      "sha256": "237f0b1cc622923193baf78619a8676ced7d1f73f92067dabcb4cfeff6db8b77",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -26754,7 +26772,7 @@
     },
     {
       "path": "docs/ide/ROADMAP.md",
-      "sha256": "a82447fe7790884ae022bca6f17a0360a3d06164e694089e98edbee3eebee9e0",
+      "sha256": "f572b5bb9f31e89f958409951cacf49514549ae29bcd1829399d5fc577f387b6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
