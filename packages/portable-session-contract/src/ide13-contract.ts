@@ -143,6 +143,50 @@ export const IdePortableMoveReceiptSchema = Schema.Struct({
   completedAt: PortableTimestamp,
 }).annotate({ identifier: "IdePortableMoveReceipt" })
 
+export const IdePortableDestinationHelperKindSchema = Schema.Literals([
+  "pty", "lsp", "dap", "watcher", "native",
+]).annotate({ identifier: "IdePortableDestinationHelperKind" })
+
+export const IdePortableDestinationHelperReadinessSchema = Schema.Struct({
+  kind: IdePortableDestinationHelperKindSchema,
+  readiness: Schema.Literals(["ready", "unsupported"]),
+  instanceRef: Schema.NullOr(PortableRef),
+  versionRef: Schema.NullOr(PortableRef),
+  omissionRef: Schema.NullOr(PortableRef),
+  evidenceRefs: refs(32),
+}).annotate({ identifier: "IdePortableDestinationHelperReadiness" })
+
+export const IdePortableDestinationAuthenticationSchema = Schema.Struct({
+  state: Schema.Literals(["reauthenticated", "expired", "revoked"]),
+  policyRef: PortableRef,
+  evidenceRef: PortableRef,
+  observedAt: PortableTimestamp,
+  expiresAt: Schema.NullOr(PortableTimestamp),
+}).annotate({ identifier: "IdePortableDestinationAuthentication" })
+
+/**
+ * Public-safe destination admission evidence. It contains stable refs only.
+ * It does not contain credential bytes, host paths, process IDs, or handles.
+ */
+export const IdePortableDestinationActivationReceiptSchema = Schema.Struct({
+  schema: Schema.Literal("openagents.ide_portable_destination_activation.v1"),
+  receiptRef: PortableRef,
+  operationRef: PortableRef,
+  sessionRef: PortableRef,
+  checkpointRef: PortableRef,
+  destinationTargetRef: ExecutionEnvironmentRef,
+  destinationAttachmentRef: PortableRef,
+  destinationGeneration: count(1_000_000_000),
+  authentication: IdePortableDestinationAuthenticationSchema,
+  helpers: Schema.Array(IdePortableDestinationHelperReadinessSchema).check(Schema.isMaxLength(5)),
+  activatedAgentRefs: refs(10_000),
+  acceptedWorkRefs: Schema.Array(Schema.Struct({
+    agentRef: PortableRef,
+    turnRef: PortableRef,
+  })).check(Schema.isMaxLength(10_000)),
+  evidenceRefs: refs(512),
+}).annotate({ identifier: "IdePortableDestinationActivationReceipt" })
+
 const coordinatorCommandFields = {
   commandRef: PortableRef,
   idempotencyKey: PortableRef,
@@ -200,6 +244,10 @@ export type IdePortableCheckpointPolicy = typeof IdePortableCheckpointPolicySche
 export type IdePortableCheckpointManifest = typeof IdePortableCheckpointManifestSchema.Type
 export type IdePortablePlacementEvent = typeof IdePortablePlacementEventSchema.Type
 export type IdePortableMoveReceipt = typeof IdePortableMoveReceiptSchema.Type
+export type IdePortableDestinationHelperKind = typeof IdePortableDestinationHelperKindSchema.Type
+export type IdePortableDestinationHelperReadiness = typeof IdePortableDestinationHelperReadinessSchema.Type
+export type IdePortableDestinationAuthentication = typeof IdePortableDestinationAuthenticationSchema.Type
+export type IdePortableDestinationActivationReceipt = typeof IdePortableDestinationActivationReceiptSchema.Type
 export type IdePortableCoordinatorCommand = typeof IdePortableCoordinatorCommandSchema.Type
 export type IdePortableCoordinatorSnapshot = typeof IdePortableCoordinatorSnapshotSchema.Type
 

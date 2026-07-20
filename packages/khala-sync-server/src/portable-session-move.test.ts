@@ -320,6 +320,25 @@ const makeTarget = (
       const existing = activations.get(input.operationRef)
       if (existing) return existing
       const receipt = {
+        schema: "openagents.ide_portable_destination_activation.v1" as const,
+        receiptRef: `receipt.${input.operationRef}`,
+        operationRef: input.operationRef,
+        sessionRef: input.sessionRef,
+        checkpointRef: input.checkpointRef,
+        destinationTargetRef: targetRef,
+        destinationAttachmentRef: input.destinationAttachmentRef,
+        destinationGeneration: input.destinationGeneration,
+        authentication: {
+          state: "reauthenticated" as const,
+          policyRef: `policy.portable.destination.${targetClass}.v1`,
+          evidenceRef: `evidence.authentication.${input.operationRef}`,
+          observedAt: "2026-07-13T06:00:00.000Z",
+          expiresAt: null,
+        },
+        helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
+          kind, readiness: "unsupported" as const, instanceRef: null, versionRef: null,
+          omissionRef: `omission.${targetClass}.${kind}`, evidenceRefs: [],
+        })),
         activatedAgentRefs: session.graph.nodes.map(node => node.agentRef),
         acceptedWorkRefs: session.graph.nodes.map(node => ({
           agentRef: node.agentRef,

@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
-import type { PortableSessionExecutionBinding } from "@openagentsinc/portable-session-contract"
+import {
+  type PortableSessionExecutionBinding,
+  validateIdePortableDestinationActivationReceipt,
+} from "@openagentsinc/portable-session-contract"
 import { Effect } from "effect"
 
 import type { PylonPortableCheckpointBundle } from "./portable-session-operation-ledger.js"
@@ -286,11 +289,19 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
         authority.checkpointRef !== operation.checkpointRef) {
       throw new PylonPortableDestinationError("authority_mismatch", "local destination is not the durable active authority")
     }
-    const activation = await input.rehydrator.activate({
+    const activation = validateIdePortableDestinationActivationReceipt(await input.rehydrator.activate({
       operationRef: operation.operationRef,
       stage,
       authorityEvidenceRef: authority.authorityEvidenceRef,
       executionBinding: operation.executionBinding,
+    }), {
+      operationRef: operation.operationRef,
+      sessionRef: operation.sessionRef,
+      checkpointRef: operation.checkpointRef,
+      destinationTargetRef: input.targetRef,
+      destinationAttachmentRef: operation.destinationAttachmentRef,
+      destinationGeneration: operation.destinationGeneration,
+      authenticationPolicyRef: "policy.portable.destination.owner_local.v1",
     })
     if (!sameRefs(activation.activatedAgentRefs, stage.stagedAgentRefs) ||
         activation.acceptedWorkRefs.some(row => !stage.stagedAgentRefs.includes(row.agentRef)) ||

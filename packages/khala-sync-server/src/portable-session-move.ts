@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
 import {
+  type IdePortableDestinationActivationReceipt,
   PortableCapabilityBroker,
   PortableAgentGraphSchema,
   PortableCheckpointSchema,
@@ -13,6 +14,7 @@ import {
   type PortableSessionCommandOutcome,
   type PortableSessionExecutionBinding,
   type PortableTargetClass,
+  validateIdePortableDestinationActivationReceipt,
 } from "@openagentsinc/portable-session-contract"
 import { Effect, Schema as S } from "effect"
 
@@ -74,14 +76,7 @@ export type PortableTargetStageReceipt = Readonly<{
   evidenceRefs: ReadonlyArray<string>
 }>
 
-export type PortableTargetActivationReceipt = Readonly<{
-  activatedAgentRefs: ReadonlyArray<string>
-  acceptedWorkRefs: ReadonlyArray<Readonly<{
-    agentRef: string
-    turnRef: string
-  }>>
-  evidenceRefs: ReadonlyArray<string>
-}>
+export type PortableTargetActivationReceipt = IdePortableDestinationActivationReceipt
 
 export type PortableSourceCleanupReceipt = Readonly<{
   cleanedAgentRefs: ReadonlyArray<string>
@@ -486,7 +481,17 @@ const validateCleanup = (graph: PortableAgentGraph, receipt: PortableSourceClean
 const validateActivation = (
   graph: PortableAgentGraph,
   receipt: PortableTargetActivationReceipt,
+  expected: Readonly<{
+    operationRef: string
+    sessionRef: string
+    checkpointRef: string
+    destinationTargetRef: string
+    destinationAttachmentRef: string
+    destinationGeneration: number
+    authenticationPolicyRef: string
+  }>,
 ): void => {
+  validateIdePortableDestinationActivationReceipt(receipt, expected)
   if (!same([...receipt.activatedAgentRefs].sort(), graph.nodes.map(node => node.agentRef).sort())) {
     throw new PortableSessionMoveError("destination_rejected", "destination activation does not cover the complete graph")
   }
@@ -726,7 +731,15 @@ export class PortableSessionMoveCoordinator {
           destinationGeneration: view.sourceGeneration + 1,
           capabilityLeaseRefs: destinationLeaseRefs,
         })
-        validateActivation(view.graph, activation)
+        validateActivation(view.graph, activation, {
+          operationRef: `operation.${input.command.commandRef}.destination.activate`,
+          sessionRef: view.sessionRef,
+          checkpointRef: bundle.checkpoint.checkpointRef,
+          destinationTargetRef: input.destination.targetRef,
+          destinationAttachmentRef: input.destinationAttachmentRef,
+          destinationGeneration: view.sourceGeneration + 1,
+          authenticationPolicyRef: `policy.portable.destination.${input.destination.targetClass}.v1`,
+        })
         return {
           schema: PORTABLE_SESSION_MOVE_VERSION,
           status: "completed",
@@ -857,7 +870,15 @@ export class PortableSessionMoveCoordinator {
         destinationGeneration: Number(destination.generation),
         capabilityLeaseRefs,
       })
-      validateActivation(graph, activation)
+      validateActivation(graph, activation, {
+        operationRef: `operation.${input.command.commandRef}.destination.activate`,
+        sessionRef: input.command.sessionRef,
+        checkpointRef: checkpoint.checkpointRef,
+        destinationTargetRef: input.destination.targetRef,
+        destinationAttachmentRef: String(destination.attachment_ref),
+        destinationGeneration: Number(destination.generation),
+        authenticationPolicyRef: `policy.portable.destination.${input.destination.targetClass}.v1`,
+      })
       return {
         schema: PORTABLE_SESSION_MOVE_VERSION,
         status: "replayed",

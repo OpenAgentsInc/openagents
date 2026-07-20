@@ -122,6 +122,25 @@ const fakeProvisioner = (counts: Counts): ManagedAgentComputerPortableProvisione
     counts.activate += 1
     const nodes = graph(input.generation).nodes
     return {
+      schema: "openagents.ide_portable_destination_activation.v1",
+      receiptRef: `receipt.${input.operationRef}`,
+      operationRef: input.operationRef,
+      sessionRef: input.sessionRef,
+      checkpointRef: input.checkpointRef,
+      destinationTargetRef: input.targetRef,
+      destinationAttachmentRef: input.attachmentRef,
+      destinationGeneration: input.generation,
+      authentication: {
+        state: "reauthenticated",
+        policyRef: "policy.portable.destination.openagents_managed.v1",
+        evidenceRef: input.authorityEvidenceRef,
+        observedAt: "2026-07-13T06:00:00.000Z",
+        expiresAt: null,
+      },
+      helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
+        kind, readiness: "unsupported" as const, instanceRef: null, versionRef: null,
+        omissionRef: `omission.managed.${kind}`, evidenceRefs: [],
+      })),
       activatedAgentRefs: nodes.map(node => node.agentRef),
       acceptedWorkRefs: nodes.map(node => ({
         agentRef: node.agentRef,

@@ -4,6 +4,7 @@ import { chmod, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
+import { validateIdePortableDestinationActivationReceipt } from "@openagentsinc/portable-session-contract"
 
 import type { PylonPortableControlSessionLifecycle } from "./node/control-sessions.js"
 import type {
@@ -339,19 +340,57 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
         "workspace.pylon.portable.rehydrated",
         `${operation.stage.checkpointRef}:${operation.stage.repositoryPostImageDigest}`,
       )
-      const activation = await input.lifecycle.activateDestination({
-        sessionRef: operation.stage.sessionRef,
-        destinationAttachmentRef: operation.stage.destinationAttachmentRef,
-        destinationGeneration: operation.stage.destinationGeneration,
-        checkpointRef: operation.stage.checkpointRef,
-        agentRefs: operation.stage.stagedAgentRefs,
-        workingDirectory: directory,
-        workspaceRef,
-      })
-      return {
-        activatedAgentRefs: activation.activatedAgentRefs,
-        acceptedWorkRefs: activation.acceptedWorkRefs,
-        evidenceRefs: [operation.authorityEvidenceRef, ...activation.evidenceRefs],
+      const authenticationPolicyRef = "policy.portable.destination.owner_local.v1"
+      try {
+        const activation = await input.lifecycle.activateDestination({
+          sessionRef: operation.stage.sessionRef,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          checkpointRef: operation.stage.checkpointRef,
+          agentRefs: operation.stage.stagedAgentRefs,
+          workingDirectory: directory,
+          workspaceRef,
+          authorityEvidenceRef: operation.authorityEvidenceRef,
+          authenticationPolicyRef,
+          capabilityLeaseRefs: operation.stage.capabilityLeaseRefs,
+        })
+        return validateIdePortableDestinationActivationReceipt({
+          schema: "openagents.ide_portable_destination_activation.v1",
+          receiptRef: stableRef(
+            "receipt.pylon.portable.destination_activation",
+            `${operation.operationRef}:${operation.stage.destinationAttachmentRef}:${operation.stage.destinationGeneration}`,
+          ),
+          operationRef: operation.operationRef,
+          sessionRef: operation.stage.sessionRef,
+          checkpointRef: operation.stage.checkpointRef,
+          destinationTargetRef: input.targetRef,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          authentication: activation.authentication,
+          helpers: activation.helpers,
+          activatedAgentRefs: operation.stage.stagedAgentRefs,
+          acceptedWorkRefs: [],
+          evidenceRefs: [operation.authorityEvidenceRef, ...activation.evidenceRefs],
+        }, {
+          operationRef: operation.operationRef,
+          sessionRef: operation.stage.sessionRef,
+          checkpointRef: operation.stage.checkpointRef,
+          destinationTargetRef: input.targetRef,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          authenticationPolicyRef,
+        })
+      } catch (error) {
+        await input.lifecycle.abortDestination({
+          sessionRef: operation.stage.sessionRef,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          checkpointRef: operation.stage.checkpointRef,
+          agentRefs: operation.stage.stagedAgentRefs,
+          workingDirectory: directory,
+        }).catch(() => undefined)
+        await rm(directory, { recursive: true, force: true })
+        throw error
       }
     },
     abort: async operation => {

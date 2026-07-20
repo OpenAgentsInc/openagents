@@ -3,6 +3,10 @@ import { createHash, randomBytes } from "node:crypto"
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { join, resolve } from "node:path"
 import { Effect } from "effect"
+import type {
+  IdePortableDestinationAuthentication,
+  IdePortableDestinationHelperReadiness,
+} from "@openagentsinc/portable-session-contract"
 import {
   loadPylonAccountRegistry,
   publicPylonAccountSelection,
@@ -319,9 +323,12 @@ export type PylonPortableControlSessionLifecycle = Readonly<{
     agentRefs: ReadonlyArray<string>
     workingDirectory: string
     workspaceRef: string
+    authorityEvidenceRef: string
+    authenticationPolicyRef: string
+    capabilityLeaseRefs: ReadonlyArray<string>
   }>) => Promise<Readonly<{
-    activatedAgentRefs: ReadonlyArray<string>
-    acceptedWorkRefs: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string }>>
+    authentication: IdePortableDestinationAuthentication
+    helpers: ReadonlyArray<IdePortableDestinationHelperReadiness>
     evidenceRefs: ReadonlyArray<string>
   }>>
   abortDestination: (input: Readonly<{
@@ -1906,13 +1913,27 @@ export function createControlSessionActions(options: {
       }
       binding.state = "accepting"
       delete binding.staged
+      const observedAt = new Date().toISOString()
       return {
-        activatedAgentRefs: [...input.agentRefs],
-        acceptedWorkRefs: [],
-        evidenceRefs: input.agentRefs.map(agentRef => stableRef(
+        authentication: {
+          state: "reauthenticated",
+          policyRef: input.authenticationPolicyRef,
+          evidenceRef: input.authorityEvidenceRef,
+          observedAt,
+          expiresAt: null,
+        },
+        helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
+          kind,
+          readiness: "unsupported",
+          instanceRef: null,
+          versionRef: null,
+          omissionRef: `omission.pylon.portable.${kind}.unsupported`,
+          evidenceRefs: [],
+        })),
+        evidenceRefs: [input.authorityEvidenceRef, ...input.agentRefs.map(agentRef => stableRef(
           "receipt.pylon.portable.agent_activated",
           `${input.sessionRef}:${input.destinationGeneration}:${agentRef}:${input.checkpointRef}`,
-        )),
+        ))],
       }
     },
     abortDestination: async (input) => {

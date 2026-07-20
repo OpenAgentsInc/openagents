@@ -23,6 +23,15 @@ import {
 
 const roots: string[] = []
 
+const unsupportedHelpers = () => (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
+  kind,
+  readiness: "unsupported" as const,
+  instanceRef: null,
+  versionRef: null,
+  omissionRef: `omission.pylon.portable.${kind}.unsupported`,
+  evidenceRefs: [],
+}))
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
@@ -45,12 +54,18 @@ test("concrete rehydrator restores private repository bytes and activates the re
       stagedWorkspaceRef = input.workspaceRef
       return { evidenceRefs: ["receipt.port03.concrete.staged"] }
     },
-    activateDestination: async (input: { workingDirectory: string; workspaceRef: string; agentRefs: ReadonlyArray<string> }) => {
+    activateDestination: async (input: { workingDirectory: string; workspaceRef: string; authorityEvidenceRef: string; authenticationPolicyRef: string }) => {
       expect(input.workingDirectory).toBe(stagedDirectory)
       expect(input.workspaceRef).toBe(stagedWorkspaceRef)
       return {
-        activatedAgentRefs: input.agentRefs,
-        acceptedWorkRefs: [],
+        authentication: {
+          state: "reauthenticated" as const,
+          policyRef: input.authenticationPolicyRef,
+          evidenceRef: input.authorityEvidenceRef,
+          observedAt: "2026-07-20T08:00:00.000Z",
+          expiresAt: null,
+        },
+        helpers: unsupportedHelpers(),
         evidenceRefs: ["receipt.port03.concrete.activated"],
       }
     },
@@ -77,11 +92,76 @@ test("concrete rehydrator restores private repository bytes and activates the re
     stage,
     authorityEvidenceRef: "authority.port03.local.3",
     executionBinding: bundle.executionBinding,
-  })).toEqual({
+  })).toMatchObject({
+    schema: "openagents.ide_portable_destination_activation.v1",
+    operationRef: "operation.port03.concrete.destination.activate",
+    sessionRef: bundle.checkpoint.sessionRef,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    destinationTargetRef: "target.port03.owner.local",
+    destinationAttachmentRef: stage.destinationAttachmentRef,
+    destinationGeneration: 3,
+    authentication: { state: "reauthenticated", policyRef: "policy.portable.destination.owner_local.v1" },
+    helpers: unsupportedHelpers(),
     activatedAgentRefs: bundle.graph.nodes.map(node => node.agentRef),
     acceptedWorkRefs: [],
     evidenceRefs: ["authority.port03.local.3", "receipt.port03.concrete.activated"],
   })
+})
+
+test("concrete rehydrator cleans a partial destination when helper readiness is invalid", async () => {
+  const root = await mkdtemp(join(tmpdir(), "oa-port03-readiness-cleanup-"))
+  roots.push(root)
+  const { bundle, repository } = await fixture(root)
+  const artifacts = new PylonPortableCheckpointArtifactStore()
+  artifacts.register({ bundle, workingDirectory: repository })
+  let stagedDirectory = ""
+  let aborts = 0
+  const lifecycle = {
+    bind: () => undefined,
+    quiesce: async () => ({ quiescedAgentRefs: [], evidenceRefs: [] }),
+    checkpointSource: async () => ({ workingDirectory: repository, workspaceRef: "workspace.test", artifactRefs: [], approvalRefs: [] }),
+    cleanup: async () => ({ cleanedAgentRefs: [], cleanupReceiptRef: "receipt.test.cleanup", evidenceRefs: [] }),
+    stageDestination: async (input: { workingDirectory: string }) => {
+      stagedDirectory = input.workingDirectory
+      return { evidenceRefs: ["receipt.destination.staged"] }
+    },
+    activateDestination: async (input: { authorityEvidenceRef: string; authenticationPolicyRef: string }) => ({
+      authentication: {
+        state: "reauthenticated" as const,
+        policyRef: input.authenticationPolicyRef,
+        evidenceRef: input.authorityEvidenceRef,
+        observedAt: "2026-07-20T08:00:00.000Z",
+        expiresAt: null,
+      },
+      helpers: unsupportedHelpers().slice(1),
+      evidenceRefs: ["receipt.destination.partial_start"],
+    }),
+    abortDestination: async () => {
+      aborts += 1
+      return { evidenceRefs: ["receipt.destination.partial_cleaned"] }
+    },
+  }
+  const rehydrator = createPylonPortableLocalRehydrator({
+    targetRef: "target.port03.owner.local",
+    custodyRoot: join(root, "local-rehydration"),
+    artifacts,
+    lifecycle,
+  })
+  const stage = await rehydrator.stage({
+    operationRef: "operation.port03.cleanup.destination.stage",
+    bundle,
+    destinationAttachmentRef: "attachment.port03.cleanup.3",
+    destinationGeneration: 3,
+    capabilityLeaseRefs: ["lease.port03.cleanup.3"],
+  })
+  await expect(rehydrator.activate({
+    operationRef: "operation.port03.cleanup.destination.activate",
+    stage,
+    authorityEvidenceRef: "authority.port03.cleanup.3",
+    executionBinding: bundle.executionBinding,
+  })).rejects.toThrow("helper inventory")
+  expect(aborts).toBe(1)
+  await expect(access(stagedDirectory)).rejects.toThrow()
 })
 
 const git = async (cwd: string, ...args: string[]): Promise<Uint8Array> => {
@@ -251,6 +331,22 @@ const createRehydrator = (input: Readonly<{
       activationEffects += 1
       accepting = true
       const result = {
+        schema: "openagents.ide_portable_destination_activation.v1" as const,
+        receiptRef: `receipt.${operation.operationRef}`,
+        operationRef: operation.operationRef,
+        sessionRef: operation.stage.sessionRef,
+        checkpointRef: operation.stage.checkpointRef,
+        destinationTargetRef: "target.port03.owner.local",
+        destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+        destinationGeneration: operation.stage.destinationGeneration,
+        authentication: {
+          state: "reauthenticated" as const,
+          policyRef: "policy.portable.destination.owner_local.v1",
+          evidenceRef: operation.authorityEvidenceRef,
+          observedAt: "2026-07-20T08:00:00.000Z",
+          expiresAt: null,
+        },
+        helpers: unsupportedHelpers(),
         activatedAgentRefs: operation.stage.stagedAgentRefs,
         acceptedWorkRefs: [],
         evidenceRefs: ["receipt.port03.local.activated"],
@@ -352,7 +448,7 @@ describe("owner-local portable destination rehydration", () => {
       authorityEvidenceRef: "authority.port03.local.3",
     }
     const activated = await lifecycle.activate(activationInput)
-    expect(activated.activatedAgentRefs.sort()).toEqual(bundle.graph.nodes.map(node => node.agentRef).sort())
+    expect([...activated.activatedAgentRefs].sort()).toEqual(bundle.graph.nodes.map(node => node.agentRef).sort())
     expect(runtime.acceptsWork()).toBe(true)
     expect(await Effect.runPromise(ledger.readSession(bundle.checkpoint.sessionRef))).toMatchObject({
       attachmentRef: stageInput.destinationAttachmentRef,

@@ -5,6 +5,7 @@ import type {
   PortableAgentGraph,
   PortableSessionExecutionBinding,
 } from "@openagentsinc/portable-session-contract"
+import { validateIdePortableDestinationActivationReceipt } from "@openagentsinc/portable-session-contract"
 
 import type {
   PortableCheckpointBundle,
@@ -287,7 +288,7 @@ export class PostgresManagedAgentComputerTarget implements PortableSessionExecut
         input.destinationAttachmentRef,
         input.destinationGeneration,
       )
-      const receipt = publicSafe(await this.config.provisioner.activate({
+      const receipt = validateIdePortableDestinationActivationReceipt(publicSafe(await this.config.provisioner.activate({
         operationRef: input.operationRef,
         ownerRef: this.config.ownerRef,
         targetRef: this.targetRef,
@@ -299,7 +300,15 @@ export class PostgresManagedAgentComputerTarget implements PortableSessionExecut
         generation: input.destinationGeneration,
         capabilityLeaseRefs: operation.capabilityLeaseRefs,
         authorityEvidenceRef,
-      }))
+      })), {
+        operationRef: input.operationRef,
+        sessionRef: input.sessionRef,
+        checkpointRef: input.checkpointRef,
+        destinationTargetRef: this.targetRef,
+        destinationAttachmentRef: input.destinationAttachmentRef,
+        destinationGeneration: input.destinationGeneration,
+        authenticationPolicyRef: `policy.portable.destination.${this.targetClass}.v1`,
+      })
       const bundle = parseJson<PortableCheckpointBundle>(row.bundle_json)
       const expectedAgents = bundle.graph.nodes.map(node => node.agentRef).sort()
       if (!same([...receipt.activatedAgentRefs].sort(), expectedAgents)) {

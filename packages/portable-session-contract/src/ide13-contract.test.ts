@@ -3,6 +3,7 @@ import { Schema } from "effect"
 
 import {
   IdePortableCheckpointManifestSchema,
+  IdePortableDestinationActivationReceiptSchema,
   IdePortableMoveReceiptSchema,
   IdePortablePlacementFactsSchema,
   IdePortableStaleWriter,
@@ -72,5 +73,41 @@ describe("IDE-13 portable capability contract", () => {
     })
     expect(receipt.destinationGeneration).toBe(2)
     expect(new IdePortableStaleWriter({ operation: "save", detailRef: "detail.stale.1", retryable: false })._tag).toBe("IdePortable.StaleWriter")
+  })
+
+  test("decodes a refs-only destination authentication and helper readiness receipt", () => {
+    const receipt = Schema.decodeUnknownSync(IdePortableDestinationActivationReceiptSchema)({
+      schema: "openagents.ide_portable_destination_activation.v1",
+      receiptRef: "receipt.destination.2",
+      operationRef: "operation.destination.activate.2",
+      sessionRef: "session.1",
+      checkpointRef: "checkpoint.1",
+      destinationTargetRef: "target.owner.2",
+      destinationAttachmentRef: "attachment.2",
+      destinationGeneration: 2,
+      authentication: {
+        state: "reauthenticated",
+        policyRef: "policy.destination.2",
+        evidenceRef: "evidence.authentication.2",
+        observedAt: "2026-07-20T08:05:00.000Z",
+        expiresAt: "2026-07-20T09:05:00.000Z",
+      },
+      helpers: [
+        { kind: "pty", readiness: "ready", instanceRef: "instance.pty.2", versionRef: "version.pty.1", omissionRef: null, evidenceRefs: ["evidence.pty.2"] },
+        { kind: "lsp", readiness: "unsupported", instanceRef: null, versionRef: null, omissionRef: "omission.lsp.unsupported", evidenceRefs: [] },
+        { kind: "dap", readiness: "unsupported", instanceRef: null, versionRef: null, omissionRef: "omission.dap.unsupported", evidenceRefs: [] },
+        { kind: "watcher", readiness: "unsupported", instanceRef: null, versionRef: null, omissionRef: "omission.watcher.unsupported", evidenceRefs: [] },
+        { kind: "native", readiness: "unsupported", instanceRef: null, versionRef: null, omissionRef: "omission.native.unsupported", evidenceRefs: [] },
+      ],
+      activatedAgentRefs: ["agent.root.1"],
+      acceptedWorkRefs: [],
+      evidenceRefs: ["evidence.authentication.2", "evidence.pty.2"],
+    })
+    expect(receipt.authentication.policyRef).toBe("policy.destination.2")
+    expect(JSON.stringify(receipt)).not.toContain("credential")
+    expect(() => Schema.decodeUnknownSync(IdePortableDestinationActivationReceiptSchema)({
+      ...receipt,
+      destinationGeneration: -1,
+    })).toThrow()
   })
 })

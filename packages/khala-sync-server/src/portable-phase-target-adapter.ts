@@ -12,6 +12,7 @@ import {
   type PortablePhaseOperationRecord,
   type PortablePhaseOperationRequest,
   type PortableTargetDescriptor,
+  validateIdePortableDestinationActivationReceipt,
 } from "@openagentsinc/portable-session-contract";
 import { canonicalJson } from "@openagentsinc/khala-sync";
 import { Duration, Effect, Schedule, Schema } from "effect";
@@ -337,10 +338,42 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
       attachmentGeneration: input.destinationGeneration,
       ...artifact,
     });
-    return publicSafe({
+    const authenticationPolicyRef = `policy.portable.destination.${this.targetClass}.v1`;
+    return validateIdePortableDestinationActivationReceipt(publicSafe({
+      schema: "openagents.ide_portable_destination_activation.v1",
+      receiptRef: result.resultRef,
+      operationRef: input.operationRef,
+      sessionRef: input.sessionRef,
+      checkpointRef: input.checkpointRef,
+      destinationTargetRef: this.targetRef,
+      destinationAttachmentRef: input.destinationAttachmentRef,
+      destinationGeneration: input.destinationGeneration,
+      authentication: {
+        state: "reauthenticated",
+        policyRef: authenticationPolicyRef,
+        evidenceRef: this.claim.claimRef,
+        observedAt: result.completedAt,
+        expiresAt: null,
+      },
+      helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map((kind) => ({
+        kind,
+        readiness: "unsupported",
+        instanceRef: null,
+        versionRef: null,
+        omissionRef: `omission.portable.phase.${kind}.unsupported`,
+        evidenceRefs: [],
+      })),
       activatedAgentRefs: bundle.graph.nodes.map((node) => node.agentRef),
       acceptedWorkRefs: [],
       evidenceRefs: result.resultEvidenceRefs,
+    }), {
+      operationRef: input.operationRef,
+      sessionRef: input.sessionRef,
+      checkpointRef: input.checkpointRef,
+      destinationTargetRef: this.targetRef,
+      destinationAttachmentRef: input.destinationAttachmentRef,
+      destinationGeneration: input.destinationGeneration,
+      authenticationPolicyRef,
     });
   }
 

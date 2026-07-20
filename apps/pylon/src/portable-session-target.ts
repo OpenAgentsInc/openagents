@@ -5,6 +5,7 @@ import { join } from "node:path"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
 import type {
+  IdePortableDestinationActivationReceipt,
   PortableAgentGraph,
   PortableCheckpoint,
   PortableSessionExecutionBinding,
@@ -44,11 +45,7 @@ export type PylonPortableTargetStageReceipt = Readonly<{
   evidenceRefs: ReadonlyArray<string>
 }>
 
-export type PylonPortableTargetActivationReceipt = Readonly<{
-  activatedAgentRefs: ReadonlyArray<string>
-  acceptedWorkRefs: ReadonlyArray<Readonly<{ agentRef: string; turnRef: string }>>
-  evidenceRefs: ReadonlyArray<string>
-}>
+export type PylonPortableTargetActivationReceipt = IdePortableDestinationActivationReceipt
 
 export type PylonPortableDestinationLifecycle = Readonly<{
   stageCheckpoint: (input: Readonly<{
