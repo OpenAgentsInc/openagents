@@ -114,6 +114,9 @@ const adapter = (
   attachDestination: () => Effect.sync(() => {
     calls.push("attach")
   }),
+  activateDestinationSettings: () => Effect.sync(() => {
+    calls.push("activate_settings")
+  }),
   restartFreshHelpers: () => Effect.sync(() => {
     calls.push("restart_helpers")
   }),
@@ -156,14 +159,14 @@ describe("IDE portable coordinator", () => {
     }), layer)
     expect(calls).toEqual([
       "quiesce", "validate:source", "stage", "validate:destination",
-      "revoke", "attach", "restart_helpers",
+      "revoke", "attach", "activate_settings", "restart_helpers",
     ])
     expect(result.first.snapshot.activeGeneration).toBe(2)
     expect(result.first.snapshot.activeAttachmentRef).toBe("attachment.remote.2")
     expect(result.first.receipt?.sourceGeneration).toBe(1)
     expect(result.first.receipt?.destinationGeneration).toBe(2)
     expect(result.replay.receipt?.receiptRef).toBe(result.first.receipt?.receiptRef)
-    expect(calls).toHaveLength(7)
+    expect(calls).toHaveLength(8)
     expect(result.stale._tag).toBe("Failure")
   })
 
@@ -218,6 +221,7 @@ describe("IDE portable coordinator", () => {
     ["validateCheckpoint:destination", "attached", true],
     ["revokeSource", "attached", true],
     ["attachDestination", "degraded", false],
+    ["activateDestinationSettings", "degraded", false],
     ["restartFreshHelpers", "degraded", false],
   ] as const) {
     test(`fails closed for ${fault} without creating a second writer`, async () => {
@@ -241,6 +245,7 @@ describe("IDE portable coordinator", () => {
         ...(fault === "stageDestination" ? { stageDestination: failure } : {}),
         ...(fault === "revokeSource" ? { revokeSource: failure } : {}),
         ...(fault === "attachDestination" ? { attachDestination: failure } : {}),
+        ...(fault === "activateDestinationSettings" ? { activateDestinationSettings: failure } : {}),
         ...(fault === "restartFreshHelpers" ? { restartFreshHelpers: failure } : {}),
       }
       const layer = makeIdePortableCoordinatorLayer(seed, injected, {

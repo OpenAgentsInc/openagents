@@ -61,6 +61,11 @@ export interface IdePortableCoordinatorAdapter {
     attachmentRef: string,
     generation: number,
   ) => Effect.Effect<void, IdePortableCoordinatorError>
+  readonly activateDestinationSettings: (
+    destinationPlacementRef: string,
+    attachmentRef: string,
+    generation: number,
+  ) => Effect.Effect<void, IdePortableCoordinatorError>
   readonly restartFreshHelpers: (
     destinationPlacementRef: string,
     attachmentRef: string,
@@ -277,6 +282,11 @@ export const makeIdePortableCoordinatorLayer = (
           destinationGeneration,
         )
         current = yield* transition(current, { phase: "attaching" })
+        yield* adapter.activateDestinationSettings(
+          command.destinationPlacementRef,
+          staged.attachmentRef,
+          destinationGeneration,
+        )
         yield* adapter.restartFreshHelpers(
           command.destinationPlacementRef,
           staged.attachmentRef,
