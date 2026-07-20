@@ -337,6 +337,12 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // not load or store raw KMS key bytes.
   PORTABLE_CHECKPOINT_KMS_KEY_RESOURCE?: string | undefined
   PORTABLE_CHECKPOINT_KMS_KEY_REF?: string | undefined
+  // Default-off IDE-13 command runtime authority. Both values must be exact
+  // HTTPS origins. The bearer is a Worker secret and must never enter logs,
+  // responses, receipts, or portable-session records.
+  PORTABLE_SESSION_COMMAND_GRANT_AUTHORITY_BASE_URL?: string | undefined
+  PORTABLE_SESSION_COMMAND_MANAGED_INSTALLATION_BASE_URL?: string | undefined
+  PORTABLE_SESSION_COMMAND_SERVICE_BEARER?: string | undefined
   // Generative Language API key (Gemma 4 lane — the primary conversational Khala
   // lane on our own gcloud; owner decision 2026-07-09). The SAME key sarah's
   // google-inference service uses (#8594); the `gemma4-adapter` reads it lazily.

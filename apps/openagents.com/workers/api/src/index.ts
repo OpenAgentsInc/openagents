@@ -1037,6 +1037,7 @@ import {
   PORTABLE_SESSION_COMMAND_DISPATCH_FLAG,
   makePortableSessionCommandDispatchScheduled,
 } from './portable-session-command-dispatch-scheduled'
+import { makePortableSessionCommandRuntimeAdapters } from './portable-session-command-runtime-adapters'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
@@ -10038,10 +10039,8 @@ const portableSessionCommandDispatchScheduled =
           }),
       }
     },
-    // IDE-13 fail-closed boundary: the only existing full runtime broker
-    // builder imports owner-local Node/Pylon state and is excluded from the
-    // Worker build. A Cloud Run runtime broker plus committed artifact custody
-    // reader/decryptor factory must land before this flag can be enabled.
+    runtimeAdapters: async (env, sql) =>
+      makePortableSessionCommandRuntimeAdapters(env, sql),
   })
 
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
