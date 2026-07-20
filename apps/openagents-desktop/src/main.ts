@@ -22,6 +22,7 @@ import {
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
 } from "@openagentsinc/pylon-core/custody/account-registry"
+import { resolvePylonHome } from "@openagentsinc/pylon-core/shared/bootstrap"
 import {
   fetchFleetRunClientProjection,
   buildCloseTurnIntent,
@@ -521,6 +522,10 @@ import {
   type DesktopSourceSafePoint,
   type DesktopSourceSubsystemResult,
 } from "./ide/desktop-source-safe-point.ts"
+import {
+  startDesktopSourceSafePointControlServer,
+  type DesktopSourceSafePointControlServer,
+} from "./ide/desktop-source-safe-point-control-server.ts"
 import {
   openIdeManagedSandboxHost,
   type IdeManagedSandboxHost,
@@ -1748,6 +1753,7 @@ const relaunchDesktopUpdateApp = (): void => {
 }
 let desktopUpdateDrainActive = false
 let desktopSourceSafePoint: DesktopSourceSafePoint | null = null
+let desktopSourceSafePointControlServer: DesktopSourceSafePointControlServer | null = null
 const drainDesktopUpdateRuntimes = async () => {
   desktopUpdateDrainActive = true
   const sourceBinding = desktopSourceSafePoint?.currentBinding() ?? null
@@ -4453,6 +4459,60 @@ desktopSourceSafePoint = makeDesktopSourceSafePoint({
     },
   ],
 })
+
+const pylonHome = resolvePylonHome(process.env).home
+const readPublicPylonRef = (): string | null => {
+  for (const file of [path.join(pylonHome, "identity.json"), path.join(pylonHome, "config.json")]) {
+    try {
+      const value: unknown = JSON.parse(readFileSync(file, "utf8"))
+      if (value !== null && typeof value === "object" && !Array.isArray(value) &&
+        "pylonRef" in value && typeof value.pylonRef === "string" &&
+        /^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,255}$/u.test(value.pylonRef)) return value.pylonRef
+    } catch {
+      // Continue to the next public Pylon identity projection.
+    }
+  }
+  return null
+}
+const sourceControlPylonRef = readPublicPylonRef()
+const currentDesktopSourceControlAuthority = () => {
+  if (sourceControlPylonRef === null) return null
+  const grantRef = hostLifecycle.workspace()?.grantRef ?? null
+  if (grantRef === null) return null
+  const authorization = workspacePortableMutationAuthority.authorize(grantRef)
+  if (authorization._tag !== "Permitted" || authorization.permit._tag !== "Portable" ||
+    authorization.permit.targetRef === null) return null
+  const snapshot = hostLifecycle.sync()?.portableSnapshot() ?? null
+  const sessions = snapshot?.sessions.filter(session => session.sessionRef === authorization.permit.sessionRef) ?? []
+  const targets = snapshot?.targetDirectories
+    .filter(directory => directory.sessionRef === authorization.permit.sessionRef)
+    .flatMap(directory => directory.targets)
+    .filter(target => target.targetRef === authorization.permit.targetRef) ?? []
+  const session = sessions.length === 1 ? sessions[0] : undefined
+  const target = targets.length === 1 ? targets[0] : undefined
+  if (session === undefined || target === undefined || target.ownerRef !== session.ownerRef) return null
+  return {
+    ownerRef: session.ownerRef,
+    pylonRef: sourceControlPylonRef,
+    targetRef: target.targetRef,
+  }
+}
+if (sourceControlPylonRef !== null && desktopSourceSafePoint !== null) {
+  void startDesktopSourceSafePointControlServer({
+    pylonHome,
+    pylonRef: sourceControlPylonRef,
+    safePoint: desktopSourceSafePoint,
+    currentAuthority: currentDesktopSourceControlAuthority,
+  }).then(server => {
+    if (desktopIsQuitting) return server.stop()
+    desktopSourceSafePointControlServer = server
+  }).catch(error => {
+    console.warn(
+      "[desktop-source-safe-point] control unavailable",
+      error instanceof Error ? error.message : "unknown",
+    )
+  })
+}
 
 /**
  * The Claude lane (`claude_agent`) as a provider-lane value. Message metadata
@@ -9515,6 +9575,8 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   desktopIsQuitting = true
+  void desktopSourceSafePointControlServer?.stop()
+  desktopSourceSafePointControlServer = null
   clearInterval(fullAutoRunProjectionHeartbeatTimer)
   for (const flush of localTurnFlushers) flush()
   localTurnFlushers.clear()

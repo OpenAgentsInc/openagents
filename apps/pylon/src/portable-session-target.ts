@@ -5,6 +5,7 @@ import { join } from "node:path"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
 import type {
+  DesktopSourceSafePointControlRequest,
   IdePortableDestinationActivationReceipt,
   PortableAgentGraph,
   PortableCheckpoint,
@@ -14,6 +15,7 @@ import type {
 import { Effect } from "effect"
 
 import type { PylonPortableControlSessionLifecycle } from "./node/control-sessions.js"
+import type { PylonDesktopSourceSafePointClient } from "./desktop-source-safe-point-client.js"
 import type { PylonPortableCheckpointArtifactStore } from "./portable-session-checkpoint-artifact.js"
 import {
   type PylonPortableCheckpointBundle,
@@ -205,6 +207,16 @@ export const createPylonOwnerLocalExecutionTarget = async (input: Readonly<{
   }>
   destination?: PylonPortableDestinationLifecycle
   checkpointArtifacts?: Pick<PylonPortableCheckpointArtifactStore, "register">
+  desktopSourceSafePoint?: Readonly<{
+    client: PylonDesktopSourceSafePointClient
+    authority: Readonly<{
+      commandRef: string
+      commandExecutionClaimRef: string
+      ownerRef: string
+      pylonRef: string
+      expiresAt: string
+    }>
+  }>
 }>): Promise<PylonOwnerLocalExecutionTarget> => {
   try {
     const fence = await Effect.runPromise(input.ledger.readSession(input.binding.sessionRef))
@@ -240,22 +252,56 @@ export const createPylonOwnerLocalExecutionTarget = async (input: Readonly<{
         throw new PylonPortableTargetError("invalid_binding", "portable session binding does not match")
       }
       const agentRefs = operation.graph.nodes.map(node => node.agentRef)
-      const quiesced = await input.lifecycle.quiesce({
-        sessionRef: operation.sessionRef,
-        attachmentRef: operation.attachmentRef,
-        generation: operation.generation,
-        agentRefs,
-      })
+      const [desktopSettled, lifecycleSettled] = await Promise.allSettled([
+        input.desktopSourceSafePoint === undefined
+          ? Promise.resolve(null)
+          : input.desktopSourceSafePoint.client.quiesce({
+              schema: "openagents.desktop_source_safe_point_control.v1",
+              operationRef: operation.operationRef,
+              commandRef: input.desktopSourceSafePoint.authority.commandRef,
+              commandExecutionClaimRef: input.desktopSourceSafePoint.authority.commandExecutionClaimRef,
+              ownerRef: input.desktopSourceSafePoint.authority.ownerRef,
+              pylonRef: input.desktopSourceSafePoint.authority.pylonRef,
+              targetRef: input.targetRef,
+              sessionRef: operation.sessionRef,
+              attachmentRef: operation.attachmentRef,
+              attachmentGeneration: operation.generation,
+              expiresAt: input.desktopSourceSafePoint.authority.expiresAt,
+            } satisfies DesktopSourceSafePointControlRequest),
+        input.lifecycle.quiesce({
+          sessionRef: operation.sessionRef,
+          attachmentRef: operation.attachmentRef,
+          generation: operation.generation,
+          agentRefs,
+        }),
+      ])
+      if (desktopSettled.status === "rejected" || lifecycleSettled.status === "rejected") {
+        throw new PylonPortableTargetError(
+          "operation_failed",
+          "Desktop and Pylon source safe points did not both settle successfully",
+        )
+      }
+      const desktop = desktopSettled.value
+      const quiesced = lifecycleSettled.value
+      if (desktop !== null && desktop.state !== "quiescent") {
+        throw new PylonPortableTargetError(
+          "operation_failed",
+          `Desktop source safe point failed closed: ${desktop.reasonRef ?? desktop.state}`,
+        )
+      }
+      const safePointEvidence = desktop === null
+        ? quiesced.evidenceRefs
+        : [...new Set([...desktop.evidenceRefs, ...quiesced.evidenceRefs])]
       const result = await runLedger(input.ledger.quiesceGeneration({
         operationRef: operation.operationRef,
         sessionRef: operation.sessionRef,
         attachmentRef: operation.attachmentRef,
         generation: operation.generation,
-        evidenceRefs: quiesced.evidenceRefs,
+        evidenceRefs: safePointEvidence,
       }))
       return {
         quiescedAgentRefs: agentRefs,
-        evidenceRefs: result.record.outcome?.evidenceRefs ?? quiesced.evidenceRefs,
+        evidenceRefs: result.record.outcome?.evidenceRefs ?? safePointEvidence,
       }
     },
     createCheckpoint: async (operation) => {
