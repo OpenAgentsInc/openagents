@@ -13524,7 +13524,7 @@
     },
     {
       "path": "apps/pylon/swift/foundation-bridge/README.md",
-      "sha256": "f47bd128648f909fc259757430706de2dff164d12c147a7b27b76db55a65311f",
+      "sha256": "7e8aa02e666cb0935bfab1e4ef4890b9b5943e096cd36903798b658d62efd22a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -73,6 +73,8 @@ const zone = required('OA_MANAGED_SANDBOX_ZONE')
 const imageDigest = required('OA_MANAGED_SANDBOX_IMAGE_DIGEST')
 const profileDigest = required('OA_MANAGED_SANDBOX_PROFILE_DIGEST')
 const sourceRevision = required('OA_MANAGED_SANDBOX_SOURCE_REVISION')
+const workerRevision = required('OA_MANAGED_SANDBOX_WORKER_REVISION')
+const controlRevision = required('OA_MANAGED_SANDBOX_CONTROL_REVISION')
 const controlInstance = required('OA_MANAGED_SANDBOX_CONTROL_INSTANCE')
 const databaseUrl = required('OA_MANAGED_SANDBOX_DATABASE_URL')
 const brokerSigningKey = required('OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY')
@@ -114,6 +116,17 @@ const responseError = async (
       `unexpected Box error ${caught.response.status}/${body.code ?? 'unknown'}`,
     )
   }
+}
+
+const failureMessage = async (error: unknown): Promise<string> => {
+  if (!(error instanceof ResponseError)) {
+    return error instanceof Error ? error.message : String(error)
+  }
+  const body = (await error.response
+    .clone()
+    .json()
+    .catch(() => undefined)) as { code?: string; error?: string } | undefined
+  return `Box ${error.response.status}/${body?.code ?? body?.error ?? 'unknown_error'}`
 }
 
 const createWithReplay = async () => {
@@ -412,7 +425,9 @@ try {
     { boxId, updateBoxRequest: { ttlSeconds: 840 } },
     retryHeaders('update'),
   )
-  if (updated.box.updatedAt?.getTime() !== updateReplay.box.updatedAt?.getTime()) {
+  if (
+    updated.box.updatedAt?.getTime() !== updateReplay.box.updatedAt?.getTime()
+  ) {
     throw new Error('update replay diverged')
   }
   proof.updateReplay = true
@@ -770,7 +785,7 @@ try {
   proof.brokerRevocationEnforced = true
   passed = true
 } catch (error) {
-  failure = error instanceof Error ? error.message : String(error)
+  failure = await failureMessage(error)
 } finally {
   if (boxId !== undefined && !deleted) {
     try {
@@ -832,6 +847,10 @@ const publicEvidence = {
   ...(failure === undefined ? {} : { failure }),
   environment: 'staging',
   sourceRevision,
+  deployedRevisions: {
+    worker: workerRevision,
+    control: controlRevision,
+  },
   imageDigest,
   profileDigest,
   sandboxRefDigest: boxId === undefined ? null : `sha256:${sha256(boxId)}`,
