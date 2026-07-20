@@ -19115,7 +19115,7 @@
     },
     {
       "path": "docs/cloud/INVARIANTS.md",
-      "sha256": "983b29bee4863561c388682bcfbdcb413da3861fe131b23098fcd007b22f2905",
+      "sha256": "6183a8bbb9e55783a2bcf8970d278b8fa6077b2e4e702391af14e9d4348df351",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

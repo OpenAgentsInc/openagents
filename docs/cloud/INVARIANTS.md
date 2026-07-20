@@ -164,7 +164,7 @@ design context only.
   reconnect notifications cannot fail or settle the native turn.
 - Claude Agent SDK requests cross the provider broker through an exact Vertex
   adapter. The adapter removes only the unsupported SDK
-  `context_management` beta input; it does not rewrite prompt, message, tool,
+  `context_management` beta input. It does not rewrite prompt, message, tool,
   limit, model, owner, or capability scope.
 - Guest I/O admits only file read, file write, command, and artifact read. Each
   private request binds the exact owner, tenant, work unit, sandbox generation,

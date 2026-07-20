@@ -602,7 +602,7 @@
       ]
     },
     "INVARIANTS.md": {
-      "sourceSha256": "c4d8a252e141d12363d528f57ff71d2e24a259f6d34a84426f8a104e923d8cce",
+      "sourceSha256": "89957ce7ccb62cdb3a774d0db913291320bc4e85fa022e57075fe88797329149",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -852,6 +852,7 @@
         "coding_session",
         "coding_worktree",
         "compileAgentDefinitionToolRuntimePolicy",
+        "context_management",
         "correlationRef",
         "crates/*",
         "crates/oa-codex-control/tests/portable_managed_agent_computer_contract.rs",
@@ -11368,7 +11369,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "073a381ce841fc36933b29db09cd4f6061d6c6e94dab7afd21f17f04493718f2",
+      "sourceSha256": "6183a8bbb9e55783a2bcf8970d278b8fa6077b2e4e702391af14e9d4348df351",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -11429,6 +11430,7 @@
         "codex_app_server",
         "compute_usage",
         "compute_usage",
+        "context_management",
         "copy_out",
         "cost_basis",
         "cost_basis",
