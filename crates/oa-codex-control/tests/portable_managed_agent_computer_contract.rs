@@ -363,9 +363,30 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
     activate["payload"] = json!({
         "checkpointRef": "checkpoint.port03.http.source",
         "authorityEvidenceRef": "evidence.port03.http.authority",
+        "destinationRunnerSessionReservationRef": staged["destinationRunnerSessionReservationRef"],
+        "authenticationPolicyRef": "policy.portable.destination.openagents_managed.v1",
+        "helpersObservedAt": "2026-07-20T16:40:00.000Z",
         "capabilityLeaseRefs": ["lease.port03.http.provider"]
     });
-    assert_eq!(post(&daemon, &activate).0, 200);
+    let mut swapped_reservation = activate.clone();
+    swapped_reservation["operationRef"] =
+        json!("operation.port03.http.activate.swapped-reservation");
+    swapped_reservation["payload"]["destinationRunnerSessionReservationRef"] =
+        json!("runner-session-reservation.port03.http.swapped");
+    assert_eq!(post(&daemon, &swapped_reservation).0, 400);
+
+    let (status, activated) = post(&daemon, &activate);
+    assert_eq!(status, 200, "activate response: {activated}");
+    assert_eq!(
+        activated["destinationRunnerSessionReservationRef"],
+        staged["destinationRunnerSessionReservationRef"]
+    );
+    assert_eq!(activated["helpers"].as_array().map(Vec::len), Some(5));
+    assert!(activated["helpers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|helper| helper["readiness"] == "unsupported"));
 
     let continuation = json!({
         "operationRef": "operation.port03.http.continuation",
@@ -416,7 +437,8 @@ fn retained_http_route_stages_replays_activates_and_reclaims() {
         "graph": stage["payload"]["bundle"]["graph"].clone(),
         "threadCursors": continued["threadCursors"].clone()
     });
-    assert_eq!(post(&daemon, &checkpoint).0, 200);
+    let (status, checkpointed) = post(&daemon, &checkpoint);
+    assert_eq!(status, 200, "checkpoint response: {checkpointed}");
     let (status, exported, artifact_ref, artifact_digest) = export_checkpoint_http(&daemon);
     assert_eq!(status, 200);
     assert!(artifact_ref.starts_with("artifact.portable-checkpoint."));
