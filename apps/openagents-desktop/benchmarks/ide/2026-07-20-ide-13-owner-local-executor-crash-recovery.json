@@ -28,9 +28,7 @@
     "settlementState": "settled",
     "resultRef": "result.ide13.owner-local.crash-recovery.safe-edit",
     "receiptRef": "receipt.pylon.portable.owner-local-work.0511fc80d5c7926ccdc30f6e7253fedf",
-    "evidenceRefs": [
-      "evidence.ide13.owner-local.crash-recovery.safe-edit.applied"
-    ]
+    "evidenceRefs": ["evidence.ide13.owner-local.crash-recovery.safe-edit.applied"]
   },
   "teardown": {
     "controlResidue": 0
