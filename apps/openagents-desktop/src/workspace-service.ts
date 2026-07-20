@@ -1235,6 +1235,8 @@ export const openWorkspaceService = (
   const languageHost = options.languageHostFactory?.(root, grantRef) ?? makeWorkspaceLanguageHost(
     root,
     desktopWorkerUrl(import.meta.url, "language-utility-worker.js"),
+    grantRef,
+    options.mutationAuthority,
   )
   const authorizeMutation = (): WorkspaceMutationAuthorization | null => {
     const authority = options.mutationAuthority

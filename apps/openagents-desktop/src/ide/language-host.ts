@@ -21,6 +21,7 @@ import {
   makeIdeLanguageService,
 } from "./language-service.ts";
 import { makeIdeLanguageWorkerProvider } from "./language-worker-provider.ts";
+import type { IdePortableMutationAuthority } from "./portable-mutation-authority.ts";
 
 export interface WorkspaceLanguageHost {
   readonly request: (request: IdeLanguageRequest) => Promise<IdeLanguageRequestResponse>;
@@ -77,8 +78,10 @@ const rejectionMessage = (error: IdeLanguageServiceError): string => {
 export const makeWorkspaceLanguageHost = (
   root: string,
   workerUrl: URL,
+  grantRef: string,
+  mutationAuthority?: IdePortableMutationAuthority,
 ): WorkspaceLanguageHost => {
-  const provider = makeIdeLanguageWorkerProvider(root, workerUrl);
+  const provider = makeIdeLanguageWorkerProvider(root, workerUrl, grantRef, mutationAuthority);
   const servicePromise: Promise<IdeLanguageServiceShape> = Effect.runPromise(
     makeIdeLanguageService(provider),
   );
