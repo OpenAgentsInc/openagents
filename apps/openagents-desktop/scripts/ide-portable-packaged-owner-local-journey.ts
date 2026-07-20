@@ -313,6 +313,10 @@ const runOwnerLocalCohort = (
   candidateCommitSha: string,
   outputPath: string,
 ): typeof OwnerLocalJourneyProjectionSchema.Type => {
+  const candidateWorktreeParent = mkdtempSync(
+    path.join(tmpdir(), "openagents-ide13-packaged-candidate-"),
+  );
+  const candidateWorktree = path.join(candidateWorktreeParent, "repository");
   const moduleUrl = pathToFileURL(
     path.join(repositoryRoot, "apps/pylon/scripts/ide13-owner-local-real-cohort.ts"),
   ).href;
@@ -325,17 +329,33 @@ const runOwnerLocalCohort = (
     "});",
     "process.exit(0);",
   ].join("\n");
-  execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", program], {
-    cwd: repositoryRoot,
-    env: {
-      ...process.env,
-      OPENAGENTS_IDE13_PACKAGED_CANDIDATE: candidateCommitSha,
-      OPENAGENTS_IDE13_PACKAGED_COHORT_OUTPUT: outputPath,
-      OPENAGENTS_IDE13_PACKAGED_REPOSITORY_ROOT: repositoryRoot,
-    },
-    stdio: ["ignore", "ignore", "pipe"],
-    timeout: 60_000,
-  });
+  let worktreeAdded = false;
+  try {
+    execFileSync("git", ["worktree", "add", "--detach", candidateWorktree, candidateCommitSha], {
+      cwd: repositoryRoot,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    worktreeAdded = true;
+    execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", program], {
+      cwd: repositoryRoot,
+      env: {
+        ...process.env,
+        OPENAGENTS_IDE13_PACKAGED_CANDIDATE: candidateCommitSha,
+        OPENAGENTS_IDE13_PACKAGED_COHORT_OUTPUT: outputPath,
+        OPENAGENTS_IDE13_PACKAGED_REPOSITORY_ROOT: candidateWorktree,
+      },
+      stdio: ["ignore", "ignore", "pipe"],
+      timeout: 60_000,
+    });
+  } finally {
+    if (worktreeAdded) {
+      execFileSync("git", ["worktree", "remove", "--force", candidateWorktree], {
+        cwd: repositoryRoot,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+    }
+    rmSync(candidateWorktreeParent, { recursive: true, force: true });
+  }
   const source = Schema.decodeUnknownSync(OwnerLocalCohortSourceSchema)(
     JSON.parse(readFileSync(outputPath, "utf8")),
   );
