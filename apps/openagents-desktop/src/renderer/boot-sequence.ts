@@ -137,7 +137,9 @@ export const projectBootSequenceIdentity = (
 ): ReadonlyArray<BootSequenceIdentityLine> => {
   const identity = state.identityBoot
   const status: BootSequenceStatus = identity?.status ?? "checking"
-  const sourceLabel = identity?.source === "created" ? "new" : identity?.source === "rehydrated" ? "rehydrated" : null
+  // Only a freshly minted identity is tagged (`new`). An existing identity
+  // carries no adjective — the owner does not want "rehydrated" in the UI.
+  const sourceLabel = identity?.source === "created" ? "new" : null
 
   const identityDetail =
     status === "available" && identity?.npub != null

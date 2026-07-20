@@ -143,7 +143,7 @@ describe("boot sequence sovereign identity scan (IDR-BS #9103)", () => {
     expect(rows.every((row) => row.status === "checking")).toBe(true)
   })
 
-  test("an available rehydrated identity shows the truncated npub + wallet ready", () => {
+  test("an available existing identity shows the truncated npub (no source adjective) + wallet ready", () => {
     const rows = projectBootSequenceIdentity(
       withState({
         identityBoot: {
@@ -158,8 +158,9 @@ describe("boot sequence sovereign identity scan (IDR-BS #9103)", () => {
     const identity = rows.find((row) => row.id === "identity")
     const wallet = rows.find((row) => row.id === "wallet")
     expect(identity?.status).toBe("available")
-    // Truncated for display, source suffixed, full npub never shown in the row.
-    expect(identity?.detail).toBe("npub1az708q3…ghk0w7 · rehydrated")
+    // Truncated for display; an existing identity carries no source adjective,
+    // and the full npub is never shown in the row.
+    expect(identity?.detail).toBe("npub1az708q3…ghk0w7")
     expect(identity?.detail?.includes(publicNpub)).toBe(false)
     expect(wallet?.detail).toBe(`${publicFingerprint} · ready`)
   })
