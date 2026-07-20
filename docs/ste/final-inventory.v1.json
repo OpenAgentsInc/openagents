@@ -19026,7 +19026,7 @@
     },
     {
       "path": "docs/cloud/ARCHITECTURE.md",
-      "sha256": "6a0022a137d6b6a360f88973141bffe576868dd7075d203ceb8aa9d78ae0e8f8",
+      "sha256": "ae6cccb0f49ddb5144bed792979392fd26e22c639c30fbb384b8c646779132c2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19070,7 +19070,7 @@
     },
     {
       "path": "docs/cloud/INVARIANTS.md",
-      "sha256": "0722880903dcaaee6a5d0e9beac517c84f5582b8f431b087781472944d779f63",
+      "sha256": "5eacf1c6ade8e69ea34d7b23918f7140d2787643fe2fe28d0eb999525c60a253",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19671,7 +19671,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md",
-      "sha256": "be698421420e7f0677301a6258e91ecec61fb9cc80c30bd6404711b90974a6c5",
+      "sha256": "d59f8374e5b168eca6efb548a069f4401989afabd1c8f105779a9cba0a3384a4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

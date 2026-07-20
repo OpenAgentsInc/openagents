@@ -202,6 +202,7 @@ function count(collection: "instances" | "firewall-rules" | "disks", filter: str
 
 async function guaranteedCleanup(): Promise<void> {
   try {
+    if (!phase) await operate("reconcile", 1);
     if (phase === "ready") await operate("stop", generation);
     if (phase && phase !== "deleted") {
       if (!["stopped", "failed", "recovery_required", "deleting"].includes(phase)) {
@@ -211,7 +212,7 @@ async function guaranteedCleanup(): Promise<void> {
     }
   } catch {
     try {
-      await operate("reconcile", generation);
+      await operate("reconcile", Math.max(generation, 1));
     } catch {
       // The final independent residue check still fails the acceptance.
     }
@@ -254,10 +255,11 @@ const resourceSuffix = sha256(sandboxRef).slice(0, 20);
 const firewallNames = [
   `oa-msb-egress-${resourceSuffix}`,
   `oa-msb-broker-${resourceSuffix}`,
+  `oa-msb-metadata-${resourceSuffix}`,
   `oa-msb-ssh-${resourceSuffix}`,
   `oa-msb-ingress-${resourceSuffix}`,
 ];
-const residue = {
+const observeResidue = () => ({
   compute: count("instances", `name=oa-msb-${resourceSuffix}`),
   firewall: firewallNames.reduce(
     (total, name) => total + count("firewall-rules", `name=${name}`),
@@ -271,10 +273,56 @@ const residue = {
       0,
     ),
   grants: 0,
-};
+});
+const preEmergencyResidue = observeResidue();
+let emergencyCleanupAttempted = false;
+if (Object.values(preEmergencyResidue).some((value) => value !== 0)) {
+  emergencyCleanupAttempted = true;
+  passed = false;
+  failure = failure ?? "independent GCP residue oracle found managed-sandbox resources";
+  const runCleanup = (args: string[]) => {
+    try {
+      execFileSync(gcloud, args, { stdio: "ignore" });
+    } catch {
+      // The post-cleanup residue oracle remains authoritative.
+    }
+  };
+  runCleanup([
+    "compute",
+    "instances",
+    "delete",
+    `oa-msb-${resourceSuffix}`,
+    "--project",
+    projectId,
+    "--zone",
+    zone,
+    "--quiet",
+  ]);
+  runCleanup([
+    "compute",
+    "firewall-rules",
+    "delete",
+    ...firewallNames,
+    "--project",
+    projectId,
+    "--quiet",
+  ]);
+  runCleanup([
+    "compute",
+    "disks",
+    "delete",
+    `oa-msb-${resourceSuffix}`,
+    "--project",
+    projectId,
+    "--zone",
+    zone,
+    "--quiet",
+  ]);
+}
+const residue = observeResidue();
 if (Object.values(residue).some((value) => value !== 0)) {
   passed = false;
-  failure = "independent GCP residue oracle found managed-sandbox resources";
+  failure = "independent GCP residue oracle found managed-sandbox resources after cleanup";
 }
 
 const publicEvidence = {
@@ -300,6 +348,8 @@ const publicEvidence = {
   },
   receiptRefs: receipts.map((receipt) => receipt.receiptRef),
   finalReceipt: receipts.at(-1),
+  preEmergencyResidue,
+  emergencyCleanupAttempted,
   residue,
 };
 mkdirSync(dirname(evidence), { recursive: true });

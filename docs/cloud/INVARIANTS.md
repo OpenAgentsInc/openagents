@@ -199,15 +199,23 @@ design context only.
 - A GCE managed-sandbox workload has no external IP, guest service account,
   OAuth scope, ambient provider home, or host path. Network policy is
   default-deny in both directions.
-- The only admitted ingress is control-identity SSH on port 22, and the only
-  admitted egress is the exact private
-  control-broker IP and port. Higher-priority per-sandbox allow rules sit above
-  explicit deny-all rules, all four rules are generation-owned and cleanup-
-  observed. The persistent control firewall admits broker traffic from the
-  shared managed-guest tag at priority 900 and denies every other source at
-  priority 1000. The control VM has no external IP. No public/provider
-  endpoint is reachable from the guest. Only run-scoped capability refs pass
-  admission.
+- The only admitted ingress is SSH on port 22 from the reserved control IP
+  `/32`. The profile digest binds that control IP. The allow rule pairs the
+  exact source with the generation-owned guest target tag. A source service
+  account plus target tag is not a substitute because GCP rejects that rule.
+- Application egress reaches only the exact private control-broker IP and
+  port. Bootstrap may reach only GCE metadata TCP 80 at
+  `169.254.169.254/32`. The guest has no service account or OAuth scope.
+  Legacy metadata, project SSH keys, and OS Login are disabled. An in-guest
+  owner rule denies metadata to the unprivileged workload UID. The generation
+  marker cannot emit before that rule exists.
+- Higher-priority per-sandbox allow rules sit above explicit deny-all rules.
+  All five rules are generation-owned and cleanup-observed. Readiness checks
+  each exact destination, port, priority, and target tag.
+- The persistent control firewall admits broker traffic from the shared
+  managed-guest tag at priority 900. It denies every other source at priority
+  1000. The control VM has no external IP. No public or provider endpoint is
+  reachable from the guest. Only run-scoped capability refs pass admission.
 - The dedicated Cloud Run bridge uses Direct VPC egress and a source tag. Its
   control-port firewall does not admit the enclosing subnet.
 - Staging and production have distinct control nodes, private addresses,
@@ -239,6 +247,17 @@ design context only.
   identity, metadata, and network facts. Cleanup requires observed zero
   compute, firewall, disk, ingress, and grant residue. Uncertainty reports
   `recovery_required` and reconciles the same ownership.
+- The operational image builder must preserve an empty `/etc/machine-id` file,
+  then boot the sealed image once as a private no-identity VM. Image admission
+  requires observed DHCP, metadata startup, regenerated SSH host keys, active
+  SSH, the workload metadata guard, both pinned agent SDKs, and both guest
+  drivers. The smoke must also prove exact metadata v1 networking. A failed
+  newly-created image remains unadmitted and is deleted with its exact
+  builder/smoke resources.
+- Readiness polling must finish within the bridge timeout. A transport timeout
+  cannot erase cleanup ownership. The live harness attempts reconciliation.
+  If authority is unavailable, it deletes only its deterministic resource
+  names and still reports the run as failed.
 - Deterministic provider enforcement lives in
   `crates/oa-codex-control/src/managed_sandbox_runtime.rs` and its HTTP
   contract test. The bounded live component harness is

@@ -245,8 +245,6 @@ if [[ "$enable_managed_sandbox" == "true" ]]; then
           value: "identity-ref://openagents/managed-sandbox/control"
         - name: OA_MANAGED_SANDBOX_CONTROL_INTERNAL_IP
           value: "${managed_sandbox_control_internal_ip}"
-        - name: OA_MANAGED_SANDBOX_CONTROL_SERVICE_ACCOUNT
-          value: "${control_sa}"
         - name: OA_MANAGED_SANDBOX_PROVIDER_BROKER_URL
           value: "${managed_sandbox_provider_broker_url}"
         - name: OA_MANAGED_SANDBOX_PROVIDER_BROKER_PORT

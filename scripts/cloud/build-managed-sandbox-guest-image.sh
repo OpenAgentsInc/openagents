@@ -39,12 +39,22 @@ fi
 revision="$(git rev-parse HEAD)"
 stamp="$(date -u +%Y%m%d%H%M%S)-$$"
 builder="oa-msb-image-builder-${stamp}"
+smoke="${builder}-smoke"
 setup_file="$(mktemp)"
+smoke_file="$(mktemp)"
+image_created="false"
+image_admitted="false"
 cleanup() {
-  rm -f "$setup_file"
+  rm -f "$setup_file" "$smoke_file"
   if [[ "$apply" == "true" ]]; then
+    gcloud compute instances delete "$smoke" \
+      --project "$project" --zone "$zone" --quiet >/dev/null 2>&1 || true
     gcloud compute instances delete "$builder" \
       --project "$project" --zone "$zone" --quiet >/dev/null 2>&1 || true
+    if [[ "$image_created" == "true" && "$image_admitted" != "true" ]]; then
+      gcloud compute images delete "$image_name" \
+        --project "$project" --quiet >/dev/null 2>&1 || true
+    fi
   fi
 }
 trap cleanup EXIT
@@ -54,7 +64,7 @@ cat >"$setup_file" <<'SETUP'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git openssh-server python3 xz-utils
+apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git iptables openssh-server python3 xz-utils
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y --no-install-recommends nodejs
 id openagents >/dev/null 2>&1 || useradd --create-home --shell /bin/bash openagents
@@ -70,6 +80,36 @@ install -o root -g root -m 0755 /tmp/managed-sandbox-guest-turn.mjs \
 install -o root -g root -m 0755 /tmp/managed-sandbox-guest-io.py \
   /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
 rm -f /tmp/managed-sandbox-guest-turn.mjs /tmp/managed-sandbox-guest-io.py
+cat >/etc/systemd/system/openagents-managed-sandbox-hostkeys.service <<'UNIT'
+[Unit]
+Description=Generate per-guest OpenSSH host keys
+After=local-fs.target
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable openagents-managed-sandbox-hostkeys.service
+cat >/etc/systemd/system/openagents-managed-sandbox-metadata-guard.service <<'UNIT'
+[Unit]
+Description=Block managed-sandbox workload access to GCE metadata
+After=network-online.target
+Before=google-startup-scripts.service ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT 2>/dev/null || /usr/sbin/iptables -I OUTPUT 1 -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable openagents-managed-sandbox-metadata-guard.service
 printf '%s\n' \
   'PasswordAuthentication no' \
   'PermitRootLogin no' \
@@ -78,10 +118,37 @@ printf '%s\n' \
 npm cache clean --force >/dev/null 2>&1 || true
 apt-get clean
 rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-rm -f /etc/ssh/ssh_host_* /etc/machine-id
+rm -f /etc/ssh/ssh_host_*
+# systemd requires the machine-id path to exist while it generates a fresh ID
+# for the cloned boot. Removing the path makes systemd-networkd unable to
+# derive its DHCP identity, which strands an otherwise RUNNING GCE guest.
+truncate -s 0 /etc/machine-id
+rm -f /var/lib/dbus/machine-id /var/lib/systemd/random-seed
+install -d -m 0755 /var/lib/dbus
+ln -s /etc/machine-id /var/lib/dbus/machine-id
 truncate -s 0 /var/log/wtmp /var/log/btmp /var/log/lastlog 2>/dev/null || true
 sync
 SETUP
+
+cat >"$smoke_file" <<'SMOKE'
+#!/bin/sh
+set -eu
+test -s /etc/machine-id
+ip -4 -o address show scope global | grep -q 'inet '
+test -x /usr/bin/node
+test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs
+test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
+test -d /opt/openagents-managed-sandbox/node_modules/@openai/codex-sdk
+test -d /opt/openagents-managed-sandbox/node_modules/@anthropic-ai/claude-agent-sdk
+systemctl is-active --quiet openagents-managed-sandbox-hostkeys.service
+systemctl is-active --quiet openagents-managed-sandbox-metadata-guard.service
+systemctl is-active --quiet ssh.service
+find /etc/ssh -maxdepth 1 -type f -name 'ssh_host_*_key' -size +0c | grep -q .
+/usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT
+curl -fsS -H 'Metadata-Flavor: Google' \
+  http://metadata.google.internal/computeMetadata/v1/instance/name >/dev/null
+printf 'OA_MSB_IMAGE_SMOKE_READY\n' >/dev/ttyS0
+SMOKE
 
 if [[ "$apply" != "true" ]]; then
   cat <<SUMMARY
@@ -97,13 +164,13 @@ SUMMARY
 fi
 
 if gcloud compute images describe "$image_name" --project "$project" >/dev/null 2>&1; then
-  read -r existing_revision existing_status existing_id < <(
+  read -r existing_revision existing_status existing_id existing_boot_smoke < <(
     gcloud compute images describe "$image_name" \
       --project "$project" \
-      --format='value(labels.openagents-source-revision,status,id)'
+      --format='value(labels.openagents-source-revision,status,id,labels.openagents-boot-smoke)'
   )
   if [[ "$existing_revision" != "$revision" || "$existing_status" != "READY" || \
-        -z "$existing_id" ]]; then
+        -z "$existing_id" || "$existing_boot_smoke" != "passed" ]]; then
     echo "immutable image exists but does not match this source revision in READY state: $image_name" >&2
     exit 2
   fi
@@ -116,6 +183,7 @@ Managed-sandbox guest image already admitted
   imageId:       $existing_id
   imageDigest:   sha256:$existing_digest
   sourceRevision:$revision
+  bootSmoke:     passed
   SDKs:          codex 0.144.3; claude-agent 0.3.172
 SUMMARY
   exit 0
@@ -160,7 +228,44 @@ gcloud compute images create "$image_name" \
   --source-disk "$builder" \
   --source-disk-zone "$zone" \
   --family oa-managed-sandbox-guest-v1 \
-  --labels "openagents-managed=managed-sandbox-image,openagents-contract=managed-sandbox-v1,openagents-source-revision=${revision}"
+  --labels "openagents-managed=managed-sandbox-image,openagents-contract=managed-sandbox-v1,openagents-source-revision=${revision},openagents-boot-smoke=pending"
+image_created="true"
+
+# Boot the sealed image once before admission. The marker proves that DHCP,
+# metadata startup, per-guest SSH host keys, and the workload metadata guard
+# all survive cloning. This is intentionally a private, no-identity VM.
+gcloud compute instances create "$smoke" \
+  --project "$project" \
+  --zone "$zone" \
+  --machine-type e2-small \
+  --image "$image_name" \
+  --image-project "$project" \
+  --no-address \
+  --no-service-account \
+  --no-scopes \
+  --metadata "block-project-ssh-keys=TRUE,enable-oslogin=FALSE,disable-legacy-endpoints=TRUE,serial-port-enable=TRUE" \
+  --metadata-from-file "startup-script=${smoke_file}" \
+  --labels "openagents-managed=image-smoke,openagents-component=managed-sandbox-guest"
+
+smoke_ready="false"
+for _ in $(seq 1 60); do
+  if gcloud compute instances get-serial-port-output "$smoke" \
+       --project "$project" --zone "$zone" --port 1 2>/dev/null | \
+       grep -Fq 'OA_MSB_IMAGE_SMOKE_READY'; then
+    smoke_ready="true"
+    break
+  fi
+  sleep 5
+done
+if [[ "$smoke_ready" != "true" ]]; then
+  echo "sealed managed-sandbox image failed its private boot smoke: $image_name" >&2
+  gcloud compute instances get-serial-port-output "$smoke" \
+    --project "$project" --zone "$zone" --port 1 2>/dev/null | tail -120 >&2 || true
+  exit 1
+fi
+gcloud compute images add-labels "$image_name" \
+  --project "$project" --labels openagents-boot-smoke=passed >/dev/null
+image_admitted="true"
 
 image_id="$(gcloud compute images describe "$image_name" \
   --project "$project" --format='value(id)')"
@@ -172,5 +277,6 @@ Managed-sandbox guest image built
   imageId:       $image_id
   imageDigest:   sha256:$image_digest
   sourceRevision:$revision
+  bootSmoke:     private DHCP + startup + hostkeys + metadata guard passed
   SDKs:          codex 0.144.3; claude-agent 0.3.172
 SUMMARY

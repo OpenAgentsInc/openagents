@@ -69,7 +69,15 @@ evidence-bound SBX-02 component baseline. They are not accepted for owner
 agent turns. SBX-09 builds a dedicated Debian guest image with
 `scripts/cloud/build-managed-sandbox-guest-image.sh` and records its immutable
 image ID, image digest, profile digest, source revision, and provisioner
-revision in the acceptance evidence.
+revision in the acceptance evidence. Image sealing preserves an empty
+`/etc/machine-id` path so systemd can generate a fresh clone identity and DHCP
+client ID. Before admission, the builder boots the sealed image as a private,
+no-identity smoke VM and requires observed DHCP, metadata startup, per-guest
+SSH host keys, the workload metadata guard, SSH service readiness, both pinned
+agent SDKs, and both guest drivers. The smoke also proves the exact metadata
+v1 network path. Only a passing image receives
+`openagents-boot-smoke=passed`. A failed newly-created image and its smoke VM
+are deleted by the builder cleanup path.
 
 The operational native and Box-compatible authorities use the single profile
 ref `profile.sbx.gce.e2-small.v1`. That ref is part of the operational profile
@@ -78,12 +86,14 @@ above is not admitted for SBX-09 placement.
 
 The operational profile uses
 `network-policy-ref://openagents/managed-sandbox/broker-only-v1`. Each
-sandbox generation owns four firewall rules:
+sandbox generation owns five firewall rules:
 
 - allow egress only to the private control broker on TCP 8790 at priority 900.
+- allow TCP 80 only to `169.254.169.254/32` for GCE metadata bootstrap at
+  priority 900.
 - deny all other egress at priority 1000.
-- allow ingress only from the control service account on TCP 22 at priority
-  900. And
+- allow ingress only from the profile-bound reserved control IP `/32` on TCP
+  22 at priority 900. And
 - deny all other ingress at priority 1000.
 
 The VM still has no external address, service account, OAuth scope, provider
@@ -93,10 +103,24 @@ tenant, sandbox, generation, turn, provider, model, and capability ref. The
 guest can present that capability only through the private control broker.
 The control bearer token and broker signing key live in Secret Manager and do
 not appear in VM metadata. The dedicated control VM also has no external IP.
-Persistent priority-900 rules admit only the managed-sandbox guest tag to TCP
-8790, the dedicated Direct VPC Cloud Run bridge tag to TCP 8787, and IAP to
-TCP 8787. Priority-1000 rules deny every other source on those ports,
-including traffic otherwise admitted by a default-VPC internal rule.
+The per-generation control-ingress rule pairs that exact source `/32` with the
+generation-owned guest target tag. GCP does not permit a source service
+account and a target tag in the same firewall rule, so the runtime refuses
+that invalid shape instead of treating it as identity evidence. Persistent
+priority-900 rules admit only the managed-sandbox guest tag to TCP 8790, the
+dedicated Direct VPC Cloud Run bridge tag to TCP 8787, and IAP to TCP 8787.
+Priority-1000 rules deny every other source on those ports, including traffic
+otherwise admitted by a default-VPC internal rule.
+
+The metadata exception is a generation-owned bootstrap control, not ambient
+provider egress. The guest has no service account or OAuth scope, so metadata
+cannot mint a Google Cloud token. Legacy metadata endpoints, project SSH keys,
+and OS Login are disabled. Metadata v1 supplies only the reviewed startup
+marker and short-lived instance SSH-key path. The image generates unique SSH
+host keys on first boot. An image-baked OUTPUT guard denies metadata to the
+unprivileged `openagents` UID that runs SDK and I/O work. The startup marker
+refuses to emit until that guard is present. Readiness observes the exact
+metadata address, port, priority, target tag, marker, and deny-all rule.
 
 Staging and production use distinct control nodes, private addresses, network
 tags, firewall rules, Cloud Run bridge services, control-token secrets, broker
@@ -121,9 +145,9 @@ The live provider applies these controls before it reports `ready`:
 - Project SSH keys are blocked.
 - The historical readiness profile has no ingress rule and denies all IPv4
   egress.
-- The operational turn profile admits only the generation-owned control SSH
-  and provider-broker paths described above. It denies every other ingress and
-  egress path.
+- The operational turn profile admits only the generation-owned control SSH,
+  provider-broker, and link-local metadata bootstrap paths described above.
+  It denies every other ingress and egress path.
 - Secure Boot, vTPM, and integrity monitoring are on.
 - The boot disk is an auto-delete disk.
 - IP forwarding is off.
@@ -164,12 +188,17 @@ A generation mismatch returns a conflict.
 `reconcile` observes an uncertain create, resume, stop, or delete and converges
 the same provider ownership.
 It does not select a different region, image, machine, or provider.
+Create and resume poll only the generation-specific serial boot marker. After
+the marker appears, or once the bounded marker window expires, the control
+plane performs one complete instance, identity, metadata, ingress, and egress
+attestation. This keeps the failure path inside the bridge request budget
+without weakening the facts required for `ready`.
 
 ## Cleanup
 
 Delete is valid only after `stopped`, `failed`, `recovery_required`, or an
 earlier `deleting` settlement.
-Cleanup deletes the VM and every generation-owned ingress and egress rule.
+Cleanup deletes the VM and all five generation-owned ingress and egress rules.
 It then queries GCE until all these counts are zero:
 
 - instance.
@@ -200,7 +229,8 @@ for the independent gate and `--environment production` only after staging
 acceptance. Cloud Build submissions are asynchronous and the scripts poll the
 authoritative build status. They do not depend on permission to stream the
 default logs bucket. Re-running the immutable guest image build verifies and
-reuses an exact `READY` image only when its recorded source revision matches.
+reuses an exact `READY` image only when its recorded source revision matches
+and its `openagents-boot-smoke` label is `passed`.
 
 ## Owner-gated live component acceptance
 
@@ -230,14 +260,18 @@ It checks that all returned objects contain refs only.
 It then runs an independent GCE residue query for the instance, firewall rule,
 and disk.
 
-The script has a cleanup path for every failure after create.
+The script has a cleanup path for every failure after create. If the bridge
+times out before returning a receipt, the harness attempts reconcile. If the
+journal is unavailable, it deletes only the exact deterministic VM, disk, and
+five firewall names. The run stays failed even when emergency cleanup works.
 An acceptance failure is not a reason to disable cleanup checks or use the
 legacy fake provider.
 
-The 2026-07-19 owner-gated component run passed the exact seven-operation
+The historical 2026-07-19 SBX-02 component run passed the exact seven-operation
 sequence with final phase `deleted`, observed cleanup, measured cost below the
 sandbox budget, and zero compute, firewall, disk, ingress, or grant residue.
-Its refs-only evidence is
+It used the earlier probe profile and is not SBX-09 operational evidence. Its
+refs-only evidence is
 [`docs/sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json`](../../sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json).
 Cloud Build `857943a8-6b19-4804-ade9-04ea9a261f00` produced the exercised
 staging image. The image and staging control node were acceptance-only. The
