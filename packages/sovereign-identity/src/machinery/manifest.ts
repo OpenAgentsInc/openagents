@@ -21,8 +21,10 @@ import {
   type IdentityRef,
   LOCAL_IDENTITY_MANIFEST_SCHEMA,
   LOCAL_IDENTITY_MIGRATION_RECEIPT_SCHEMA,
+  LOCAL_IDENTITY_PLAINTEXT_RETIREMENT_RECEIPT_SCHEMA,
   LocalIdentityManifest,
   LocalIdentityMigrationReceipt,
+  LocalIdentityPlaintextRetirementReceipt,
   type SecretStoreLocatorType,
   type SparkAdapterFingerprint,
 } from "../contract/index.ts";
@@ -35,6 +37,7 @@ export class ManifestStoreError extends S.TaggedErrorClass<ManifestStoreError>()
       "storage_unavailable",
       "invalid_manifest",
       "invalid_receipt",
+      "invalid_retirement_receipt",
       "write_failed",
     ]),
   },
@@ -66,8 +69,24 @@ export interface BuildMigrationReceiptInput {
   readonly createdAt: string;
 }
 
+/** The public inputs a plaintext-retirement receipt needs (IDR-09). */
+export interface BuildRetirementReceiptInput {
+  readonly receiptRef: string;
+  readonly identityRef: string;
+  readonly npub: string;
+  readonly nostrPublicKeyHex: string;
+  /** Public labels of the retired legacy plaintext sources, never raw private paths. */
+  readonly retiredSourceLabels: ReadonlyArray<string>;
+  /** The public label of the verified remaining backup. */
+  readonly verifiedBackupLabel: string;
+  /** A PUBLIC reference to the owner confirmation, never the confirmation token. */
+  readonly ownerConfirmationRef: string;
+  readonly retiredAt: string;
+}
+
 const decodeManifest = S.decodeUnknownEffect(LocalIdentityManifest);
 const decodeReceipt = S.decodeUnknownEffect(LocalIdentityMigrationReceipt);
+const decodeRetirementReceipt = S.decodeUnknownEffect(LocalIdentityPlaintextRetirementReceipt);
 
 /** Build a validated public manifest from public inputs. */
 export const buildManifest = Effect.fn("SovereignIdentity.buildManifest")(function* (
@@ -112,6 +131,31 @@ export const buildMigrationReceipt = Effect.fn("SovereignIdentity.buildMigration
 );
 
 /**
+ * Build a validated public-safe plaintext-retirement receipt from public inputs
+ * (IDR-09). The frozen schema stamps `custodyRestoreVerified: true`, so this
+ * receipt exists only when the caller has already proven the custody restore.
+ */
+export const buildRetirementReceipt = Effect.fn("SovereignIdentity.buildRetirementReceipt")(
+  function* (input: BuildRetirementReceiptInput) {
+    return yield* decodeRetirementReceipt({
+      schema: LOCAL_IDENTITY_PLAINTEXT_RETIREMENT_RECEIPT_SCHEMA,
+      receiptRef: input.receiptRef,
+      identityRef: input.identityRef,
+      npub: input.npub,
+      nostrPublicKeyHex: input.nostrPublicKeyHex,
+      derivationProfile: DERIVATION_PROFILE_ID,
+      retiredSourceLabels: input.retiredSourceLabels,
+      verifiedBackupLabel: input.verifiedBackupLabel,
+      custodyRestoreVerified: true,
+      ownerConfirmationRef: input.ownerConfirmationRef,
+      retiredAt: input.retiredAt,
+    }).pipe(
+      Effect.mapError(() => new ManifestStoreError({ reason: "invalid_retirement_receipt" })),
+    );
+  },
+);
+
+/**
  * The public manifest writer port. A host implements it with a real public-data
  * file store under `<OpenAgents-local-data>/identities/<identityRef>/manifest.json`
  * (IDR-05). The store keeps public data only.
@@ -129,6 +173,14 @@ export interface ManifestStoreInterface {
   readonly readReceipt: (
     receiptRef: string,
   ) => Effect.Effect<LocalIdentityMigrationReceipt | null, ManifestStoreError>;
+  /** Write the public-safe plaintext-retirement receipt (IDR-09). */
+  readonly writeRetirementReceipt: (
+    receipt: LocalIdentityPlaintextRetirementReceipt,
+  ) => Effect.Effect<void, ManifestStoreError>;
+  /** Read a public-safe plaintext-retirement receipt by reference, or `null`. */
+  readonly readRetirementReceipt: (
+    receiptRef: string,
+  ) => Effect.Effect<LocalIdentityPlaintextRetirementReceipt | null, ManifestStoreError>;
 }
 
 /** The `ManifestStore` service tag. IDR-05 supplies the real file-backed layer. */
@@ -146,6 +198,7 @@ export const inMemoryManifestStoreLayer = Layer.effect(
   Effect.gen(function* () {
     const manifests = yield* Ref.make(new Map<string, unknown>());
     const receipts = yield* Ref.make(new Map<string, unknown>());
+    const retirementReceipts = yield* Ref.make(new Map<string, unknown>());
 
     const writeManifest = Effect.fn("ManifestStore.writeManifest")(function* (
       manifest: LocalIdentityManifest,
@@ -185,6 +238,35 @@ export const inMemoryManifestStoreLayer = Layer.effect(
       );
     });
 
-    return ManifestStore.of({ writeManifest, readManifest, writeReceipt, readReceipt });
+    const writeRetirementReceipt = Effect.fn("ManifestStore.writeRetirementReceipt")(function* (
+      receipt: LocalIdentityPlaintextRetirementReceipt,
+    ) {
+      const encoded = yield* S.encodeEffect(LocalIdentityPlaintextRetirementReceipt)(receipt).pipe(
+        Effect.mapError(() => new ManifestStoreError({ reason: "invalid_retirement_receipt" })),
+      );
+      yield* Ref.update(retirementReceipts, (map) =>
+        new Map(map).set(receipt.receiptRef, encoded),
+      );
+    });
+
+    const readRetirementReceipt = Effect.fn("ManifestStore.readRetirementReceipt")(function* (
+      receiptRef: string,
+    ) {
+      const map = yield* Ref.get(retirementReceipts);
+      const stored = map.get(receiptRef);
+      if (stored === undefined) return null;
+      return yield* decodeRetirementReceipt(stored).pipe(
+        Effect.mapError(() => new ManifestStoreError({ reason: "invalid_retirement_receipt" })),
+      );
+    });
+
+    return ManifestStore.of({
+      writeManifest,
+      readManifest,
+      writeReceipt,
+      readReceipt,
+      writeRetirementReceipt,
+      readRetirementReceipt,
+    });
   }),
 );

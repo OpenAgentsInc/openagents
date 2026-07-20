@@ -33,3 +33,8 @@ export * from "./file-manifest-store.ts";
 export * from "./resolved-identity.ts";
 export * from "./mobile-custody.ts";
 export * from "./web-signer-bridge.ts";
+// IDR-09 retire plaintext compatibility SAFELY: the read-only verification guard,
+// the isolated-profile remaining-backup restore proof, and the FAIL-CLOSED
+// owner-gated deletion (owner token + verified backup + custody restore) with an
+// exact public-safe retirement receipt. It is NEVER invoked autonomously.
+export * from "./retire.ts";

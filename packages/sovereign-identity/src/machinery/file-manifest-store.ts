@@ -24,6 +24,7 @@ import {
   type IdentityRef,
   LocalIdentityManifest,
   LocalIdentityMigrationReceipt,
+  LocalIdentityPlaintextRetirementReceipt,
 } from "../contract/index.ts";
 import { ManifestStore, ManifestStoreError } from "./manifest.ts";
 
@@ -31,6 +32,8 @@ const decodeManifest = S.decodeUnknownEffect(LocalIdentityManifest);
 const encodeManifest = S.encodeEffect(LocalIdentityManifest);
 const decodeReceipt = S.decodeUnknownEffect(LocalIdentityMigrationReceipt);
 const encodeReceipt = S.encodeEffect(LocalIdentityMigrationReceipt);
+const decodeRetirementReceipt = S.decodeUnknownEffect(LocalIdentityPlaintextRetirementReceipt);
+const encodeRetirementReceipt = S.encodeEffect(LocalIdentityPlaintextRetirementReceipt);
 
 /** The manifest path for one identity, under the local data root. */
 export const manifestPath = (rootDir: string, identityRef: string): string =>
@@ -39,6 +42,15 @@ export const manifestPath = (rootDir: string, identityRef: string): string =>
 /** The receipt path for one receipt reference, under the local data root. */
 export const receiptPath = (rootDir: string, receiptRef: string): string =>
   path.join(rootDir, "identities", "_receipts", `${encodeURIComponent(receiptRef)}.json`);
+
+/** The plaintext-retirement receipt path for one receipt reference (IDR-09). */
+export const retirementReceiptPath = (rootDir: string, receiptRef: string): string =>
+  path.join(
+    rootDir,
+    "identities",
+    "_retirement_receipts",
+    `${encodeURIComponent(receiptRef)}.json`,
+  );
 
 const isNotFound = (error: unknown): boolean =>
   typeof error === "object" && error !== null && (error as { code?: string }).code === "ENOENT";
@@ -114,6 +126,28 @@ export const fileManifestStoreLayer = (rootDir: string): Layer.Layer<ManifestSto
           if (stored === null) return null;
           return yield* decodeReceipt(stored).pipe(
             Effect.mapError(() => new ManifestStoreError({ reason: "invalid_receipt" })),
+          );
+        }),
+      writeRetirementReceipt: (receipt) =>
+        Effect.gen(function* () {
+          const encoded = yield* encodeRetirementReceipt(receipt).pipe(
+            Effect.mapError(
+              () => new ManifestStoreError({ reason: "invalid_retirement_receipt" }),
+            ),
+          );
+          yield* atomicWriteJson(
+            retirementReceiptPath(rootDir, receipt.receiptRef),
+            JSON.stringify(encoded, null, 2),
+          );
+        }),
+      readRetirementReceipt: (receiptRef: string) =>
+        Effect.gen(function* () {
+          const stored = yield* readJson(retirementReceiptPath(rootDir, receiptRef));
+          if (stored === null) return null;
+          return yield* decodeRetirementReceipt(stored).pipe(
+            Effect.mapError(
+              () => new ManifestStoreError({ reason: "invalid_retirement_receipt" }),
+            ),
           );
         }),
     }),

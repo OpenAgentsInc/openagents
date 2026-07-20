@@ -25,6 +25,8 @@ export const LOCAL_IDENTITY_SECRET_SCHEMA = "openagents.local_identity_secret.v1
 export const LOCAL_IDENTITY_MANIFEST_SCHEMA = "openagents.local_identity_manifest.v1";
 export const LOCAL_IDENTITY_MIGRATION_RECEIPT_SCHEMA =
   "openagents.local_identity_migration_receipt.v1";
+export const LOCAL_IDENTITY_PLAINTEXT_RETIREMENT_RECEIPT_SCHEMA =
+  "openagents.local_identity_plaintext_retirement_receipt.v1";
 
 /** A stable identity reference. */
 export const IdentityRef = S.String.check(S.isMinLength(1)).pipe(S.brand("SovereignIdentityRef"));
@@ -126,6 +128,43 @@ export const LocalIdentityMigrationReceipt = S.Struct({
 export type LocalIdentityMigrationReceipt = typeof LocalIdentityMigrationReceipt.Type;
 
 // ---------------------------------------------------------------------------
+// 4. Public plaintext-retirement receipt (IDR-09)
+// ---------------------------------------------------------------------------
+
+/**
+ * The PUBLIC-safe plaintext-retirement receipt. It is the exact evidence that a
+ * legacy plaintext identity file was retired ONLY after every fail-closed gate
+ * passed: an owner confirmation, a verified remaining backup, and a custody
+ * restore of the SAME public identity.
+ *
+ * It records public identifiers, the PUBLIC source labels of the retired files,
+ * the PUBLIC label of the verified remaining backup, and a PUBLIC reference to
+ * the owner confirmation. It NEVER records the mnemonic, `nsec`, raw private
+ * key, seed, decrypted backup data, a private path, or the owner confirmation
+ * token itself. `custodyRestoreVerified` is a literal `true`, so a receipt can
+ * never exist unless the custody restore proved the same public identity first.
+ */
+export const LocalIdentityPlaintextRetirementReceipt = S.Struct({
+  schema: S.Literal(LOCAL_IDENTITY_PLAINTEXT_RETIREMENT_RECEIPT_SCHEMA),
+  receiptRef: S.String.check(S.isMinLength(1)),
+  identityRef: IdentityRef,
+  npub: Npub,
+  nostrPublicKeyHex: HexString,
+  derivationProfile: S.Literal(DERIVATION_PROFILE_ID),
+  /** Public labels of the retired legacy plaintext sources, never raw private paths. */
+  retiredSourceLabels: S.Array(S.String.check(S.isMinLength(1))),
+  /** The public label of the verified remaining backup that guarantees recoverability. */
+  verifiedBackupLabel: S.String.check(S.isMinLength(1)),
+  /** The custody restore of the SAME public identity succeeded before any retirement. */
+  custodyRestoreVerified: S.Literal(true),
+  /** A PUBLIC reference to the owner confirmation event, never the confirmation token. */
+  ownerConfirmationRef: S.String.check(S.isMinLength(1)),
+  retiredAt: IsoTimestamp,
+});
+export type LocalIdentityPlaintextRetirementReceipt =
+  typeof LocalIdentityPlaintextRetirementReceipt.Type;
+
+// ---------------------------------------------------------------------------
 // Decoders
 // ---------------------------------------------------------------------------
 
@@ -133,4 +172,7 @@ export const decodeLocalIdentitySecret = S.decodeUnknownSync(LocalIdentitySecret
 export const decodeLocalIdentityManifest = S.decodeUnknownSync(LocalIdentityManifest);
 export const decodeLocalIdentityMigrationReceipt = S.decodeUnknownSync(
   LocalIdentityMigrationReceipt,
+);
+export const decodeLocalIdentityPlaintextRetirementReceipt = S.decodeUnknownSync(
+  LocalIdentityPlaintextRetirementReceipt,
 );

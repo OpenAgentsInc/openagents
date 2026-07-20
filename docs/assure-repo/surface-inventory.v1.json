@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:c727c1623ef5f60370515ad98baf63ef5f09b3c2a62866cd34280f934de19da9",
+  "sourceDigest": "sha256:3db74db80e5136e2fab34af5acd9a78569b1613a95d70fb2480149d874027b08",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2688,7 +2688,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/sovereign-identity (16 tracked test files)"
+          "ref": "packages/sovereign-identity (17 tracked test files)"
         }
       ],
       "obligation": {
