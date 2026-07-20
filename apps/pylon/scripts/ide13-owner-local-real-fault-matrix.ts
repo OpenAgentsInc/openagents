@@ -1,6 +1,6 @@
 import { Runtime } from "@openagentsinc/runtime-platform";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
@@ -17,6 +17,10 @@ import {
   type Ide13OwnerLocalAuthorityFaultScenario,
   runIde13OwnerLocalRealCohort,
 } from "./ide13-owner-local-real-cohort.js";
+import {
+  Ide13OwnerLocalRecoveryFaultReceiptSchema,
+  type Ide13OwnerLocalRecoveryFaultReceipt,
+} from "./ide13-owner-local-recovery-faults.js";
 
 const GIT_SHA = /^[a-f0-9]{40}$/u;
 const REF = Schema.String.check(
@@ -26,6 +30,8 @@ const REF = Schema.String.check(
 );
 const RECEIPT_REPOSITORY_PATH =
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json";
+const RECOVERY_RECEIPT_REPOSITORY_PATH =
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json";
 const DEADLINE_MILLISECONDS = 120_000;
 
 const FaultCaseSchema = Schema.Struct({
@@ -90,6 +96,7 @@ export interface Ide13OwnerLocalRealFaultMatrixReceipt extends Schema.Schema.Typ
 > {}
 
 const decodeReceipt = Schema.decodeUnknownSync(Ide13OwnerLocalRealFaultMatrixReceiptSchema);
+const decodeRecoveryReceipt = Schema.decodeUnknownSync(Ide13OwnerLocalRecoveryFaultReceiptSchema);
 
 const git = async (cwd: string, ...args: string[]): Promise<string> => {
   const child = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" });
@@ -117,10 +124,65 @@ const AUTHORITY_FAULT_SCENARIOS = new Set<Ide13OwnerLocalAuthorityFaultScenario>
   "source_revocation_failure",
 ]);
 
+const loadCheckpointStoreCrashProof = async (
+  input: Readonly<{
+    baseCommitSha: string;
+    candidateCommitSha: string;
+    recoveryReceiptPath: string;
+    repositoryRoot: string;
+  }>,
+): Promise<Ide13OwnerLocalRecoveryFaultReceipt["cases"][number]> => {
+  const recoveryReceipt = decodeRecoveryReceipt(
+    JSON.parse(await readFile(input.recoveryReceiptPath, "utf8")),
+    { onExcessProperty: "error" },
+  );
+  await git(
+    input.repositoryRoot,
+    "merge-base",
+    "--is-ancestor",
+    recoveryReceipt.candidateCommitSha,
+    input.candidateCommitSha,
+  ).catch(() => {
+    throw new Error("checkpoint store crash proof candidate is not an ancestor");
+  });
+  if (recoveryReceipt.baseCommitSha !== input.baseCommitSha) {
+    throw new Error("checkpoint store crash proof base does not match the fault matrix");
+  }
+  if (recoveryReceipt.cohortRef !== "cohort.ide13.owner-local.real.1") {
+    throw new Error("checkpoint store crash proof cohort does not match the fault matrix");
+  }
+  const matchingCases = recoveryReceipt.cases.filter(
+    (row) => row.scenario === "checkpoint_store_crash",
+  );
+  if (matchingCases.length !== 1) {
+    throw new Error("checkpoint store crash proof identity is not unique");
+  }
+  const proof = matchingCases[0];
+  if (
+    proof === undefined ||
+    proof.evidenceClass !== "real_local" ||
+    proof.outcome !== "passed" ||
+    proof.productionBoundaryRef !==
+      "boundary.pylon.owner-local.checkpoint-custody.delete-object-removed" ||
+    proof.injectedFaultRef !== "injected-fault.ide13.owner-local.checkpoint-store-crash" ||
+    proof.elapsedMilliseconds > proof.deadlineMilliseconds
+  ) {
+    throw new Error("checkpoint store crash proof identity or result is invalid");
+  }
+  if (
+    recoveryReceipt.safety.checkpointCiphertextResidueCount !== 0 ||
+    recoveryReceipt.safety.forbiddenMaterialProjected !== false
+  ) {
+    throw new Error("checkpoint store crash proof residue binding is unsafe");
+  }
+  return proof;
+};
+
 export const runIde13OwnerLocalRealFaultMatrix = async (
   input: Readonly<{
     candidateCommitSha?: string;
     outputPath?: string;
+    recoveryReceiptPath?: string;
     repositoryRoot?: string;
   }> = {},
 ): Promise<Ide13OwnerLocalRealFaultMatrixReceipt> => {
@@ -139,11 +201,37 @@ export const runIde13OwnerLocalRealFaultMatrix = async (
     throw new Error("fault matrix candidate omits an implementation change");
   }
   const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
+  const checkpointStoreCrashProof = await loadCheckpointStoreCrashProof({
+    baseCommitSha,
+    candidateCommitSha,
+    recoveryReceiptPath: resolve(
+      input.recoveryReceiptPath ?? join(repositoryRoot, RECOVERY_RECEIPT_REPOSITORY_PATH),
+    ),
+    repositoryRoot,
+  });
 
   const safetyProofRefs = new Set<string>();
   const cases = await Promise.all(
     IDE_PORTABLE_REQUIRED_FAULT_CASES.map(
       async (fault): Promise<Schema.Schema.Type<typeof FaultCaseSchema>> => {
+        if (fault.scenario === "checkpoint_store_crash") {
+          safetyProofRefs.add(checkpointStoreCrashProof.receiptRef);
+          safetyProofRefs.add(checkpointStoreCrashProof.recoveryPointRef);
+          return {
+            faultRef: "fault.ide13.owner-local.checkpoint_store_crash",
+            scenario: "checkpoint_store_crash",
+            phase: null,
+            evidenceClass: checkpointStoreCrashProof.evidenceClass,
+            outcome: checkpointStoreCrashProof.outcome,
+            productionBoundaryRef: checkpointStoreCrashProof.productionBoundaryRef,
+            injectedFaultRef: checkpointStoreCrashProof.injectedFaultRef,
+            recoveryPointRef: checkpointStoreCrashProof.recoveryPointRef,
+            receiptRef: checkpointStoreCrashProof.receiptRef,
+            elapsedMilliseconds: checkpointStoreCrashProof.elapsedMilliseconds,
+            deadlineMilliseconds: checkpointStoreCrashProof.deadlineMilliseconds,
+            disclosure: checkpointStoreCrashProof.disclosure,
+          };
+        }
         if (
           AUTHORITY_FAULT_SCENARIOS.has(fault.scenario as Ide13OwnerLocalAuthorityFaultScenario)
         ) {
