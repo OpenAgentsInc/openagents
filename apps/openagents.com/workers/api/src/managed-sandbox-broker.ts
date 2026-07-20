@@ -373,14 +373,6 @@ export const makeManagedSandboxBroker = (
         if (canonicalJson(normalized) !== canonicalJson(existing.command)) {
           return yield* conflict("command ref is bound to different request bytes");
         }
-        yield* assertPolicy(input.policy, {
-          target: existing.resource.target,
-          imageDigest: existing.resource.imageDigest,
-          profileRef: existing.resource.profileRef,
-          lease: existing.resource.lease,
-          budget: existing.resource.budget,
-          capabilities: existing.resource.capabilities,
-        });
         if (existing.resource.programRef !== "program.managed_agent_sandboxes") {
           return yield* conflict("resource is outside the managed-sandbox program");
         }
@@ -394,14 +386,6 @@ export const makeManagedSandboxBroker = (
       }
       if (command._tag !== "Create") {
         const resource = yield* inspect(command.sandboxRef);
-        yield* assertPolicy(input.policy, {
-          target: resource.target,
-          imageDigest: resource.imageDigest,
-          profileRef: resource.profileRef,
-          lease: resource.lease,
-          budget: resource.budget,
-          capabilities: resource.capabilities,
-        });
         if (resource.programRef !== "program.managed_agent_sandboxes") {
           return yield* conflict("resource is outside the managed-sandbox program");
         }

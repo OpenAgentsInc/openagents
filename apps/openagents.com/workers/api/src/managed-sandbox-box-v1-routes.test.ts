@@ -14,6 +14,7 @@ import {
 } from './managed-sandbox-box-v1-adapter'
 import {
   BoxV1FacadeError,
+  type BoxV1Policy,
   type BoxV1Principal,
   makeBoxV1Routes,
   unavailableBoxV1Runtime,
@@ -56,6 +57,7 @@ const makeHandler = (
   options: {
     authority?: BoxV1MemoryAuthority
     runtime?: ReturnType<typeof makeBoxV1MemoryRuntime>
+    policy?: BoxV1Policy
     authenticationFault?: boolean
   } = {},
 ) => {
@@ -72,7 +74,7 @@ const makeHandler = (
       if (token === 'foreign-token') return Effect.succeed(foreignPrincipal)
       return Effect.fail(authError(401))
     },
-    policy: () => Effect.succeed(boxV1TestPolicy),
+    policy: () => Effect.succeed(options.policy ?? boxV1TestPolicy),
     store: () => Effect.succeed(authority),
     runtime: () => Effect.succeed(runtime),
     executeLifecycleCommand: input => {
@@ -536,6 +538,43 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
     const harness = makeHandler()
     const basePath = await startStagingServer(harness.handle)
     await exerciseAdmittedCorpus(apiFor(basePath, 'test-token'))
+  })
+
+  test('keeps replay and cleanup operable across new-create image rotation', async () => {
+    const authority = new BoxV1MemoryAuthority()
+    const runtime = makeBoxV1MemoryRuntime()
+    const admitted = makeHandler({ authority, runtime })
+    const beforeRotation = apiFor(
+      'https://local-box.test/v1',
+      'test-token',
+      fetchFor(admitted.handle),
+    )
+    const created = await beforeRotation.create(
+      { createBoxRequest: { ttlSeconds: 900, noEnv: true } },
+      retryHeaders('create-policy-rotation'),
+    )
+
+    const rotated = makeHandler({
+      authority,
+      runtime,
+      policy: {
+        ...boxV1TestPolicy,
+        imageDigest: `sha256:${'c'.repeat(64)}`,
+      },
+    })
+    const afterRotation = apiFor(
+      'https://local-box.test/v1',
+      'test-token',
+      fetchFor(rotated.handle),
+    )
+    const replay = await afterRotation.create(
+      { createBoxRequest: { ttlSeconds: 900, noEnv: true } },
+      retryHeaders('create-policy-rotation'),
+    )
+    expect(replay.box.id).toBe(created.box.id)
+    expect((await afterRotation.remove({ boxId: created.box.id })).status).toBe(
+      'deleted',
+    )
   })
 
   test('returns stable authentication errors and authentication faults for every admitted method', async () => {

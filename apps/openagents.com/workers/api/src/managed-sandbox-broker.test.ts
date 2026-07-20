@@ -109,7 +109,7 @@ const fixture = () => {
     runtime: unavailableBoxV1Runtime,
     now: () => new Date(now),
   });
-  return { broker, reserveCount: () => reserveCount, reserved: () => reserved };
+  return { broker, store, reserveCount: () => reserveCount, reserved: () => reserved };
 };
 
 describe("native managed-sandbox broker", () => {
@@ -179,6 +179,36 @@ describe("native managed-sandbox broker", () => {
         ),
       ),
     ).rejects.toMatchObject({ code: "conflict" });
+    expect(testbed.reserveCount()).toBe(1);
+  });
+
+  test("keeps exact durable replay operable after new-create policy rotation", async () => {
+    const testbed = fixture();
+    const first = await Effect.runPromise(
+      testbed.broker.execute(createCommand(), { attachmentGeneration: 7 }),
+    );
+    const rotatedBroker = makeManagedSandboxBroker({
+      principal: {
+        actorRef: "principal.desktop",
+        ownerRef: "owner.fixture",
+        tenantRef: "owner.fixture",
+        login: "Desktop",
+        email: null,
+      },
+      policy: {
+        ...policy,
+        imageDigest: `sha256:${"c".repeat(64)}`,
+      },
+      store: testbed.store,
+      runtime: unavailableBoxV1Runtime,
+      now: () => new Date(now),
+    });
+
+    const replay = await Effect.runPromise(
+      rotatedBroker.execute(createCommand(), { attachmentGeneration: 7 }),
+    );
+    expect(replay.resource.imageDigest).toBe(first.resource.imageDigest);
+    expect(replay.receipt).toEqual(first.receipt);
     expect(testbed.reserveCount()).toBe(1);
   });
 

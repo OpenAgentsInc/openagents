@@ -49,6 +49,10 @@ the durable native reservation. A key with different bytes returns
 generation data. A cursor from a prior generation returns `409` after resume.
 Semantic replay equality uses canonical JSON, so PostgreSQL `jsonb` key-order
 normalization cannot turn an exact retry into a false changed-byte conflict.
+Rotating the admitted image/profile changes new creates only. Exact retries and
+stop, resume, interrupt, and delete continue from the durable resource's
+original pins, so an admission rollout cannot strand cleanup or an in-flight
+generation.
 
 ## Current runtime boundary
 

@@ -4344,7 +4344,7 @@
     },
     {
       "path": "apps/openagents.com/docs/2026-07-19-managed-sandbox-box-v1-facade.md",
-      "sha256": "c7b42cf01a4bf433f7f8aa0534d8c5c8227c75acf20acbdcf395efd715292534",
+      "sha256": "2bac828c52b9b92792ddcf00da3716649b40937f4402364028c87a26874187dc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
