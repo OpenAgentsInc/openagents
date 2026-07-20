@@ -162,6 +162,9 @@ design context only.
 - Each provider stream emits at most one terminal event. Records observed after
   that terminal event cannot append more native events. Recoverable SDK
   reconnect notifications cannot fail or settle the native turn.
+- Public turn responses omit absent optional usage fields. They do not encode
+  absence as `null`, because native event schemas distinguish an omitted field
+  from a present numeric token count.
 - Claude Agent SDK requests cross the provider broker through an exact Vertex
   adapter. The adapter removes only the unsupported SDK
   `context_management` beta input. It does not rewrite prompt, message, tool,

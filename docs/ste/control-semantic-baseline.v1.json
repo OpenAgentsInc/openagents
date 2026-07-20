@@ -11369,7 +11369,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "6183a8bbb9e55783a2bcf8970d278b8fa6077b2e4e702391af14e9d4348df351",
+      "sourceSha256": "8093fd04998a687775ad90df4ac3a5039457cd54dad5a2cbbfa48ef252b1fc29",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -11463,6 +11463,7 @@
         "live_gce",
         "managed_cloud",
         "metering_source = node_measured",
+        "null",
         "null",
         "oa-codex-control",
         "oa-shc-katy-01",

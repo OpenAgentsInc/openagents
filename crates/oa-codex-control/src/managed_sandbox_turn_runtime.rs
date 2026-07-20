@@ -70,7 +70,7 @@ pub struct ManagedSandboxTurnRuntimeRequest {
 struct RuntimeUsage {
     input_tokens: u64,
     output_tokens: u64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     cached_input_tokens: Option<u64>,
     provider_usage_ref: String,
     exact: bool,
@@ -713,6 +713,40 @@ mod tests {
             .expect("admitted");
             assert_eq!(result.events.len(), 1);
         }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn omits_absent_optional_usage_fields_from_public_turn_responses() {
+        let response = json!({
+            "schemaVersion": SCHEMA_VERSION,
+            "turnRef": "turn.sbx04.test",
+            "resourceGeneration": 3,
+            "events": [
+                {
+                    "_tag": "RuntimeUsageRecorded",
+                    "turnRef": "turn.sbx04.test",
+                    "resourceGeneration": 3,
+                    "turnEventSequence": 2,
+                    "observedAt": "2026-07-19T19:30:01.000Z",
+                    "usage": {
+                        "inputTokens": 4,
+                        "outputTokens": 2,
+                        "providerUsageRef": "provider.usage.sha256.test",
+                        "exact": true
+                    }
+                }
+            ]
+        });
+        let result =
+            execute_with_driver(&driver(&response), request(TurnAction::Sync, "claude", 1))
+                .expect("admitted");
+        let encoded = serde_json::to_value(result).expect("response serialization");
+        assert_eq!(
+            encoded["events"][0]["usage"].get("cachedInputTokens"),
+            None,
+            "an absent optional field must be omitted rather than serialized as null"
+        );
     }
 
     #[test]
