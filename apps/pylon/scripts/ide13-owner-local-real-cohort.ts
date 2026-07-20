@@ -55,6 +55,9 @@ const Ref = Schema.String.check(
   Schema.isMaxLength(512),
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
 );
+const GIT_SHA = /^[a-f0-9]{40}$/u;
+const COHORT_RECEIPT_REPOSITORY_PATH =
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json";
 
 export const Ide13OwnerLocalRealCohortReceiptSchema = Schema.Struct({
   schemaVersion: Schema.Literal("openagents.desktop.ide-portable-owner-local-cohort.v1"),
@@ -237,13 +240,27 @@ const assertDeletion = (receipt: PylonPortableCheckpointDeletionReceipt): string
 
 export const runIde13OwnerLocalRealCohort = async (
   input: Readonly<{
+    candidateCommitSha?: string;
     outputPath?: string;
     repositoryRoot?: string;
   }> = {},
 ): Promise<Ide13OwnerLocalRealCohortReceipt> => {
   const repositoryRoot = resolve(input.repositoryRoot ?? join(import.meta.dirname, "../../.."));
-  const candidateCommitSha = await git(repositoryRoot, "rev-parse", "HEAD");
-  const baseCommitSha = await git(repositoryRoot, "merge-base", "HEAD", "origin/main");
+  const headCommitSha = await git(repositoryRoot, "rev-parse", "HEAD");
+  const candidateCommitSha = input.candidateCommitSha ?? headCommitSha;
+  if (!GIT_SHA.test(candidateCommitSha)) {
+    throw new Error("owner-local cohort candidate commit is invalid");
+  }
+  await git(repositoryRoot, "merge-base", "--is-ancestor", candidateCommitSha, headCommitSha);
+  const laterPaths = (
+    await git(repositoryRoot, "diff", "--name-only", candidateCommitSha, headCommitSha)
+  )
+    .split("\n")
+    .filter((path) => path.length > 0);
+  if (laterPaths.some((path) => path !== COHORT_RECEIPT_REPOSITORY_PATH)) {
+    throw new Error("owner-local cohort candidate omits an implementation change");
+  }
+  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
   const root = await mkdtemp(join(tmpdir(), "openagents-ide13-owner-local-cohort-"));
   const database = openLegacySqliteDatabase(join(root, "portable.sqlite"));
   const custodyKeyA = randomBytes(32);
@@ -892,7 +909,12 @@ if (import.meta.main) {
     repositoryRoot,
     "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
   );
-  const receipt = await runIde13OwnerLocalRealCohort({ outputPath, repositoryRoot });
+  const candidateCommitSha = process.env.OPENAGENTS_IDE13_CANDIDATE_COMMIT_SHA;
+  const receipt = await runIde13OwnerLocalRealCohort({
+    ...(candidateCommitSha === undefined ? {} : { candidateCommitSha }),
+    outputPath,
+    repositoryRoot,
+  });
   await new Promise<void>((resolveWrite) => {
     process.stdout.write(
       `${JSON.stringify({

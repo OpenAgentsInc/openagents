@@ -63,3 +63,12 @@ test("runs a real owner-local move, failback, abort, replay, and teardown cohort
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("rejects a candidate that omits later implementation changes", async () => {
+  await expect(
+    runIde13OwnerLocalRealCohort({
+      candidateCommitSha: "f6c4c669d032ad5c06518c7cbe6e7a6788ab540d",
+      repositoryRoot: resolve(import.meta.dirname, "../../.."),
+    }),
+  ).rejects.toThrow("owner-local cohort candidate omits an implementation change");
+});
