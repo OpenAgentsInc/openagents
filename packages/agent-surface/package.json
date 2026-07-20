@@ -8,7 +8,8 @@
   ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./afs-baseline-surface-corpus": "./src/afs-baseline-surface-corpus.ts"
   },
   "publishConfig": {
     "access": "public"

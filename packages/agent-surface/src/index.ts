@@ -2,9 +2,12 @@ import { Schema as S } from "effect";
 
 import {
   MAX_TURN_OUTPUT_CHARS,
+  RouteDecision,
   SafeMessageChainEntry,
+  SafeTurnProjection,
+  TurnRefusalReason,
   type AgentCardState,
-  type SafeTurnProjection,
+  type TurnCostClass,
   type TurnDataDestination,
   type TurnProviderCandidate,
   type TurnStageKind,
@@ -165,3 +168,190 @@ export const projectSafeMessageChain = (
 export const safeMessageChainOf = (
   projection: SafeTurnProjection,
 ): ReadonlyArray<SafeMessageChainEntry> => projection.messageChain;
+
+/**
+ * AFS-12 cross-surface read/compose reader.
+ *
+ * The web and mobile hosts are READ/COMPOSE surfaces. They decode the SAME safe
+ * projection, route decision, and recovery facts that Desktop decodes, and they
+ * compose the SAME bounded cards and message chains — WITHOUT any turn
+ * execution, provider dispatch, or action authority. This reader is the one
+ * shared compose path all three surfaces reuse. It only decodes bytes with the
+ * frozen schema and reuses the safe projectors above; it can never carry a
+ * helper secret, a raw argument, raw output, a local path, or a token because it
+ * structurally reads only the safe projection shape.
+ */
+
+/** The safe route-disclosure facts a read surface may show. Never a secret. */
+export interface SafeRouteDisclosureFacts {
+  readonly outcome: "admitted" | "closed";
+  readonly decisionReason: string;
+  readonly dataDestination: TurnDataDestination | null;
+  readonly costClass: TurnCostClass | null;
+  readonly localOnly: boolean | null;
+  readonly providerRef: string | null;
+  readonly selected: string | null;
+  readonly effective: string | null;
+  readonly admittedCandidateSet: ReadonlyArray<string>;
+  readonly contextManifestRef: string;
+  readonly dispositions: ReadonlyArray<{
+    readonly candidate: string;
+    readonly disposition: string;
+    readonly reason: string;
+  }>;
+}
+
+/** The safe recovery facts a read surface may show for a refused/failed/cancelled turn. */
+export interface SafeTurnRecoveryFacts {
+  readonly cardState: AgentCardState;
+  readonly terminal: boolean;
+  readonly refusalReason: TurnRefusalReason | null;
+}
+
+/** One decoded scenario's safe facts, equal across Desktop, web, and mobile. */
+export interface SafeSurfaceScenarioFacts {
+  readonly scenario: string;
+  readonly card: SafeAgentCard;
+  readonly messageChain: ReadonlyArray<SafeMessageChainEntry>;
+  readonly route: SafeRouteDisclosureFacts | null;
+  readonly recovery: SafeTurnRecoveryFacts;
+}
+
+/** The safe byte input for one cross-surface scenario. All fields are safe refs. */
+export interface SafeSurfaceScenarioInput {
+  readonly scenario: string;
+  readonly projection: unknown;
+  readonly routeDecision?: unknown;
+  readonly refusalReason?: string;
+}
+
+const decodeSafeTurnProjection = S.decodeUnknownSync(SafeTurnProjection);
+const decodeRouteDecision = S.decodeUnknownSync(RouteDecision);
+const decodeRefusalReason = S.decodeUnknownSync(TurnRefusalReason);
+
+/** Decode a safe route decision into bounded, secret-free disclosure facts. */
+export const readSafeRouteDisclosure = (input: unknown): SafeRouteDisclosureFacts => {
+  const decision = decodeRouteDecision(input);
+  const dispositions = decision.dispositions.map((disposition) => ({
+    candidate: disposition.candidate,
+    disposition: disposition.disposition,
+    reason: disposition.reason,
+  }));
+  if (decision.outcome === "admitted") {
+    return {
+      outcome: "admitted",
+      decisionReason: decision.decisionReason,
+      dataDestination: decision.disclosure.dataDestination,
+      costClass: decision.disclosure.costClass,
+      localOnly: decision.disclosure.localOnly,
+      providerRef: decision.disclosure.providerRef ?? null,
+      selected: decision.selected,
+      effective: decision.effective,
+      admittedCandidateSet: [...decision.admittedCandidateSet],
+      contextManifestRef: decision.contextManifestRef,
+      dispositions,
+    };
+  }
+  return {
+    outcome: "closed",
+    decisionReason: decision.decisionReason,
+    dataDestination: null,
+    costClass: null,
+    localOnly: null,
+    providerRef: null,
+    selected: null,
+    effective: null,
+    admittedCandidateSet: [],
+    contextManifestRef: decision.contextManifestRef,
+    dispositions,
+  };
+};
+
+/**
+ * Decode one scenario's safe bytes into the facts every surface must agree on.
+ * It reuses `projectSafeAgentCard` and `safeMessageChainOf`, so a card can never
+ * show `running` before a host start receipt exists.
+ */
+export const readSafeSurfaceScenario = (input: SafeSurfaceScenarioInput): SafeSurfaceScenarioFacts => {
+  const projection = decodeSafeTurnProjection(input.projection);
+  return {
+    scenario: input.scenario,
+    card: projectSafeAgentCard(projection),
+    messageChain: safeMessageChainOf(projection),
+    route: input.routeDecision === undefined ? null : readSafeRouteDisclosure(input.routeDecision),
+    recovery: {
+      cardState: projection.cardState,
+      terminal: isTerminalCardState(projection.cardState),
+      refusalReason: input.refusalReason === undefined ? null : decodeRefusalReason(input.refusalReason),
+    },
+  };
+};
+
+/** A compact, human-readable summary of one scenario's safe facts. */
+export interface SurfaceFactSummary {
+  readonly scenario: string;
+  readonly cardState: AgentCardState;
+  readonly terminal: boolean;
+  readonly refusalReason: string | null;
+  readonly messageCount: number;
+  readonly provider: TurnProviderCandidate | null;
+  readonly dataDestination: TurnDataDestination;
+  readonly localOnly: boolean;
+  readonly usageTruth: TurnUsageTruth;
+  readonly routeOutcome: "admitted" | "closed" | null;
+  readonly routeSelected: string | null;
+  readonly routeDataDestination: TurnDataDestination | null;
+  readonly routeLocalOnly: boolean | null;
+  readonly contextManifestRef: string | null;
+}
+
+/** Reduce decoded safe facts to the compact cross-surface comparison tuple. */
+export const summarizeSurfaceFacts = (facts: SafeSurfaceScenarioFacts): SurfaceFactSummary => ({
+  scenario: facts.scenario,
+  cardState: facts.card.cardState,
+  terminal: facts.recovery.terminal,
+  refusalReason: facts.recovery.refusalReason,
+  messageCount: facts.card.messageCount,
+  provider: facts.card.provider,
+  dataDestination: facts.card.dataDestination,
+  localOnly: facts.card.localOnly,
+  usageTruth: facts.card.usageTruth,
+  routeOutcome: facts.route?.outcome ?? null,
+  routeSelected: facts.route?.selected ?? null,
+  routeDataDestination: facts.route?.dataDestination ?? null,
+  routeLocalOnly: facts.route?.localOnly ?? null,
+  contextManifestRef: facts.route?.contextManifestRef ?? null,
+});
+
+/**
+ * The safe-fact forbidden-material patterns. A decoded surface fact must never
+ * contain a raw prompt, raw output, local path, token, or secret. A read surface
+ * asserts this against the JSON of its decoded facts as a privacy-fence oracle.
+ */
+export const SAFE_SURFACE_FORBIDDEN_KEY_PATTERN =
+  /(?:rawArgs|rawInput|rawOutput|commandOutput(?!ByteCount)|prompt|token|secret|apiKey|auth|mnemonic|localPath|helperPath|loopbackUrl|filePath|absolutePath)/iu;
+
+export const SAFE_SURFACE_FORBIDDEN_VALUE_PATTERN =
+  /(?:\/Users\/|\/home\/|sk-[a-z0-9]|ghp_|gho_|bearer\s|-----BEGIN|access[_-]?token|api[_-]?key)/iu;
+
+/** True when decoded surface facts carry no forbidden key or value shape. */
+export const surfaceFactsAreSecretFree = (facts: unknown): boolean => {
+  const serialized = JSON.stringify(facts);
+  if (serialized === undefined) return true;
+  if (SAFE_SURFACE_FORBIDDEN_VALUE_PATTERN.test(serialized)) return false;
+  for (const key of collectKeys(facts)) {
+    if (SAFE_SURFACE_FORBIDDEN_KEY_PATTERN.test(key)) return false;
+  }
+  return true;
+};
+
+const collectKeys = (value: unknown): ReadonlyArray<string> => {
+  if (Array.isArray(value)) return value.flatMap((item) => collectKeys(item));
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).flatMap(([key, child]) => [
+      key,
+      ...collectKeys(child),
+    ]);
+  }
+  return [];
+};

@@ -753,6 +753,9 @@ importers:
       '@openagentsinc/agent-runtime-schema':
         specifier: workspace:*
         version: link:../../packages/agent-runtime-schema
+      '@openagentsinc/agent-surface':
+        specifier: workspace:*
+        version: link:../../packages/agent-surface
       '@openagentsinc/behavior-contracts':
         specifier: workspace:*
         version: link:../../packages/behavior-contracts
@@ -902,6 +905,12 @@ importers:
       '@effect-native/tokens':
         specifier: workspace:*
         version: link:../../packages/effect-native-tokens
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../../../../packages/agent-runtime-schema
+      '@openagentsinc/agent-surface':
+        specifier: workspace:*
+        version: link:../../../../packages/agent-surface
       '@openagentsinc/atif':
         specifier: workspace:*
         version: link:../../../../packages/atif

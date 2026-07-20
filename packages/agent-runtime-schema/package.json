@@ -10,6 +10,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./fixtures": "./src/fixtures.ts",
+    "./afs-baseline-fixtures": "./src/afs-baseline-fixtures.ts",
     "./webhooks": "./src/webhooks.ts"
   },
   "publishConfig": {
