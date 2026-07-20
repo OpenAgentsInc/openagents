@@ -7,11 +7,13 @@
  * and the `SovereignIdentity` service composed over the injected
  * `LocalSecretStore` and `ManifestStore` ports.
  *
- * The fail-closed open and create operations arrive in IDR-02. The narrowed
- * secret-returning-free signer implementation and its static import test arrive
- * in IDR-06.
+ * IDR-02 adds existence-only candidate discovery and the fail-closed open, plus
+ * the separate explicit create operation. The narrowed secret-returning-free
+ * signer implementation and its static import test arrive in IDR-06.
  */
 export * from "./signer.ts";
 export * from "./recovery-state.ts";
+export * from "./discovery.ts";
+export * from "./open.ts";
 export * from "./manifest.ts";
 export * from "./service.ts";

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs"
+import { existsSync, lstatSync, readFileSync, statSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
@@ -108,7 +108,10 @@ async function readMnemonic(path: string) {
 
 async function writeMnemonic(path: string, mnemonic: string) {
   await mkdir(dirname(path), { recursive: true })
-  await writeFile(path, `${mnemonic}\n`, { mode: 0o600 })
+  // Exclusive create (flag "wx"): if a file already exists at the path this
+  // fails with EEXIST rather than overwriting it. Create NEVER clobbers an
+  // existing identity, even under a race with another process.
+  await writeFile(path, `${mnemonic}\n`, { mode: 0o600, flag: "wx" })
   try {
     await import("node:fs/promises").then(({ chmod }) => chmod(path, 0o600))
   } catch {
@@ -122,6 +125,125 @@ export function assertPrivateMnemonicPermissions(path: string) {
   if ((mode & 0o077) !== 0) {
     throw new Error(`identity mnemonic permissions must not grant group/other access: ${path}`)
   }
+}
+
+/**
+ * A fail-closed custody blocker for the identity mnemonic. It never carries the
+ * mnemonic. `symbolic_link_refused` refuses a symbolic link by default (possible
+ * substitution); `weak_permissions` refuses a file that grants group/other
+ * access; `unexpected_file_type` refuses anything that is not a regular file.
+ */
+export type NostrIdentityCustodyBlocker =
+  | "symbolic_link_refused"
+  | "weak_permissions"
+  | "unexpected_file_type"
+
+/** Thrown when an OPEN finds no existing identity. Open NEVER creates one. */
+export class NostrIdentityNotFoundError extends Error {
+  readonly code = "nostr_identity_no_candidate" as const
+  readonly identityPath: string
+  constructor(identityPath: string) {
+    super(`no existing Nostr identity mnemonic at ${identityPath}`)
+    this.name = "NostrIdentityNotFoundError"
+    this.identityPath = identityPath
+  }
+}
+
+/** Thrown when a candidate exists but fails a fail-closed custody check. */
+export class NostrIdentityCustodyBlockedError extends Error {
+  readonly code = "nostr_identity_custody_blocked" as const
+  readonly identityPath: string
+  readonly blocker: NostrIdentityCustodyBlocker
+  constructor(identityPath: string, blocker: NostrIdentityCustodyBlocker) {
+    super(`Nostr identity custody blocked (${blocker}) at ${identityPath}`)
+    this.name = "NostrIdentityCustodyBlockedError"
+    this.identityPath = identityPath
+    this.blocker = blocker
+  }
+}
+
+/** Thrown when an explicit CREATE is asked to write over an existing candidate. */
+export class NostrIdentityAlreadyExistsError extends Error {
+  readonly code = "nostr_identity_already_exists" as const
+  readonly identityPath: string
+  constructor(identityPath: string) {
+    super(`refusing to create over an existing Nostr identity at ${identityPath}`)
+    this.name = "NostrIdentityAlreadyExistsError"
+    this.identityPath = identityPath
+  }
+}
+
+type IdentityFileInspection =
+  | { readonly kind: "absent" }
+  | { readonly kind: "symbolic_link" }
+  | { readonly kind: "unexpected_file_type" }
+  | { readonly kind: "regular_file"; readonly weakPermissions: boolean }
+
+/**
+ * Inspect the identity path by EXISTENCE and metadata only, using `lstat`. It
+ * never follows a symbolic link and never reads the file content, so an open
+ * path reads no secret bytes while classifying the candidate.
+ */
+function inspectIdentityFile(path: string): IdentityFileInspection {
+  let stat: ReturnType<typeof lstatSync>
+  try {
+    stat = lstatSync(path)
+  } catch (error) {
+    const code = (error as { code?: unknown }).code
+    if (code === "ENOENT" || code === "ENOTDIR") return { kind: "absent" }
+    throw error
+  }
+  if (stat.isSymbolicLink()) return { kind: "symbolic_link" }
+  if (!stat.isFile()) return { kind: "unexpected_file_type" }
+  const weakPermissions = process.platform !== "win32" && ((stat.mode & 0o077) !== 0)
+  return { kind: "regular_file", weakPermissions }
+}
+
+/**
+ * OPEN an EXISTING Nostr identity, or fail closed. It resolves the selected path,
+ * classifies it existence-only, refuses a symbolic link or a weak-permission
+ * file, reads the mnemonic only for a valid regular-file candidate, and derives
+ * the identity. It NEVER creates or overwrites a file: a missing candidate throws
+ * `NostrIdentityNotFoundError`. This is the recovery/open-safe entry point.
+ */
+export async function openNostrIdentity(
+  paths: BootstrapSummary["paths"],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<PylonNostrPrivateIdentity> {
+  const resolution = resolveNostrIdentityPath(paths, env)
+  const inspection = inspectIdentityFile(resolution.path)
+  switch (inspection.kind) {
+    case "absent":
+      throw new NostrIdentityNotFoundError(resolution.path)
+    case "symbolic_link":
+      throw new NostrIdentityCustodyBlockedError(resolution.path, "symbolic_link_refused")
+    case "unexpected_file_type":
+      throw new NostrIdentityCustodyBlockedError(resolution.path, "unexpected_file_type")
+    case "regular_file":
+      if (inspection.weakPermissions) {
+        throw new NostrIdentityCustodyBlockedError(resolution.path, "weak_permissions")
+      }
+      return deriveNip06Identity(await readMnemonic(resolution.path), resolution.path)
+  }
+}
+
+/**
+ * CREATE a NEW Nostr identity. This is the SEPARATE explicit operation: the
+ * caller invokes it on purpose to mint a mnemonic. It refuses to overwrite an
+ * existing candidate (`NostrIdentityAlreadyExistsError`), so it never clobbers a
+ * root. An open or recovery path must never call this.
+ */
+export async function createNostrIdentity(
+  paths: BootstrapSummary["paths"],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<PylonNostrPrivateIdentity> {
+  const resolution = resolveNostrIdentityPath(paths, env)
+  if (inspectIdentityFile(resolution.path).kind !== "absent") {
+    throw new NostrIdentityAlreadyExistsError(resolution.path)
+  }
+  const mnemonic = generateMnemonic(wordlist, 128)
+  await writeMnemonic(resolution.path, mnemonic)
+  return deriveNip06Identity(mnemonic, resolution.path)
 }
 
 export function deriveNip06Identity(mnemonic: string, identityPath: string): PylonNostrPrivateIdentity {
@@ -146,19 +268,27 @@ export function deriveNip06Identity(mnemonic: string, identityPath: string): Pyl
   }
 }
 
+/**
+ * The intentional REHYDRATE-OR-CREATE path. It OPENS an existing identity, and
+ * ONLY when the candidate is genuinely absent does it CREATE a new one. A
+ * fail-closed custody blocker (symbolic link, weak permissions, unexpected type)
+ * is re-thrown, never "fixed" by creating over the suspect file. This is the
+ * explicit create-on-missing path the Desktop Boot Sequence (#9103) and the
+ * Pylon bootstrap rely on; an OPEN/RECOVERY path uses `openNostrIdentity`
+ * instead and never auto-creates.
+ */
 export async function loadOrCreateNostrIdentity(
   paths: BootstrapSummary["paths"],
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<PylonNostrPrivateIdentity> {
-  const resolution = resolveNostrIdentityPath(paths, env)
-  if (existsSync(resolution.path)) {
-    assertPrivateMnemonicPermissions(resolution.path)
-    return deriveNip06Identity(await readMnemonic(resolution.path), resolution.path)
+  try {
+    return await openNostrIdentity(paths, env)
+  } catch (error) {
+    if (error instanceof NostrIdentityNotFoundError) {
+      return await createNostrIdentity(paths, env)
+    }
+    throw error
   }
-
-  const mnemonic = generateMnemonic(wordlist, 128)
-  await writeMnemonic(resolution.path, mnemonic)
-  return deriveNip06Identity(mnemonic, resolution.path)
 }
 
 export function encodeNip19(prefix: "npub" | "nsec", bytes: Uint8Array) {
