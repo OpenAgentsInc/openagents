@@ -106,6 +106,8 @@ const decodeCommitted = S.decodeUnknownSync(CommittedSidecarSchema);
 const decodeRedemption = S.decodeUnknownSync(RedemptionSidecarSchema);
 const decodeDeletionIntent = S.decodeUnknownSync(DeletionIntentSchema);
 const decodeDeletionReceipt = S.decodeUnknownSync(DeletionReceiptSchema);
+const decodeSha256Digest = S.decodeUnknownSync(Sha256Digest);
+const decodePortableRef = S.decodeUnknownSync(PortableRef);
 
 export class PortableCheckpointArtifactError extends S.TaggedErrorClass<PortableCheckpointArtifactError>()(
   "PortableCheckpointArtifactError",
@@ -159,6 +161,17 @@ export type PortableCheckpointArtifactScope = Readonly<{
   ownerRef: string;
   pylonRef: string;
   targetRef: string;
+}>;
+
+export type PortablePrivateCommittedCheckpointArtifactRead = Readonly<{
+  manifestDigest: string;
+  objectRef: string;
+  phaseOperationRef: string;
+}>;
+
+export type PortablePrivateCommittedCheckpointArtifact = Readonly<{
+  manifest: PortableCheckpointCustodyObjectManifest;
+  encryptedObjectBytes: Uint8Array;
 }>;
 
 const canonical = (value: unknown): string => {
@@ -484,6 +497,64 @@ export const makePortableCheckpointArtifactService = (
       return bytes;
     });
 
+  const readPrivateCommitted = Effect.fn("PortableCheckpointArtifact.readPrivateCommitted")(
+    function* (input: PortablePrivateCommittedCheckpointArtifactRead) {
+      const manifestDigest = yield* Effect.try({
+        try: () => decodeSha256Digest(input.manifestDigest),
+        catch: () => fail("invalid", "private_manifest_digest"),
+      });
+      const objectRef = yield* Effect.try({
+        try: () => decodePortableRef(input.objectRef),
+        catch: () => fail("invalid", "private_object_ref"),
+      });
+      const phaseOperationRef = yield* Effect.try({
+        try: () => decodePortableRef(input.phaseOperationRef),
+        catch: () => fail("invalid", "private_phase_operation_ref"),
+      });
+      const readDeletionMarkers = () =>
+        Effect.all({
+          intent: readJson(deletionIntentKey(manifestDigest), decodeDeletionIntent),
+          receipt: readJson(deletionReceiptKey(manifestDigest), decodeDeletionReceipt),
+        });
+      const before = yield* readDeletionMarkers();
+      if (before.intent !== null || before.receipt !== null) {
+        return yield* fail("conflict", "private_object_tombstoned");
+      }
+      const { committed, prepared } = yield* readCommitted(manifestDigest);
+      const computedManifestDigest = yield* Effect.promise(() => digestValue(prepared.manifest));
+      if (computedManifestDigest !== manifestDigest) {
+        return yield* fail("conflict", "private_manifest_binding");
+      }
+      if (
+        committed.operationRef !== phaseOperationRef ||
+        prepared.operationRef !== phaseOperationRef
+      ) {
+        return yield* fail("conflict", "private_phase_operation_binding");
+      }
+      if (prepared.manifest.objectRef !== objectRef) {
+        return yield* fail("conflict", "private_object_binding");
+      }
+      if (committed.objectDigest !== prepared.manifest.objectDigest) {
+        return yield* fail("conflict", "private_commit_binding");
+      }
+      return yield* Effect.acquireUseRelease(
+        readVerifiedObject(prepared.manifest),
+        (encryptedObjectBytes) =>
+          Effect.gen(function* () {
+            const after = yield* readDeletionMarkers();
+            if (after.intent !== null || after.receipt !== null) {
+              return yield* fail("conflict", "private_object_tombstoned");
+            }
+            return {
+              manifest: prepared.manifest,
+              encryptedObjectBytes: Uint8Array.from(encryptedObjectBytes),
+            } satisfies PortablePrivateCommittedCheckpointArtifact;
+          }),
+        (encryptedObjectBytes) => Effect.sync(() => encryptedObjectBytes.fill(0)),
+      );
+    },
+  );
+
   const prepare = Effect.fn("PortableCheckpointArtifact.prepare")(function* (
     scope: PortableCheckpointArtifactScope,
     operationRef: string,
@@ -780,5 +851,13 @@ export const makePortableCheckpointArtifactService = (
     return yield* putSidecar(deletionReceiptKey(manifestDigest), receipt, decodeDeletionReceipt);
   });
 
-  return { commit, deleteObject, download, prepare, redeem, upload };
+  return {
+    commit,
+    deleteObject,
+    download,
+    prepare,
+    readPrivateCommitted,
+    redeem,
+    upload,
+  };
 };
