@@ -483,6 +483,7 @@ export const makeManagedSandboxBroker = (
           resource,
           command: lifecycleCommand,
         });
+        const providerReceiptDigest = yield* digest(providerOutcome.receiptRef);
         events = yield* materializeLifecycleEvents(resource, providerOutcome);
         const succeeded = ["ready", "stopped", "deleted"].includes(providerOutcome.phase);
         receipt = yield* input.store.settle({
@@ -492,7 +493,9 @@ export const makeManagedSandboxBroker = (
           expectedResourceGeneration: resource.resourceGeneration,
           events,
           outcome: succeeded ? "succeeded" : "failed",
-          artifactRefs: [providerOutcome.receiptRef],
+          artifactRefs: [
+            `artifact.managed-sandbox.lifecycle-receipt.${providerReceiptDigest}`,
+          ],
           ...(providerOutcome.errorCode === null
             ? {}
             : { errorCode: `reason.${providerOutcome.errorCode}` }),

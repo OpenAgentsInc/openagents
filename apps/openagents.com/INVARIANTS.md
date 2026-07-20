@@ -4277,6 +4277,11 @@ scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
   the provider outcome into native lifecycle events and a receipt first. A
   shorter compatibility TTL atomically attenuates budget lifetime and every
   capability expiry so no capability outlives the exact lease.
+- The provider lifecycle receipt identifier is external evidence, not a native
+  ref. The broker must SHA-256 content-address its exact bytes into
+  `artifact.managed-sandbox.lifecycle-receipt.<digest>` before settlement.
+  URI-shaped provider identifiers never enter native `artifactRefs`, and the
+  native bounded ref grammar is not widened for a provider format.
 - Box projections expose no provider URL, guest IP, desktop endpoint,
   snapshot, subdomain, topology, private path, or credential. Absent private
   control dependencies return typed unavailability.

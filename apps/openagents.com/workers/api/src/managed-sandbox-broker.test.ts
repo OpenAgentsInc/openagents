@@ -264,7 +264,7 @@ describe("native managed-sandbox broker", () => {
         lifecycleCalls += 1;
         return Effect.succeed({
           operationRef: "command.native.create.fixture",
-          receiptRef: "receipt.provider.live.create",
+          receiptRef: `receipt-ref://sha256/${"1".repeat(64)}`,
           action: "create" as const,
           phase: "ready" as const,
           generation: 1,
@@ -307,7 +307,9 @@ describe("native managed-sandbox broker", () => {
     });
     expect(first.receipt).toMatchObject({
       outcome: "succeeded",
-      artifactRefs: ["receipt.provider.live.create"],
+      artifactRefs: [
+        "artifact.managed-sandbox.lifecycle-receipt.768ff4c903f30c51ed11d250f571741647613e4bb093158e2eb21619f371fe83",
+      ],
     });
     expect(settlementEvents).toMatchObject([
       { _tag: "GuestReady", resourceGeneration: 1, sequence: 2 },

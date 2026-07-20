@@ -71,6 +71,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   or cleanup receipt. When an update shortens a lease, every retained
   capability expiry and the budget lifetime must attenuate to that lease in the
   same command.
+- Provider receipt identifiers are untrusted external evidence. URI-shaped or
+  otherwise non-canonical provider identifiers must be content-addressed into a
+  bounded native artifact ref before entering managed-sandbox receipts. They
+  may not relax the native ref grammar or bypass receipt decoding.
 - Mobile and authenticated web are managed-sandbox controllers only. They
   decode one shared bounded projection and can send only typed, generation-
   fenced interrupt, stop, resume, or delete commands through durable exact-byte

@@ -133,6 +133,13 @@ If API cleanup cannot converge, the script may remove only its deterministic
 guest, disk, and five generation-owned firewall names. Any such emergency
 cleanup makes the acceptance fail even when the final residue is zero.
 
+Lifecycle settlement preserves the external control receipt without importing
+its provider-specific URI grammar. The owner broker hashes the exact external
+receipt identifier and records only
+`artifact.managed-sandbox.lifecycle-receipt.<sha256>` in the native receipt.
+The native ref decoder therefore stays fail-closed while evidence remains
+content-addressed and replay-stable.
+
 ## Proof boundary
 
 This packet proves the default-off software component and deterministic fault

@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "f3ae491147a1d32e35de746c410422c96a41cb42c630a89ba19f6dddecacd5d0",
+      "sha256": "0a9c46980cc40437966f9922d15876ac6510236edbbe8acb9302cfa14bc1d6b1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1090,7 +1090,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "9db0f70dd78952b35e202b56c10f22b970f0b7bd0a391e22d0adcd039b52dda4",
+      "sha256": "ad0a629017e8d3115cf0830e75fafcc131bd13d35e3eb9579498b7d66cf924eb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19693,7 +19693,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-04-managed-sandbox-turn-runtime.md",
-      "sha256": "0796c9ac0fcabf297e00a30d7d33d04f4bd25a76299e20c8abfc580c410352c8",
+      "sha256": "c267705d4cb4f1a06bb901b430667bd07d8259026851ce6471f450d54c2ac158",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
