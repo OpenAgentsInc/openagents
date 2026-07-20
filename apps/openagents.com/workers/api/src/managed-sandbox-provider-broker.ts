@@ -295,19 +295,6 @@ export const makeManagedSandboxProviderBrokerRoutes = (
       if (claims === undefined || claims.provider !== provider) {
         return json({ error: 'unauthorized' }, 401)
       }
-      const contentLength = Number(request.headers.get('content-length') ?? '0')
-      if (contentLength > MAX_PROVIDER_REQUEST_BYTES) {
-        return json({ error: 'request_too_large' }, 413)
-      }
-      const bytes = new Uint8Array(
-        yield* Effect.promise(() => request.arrayBuffer()),
-      )
-      if (
-        bytes.byteLength === 0 ||
-        bytes.byteLength > MAX_PROVIDER_REQUEST_BYTES
-      ) {
-        return json({ error: 'request_out_of_bounds' }, 400)
-      }
       const store = dependencies.store(env)
       const resource = yield* store
         .inspect({
@@ -329,6 +316,19 @@ export const makeManagedSandboxProviderBrokerRoutes = (
           }),
         )
         return json({ error: 'capability_revoked' }, 403)
+      }
+      const contentLength = Number(request.headers.get('content-length') ?? '0')
+      if (contentLength > MAX_PROVIDER_REQUEST_BYTES) {
+        return json({ error: 'request_too_large' }, 413)
+      }
+      const bytes = new Uint8Array(
+        yield* Effect.promise(() => request.arrayBuffer()),
+      )
+      if (
+        bytes.byteLength === 0 ||
+        bytes.byteLength > MAX_PROVIDER_REQUEST_BYTES
+      ) {
+        return json({ error: 'request_out_of_bounds' }, 400)
       }
       const turn = yield* store
         .inspectTurn({

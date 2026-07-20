@@ -221,6 +221,32 @@ describe('managed-sandbox provider capability broker', () => {
     expect(await response.json()).toEqual({ error: 'capability_revoked' })
   })
 
+  test('checks capability revocation before provider request validation', async () => {
+    const routes = makeManagedSandboxProviderBrokerRoutes({
+      store: () => store(() => resource('revoked')),
+      nowMs: () => nowMs + 1,
+      fetchImpl: async () => {
+        throw new Error('provider must not be called after revoke')
+      },
+    })
+    const response = await Effect.runPromise(
+      routes.route(
+        new Request(
+          `https://openagents.test${managedSandboxProviderBrokerPaths.openai}`,
+          {
+            method: 'POST',
+            headers: { authorization: `Bearer ${await token()}` },
+            body: '',
+          },
+        ),
+        env,
+      )!,
+    )
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: 'capability_revoked' })
+  })
+
   test('admits dispatch transition states and refuses a quiescing resource', async () => {
     const capability = await token()
     for (const lifecycle of ['ready', 'idle', 'running'] as const) {
