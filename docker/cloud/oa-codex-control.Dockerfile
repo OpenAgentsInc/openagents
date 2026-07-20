@@ -40,6 +40,7 @@ RUN apt-get update \
       iproute2 \
       iptables \
       nodejs \
+      openssh-client \
       procps \
       python3 \
       apt-transport-https \
@@ -50,6 +51,10 @@ RUN apt-get update \
       | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
  && apt-get update \
  && apt-get install -y --no-install-recommends google-cloud-cli \
+ && command -v gcloud \
+ && command -v ssh \
+ && command -v scp \
+ && command -v ssh-keygen \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /usr/local/bin/oa-codex-control /usr/local/bin/oa-codex-control

@@ -79,13 +79,15 @@ provider, broad host, wallet, payment, or cloud-admin fallback.
 SBX-09 supplies the live driver at
 `scripts/cloud/managed-sandbox-io-driver.mjs` and installs the guest executor
 from `scripts/cloud/managed-sandbox-guest-io.py` in the immutable image. The
-control driver uses internal-IP SSH only. The guest executor resolves file and
-artifact paths with Linux `openat2` beneath `/workspace`, rejects symlinks and
-magic links, and runs commands in a Bubblewrap network namespace with no
-network interface. It applies CPU, process, duration, and combined output
-limits, kills the process group on timeout or output excess, scans returned
-bytes for secret-shaped material, and removes operation scratch before it
-emits a success receipt.
+control image includes the OpenSSH client (`ssh`, `scp`, and `ssh-keygen`), and
+the control driver uses those tools through `gcloud compute ssh/scp` over the
+guest's internal IP only. The guest executor resolves file and artifact paths
+with Linux `openat2` beneath `/workspace`, rejects symlinks and magic links,
+and runs commands in a Bubblewrap network namespace with no network
+interface. It applies CPU, process, duration, and combined output limits,
+kills the process group on timeout or output excess, scans returned bytes for
+secret-shaped material, and removes operation scratch before it emits a
+success receipt.
 
 ## Fault response
 
