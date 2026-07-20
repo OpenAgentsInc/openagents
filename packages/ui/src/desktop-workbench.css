@@ -1879,6 +1879,16 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   opacity: 1;
 }
 
+/* Renderer-private spacing utilities are disabled, so the copy control's
+   `size-*` icon classes never resolve and the lucide glyph would fall back to
+   its intrinsic 24px. Size it here to match the surrounding action icons. */
+.oa-react-user-message-actions svg,
+.oa-react-assistant-message-actions svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
 @media (hover: none), (pointer: coarse) {
   .oa-react-user-message-actions,
   .oa-react-assistant-message-actions { opacity: 1; }

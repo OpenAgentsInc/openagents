@@ -491,6 +491,44 @@ const togglePreservingReaderPosition = (
   }, 0)
 }
 
+/**
+ * Copy `text` to the clipboard, tolerating renderers where the async Clipboard
+ * API is unavailable or denied. Electron renderers loaded from a non-secure
+ * custom protocol can leave `navigator.clipboard` undefined or reject
+ * `writeText`, so we fall back to a hidden textarea plus `execCommand("copy")`
+ * inside the click's user-gesture. Resolves to whether the copy succeeded.
+ */
+const copyMessageTextToClipboard = async (text: string): Promise<boolean> => {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText !== undefined) {
+      await navigator.clipboard.writeText(text)
+      return true
+    }
+  } catch {
+    // Fall through to the execCommand path; a swallowed async-API failure must
+    // not stop the synchronous fallback below.
+  }
+  if (typeof document === "undefined") return false
+  const textarea = document.createElement("textarea")
+  textarea.value = text
+  textarea.setAttribute("readonly", "")
+  textarea.style.position = "fixed"
+  textarea.style.top = "0"
+  textarea.style.left = "0"
+  textarea.style.opacity = "0"
+  textarea.style.pointerEvents = "none"
+  document.body.appendChild(textarea)
+  try {
+    textarea.focus()
+    textarea.select()
+    return document.execCommand("copy")
+  } catch {
+    return false
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
 const MessageCopyButton = memo(({ text }: Readonly<{ text: string }>): ReactElement => {
   const [isCopied, setIsCopied] = useState(false)
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -500,11 +538,12 @@ const MessageCopyButton = memo(({ text }: Readonly<{ text: string }>): ReactElem
   }, [])
 
   const copyToClipboard = (): void => {
-    void navigator.clipboard.writeText(text).then(() => {
+    void copyMessageTextToClipboard(text).then((copied) => {
+      if (!copied) return
       setIsCopied(true)
       if (resetTimer.current !== null) clearTimeout(resetTimer.current)
       resetTimer.current = setTimeout(() => setIsCopied(false), MESSAGE_COPY_FEEDBACK_MS)
-    }).catch(() => {})
+    })
   }
 
   return <TooltipProvider>

@@ -325,6 +325,45 @@ describe("React typed timeline projection", () => {
     root.unmount()
   })
 
+  test("copies via the execCommand fallback when the async clipboard API is unavailable", async () => {
+    const { window, container } = installDom()
+    // Electron renderers loaded from a non-secure custom protocol can leave
+    // navigator.clipboard undefined; the copy control must still work.
+    Object.defineProperty(window.navigator, "clipboard", { configurable: true, value: undefined })
+    const selected: Array<string> = []
+    const originalSelect = window.HTMLTextAreaElement.prototype.select
+    window.HTMLTextAreaElement.prototype.select = function(this: HTMLTextAreaElement): void {
+      selected.push(this.value)
+      originalSelect?.call(this)
+    }
+    let execCommandArg: string | null = null
+    ;(window.document as unknown as { execCommand: (command: string) => boolean }).execCommand = (command) => {
+      execCommandArg = command
+      return true
+    }
+    restores.push(() => { window.HTMLTextAreaElement.prototype.select = originalSelect })
+    const root = createRoot(container)
+    root.render(<ReactTimeline sessionKey="thread-fallback-copy" records={[{
+      ...record("prompt", 0),
+      kind: "user_message" as const,
+      label: "You",
+      body: "Fallback copy path.",
+      timestamp: "1970-01-01T00:00:00.000Z",
+    }]} loadedItemCount={1} offset={0} totalItems={1} loadingEdge={null} report={report} />)
+    await settle()
+
+    const copy = container.querySelector<HTMLButtonElement>('[aria-label="Copy message"]')
+    expect(copy).not.toBeNull()
+    copy?.click()
+    await settle()
+    expect(execCommandArg).toBe("copy")
+    expect(selected).toEqual(["Fallback copy path."])
+    expect(copy?.querySelector("svg")?.classList.contains("text-primary")).toBe(true)
+    // The temporary textarea must not linger in the document after the copy.
+    expect(container.ownerDocument.querySelector("textarea")).toBeNull()
+    root.unmount()
+  })
+
   test("collapses only long user messages and exposes an in-bubble keyboard toggle", async () => {
     expect(shouldCollapseUserMessage("short prompt")).toBe(false)
     expect(shouldCollapseUserMessage(Array.from({ length: 9 }, (_, index) => `line ${index}`).join("\n"))).toBe(true)
