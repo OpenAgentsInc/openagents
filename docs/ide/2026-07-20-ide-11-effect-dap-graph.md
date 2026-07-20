@@ -2,7 +2,7 @@
 
 Date: 2026-07-20
 Issue: [#9039](https://github.com/OpenAgentsInc/openagents/issues/9039)
-State: product integration implemented. Packaged evidence not executed
+State: implemented. macOS arm64 packaged evidence passed
 Next packet: IDE-12 Git delivery
 
 ## Purpose
@@ -14,8 +14,7 @@ decoded view. An adapter, renderer, Electron process, or native helper does not
 own project or debug authority.
 
 This document defines the product graph and its evidence gate. The product
-integration is present. This document does not yet report a successful packaged
-debugger run.
+integration and the exact macOS arm64 packaged evidence are present.
 
 ## Authority model
 
@@ -271,10 +270,34 @@ Rust, review, owner, and rollback facts.
 
 ## Current evidence state
 
-No captured IDE-11 product evidence is committed at this implementation
-boundary. The `Unexecuted` fixture is the current truthful state. The capture
-runner must run the complete fake and real corpus before the benchmark,
-packaged, and acceptance receipts can become green.
+The exact candidate is `2bdf0d7cfd1590a50c295e78bfb0f7703ad6327c`. The
+packaged application tree digest is
+`f51b47481e288a6795f780f7a06e59142f558364572feea34bc1a2c6e26e3038`.
+The tree has 362 files and 603978504 bytes. The acceptance receipt is:
+
+```text
+apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-acceptance.json
+```
+
+The captured corpus has these four journeys:
+
+- Deterministic fixture launch for a TypeScript fixture.
+- Deterministic fixture attach to a disclosed remote-process fixture.
+- `lldb-dap` LLVM 21.0.0 attach to an ARM64 macOS minidump for a C target.
+- `debugpy` 1.8.21 launch of a live Python 3.9 target.
+
+Each journey has one cropped debugger screenshot, one public-safe trace, and
+one journey receipt. The crop excludes the local application header and its
+temporary workspace path. The JSON private-path and secret scans pass.
+
+The run reports zero adapter processes, subscriptions, queued protocol
+messages, retained variable bytes, and debug-owned handles after cleanup. All
+required security facts pass. The macOS arm64 target row is claimed. The other
+five target rows are `not-claimed`.
+
+The LLDB evidence is a postmortem attach. It does not claim a live LLDB launch
+on this host. The host did not grant the required Developer Tools state during
+this run, and the proof did not change machine security settings.
 
 IDE-11 does not add Git mutation or delivery authority. That work stays in
 IDE-12. Windows and Linux packaged claims also stay absent until exact target

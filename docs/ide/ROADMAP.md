@@ -110,7 +110,7 @@ recovery substrate exists, while the visible editor mechanics remain narrow.
 | Vim                         | IDE-03/04 ship the persistent, off-by-default first-party controller with visible modes, durable keymap inspection, conflict reporting, scoped teardown, and IDE-07 packaged acceptance | later mapping breadth remains ledgered     |
 | language intelligence       | IDE-06 ships visible document-local Monaco workers plus an Effect-supervised persistent project-local TypeScript 6.0.3 service, complete first capability corpus, shared Problems/Outline/breadcrumb/location/editor evidence, cancellation, restart, and stale-result refusal. IDE-07 accepts the integrated path | later languages remain explicit gaps       |
 | terminal screen             | IDE-10 ships the xterm 6 screen projection over the Effect-owned, project-bound terminal graph, with direct PTY input frames, bounded sequence/gap/redaction truth, policy-bound links, and process-group teardown | IDE-10 delivered. A native PTY helper remains unadmitted |
-| tasks/tests/debug           | IDE-10 ships declared package/manifest tasks, dependency order, readiness, timeouts, artifacts, test discovery/results, semantic-success rules, Output, and actor receipts. DAP remains absent | IDE-11 adds debug                          |
+| tasks/tests/debug           | IDE-10 ships declared tasks, tests, Output, and actor receipts. IDE-11 ships the supervised DAP graph, launch and attach, debug projections, generation fences, and exact macOS arm64 packaged evidence | IDE-10 and IDE-11 delivered               |
 | integrated project identity | current workspace, document, Git, terminal, and agent surfaces do not yet share the full generation-fenced Zed-quality graph  | IDE-00 onward                              |
 | agent-to-code loop          | IDE-08 ships exact attachment, eleven-source disclosure, proposal/Pierre review, canonical apply/rebase/undo, backlinks, and host-only post-image evidence. Broader delivery remains explicit | IDE-08 delivered locally. IDE-12 adds delivery |
 | inline AI editing           | no completion, next-edit, inline transform, or editor-native multi-file apply                                                 | IDE-09                                     |
@@ -695,7 +695,12 @@ process facts, authority, and evidence.
 
 ### IDE-11 — Integrate debug
 
-Add an Effect-owned DAP client and debug graph for configurations,
+Delivered by #9039. The implementation and exact evidence contract are in
+`docs/ide/2026-07-20-ide-11-effect-dap-graph.md`. The macOS arm64 packaged
+corpus passes. Other target rows remain unclaimed. Owner review and the Desktop
+AssuranceSpec remain unreviewed and proposed.
+
+The packet adds an Effect-owned DAP client and debug graph for configurations,
 launch/attach disclosure, breakpoints, stack, scopes, variables, watch,
 console, stepping, restart, termination, and late-event fencing. Adapter
 processes are supervised capabilities. They do not own workspace policy or
@@ -964,19 +969,17 @@ The release-blocking integrated corpus must eventually cover:
 
 ## Immediate next work
 
-IDE-00 through IDE-10 are implemented and closed with exact issue receipts.
+IDE-00 through IDE-11 are implemented with exact issue receipts through
+IDE-10 and an exact IDE-11 candidate receipt pending issue closeout.
 IDE-07 accepted only the “OpenAgents basic IDE” rung for its exact macOS arm64
 candidate. It preserved the TypeScript-only project-language limit, every
 later packet gap, and the epic's separate owner-acceptance boundary.
 
-IDE-08, IDE-09, and IDE-10 are implemented and closed with exact evidence
-records. SBX-06 has also landed the default-off managed placement component
-without bypassing IDE-12, IDE-13, IDE-17, or SBX-09. The next packet is IDE-11:
-add one Effect-owned DAP graph with adapter
-supervision, exact launch/attach disclosure, breakpoints, stack/scopes/
-variables/watch/console, stepping, restart, termination, and late-event
-fencing. It may not move project, credential, policy, or persistence authority
-into a debug adapter or renderer.
+IDE-08, IDE-09, IDE-10, and IDE-11 are implemented with exact evidence records.
+SBX-06 has also landed the default-off managed placement component without
+bypassing IDE-12, IDE-13, IDE-17, or SBX-09. The next packet is IDE-12: add safe
+SCM mutation, worktrees, and delivery without combining mutation, verification,
+delivery, or owner-acceptance authority.
 
 In parallel at P1, managed-sandbox epic
 [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) has begun with
