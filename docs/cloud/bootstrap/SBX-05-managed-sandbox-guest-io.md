@@ -92,6 +92,9 @@ success receipt.
 Both guest drivers use `--ssh-key-expire-after=10m`, the relative-duration
 gcloud flag. They must not pass a duration to `--ssh-key-expiration`, which is
 an absolute-timestamp flag and fails before guest-key installation.
+I/O operation scratch lives under the image-provisioned, private,
+`openagents`-owned `/var/lib/openagents/managed-sandbox-turns` root. The driver
+must not attempt to create a new root-owned parent as the guest user.
 
 The immutable guest image owns `/var/lib/openagents/managed-sandbox-io` as the
 unprivileged request-transfer root. A systemd-tmpfiles rule recreates

@@ -27,7 +27,7 @@ const gcloud = process.env.OA_MANAGED_SANDBOX_GCLOUD_BIN?.trim() || "gcloud";
 const digest = (value) => createHash("sha256").update(value).digest("hex");
 const instance = `oa-msb-${digest(request.sandboxRef).slice(0, 20)}`;
 const operationKey = digest(request.operationRef).slice(0, 24);
-const remoteDir = `/var/lib/openagents/managed-sandbox-io/${operationKey}`;
+const remoteDir = `/var/lib/openagents/managed-sandbox-turns/io-${operationKey}`;
 const requestPath = `${remoteDir}/request.json`;
 
 const sshArgs = (command) => [

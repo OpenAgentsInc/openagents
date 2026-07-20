@@ -14,6 +14,14 @@ describe('managed-sandbox guest transport contract', () => {
       expect(source).not.toContain('--ssh-key-expiration=10m')
       expect(source).toContain('--internal-ip')
       expect(source).not.toContain('--tunnel-through-iap')
+      if (driver === 'managed-sandbox-io-driver.mjs') {
+        expect(source).toContain(
+          '/var/lib/openagents/managed-sandbox-turns/io-',
+        )
+        expect(source).not.toContain(
+          '/var/lib/openagents/managed-sandbox-io/',
+        )
+      }
     })
   }
 
