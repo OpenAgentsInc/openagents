@@ -497,7 +497,14 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
       /^zustand$/,
       /^@effect\/atom-react$/,
     ];
+    // AI Elements is an admitted vendored component library (owner directive
+    // 2026-07-19: `npx shadcn add @ai-elements/all`). It pulls one small
+    // controllable-state utility hook that is compatible with our @base-ui
+    // renderer. The no-radix-UI-FRAMEWORK law still holds: no radix UI
+    // component packages (menus, dialogs, popovers, etc.) enter the tree.
+    const admittedVendorDeps = new Set(["@radix-ui/react-use-controllable-state"]);
     for (const name of dependencyNames) {
+      if (admittedVendorDeps.has(name)) continue;
       for (const pattern of banned) {
         expect(name).not.toMatch(pattern);
       }
@@ -506,8 +513,10 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
 
   test("generated shadcn sources remain renderer-only components without host or domain authority", () => {
     const componentDir = path.join(appRoot, "src/components/ui");
+    // `embla-carousel-react` is admitted for the vendored shadcn `carousel`
+    // primitive that AI Elements depends on (owner directive 2026-07-19).
     const allowedImport =
-      /^(react|@base-ui\/react(?:\/[a-z-]+)?|@shadcn\/react\/message-scroller|class-variance-authority|cmdk|lucide-react|#lib\/utils|#components\/ui\/[a-z-]+)$/;
+      /^(react|@base-ui\/react(?:\/[a-z-]+)?|@shadcn\/react\/message-scroller|class-variance-authority|cmdk|lucide-react|embla-carousel-react|#lib\/utils|#components\/ui\/[a-z-]+)$/;
     for (const name of readdirSync(componentDir).filter((value) => value.endsWith(".tsx"))) {
       const source = stripComments(read(`src/components/ui/${name}`));
       const imports = [...source.matchAll(/from\s+"([^"]+)"/g)].map((match) => match[1]!);

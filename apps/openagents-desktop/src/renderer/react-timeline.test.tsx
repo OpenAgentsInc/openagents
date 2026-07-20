@@ -647,7 +647,7 @@ describe("React timeline scroll contract", () => {
     root.unmount()
   })
 
-  test("anchors a newly-authored turn, then yields permanently to manual free-scroll", async () => {
+  test("keeps a newly-authored turn stuck to the bottom (following), then yields to manual free-scroll", async () => {
     const { window, container } = installDom()
     const root = createRoot(container)
     const user = (key: string, sequence: number): ReactTimelineRecord => ({
@@ -664,12 +664,14 @@ describe("React timeline scroll contract", () => {
       loadedItemCount={3} offset={0} totalItems={3} loadingEdge={null} working report={report} />)
     await settle()
     const region = container.querySelector<HTMLElement>('.oa-react-timeline-region')
-    expect(region?.dataset.readerMode).toBe("anchored")
-    expect(container.querySelector('.oa-react-timeline-anchor-space')).not.toBeNull()
+    // Owner directive 2026-07-19: the timeline sticks to the bottom like a
+    // normal chat. A new turn no longer anchors itself to the TOP of the
+    // viewport, so it stays in "following" mode with no anchor spacer.
+    expect(region?.dataset.readerMode).toBe("following")
+    expect(container.querySelector('.oa-react-timeline-anchor-space')).toBeNull()
     viewport?.dispatchEvent(new window.Event("wheel", { bubbles: true }) as unknown as Event)
     await settle()
     expect(region?.dataset.readerMode).toBe("free")
-    expect(container.querySelector('.oa-react-timeline-anchor-space')).toBeNull()
     root.unmount()
   })
 

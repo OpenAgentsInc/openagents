@@ -1244,29 +1244,12 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
     viewport.scrollTo({ top: Math.max(0, top - 24), behavior: "auto" })
   }, [displayRows])
 
-  const latestUserKey = useMemo(() => [...props.records].reverse().find(isUserRecord)?.key ?? null, [props.records])
-  const previousUserKey = useRef(latestUserKey)
-  if (latestUserKey !== previousUserKey.current) {
-    previousUserKey.current = latestUserKey
-    if (latestUserKey !== null && props.working === true && readerMode !== "anchored") updateReaderMode("anchored")
-  }
-  useEffect(() => {
-    if (readerMode !== "anchored" || props.working !== true || latestUserKey === null) return
-    const view = viewportRef.current?.ownerDocument.defaultView
-    if (view === undefined || view === null) return
-    const frame = view.requestAnimationFrame(() => {
-      const target = [...(viewportRef.current?.querySelectorAll<HTMLElement>('[data-message-id]') ?? [])]
-        .find(candidate => candidate.dataset.messageId === latestUserKey)
-      if (target !== null && target !== undefined) target.scrollIntoView({ block: "start", behavior: "auto" })
-      else scrollToVirtualTurn(latestUserKey)
-    })
-    return () => view.cancelAnimationFrame(frame)
-  }, [displayRows, latestUserKey, props.working, readerMode, scrollToVirtualTurn])
-  useEffect(() => {
-    if (props.working !== true && readerMode === "anchored") updateReaderMode("following")
-  }, [props.working, readerMode, updateReaderMode])
-
-  const anchoredEndSpace = readerMode === "anchored" ? Math.max(0, scrollMetrics.height - 160) : 0
+  // Owner directive 2026-07-19: the timeline sticks to the bottom like a normal
+  // chat (see MessageScrollerProvider defaultScrollPosition="end" below). A
+  // newly-authored turn no longer anchors itself to the TOP of the viewport;
+  // new content keeps the conversation pinned to the latest message while the
+  // reader stays in "following" mode, and manual scroll-up still yields to
+  // "free" mode without being yanked back.
   return <MessageScroller className="oa-react-timeline-region" aria-label="Conversation timeline" data-reader-mode={readerMode}>
     <MessageScrollerViewport ref={viewportRef} className="oa-react-timeline-scroll"
       data-timeline-session={props.sessionKey} onScroll={onScroll}
@@ -1286,7 +1269,6 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
         {props.working ? <MessageScrollerItem messageId="working-indicator"><div className="oa-react-working" role="status" aria-label={`${props.agentName ?? "Codex"} is working`}>
           <span>Working</span><i /><i /><i />
         </div></MessageScrollerItem> : null}
-        {anchoredEndSpace > 0 ? <div className="oa-react-timeline-anchor-space" aria-hidden="true" style={{ height: anchoredEndSpace }} /> : null}
         {props.loadingEdge === "bottom" ? <p className="oa-react-timeline-loading" role="status">Fetching newer items…</p> : null}
       </MessageScrollerContent>
     </MessageScrollerViewport>
@@ -1298,7 +1280,7 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
 }
 
 export const ReactTimeline = (props: TimelineProps): ReactElement =>
-  <MessageScrollerProvider key={props.sessionKey} autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={64}>
+  <MessageScrollerProvider key={props.sessionKey} autoScroll defaultScrollPosition="end" scrollPreviousItemPeek={64}>
     <TimelineScroller {...props} />
   </MessageScrollerProvider>
 
