@@ -76,6 +76,10 @@ const mutation = (snapshot: IdeSourceControlSnapshot) => ({
   actor: { _tag: "Human" as const, actorRef: "owner.fixture" },
   approvalRef: null,
 });
+const observation = (snapshot: IdeSourceControlSnapshot) => {
+  const { expected: _expected, ...observed } = mutation(snapshot);
+  return observed;
+};
 
 describe("IDE-12 real Git adapter", () => {
   test("stages, commits, discards, and recovers only from exact versions", async () => {
@@ -297,6 +301,32 @@ describe("IDE-12 real Git adapter", () => {
       current = (await Effect.runPromise(service.execute({ _tag: "Pull", ...mutation(current), remote: "origin", branch: "main", strategy: "rebase" }))).snapshot;
       expect(current.behind).toBe(0);
       expect(readFileSync(path.join(root, "remote.txt"), "utf8")).toBe("remote delivery\n");
+    });
+  });
+
+  test("returns version-bound history and blame observations across a rename", async () => {
+    const root = repo();
+    git(root, "mv", "a.txt", "renamed.txt");
+    git(root, "commit", "-m", "rename tracked file");
+    await withService(root, async (service) => {
+      const current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: ideSourceControlFixtureSnapshot().binding }))).snapshot;
+      const history = await Effect.runPromise(service.execute({
+        _tag: "History", ...observation(current), commitish: "HEAD", limit: 10,
+      }));
+      expect(history.receipt?.observation?._tag).toBe("History");
+      if (history.receipt?.observation?._tag === "History") {
+        expect(history.receipt.observation.entries[0]).toMatchObject({ summary: "rename tracked file" });
+        expect(history.receipt.observation.entries[0]?.commitOid).toBe(current.version.headOid);
+      }
+      const blame = await Effect.runPromise(service.execute({
+        _tag: "Blame", ...observation(history.snapshot), path: "renamed.txt", commitOid: current.version.headOid!,
+      }));
+      expect(blame.receipt?.observation?._tag).toBe("Blame");
+      if (blame.receipt?.observation?._tag === "Blame") {
+        expect(blame.receipt.observation.path).toBe("renamed.txt");
+        expect(blame.receipt.observation.lines).toHaveLength(3);
+        expect(blame.receipt.observation.lines[0]?.sourceOid).toMatch(/^[0-9a-f]{40}$/u);
+      }
     });
   });
 });

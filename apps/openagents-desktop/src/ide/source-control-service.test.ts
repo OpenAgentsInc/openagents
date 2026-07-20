@@ -32,6 +32,7 @@ const advancingAdapter = (): IdeSourceControlAdapter => ({
     conflictPaths: [],
     omittedFacts: [],
     recoveryRef: IdeSourceControlRecoveryRefSchema.make("ide.scm-recovery.fixture"),
+    observation: null,
   }),
   stop: () => Effect.void,
 });
@@ -89,6 +90,7 @@ describe("IDE-12 source-control service", () => {
         conflictPaths: [],
         omittedFacts: [],
         recoveryRef: null,
+        observation: null,
       }),
     };
     await withService(adapter, async (service) => {

@@ -358,6 +358,7 @@ export const makeIdeSourceControlGitAdapter = (
       return selection.patch;
     };
     let recoveryRef: IdeSourceControlAdapterResult["recoveryRef"] = null;
+    let observation: IdeSourceControlAdapterResult["observation"] = null;
     const run = (args: ReadonlyArray<string>, message: string, input?: string) =>
       assertGit(runGit(root, args, input), message, current, op);
     switch (command._tag) {
@@ -425,12 +426,37 @@ export const makeIdeSourceControlGitAdapter = (
         break;
       }
       case "WorktreeRepair": run(["worktree", "repair"], "Worktree metadata could not be repaired."); break;
-      case "History": run(["log", `--max-count=${command.limit}`, "--format=%H%x00%P%x00%an%x00%aI%x00%s", command.commitish], "History is unavailable."); break;
-      case "Blame": run(["blame", "--line-porcelain", command.commitOid, "--", command.path], "Blame is unavailable."); break;
-      case "ProviderRefresh": break;
+      case "History": {
+        const output = run(["log", `--max-count=${command.limit}`, "--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s%x1e", command.commitish], "History is unavailable.");
+        observation = {
+          _tag: "History", commitish: command.commitish, truncated: false,
+          entries: output.split("\x1e").map((record) => record.trim()).filter(Boolean).map((record) => {
+            const [commitOid = "", parents = "", author = "", authoredAt = "", summary = ""] = record.split("\x1f");
+            return { commitOid: commitOid as never, parentOids: parents === "" ? [] : parents.split(" ") as never, author, authoredAt, summary };
+          }),
+        };
+        break;
+      }
+      case "Blame": {
+        const output = run(["blame", "--line-porcelain", command.commitOid, "--", command.path], "Blame is unavailable.");
+        const lines: Array<{ sourceOid: never; originalLine: number; finalLine: number; author: string; summary: string }> = [];
+        let pending: { sourceOid: never; originalLine: number; finalLine: number; author: string; summary: string } | null = null;
+        for (const line of output.split("\n")) {
+          const header = /^([0-9a-f]{40,64}) (\d+) (\d+)(?: \d+)?$/u.exec(line);
+          if (header !== null) {
+            if (pending !== null) lines.push(pending);
+            pending = { sourceOid: header[1] as never, originalLine: Number(header[2]), finalLine: Number(header[3]), author: "", summary: "" };
+          } else if (pending !== null && line.startsWith("author ")) pending.author = line.slice(7);
+          else if (pending !== null && line.startsWith("summary ")) pending.summary = line.slice(8);
+        }
+        if (pending !== null) lines.push(pending);
+        observation = { _tag: "Blame", path: command.path, commitOid: command.commitOid, lines, truncated: false };
+        break;
+      }
+      case "ProviderRefresh": throw failure("provider_unavailable", "No decoded provider adapter is configured.", current, op, true);
     }
     const next = snapshot();
-    return { snapshot: next, changedPaths: next.paths.map((entry) => entry.path), conflictPaths: next.paths.filter((entry) => entry.indexState === "conflicted").map((entry) => entry.path), omittedFacts: [], recoveryRef };
+    return { snapshot: next, changedPaths: next.paths.map((entry) => entry.path), conflictPaths: next.paths.filter((entry) => entry.indexState === "conflicted").map((entry) => entry.path), omittedFacts: [], recoveryRef, observation };
   };
 
   return {

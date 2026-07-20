@@ -30,6 +30,7 @@ export interface IdeSourceControlAdapterResult {
   readonly conflictPaths: ReadonlyArray<string>;
   readonly omittedFacts: ReadonlyArray<string>;
   readonly recoveryRef: IdeSourceControlReceipt["recoveryRef"];
+  readonly observation: IdeSourceControlReceipt["observation"];
 }
 
 export interface IdeSourceControlAdapter {
@@ -273,6 +274,7 @@ export const makeIdeSourceControlServiceLayer = (
           actor: command.actor,
           approvalRef: command.approvalRef,
           completedAt: now(),
+          observation: result.observation,
         });
         yield* SubscriptionRef.set(state, postImage);
         yield* SubscriptionRef.update(receiptState, (receipts) =>

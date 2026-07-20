@@ -312,6 +312,36 @@ export const IdeSourceControlReceiptSchema = Schema.Struct({
   actor: IdeRunActorSchema,
   approvalRef: Schema.NullOr(nonEmptyText(192)),
   completedAt: IdeTimestampSchema,
+  observation: Schema.NullOr(Schema.TaggedUnion({
+    History: {
+      commitish: nonEmptyText(320),
+      entries: Schema.Array(Schema.Struct({
+        commitOid: IdeGitOidSchema,
+        parentOids: Schema.Array(IdeGitOidSchema).check(Schema.isMaxLength(64)),
+        author: boundedText(320),
+        authoredAt: boundedText(80),
+        summary: boundedText(2_000),
+      })).check(Schema.isMaxLength(10_000)),
+      truncated: Schema.Boolean,
+    },
+    Blame: {
+      path: nonEmptyText(1_024),
+      commitOid: IdeGitOidSchema,
+      lines: Schema.Array(Schema.Struct({
+        sourceOid: IdeGitOidSchema,
+        originalLine: boundedCount(100_000_000),
+        finalLine: boundedCount(100_000_000),
+        author: boundedText(320),
+        summary: boundedText(2_000),
+      })).check(Schema.isMaxLength(100_000)),
+      truncated: Schema.Boolean,
+    },
+    Provider: {
+      providerRef: IdeSourceControlProviderRefSchema,
+      facts: Schema.Array(Schema.Struct({ key: nonEmptyText(160), value: boundedText(2_000) })).check(Schema.isMaxLength(1_000)),
+      freshness: Schema.Literals(["current", "stale", "unknown"]),
+    },
+  })),
 }).annotate({ identifier: "IdeSourceControlReceipt" });
 export interface IdeSourceControlReceipt extends Schema.Schema.Type<
   typeof IdeSourceControlReceiptSchema
