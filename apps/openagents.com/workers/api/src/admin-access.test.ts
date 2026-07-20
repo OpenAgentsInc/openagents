@@ -5,6 +5,7 @@ import worker, {
   SESSION_MAX_AGE_SECONDS,
   appendClearSessionCookies,
   appendSessionCookies,
+  authClientUsesLocalIssuer,
   getOpenAgentsAdminEmails,
   isOpenAgentsAdminEmail,
 } from './index'
@@ -33,6 +34,27 @@ describe('OpenAgents admin access policy', () => {
 
   test('has exactly one configured admin account by default', () => {
     expect(getOpenAgentsAdminEmails()).toEqual(['chris@openagents.com'])
+  })
+
+  test('exchanges staging authorization codes against the external issuer', () => {
+    expect(
+      authClientUsesLocalIssuer(
+        'https://openagents.com',
+        'https://auth.openagents.com',
+      ),
+    ).toBe(true)
+    expect(
+      authClientUsesLocalIssuer(
+        'https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app',
+        'https://auth.openagents.com',
+      ),
+    ).toBe(false)
+    expect(
+      authClientUsesLocalIssuer(
+        'https://unknown.example',
+        'https://auth.openagents.com',
+      ),
+    ).toBe(false)
   })
 
   test('matches the configured admin email case-insensitively', () => {

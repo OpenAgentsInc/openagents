@@ -3190,6 +3190,20 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
   })
 }
 
+export const authClientUsesLocalIssuer = (
+  appOrigin: string,
+  issuerOrigin: string,
+): boolean => {
+  try {
+    return (
+      new URL(appOrigin).hostname === 'openagents.com' &&
+      new URL(issuerOrigin).hostname === 'auth.openagents.com'
+    )
+  } catch {
+    return false
+  }
+}
+
 const makeIssuerAwareFetch =
   (env: OpenAgentsWorkerEnv, ctx: ExecutionContext) =>
   async (
@@ -3200,7 +3214,10 @@ const makeIssuerAwareFetch =
     const url = new URL(request.url)
     const issuerHost = new URL(getIssuerOrigin(env)).hostname
 
-    if (url.hostname === issuerHost) {
+    if (
+      url.hostname === issuerHost &&
+      authClientUsesLocalIssuer(getAppOrigin(env), getIssuerOrigin(env))
+    ) {
       return routeAuthIssuerRequest(request, env, ctx)
     }
 
