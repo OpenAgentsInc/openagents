@@ -20829,6 +20829,19 @@
       "replacement": null
     },
     {
+      "path": "docs/dspy/2026-07-20-dspy-in-effect-git-history-audit.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/effect-native/2026-07-08-effect-native-is-a-framework-for-native-apps-using-effect.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",

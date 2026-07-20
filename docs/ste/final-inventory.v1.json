@@ -21411,6 +21411,18 @@
       }
     },
     {
+      "path": "docs/dspy/2026-07-20-dspy-in-effect-git-history-audit.md",
+      "sha256": "313fd25d8d4ec9469b72b368cf36f0ea2e24a7a4a3c75695d26e90b0c4868c41",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/effect-native/2026-07-08-effect-native-is-a-framework-for-native-apps-using-effect.md",
       "sha256": "783fd38b6801e4e24c8cb59b8af335351d4529a65470528a28068ab1b4b5c268",
       "reason": "Final review of a converted document",
