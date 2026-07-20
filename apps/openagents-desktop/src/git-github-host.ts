@@ -514,34 +514,31 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
       const upstreamRef = upstream.stdout.trim()
       const remote = upstreamRef.includes("/") ? upstreamRef.slice(0, upstreamRef.indexOf("/")) : "origin"
 
-      const attempt = (): ExecResult => runBinary("git", ["-C", root, "push"], root, ghTimeoutMs)
-      let out = attempt()
+      const out = runBinary("git", ["-C", root, "push"], root, ghTimeoutMs)
       if (!out.ok) {
         const failure = classifyPushError(out.stderr)
-        // fetch → rebase → push retry, once (audit §3.3 structural habit).
-        if (failure === "non_fast_forward") {
-          const fetched = runBinary("git", ["-C", root, "fetch", remote], root, ghTimeoutMs)
-          if (fetched.ok) {
-            const rebased = runBinary("git", ["-C", root, "rebase", upstreamRef], root, ghTimeoutMs)
-            if (!rebased.ok) {
-              runBinary("git", ["-C", root, "rebase", "--abort"], root, gitTimeoutMs)
-              return gitGithubError("push", "non_fast_forward", "Remote has diverged; automatic rebase hit a conflict. Resolve locally, then push.")
-            }
-            out = attempt()
-          }
-        }
-        if (!out.ok) {
-          const finalFailure = classifyPushError(out.stderr)
-          return gitGithubError("push", finalFailure, pushErrorMessage(finalFailure))
-        }
+        return gitGithubError("push", failure, pushErrorMessage(failure))
       }
       const sha = runBinary("git", ["-C", root, "rev-parse", "HEAD"], root, gitTimeoutMs)
+      if (!sha.ok || sha.stdout.trim() === "") {
+        return gitGithubError("push", "operation_failed", "The pushed local HEAD could not be verified.")
+      }
+      const remoteHead = runBinary(
+        "git",
+        ["-C", root, "ls-remote", "--exit-code", remote, `refs/heads/${branchName}`],
+        root,
+        ghTimeoutMs,
+      )
+      const observedRemoteOid = remoteHead.ok ? remoteHead.stdout.trim().split(/\s+/u)[0] ?? "" : ""
+      if (observedRemoteOid !== sha.stdout.trim()) {
+        return gitGithubError("push", "operation_failed", "Git exited, but the remote ref postcondition was not verified.")
+      }
       return {
         ok: true,
         op: "push",
         ref: branchName,
         remote,
-        sha: sha.ok ? sha.stdout.trim() : "",
+        sha: sha.stdout.trim(),
       }
     }
 

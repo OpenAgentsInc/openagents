@@ -349,7 +349,7 @@ describe("real repo: push to a local bare remote", () => {
     }
   }))
 
-  test("non-fast-forward triggers fetch→rebase→push and succeeds when there is no conflict", guardGit(() => {
+  test("non-fast-forward stays explicit and never rewrites local history", guardGit(() => {
     const { work, remote } = seedAndClone()
     // A second clone advances the remote on a DIFFERENT file.
     const other = makeRepo()
@@ -365,17 +365,15 @@ describe("real repo: push to a local bare remote", () => {
     write(work, "local-change.txt", "local\n")
     service(work).run({ op: "stage", paths: ["local-change.txt"] })
     service(work).run({ op: "commit", message: "local change" })
+    const localHead = git(work, "rev-parse", "HEAD").stdout.trim()
     const result = service(work).run({ op: "push" })
-    expect(result.ok).toBe(true)
-    if (result.ok && result.op === "push") {
-      // The remote now carries BOTH changes (rebase replayed local on top).
-      const files = git(remote, "ls-tree", "--name-only", "refs/heads/main").stdout
-      expect(files).toContain("remote-change.txt")
-      expect(files).toContain("local-change.txt")
-    }
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe("non_fast_forward")
+    expect(git(work, "rev-parse", "HEAD").stdout.trim()).toBe(localHead)
+    expect(git(work, "status", "--porcelain").stdout).toBe("")
   }))
 
-  test("non-fast-forward with a real conflict returns non_fast_forward after aborting the rebase", guardGit(() => {
+  test("conflicting non-fast-forward returns the same typed refusal without starting rebase", guardGit(() => {
     const { work, remote } = seedAndClone()
     const other = makeRepo()
     git(other, "remote", "add", "origin", remote)
