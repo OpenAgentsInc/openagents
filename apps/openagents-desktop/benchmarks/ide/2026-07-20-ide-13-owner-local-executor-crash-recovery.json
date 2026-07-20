@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-owner-local-executor-crash-recovery.v1",
+  "evidenceClass": "real_local",
+  "generatedAt": "2026-07-20T19:17:09.316Z",
+  "candidateCommitSha": "5e1867bfc0ca8ca5f2b244e2d139c4510da13941",
+  "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
+  "placement": {
+    "targetClass": "owner_local",
+    "sourceGeneration": 1,
+    "destinationGeneration": 2
+  },
+  "crash": {
+    "childProcessStarted": true,
+    "exitCode": 86,
+    "processConfirmedDead": true,
+    "durableEffectApplicationCount": 1,
+    "preRecoveryState": "running"
+  },
+  "recovery": {
+    "authorityRef": "authority.pylon.owner-local.executor-process-death.v1",
+    "interruptionEvidenceRef": "evidence.ide13.owner-local.executor-process-exit.86",
+    "exactScopeVerified": true,
+    "recoveryContract": "durable_idempotency_reconcile_v1",
+    "reconciliationCount": 1,
+    "recoveryExecuteCount": 0,
+    "firstResult": "recovered",
+    "replayResult": "replayed",
+    "settlementState": "settled",
+    "resultRef": "result.ide13.owner-local.crash-recovery.safe-edit",
+    "receiptRef": "receipt.pylon.portable.owner-local-work.0511fc80d5c7926ccdc30f6e7253fedf",
+    "evidenceRefs": [
+      "evidence.ide13.owner-local.crash-recovery.safe-edit.applied"
+    ]
+  },
+  "teardown": {
+    "controlResidue": 0
+  },
+  "authority": {
+    "productionDispatchEnabled": false,
+    "networkCalls": 0,
+    "providerCalls": 0,
+    "secretMaterialInReceipt": false
+  },
+  "limitations": [
+    "Recovery is admitted only for registered handlers that reconcile a stable durable idempotency ref.",
+    "The resumer does not provide general exactly-once semantics for arbitrary external side effects.",
+    "The owner-local supervisor must supply exact process-death authority before recovery can replace a running executor."
+  ]
+}
