@@ -188,6 +188,12 @@ test("wipes by source lease without material redemption and replays by operation
   const first = await executor.execute(request, claim, new AbortController().signal);
   const replay = await executor.execute(request, claim, new AbortController().signal);
   expect(first).toEqual(replay);
+  expect(first.outcome).toMatchObject({
+    status: "completed",
+    installationRef: null,
+    receiptRef: "receipt.ide13.executor.wiped",
+    evidenceRefs: [],
+  });
   expect(wipe).toHaveBeenCalledTimes(2);
   expect(wipe).toHaveBeenCalledWith({
     leaseRef: "lease.ide13.executor.source",

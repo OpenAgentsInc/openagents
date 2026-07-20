@@ -50,7 +50,7 @@ export const makePylonPortableOwnerLocalCapabilityOperationExecutor = (
           status: "completed",
           installationRef: null,
           receiptRef: wiped.wipeReceiptRef,
-          evidenceRefs: [wiped.wipeReceiptRef],
+          evidenceRefs: [],
           errorRef: null,
         },
       };
