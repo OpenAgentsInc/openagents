@@ -127,6 +127,7 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
     { fault: "destination attach before source revocation", evidence: "model", result: "passed", evidenceRef: "packages/portable-session-contract/src/ide13-model.test.ts" },
     { fault: "duplicate, lost-ack, and replay", evidence: "model", result: "passed", evidenceRef: "packages/portable-session-contract/src/ide13-model.test.ts" },
     { fault: "cancel after destination stage and before source revoke", evidence: "regression", result: "passed", evidenceRef: "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts" },
+    { fault: "adapter failure at each move transition", evidence: "regression", result: "passed", evidenceRef: "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts" },
     { fault: "real network partition at each transition", evidence: "not_run", result: "gap", evidenceRef: "github.com/OpenAgentsInc/openagents/issues/9041" },
     { fault: "real provider eviction and older recovery-point failback", evidence: "not_run", result: "gap", evidenceRef: "github.com/OpenAgentsInc/openagents/issues/9041" },
   ],

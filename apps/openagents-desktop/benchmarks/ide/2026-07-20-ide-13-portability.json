@@ -1,8 +1,8 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-evidence.v1",
   "issue": "IDE-13",
-  "candidateCommitSha": "a1280ce50f238e347e63aa78c2cf371df25e00d2",
-  "generatedAt": "2026-07-20T07:31:58.738Z",
+  "candidateCommitSha": "80247be7e2b884ec6fd89ba227490a0556488dac",
+  "generatedAt": "2026-07-20T07:33:29.443Z",
   "environment": {
     "platform": "darwin",
     "architecture": "arm64",
@@ -20,9 +20,9 @@
     {
       "operation": "bounded-transition-model",
       "repetitions": 100,
-      "p50Ms": 0.05433299999998553,
-      "p95Ms": 0.0816250000000025,
-      "p99Ms": 0.09399999999999409,
+      "p50Ms": 0.05566699999999969,
+      "p95Ms": 0.08141700000001606,
+      "p99Ms": 0.09129200000000992,
       "thresholdP95Ms": 5,
       "thresholdP99Ms": 10,
       "passed": true
@@ -30,9 +30,9 @@
     {
       "operation": "checkpoint-schema-decode",
       "repetitions": 1000,
-      "p50Ms": 0.008749999999992042,
-      "p95Ms": 0.02174999999999727,
-      "p99Ms": 0.050041999999990594,
+      "p50Ms": 0.008667000000002645,
+      "p95Ms": 0.022415999999992664,
+      "p99Ms": 0.049167000000011285,
       "thresholdP95Ms": 1,
       "thresholdP99Ms": 2,
       "passed": true
@@ -119,6 +119,12 @@
     },
     {
       "fault": "cancel after destination stage and before source revoke",
+      "evidence": "regression",
+      "result": "passed",
+      "evidenceRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts"
+    },
+    {
+      "fault": "adapter failure at each move transition",
       "evidence": "regression",
       "result": "passed",
       "evidenceRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts"

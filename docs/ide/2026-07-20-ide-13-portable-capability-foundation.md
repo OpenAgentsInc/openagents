@@ -54,6 +54,11 @@ counterexample in the admitted model.
 The negative control attaches the destination before source revoke. The checker
 returns a trace for the `source_revoked_before_attach` invariant.
 
+Deterministic fault tests fail each coordinator adapter step in turn. A failure
+before source revoke keeps generation 1 attached to the source. A failure after
+source revoke keeps generation 1 visible in degraded state and does not attach
+a second writer.
+
 ## Desktop projection
 
 The Desktop Sync host registers the canonical portable command mutator. The
@@ -72,11 +77,11 @@ projection issues and are not used as authority.
 
 The current evidence receipt is
 `apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json`.
-Candidate commit `a1280ce50f238e347e63aa78c2cf371df25e00d2` produced the
+Candidate commit `80247be7e2b884ec6fd89ba227490a0556488dac` produced the
 receipt on macOS arm64 with Node 24.13.1.
 
-The model p95 was 0.082 ms and its p99 was 0.094 ms. Checkpoint schema decode
-p95 was 0.022 ms and its p99 was 0.051 ms. These values only measure the local
+The model p95 was 0.082 ms and its p99 was 0.092 ms. Checkpoint schema decode
+p95 was 0.023 ms and its p99 was 0.050 ms. These values only measure the local
 model and schema boundary. They do not measure a host move.
 
 The focused verification passed 43 tests, the Desktop production build, the
