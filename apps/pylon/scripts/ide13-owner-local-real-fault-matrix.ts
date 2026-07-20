@@ -277,4 +277,5 @@ if (import.meta.main) {
       acceptanceReady: receipt.summary.acceptanceReady,
     })}\n`,
   );
+  process.exit(0);
 }
