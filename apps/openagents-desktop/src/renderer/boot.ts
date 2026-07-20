@@ -176,6 +176,7 @@ const DesktopBridgeSchema = Schema.Struct({
 type DesktopBridge = Readonly<{
   host: string
   platform: string
+  smokeProviderTurns?: boolean
   launchContext?: unknown
   runtimeRequest?: (value: unknown) => Promise<DesktopRuntimeGatewayResponse>
   runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
@@ -755,11 +756,15 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const bridge = readBridge()
     const launchContext = decodeDesktopLaunchContext(bridge?.launchContext)
     const documentLaunch = launchContext.documentOpenPathRef !== null
-    const state = yield* SubscriptionRef.make(initialDesktopShellState(
+    const initialState = initialDesktopShellState(
       host,
       formatShellTimestamp(new Date()),
       documentLaunch ? "files" : "chat",
-    ))
+    )
+    const state = yield* SubscriptionRef.make({
+      ...initialState,
+      ...(bridge?.smokeProviderTurns === true ? { openAgentsStandby: false } : {}),
+    })
     const initialAgentCode = yield* Effect.promise(() =>
       loadAgentCodeRendererSnapshot(ideAgentCodeRendererHost).catch(() =>
         loadAgentCodeRendererSnapshot(unavailableIdeAgentCodeRendererHost)))

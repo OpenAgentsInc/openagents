@@ -445,6 +445,7 @@ const subscribeWorkspaceChanges = (
 contextBridge.exposeInMainWorld("openagentsDesktop", {
   host: "electron",
   platform: process.platform,
+  smokeProviderTurns: process.argv.includes("--openagents-smoke-provider-turns"),
   launchContext: desktopLaunchContextFromArgv(process.argv),
   toggleFullScreen: async (): Promise<boolean> => {
     const result = await ipcRenderer.invoke(DesktopWindowFullscreenChannel)

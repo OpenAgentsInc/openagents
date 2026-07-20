@@ -5600,6 +5600,12 @@ const createWindow = (): BrowserWindow => {
       try { return statSync(candidate).isFile() } catch { return false }
     }))
     .find(target => target !== null) ?? null
+  const rendererArguments = [
+    ...(launchDocumentTarget === null
+      ? []
+      : [desktopDocumentOpenRendererArgument(launchDocumentTarget.pathRef)]),
+    ...(reactSmokeMode ? ["--openagents-smoke-provider-turns"] : []),
+  ]
   const window = new BrowserWindow({
     x: launchWorkArea.x,
     y: launchWorkArea.y,
@@ -5636,9 +5642,7 @@ const createWindow = (): BrowserWindow => {
       spellcheck: false,
       backgroundThrottling: false,
       preload: path.join(here, "preload.cjs"),
-      ...(launchDocumentTarget === null ? {} : {
-        additionalArguments: [desktopDocumentOpenRendererArgument(launchDocumentTarget.pathRef)],
-      }),
+      ...(rendererArguments.length === 0 ? {} : { additionalArguments: rendererArguments }),
     },
   })
   primaryDesktopWindow = window
@@ -6124,7 +6128,12 @@ const smokeReactNavigationHistory = `(async () => {
   if (!(newSession instanceof HTMLButtonElement)) return { ok: false, reason: "new-session destination missing", first, second }
   newSession.click()
   const isBlankNewSession = current =>
-    (current.title === 'New chat' || current.title === 'New session') && current.transcript.length === 0
+    // The current React workbench intentionally omits the conversation
+    // heading until a blank session has its first committed message. Keep the
+    // history proof on the durable condition: the destination has no
+    // transcript. A visible default heading remains accepted for older
+    // renderer fixtures.
+    (current.title === null || current.title === 'New chat' || current.title === 'New session') && current.transcript.length === 0
   while (Date.now() < deadline && !isBlankNewSession(snapshot())) await wait(50)
   const third = snapshot()
   const forwardAtEnd = [...document.querySelectorAll('button')]
@@ -6152,7 +6161,8 @@ const smokeReactReloadNewSession = `(async () => {
   await wait(2000)
   const timeline = [...document.querySelectorAll('.oa-react-timeline-item')]
   const heading = document.querySelector('.oa-react-conversation-heading h1')?.textContent?.trim() ?? null
-  const newSessionPreserved = (heading === "New chat" || heading === "New session") && timeline.length === 0
+  const newSessionPreserved =
+    (heading === null || heading === "New chat" || heading === "New session") && timeline.length === 0
   return {
     ok: newSessionPreserved && collapsedAtMount && searchClosedAtMount && composerFocusedAtMount &&
       document.documentElement.dataset.desktopRenderer === "react" &&
@@ -7198,7 +7208,7 @@ const smokeFableLocalStreaming = `(async () => {
   // GATED in smoke (released after this step), so at this point the chip is
   // deterministically disabled with its "verifying" reason — the state the
   // popover contract asserts against. The codex-first-class enabled state is
-  // asserted by the later codex-local-streamed step.
+  // asserted by the later OpenAgents standby step.
   if (codex.disabled !== true) return { ok: false, reason: "Codex option enabled before the smoke availability gate released" }
   const composer = document.querySelector('[data-en-key="shell-composer"]')
   // No STANDING caption: visible composer text must not carry the reason.
@@ -7518,13 +7528,9 @@ const smokeAskUserQuestionAnswer = `(async () => {
   }
 })()`
 
-// Codex local streamed turn (EP250 codex-first-class): from the same fresh
-// chat, selecting the Codex chip and sending must stream a REAL fixture
-// `codex exec --json` event sequence through the actual parser, IPC bridge,
-// thread persistence, and renderer path — rendering IDENTICALLY to fable
-// turns: reasoning line, Bash tool card, markdown assistant body (a real
-// <strong>), the "Codex · gpt-5.6-sol (requested)" spawn-config-truth
-// caption, no ASSISTANT label, and the composer re-enabled.
+// OpenAgents authority (owner directive 2026-07-19): a normal submitted turn
+// commits the user message, adds the fixed standby acknowledgement, and does
+// not start the retained opt-out provider path.
 const smokeCodexLocalStreaming = `(async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const engine = document.querySelector('[data-en-key="shell-codex-engine"]')
@@ -7532,7 +7538,7 @@ const smokeCodexLocalStreaming = `(async () => {
   const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
-  input.value = "Stream a codex-local proof"
+  input.value = "Prove the OpenAgents standby acknowledgement"
   input.dispatchEvent(new Event("input", { bubbles: true }))
   const readyDeadline = Date.now() + 10000
   while (Date.now() < readyDeadline) {
@@ -7547,7 +7553,7 @@ const smokeCodexLocalStreaming = `(async () => {
   )
   const bodiesBefore = assistantBodies().length
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-  const finalText = "Codex local fixture proof."
+  const finalText = "Stand by."
   const lastAssistantText = () => {
     const bodies = assistantBodies()
     const last = bodies[bodies.length - 1]
@@ -7564,34 +7570,17 @@ const smokeCodexLocalStreaming = `(async () => {
     await wait(25)
   }
   if (lastAssistantText() !== finalText) {
-    return { ok: false, reason: "codex assistant text never finalized", text: lastAssistantText() }
+    return { ok: false, reason: "OpenAgents standby text did not appear", text: lastAssistantText() }
   }
-  const transcriptText = document.querySelector('[data-en-key="shell-transcript"]')?.textContent ?? ""
-  // Spawn-config-truth caption: the trace line names the lane AND the
-  // "(requested)" labeling — never an unlabeled model echo.
-  const modelCaption = transcriptText.includes("Codex · gpt-5.6-sol (requested)")
-  const reasoningLine = transcriptText.includes("Reasoning · planned the fixture reply")
-  const toolRows = Array.from(
-    document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="tool"]'),
-  )
-  const bashCard = toolRows.some((row) => (row.textContent ?? "").includes("echo fixture"))
-  const bodies = assistantBodies()
-  const last = bodies[bodies.length - 1]
-  const strong = last === undefined ? null : last.querySelector("strong")
-  const markdownRendered = strong !== null && strong.textContent === "fixture" &&
-    !lastAssistantText().includes("**")
   const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
   const lastRow = rows[rows.length - 1]
   const noAssistantLabel = lastRow !== undefined &&
     lastRow.querySelector('[data-en-role="sender"]') === null
   return {
-    ok: modelCaption && reasoningLine && bashCard && markdownRendered && noAssistantLabel &&
-      input.disabled === false,
-    modelCaption,
-    reasoningLine,
-    bashCard,
-    markdownRendered,
+    ok: noAssistantLabel && input.disabled === false,
+    standby: lastAssistantText() === finalText,
     noAssistantLabel,
+    composerEnabled: input.disabled === false,
   }
 })()`
 
@@ -8331,23 +8320,16 @@ const runSmoke = (window: BrowserWindow): void => {
         // The broad compatibility smoke retains the bounded codex-exec JSONL
         // fixture; the React smoke uses the protocol-speaking app-server peer
         // installed above. Production builds never set this env var.
-        await step("codex-local-streamed-turn-FIXTURE", smokeCodexLocalStreaming)
-        await captureShot(window, "11-codex-local-streamed")
-        // EP250 (#8712): click a message -> right-side metadata inspector
-        // (model/lane/account/tokens), close through the same typed intent,
-        // then re-open once for the pixel receipt.
-        // Owner details-flash fix: typing in the composer must not change the
-        // per-message details affordance's visibility (run before the inspector
-        // step consumes the affordance by clicking it).
+        await step("openagents-standby-turn-FIXTURE", smokeCodexLocalStreaming)
+        await captureShot(window, "11-openagents-standby")
+        // The standby acknowledgement has no provider execution metadata.
+        // Owner details-flash fix: typing in the composer must not change its
+        // per-message details affordance's visibility.
         // A synthetic pointerleave does not update Chromium's CSS :hover
         // state. Move Electron's real pointer into the inert top-left chrome so
         // the oracle genuinely begins from the documented un-hovered state.
         window.webContents.sendInputEvent({ type: "mouseMove", x: 1, y: 1 })
         await step("details-affordance-stable-on-composer-input", smokeDetailsAffordanceStableOnInput)
-        await step("message-metadata-inspector", smokeMessageInspector)
-        await step("message-metadata-inspector-reopen", smokeReopenMessageInspector)
-        await captureShot(window, "08-message-inspector")
-        await step("message-metadata-inspector-close", smokeCloseMessageInspector)
         // Git/GitHub review panel (EP250 E2–E5): route to the review workspace
         // through the canonical command host, then assert the typed Git panel
         // rendered real read-only status of the app's own repo (no commit/push).
