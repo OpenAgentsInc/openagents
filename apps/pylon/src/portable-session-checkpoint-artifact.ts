@@ -6,6 +6,8 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { canonicalJson } from "@openagentsinc/khala-sync"
 import {
   PortableCheckpointCustodyObjectManifestSchema,
+  PortableCheckpointCustodyEncryptedV2Schema,
+  PortableCheckpointCustodyEncryptedV3Schema,
   PylonPortableCheckpointBundleSchema,
 } from "@openagentsinc/portable-session-contract"
 import { Schema } from "effect"
@@ -42,6 +44,8 @@ const AES_GCM_TAG_BYTES = 16
 const DEFAULT_RETENTION_SECONDS = 7 * 24 * 60 * 60
 const DEFAULT_MAX_CUSTODY_FILES = 4_096
 const DEFAULT_ORPHAN_TEMP_MAX_AGE_MS = 60 * 60 * 1_000
+const decodeEncryptedV2 = Schema.decodeUnknownSync(PortableCheckpointCustodyEncryptedV2Schema)
+const decodeEncryptedV3 = Schema.decodeUnknownSync(PortableCheckpointCustodyEncryptedV3Schema)
 
 type CustodyLifecycleStep =
   | "delete_intent_durable"
@@ -61,12 +65,36 @@ export type PylonPortableCheckpointCustodyKeyProvider = Readonly<{
   loadKey: (keyRef: string) => Promise<Uint8Array> | Uint8Array
 }>
 
+export type PylonPortableCheckpointKmsEnvelopeAuthority = Readonly<{
+  wrapDek: (input: Readonly<{
+    keyRef: string
+    objectRef: string
+    policy: "openagents_managed"
+    additionalAuthenticatedData: Uint8Array
+    dek: Uint8Array
+  }>) => Promise<Uint8Array>
+  unwrapDek: (input: Readonly<{
+    keyRef: string
+    objectRef: string
+    policy: "openagents_managed"
+    additionalAuthenticatedData: Uint8Array
+    wrappedDek: Uint8Array
+  }>) => Promise<Uint8Array>
+}>
+
 export type PylonPortableCheckpointCustodyConfig =
   | Readonly<{
     custodyDirectory: string
-    policy: "owner_managed" | "openagents_managed"
+    policy: "owner_managed"
     keyRef: string
     keyProvider: PylonPortableCheckpointCustodyKeyProvider
+    maxArtifactBytes?: number
+  }> & CustodyLifecycleOptions
+  | Readonly<{
+    custodyDirectory: string
+    policy: "openagents_managed"
+    keyRef: string
+    kmsAuthority: PylonPortableCheckpointKmsEnvelopeAuthority
     maxArtifactBytes?: number
   }> & CustodyLifecycleOptions
   | Readonly<{
@@ -566,14 +594,23 @@ export type PylonPortableCheckpointCustodyImportInput = Readonly<{
 }>
 
 export type PylonPortableCheckpointRewrapInput = PylonPortableCheckpointLifecycleBinding &
-  Readonly<{
+  (Readonly<{
     keyRef: string
     keyProvider: PylonPortableCheckpointCustodyKeyProvider
-  }>
+    kmsAuthority?: never
+  }> | Readonly<{
+    keyRef: string
+    kmsAuthority: PylonPortableCheckpointKmsEnvelopeAuthority
+    keyProvider?: never
+  }>)
 
 const encryptedHeader = (objectRef: string, config: EncryptedCustodyConfig) => ({
-  schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v2" as const,
-  algorithm: "aes-256-gcm" as const,
+  schema: config.policy === "openagents_managed"
+    ? "openagents.portable_checkpoint_artifact_custody_encrypted.v3" as const
+    : "openagents.portable_checkpoint_artifact_custody_encrypted.v2" as const,
+  algorithm: config.policy === "openagents_managed"
+    ? "aes-256-gcm+google-kms-wrapped-dek" as const
+    : "aes-256-gcm" as const,
   objectRef,
   policy: config.policy,
   keyRef: config.keyRef,
@@ -632,7 +669,11 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
         !Number.isSafeInteger(maxCustodyFiles) || maxCustodyFiles <= 0 || maxCustodyFiles > DEFAULT_MAX_CUSTODY_FILES ||
         !Number.isSafeInteger(orphanTempMaxAgeMs) || orphanTempMaxAgeMs < 0 ||
         (custody !== undefined && custody.policy !== "owner_device_not_required" &&
-          (!SAFE_REF.test(custody.keyRef) || typeof custody.keyProvider.loadKey !== "function"))) {
+          (!SAFE_REF.test(custody.keyRef) ||
+            (custody.policy === "owner_managed" && typeof custody.keyProvider.loadKey !== "function") ||
+            (custody.policy === "openagents_managed" &&
+              (typeof custody.kmsAuthority?.wrapDek !== "function" ||
+                typeof custody.kmsAuthority?.unwrapDek !== "function"))))) {
       throw new PylonPortableCheckpointArtifactError("invalid_binding", "checkpoint artifact custody configuration is invalid")
     }
     this.custody = custody
@@ -808,7 +849,7 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     return Math.ceil(this.maxArtifactBytes * 4 / 3) + MAX_CUSTODY_METADATA_BYTES
   }
 
-  private async loadKey(config: EncryptedCustodyConfig): Promise<Uint8Array> {
+  private async loadKey(config: Extract<EncryptedCustodyConfig, { policy: "owner_managed" }>): Promise<Uint8Array> {
     let provided: Uint8Array
     try {
       provided = await config.keyProvider.loadKey(config.keyRef)
@@ -902,9 +943,13 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     let key: Uint8Array | undefined
     let plaintext: Uint8Array | undefined
     try {
-      const envelope = JSON.parse(new TextDecoder().decode(envelopeBytes)) as Record<string, unknown>
-      if (envelope.schema !== "openagents.portable_checkpoint_artifact_custody_encrypted.v2" ||
-          envelope.algorithm !== "aes-256-gcm" || envelope.objectRef !== paths.objectRef) {
+      const unknownEnvelope = JSON.parse(new TextDecoder().decode(envelopeBytes)) as unknown
+      const envelope = config.policy === "openagents_managed"
+        ? decodeEncryptedV3(unknownEnvelope, { onExcessProperty: "error" })
+        : decodeEncryptedV2(unknownEnvelope, { onExcessProperty: "error" })
+      const expected = encryptedHeader(paths.objectRef, config)
+      if (envelope.schema !== expected.schema || envelope.algorithm !== expected.algorithm ||
+          envelope.objectRef !== paths.objectRef) {
         throw new PylonPortableCheckpointArtifactError("invalid_binding", "encrypted checkpoint custody envelope binding is invalid")
       }
       if (envelope.policy !== config.policy) {
@@ -920,14 +965,46 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
       const nonce = Uint8Array.from(Buffer.from(envelope.nonceBase64, "base64"))
       const authTag = Uint8Array.from(Buffer.from(envelope.authTagBase64, "base64"))
       const ciphertext = Uint8Array.from(Buffer.from(envelope.ciphertextBase64, "base64"))
+      let wrappedDek: Uint8Array | undefined
       try {
         if (nonce.byteLength !== AES_GCM_NONCE_BYTES || authTag.byteLength !== AES_GCM_TAG_BYTES ||
             ciphertext.byteLength === 0 || ciphertext.byteLength > this.maxPayloadBytes()) {
           throw new PylonPortableCheckpointArtifactError("decrypt_failed", "encrypted checkpoint custody fields are invalid")
         }
-        key = await this.loadKey(config)
         const aad = new TextEncoder().encode(canonicalJson(encryptedHeader(paths.objectRef, config)))
         try {
+          if (config.policy === "openagents_managed") {
+            if (
+              envelope.schema !==
+                "openagents.portable_checkpoint_artifact_custody_encrypted.v3"
+            ) {
+              throw new PylonPortableCheckpointArtifactError("decrypt_failed", "wrapped checkpoint DEK is invalid")
+            }
+            wrappedDek = Uint8Array.from(Buffer.from(envelope.wrappedKeyBase64, "base64"))
+            if (wrappedDek.byteLength === 0) {
+              throw new PylonPortableCheckpointArtifactError("decrypt_failed", "wrapped checkpoint DEK is invalid")
+            }
+            const unwrapped = await config.kmsAuthority.unwrapDek({
+              keyRef: config.keyRef,
+              objectRef: paths.objectRef,
+              policy: "openagents_managed",
+              additionalAuthenticatedData: aad,
+              wrappedDek,
+            })
+            try {
+              key = Uint8Array.from(unwrapped)
+            } finally {
+              unwrapped.fill(0)
+            }
+            if (key.byteLength !== AES_256_KEY_BYTES) {
+              throw new PylonPortableCheckpointArtifactError("key_unavailable", "unwrapped checkpoint DEK is invalid")
+            }
+          } else {
+            if ("wrappedKeyBase64" in envelope) {
+              throw new PylonPortableCheckpointArtifactError("invalid_binding", "owner-managed v2 envelope contains a wrapped DEK")
+            }
+            key = await this.loadKey(config)
+          }
           const decipher = createDecipheriv("aes-256-gcm", key, nonce, { authTagLength: AES_GCM_TAG_BYTES })
           decipher.setAAD(aad)
           decipher.setAuthTag(authTag)
@@ -943,6 +1020,7 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
         nonce.fill(0)
         authTag.fill(0)
         ciphertext.fill(0)
+        wrappedDek?.fill(0)
       }
       return this.decodePayload(checkpointRef, plaintext)
     } catch (error) {
@@ -998,12 +1076,15 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     config: EncryptedCustodyConfig,
     payloadBytes: Uint8Array,
   ): Promise<void> {
-    const key = await this.loadKey(config)
+    const key = config.policy === "openagents_managed"
+      ? Uint8Array.from(randomBytes(AES_256_KEY_BYTES))
+      : await this.loadKey(config)
     const nonce = Uint8Array.from(randomBytes(AES_GCM_NONCE_BYTES))
     const aad = new TextEncoder().encode(canonicalJson(encryptedHeader(paths.objectRef, config)))
     let ciphertext: Buffer | undefined
     let authTag: Buffer | undefined
     let envelopeBytes: Uint8Array | undefined
+    let wrappedDek: Uint8Array | undefined
     try {
       const cipher = createCipheriv("aes-256-gcm", key, nonce, {
         authTagLength: AES_GCM_TAG_BYTES,
@@ -1011,9 +1092,29 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
       cipher.setAAD(aad)
       ciphertext = Buffer.concat([cipher.update(payloadBytes), cipher.final()])
       authTag = cipher.getAuthTag()
+      if (config.policy === "openagents_managed") {
+        const wrapped = await config.kmsAuthority.wrapDek({
+          keyRef: config.keyRef,
+          objectRef: paths.objectRef,
+          policy: "openagents_managed",
+          additionalAuthenticatedData: aad,
+          dek: key,
+        })
+        try {
+          wrappedDek = Uint8Array.from(wrapped)
+        } finally {
+          wrapped.fill(0)
+        }
+        if (wrappedDek.byteLength === 0) {
+          throw new PylonPortableCheckpointArtifactError("key_unavailable", "KMS returned an empty wrapped DEK")
+        }
+      }
       envelopeBytes = new TextEncoder().encode(
         canonicalJson({
           ...encryptedHeader(paths.objectRef, config),
+          ...(wrappedDek === undefined
+            ? {}
+            : { wrappedKeyBase64: Buffer.from(wrappedDek).toString("base64") }),
           nonceBase64: Buffer.from(nonce).toString("base64"),
           authTagBase64: authTag.toString("base64"),
           ciphertextBase64: ciphertext.toString("base64"),
@@ -1026,6 +1127,7 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
       aad.fill(0)
       ciphertext?.fill(0)
       authTag?.fill(0)
+      wrappedDek?.fill(0)
       envelopeBytes?.fill(0)
     }
   }
@@ -1665,18 +1767,19 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     if (
       !SAFE_REF.test(input.keyRef) ||
       input.keyRef === custody.keyRef ||
-      typeof input.keyProvider.loadKey !== "function"
+      (custody.policy === "owner_managed" && typeof input.keyProvider?.loadKey !== "function") ||
+      (custody.policy === "openagents_managed" &&
+        (typeof input.kmsAuthority?.wrapDek !== "function" ||
+          typeof input.kmsAuthority.unwrapDek !== "function"))
     ) {
       throw new PylonPortableCheckpointArtifactError(
         "invalid_binding",
         "checkpoint custody rewrap key binding is invalid",
       )
     }
-    const nextConfig: EncryptedCustodyConfig = {
-      ...custody,
-      keyRef: input.keyRef,
-      keyProvider: input.keyProvider,
-    }
+    const nextConfig: EncryptedCustodyConfig = custody.policy === "owner_managed"
+      ? { ...custody, keyRef: input.keyRef, keyProvider: input.keyProvider! }
+      : { ...custody, keyRef: input.keyRef, kmsAuthority: input.kmsAuthority! }
     const operationHash = createHash("sha256")
       .update(input.operationRef)
       .digest("hex")

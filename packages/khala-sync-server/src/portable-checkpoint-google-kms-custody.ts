@@ -1,8 +1,9 @@
-import { createHash } from "node:crypto";
+import { createDecipheriv, createHash } from "node:crypto";
 
 import { canonicalJson } from "@openagentsinc/khala-sync";
 import {
   PortableCheckpointCustodyObjectManifestSchema,
+  PortableCheckpointCustodyEncryptedV3Schema,
   PortableRef,
   type PortableCheckpointCustodyObjectManifest,
 } from "@openagentsinc/portable-session-contract";
@@ -18,25 +19,15 @@ const MAX_CONFIGURED_BYTES = 256 * 1024 * 1024;
 const AES_GCM_NONCE_BYTES = 12;
 const AES_GCM_TAG_BYTES = 16;
 
-const EncryptedEnvelopeSchema = Schema.Struct({
-  schema: Schema.Literal("openagents.portable_checkpoint_artifact_custody_encrypted.v2"),
-  algorithm: Schema.Literal("aes-256-gcm"),
-  objectRef: PortableRef,
-  policy: Schema.Literals(["owner_managed", "openagents_managed"]),
-  keyRef: PortableRef,
-  nonceBase64: Schema.String.check(Schema.isPattern(BASE64)),
-  authTagBase64: Schema.String.check(Schema.isPattern(BASE64)),
-  ciphertextBase64: Schema.String.check(Schema.isPattern(BASE64)),
-});
-
 const decodeManifest = Schema.decodeUnknownSync(PortableCheckpointCustodyObjectManifestSchema);
-const decodeEnvelope = Schema.decodeUnknownSync(EncryptedEnvelopeSchema);
+const decodeEnvelope = Schema.decodeUnknownSync(PortableCheckpointCustodyEncryptedV3Schema);
 const envelopeFields = new Set([
   "schema",
   "algorithm",
   "objectRef",
   "policy",
   "keyRef",
+  "wrappedKeyBase64",
   "nonceBase64",
   "authTagBase64",
   "ciphertextBase64",
@@ -88,21 +79,17 @@ export class PortableCheckpointGoogleKmsCustodyError extends Schema.TaggedErrorC
 ) {}
 
 /**
- * A trusted Google Cloud authority performs AES-GCM authentication and
- * decryption. It resolves `keyRef` inside its KMS boundary. It must not return
- * or log key material.
+ * A trusted Google Cloud authority unwraps only the per-object DEK. Payload
+ * authentication and decryption remain local to this adapter.
  */
 export type GoogleKmsDecryptAuthority = Readonly<{
-  decryptAes256Gcm: (
+  unwrapDek: (
     input: Readonly<{
-      manifest: PortableCheckpointCustodyObjectManifest;
       manifestDigest: `sha256:${string}`;
       objectRef: string;
       policy: "openagents_managed";
       keyRef: string;
-      nonce: Uint8Array;
-      authTag: Uint8Array;
-      ciphertext: Uint8Array;
+      wrappedDek: Uint8Array;
       additionalAuthenticatedData: Uint8Array;
     }>,
   ) => Promise<Uint8Array>;
@@ -127,7 +114,7 @@ export const createPortableCheckpointGoogleKmsCustodyDecryptor = (
   const maxCiphertextBytes = config.maxCiphertextBytes ?? DEFAULT_MAX_CIPHERTEXT_BYTES;
   const maxPlaintextBytes = config.maxPlaintextBytes ?? DEFAULT_MAX_PLAINTEXT_BYTES;
   if (
-    typeof config.authority?.decryptAes256Gcm !== "function" ||
+    typeof config.authority?.unwrapDek !== "function" ||
     !validBound(maxEncryptedObjectBytes) ||
     !validBound(maxCiphertextBytes) ||
     !validBound(maxPlaintextBytes)
@@ -186,7 +173,7 @@ export const createPortableCheckpointGoogleKmsCustodyDecryptor = (
             throw failure("invalid_envelope", manifest.objectRef);
           }
 
-          let envelope: typeof EncryptedEnvelopeSchema.Type;
+          let envelope: typeof PortableCheckpointCustodyEncryptedV3Schema.Type;
           try {
             envelope = decodeEnvelope(envelopeUnknown);
           } catch {
@@ -206,18 +193,22 @@ export const createPortableCheckpointGoogleKmsCustodyDecryptor = (
           let ciphertext: Uint8Array | undefined;
           let aad: Uint8Array | undefined;
           let authorityPlaintext: Uint8Array | undefined;
+          let wrappedDek: Uint8Array | undefined;
+          let dek: Uint8Array | undefined;
           try {
             try {
               nonce = decodeCanonicalBase64(envelope.nonceBase64);
               authTag = decodeCanonicalBase64(envelope.authTagBase64);
               ciphertext = decodeCanonicalBase64(envelope.ciphertextBase64);
+              wrappedDek = decodeCanonicalBase64(envelope.wrappedKeyBase64);
             } catch {
               throw failure("invalid_envelope", manifest.objectRef);
             }
             if (
               nonce.byteLength !== AES_GCM_NONCE_BYTES ||
               authTag.byteLength !== AES_GCM_TAG_BYTES ||
-              ciphertext.byteLength === 0
+              ciphertext.byteLength === 0 ||
+              wrappedDek.byteLength === 0
             ) {
               throw failure("invalid_envelope", manifest.objectRef);
             }
@@ -242,17 +233,28 @@ export const createPortableCheckpointGoogleKmsCustodyDecryptor = (
               }),
             );
             try {
-              authorityPlaintext = await config.authority.decryptAes256Gcm({
-                manifest,
+              const unwrapped = await config.authority.unwrapDek({
                 manifestDigest: sha256(canonicalJson(manifest)),
                 objectRef: manifest.objectRef,
                 policy: "openagents_managed",
                 keyRef: manifest.keyRef,
-                nonce,
-                authTag,
-                ciphertext,
+                wrappedDek,
                 additionalAuthenticatedData: aad,
               });
+              try {
+                dek = Uint8Array.from(unwrapped);
+              } finally {
+                unwrapped.fill(0);
+              }
+              if (dek.byteLength !== 32) throw new Error("invalid_dek");
+              const decipher = createDecipheriv("aes-256-gcm", dek, nonce, {
+                authTagLength: AES_GCM_TAG_BYTES,
+              });
+              decipher.setAAD(aad);
+              decipher.setAuthTag(authTag);
+              const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+              authorityPlaintext = Uint8Array.from(decrypted);
+              decrypted.fill(0);
             } catch {
               throw failure("authority_unavailable", manifest.objectRef);
             }
@@ -270,6 +272,8 @@ export const createPortableCheckpointGoogleKmsCustodyDecryptor = (
             nonce?.fill(0);
             authTag?.fill(0);
             ciphertext?.fill(0);
+            wrappedDek?.fill(0);
+            dek?.fill(0);
             aad?.fill(0);
             authorityPlaintext?.fill(0);
           }

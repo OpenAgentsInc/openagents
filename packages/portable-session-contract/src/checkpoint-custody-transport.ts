@@ -15,6 +15,35 @@ const PortableTimestamp = Schema.String.check(
 );
 const Sha256Digest = Schema.String.check(Schema.isPattern(/^sha256:[0-9a-f]{64}$/));
 const PositiveInt = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0));
+const CanonicalBase64 = Schema.String.check(
+  Schema.isPattern(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+);
+
+export const PortableCheckpointCustodyEncryptedV2Schema = Schema.Struct({
+  schema: Schema.Literal("openagents.portable_checkpoint_artifact_custody_encrypted.v2"),
+  algorithm: Schema.Literal("aes-256-gcm"),
+  objectRef: PortableRef,
+  policy: Schema.Literal("owner_managed"),
+  keyRef: PortableRef,
+  nonceBase64: CanonicalBase64,
+  authTagBase64: CanonicalBase64,
+  ciphertextBase64: CanonicalBase64,
+});
+
+export const PortableCheckpointCustodyEncryptedV3Schema = Schema.Struct({
+  schema: Schema.Literal("openagents.portable_checkpoint_artifact_custody_encrypted.v3"),
+  algorithm: Schema.Literal("aes-256-gcm+google-kms-wrapped-dek"),
+  objectRef: PortableRef,
+  policy: Schema.Literal("openagents_managed"),
+  keyRef: PortableRef,
+  wrappedKeyBase64: CanonicalBase64.check(Schema.isMaxLength(128 * 1024)),
+  nonceBase64: CanonicalBase64,
+  authTagBase64: CanonicalBase64,
+  ciphertextBase64: CanonicalBase64,
+});
+
+export type PortableCheckpointCustodyEncryptedV3 =
+  typeof PortableCheckpointCustodyEncryptedV3Schema.Type;
 
 /**
  * Public-safe metadata for one opaque encrypted checkpoint custody object.

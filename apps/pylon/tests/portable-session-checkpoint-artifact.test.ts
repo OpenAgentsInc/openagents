@@ -308,6 +308,68 @@ test("retains managed checkpoint custody across process restart", async () => {
   expect((await stat(await onlyFile(custody))).mode & 0o777).toBe(0o600)
 })
 
+test("uses a v3 wrapped DEK for OpenAgents-managed custody and clears KMS buffers", async () => {
+  const { bundle, root } = await fixture()
+  const producer = new PylonPortableCheckpointArtifactStore()
+  producer.register({ bundle, workingDirectory: root })
+  const request = {
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.managed",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.managed.2",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  }
+  const artifact = await producer.resolve(request)
+  const custody = join(root, ".kms-envelope-custody")
+  let wrapDekInput: Uint8Array | undefined
+  let rawDekBase64: string | undefined
+  let wrapAadInput: Uint8Array | undefined
+  let unwrapAadInput: Uint8Array | undefined
+  let unwrapWrappedInput: Uint8Array | undefined
+  let unwrappedOutput: Uint8Array | undefined
+  const kmsAuthority = {
+    wrapDek: async (input: { dek: Uint8Array; additionalAuthenticatedData: Uint8Array }) => {
+      wrapDekInput = input.dek
+      rawDekBase64 = Buffer.from(input.dek).toString("base64")
+      wrapAadInput = input.additionalAuthenticatedData
+      return Uint8Array.from(input.dek, (byte) => byte ^ 0x5a)
+    },
+    unwrapDek: async (input: { wrappedDek: Uint8Array; additionalAuthenticatedData: Uint8Array }) => {
+      unwrapAadInput = input.additionalAuthenticatedData
+      unwrapWrappedInput = input.wrappedDek
+      unwrappedOutput = Uint8Array.from(input.wrappedDek, (byte) => byte ^ 0x5a)
+      return unwrappedOutput
+    },
+  }
+  const config = {
+    custodyDirectory: custody,
+    policy: "openagents_managed" as const,
+    keyRef: "gcp-kms.key.checkpoint.v3",
+    kmsAuthority,
+  }
+  await new PylonPortableCheckpointArtifactStore(config).registerArtifact({ bundle, artifact })
+  const envelope = JSON.parse(await readFile(await onlyFile(custody), "utf8")) as Record<string, unknown>
+  expect(envelope).toMatchObject({
+    schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v3",
+    algorithm: "aes-256-gcm+google-kms-wrapped-dek",
+    policy: "openagents_managed",
+    keyRef: config.keyRef,
+  })
+  expect(envelope.wrappedKeyBase64).toEqual(expect.any(String))
+  expect(envelope.wrappedKeyBase64).not.toBe(rawDekBase64)
+  expect(JSON.stringify(envelope)).not.toContain(Buffer.from(custodyKey).toString("base64"))
+  expect(wrapDekInput?.every((byte) => byte === 0)).toBe(true)
+  expect(wrapAadInput?.every((byte) => byte === 0)).toBe(true)
+
+  const replay = await new PylonPortableCheckpointArtifactStore(config).resolve(request)
+  expect(replay.digest).toBe(artifact.digest)
+  expect(unwrapAadInput?.every((byte) => byte === 0)).toBe(true)
+  expect(unwrapWrappedInput?.every((byte) => byte === 0)).toBe(true)
+  expect(unwrappedOutput?.every((byte) => byte === 0)).toBe(true)
+})
+
 test("encrypts checkpoint bytes and metadata with a fresh nonce", async () => {
   const { bundle, root } = await fixture()
   const producer = new PylonPortableCheckpointArtifactStore()
@@ -756,12 +818,12 @@ test("rejects custody policy and key downgrades before persistence", async () =>
   const source = await artifactFixture()
   const exported = await custodyTransport(source, join(source.root, ".transport-policy-source"))
   const otherKey = Uint8Array.from({ length: 32 }, (_, index) => 99 - index)
-  await expect(
-    new PylonPortableCheckpointArtifactStore({
+  expect(
+    () => new PylonPortableCheckpointArtifactStore({
       ...custodyConfig(join(source.root, ".transport-policy-target")),
       policy: "openagents_managed" as const,
-    }).importCustodyObject(exported),
-  ).rejects.toMatchObject({ code: "transport_invalid" })
+    } as never),
+  ).toThrowError(expect.objectContaining({ code: "invalid_binding" }))
   await expect(
     new PylonPortableCheckpointArtifactStore(
       custodyConfig(

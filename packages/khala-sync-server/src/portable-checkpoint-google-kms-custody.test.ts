@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash } from "node:crypto";
+import { createCipheriv, createHash } from "node:crypto";
 
 import { canonicalJson } from "@openagentsinc/khala-sync";
 import {
@@ -23,8 +23,14 @@ const sha256 = (value: string | Uint8Array): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
 const header = (policy: "owner_managed" | "openagents_managed" = "openagents_managed") => ({
-  schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v2" as const,
-  algorithm: "aes-256-gcm" as const,
+  schema:
+    policy === "openagents_managed"
+      ? ("openagents.portable_checkpoint_artifact_custody_encrypted.v3" as const)
+      : ("openagents.portable_checkpoint_artifact_custody_encrypted.v2" as const),
+  algorithm:
+    policy === "openagents_managed"
+      ? ("aes-256-gcm+google-kms-wrapped-dek" as const)
+      : ("aes-256-gcm" as const),
   objectRef,
   policy,
   keyRef,
@@ -37,6 +43,9 @@ const encrypt = (policy: "owner_managed" | "openagents_managed" = "openagents_ma
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const envelope = {
     ...header(policy),
+    ...(policy === "openagents_managed"
+      ? { wrappedKeyBase64: Buffer.from(key).toString("base64") }
+      : {}),
     nonceBase64: Buffer.from(nonce).toString("base64"),
     authTagBase64: cipher.getAuthTag().toString("base64"),
     ciphertextBase64: ciphertext.toString("base64"),
@@ -100,23 +109,18 @@ const manifestFor = (
 });
 
 const localKmsAuthority = () => {
-  let authorityPlaintext: Uint8Array | undefined;
-  let authorityInput: Parameters<GoogleKmsDecryptAuthority["decryptAes256Gcm"]>[0] | undefined;
-  const decryptAes256Gcm = vi.fn<GoogleKmsDecryptAuthority["decryptAes256Gcm"]>(async (input) => {
+  let authorityInput: Parameters<GoogleKmsDecryptAuthority["unwrapDek"]>[0] | undefined;
+  let authorityDek: Uint8Array | undefined;
+  const unwrapDek = vi.fn<GoogleKmsDecryptAuthority["unwrapDek"]>(async (input) => {
     authorityInput = input;
-    const decipher = createDecipheriv("aes-256-gcm", key, input.nonce, { authTagLength: 16 });
-    decipher.setAAD(input.additionalAuthenticatedData);
-    decipher.setAuthTag(input.authTag);
-    const decrypted = Buffer.concat([decipher.update(input.ciphertext), decipher.final()]);
-    authorityPlaintext = Uint8Array.from(decrypted);
-    decrypted.fill(0);
-    return authorityPlaintext;
+    authorityDek = Uint8Array.from(key);
+    return authorityDek;
   });
   return {
-    authority: { decryptAes256Gcm } satisfies GoogleKmsDecryptAuthority,
-    decryptAes256Gcm,
+    authority: { unwrapDek } satisfies GoogleKmsDecryptAuthority,
+    unwrapDek,
     input: () => authorityInput,
-    plaintext: () => authorityPlaintext,
+    dek: () => authorityDek,
   };
 };
 
@@ -135,37 +139,34 @@ describe("OpenAgents-managed Google KMS checkpoint custody", () => {
     });
 
     expect(result).toEqual(plaintext);
-    expect(kms.decryptAes256Gcm).toHaveBeenCalledOnce();
+    expect(kms.unwrapDek).toHaveBeenCalledOnce();
     expect(kms.input()).toMatchObject({
-      manifest,
       manifestDigest: sha256(canonicalJson(manifest)),
       objectRef,
       policy: "openagents_managed",
       keyRef,
     });
     expect(kms.input()?.additionalAuthenticatedData.every((byte) => byte === 0)).toBe(true);
-    expect(kms.input()?.nonce).toEqual(new Uint8Array(12));
-    expect(kms.input()?.authTag).toEqual(new Uint8Array(16));
-    expect(kms.input()?.ciphertext.every((byte) => byte === 0)).toBe(true);
-    expect(kms.plaintext()?.every((byte) => byte === 0)).toBe(true);
+    expect(kms.input()?.wrappedDek.every((byte) => byte === 0)).toBe(true);
+    expect(kms.dek()?.every((byte) => byte === 0)).toBe(true);
     expect(result.every((byte) => byte === 0)).toBe(false);
   });
 
   test("refuses owner-managed custody before it calls OpenAgents authority", async () => {
     const encrypted = encrypt("owner_managed");
     const manifest = manifestFor(encrypted, "owner_managed");
-    const authority = { decryptAes256Gcm: vi.fn() } as unknown as GoogleKmsDecryptAuthority;
+    const authority = { unwrapDek: vi.fn() } as unknown as GoogleKmsDecryptAuthority;
     const decryptor = createPortableCheckpointGoogleKmsCustodyDecryptor({ authority });
 
     await expect(
       decryptor.decrypt({ manifest, encryptedObjectBytes: encrypted.encryptedObjectBytes }),
     ).rejects.toMatchObject({ code: "owner_managed_refused" });
-    expect(authority.decryptAes256Gcm).not.toHaveBeenCalled();
+    expect(authority.unwrapDek).not.toHaveBeenCalled();
   });
 
   test("rejects object, key, policy, and ciphertext binding mismatches before authority", async () => {
     const encrypted = encrypt();
-    const authority = { decryptAes256Gcm: vi.fn() } as unknown as GoogleKmsDecryptAuthority;
+    const authority = { unwrapDek: vi.fn() } as unknown as GoogleKmsDecryptAuthority;
     const decryptor = createPortableCheckpointGoogleKmsCustodyDecryptor({ authority });
     const cases: PortableCheckpointCustodyObjectManifest[] = [
       { ...manifestFor(encrypted), objectDigest: `sha256:${"0".repeat(64)}` },
@@ -180,7 +181,7 @@ describe("OpenAgents-managed Google KMS checkpoint custody", () => {
         ).rejects.toBeInstanceOf(PortableCheckpointGoogleKmsCustodyError),
       ),
     );
-    expect(authority.decryptAes256Gcm).not.toHaveBeenCalled();
+    expect(authority.unwrapDek).not.toHaveBeenCalled();
   });
 
   test("fails closed when authentication fails and enforces plaintext bounds", async () => {
@@ -216,5 +217,26 @@ describe("OpenAgents-managed Google KMS checkpoint custody", () => {
         encryptedObjectBytes: encrypted.encryptedObjectBytes,
       }),
     ).rejects.toMatchObject({ code: "plaintext_oversized" });
+
+    const ciphertextBounded = createPortableCheckpointGoogleKmsCustodyDecryptor({
+      authority: localKmsAuthority().authority,
+      maxCiphertextBytes: encrypted.ciphertext.byteLength - 1,
+    });
+    await expect(
+      ciphertextBounded.decrypt({
+        manifest: manifestFor(encrypted),
+        encryptedObjectBytes: encrypted.encryptedObjectBytes,
+      }),
+    ).rejects.toMatchObject({ code: "ciphertext_oversized" });
+
+    const wrongKey = createPortableCheckpointGoogleKmsCustodyDecryptor({
+      authority: { unwrapDek: async () => new Uint8Array(32).fill(0xff) },
+    });
+    await expect(
+      wrongKey.decrypt({
+        manifest: manifestFor(encrypted),
+        encryptedObjectBytes: encrypted.encryptedObjectBytes,
+      }),
+    ).rejects.toMatchObject({ code: "authority_unavailable" });
   });
 });

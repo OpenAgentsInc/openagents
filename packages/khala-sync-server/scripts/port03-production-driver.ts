@@ -10,6 +10,7 @@ import type { PylonPortableControlSessionLifecycle } from "../../../apps/pylon/s
 import {
   PylonPortableCheckpointArtifactStore,
   type PylonPortableCheckpointCustodyKeyProvider,
+  type PylonPortableCheckpointKmsEnvelopeAuthority,
 } from "../../../apps/pylon/src/portable-session-checkpoint-artifact.js"
 import type { PylonPortableDestinationAuthority } from "../../../apps/pylon/src/portable-session-destination.js"
 import { createPylonOwnerLocalDestinationLifecycle } from "../../../apps/pylon/src/portable-session-destination.js"
@@ -467,9 +468,14 @@ export const createPortableSessionProductionDriver = async (input: Readonly<{
     provisioner: Omit<OaCodexControlPortableProvisionerConfig, "checkpointArtifacts">
   }>
   checkpointCustody: Readonly<{
-    policy: "owner_managed" | "openagents_managed"
+    policy: "owner_managed"
     keyRef: string
     keyProvider: PylonPortableCheckpointCustodyKeyProvider
+    maxArtifactBytes?: number
+  }> | Readonly<{
+    policy: "openagents_managed"
+    keyRef: string
+    kmsAuthority: PylonPortableCheckpointKmsEnvelopeAuthority
     maxArtifactBytes?: number
   }>
 }>): Promise<PortableSessionProductionDriver> => {

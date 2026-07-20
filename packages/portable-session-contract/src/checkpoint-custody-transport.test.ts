@@ -3,10 +3,15 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   PORTABLE_CHECKPOINT_CUSTODY_OBJECT_MANIFEST_SCHEMA_VERSION,
+  PortableCheckpointCustodyEncryptedV2Schema,
+  PortableCheckpointCustodyEncryptedV3Schema,
   PortableCheckpointCustodyObjectManifestSchema,
 } from "./checkpoint-custody-transport.js";
 
 const digest = `sha256:${"a".repeat(64)}` as const;
+const decodeManifest = Schema.decodeUnknownSync(PortableCheckpointCustodyObjectManifestSchema);
+const decodeV2 = Schema.decodeUnknownSync(PortableCheckpointCustodyEncryptedV2Schema);
+const decodeV3 = Schema.decodeUnknownSync(PortableCheckpointCustodyEncryptedV3Schema);
 const manifest = {
   schema: PORTABLE_CHECKPOINT_CUSTODY_OBJECT_MANIFEST_SCHEMA_VERSION,
   objectRef: "checkpoint-custody.object.1",
@@ -59,21 +64,47 @@ const manifest = {
 
 describe("PortableCheckpointCustodyObjectManifestSchema", () => {
   it("decodes a complete refs-only custody transport manifest", () => {
-    expect(
-      Schema.decodeUnknownSync(PortableCheckpointCustodyObjectManifestSchema)(manifest),
-    ).toEqual(manifest);
+    expect(decodeManifest(manifest)).toEqual(manifest);
   });
 
   it("rejects secret material and an incomplete digest binding", () => {
     expect(() =>
-      Schema.decodeUnknownSync(PortableCheckpointCustodyObjectManifestSchema)({
+      decodeManifest({
         ...manifest,
         secretMaterial: "included",
       }),
     ).toThrow();
     const { ciphertextDigest: _ciphertextDigest, ...incomplete } = manifest;
+    expect(() => decodeManifest(incomplete)).toThrow();
+  });
+});
+
+describe("checkpoint custody envelope versions", () => {
+  const encryptedFields = {
+    objectRef: "checkpoint-custody.object.1",
+    keyRef: "key.portable.1",
+    nonceBase64: Buffer.alloc(12).toString("base64"),
+    authTagBase64: Buffer.alloc(16).toString("base64"),
+    ciphertextBase64: Buffer.from("ciphertext").toString("base64"),
+  };
+
+  it("keeps v2 owner-managed and requires wrapped-DEK v3 for OpenAgents-managed", () => {
     expect(() =>
-      Schema.decodeUnknownSync(PortableCheckpointCustodyObjectManifestSchema)(incomplete),
+      decodeV2({
+        ...encryptedFields,
+        schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v2",
+        algorithm: "aes-256-gcm",
+        policy: "openagents_managed",
+      }),
     ).toThrow();
+    expect(
+      decodeV3({
+        ...encryptedFields,
+        schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v3",
+        algorithm: "aes-256-gcm+google-kms-wrapped-dek",
+        policy: "openagents_managed",
+        wrappedKeyBase64: Buffer.from("wrapped-dek").toString("base64"),
+      }),
+    ).toBeDefined();
   });
 });
