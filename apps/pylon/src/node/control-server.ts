@@ -134,6 +134,7 @@ export type ControlCommand =
       request: VirtualMergeQueuePrFastForwardRequest
     }
   | { type: "portable_phase.context.admit"; admission: PylonPortablePhaseContextAdmissionInput }
+  | { type: "portable_capability.worker.status" }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -190,6 +191,7 @@ export interface ControlCommandActions {
   portablePhaseContextAdmit?: (
     input: PylonPortablePhaseContextAdmissionInput,
   ) => Promise<unknown>
+  portableCapabilityWorkerStatus?: () => Promise<unknown>
 }
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
@@ -442,6 +444,11 @@ export const startControlServer = (
             throw new Error("portable phase context admission unavailable on this node")
           }
           return options.actions.portablePhaseContextAdmit(command.admission)
+        case "portable_capability.worker.status":
+          if (!options.actions.portableCapabilityWorkerStatus) {
+            throw new Error("portable capability worker unavailable on this node")
+          }
+          return options.actions.portableCapabilityWorkerStatus()
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }

@@ -87,6 +87,10 @@ import {
 } from './portable-session-operation-ledger.js'
 import { registerPylonOwnerLocalExecutionTarget } from './portable-owner-local-target-startup.js'
 import {
+  openPylonOwnerLocalCapabilityWorkerStartup,
+  type PylonOwnerLocalCapabilityWorkerStartup,
+} from './portable-owner-local-capability-worker-startup.js'
+import {
   isPylonOwnerLocalCapabilityIngressEnabled,
   makePylonOwnerLocalCapabilityIngress,
 } from './portable-owner-local-capability-ingress.js'
@@ -949,6 +953,7 @@ const runHeadlessNode = Effect.gen(function* () {
   const presenceClientOptions = currentPresenceClientOptions()
   let portablePhaseContextStore: PylonPortablePhaseContextAdmissionStore | null = null
   let portableTargetBindingClient: PylonPortableTargetBindingClient | null = null
+  let portableCapabilityWorkerStartup: PylonOwnerLocalCapabilityWorkerStartup | null = null
   let portableWorkerScope: Readonly<{ targetRef: string; sessionRef: string }> | null = null
   if (Runtime.env.PYLON_PORTABLE_PHASE_WORKER === '1') {
     const targetRef = Runtime.env.PYLON_PORTABLE_PHASE_TARGET_REF
@@ -994,6 +999,7 @@ const runHeadlessNode = Effect.gen(function* () {
     if (portableControlBinding === undefined) {
       return yield* Effect.fail(new Error('portable phase worker has no exact local target binding'))
     }
+    const exactPortableControlBinding = portableControlBinding
     const workerInstanceRef = portablePhaseWorkerInstanceRef(localState.identity.pylonRef, targetRef)
     portableTargetBindingClient = makePylonPortableTargetBindingClient({
       agentToken,
@@ -1002,7 +1008,7 @@ const runHeadlessNode = Effect.gen(function* () {
       sessionRef,
       targetRef,
       workerInstanceRef,
-      binding: portableControlBinding,
+      binding: exactPortableControlBinding,
     })
     const targetBindingClient = portableTargetBindingClient
     yield* Effect.addFinalizer(() => Effect.promise(() => targetBindingClient.revoke().catch(() => undefined)))
@@ -1039,6 +1045,24 @@ const runHeadlessNode = Effect.gen(function* () {
       catch: () => new Error('failed to configure portable phase worker'),
     })
     yield* Effect.addFinalizer(() => Effect.promise(() => portablePhaseWorker.close()))
+    portableCapabilityWorkerStartup = yield* Effect.try({
+      try: () => openPylonOwnerLocalCapabilityWorkerStartup({
+        agentToken,
+        baseUrl: presenceBaseUrl,
+        pylonHome: bootstrapSummary.paths.home,
+        pylonRef: localState.identity.pylonRef,
+        targetRef,
+        sessionRef,
+        workerInstanceRef,
+        binding: exactPortableControlBinding,
+        ledger: portableLedger,
+        authorityStore: portablePhaseAdmission.store,
+        targetBindingIsCurrent: () => portableTargetBindingClient?.isCurrent() === true,
+      }),
+      catch: () => new Error('failed to configure portable capability worker'),
+    })
+    const capabilityWorkerStartup = portableCapabilityWorkerStartup
+    yield* Effect.addFinalizer(() => Effect.promise(() => capabilityWorkerStartup.close()))
     yield* logMessage(
       runtime,
       'info',
@@ -1130,6 +1154,7 @@ const runHeadlessNode = Effect.gen(function* () {
   appleFmSupervisedLaunch =
     Runtime.env.PYLON_APPLE_FM_SUPERVISE === '1' ? createAppleFmSupervisedLaunch({ discover: { env: Runtime.env } }) : null
   const activePortablePhaseContextStore = portablePhaseContextStore
+  const activePortableCapabilityWorkerStartup = portableCapabilityWorkerStartup
   const ownerLocalCapabilityHandler = yield* Effect.try({
     try: () => {
       if (!isPylonOwnerLocalCapabilityIngressEnabled(Runtime.env)) return undefined
@@ -1215,6 +1240,12 @@ const runHeadlessNode = Effect.gen(function* () {
             portablePhaseContextAdmit: async (input: Parameters<PylonPortablePhaseContextAdmissionStore['admit']>[0]) =>
               activePortablePhaseContextStore.admit(input),
           }),
+      ...(activePortableCapabilityWorkerStartup === null
+        ? {}
+        : {
+            portableCapabilityWorkerStatus: async () =>
+              activePortableCapabilityWorkerStartup.status(),
+          }),
     },
     port: controlPort,
     hostname: Runtime.env.PYLON_CONTROL_HOST ?? '127.0.0.1',
@@ -1247,11 +1278,13 @@ const runHeadlessNode = Effect.gen(function* () {
       register: async () => {
         const registration = await registerPylon(bootstrapSummary, currentPresenceClientOptions())
         await portableTargetBindingClient?.admitOrRenew()
+        await portableCapabilityWorkerStartup?.reconcile()
         return registration
       },
       heartbeat: async () => {
         const heartbeat = await sendHeartbeat(bootstrapSummary, currentPresenceClientOptions())
         await portableTargetBindingClient?.admitOrRenew()
+        await portableCapabilityWorkerStartup?.reconcile()
         return heartbeat
       },
     },

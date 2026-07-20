@@ -685,6 +685,65 @@ describe("control protocol", () => {
     )
   })
 
+  test("projects the mounted portable capability worker without enabling ingress", async () => {
+    const token = "test-token-0123456789abcdef"
+    const projection = {
+      state: "running",
+      pylonRef: "pylon.ide13.capability-worker",
+      targetRef: "target.ide13.capability-worker",
+      sessionRef: "session.ide13.capability-worker",
+      workerInstanceRef: "worker.ide13.capability-worker",
+      active: true,
+      failureRef: null,
+      material: "excluded",
+    }
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token,
+            actions: {
+              ...stubActions([]),
+              portableCapabilityWorkerStatus: async () => projection,
+            },
+            hostname: "127.0.0.1",
+            port: 0,
+          })
+          const status = yield* Effect.promise(() =>
+            sendControlCommand(server.url, token, {
+              type: "portable_capability.worker.status",
+            }),
+          )
+          expect(status).toEqual(projection)
+
+          const ingress = yield* Effect.promise(() =>
+            fetch(`${server.url}/v1/portable-owner-local-capabilities/install`, {
+              headers: { authorization: `Bearer ${token}` },
+            }),
+          )
+          expect(ingress.status).toBe(404)
+
+          const bare = yield* startControlServer(runtime, {
+            token,
+            actions: stubActions([]),
+            hostname: "127.0.0.1",
+            port: 0,
+          })
+          const unavailable = yield* Effect.promise(() =>
+            sendControlCommand(bare.url, token, {
+              type: "portable_capability.worker.status",
+            }).then(
+              () => null,
+              (error: unknown) => error instanceof Error ? error.message : String(error),
+            ),
+          )
+          expect(unavailable).toMatch(/unavailable/)
+        }),
+      ),
+    )
+  })
+
   test("#5207 wallet.spark_send / wallet.spark_backup_status route to the warm-session actions (and report unavailability)", async () => {
     const calls: Array<Record<string, unknown>> = []
     await Effect.runPromise(
