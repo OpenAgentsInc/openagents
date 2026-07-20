@@ -37429,6 +37429,18 @@
       }
     },
     {
+      "path": "docs/research/2026-07-20-memoharness-openagents-integration-analysis.md",
+      "sha256": "1218e1c425a21c75941a1c39b14a97212bb1543c118b13fbe1a6e0d23c17c0d3",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/research/agentcl/README.md",
       "sha256": "f78a738e44377eb5e415cd75d3fe8a88536f6a46d1ddb7cbf114978455f0f161",
       "reason": "Final review of a converted document",
