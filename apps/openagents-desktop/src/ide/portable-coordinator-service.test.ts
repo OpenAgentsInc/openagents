@@ -5,6 +5,7 @@ import {
   IdePortableCheckpointManifestSchema,
   IdePortableCoordinatorCommandSchema,
   IdePortableCoordinatorSnapshotSchema,
+  IdePortablePlacementFailure,
 } from "@openagentsinc/portable-session-contract"
 
 import {
@@ -209,4 +210,53 @@ describe("IDE portable coordinator", () => {
     expect(calls).toContain("resume_source")
     expect(calls).not.toContain("revoke")
   })
+
+  for (const [fault, expectedPhase, rollback] of [
+    ["quiesceAndCheckpoint", "attached", false],
+    ["validateCheckpoint:source", "attached", false],
+    ["stageDestination", "attached", false],
+    ["validateCheckpoint:destination", "attached", true],
+    ["revokeSource", "attached", true],
+    ["attachDestination", "degraded", false],
+    ["restartFreshHelpers", "degraded", false],
+  ] as const) {
+    test(`fails closed for ${fault} without creating a second writer`, async () => {
+      const calls: string[] = []
+      const base = adapter(calls)
+      const failure = () => Effect.fail(new IdePortableCoordinatorError({
+        failure: new IdePortablePlacementFailure({
+          operation: fault,
+          detailRef: `fault.${fault.replace(":", ".")}`,
+          retryable: true,
+        }),
+      }))
+      const injected: IdePortableCoordinatorAdapter = {
+        ...base,
+        ...(fault === "quiesceAndCheckpoint" ? { quiesceAndCheckpoint: failure } : {}),
+        ...(fault === "validateCheckpoint:source" || fault === "validateCheckpoint:destination" ? {
+          validateCheckpoint: (value, placement, stage) => stage === fault.split(":")[1]
+            ? failure()
+            : base.validateCheckpoint(value, placement, stage),
+        } : {}),
+        ...(fault === "stageDestination" ? { stageDestination: failure } : {}),
+        ...(fault === "revokeSource" ? { revokeSource: failure } : {}),
+        ...(fault === "attachDestination" ? { attachDestination: failure } : {}),
+        ...(fault === "restartFreshHelpers" ? { restartFreshHelpers: failure } : {}),
+      }
+      const layer = makeIdePortableCoordinatorLayer(seed, injected, {
+        now: () => "2029-01-01T00:00:00.000Z",
+      })
+      const result = await run(Effect.gen(function* () {
+        const service = yield* IdePortableCoordinator
+        const exit = yield* service.execute(move).pipe(Effect.exit)
+        const snapshot = yield* service.snapshot()
+        return { exit, snapshot }
+      }), layer)
+      expect(result.exit._tag).toBe("Failure")
+      expect(result.snapshot.phase).toBe(expectedPhase)
+      expect(result.snapshot.activeGeneration).toBe(1)
+      expect(calls.includes("rollback")).toBe(rollback)
+      expect(Number(result.snapshot.activeAttachmentRef === seed.activeAttachmentRef)).toBe(1)
+    })
+  }
 })
