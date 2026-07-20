@@ -2,7 +2,7 @@ import { openLegacySqliteDatabase } from "@openagentsinc/sqlite-runtime";
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -256,9 +256,7 @@ export const runIde13OwnerLocalExecutorCrashRecovery = async (
       interruptionEvidenceRef,
     });
     const replayed = await resumer.resume(requestFor(destination));
-    const controlResidue = await readFile(
-      join(destination, ".openagents", "portable-work", "missing"),
-    ).then(
+    const controlResidue = await access(join(destination, ".openagents")).then(
       () => 1,
       () => 0,
     );
