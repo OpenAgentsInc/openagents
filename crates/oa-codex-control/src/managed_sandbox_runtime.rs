@@ -20,6 +20,7 @@ const SCHEMA_VERSION: &str = "openagents.managed_sandbox_runtime.v1";
 const MAX_OPERATION_RECORDS: usize = 128;
 const MAX_CAPABILITY_REFS: usize = 32;
 const MAX_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
+const GCE_METADATA_SERVER_CIDR: &str = "169.254.169.254/32";
 const LIVE_ACTIVE_SANDBOX_FILTER: &str =
     "labels.openagents-managed=managed-sandbox AND status!=TERMINATED";
 
@@ -233,6 +234,8 @@ struct ProviderOwnership {
     #[serde(default)]
     broker_egress_firewall_name: String,
     #[serde(default)]
+    metadata_egress_firewall_name: String,
+    #[serde(default)]
     control_ingress_firewall_name: String,
     #[serde(default)]
     ingress_deny_firewall_name: String,
@@ -252,6 +255,8 @@ struct ReadinessObservation {
     no_guest_service_account: bool,
     egress_default_deny: bool,
     broker_egress_only: bool,
+    #[serde(default)]
+    metadata_egress_only: bool,
     control_ingress_only: bool,
     metadata_restricted: bool,
 }
@@ -265,6 +270,7 @@ impl ReadinessObservation {
             && self.no_guest_service_account
             && self.egress_default_deny
             && self.broker_egress_only
+            && self.metadata_egress_only
             && self.control_ingress_only
             && self.metadata_restricted
     }
@@ -1010,6 +1016,36 @@ struct LiveGceManagedSandboxProvider {
     config: LiveGceManagedSandboxConfig,
 }
 
+fn egress_tcp_allow_is_scoped(
+    firewall: &Value,
+    destination_cidr: &str,
+    port: &str,
+    target_tag: &str,
+) -> bool {
+    firewall.get("direction").and_then(Value::as_str) == Some("EGRESS")
+        && firewall.get("priority").and_then(Value::as_u64) == Some(900)
+        && firewall.get("disabled").and_then(Value::as_bool) != Some(true)
+        && firewall
+            .get("destinationRanges")
+            .and_then(Value::as_array)
+            .is_some_and(|ranges| ranges.len() == 1 && ranges[0].as_str() == Some(destination_cidr))
+        && firewall
+            .get("allowed")
+            .and_then(Value::as_array)
+            .is_some_and(|rules| {
+                rules.len() == 1
+                    && rules[0].get("IPProtocol").and_then(Value::as_str) == Some("tcp")
+                    && rules[0]
+                        .get("ports")
+                        .and_then(Value::as_array)
+                        .is_some_and(|ports| ports.len() == 1 && ports[0].as_str() == Some(port))
+            })
+        && firewall
+            .get("targetTags")
+            .and_then(Value::as_array)
+            .is_some_and(|tags| tags.len() == 1 && tags[0].as_str() == Some(target_tag))
+}
+
 fn control_ingress_is_scoped(
     ingress_allow: &Value,
     ingress_deny: &Value,
@@ -1162,7 +1198,7 @@ impl LiveGceManagedSandboxProvider {
             ownership.resource_ref, ownership.disk_ref, generation
         ));
         format!(
-            "#!/bin/sh\nset -eu\numask 077\nprintf 'OA_MSB_READY:{marker}:{generation}\\n' >/dev/ttyS0\nprintf 'OA_MSB_PROBE:{marker}:{generation}\\n' >/dev/ttyS0\n"
+            "#!/bin/sh\nset -eu\numask 077\n/usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT\nprintf 'OA_MSB_READY:{marker}:{generation}\\n' >/dev/ttyS0\nprintf 'OA_MSB_PROBE:{marker}:{generation}\\n' >/dev/ttyS0\n"
         )
     }
 
@@ -1172,6 +1208,27 @@ impl LiveGceManagedSandboxProvider {
             ownership.resource_ref, ownership.disk_ref, generation
         ));
         format!("OA_MSB_{kind}:{marker}:{generation}")
+    }
+
+    fn serial_contains_marker(
+        &self,
+        ownership: &ProviderOwnership,
+        generation: u64,
+        marker_kind: &str,
+    ) -> Result<bool, RuntimeError> {
+        let serial = self.gcloud(&[
+            "compute".to_string(),
+            "instances".to_string(),
+            "get-serial-port-output".to_string(),
+            ownership.resource_name.clone(),
+            "--project".to_string(),
+            self.config.project_id.clone(),
+            "--zone".to_string(),
+            self.config.zone.clone(),
+            "--port".to_string(),
+            "1".to_string(),
+        ])?;
+        Ok(serial.contains(&Self::marker(ownership, generation, marker_kind)))
     }
 
     fn observe(
@@ -1214,10 +1271,16 @@ impl LiveGceManagedSandboxProvider {
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        let metadata_restricted = metadata.iter().any(|item| {
-            item.get("key").and_then(Value::as_str) == Some("block-project-ssh-keys")
-                && item.get("value").and_then(Value::as_str) == Some("TRUE")
-        });
+        let metadata_value = |key: &str| {
+            metadata.iter().find_map(|item| {
+                (item.get("key").and_then(Value::as_str) == Some(key))
+                    .then(|| item.get("value").and_then(Value::as_str))
+                    .flatten()
+            })
+        };
+        let metadata_restricted = metadata_value("block-project-ssh-keys") == Some("TRUE")
+            && metadata_value("enable-oslogin") == Some("FALSE")
+            && metadata_value("disable-legacy-endpoints") == Some("TRUE");
 
         let observe_firewall = |name: &str| -> Result<Value, RuntimeError> {
             let output = self.gcloud(&[
@@ -1260,34 +1323,19 @@ impl LiveGceManagedSandboxProvider {
                         .any(|rule| rule.get("IPProtocol").and_then(Value::as_str) == Some("all"))
                 });
         let broker_egress = observe_firewall(&ownership.broker_egress_firewall_name)?;
-        let broker_egress_only = broker_egress.get("direction").and_then(Value::as_str)
-            == Some("EGRESS")
-            && broker_egress.get("priority").and_then(Value::as_u64) == Some(900)
-            && broker_egress.get("disabled").and_then(Value::as_bool) != Some(true)
-            && broker_egress
-                .get("destinationRanges")
-                .and_then(Value::as_array)
-                .is_some_and(|ranges| {
-                    ranges.len() == 1
-                        && ranges[0].as_str()
-                            == Some(format!("{}/32", self.config.control_internal_ip).as_str())
-                })
-            && broker_egress
-                .get("allowed")
-                .and_then(Value::as_array)
-                .is_some_and(|rules| {
-                    rules.iter().any(|rule| {
-                        rule.get("IPProtocol").and_then(Value::as_str) == Some("tcp")
-                            && rule
-                                .get("ports")
-                                .and_then(Value::as_array)
-                                .is_some_and(|ports| {
-                                    ports.len() == 1
-                                        && ports[0].as_str()
-                                            == Some(self.config.broker_port.to_string().as_str())
-                                })
-                    })
-                });
+        let broker_egress_only = egress_tcp_allow_is_scoped(
+            &broker_egress,
+            &format!("{}/32", self.config.control_internal_ip),
+            &self.config.broker_port.to_string(),
+            &ownership.resource_name,
+        );
+        let metadata_egress = observe_firewall(&ownership.metadata_egress_firewall_name)?;
+        let metadata_egress_only = egress_tcp_allow_is_scoped(
+            &metadata_egress,
+            GCE_METADATA_SERVER_CIDR,
+            "80",
+            &ownership.resource_name,
+        );
         let ingress_allow = observe_firewall(&ownership.control_ingress_firewall_name)?;
         let ingress_deny = observe_firewall(&ownership.ingress_deny_firewall_name)?;
         let control_ingress_only = control_ingress_is_scoped(
@@ -1297,30 +1345,19 @@ impl LiveGceManagedSandboxProvider {
             &ownership.resource_name,
         );
 
-        let serial = self.gcloud(&[
-            "compute".to_string(),
-            "instances".to_string(),
-            "get-serial-port-output".to_string(),
-            ownership.resource_name.clone(),
-            "--project".to_string(),
-            self.config.project_id.clone(),
-            "--zone".to_string(),
-            self.config.zone.clone(),
-            "--port".to_string(),
-            "1".to_string(),
-        ])?;
         Ok(ReadinessObservation {
             provider_running,
-            guest_marker_observed: serial.contains(&Self::marker(
+            guest_marker_observed: self.serial_contains_marker(
                 ownership,
                 generation,
                 marker_kind,
-            )),
+            )?,
             image_admitted: true,
             no_external_ip,
             no_guest_service_account,
             egress_default_deny,
             broker_egress_only,
+            metadata_egress_only,
             control_ingress_only,
             metadata_restricted,
         })
@@ -1331,17 +1368,19 @@ impl LiveGceManagedSandboxProvider {
         ownership: &ProviderOwnership,
         generation: u64,
     ) -> Result<ReadinessObservation, RuntimeError> {
-        let mut last = ReadinessObservation::default();
-        for _ in 0..30 {
-            if let Ok(observation) = self.observe(ownership, generation, "READY") {
-                if observation.is_ready() {
-                    return Ok(observation);
-                }
-                last = observation;
+        // Poll only the serial marker while the guest boots. A full observation
+        // performs six provider reads and repeating it can exceed the bridge's
+        // bounded request timeout before a receipt is returned.
+        for _ in 0..45 {
+            if self
+                .serial_contains_marker(ownership, generation, "READY")
+                .unwrap_or(false)
+            {
+                return self.observe(ownership, generation, "READY");
             }
             thread::sleep(Duration::from_secs(2));
         }
-        Ok(last)
+        self.observe(ownership, generation, "READY")
     }
 
     fn count_named(
@@ -1469,6 +1508,7 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             resource_name: format!("oa-msb-{suffix}"),
             firewall_name: format!("oa-msb-egress-{suffix}"),
             broker_egress_firewall_name: format!("oa-msb-broker-{suffix}"),
+            metadata_egress_firewall_name: format!("oa-msb-metadata-{suffix}"),
             control_ingress_firewall_name: format!("oa-msb-ssh-{suffix}"),
             ingress_deny_firewall_name: format!("oa-msb-ingress-{suffix}"),
             disk_name: format!("oa-msb-{suffix}"),
@@ -1544,6 +1584,26 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             "compute".to_string(),
             "firewall-rules".to_string(),
             "create".to_string(),
+            ownership.metadata_egress_firewall_name.clone(),
+            "--project".to_string(),
+            self.config.project_id.clone(),
+            "--direction".to_string(),
+            "EGRESS".to_string(),
+            "--action".to_string(),
+            "ALLOW".to_string(),
+            "--rules".to_string(),
+            "tcp:80".to_string(),
+            "--priority".to_string(),
+            "900".to_string(),
+            "--destination-ranges".to_string(),
+            GCE_METADATA_SERVER_CIDR.to_string(),
+            "--target-tags".to_string(),
+            ownership.resource_name.clone(),
+        ])?;
+        self.gcloud(&[
+            "compute".to_string(),
+            "firewall-rules".to_string(),
+            "create".to_string(),
             ownership.firewall_name.clone(),
             "--project".to_string(),
             self.config.project_id.clone(),
@@ -1605,7 +1665,7 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             short_digest(&ownership.resource_ref)
         );
         let metadata = format!(
-            "block-project-ssh-keys=TRUE,enable-oslogin=FALSE,serial-port-enable=TRUE,startup-script={}",
+            "block-project-ssh-keys=TRUE,enable-oslogin=FALSE,disable-legacy-endpoints=TRUE,serial-port-enable=TRUE,startup-script={}",
             Self::startup_script(ownership, generation)
         );
         self.gcloud(&[
@@ -1709,6 +1769,11 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
         );
         self.delete_named(
             "firewall-rules",
+            &ownership.metadata_egress_firewall_name,
+            false,
+        );
+        self.delete_named(
+            "firewall-rules",
             &ownership.control_ingress_firewall_name,
             false,
         );
@@ -1727,6 +1792,7 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             observation.zero_firewall = [
                 &ownership.firewall_name,
                 &ownership.broker_egress_firewall_name,
+                &ownership.metadata_egress_firewall_name,
                 &ownership.control_ingress_firewall_name,
                 &ownership.ingress_deny_firewall_name,
             ]
@@ -1879,6 +1945,7 @@ mod tests {
                 no_guest_service_account: true,
                 egress_default_deny: true,
                 broker_egress_only: true,
+                metadata_egress_only: true,
                 control_ingress_only: true,
                 metadata_restricted: true,
             }
@@ -1908,6 +1975,10 @@ mod tests {
                 firewall_name: format!("private-fw-{}", short_digest(sandbox_ref)),
                 broker_egress_firewall_name: format!(
                     "private-broker-fw-{}",
+                    short_digest(sandbox_ref)
+                ),
+                metadata_egress_firewall_name: format!(
+                    "private-metadata-fw-{}",
                     short_digest(sandbox_ref)
                 ),
                 control_ingress_firewall_name: format!(
@@ -2043,6 +2114,49 @@ mod tests {
             "labels.openagents-managed=managed-sandbox AND status!=TERMINATED"
         );
         assert!(!LIVE_ACTIVE_SANDBOX_FILTER.contains("!=("));
+    }
+
+    #[test]
+    fn metadata_egress_requires_exact_link_local_v1_path() {
+        let metadata = json!({
+            "direction": "EGRESS",
+            "priority": 900,
+            "allowed": [{ "IPProtocol": "tcp", "ports": ["80"] }],
+            "destinationRanges": ["169.254.169.254/32"],
+            "targetTags": ["oa-msb-generation"],
+            "disabled": false
+        });
+        assert!(egress_tcp_allow_is_scoped(
+            &metadata,
+            GCE_METADATA_SERVER_CIDR,
+            "80",
+            "oa-msb-generation"
+        ));
+
+        let mut broad_destination = metadata.clone();
+        broad_destination["destinationRanges"] = json!(["169.254.0.0/16"]);
+        assert!(!egress_tcp_allow_is_scoped(
+            &broad_destination,
+            GCE_METADATA_SERVER_CIDR,
+            "80",
+            "oa-msb-generation"
+        ));
+
+        let mut extra_port = metadata;
+        extra_port["allowed"][0]["ports"] = json!(["80", "443"]);
+        assert!(!egress_tcp_allow_is_scoped(
+            &extra_port,
+            GCE_METADATA_SERVER_CIDR,
+            "80",
+            "oa-msb-generation"
+        ));
+
+        let ownership = TestProvider::new().plan("sandbox-ref://metadata-guard");
+        let startup = LiveGceManagedSandboxProvider::startup_script(&ownership, 7);
+        assert!(startup.contains(
+            "iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT"
+        ));
+        assert!(startup.find("iptables -C").unwrap() < startup.find("OA_MSB_READY").unwrap());
     }
 
     #[test]

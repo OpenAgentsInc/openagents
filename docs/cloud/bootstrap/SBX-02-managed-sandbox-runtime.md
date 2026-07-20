@@ -78,9 +78,11 @@ above is not admitted for SBX-09 placement.
 
 The operational profile uses
 `network-policy-ref://openagents/managed-sandbox/broker-only-v1`. Each
-sandbox generation owns four firewall rules:
+sandbox generation owns five firewall rules:
 
 - allow egress only to the private control broker on TCP 8790 at priority 900.
+- allow TCP 80 only to `169.254.169.254/32` for GCE metadata bootstrap at
+  priority 900.
 - deny all other egress at priority 1000.
 - allow ingress only from the profile-bound reserved control IP `/32` on TCP
   22 at priority 900. And
@@ -101,6 +103,16 @@ priority-900 rules admit only the managed-sandbox guest tag to TCP 8790, the
 dedicated Direct VPC Cloud Run bridge tag to TCP 8787, and IAP to TCP 8787.
 Priority-1000 rules deny every other source on those ports, including traffic
 otherwise admitted by a default-VPC internal rule.
+
+The metadata exception is a generation-owned bootstrap control, not ambient
+provider egress. The guest has no service account or OAuth scope, so metadata
+cannot mint a Google Cloud token. Legacy metadata endpoints, project SSH keys,
+and OS Login are disabled. Metadata v1 supplies only the reviewed startup
+marker and short-lived instance SSH-key path. The image generates unique SSH
+host keys on first boot. An image-baked OUTPUT guard denies metadata to the
+unprivileged `openagents` UID that runs SDK and I/O work. The startup marker
+refuses to emit until that guard is present. Readiness observes the exact
+metadata address, port, priority, target tag, marker, and deny-all rule.
 
 Staging and production use distinct control nodes, private addresses, network
 tags, firewall rules, Cloud Run bridge services, control-token secrets, broker
@@ -125,9 +137,9 @@ The live provider applies these controls before it reports `ready`:
 - Project SSH keys are blocked.
 - The historical readiness profile has no ingress rule and denies all IPv4
   egress.
-- The operational turn profile admits only the generation-owned control SSH
-  and provider-broker paths described above. It denies every other ingress and
-  egress path.
+- The operational turn profile admits only the generation-owned control SSH,
+  provider-broker, and link-local metadata bootstrap paths described above.
+  It denies every other ingress and egress path.
 - Secure Boot, vTPM, and integrity monitoring are on.
 - The boot disk is an auto-delete disk.
 - IP forwarding is off.
@@ -173,7 +185,7 @@ It does not select a different region, image, machine, or provider.
 
 Delete is valid only after `stopped`, `failed`, `recovery_required`, or an
 earlier `deleting` settlement.
-Cleanup deletes the VM and every generation-owned ingress and egress rule.
+Cleanup deletes the VM and all five generation-owned ingress and egress rules.
 It then queries GCE until all these counts are zero:
 
 - instance.
@@ -234,14 +246,18 @@ It checks that all returned objects contain refs only.
 It then runs an independent GCE residue query for the instance, firewall rule,
 and disk.
 
-The script has a cleanup path for every failure after create.
+The script has a cleanup path for every failure after create. If the bridge
+times out before returning a receipt, the harness attempts reconcile. If the
+journal is unavailable, it deletes only the exact deterministic VM, disk, and
+five firewall names. The run stays failed even when emergency cleanup works.
 An acceptance failure is not a reason to disable cleanup checks or use the
 legacy fake provider.
 
-The 2026-07-19 owner-gated component run passed the exact seven-operation
+The historical 2026-07-19 SBX-02 component run passed the exact seven-operation
 sequence with final phase `deleted`, observed cleanup, measured cost below the
 sandbox budget, and zero compute, firewall, disk, ingress, or grant residue.
-Its refs-only evidence is
+It used the earlier probe profile and is not SBX-09 operational evidence. Its
+refs-only evidence is
 [`docs/sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json`](../../sol/evidence/2026-07-19-sbx02-managed-sandbox-live.json).
 Cloud Build `857943a8-6b19-4804-ade9-04ea9a261f00` produced the exercised
 staging image. The image and staging control node were acceptance-only. The

@@ -146,10 +146,12 @@ default-off control adapter. Root confinement, symlink proof, secret scans,
 quotas, process-tree closure, deny-all egress, and content-addressed artifact
 receipts remain below the facade.
 
-SBX-09 adds the live provider path without adding ambient guest egress. A
-generation-owned firewall allows only the private control broker. Deny-all
-rules cover every other ingress and egress path. The guest runs the pinned
-Codex or Claude Agent SDK from the admitted immutable image. It presents a
+SBX-09 adds the live provider path without adding ambient guest egress. One
+generation-owned rule allows only the private control broker. Another allows
+TCP 80 only to GCE's link-local metadata address for reviewed startup and
+short-lived SSH-key delivery. The guest has no Google identity or OAuth scope.
+Deny-all rules cover every other ingress and egress path. The guest runs the
+pinned Codex or Claude Agent SDK from the admitted immutable image. It presents a
 short-lived signed capability to the private control relay, which forwards to
 an internal Worker route. The Worker rechecks native turn/capability authority
 and alone injects the OpenAI credential or Vertex access token. Provider

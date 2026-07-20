@@ -54,7 +54,7 @@ cat >"$setup_file" <<'SETUP'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git openssh-server python3 xz-utils
+apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git iptables openssh-server python3 xz-utils
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y --no-install-recommends nodejs
 id openagents >/dev/null 2>&1 || useradd --create-home --shell /bin/bash openagents
@@ -70,6 +70,36 @@ install -o root -g root -m 0755 /tmp/managed-sandbox-guest-turn.mjs \
 install -o root -g root -m 0755 /tmp/managed-sandbox-guest-io.py \
   /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
 rm -f /tmp/managed-sandbox-guest-turn.mjs /tmp/managed-sandbox-guest-io.py
+cat >/etc/systemd/system/openagents-managed-sandbox-hostkeys.service <<'UNIT'
+[Unit]
+Description=Generate per-guest OpenSSH host keys
+After=local-fs.target
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ssh-keygen -A
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable openagents-managed-sandbox-hostkeys.service
+cat >/etc/systemd/system/openagents-managed-sandbox-metadata-guard.service <<'UNIT'
+[Unit]
+Description=Block managed-sandbox workload access to GCE metadata
+After=network-online.target
+Before=google-startup-scripts.service ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT 2>/dev/null || /usr/sbin/iptables -I OUTPUT 1 -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl enable openagents-managed-sandbox-metadata-guard.service
 printf '%s\n' \
   'PasswordAuthentication no' \
   'PermitRootLogin no' \
