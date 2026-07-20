@@ -1,7 +1,7 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-packaged-owner-local-composite-trace.v1",
   "issue": "IDE-13",
-  "candidateCommitSha": "aa150008ab6d0e893c08d3cc9bcc8243f2d803f3",
+  "candidateCommitSha": "17c89b94850c1e136fe197393ec56c28c717ef94",
   "artifactTreeSha256": "521b9b1be1bb1e6195394fbd0e15865c3d1d5fd3a46af3807ea62aae01e7e88b",
   "events": [
     {
