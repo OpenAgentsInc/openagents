@@ -1,5 +1,14 @@
+import { Effect } from "effect";
+
 import { APPLE_FM_CANONICAL_HELPER_VERSION, APPLE_FM_DEFAULT_MODEL_ID } from "./identity.js";
 import type { AppleFmCompletionTurn, AppleFmProbe } from "./client.js";
+import type {
+  AmbientInferenceInput,
+  AmbientInferenceShape,
+  AmbientResourceGateShape,
+  AmbientResourceSnapshot,
+  AmbientThermalState,
+} from "./ambient-task.js";
 
 /**
  * `@openagentsinc/apple-fm-runtime/testing` — fixtures and a fake transport
@@ -126,3 +135,35 @@ export const makeFakeAppleFmBridge = (options: FakeAppleFmBridgeOptions = {}): t
   };
   return fakeFetch as typeof fetch;
 };
+
+// --- Ambient task (AFS-07) testing helpers -----------------------------------
+
+/**
+ * A deterministic fake `AmbientInference` for ambient-task tests. `respond`
+ * receives each bounded inference input and returns a completion turn, so a test
+ * can vary the output per kind, assert the bounded prompt, or simulate a slow or
+ * failed on-device turn. It never fails, matching the port contract.
+ */
+export const makeFakeAmbientInference = (
+  respond: (input: AmbientInferenceInput) => AppleFmCompletionTurn | Effect.Effect<AppleFmCompletionTurn>,
+): AmbientInferenceShape => ({
+  complete: (input) => {
+    const result = respond(input);
+    return Effect.isEffect(result) ? result : Effect.succeed(result);
+  },
+});
+
+/** A fake `AmbientInference` that always returns the same completed advisory text. */
+export const fixedAmbientInference = (text: string): AmbientInferenceShape =>
+  makeFakeAmbientInference(() => ({ outcome: "completed", text, usageTruth: "estimated" }));
+
+/** A fake `AmbientResourceGate` with a fixed snapshot (defaults to ready/nominal). */
+export const makeFakeAmbientResourceGate = (
+  snapshot: Partial<AmbientResourceSnapshot> = {},
+): AmbientResourceGateShape => ({
+  snapshot: Effect.succeed({
+    appleFmReady: snapshot.appleFmReady ?? true,
+    thermalState: snapshot.thermalState ?? ("nominal" satisfies AmbientThermalState),
+    underMemoryPressure: snapshot.underMemoryPressure ?? false,
+  }),
+});

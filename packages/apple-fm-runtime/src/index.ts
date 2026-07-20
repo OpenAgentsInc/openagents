@@ -26,3 +26,5 @@ export * from "./client.js";
 export * from "./supervisor.js";
 export * from "./recommendation.js";
 export * from "./provider.js";
+export * from "./ambient-task.js";
+export * from "./ambient-task-corpus.js";
