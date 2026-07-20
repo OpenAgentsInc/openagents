@@ -82,6 +82,11 @@ import {
   type ControlSessionProjection,
 } from './node/control-sessions.js'
 import { PylonPortableSessionOperationLedger } from './portable-session-operation-ledger.js'
+import {
+  openPylonPortablePhaseProductionWorker,
+  portablePhaseWorkerInstanceRef,
+  pylonPrivatePortablePhaseContexts,
+} from './portable-phase-production.js'
 import { resolveCloudControlConfig } from './cloud-control-client.js'
 import { makeCloudControlSessionExecutor } from './openagents-cloud-provider.js'
 import { collectPylonContextProjection } from './context-projection.js'
@@ -916,6 +921,35 @@ const runHeadlessNode = Effect.gen(function* () {
       env: Runtime.env,
     })
   const presenceClientOptions = currentPresenceClientOptions()
+  if (Runtime.env.PYLON_PORTABLE_PHASE_WORKER === '1') {
+    const targetRef = Runtime.env.PYLON_PORTABLE_PHASE_TARGET_REF
+    const agentToken = presenceClientOptions.agentToken
+    if (presenceBaseUrl === undefined || agentToken === undefined || targetRef === undefined) {
+      return yield* Effect.fail(
+        new Error('portable phase worker requires authenticated base URL and an exact target ref'),
+      )
+    }
+    const portablePhaseWorker = yield* Effect.tryPromise({
+      try: () => openPylonPortablePhaseProductionWorker({
+        agentToken,
+        baseUrl: presenceBaseUrl,
+        pylonRef: localState.identity.pylonRef,
+        targetRef,
+        workerInstanceRef: portablePhaseWorkerInstanceRef(localState.identity.pylonRef, targetRef),
+        stateDirectory: bootstrapSummary.paths.home,
+        resolver: pylonPrivatePortablePhaseContexts.resolver,
+        onFault: (errorRef) => logToUi(`[PortablePhase] Worker stopped: ${errorRef}`, 'info'),
+      }),
+      catch: () => new Error('failed to configure portable phase worker'),
+    })
+    yield* Effect.addFinalizer(() => Effect.promise(() => portablePhaseWorker.close()))
+    yield* logMessage(
+      runtime,
+      'info',
+      `[PortablePhase] Worker active for ${localState.identity.pylonRef} and ${targetRef}.`,
+      { transient: true },
+    )
+  }
   const fleetRunExecutionRemote = yield* Effect.try({
     try: () =>
       presenceClientOptions.agentToken === undefined || presenceBaseUrl === undefined
