@@ -1,7 +1,7 @@
 # IDE-13 portable capability foundation
 
-Date: 2026-07-20  
-Issue: `#9041`  
+Date: 2026-07-20
+Issue: `#9041`
 Status: implemented foundation, acceptance is not complete
 
 ## Scope
