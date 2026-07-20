@@ -80,6 +80,12 @@ const boundedLatest = <A>(
   .slice(0, limit)
   .map(item => item.value)
 
+const latest = <A>(
+  values: ReadonlyArray<Readonly<{ version: number; value: A }>>,
+): ReadonlyArray<A> => [...values]
+  .sort((left, right) => right.version - left.version)
+  .map(item => item.value)
+
 /** Confirmed-only reader and command writer for one authenticated owner scope. */
 export const createKhalaSyncPortableSessions = (input: Readonly<{
   ownerRef: string
@@ -134,12 +140,18 @@ export const createKhalaSyncPortableSessions = (input: Readonly<{
         }
         const confirmedSessions = boundedLatest(sessions, MAX_CONFIRMED_PORTABLE_SESSIONS)
         const sessionRefs = new Set(confirmedSessions.map(value => value.sessionRef))
-        const confirmedTargets = boundedLatest(targetDirectories, MAX_CONFIRMED_PORTABLE_SESSIONS)
+        const confirmedTargets = latest(targetDirectories)
           .filter(value => sessionRefs.has(value.sessionRef) || (issues.push({ code: "orphaned", affectedRef: value.sessionRef }), false))
-        const confirmedAttachments = boundedLatest(attachments, MAX_CONFIRMED_PORTABLE_ATTACHMENTS)
+          .slice(0, MAX_CONFIRMED_PORTABLE_SESSIONS)
+        const confirmedAttachments = latest(attachments)
           .filter(value => sessionRefs.has(value.sessionRef) || (issues.push({ code: "orphaned", affectedRef: value.attachmentRef }), false))
-        const confirmedCommands = boundedLatest(commands, MAX_CONFIRMED_PORTABLE_COMMANDS)
-          .filter(value => sessionRefs.has(value.command.sessionRef) || (issues.push({ code: "orphaned", affectedRef: value.command.commandRef }), false))
+          .slice(0, MAX_CONFIRMED_PORTABLE_ATTACHMENTS)
+        const confirmedCommands = latest(commands)
+          .filter(value => value.command.ownerRef === input.ownerRef ||
+            (issues.push({ code: "owner_scope_mismatch", affectedRef: value.command.commandRef }), false))
+          .filter(value => sessionRefs.has(value.command.sessionRef) ||
+            (issues.push({ code: "orphaned", affectedRef: value.command.commandRef }), false))
+          .slice(0, MAX_CONFIRMED_PORTABLE_COMMANDS)
         return {
           status: {
             phase: state.phase,
