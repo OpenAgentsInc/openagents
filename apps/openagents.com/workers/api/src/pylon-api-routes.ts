@@ -207,6 +207,19 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
     env: Bindings,
     input: AutopilotWorkerCloseoutIngestionInput,
   ) => Promise<unknown>
+  /**
+   * SARAH-PROACTIVE-1 (#9064): fail-soft proactive owner notice for a
+   * Sarah-dispatched Codex worker's terminal `worker_closeout`. Looks up the
+   * (ownerUserId, threadRef) binding `codex_workers_start` recorded at
+   * dispatch time (`sarah-worker-closeout-notify.ts`) by `assignmentRef`;
+   * a non-Sarah-dispatched assignment (no mapping) is a safe no-op. Same
+   * fail-soft discipline as `projectFleetAssignment`: this runs AFTER the D1
+   * business write commits and its failure never fails the route.
+   */
+  notifySarahWorkerCloseout?: (
+    env: Bindings,
+    input: Readonly<{ assignmentRef: string; eventStatus: string; nowIso: string }>,
+  ) => Promise<unknown>
   revokeAssignmentForgeGitAccess?: (
     env: Bindings,
     input: Readonly<{
@@ -2536,6 +2549,39 @@ const maybeRecordAutopilotWorkerCloseout = <Bindings extends PylonApiRouteEnv>(
       }).pipe(Effect.asVoid)
 }
 
+// SARAH-PROACTIVE-1 (#9064): fail-soft, same discipline as
+// `maybeProjectFleetAssignment` (never `Effect.tryPromise` — a failure here
+// must never fail the already-committed D1 business write). Uses
+// `eventResult.record.status` (not the raw request body) so the notice sees
+// the SAME status the event ledger recorded, including the
+// `worker_closeout`-specific fallback substitution (`eventStatusFromBody`).
+const maybeNotifySarahWorkerCloseout = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    assignmentRef: string
+    eventKind: PylonApiEventKind
+    eventStatus: string
+    nowIso: string
+  }>,
+): Effect.Effect<void> => {
+  const notifySarahWorkerCloseout = dependencies.notifySarahWorkerCloseout
+  return input.eventKind !== 'worker_closeout' ||
+    notifySarahWorkerCloseout === undefined
+    ? Effect.void
+    : Effect.promise(async () => {
+        try {
+          await notifySarahWorkerCloseout(env, {
+            assignmentRef: input.assignmentRef,
+            eventStatus: input.eventStatus,
+            nowIso: input.nowIso,
+          })
+        } catch {
+          // fail-soft by contract: the closeout event already committed.
+        }
+      })
+}
+
 const maybeRevokeAssignmentForgeGitAccess = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   env: Bindings,
@@ -2805,6 +2851,12 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
         assignment: storedAssignment,
         body,
         eventKind: input.eventKind,
+        nowIso,
+      })
+      yield* maybeNotifySarahWorkerCloseout(dependencies, env, {
+        assignmentRef: storedAssignment.assignmentRef,
+        eventKind: input.eventKind,
+        eventStatus: eventResult.record.status,
         nowIso,
       })
       yield* maybeRevokeAssignmentForgeGitAccess(dependencies, env, {

@@ -318,4 +318,70 @@ describe('Sarah runtime tools', () => {
       `harness.bundle.sarah.${'b'.repeat(24)}`,
     ])
   })
+
+  // SARAH-PROACTIVE-1 (#9064)
+  test('codex_workers_start records the (ownerUserId, threadRef) dispatch mapping for each admitted assignment', async () => {
+    const inserts: Array<Readonly<{ text: string; values: ReadonlyArray<unknown> }>> = []
+    const mappingSql = ((
+      strings: TemplateStringsArray,
+      ...values: Array<unknown>
+    ) => {
+      inserts.push({ text: strings.join('?'), values })
+      return Promise.resolve([])
+    }) as never
+    const tools = makeSarahRuntimeTools({
+      authorizeOperation: authority,
+      env,
+      fullAutoControl: control([]),
+      fullAutoProjection: projection(),
+      khalaCatalog: catalog([]),
+      ownerUserId: 'owner.fixture',
+      resolveRepositoryCommit: () => Promise.resolve('a'.repeat(40)),
+      sql: mappingSql,
+      threadRef: 'thread.sarah.fixture',
+      turnId: 'turn.fixture',
+    })
+    const tool = tools.find(
+      item => item.definition.name === 'codex_workers_start',
+    )!
+    await Effect.runPromise(
+      tool.execute(
+        { count: 2, objective: 'Dispatch mapping fixture packet.' },
+        call('codex_workers_start'),
+      ),
+    )
+    const mappingInserts = inserts.filter(entry =>
+      entry.text.includes('sarah_worker_dispatch_mappings'),
+    )
+    expect(mappingInserts).toHaveLength(2)
+    expect(mappingInserts.map(entry => entry.values)).toEqual([
+      ['assignment.fixture.1', 'owner.fixture', 'thread.sarah.fixture', expect.any(String)],
+      ['assignment.fixture.2', 'owner.fixture', 'thread.sarah.fixture', expect.any(String)],
+    ])
+  })
+
+  test('a failing dispatch-mapping write never fails codex_workers_start', async () => {
+    const tools = makeSarahRuntimeTools({
+      authorizeOperation: authority,
+      env,
+      fullAutoControl: control([]),
+      fullAutoProjection: projection(),
+      khalaCatalog: catalog([]),
+      ownerUserId: 'owner.fixture',
+      resolveRepositoryCommit: () => Promise.resolve('a'.repeat(40)),
+      sql: (() => Promise.reject(new Error('postgres unavailable'))) as never,
+      threadRef: 'thread.sarah.fixture',
+      turnId: 'turn.fixture',
+    })
+    const tool = tools.find(
+      item => item.definition.name === 'codex_workers_start',
+    )!
+    const result = await Effect.runPromise(
+      tool.execute(
+        { count: 1, objective: 'Fail-soft mapping write fixture.' },
+        call('codex_workers_start'),
+      ),
+    )
+    expect(result).toMatchObject({ isError: false })
+  })
 })

@@ -25,6 +25,7 @@ import {
   type SarahOperationAuthorityOutcome,
   authorizeSarahOperation,
 } from './sarah-owner-routes'
+import { recordSarahWorkerDispatchMapping } from './sarah-worker-closeout-notify'
 
 const OWNER_REPOSITORY = 'OpenAgentsInc/openagents'
 const OWNER_REPOSITORY_BRANCH = 'main'
@@ -163,6 +164,23 @@ const childResultRefs = (
     return [child.assignmentRef, child.workerRef].filter(
       (entry): entry is string => typeof entry === 'string' && entry.length > 0,
     )
+  })
+}
+
+/** SARAH-PROACTIVE-1 (#9064): the real assignment refs `khala.spawn` actually
+ * admitted (`child.ok === true`). Used to durably bind each assignment to
+ * this turn's owner+thread at dispatch time, so a later Codex worker_closeout
+ * event can post one proactive status message without inferring identity
+ * from the agent-token-scoped Pylon assignment record. */
+const successfulChildAssignmentRefs = (
+  value: Readonly<Record<string, unknown>>,
+): ReadonlyArray<string> => {
+  const children = Array.isArray(value.children) ? value.children : []
+  return children.flatMap(child => {
+    if (!isRecord(child) || child.ok !== true) return []
+    return typeof child.assignmentRef === 'string' && child.assignmentRef.length > 0
+      ? [child.assignmentRef]
+      : []
   })
 }
 
@@ -379,6 +397,27 @@ export const makeSarahRuntimeTools = <Bindings>(
         const refs = [spawnRef, ...childResultRefs(value), ...blockers].filter(
           (entry): entry is string => entry !== null,
         )
+        // SARAH-PROACTIVE-1 (#9064): capture (ownerUserId, threadRef) for each
+        // admitted assignment now, while we are inside this authenticated
+        // Sarah turn. Best-effort: a mapping-write failure must never fail
+        // this tool call — the real dispatch above already happened, and a
+        // missing mapping only means the eventual worker_closeout stays a
+        // silent no-op (recorded, but no proactive owner notice).
+        const dispatchedAssignmentRefs = successfulChildAssignmentRefs(value)
+        if (dispatchedAssignmentRefs.length > 0) {
+          yield* Effect.promise(() =>
+            Promise.allSettled(
+              dispatchedAssignmentRefs.map(assignmentRef =>
+                recordSarahWorkerDispatchMapping(deps.sql, {
+                  assignmentRef,
+                  nowIso: nowIso(),
+                  ownerUserId: deps.ownerUserId,
+                  threadRef: deps.threadRef,
+                }),
+              ),
+            ),
+          )
+        }
         return resultFromMcp(
           outcome,
           authority.receiptRef,

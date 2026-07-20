@@ -1195,6 +1195,7 @@ import {
 } from './sarah-speech-routes'
 import { makeSarahRuntimeTools } from './sarah-runtime-tools'
 import { makeSarahManagedSandboxTools } from './sarah-managed-sandbox'
+import { notifySarahWorkerCloseout as notifySarahWorkerCloseoutImpl } from './sarah-worker-closeout-notify'
 import {
   SelfServeFanoutEndpoint,
   handleSelfServeFanoutApi,
@@ -9623,6 +9624,23 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
 
     return delivered
   },
+  // SARAH-PROACTIVE-1 (#9064): fail-soft proactive owner notice for a
+  // Sarah-dispatched Codex worker's `worker_closeout`. Looks up the
+  // dispatch-time (ownerUserId, threadRef) mapping by assignmentRef; a
+  // non-Sarah-dispatched assignment (no mapping) is a safe no-op. Reuses the
+  // exact KHALA_SYNC_DB client discipline `projectFleetAssignment` above
+  // uses, plus the SARAH-PUSH-2 (#9063) push seam.
+  notifySarahWorkerCloseout: (env, input) =>
+    notifySarahWorkerCloseoutImpl(
+      {
+        authStorage: authKvStoreForEnv(env),
+        binding: env.KHALA_SYNC_DB,
+        log: (event, fields) => logWorkerRouteWarning(event, fields),
+        makeSqlClient: defaultMakeKhalaSyncSqlClient,
+        pushDb: paymentsLedgerDbForEnv(env),
+      },
+      input,
+    ),
   revokeAssignmentForgeGitAccess: async (env, input) =>
     revokeAgentDefinitionRunForgeGitTokensForAssignment(
       {

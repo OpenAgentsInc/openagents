@@ -881,6 +881,11 @@ const route = async (
         nowIso: string
       }>,
     ) => Promise<unknown>
+    // SARAH-PROACTIVE-1 (#9064): optional fail-soft worker_closeout notify spy.
+    notifySarahWorkerCloseout?: (
+      env: Readonly<Record<string, unknown>>,
+      input: Readonly<{ assignmentRef: string; eventStatus: string; nowIso: string }>,
+    ) => Promise<unknown>
     tokenUserId?: string
   }> = {},
 ) => {
@@ -930,6 +935,9 @@ const route = async (
       ? {}
       : { listManagedFleetCapacity: options.listManagedFleetCapacity }),
     nowIso: () => options.nowIso ?? '2026-06-07T00:10:00.000Z',
+    ...(options.notifySarahWorkerCloseout === undefined
+      ? {}
+      : { notifySarahWorkerCloseout: options.notifySarahWorkerCloseout }),
     ...(options.projectFleetAssignment === undefined
       ? {}
       : { projectFleetAssignment: options.projectFleetAssignment }),
@@ -5339,5 +5347,126 @@ describe('KS-6.1 fleet cockpit projection dual-write', () => {
       'closeout_submitted',
       'accepted_work',
     ])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SARAH-PROACTIVE-1 (#9064): fail-soft worker_closeout notify dual-write
+// ---------------------------------------------------------------------------
+
+describe('SARAH-PROACTIVE-1 worker_closeout notify dual-write', () => {
+  const setupPylon = async (store: MemoryPylonApiStore) => {
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+  }
+
+  const acceptAndCloseout = async (
+    store: MemoryPylonApiStore,
+    assignmentRef: string,
+    notifySarahWorkerCloseout: (
+      env: Readonly<Record<string, unknown>>,
+      input: Readonly<{ assignmentRef: string; eventStatus: string; nowIso: string }>,
+    ) => Promise<unknown>,
+  ) => {
+    await route(store, `/api/pylons/pylon.test.one/assignments/${assignmentRef}/accept`, {
+      body: { acceptanceRefs: ['acceptance.public.sarah_notify.claimed'], accepted: true },
+      idempotencyKey: `accept-sarah-notify-${assignmentRef}`,
+      method: 'POST',
+      notifySarahWorkerCloseout,
+      tokenUserId: 'agent-one',
+    })
+    return route(store, `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`, {
+      body: {
+        artifactRefs: ['artifact.public.sarah_notify.bundle'],
+        closeoutRefs: ['closeout.public.sarah_notify.done'],
+        proofRefs: ['proof.public.sarah_notify.verified'],
+        resultRefs: ['result.public.sarah_notify.completed'],
+        status: 'closeout_submitted',
+        testRefs: ['test.public.sarah_notify.green'],
+      },
+      idempotencyKey: `worker-closeout-sarah-notify-${assignmentRef}`,
+      method: 'POST',
+      notifySarahWorkerCloseout,
+      tokenUserId: 'agent-one',
+    })
+  }
+
+  test('a worker_closeout event invokes the notify seam exactly once with the assignmentRef and event status', async () => {
+    const store = new MemoryPylonApiStore()
+    await setupPylon(store)
+    const assignmentRef = 'assignment.public.sarah_notify.happy'
+    await createAssignment(store, {
+      assignmentRef,
+      idempotencyKey: 'assignment-sarah-notify-happy',
+    })
+
+    const calls: Array<Readonly<{ assignmentRef: string; eventStatus: string; nowIso: string }>> = []
+    const closeout = await acceptAndCloseout(store, assignmentRef, async (_env, input) => {
+      calls.push(input)
+    })
+
+    expect(closeout.status).toBe(201)
+    expect(calls).toEqual([
+      {
+        assignmentRef,
+        eventStatus: 'closeout_submitted',
+        nowIso: '2026-06-07T00:10:00.000Z',
+      },
+    ])
+  })
+
+  test('non-closeout events (accept, progress, artifacts) never invoke the notify seam', async () => {
+    const store = new MemoryPylonApiStore()
+    await setupPylon(store)
+    const assignmentRef = 'assignment.public.sarah_notify.non_closeout'
+    await createAssignment(store, {
+      assignmentRef,
+      idempotencyKey: 'assignment-sarah-notify-non-closeout',
+    })
+
+    const calls: Array<unknown> = []
+    const notifySarahWorkerCloseout = async (_env: unknown, input: unknown) => {
+      calls.push(input)
+    }
+    await route(store, `/api/pylons/pylon.test.one/assignments/${assignmentRef}/accept`, {
+      body: { acceptanceRefs: ['acceptance.public.sarah_notify.claimed'], accepted: true },
+      idempotencyKey: 'accept-sarah-notify-non-closeout',
+      method: 'POST',
+      notifySarahWorkerCloseout,
+      tokenUserId: 'agent-one',
+    })
+    await route(store, `/api/pylons/pylon.test.one/assignments/${assignmentRef}/progress`, {
+      body: { progressPercent: 50, progressRefs: ['progress.public.sarah_notify.halfway'], status: 'running' },
+      idempotencyKey: 'progress-sarah-notify-non-closeout',
+      method: 'POST',
+      notifySarahWorkerCloseout,
+      tokenUserId: 'agent-one',
+    })
+    await route(store, `/api/pylons/pylon.test.one/assignments/${assignmentRef}/artifacts`, {
+      body: { artifactRefs: ['artifact.public.sarah_notify.manifest'], proofRefs: ['proof.public.sarah_notify.result'] },
+      idempotencyKey: 'artifact-sarah-notify-non-closeout',
+      method: 'POST',
+      notifySarahWorkerCloseout,
+      tokenUserId: 'agent-one',
+    })
+
+    expect(calls).toHaveLength(0)
+  })
+
+  test('a THROWING notify seam never fails the worker_closeout route (fail-soft)', async () => {
+    const store = new MemoryPylonApiStore()
+    await setupPylon(store)
+    const assignmentRef = 'assignment.public.sarah_notify.failsoft'
+    await createAssignment(store, {
+      assignmentRef,
+      idempotencyKey: 'assignment-sarah-notify-failsoft',
+    })
+
+    const closeout = await acceptAndCloseout(store, assignmentRef, async () => {
+      throw new Error('sarah notify seam is down')
+    })
+
+    expect(closeout.status).toBe(201)
   })
 })
