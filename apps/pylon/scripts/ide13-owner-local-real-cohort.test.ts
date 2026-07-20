@@ -9,6 +9,7 @@ import {
   Ide13OwnerLocalRealCohortReceiptSchema,
   runIde13OwnerLocalRealCohort,
 } from "./ide13-owner-local-real-cohort.js";
+import { PYLON_TYPESCRIPT_LSP_EXECUTABLE_PROFILE_REF } from "../src/portable-executable-profile-catalog.js";
 
 const decodeReceipt = Schema.decodeUnknownSync(Ide13OwnerLocalRealCohortReceiptSchema);
 
@@ -39,14 +40,16 @@ test("runs a real owner-local move, failback, abort, replay, and teardown cohort
         .filter((helper) => helper.readiness === "ready")
         .map((helper) => helper.kind)
         .toSorted(),
-    ).toEqual(["pty", "watcher"]);
+    ).toEqual(["lsp", "pty", "watcher"]);
     expect(
       receipt.helpers
         .filter((helper) => helper.readiness === "unsupported")
         .map((helper) => helper.kind)
         .toSorted(),
-    ).toEqual(["dap", "lsp", "native"]);
-    expect(receipt.authority.admittedExecutableProfileRefs).toEqual([]);
+    ).toEqual(["dap", "native"]);
+    expect(receipt.authority.admittedExecutableProfileRefs).toEqual([
+      PYLON_TYPESCRIPT_LSP_EXECUTABLE_PROFILE_REF,
+    ]);
     expect(receipt.execution).toEqual({
       acceptedWorkRefCount: 0,
       controlSessionProcessLifecycle: "settled",

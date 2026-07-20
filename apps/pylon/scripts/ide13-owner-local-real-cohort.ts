@@ -33,7 +33,11 @@ import {
   makePylonPortableDestinationProductionHelpers,
   PYLON_PORTABLE_INSTALLED_EXECUTABLE_PROFILE_AUTHORITY_MISSING,
 } from "../src/portable-destination-production-helper-adapters.js";
-import { repositoryOwnedPylonPortableExecutableProfileCatalog } from "../src/portable-executable-profile-catalog.js";
+import {
+  PYLON_PORTABLE_EXECUTABLE_PROFILE_CATALOG_REF,
+  PYLON_TYPESCRIPT_LSP_EXECUTABLE_PROFILE_REF,
+  repositoryOwnedPylonPortableExecutableProfileCatalog,
+} from "../src/portable-executable-profile-catalog.js";
 import { createPylonPortableLocalRehydrator } from "../src/portable-session-local-rehydrator.js";
 import {
   createPylonOwnerLocalDestinationLifecycle,
@@ -63,7 +67,10 @@ export const Ide13OwnerLocalRealCohortReceiptSchema = Schema.Struct({
   ),
   authority: Schema.Struct({
     catalogRef: Ref,
-    admittedExecutableProfileRefs: Schema.Array(Ref).check(Schema.isMaxLength(0)),
+    admittedExecutableProfileRefs: Schema.Array(Ref).check(
+      Schema.isMinLength(1),
+      Schema.isMaxLength(1),
+    ),
     capabilityLeaseRefs: Schema.Array(Ref).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
     unsupportedProfileOmissionRef: Ref,
   }),
@@ -194,7 +201,7 @@ const measure = async <A>(
 
 const exactHelperMatrix = (helpers: Ide13OwnerLocalRealCohortReceipt["helpers"]): void => {
   const byKind = new Map(helpers.map((helper) => [helper.kind, helper]));
-  for (const kind of ["pty", "watcher"] as const) {
+  for (const kind of ["pty", "lsp", "watcher"] as const) {
     const helper = byKind.get(kind);
     if (
       helper?.readiness !== "ready" ||
@@ -204,7 +211,7 @@ const exactHelperMatrix = (helpers: Ide13OwnerLocalRealCohortReceipt["helpers"])
       throw new Error(`owner-local ${kind} helper is not ready`);
     }
   }
-  for (const kind of ["lsp", "dap", "native"] as const) {
+  for (const kind of ["dap", "native"] as const) {
     const helper = byKind.get(kind);
     if (
       helper?.readiness !== "unsupported" ||
@@ -830,12 +837,12 @@ export const runIde13OwnerLocalRealCohort = async (
           })),
           metrics,
           result:
-            "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. LSP, DAP, and native stayed unsupported because no signed executable profile is admitted.",
+            "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The destination started a signature-verified TypeScript LSP. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. DAP and native stayed unsupported because no signed executable profile is admitted for them.",
         },
         helpers: activatedA.helpers,
         authority: {
-          catalogRef: "catalog.pylon.portable-executable-profile.empty.v1",
-          admittedExecutableProfileRefs: [],
+          catalogRef: PYLON_PORTABLE_EXECUTABLE_PROFILE_CATALOG_REF,
+          admittedExecutableProfileRefs: [PYLON_TYPESCRIPT_LSP_EXECUTABLE_PROFILE_REF],
           capabilityLeaseRefs,
           unsupportedProfileOmissionRef:
             PYLON_PORTABLE_INSTALLED_EXECUTABLE_PROFILE_AUTHORITY_MISSING,

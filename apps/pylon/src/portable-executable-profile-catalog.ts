@@ -36,6 +36,8 @@ export type PylonPortableExecutableProfileCatalog = Readonly<{
 
 export const PYLON_TYPESCRIPT_LSP_EXECUTABLE_PROFILE_REF =
   "profile.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.2.v1";
+export const PYLON_PORTABLE_EXECUTABLE_PROFILE_CATALOG_REF =
+  "catalog.pylon.portable-executable-profile.v1";
 
 const npmSigningKeyId = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U";
 
