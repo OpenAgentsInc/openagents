@@ -283,6 +283,9 @@ design context only.
   contract test. The bounded live component harness is
   `scripts/cloud/managed-sandbox-live-acceptance.ts`. SBX-09 must reproduce
   independent cross-surface live evidence before rollout.
+- SBX-09 Box evidence is green only when every proof bit is true. Its test
+  lease must outlive the full fault matrix. Control restart evidence must use
+  an observable stop/start boundary rather than a GCE reset timestamp.
 
 ## Cross-OS Cloud-VM Provisioner
 

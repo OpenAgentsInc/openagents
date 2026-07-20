@@ -137,7 +137,7 @@ const createWithReplay = async () => {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       return await api.create(
-        { createBoxRequest: { ttlSeconds: 900, noEnv: true } },
+        { createBoxRequest: { ttlSeconds: 3_600, noEnv: true } },
         retryHeaders('create'),
       )
     } catch (error) {
@@ -405,7 +405,7 @@ try {
     throw new Error(`create settled as ${created.box.state}`)
   }
   const createReplay = await api.create(
-    { createBoxRequest: { ttlSeconds: 900, noEnv: true } },
+    { createBoxRequest: { ttlSeconds: 3_600, noEnv: true } },
     retryHeaders('create'),
   )
   if (createReplay.box.id !== boxId) throw new Error('create replay diverged')
@@ -421,11 +421,11 @@ try {
   }
 
   const updated = await api.update(
-    { boxId, updateBoxRequest: { ttlSeconds: 840 } },
+    { boxId, updateBoxRequest: { ttlSeconds: 3_540 } },
     retryHeaders('update'),
   )
   const updateReplay = await api.update(
-    { boxId, updateBoxRequest: { ttlSeconds: 840 } },
+    { boxId, updateBoxRequest: { ttlSeconds: 3_540 } },
     retryHeaders('update'),
   )
   if (
@@ -543,7 +543,8 @@ try {
   proof.longLivedBeyondControlWindow = Date.now() - longLivedStartedAt >= 60_000
 
   controlRestartBefore = instanceField(controlInstance, 'lastStartTimestamp')
-  mutateInstance('reset', controlInstance)
+  mutateInstance('stop', controlInstance)
+  await waitForInstance(controlInstance, 'TERMINATED')
   for (let attempt = 1; attempt <= 20; attempt += 1) {
     const unavailable = await api
       .promptRunStatus({ boxId, promptId: interruptible.promptId })
@@ -555,6 +556,7 @@ try {
     }
     await sleep(1_000)
   }
+  mutateInstance('start', controlInstance)
   await waitForInstance(controlInstance, 'RUNNING')
   for (let attempt = 1; attempt <= 90; attempt += 1) {
     try {
@@ -791,7 +793,10 @@ try {
     )
   }
   proof.brokerRevocationEnforced = true
-  passed = true
+  passed = Object.values(proof).every(Boolean)
+  if (!passed) {
+    throw new Error('not every SBX-09 Box acceptance proof was observed')
+  }
 } catch (error) {
   failure = await failureMessage(error)
 } finally {

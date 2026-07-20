@@ -11369,7 +11369,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "8093fd04998a687775ad90df4ac3a5039457cd54dad5a2cbbfa48ef252b1fc29",
+      "sourceSha256": "4207b2e559187f71404d5d34cb9bc95704e67d04b0899476d95cea7a524f0693",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -11537,6 +11537,7 @@
         "042",
         "042",
         "05",
+        "09",
         "09",
         "09",
         "1",
