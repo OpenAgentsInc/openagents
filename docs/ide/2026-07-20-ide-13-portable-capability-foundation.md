@@ -19,12 +19,12 @@ ledger.
 `packages/portable-session-contract/src/ide13-contract.ts` defines identified
 Effect Schemas for these facts:
 
-- placement and capability facts;
-- host-independent project references;
-- bounded checkpoint policy and content;
-- placement events;
-- move and failback receipts;
-- coordinator commands and state; and
+- placement and capability facts.
+- host-independent project references.
+- bounded checkpoint policy and content.
+- placement events.
+- move and failback receipts.
+- coordinator commands and state.
 - tagged failures.
 
 The checkpoint contract excludes secrets, process state, native state, Vim
@@ -59,7 +59,7 @@ returns a trace for the `source_revoked_before_attach` invariant.
 The Desktop Sync host registers the canonical portable command mutator. The
 Desktop main process and sandboxed preload expose two narrow operations:
 
-- read the confirmed portable projection; and
+- read the confirmed portable projection.
 - request a schema-decoded portable command.
 
 The projection is available only when owner-scoped Sync is live. A queued
@@ -72,11 +72,11 @@ projection issues and are not used as authority.
 
 The current evidence receipt is
 `apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json`.
-Candidate commit `8c30629bb9116ad0f15561b33d6194c8d5360895` produced the
+Candidate commit `a1280ce50f238e347e63aa78c2cf371df25e00d2` produced the
 receipt on macOS arm64 with Node 24.13.1.
 
-The model p95 was 0.087 ms and its p99 was 0.092 ms. Checkpoint schema decode
-p95 was 0.024 ms and its p99 was 0.056 ms. These values only measure the local
+The model p95 was 0.082 ms and its p99 was 0.094 ms. Checkpoint schema decode
+p95 was 0.022 ms and its p99 was 0.051 ms. These values only measure the local
 model and schema boundary. They do not measure a host move.
 
 The focused verification passed 43 tests, the Desktop production build, the
@@ -97,13 +97,13 @@ The current placement evidence is not the IDE-13 acceptance matrix.
 
 Issue `#9041` stays open. These items are not complete:
 
-- real owner-managed and OpenAgents-managed move and failback cohorts;
-- each admitted provider cohort;
+- real owner-managed and OpenAgents-managed move and failback cohorts.
+- each admitted provider cohort.
 - a real transition fault matrix for partitions, crash, event reorder, lease
-  expiry, auth revoke, provider loss, and older recovery points;
-- packaged move journeys on each claimed target;
+  expiry, auth revoke, provider loss, and older recovery points.
+- packaged move journeys on each claimed target.
 - end-to-end quiesce, checkpoint, upload, redeem, attach, helper readiness,
-  failback, size, CPU, memory, network, lease, and teardown percentiles; and
+  failback, size, CPU, memory, network, lease, and teardown percentiles.
 - independent owner and AssuranceSpec review.
 
 Do not describe this state as a portable IDE platform or Cursor parity.

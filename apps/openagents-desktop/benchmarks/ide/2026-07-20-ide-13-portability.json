@@ -1,8 +1,8 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-evidence.v1",
   "issue": "IDE-13",
-  "candidateCommitSha": "8c30629bb9116ad0f15561b33d6194c8d5360895",
-  "generatedAt": "2026-07-20T07:23:04.962Z",
+  "candidateCommitSha": "a1280ce50f238e347e63aa78c2cf371df25e00d2",
+  "generatedAt": "2026-07-20T07:31:58.738Z",
   "environment": {
     "platform": "darwin",
     "architecture": "arm64",
@@ -20,9 +20,9 @@
     {
       "operation": "bounded-transition-model",
       "repetitions": 100,
-      "p50Ms": 0.05591699999999378,
-      "p95Ms": 0.08629199999998605,
-      "p99Ms": 0.09141600000000949,
+      "p50Ms": 0.05433299999998553,
+      "p95Ms": 0.0816250000000025,
+      "p99Ms": 0.09399999999999409,
       "thresholdP95Ms": 5,
       "thresholdP99Ms": 10,
       "passed": true
@@ -30,9 +30,9 @@
     {
       "operation": "checkpoint-schema-decode",
       "repetitions": 1000,
-      "p50Ms": 0.009417000000013331,
-      "p95Ms": 0.023500000000012733,
-      "p99Ms": 0.055292000000008557,
+      "p50Ms": 0.008749999999992042,
+      "p95Ms": 0.02174999999999727,
+      "p99Ms": 0.050041999999990594,
       "thresholdP95Ms": 1,
       "thresholdP99Ms": 2,
       "passed": true
