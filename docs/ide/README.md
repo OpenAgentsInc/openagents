@@ -15,6 +15,7 @@ Canonical roadmap:
 
 Supporting evidence and architecture (not independent roadmaps):
 
+- [OpenAgents IDE crash prevention implementation plan](./2026-07-20-openagents-ide-crash-prevention-implementation-plan.md) — the owner-directed cross-cutting safety plan that binds all repository-review OOM and main-process message SIGTRAP recommendations to eight implementation packets, 65 permanent-control IDs, 51 source regression rows, and one combined release gate.
 - [IDE-10 Effect run graph](./2026-07-19-ide-10-effect-run-graph.md) — the implemented schema-first terminal, declared-task, test, and Output graph. Safe named environment admission. Xterm projection. Process-group, retention, gap, redaction, artifact, semantic-success, receipt, packaged, and no-Rust evidence for issue `#9038`.
 - [IDE-11 Effect DAP graph](./2026-07-20-ide-11-effect-dap-graph.md) — the implemented supervised debug graph, main-owned configuration admission, bounded DAP transport, debug projections, generation fences, renderer controls, retention, deletion, and exact macOS arm64 packaged evidence for issue `#9039`.
 - [IDE-12 Effect source control](./2026-07-20-ide-12-effect-source-control.md) — the implemented exact-version Git, worktree, review, recovery, remote, provider, and delivery graph with exact macOS arm64 packaged evidence for issue `#9040`.

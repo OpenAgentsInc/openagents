@@ -26837,8 +26837,26 @@
       }
     },
     {
+      "path": "docs/ide/2026-07-20-openagents-ide-crash-prevention-implementation-plan.md",
+      "sha256": "2148a037face6df63e3b690d8fc03da89fd3f3b41472a13fca4f22f2d3a75f14",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/ide/README.md",
-      "sha256": "237f0b1cc622923193baf78619a8676ced7d1f73f92067dabcb4cfeff6db8b77",
+      "sha256": "5693a1a2d0c549dae470db748db89f7dfe0bf636f49cb1565f285bc7f88590dc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -26860,7 +26878,7 @@
     },
     {
       "path": "docs/ide/ROADMAP.md",
-      "sha256": "f572b5bb9f31e89f958409951cacf49514549ae29bcd1829399d5fc577f387b6",
+      "sha256": "acbfc268d746a18e4ef8c4cfae8be0bc1fa01017c71c9d755001d1f037144ae0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -913,6 +913,14 @@ No rung is allowed to hide the next rung's gaps.
 
 ## Cross-cutting verification
 
+The [OpenAgents IDE crash prevention implementation plan](./2026-07-20-openagents-ide-crash-prevention-implementation-plan.md)
+is a mandatory cross-cutting safety gate over IDE-00 through IDE-12. It binds
+the two recurrent crash reports to finite Git, message, queue, fanout, memory,
+and retention limits plus separate Git, review, and decode process-fate
+boundaries. It does not replace or reorder IDE-13. Safe large-repository review
+and unattended concurrent-work claims must wait for its complete incident
+corpus, 18-hour soak, repeated-session evidence, and independent fault review.
+
 Every implementation packet supplies, in proportion to its boundary:
 
 - pure state-transition and schema tests.
