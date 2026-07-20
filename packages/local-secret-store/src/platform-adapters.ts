@@ -2,13 +2,16 @@
  * IDR-01 platform secret-store adapter contracts.
  *
  * Each descriptor names one version-one platform secret store and its custody
- * protection class. These are typed ports only. This package ships NO
- * implementation that touches a real platform store yet; the real adapters
- * (macOS Keychain, Windows Credential Manager, Linux Secret Service, iOS
- * Keychain, Android Keystore) arrive in IDR-05 and run in an owner-attended run.
+ * protection class. These are the typed IDR-01 CONTRACTS plus a fail-closed
+ * layer. The real IDR-05 adapters live in sibling modules and compose over an
+ * injected runner or bridge: `macos-keychain.ts` (real, owner-attended),
+ * `windows-linux-adapters.ts` (typed desktop specs), and `native-secret-store.ts`
+ * (iOS/Android native-bridge ports). The `implemented` flag below stays `false`
+ * because these descriptors are the fail-closed contract, not the composed real
+ * adapter; the real path is opened only behind each module's owner-attended gate.
  *
  * `unimplementedPlatformSecretStoreLayer` builds a fail-closed `LocalSecretStore`
- * for a platform whose real adapter does not exist yet. Every operation fails
+ * for a platform whose real adapter is not composed. Every operation fails
  * `adapter_unavailable`. It touches no platform store, so an autonomous run can
  * compose the graph without opening a Keychain dialog.
  */

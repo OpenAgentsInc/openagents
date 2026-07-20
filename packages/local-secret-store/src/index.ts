@@ -17,3 +17,11 @@ export * from "./locator.ts";
 export * from "./secret-store.ts";
 export * from "./platform-adapters.ts";
 export * from "./in-memory.ts";
+// IDR-05 real and typed platform adapters, composed over an injected OS-command
+// runner (desktop) or native bridge (mobile). The real OS path runs only behind
+// an explicit owner-attended gate; see each module.
+export * from "./command-runner.ts";
+export * from "./command-backed-store.ts";
+export * from "./macos-keychain.ts";
+export * from "./windows-linux-adapters.ts";
+export * from "./native-secret-store.ts";

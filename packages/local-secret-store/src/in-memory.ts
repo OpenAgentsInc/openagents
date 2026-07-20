@@ -16,6 +16,47 @@ import { LocalSecretStore, SecretNotFound } from "./secret-store.ts";
 const copyBytes = (payload: Uint8Array): Uint8Array => Uint8Array.from(payload);
 
 /**
+ * Build an in-memory `LocalSecretStore` layer over an EXTERNAL backing map. The
+ * map is mutated in place and outlives the layer, so a test can drop the layer
+ * (simulate a process exit) and build a NEW layer over the SAME map (simulate a
+ * restart reading the persisted platform store). This is how the CI-safe
+ * restart+restore round-trip proves custody survives a restart without ever
+ * calling an OS keychain. Every payload is copied on write and on read, so a
+ * caller cannot mutate the stored bytes through a shared buffer reference.
+ */
+export const inMemoryLocalSecretStoreLayerWith = (
+  backing: Map<string, Uint8Array>,
+): Layer.Layer<LocalSecretStore> =>
+  Layer.succeed(
+    LocalSecretStore,
+    LocalSecretStore.of({
+      set: (locator, payload) =>
+        Effect.sync(() => {
+          backing.set(secretLocatorKey(locator), copyBytes(payload));
+        }),
+      get: (locator) =>
+        Effect.suspend(() => {
+          const stored = backing.get(secretLocatorKey(locator));
+          return stored === undefined
+            ? Effect.fail(new SecretNotFound({ locator }))
+            : Effect.succeed(copyBytes(stored));
+        }),
+      delete: (locator) =>
+        Effect.sync(() => {
+          backing.delete(secretLocatorKey(locator));
+        }),
+      presence: (locator) => Effect.sync(() => backing.has(secretLocatorKey(locator))),
+      custody: (locator) =>
+        Effect.sync(() => ({
+          locator,
+          present: backing.has(secretLocatorKey(locator)),
+          platformKind: "in_memory_test" as const,
+          protection: "in_memory_unprotected" as const,
+        })),
+    }),
+  );
+
+/**
  * The in-memory `LocalSecretStore` layer. It stores a copy of each payload in a
  * `Ref`-guarded map keyed by locator, so concurrent effects share one state.
  */

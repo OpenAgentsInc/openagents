@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:ccc9c3f7b1a76bafed57f815e58631e2095204bb2d579e2263dc18e926e5e86e",
+  "sourceDigest": "sha256:de5cac61bfde1b87acf000f9776d0b2013123074bafdc674a6382d2c31c3dbf7",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2290,7 +2290,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/local-secret-store (3 tracked test files)"
+          "ref": "packages/local-secret-store (4 tracked test files)"
         }
       ],
       "obligation": {
@@ -2688,7 +2688,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/sovereign-identity (11 tracked test files)"
+          "ref": "packages/sovereign-identity (13 tracked test files)"
         }
       ],
       "obligation": {

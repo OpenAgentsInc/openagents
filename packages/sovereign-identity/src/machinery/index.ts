@@ -22,3 +22,7 @@ export * from "./discovery.ts";
 export * from "./open.ts";
 export * from "./manifest.ts";
 export * from "./service.ts";
+// IDR-05 import to platform custody: the confirmed-identity import flow, the
+// restart+restore read path, and the atomic file-backed public manifest store.
+export * from "./import.ts";
+export * from "./file-manifest-store.ts";
