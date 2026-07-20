@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "vite-plus/test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Context, Effect, Exit, Layer, Scope } from "effect";
@@ -327,6 +327,69 @@ describe("IDE-12 real Git adapter", () => {
         expect(blame.receipt.observation.lines).toHaveLength(3);
         expect(blame.receipt.observation.lines[0]?.sourceOid).toMatch(/^[0-9a-f]{40}$/u);
       }
+    });
+  });
+
+  test("runs ref, rewrite, hook, signing, and detached-head commands with typed outcomes", async () => {
+    const root = repo();
+    await withService(root, async (service) => {
+      let current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: ideSourceControlFixtureSnapshot().binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "BranchCreate", ...mutation(current), name: "topic", checkout: true }))).snapshot;
+      writeFileSync(path.join(root, "topic.txt"), "topic\n");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: ["topic.txt"] } }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "topic commit", amend: false, sign: false, runHooks: true }))).snapshot;
+      const topicCommit = current.version.headOid!;
+      current = (await Effect.runPromise(service.execute({ _tag: "Switch", ...mutation(current), refName: "main", detach: false }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "CherryPick", ...mutation(current), commitOids: [topicCommit] }))).snapshot;
+      expect(readFileSync(path.join(root, "topic.txt"), "utf8")).toBe("topic\n");
+      current = (await Effect.runPromise(service.execute({ _tag: "Revert", ...mutation(current), commitOids: [topicCommit] }))).snapshot;
+      expect(() => readFileSync(path.join(root, "topic.txt"), "utf8")).toThrow();
+      current = (await Effect.runPromise(service.execute({ _tag: "TagCreate", ...mutation(current), name: "ide12-checkpoint", targetOid: current.version.headOid!, sign: false }))).snapshot;
+      expect(git(root, "rev-parse", "ide12-checkpoint")).toBe(current.version.headOid);
+
+      current = (await Effect.runPromise(service.execute({ _tag: "BranchCreate", ...mutation(current), name: "rebase-source", checkout: true }))).snapshot;
+      writeFileSync(path.join(root, "rebase.txt"), "rebase\n");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: ["rebase.txt"] } }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "rebase source", amend: false, sign: false, runHooks: true }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Switch", ...mutation(current), refName: "main", detach: false }))).snapshot;
+      writeFileSync(path.join(root, "main.txt"), "main advance\n");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: ["main.txt"] } }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "main advance", amend: false, sign: false, runHooks: true }))).snapshot;
+      const mainAdvance = current.version.headOid!;
+      current = (await Effect.runPromise(service.execute({ _tag: "Switch", ...mutation(current), refName: "rebase-source", detach: false }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Rebase", ...mutation(current), upstream: "main", onto: null }))).snapshot;
+      expect(git(root, "rev-parse", "HEAD^" )).toBe(mainAdvance);
+      current = (await Effect.runPromise(service.execute({ _tag: "Switch", ...mutation(current), refName: "main", detach: false }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Merge", ...mutation(current), refName: "rebase-source", noFastForward: true }))).snapshot;
+      expect(readFileSync(path.join(root, "rebase.txt"), "utf8")).toBe("rebase\n");
+
+      writeFileSync(path.join(root, "amend.txt"), "amend\n");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: ["amend.txt"] } }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "before amend", amend: false, sign: false, runHooks: true }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "after amend", amend: true, sign: false, runHooks: false }))).snapshot;
+      expect(git(root, "log", "-1", "--format=%s")).toBe("after amend");
+
+      const hook = path.join(root, ".git", "hooks", "pre-commit");
+      writeFileSync(hook, "#!/bin/sh\nexit 1\n");
+      chmodSync(hook, 0o755);
+      writeFileSync(path.join(root, "hook.txt"), "hook\n");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: ["hook.txt"] } }))).snapshot;
+      const hookFailure = await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "hook refusal", amend: false, sign: false, runHooks: true }).pipe(Effect.flip));
+      expect(hookFailure.failure.code).toBe("hook_failed");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      const signingFailure = await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "signing refusal", amend: false, sign: true, runHooks: false }).pipe(Effect.flip));
+      expect(signingFailure.failure.code).toBe("signing_failed");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "hook bypass disclosed", amend: false, sign: false, runHooks: false }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Switch", ...mutation(current), refName: current.version.headOid!, detach: true }))).snapshot;
+      expect(current.detached).toBe(true);
+      const optionInjection = await Effect.runPromise(service.execute({ _tag: "Switch", ...mutation(current), refName: "--detach", detach: false }).pipe(Effect.flip));
+      expect(optionInjection.failure.code).toBe("policy_refused");
     });
   });
 });

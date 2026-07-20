@@ -382,7 +382,15 @@ export const makeIdeSourceControlGitAdapter = (
         if (persistedRecovery !== null) rmSync(persistedRecovery, { force: true });
         break;
       }
-      case "Commit": run(["commit", ...(command.amend ? ["--amend"] : []), ...(command.sign ? ["-S"] : []), ...(command.runHooks ? [] : ["--no-verify"]), "-m", command.message], "The commit could not be created."); break;
+      case "Commit": {
+        const result = runGit(root, ["commit", ...(command.amend ? ["--amend"] : []), ...(command.sign ? ["-S"] : []), ...(command.runHooks ? [] : ["--no-verify"]), "-m", command.message]);
+        if (!result.ok && command.sign) throw failure("signing_failed", "The signed commit could not be created.", current, op);
+        const hooksRoot = assertGit(runGit(root, ["rev-parse", "--git-path", "hooks"]), "Git hook state is unavailable.", current, op).trim();
+        const preCommit = path.resolve(root, hooksRoot, "pre-commit");
+        if (!result.ok && command.runHooks && existsSync(preCommit)) throw failure("hook_failed", "A disclosed commit hook refused the commit.", current, op);
+        assertGit(result, "The commit could not be created.", current, op);
+        break;
+      }
       case "BranchCreate": run([command.checkout ? "switch" : "branch", ...(command.checkout ? ["-c"] : []), safeArgument(command.name, "Branch name")], "The branch could not be created."); break;
       case "TagCreate": run(["tag", ...(command.sign ? ["-s", "-m", command.name] : []), safeArgument(command.name, "Tag name"), command.targetOid], "The tag could not be created."); break;
       case "Switch": run(["switch", ...(command.detach ? ["--detach"] : []), safeArgument(command.refName, "Ref name")], "The ref could not be switched."); break;
