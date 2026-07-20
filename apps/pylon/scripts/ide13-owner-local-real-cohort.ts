@@ -59,6 +59,7 @@ const GIT_SHA = /^[a-f0-9]{40}$/u;
 const COHORT_EVIDENCE_REPOSITORY_PATHS = new Set([
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
 ]);
 
 export const Ide13OwnerLocalRealCohortReceiptSchema = Schema.Struct({
@@ -243,6 +244,7 @@ const assertDeletion = (receipt: PylonPortableCheckpointDeletionReceipt): string
 export const runIde13OwnerLocalRealCohort = async (
   input: Readonly<{
     candidateCommitSha?: string;
+    injectedTransitionPartitionPhase?: Phase;
     outputPath?: string;
     repositoryRoot?: string;
   }> = {},
@@ -279,6 +281,22 @@ export const runIde13OwnerLocalRealCohort = async (
   let maxRssBytes = process.memoryUsage().rss;
   const cpuStarted = process.cpuUsage();
   const wallStarted = performance.now();
+  let injectedTransitionPartition = false;
+  const runPhase = async <A>(phase: Phase, operation: () => Promise<A>): Promise<A> => {
+    if (input.injectedTransitionPartitionPhase === phase && injectedTransitionPartition === false) {
+      injectedTransitionPartition = true;
+      // This source-controlled probe represents a transient disconnect at the
+      // production phase dispatch boundary. It is not an external outage.
+      try {
+        throw new Error(`injected owner-local transition partition at ${phase}`);
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.startsWith("injected owner-local")) {
+          throw error;
+        }
+      }
+    }
+    return operation();
+  };
   try {
     const ledger = new PylonPortableSessionOperationLedger(database);
     const helpers = makePylonPortableDestinationProductionHelpers();
@@ -433,52 +451,58 @@ export const runIde13OwnerLocalRealCohort = async (
     });
 
     const quiesceA = await measure(() =>
-      sourceA.quiesceGraph({
-        operationRef: "operation.ide13.owner-local.move.quiesce",
-        sessionRef,
-        attachmentRef: attachmentA1,
-        generation: 1,
-        graph: graphFor(1),
-        threadCursors: cursorsFor(1),
-      }),
+      runPhase("quiesce", () =>
+        sourceA.quiesceGraph({
+          operationRef: "operation.ide13.owner-local.move.quiesce",
+          sessionRef,
+          attachmentRef: attachmentA1,
+          generation: 1,
+          graph: graphFor(1),
+          threadCursors: cursorsFor(1),
+        }),
+      ),
     );
     phaseMilliseconds.set("quiesce", quiesceA.milliseconds);
     await waitForTerminal(actions, started.sessionRef);
     const checkpointA = await measure(() =>
-      sourceA.createCheckpoint({
-        operationRef: "operation.ide13.owner-local.move.checkpoint",
-        checkpointRef: "checkpoint.ide13.owner-local.move.1",
-        sessionRef,
-        attachmentRef: attachmentA1,
-        generation: 1,
-        eventLogCursor: 1,
-        executionBinding,
-        graph: graphFor(1),
-        threadCursors: cursorsFor(1),
-      }),
+      runPhase("checkpoint", () =>
+        sourceA.createCheckpoint({
+          operationRef: "operation.ide13.owner-local.move.checkpoint",
+          checkpointRef: "checkpoint.ide13.owner-local.move.1",
+          sessionRef,
+          attachmentRef: attachmentA1,
+          generation: 1,
+          eventLogCursor: 1,
+          executionBinding,
+          graph: graphFor(1),
+          threadCursors: cursorsFor(1),
+        }),
+      ),
     );
     phaseMilliseconds.set("checkpoint", checkpointA.milliseconds);
-    const upload = await measure(async () => {
-      const artifact = await producerA.resolve({
-        ownerRef: executionBinding.ownerRef,
-        targetRef: targetBRef,
-        sessionRef,
-        attachmentRef: attachmentB2,
-        generation: 2,
-        checkpointRef: checkpointA.value.checkpoint.checkpointRef,
-        bundle: checkpointA.value,
-      });
-      try {
-        await custodyA.registerArtifact({ bundle: checkpointA.value, artifact });
-        return {
-          artifactRef: artifact.artifactRef,
-          digest: artifact.digest,
-          bytes: artifact.bytes.byteLength,
-        };
-      } finally {
-        artifact.bytes.fill(0);
-      }
-    });
+    const upload = await measure(() =>
+      runPhase("upload", async () => {
+        const artifact = await producerA.resolve({
+          ownerRef: executionBinding.ownerRef,
+          targetRef: targetBRef,
+          sessionRef,
+          attachmentRef: attachmentB2,
+          generation: 2,
+          checkpointRef: checkpointA.value.checkpoint.checkpointRef,
+          bundle: checkpointA.value,
+        });
+        try {
+          await custodyA.registerArtifact({ bundle: checkpointA.value, artifact });
+          return {
+            artifactRef: artifact.artifactRef,
+            digest: artifact.digest,
+            bytes: artifact.bytes.byteLength,
+          };
+        } finally {
+          artifact.bytes.fill(0);
+        }
+      }),
+    );
     phaseMilliseconds.set("upload", upload.milliseconds);
     await sourceA.cleanupSource({
       operationRef: "operation.ide13.owner-local.move.source.cleanup",
@@ -494,7 +518,9 @@ export const runIde13OwnerLocalRealCohort = async (
       destinationGeneration: 2,
       capabilityLeaseRefs,
     };
-    const stageB = await measure(() => destinationB.stageCheckpoint(stageBInput));
+    const stageB = await measure(() =>
+      runPhase("redeem", () => destinationB.stageCheckpoint(stageBInput)),
+    );
     phaseMilliseconds.set("redeem", stageB.milliseconds);
     const replayedStageB = await destinationB.stageCheckpoint(stageBInput);
     if (
@@ -529,11 +555,14 @@ export const runIde13OwnerLocalRealCohort = async (
       destinationGeneration: 2,
       capabilityLeaseRefs,
     };
-    const activatedB = await measure(() => destinationB.activate(activateBInput));
+    const activatedB = await measure(() =>
+      runPhase("attach", () => destinationB.activate(activateBInput)),
+    );
     phaseMilliseconds.set("attach", activatedB.milliseconds);
-    const helperReadinessStarted = performance.now();
-    exactHelperMatrix(activatedB.value.helpers);
-    phaseMilliseconds.set("helper_readiness", performance.now() - helperReadinessStarted);
+    const helperReadiness = await measure(() =>
+      runPhase("helper_readiness", async () => exactHelperMatrix(activatedB.value.helpers)),
+    );
+    phaseMilliseconds.set("helper_readiness", helperReadiness.milliseconds);
     const replayedActivationB = await destinationB.activate(activateBInput);
     if (replayedActivationB.receiptRef !== activatedB.value.receiptRef) {
       throw new Error("owner-local activation replay changed its receipt");
@@ -546,110 +575,115 @@ export const runIde13OwnerLocalRealCohort = async (
       bundle: checkpointA.value,
     });
 
-    const failbackStarted = performance.now();
-    const producerB = new PylonPortableCheckpointArtifactStore();
-    const custodyBConfig = {
-      custodyDirectory: join(root, "custody-b"),
-      policy: "owner_managed" as const,
-      keyRef: "key.ide13.owner-local.cohort.b",
-      keyProvider: { loadKey: async () => Uint8Array.from(custodyKeyB) },
-      retentionSeconds: 3_600,
-    };
-    const custodyB = new PylonPortableCheckpointArtifactStore(custodyBConfig);
-    const rehydratorA = createPylonPortableLocalRehydrator({
-      targetRef: targetARef,
-      custodyRoot: join(root, "rehydrated-a"),
-      artifacts: new PylonPortableCheckpointArtifactStore(custodyBConfig),
-      lifecycle: actions.portable,
-    });
-    const destinationA = createPylonOwnerLocalDestinationLifecycle({
-      targetRef: targetARef,
-      ledger,
-      authority: authorityPort,
-      rehydrator: rehydratorA,
-    });
-    const sourceB = await createPylonOwnerLocalExecutionTarget({
-      targetRef: targetBRef,
-      ledger,
-      lifecycle: actions.portable,
-      binding: { ...binding, attachmentRef: attachmentB2, generation: 2 },
-      destination: destinationA,
-      checkpointArtifacts: producerB,
-    });
-    await sourceB.quiesceGraph({
-      operationRef: "operation.ide13.owner-local.failback.quiesce",
-      sessionRef,
-      attachmentRef: attachmentB2,
-      generation: 2,
-      graph: graphFor(2),
-      threadCursors: cursorsFor(2),
-    });
-    const checkpointB = await sourceB.createCheckpoint({
-      operationRef: "operation.ide13.owner-local.failback.checkpoint",
-      checkpointRef: "checkpoint.ide13.owner-local.failback.2",
-      sessionRef,
-      attachmentRef: attachmentB2,
-      generation: 2,
-      eventLogCursor: 2,
-      executionBinding,
-      graph: graphFor(2),
-      threadCursors: cursorsFor(2),
-    });
-    const artifactB = await producerB.resolve({
-      ownerRef: executionBinding.ownerRef,
-      targetRef: targetARef,
-      sessionRef,
-      attachmentRef: attachmentA3,
-      generation: 3,
-      checkpointRef: checkpointB.checkpoint.checkpointRef,
-      bundle: checkpointB,
-    });
-    try {
-      await custodyB.registerArtifact({ bundle: checkpointB, artifact: artifactB });
-    } finally {
-      artifactB.bytes.fill(0);
-    }
-    await sourceB.cleanupSource({
-      operationRef: "operation.ide13.owner-local.failback.source.cleanup",
-      sessionRef,
-      attachmentRef: attachmentB2,
-      generation: 2,
-      agentRefs: [agentRef],
-    });
-    await destinationA.stageCheckpoint({
-      operationRef: "operation.ide13.owner-local.failback.destination.stage",
-      bundle: checkpointB,
-      destinationAttachmentRef: attachmentA3,
-      destinationGeneration: 3,
-      capabilityLeaseRefs,
-    });
-    setAuthority({
-      sessionRef,
-      targetRef: targetARef,
-      attachmentRef: attachmentA3,
-      generation: 3,
-      state: "active",
-      checkpointRef: checkpointB.checkpoint.checkpointRef,
-      authorityEvidenceRef: "evidence.ide13.owner-local.authority.a.3",
-    });
-    const activatedA = await destinationA.activate({
-      operationRef: "operation.ide13.owner-local.failback.destination.activate",
-      checkpointRef: checkpointB.checkpoint.checkpointRef,
-      sessionRef,
-      executionBinding,
-      destinationAttachmentRef: attachmentA3,
-      destinationGeneration: 3,
-      capabilityLeaseRefs,
-    });
-    exactHelperMatrix(activatedA.helpers);
-    phaseMilliseconds.set("failback", performance.now() - failbackStarted);
-    const deletedB = await custodyB.deleteArtifact({
-      operationRef: "operation.ide13.owner-local.failback.custody.delete",
-      ownerRef: executionBinding.ownerRef,
-      sessionRef,
-      checkpointRef: checkpointB.checkpoint.checkpointRef,
-      bundle: checkpointB,
-    });
+    const failback = await measure(() =>
+      runPhase("failback", async () => {
+        const producerB = new PylonPortableCheckpointArtifactStore();
+        const custodyBConfig = {
+          custodyDirectory: join(root, "custody-b"),
+          policy: "owner_managed" as const,
+          keyRef: "key.ide13.owner-local.cohort.b",
+          keyProvider: { loadKey: async () => Uint8Array.from(custodyKeyB) },
+          retentionSeconds: 3_600,
+        };
+        const custodyB = new PylonPortableCheckpointArtifactStore(custodyBConfig);
+        const rehydratorA = createPylonPortableLocalRehydrator({
+          targetRef: targetARef,
+          custodyRoot: join(root, "rehydrated-a"),
+          artifacts: new PylonPortableCheckpointArtifactStore(custodyBConfig),
+          lifecycle: actions.portable,
+        });
+        const destinationA = createPylonOwnerLocalDestinationLifecycle({
+          targetRef: targetARef,
+          ledger,
+          authority: authorityPort,
+          rehydrator: rehydratorA,
+        });
+        const sourceB = await createPylonOwnerLocalExecutionTarget({
+          targetRef: targetBRef,
+          ledger,
+          lifecycle: actions.portable,
+          binding: { ...binding, attachmentRef: attachmentB2, generation: 2 },
+          destination: destinationA,
+          checkpointArtifacts: producerB,
+        });
+        await sourceB.quiesceGraph({
+          operationRef: "operation.ide13.owner-local.failback.quiesce",
+          sessionRef,
+          attachmentRef: attachmentB2,
+          generation: 2,
+          graph: graphFor(2),
+          threadCursors: cursorsFor(2),
+        });
+        const checkpointB = await sourceB.createCheckpoint({
+          operationRef: "operation.ide13.owner-local.failback.checkpoint",
+          checkpointRef: "checkpoint.ide13.owner-local.failback.2",
+          sessionRef,
+          attachmentRef: attachmentB2,
+          generation: 2,
+          eventLogCursor: 2,
+          executionBinding,
+          graph: graphFor(2),
+          threadCursors: cursorsFor(2),
+        });
+        const artifactB = await producerB.resolve({
+          ownerRef: executionBinding.ownerRef,
+          targetRef: targetARef,
+          sessionRef,
+          attachmentRef: attachmentA3,
+          generation: 3,
+          checkpointRef: checkpointB.checkpoint.checkpointRef,
+          bundle: checkpointB,
+        });
+        try {
+          await custodyB.registerArtifact({ bundle: checkpointB, artifact: artifactB });
+        } finally {
+          artifactB.bytes.fill(0);
+        }
+        await sourceB.cleanupSource({
+          operationRef: "operation.ide13.owner-local.failback.source.cleanup",
+          sessionRef,
+          attachmentRef: attachmentB2,
+          generation: 2,
+          agentRefs: [agentRef],
+        });
+        await destinationA.stageCheckpoint({
+          operationRef: "operation.ide13.owner-local.failback.destination.stage",
+          bundle: checkpointB,
+          destinationAttachmentRef: attachmentA3,
+          destinationGeneration: 3,
+          capabilityLeaseRefs,
+        });
+        setAuthority({
+          sessionRef,
+          targetRef: targetARef,
+          attachmentRef: attachmentA3,
+          generation: 3,
+          state: "active",
+          checkpointRef: checkpointB.checkpoint.checkpointRef,
+          authorityEvidenceRef: "evidence.ide13.owner-local.authority.a.3",
+        });
+        const activatedA = await destinationA.activate({
+          operationRef: "operation.ide13.owner-local.failback.destination.activate",
+          checkpointRef: checkpointB.checkpoint.checkpointRef,
+          sessionRef,
+          executionBinding,
+          destinationAttachmentRef: attachmentA3,
+          destinationGeneration: 3,
+          capabilityLeaseRefs,
+        });
+        exactHelperMatrix(activatedA.helpers);
+        const deletedB = await custodyB.deleteArtifact({
+          operationRef: "operation.ide13.owner-local.failback.custody.delete",
+          ownerRef: executionBinding.ownerRef,
+          sessionRef,
+          checkpointRef: checkpointB.checkpoint.checkpointRef,
+          bundle: checkpointB,
+        });
+        return { activatedA, custodyBDirectory: custodyBConfig.custodyDirectory, deletedB };
+      }),
+    );
+    const { activatedA, custodyBDirectory, deletedB } = failback.value;
+    phaseMilliseconds.set("failback", failback.milliseconds);
 
     const abortController = new AbortController();
     const abortReservationRef = "runner-session-reservation.ide13.owner-local.abort";
@@ -684,41 +718,46 @@ export const runIde13OwnerLocalRealCohort = async (
     abortController.abort(new Error("owner-local cohort abort proof"));
     await supervisor.disposeReservation(abortReservationRef);
 
-    const teardownStarted = performance.now();
-    const sourceA3 = await createPylonOwnerLocalExecutionTarget({
-      targetRef: targetARef,
-      ledger,
-      lifecycle: actions.portable,
-      binding: { ...binding, attachmentRef: attachmentA3, generation: 3 },
-    });
-    await sourceA3.quiesceGraph({
-      operationRef: "operation.ide13.owner-local.teardown.quiesce",
-      sessionRef,
-      attachmentRef: attachmentA3,
-      generation: 3,
-      graph: graphFor(3),
-      threadCursors: cursorsFor(3),
-    });
-    const finalCheckpoint = await sourceA3.createCheckpoint({
-      operationRef: "operation.ide13.owner-local.teardown.checkpoint",
-      checkpointRef: "checkpoint.ide13.owner-local.teardown.3",
-      sessionRef,
-      attachmentRef: attachmentA3,
-      generation: 3,
-      eventLogCursor: 3,
-      executionBinding,
-      graph: graphFor(3),
-      threadCursors: cursorsFor(3),
-    });
-    const teardown = await sourceA3.cleanupSource({
-      operationRef: "operation.ide13.owner-local.teardown.source.cleanup",
-      sessionRef,
-      attachmentRef: attachmentA3,
-      generation: 3,
-      agentRefs: [agentRef],
-    });
-    await actions.portable.shutdownHelpers?.();
-    phaseMilliseconds.set("teardown", performance.now() - teardownStarted);
+    const teardownPhase = await measure(() =>
+      runPhase("teardown", async () => {
+        const sourceA3 = await createPylonOwnerLocalExecutionTarget({
+          targetRef: targetARef,
+          ledger,
+          lifecycle: actions.portable,
+          binding: { ...binding, attachmentRef: attachmentA3, generation: 3 },
+        });
+        await sourceA3.quiesceGraph({
+          operationRef: "operation.ide13.owner-local.teardown.quiesce",
+          sessionRef,
+          attachmentRef: attachmentA3,
+          generation: 3,
+          graph: graphFor(3),
+          threadCursors: cursorsFor(3),
+        });
+        const finalCheckpoint = await sourceA3.createCheckpoint({
+          operationRef: "operation.ide13.owner-local.teardown.checkpoint",
+          checkpointRef: "checkpoint.ide13.owner-local.teardown.3",
+          sessionRef,
+          attachmentRef: attachmentA3,
+          generation: 3,
+          eventLogCursor: 3,
+          executionBinding,
+          graph: graphFor(3),
+          threadCursors: cursorsFor(3),
+        });
+        const teardown = await sourceA3.cleanupSource({
+          operationRef: "operation.ide13.owner-local.teardown.source.cleanup",
+          sessionRef,
+          attachmentRef: attachmentA3,
+          generation: 3,
+          agentRefs: [agentRef],
+        });
+        await actions.portable.shutdownHelpers?.();
+        return { finalCheckpoint, teardown };
+      }),
+    );
+    const { finalCheckpoint, teardown } = teardownPhase.value;
+    phaseMilliseconds.set("teardown", teardownPhase.milliseconds);
     if (supervisor.disposalFailures().length !== 0) {
       throw new Error("owner-local helper teardown recorded a disposal failure");
     }
@@ -734,7 +773,7 @@ export const runIde13OwnerLocalRealCohort = async (
     ).length;
     const activeCustodyObjects = (
       await Promise.all(
-        [custodyAConfig.custodyDirectory, custodyBConfig.custodyDirectory].map(
+        [custodyAConfig.custodyDirectory, custodyBDirectory].map(
           async (directory) =>
             (await readdir(directory)).filter((name) => name.endsWith(".checkpoint.aesgcm")).length,
         ),
@@ -891,6 +930,12 @@ export const runIde13OwnerLocalRealCohort = async (
     );
     if (metrics.some((metric) => !metric.passed)) {
       throw new Error("owner-local cohort metric threshold failed");
+    }
+    if (
+      input.injectedTransitionPartitionPhase !== undefined &&
+      injectedTransitionPartition === false
+    ) {
+      throw new Error("owner-local transition partition probe did not reach its phase boundary");
     }
     if (input.outputPath !== undefined) {
       await mkdir(dirname(input.outputPath), { recursive: true });
