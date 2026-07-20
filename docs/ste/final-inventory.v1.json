@@ -23770,7 +23770,7 @@
     },
     {
       "path": "docs/fable/2026-07-19-verifiable-software.md",
-      "sha256": "dabc0e9107172781bb7837d74af46e1d89202fc9bf7eb365150b8a2ae2300cbf",
+      "sha256": "d35779737f82576b5fd7284a572d040010ac597319cb2f231fe02b5e32e2d8ae",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -24,6 +24,32 @@ and wallet transcript arc (episodes 141–147, 153, 200, 207, 212–215, 223,
 
 ---
 
+## Synopsis
+
+At the bottom of the stack is a stream of electrons — the same commodity
+Bitcoin mining learned to convert directly into verifiable digital value,
+one hash at a time. AI produces a second kind of digital work, but the unit
+it sells today, the token, is an intermediate nobody actually wants: buyers
+want a task completed, checked, and trusted. So the real question for any
+machine-work economy is the one episode 232 coined as a metric — _accepted
+outcomes per kilowatt-hour_: of all the electricity flowing into compute,
+how much comes out the other end as work someone verified and accepted,
+rather than tokens burned in loops? The hard part of that conversion is not
+generation — generation is collapsing toward free — it is verification,
+which is exactly why the price of an accepted outcome is dominated by
+review, retries, and grading, not model tokens. Verifiable software is the
+machinery that closes that gap: software that scopes work in advance as
+falsifiable intent, observes its own evidence instead of narrating it,
+separates the producer from the verifier, and emits receipts that let
+acceptance be checked — and paid — by strangers. Mining proved electrons
+could become money because a hash verifies itself. Verifiable software is
+how electrons become _outcomes_, by making every claim between the watt and
+the deliverable carry its own proof. The electrons are the input, the
+accepted outcome is the product, and verifiable software is the refinery in
+between.
+
+---
+
 ## I. A wrong sentence has no compiler
 
 During a recording prep session earlier this month, an agent told the owner to
