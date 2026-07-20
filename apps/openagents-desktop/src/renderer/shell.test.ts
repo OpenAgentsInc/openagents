@@ -26,6 +26,7 @@ import {
   formatRelativeTimestamp,
   formatShellTimestamp,
   initialDesktopShellState,
+  buildOpenAgentsAppleFmPrompt,
   providerTargetForSubmission,
   providerTargetForThread,
   makeDesktopShellHandlers,
@@ -968,6 +969,84 @@ describe("desktopShellView (state -> component tree)", () => {
       { role: "user", text: "Are you there?" },
       { role: "assistant", text: "Stand by." },
     ])
+  })
+
+  // appleFmChatHost is the LAST positional param of makeDesktopShellHandlers.
+  // Fill params 3..34 with undefined; typecheck validates the host lands in the
+  // right slot (a wrong slot fails because the host types differ).
+  const openAgentsHandlersWithAppleFm = (
+    st: SubscriptionRef.SubscriptionRef<DesktopShellState>,
+    appleFmChatHost: { respond: (prompt: string) => Promise<string | null> },
+  ) => makeDesktopShellHandlers(
+    st, fixedNow,
+    // params 3..34 (32 hosts) default to undefined; appleFmChatHost is param 35.
+    undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    appleFmChatHost,
+  )
+
+  test("OpenAgents authority (owner directive 2026-07-20): when Apple FM is available, the on-device model answers over the truncated conversation instead of 'Stand by.'", async () => {
+    const prompts: Array<string> = []
+    const appleFmChatHost = {
+      respond: async (prompt: string) => { prompts.push(prompt); return "Yes — I am here, on device." },
+    }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      openAgentsStandby: undefined,
+      appleFmBoot: { status: "available", detail: "apple-fm-3b", testInference: "I am online." },
+      notes: [
+        { key: "u0", role: "user", text: "Hi", timestamp: "18:00" },
+        { key: "a0", role: "assistant", text: "Hello there.", timestamp: "18:00" },
+      ],
+    }))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, openAgentsHandlersWithAppleFm(state, appleFmChatHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Are you there?")))))
+    const final = await Effect.runPromise(SubscriptionRef.get(state))
+    // The on-device turn saw the prior history AND the new user message.
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).toContain("Assistant: Hello there.")
+    expect(prompts[0]).toContain("User: Are you there?")
+    expect(final.pending).toBe(false)
+    expect(final.notes.map((note) => ({ role: note.role, text: note.text }))).toEqual([
+      { role: "user", text: "Hi" },
+      { role: "assistant", text: "Hello there." },
+      { role: "user", text: "Are you there?" },
+      { role: "assistant", text: "Yes — I am here, on device." },
+    ])
+  })
+
+  test("OpenAgents authority: an Apple FM refusal or failure falls back to the fixed 'Stand by.' acknowledgement", async () => {
+    const appleFmChatHost = { respond: async () => null }
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      openAgentsStandby: undefined,
+      appleFmBoot: { status: "available", detail: "apple-fm-3b", testInference: null },
+      notes: [],
+    }))
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, openAgentsHandlersWithAppleFm(state, appleFmChatHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Are you there?")))))
+    const final = await Effect.runPromise(SubscriptionRef.get(state))
+    expect(final.pending).toBe(false)
+    expect(final.notes.map((note) => ({ role: note.role, text: note.text }))).toEqual([
+      { role: "user", text: "Are you there?" },
+      { role: "assistant", text: "Stand by." },
+    ])
+  })
+
+  test("buildOpenAgentsAppleFmPrompt keeps the newest turns within the window, always the last message, and cues the assistant", () => {
+    const notes = Array.from({ length: 40 }, (_, i) => ({
+      key: `n${i}`,
+      role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+      text: `line ${i} ${"x".repeat(200)}`,
+      timestamp: "18:00",
+    }))
+    const prompt = buildOpenAgentsAppleFmPrompt(notes, 1000)
+    expect(prompt.length).toBeLessThanOrEqual(1000)
+    expect(prompt).toContain("line 39")
+    expect(prompt).not.toContain("line 0 ")
+    expect(prompt.endsWith("Assistant:")).toBe(true)
   })
 
   test("Full Auto (#8853): a flagged turn sends fullAuto:true exactly once -- main, not the renderer, decides whether to continue", async () => {

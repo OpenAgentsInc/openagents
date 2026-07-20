@@ -7573,7 +7573,11 @@ const smokeCodexLocalStreaming = `(async () => {
   )
   const bodiesBefore = assistantBodies().length
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-  const finalText = "Stand by."
+  // Owner directive 2026-07-20: the OpenAgents turn is answered by Apple FM when
+  // the on-device model is available, otherwise by the fixed "Stand by."
+  // acknowledgement. The proof is a non-empty assistant reply with no provider
+  // sender label and a re-enabled composer — either answer is honest.
+  const standbyText = "Stand by."
   const lastAssistantText = () => {
     const bodies = assistantBodies()
     const last = bodies[bodies.length - 1]
@@ -7584,13 +7588,14 @@ const smokeCodexLocalStreaming = `(async () => {
       .map((node) => node.textContent ?? "")
       .join("")
   }
-  const deadline = Date.now() + 20000
+  const deadline = Date.now() + 30000
   while (Date.now() < deadline) {
-    if (lastAssistantText() === finalText && input.disabled === false) break
+    if (lastAssistantText().trim().length > 0 && input.disabled === false) break
     await wait(25)
   }
-  if (lastAssistantText() !== finalText) {
-    return { ok: false, reason: "OpenAgents standby text did not appear", text: lastAssistantText() }
+  const replyText = lastAssistantText().trim()
+  if (replyText.length === 0) {
+    return { ok: false, reason: "OpenAgents reply did not appear", text: replyText }
   }
   const rows = document.querySelectorAll('[data-en-key="shell-transcript"] [data-en-message][data-en-role="assistant"]')
   const lastRow = rows[rows.length - 1]
@@ -7598,7 +7603,8 @@ const smokeCodexLocalStreaming = `(async () => {
     lastRow.querySelector('[data-en-role="sender"]') === null
   return {
     ok: noAssistantLabel && input.disabled === false,
-    standby: lastAssistantText() === finalText,
+    standby: replyText === standbyText,
+    onDeviceAnswer: replyText !== standbyText,
     noAssistantLabel,
     composerEnabled: input.disabled === false,
   }

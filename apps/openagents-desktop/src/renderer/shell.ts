@@ -2197,6 +2197,55 @@ export type DesktopFullAutoRendererHost = Readonly<{
   interrupt?: (input: Readonly<{ threadRef: string }>) => Promise<Readonly<{ ok: boolean }>>
 }>
 
+/**
+ * OpenAgents on-device answer host (owner directive 2026-07-20). When Apple FM
+ * is available, a submitted OpenAgents turn is answered by the local, no-cost
+ * on-device model instead of the fixed "Stand by." acknowledgement. The host is
+ * a bounded, advisory wrapper over the Apple FM bridge: `respond` runs one
+ * bounded on-device turn and returns the reply text, or null when the model
+ * refuses, fails, or is unavailable. It holds no authority — it only produces a
+ * chat reply, and the availability gate is the boot-sequence probe already in
+ * shell state (`appleFmBoot`), so no extra probe runs per turn.
+ */
+export type DesktopAppleFmChatHost = Readonly<{
+  respond: (prompt: string) => Promise<string | null>
+}>
+const unavailableAppleFmChatHost: DesktopAppleFmChatHost = { respond: async () => null }
+
+/**
+ * The Apple FM prompt hard cap mirrors AppleFmStartTurnRequestSchema (4000
+ * chars). Leave a small margin so the flattened prompt never trips the schema.
+ */
+const APPLE_FM_PROMPT_MAX_CHARS = 3900
+
+/**
+ * Build one flattened Apple FM prompt from the OpenAgents conversation. The
+ * on-device model has a small context window, so the history is truncated to
+ * fit within `maxChars`: a short preamble plus the most recent turns, always
+ * keeping the latest user message, oldest turns dropped first. If even the
+ * newest turn overflows, its text is hard-truncated.
+ */
+export const buildOpenAgentsAppleFmPrompt = (
+  notes: ReadonlyArray<DesktopNoteEntry>,
+  maxChars: number = APPLE_FM_PROMPT_MAX_CHARS,
+): string => {
+  const preamble =
+    "You are OpenAgents, a concise on-device assistant. Answer the last user message briefly and helpfully."
+  const lines = notes
+    .map((note) => {
+      const text = note.text.trim()
+      return text === "" ? null : `${note.role === "assistant" ? "Assistant" : "User"}: ${text}`
+    })
+    .filter((line): line is string => line !== null)
+  const assemble = (rows: ReadonlyArray<string>): string => `${preamble}\n\n${rows.join("\n")}\nAssistant:`
+  // Keep the newest turns that fit, dropping the oldest first, but never drop
+  // the final line (the message being answered).
+  let kept = lines
+  while (kept.length > 1 && assemble(kept).length > maxChars) kept = kept.slice(1)
+  const prompt = assemble(kept)
+  return prompt.length > maxChars ? prompt.slice(0, maxChars) : prompt
+}
+
 export const makeDesktopShellHandlers = (
   state: SubscriptionRef.SubscriptionRef<DesktopShellState>,
   now: () => string = () => formatShellTimestamp(new Date()),
@@ -2256,6 +2305,9 @@ export const makeDesktopShellHandlers = (
   ideCursorHost: IdeCursorRendererHost = unavailableIdeCursorRendererHost,
   // SBX-06 host is appended to preserve every historical positional caller.
   managedSandboxHost: IdeManagedSandboxRendererHost = unavailableIdeManagedSandboxRendererHost,
+  // Apple FM on-device answer host (owner directive 2026-07-20). Appended last
+  // to preserve every historical positional caller.
+  appleFmChatHost: DesktopAppleFmChatHost = unavailableAppleFmChatHost,
 ): IntentHandlers<typeof desktopShellIntents> => {
   // Latest-selection-wins fence for async host reads. An older click may
   // finish later, but it must never replace the newer visible conversation.
@@ -2992,29 +3044,41 @@ export const makeDesktopShellHandlers = (
         yield* Effect.promise(() => fullAutoHost.set({ threadRef: thread.id, enabled: true }))
       }
     }
-    // OpenAgents authority (owner directive 2026-07-19): new turns route to
-    // "OpenAgents", which for now commits the user's message and replies with a
-    // fixed "Stand by." acknowledgement. No Codex/Claude provider turn is
-    // started yet. The preserved provider-send path below runs only when a
-    // caller explicitly opts out via `openAgentsStandby: false`.
+    // OpenAgents authority (owner directive 2026-07-19, amended 2026-07-20): new
+    // turns route to "OpenAgents". The user message is committed, then — when
+    // Apple FM is available (the boot-sequence probe already in shell state) —
+    // the local, no-cost on-device model answers over the conversation history
+    // (truncated to its small window). When Apple FM is unavailable, or the
+    // model refuses/fails, it falls back to the fixed "Stand by."
+    // acknowledgement. No Codex/Claude provider turn is started. The preserved
+    // provider-send path below runs only when a caller explicitly opts out via
+    // `openAgentsStandby: false`.
     if (current.openAgentsStandby !== false) {
+      // Commit the user's message and enter the pending state so a thinking
+      // indicator shows while the on-device model runs.
       const withUser = withNote(current, message, now())
-      yield* SubscriptionRef.set(state, {
-        ...withUser,
+      yield* SubscriptionRef.set(state, withUser)
+      const reply = withUser.appleFmBoot?.status === "available"
+        ? yield* Effect.promise(() =>
+            appleFmChatHost.respond(buildOpenAgentsAppleFmPrompt(withUser.notes)).catch(() => null))
+        : null
+      const finalText = reply !== null && reply.trim() !== "" ? reply.trim() : "Stand by."
+      yield* SubscriptionRef.update(state, (cur) => ({
+        ...cur,
         pending: false,
-        ...(withUser.activeThreadId === null ? {} : {
-          pendingByThread: { ...withUser.pendingByThread, [withUser.activeThreadId]: false },
+        ...(cur.activeThreadId === null ? {} : {
+          pendingByThread: { ...cur.pendingByThread, [cur.activeThreadId]: false },
         }),
         notes: [
-          ...withUser.notes,
+          ...cur.notes,
           {
-            key: `openagents-standby-${withUser.notes.length}`,
+            key: `openagents-standby-${cur.notes.length}`,
             role: "assistant" as const,
-            text: "Stand by.",
+            text: finalText,
             timestamp: now(),
           },
         ],
-      })
+      }))
       return
     }
     // Capture the pending attachments BEFORE withNote clears them.

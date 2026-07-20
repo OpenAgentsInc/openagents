@@ -113,7 +113,7 @@ import {
   makeLocalHarnessChatHost,
   type FableLocalRendererBridge,
 } from "./local-harness.ts"
-import { withHarnessLanes, type AppleFmBootState, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
+import { withHarnessLanes, type AppleFmBootState, type DesktopAppleFmChatHost, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
 import type { AppleFmStartTurnRequest, AppleFmStatus, AppleFmStopResult, AppleFmTurnResult } from "../apple-fm-contract.ts"
 import { unavailableFullAutoRunOutcome, type FullAutoRunRendererHost } from "../full-auto-run-ipc-contract.ts"
 import { decodeProviderLaneComposerProjections } from "../provider-lane-capabilities.ts"
@@ -1502,7 +1502,19 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       } satisfies AcpProviderSettingsBridge, {
         snapshot: () => readBridge()?.codexExperimental?.snapshot?.() ?? Promise.resolve(null),
         request: value => readBridge()?.codexExperimental?.request?.(value) ?? Promise.resolve({ ok: false, reason: "unavailable" }),
-      }, fullAutoRunHost, ideAgentCodeRendererHost, ideCursorRendererHost, ideManagedSandboxRendererHost),
+      }, fullAutoRunHost, ideAgentCodeRendererHost, ideCursorRendererHost, ideManagedSandboxRendererHost, {
+        // Apple FM on-device answer host (owner directive 2026-07-20): run one
+        // bounded local turn and return its reply text, or null when the model
+        // refuses/fails or the bridge is unavailable. Availability is gated by
+        // the boot-sequence probe in shell state, so this is only called when
+        // Apple FM already reported ready.
+        respond: async (prompt: string) => {
+          const appleFm = readBridge()?.appleFm
+          if (appleFm?.startTurn === undefined) return null
+          const turn = await appleFm.startTurn({ prompt }).catch(() => null)
+          return turn != null && turn.outcome === "completed" && turn.text !== null ? turn.text : null
+        },
+      } satisfies DesktopAppleFmChatHost),
     )
     if (!documentLaunch && typeof bridge?.runtimeRequest === "function") {
       // Non-blocking: the initial voice-state query never gates first paint.
