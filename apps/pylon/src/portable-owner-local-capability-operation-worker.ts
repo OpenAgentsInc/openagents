@@ -20,6 +20,7 @@ const stableRef = (prefix: string, value: string): string =>
 export type PylonPortableOwnerLocalCapabilityExecutionOutcome =
   | Readonly<{
       status: "completed";
+      installationRef: string | null;
       receiptRef: string;
       evidenceRefs: ReadonlyArray<string>;
       errorRef: null;
@@ -37,9 +38,18 @@ export type PylonPortableOwnerLocalCapabilityExecution = Readonly<{
   privateBuffers?: ReadonlyArray<Uint8Array>;
 }>;
 
+export type PylonPortableOwnerLocalCapabilityExecutionClaim = Readonly<{
+  claimRef: string;
+  workerInstanceRef: string;
+  claimGeneration: number;
+  expectedLeaseRevision: number;
+  expectedLeaseExpiresAt: string;
+}>;
+
 export type PylonPortableOwnerLocalCapabilityExecutor = Readonly<{
   execute: (
     request: PortableOwnerLocalCapabilityOperationRequest,
+    claim: PylonPortableOwnerLocalCapabilityExecutionClaim,
     signal: AbortSignal,
   ) => Promise<PylonPortableOwnerLocalCapabilityExecution>;
   recoverySemantics: (
@@ -124,6 +134,9 @@ const validateOutcome = (outcome: PylonPortableOwnerLocalCapabilityExecutionOutc
     new Set(outcome.evidenceRefs).size !== outcome.evidenceRefs.length ||
     outcome.evidenceRefs.some((ref) => !SAFE_REF.test(ref)) ||
     (outcome.status === "completed" && !SAFE_REF.test(outcome.receiptRef)) ||
+    (outcome.status === "completed" &&
+      outcome.installationRef !== null &&
+      !SAFE_REF.test(outcome.installationRef)) ||
     (outcome.status === "failed" && !SAFE_REF.test(outcome.errorRef))
   )
     throw new Error("portable capability executor returned an unsafe refs-only outcome");
@@ -265,10 +278,22 @@ export class PylonPortableOwnerLocalCapabilityWorker {
 
   private async execute(claim: ActiveClaim, signal: AbortSignal): Promise<void> {
     await this.persist(claim, "executing");
-    const running = this.options.executor.execute(claim.record.request, signal).then(
-      (value) => ({ tag: "success" as const, value }),
-      (error: unknown) => ({ tag: "failure" as const, error }),
-    );
+    const running = this.options.executor
+      .execute(
+        claim.record.request,
+        {
+          claimRef: claim.claimRequest.claimRef,
+          workerInstanceRef: this.options.workerInstanceRef,
+          claimGeneration: claim.claimGeneration,
+          expectedLeaseRevision: claim.leaseRevision,
+          expectedLeaseExpiresAt: claim.leaseExpiresAt,
+        },
+        signal,
+      )
+      .then(
+        (value) => ({ tag: "success" as const, value }),
+        (error: unknown) => ({ tag: "failure" as const, error }),
+      );
     let settled: Awaited<typeof running>;
     while (true) {
       const next = await Promise.race([

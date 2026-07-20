@@ -112,12 +112,14 @@ test("completes with refs only and zeroizes executor buffers", async () => {
     },
     executor: {
       recoverySemantics: async () => "operation_ref_idempotent",
-      execute: async (request) => {
+      execute: async (request, claim) => {
         expect(request.capability).toBe("provider");
         expect(request.installationRef).toBeNull();
+        expect(claim.expectedLeaseRevision).toBe(1);
         return {
           outcome: {
             status: "completed",
+            installationRef: "installation.ide13.capability.install",
             receiptRef: "receipt.ide13.capability.install",
             evidenceRefs: ["evidence.ide13.capability.install"],
             errorRef: null,
