@@ -47,6 +47,7 @@ const pending = (): PortableOwnerLocalCapabilityOperationRecord => ({
   resultRef: null,
   resultFingerprint: null,
   resultStatus: null,
+  resultInstallationRef: null,
   receiptRef: null,
   resultEvidenceRefs: [],
   errorRef: null,
@@ -91,6 +92,7 @@ test("completes with refs only and zeroizes executor buffers", async () => {
           leaseRevision: request.expectedLeaseRevision + 1,
           resultRef: request.resultRef,
           resultStatus: request.resultStatus,
+          resultInstallationRef: request.resultInstallationRef,
           receiptRef: request.receiptRef,
           resultEvidenceRefs: [...request.evidenceRefs],
           errorRef: request.errorRef,
@@ -119,7 +121,7 @@ test("completes with refs only and zeroizes executor buffers", async () => {
         return {
           outcome: {
             status: "completed",
-            installationRef: "installation.ide13.capability.install",
+            resultInstallationRef: "installation.ide13.capability.install",
             receiptRef: "receipt.ide13.capability.install",
             evidenceRefs: ["evidence.ide13.capability.install"],
             errorRef: null,
@@ -134,6 +136,7 @@ test("completes with refs only and zeroizes executor buffers", async () => {
   expect([...raw]).toEqual(Array.from({ length: raw.length }, () => 0));
   expect(completion).toMatchObject({
     resultStatus: "completed",
+    resultInstallationRef: "installation.ide13.capability.install",
     receiptRef: "receipt.ide13.capability.install",
     evidenceRefs: ["evidence.ide13.capability.install"],
     errorRef: null,
@@ -159,6 +162,7 @@ test("reconciles an exact terminal result after a lost completion acknowledgemen
     expectedLeaseRevision: 1,
     resultRef: "result.ide13.capability.install",
     resultStatus: "completed",
+    resultInstallationRef: "installation.ide13.capability.install",
     receiptRef: "receipt.ide13.capability.install",
     evidenceRefs: ["evidence.ide13.capability.install"],
     errorRef: null,
@@ -180,6 +184,7 @@ test("reconciles an exact terminal result after a lost completion acknowledgemen
     leaseRevision: 2,
     resultRef: completion.resultRef,
     resultStatus: completion.resultStatus,
+    resultInstallationRef: completion.resultInstallationRef,
     receiptRef: completion.receiptRef,
     resultEvidenceRefs: [...completion.evidenceRefs],
     completedAt: completion.completedAt,

@@ -55,6 +55,7 @@ type Row = Readonly<{
   result_ref: string | null;
   result_fingerprint: string | null;
   result_status: "completed" | "failed" | "expired" | null;
+  result_installation_ref: string | null;
   receipt_ref: string | null;
   result_evidence_refs_json: unknown;
   error_ref: string | null;
@@ -222,6 +223,7 @@ const rowToRecord = (row: Row): PortableOwnerLocalCapabilityOperationRecord => {
     resultRef: row.result_ref,
     resultFingerprint: row.result_fingerprint,
     resultStatus: row.result_status,
+    resultInstallationRef: row.result_installation_ref,
     receiptRef: row.receipt_ref,
     resultEvidenceRefs: parseJson(row.result_evidence_refs_json),
     errorRef: row.error_ref,
@@ -568,6 +570,7 @@ export class PostgresPortableOwnerLocalCapabilityOperationStore {
       if (row === undefined) throw fail("not_found", "claim does not exist");
       this.assertActorOwner(row, ownerRef);
       this.assertMutationBinding(row, request);
+      this.assertActionResultShape(row.action, request);
       await this.assertCurrentAuthority(tx, rowToRecord(row).request, now);
       const revision = requiredPositive(row.lease_revision, "lease revision");
       if (
@@ -602,7 +605,9 @@ export class PostgresPortableOwnerLocalCapabilityOperationStore {
         UPDATE khala_sync_portable_owner_local_capability_operations
         SET state = ${request.resultStatus}, lease_revision = lease_revision + 1,
             result_ref = ${request.resultRef}, result_fingerprint = ${resultFingerprint},
-            result_status = ${request.resultStatus}, receipt_ref = ${request.receiptRef},
+            result_status = ${request.resultStatus},
+            result_installation_ref = ${request.resultInstallationRef},
+            receipt_ref = ${request.receiptRef},
             result_evidence_refs_json = ${JSON.stringify(request.evidenceRefs)}::text::jsonb,
             error_ref = ${request.errorRef}, completed_at = ${request.completedAt},
             updated_at = ${request.completedAt}
@@ -805,12 +810,33 @@ export class PostgresPortableOwnerLocalCapabilityOperationStore {
 
   private assertResultShape(request: ReturnType<typeof decodeResult>): void {
     if (
-      (request.resultStatus === "completed" &&
-        (request.receiptRef === null || request.errorRef !== null)) ||
       (request.resultStatus === "failed" &&
-        (request.receiptRef !== null || request.errorRef === null))
+        (request.resultInstallationRef !== null ||
+          request.receiptRef !== null ||
+          request.errorRef === null)) ||
+      (request.resultStatus === "completed" && request.errorRef !== null)
     ) {
       throw fail("invalid", "terminal receipt shape is invalid");
+    }
+  }
+
+  private assertActionResultShape(
+    action: "install" | "wipe",
+    request: ReturnType<typeof decodeResult>,
+  ): void {
+    if (request.resultStatus === "failed") return;
+    const installResult =
+      action === "install" &&
+      request.resultInstallationRef !== null &&
+      request.receiptRef !== null &&
+      request.evidenceRefs.length === 1;
+    const wipeResult =
+      action === "wipe" &&
+      request.resultInstallationRef === null &&
+      request.receiptRef !== null &&
+      request.evidenceRefs.length === 0;
+    if (!installResult && !wipeResult) {
+      throw fail("invalid", "terminal result does not match the queued action");
     }
   }
 }

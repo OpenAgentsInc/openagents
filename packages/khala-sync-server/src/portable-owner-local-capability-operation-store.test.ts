@@ -37,6 +37,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
       databaseUrl: pg.urlFor("khala_sync_ide13_capability_operations"),
     });
     expect(result.applied).toContain("0089_portable_owner_local_capability_operations.sql");
+    expect(result.applied).toContain("0090_portable_owner_local_capability_results.sql");
     sql = SQL({ url: pg.urlFor("khala_sync_ide13_capability_operations"), max: 10 });
     await sql`
       INSERT INTO pylon_registrations
@@ -153,9 +154,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
     action: "install" | "wipe" = "install",
   ) => {
     const permissionRefs =
-      action === "install"
-        ? ["permission.github.write", "permission.provider.use"]
-        : [];
+      action === "install" ? ["permission.github.write", "permission.provider.use"] : [];
     const identity = {
       action,
       capability: action === "install" ? ("scm_write" as const) : null,
@@ -173,8 +172,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
       sourceGrantRef: `grant.ide13.capability.source.${fixture.suffix}`,
       destinationLeaseRef: `lease.ide13.capability.destination.${fixture.suffix}`,
       destinationGrantRef: `grant.ide13.capability.destination.${fixture.suffix}`,
-      installationRef:
-        action === "wipe" ? `installation.ide13.capability.${fixture.suffix}` : null,
+      installationRef: action === "wipe" ? `installation.ide13.capability.${fixture.suffix}` : null,
       permissionRefs,
     };
     return {
@@ -196,6 +194,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
     expect(names).toContain("permission_fingerprint");
     expect(names).toContain("capability");
     expect(names).toContain("installation_ref");
+    expect(names).toContain("result_installation_ref");
     expect(names).not.toEqual(
       expect.arrayContaining(["material", "bytes", "base64", "endpoint", "bearer"]),
     );
@@ -331,14 +330,22 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
       expectedLeaseRevision: 2,
       resultRef: `result.ide13.capability.${fixture.suffix}`,
       resultStatus: "completed" as const,
+      resultInstallationRef: null,
       receiptRef: `receipt.ide13.capability.${fixture.suffix}`,
-      evidenceRefs: [`evidence.ide13.capability.${fixture.suffix}`],
+      evidenceRefs: [],
       errorRef: null,
       completedAt: now,
     };
     await expect(firstStore.complete("owner.ide13.other", result)).rejects.toMatchObject({
       code: "conflict",
     });
+    await expect(
+      firstStore.complete(ownerRef, {
+        ...result,
+        resultInstallationRef: `installation.ide13.capability.unexpected.${fixture.suffix}`,
+        evidenceRefs: [`evidence.ide13.capability.unexpected.${fixture.suffix}`],
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
     const completed = await firstStore.complete(ownerRef, result);
     expect(completed).toMatchObject({ status: "completed", operation: { leaseRevision: 3 } });
     await expect(firstStore.complete(ownerRef, result)).resolves.toEqual({

@@ -20,13 +20,14 @@ const stableRef = (prefix: string, value: string): string =>
 export type PylonPortableOwnerLocalCapabilityExecutionOutcome =
   | Readonly<{
       status: "completed";
-      installationRef: string | null;
+      resultInstallationRef: string | null;
       receiptRef: string;
       evidenceRefs: ReadonlyArray<string>;
       errorRef: null;
     }>
   | Readonly<{
       status: "failed";
+      resultInstallationRef: null;
       receiptRef: null;
       evidenceRefs: ReadonlyArray<string>;
       errorRef: string;
@@ -122,22 +123,39 @@ const exactCompletion = (
   record.state === completion.resultStatus &&
   record.resultRef === completion.resultRef &&
   record.resultStatus === completion.resultStatus &&
+  record.resultInstallationRef === completion.resultInstallationRef &&
   record.receiptRef === completion.receiptRef &&
   record.errorRef === completion.errorRef &&
   record.completedAt === completion.completedAt &&
   record.resultEvidenceRefs.length === completion.evidenceRefs.length &&
   record.resultEvidenceRefs.every((ref, index) => ref === completion.evidenceRefs[index]);
 
-const validateOutcome = (outcome: PylonPortableOwnerLocalCapabilityExecutionOutcome): void => {
+const validateOutcome = (
+  request: PortableOwnerLocalCapabilityOperationRequest,
+  outcome: PylonPortableOwnerLocalCapabilityExecutionOutcome,
+): void => {
+  const exactInstall =
+    request.action === "install" &&
+    outcome.status === "completed" &&
+    outcome.resultInstallationRef !== null &&
+    SAFE_REF.test(outcome.resultInstallationRef) &&
+    outcome.receiptRef !== null &&
+    SAFE_REF.test(outcome.receiptRef) &&
+    outcome.evidenceRefs.length === 1;
+  const exactWipe =
+    request.action === "wipe" &&
+    outcome.status === "completed" &&
+    outcome.resultInstallationRef === null &&
+    outcome.receiptRef !== null &&
+    SAFE_REF.test(outcome.receiptRef) &&
+    outcome.evidenceRefs.length === 0;
   if (
     outcome.evidenceRefs.length > 256 ||
     new Set(outcome.evidenceRefs).size !== outcome.evidenceRefs.length ||
     outcome.evidenceRefs.some((ref) => !SAFE_REF.test(ref)) ||
-    (outcome.status === "completed" && !SAFE_REF.test(outcome.receiptRef)) ||
-    (outcome.status === "completed" &&
-      outcome.installationRef !== null &&
-      !SAFE_REF.test(outcome.installationRef)) ||
-    (outcome.status === "failed" && !SAFE_REF.test(outcome.errorRef))
+    (outcome.status === "completed" && !exactInstall && !exactWipe) ||
+    (outcome.status === "failed" &&
+      (outcome.resultInstallationRef !== null || !SAFE_REF.test(outcome.errorRef)))
   )
     throw new Error("portable capability executor returned an unsafe refs-only outcome");
 };
@@ -266,10 +284,7 @@ export class PylonPortableOwnerLocalCapabilityWorker {
     const response = await this.options.client.complete(claim.completion, signal);
     if (
       !exactBinding(response.operation, claim.record.request) ||
-      response.operation.resultRef !== claim.completion.resultRef ||
-      response.operation.resultStatus !== claim.completion.resultStatus ||
-      response.operation.receiptRef !== claim.completion.receiptRef ||
-      response.operation.errorRef !== claim.completion.errorRef
+      !exactCompletion(response.operation, claim.completion)
     )
       throw new Error("portable capability completion acknowledgement is invalid");
     await this.options.journal.remove(claim.record.request.operationRef);
@@ -316,11 +331,12 @@ export class PylonPortableOwnerLocalCapabilityWorker {
     try {
       if (settled.tag === "failure") throw settled.error;
       privateBuffers = settled.value.privateBuffers ?? [];
-      validateOutcome(settled.value.outcome);
+      validateOutcome(claim.record.request, settled.value.outcome);
       outcome = settled.value.outcome;
     } catch {
       outcome = {
         status: "failed",
+        resultInstallationRef: null,
         receiptRef: null,
         evidenceRefs: [],
         errorRef: "error.pylon.portable-capability.operation-failed",
@@ -345,6 +361,7 @@ export class PylonPortableOwnerLocalCapabilityWorker {
         `${request.operationRef}:${outcome.status}`,
       ),
       resultStatus: outcome.status,
+      resultInstallationRef: outcome.resultInstallationRef,
       receiptRef: outcome.receiptRef,
       evidenceRefs: outcome.evidenceRefs,
       errorRef: outcome.errorRef,

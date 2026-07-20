@@ -91,6 +91,12 @@ export type PortableCommandTargetInstallationPortResolver = Readonly<{
       ownerRef: string;
       sessionRef: string;
       target: PortableTargetDescriptor;
+      sourceAttachmentRef: string;
+      sourceGeneration: number;
+      destinationAttachmentRef: string;
+      destinationGeneration: number;
+      grantBindings: ReadonlyArray<PortableCommandGrantAuthorityBinding>;
+      capabilityTransfers: ReadonlyArray<PortableCapabilityTransfer>;
     }>,
   ) => Promise<PortableCommandTargetInstallationPortResolution | null>;
 }>;
@@ -350,6 +356,12 @@ export const createProductionPortableCommandBrokerFactory = (
               ownerRef: claim.ownerRef,
               sessionRef: claim.sessionRef,
               target,
+              sourceAttachmentRef: claim.sourceAttachmentRef,
+              sourceGeneration: claim.sourceGeneration,
+              destinationAttachmentRef,
+              destinationGeneration,
+              grantBindings,
+              capabilityTransfers,
             });
             if (resolution === null) throw failure("target_unsupported", target.targetRef);
             if (

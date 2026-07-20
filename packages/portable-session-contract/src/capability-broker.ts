@@ -134,6 +134,11 @@ export type CapabilityTargetAdapter = {
     readonly permissions: ReadonlyArray<string>
     readonly material: SecretMaterial
   }) => Promise<{ readonly installationRef: string }>
+  /** A refs-only target resolves the exact grant from its durable target scope. */
+  readonly redeemByReference?: (input: {
+    readonly lease: PortableCapabilityLease
+    readonly permissions: ReadonlyArray<string>
+  }) => Promise<{ readonly installationRef: string }>
   readonly wipe: (input: {
     readonly leaseRef: string
     readonly targetRef: ExecutionEnvironmentRef
@@ -450,15 +455,20 @@ export class PortableCapabilityBroker {
       const target = this.requireTarget(record, input.operationRef)
       const adapter = this.requireAdapter(target, input.operationRef)
       try {
-        const installed = await this.config.vault.withSourceGrantMaterial({
-          sourceGrantRef: record.sourceGrantRef,
-          leaseRef: input.leaseRef,
-          use: material => adapter.redeem({
+        const installed = adapter.redeemByReference === undefined
+          ? await this.config.vault.withSourceGrantMaterial({
+            sourceGrantRef: record.sourceGrantRef,
+            leaseRef: input.leaseRef,
+            use: material => adapter.redeem({
+              lease: cloneLease(record.lease),
+              permissions: record.permissions,
+              material,
+            }),
+          })
+          : await adapter.redeemByReference({
             lease: cloneLease(record.lease),
             permissions: record.permissions,
-            material,
-          }),
-        })
+          })
         this.records.set(input.leaseRef, {
           ...record,
           lease: { ...record.lease, state: "redeemed" },

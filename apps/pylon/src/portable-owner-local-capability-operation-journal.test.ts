@@ -50,6 +50,7 @@ const pendingEntry = (): PylonPortableOwnerLocalCapabilityOperationJournalEntry 
     resultRef: null,
     resultFingerprint: null,
     resultStatus: null,
+    resultInstallationRef: null,
     receiptRef: null,
     resultEvidenceRefs: [],
     errorRef: null,

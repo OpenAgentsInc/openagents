@@ -140,7 +140,7 @@ test("installs an exact destination lease and clears redeemed material", async (
   const result = await executor.execute(installRequest(), claim, new AbortController().signal);
   expect(result.outcome).toMatchObject({
     status: "completed",
-    installationRef: "installation.ide13.executor",
+    resultInstallationRef: "installation.ide13.executor",
     evidenceRefs: ["evidence.ide13.executor"],
   });
   expect(result.outcome.receiptRef).not.toBe("installation.ide13.executor");
@@ -190,7 +190,7 @@ test("wipes by source lease without material redemption and replays by operation
   expect(first).toEqual(replay);
   expect(first.outcome).toMatchObject({
     status: "completed",
-    installationRef: null,
+    resultInstallationRef: null,
     receiptRef: "receipt.ide13.executor.wiped",
     evidenceRefs: [],
   });

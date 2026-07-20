@@ -39,6 +39,7 @@ test("polls the exact scoped capability-operation route", async () => {
     resultRef: null,
     resultFingerprint: null,
     resultStatus: null,
+    resultInstallationRef: null,
     receiptRef: null,
     resultEvidenceRefs: [],
     errorRef: null,

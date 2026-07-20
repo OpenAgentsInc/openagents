@@ -48,7 +48,7 @@ export const makePylonPortableOwnerLocalCapabilityOperationExecutor = (
       return {
         outcome: {
           status: "completed",
-          installationRef: null,
+          resultInstallationRef: null,
           receiptRef: wiped.wipeReceiptRef,
           evidenceRefs: [],
           errorRef: null,
@@ -88,7 +88,7 @@ export const makePylonPortableOwnerLocalCapabilityOperationExecutor = (
       return {
         outcome: {
           status: "completed",
-          installationRef: installed.installationRef,
+          resultInstallationRef: installed.installationRef,
           receiptRef: receiptRef("install", request.operationRef),
           evidenceRefs: [installed.evidenceRef],
           errorRef: null,

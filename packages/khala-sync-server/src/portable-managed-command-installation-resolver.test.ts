@@ -92,6 +92,27 @@ const scope = (targetDescriptor: PortableTargetDescriptor = target) => ({
   ownerRef,
   sessionRef,
   target: targetDescriptor,
+  sourceAttachmentRef: "attachment.ide13.managed-installation.source",
+  sourceGeneration: 1,
+  destinationAttachmentRef: attachmentRef,
+  destinationGeneration: 2,
+  grantBindings: [
+    {
+      sourceLeaseRef: "lease.ide13.managed-installation.source",
+      grantRef: "grant.ide13.managed-installation.source",
+      ownerUserId: ownerRef,
+      kind: "provider" as const,
+      providerAccountRef: "account.ide13.managed-installation",
+    },
+  ],
+  capabilityTransfers: [
+    {
+      sourceLeaseRef: "lease.ide13.managed-installation.source",
+      destinationLeaseRef: "lease.ide13.managed-installation",
+      destinationSourceGrantRef: "grant.ide13.managed-installation.destination",
+      expiresAt: "2026-07-20T12:09:00.000Z",
+    },
+  ],
 });
 
 const lease: PortableCapabilityLease = {
