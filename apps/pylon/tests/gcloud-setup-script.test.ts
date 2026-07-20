@@ -181,6 +181,10 @@ describe("Agent Computer GCE host setup script", () => {
           helperProfile: Record<"pty" | "lsp" | "dap" | "watcher" | "native", string> & {
             schema: string
           }
+          managedHelperArtifacts: {
+            typescriptLsp: Record<string, unknown>
+            debugpyDapCandidate: Record<string, unknown>
+          }
         }
       }
       isolation: {
@@ -202,9 +206,22 @@ describe("Agent Computer GCE host setup script", () => {
       schema: "openagents.portable_guest_helper_profile.v1",
       watcher: expect.stringContaining("ready handshake"),
       pty: expect.stringContaining("unsupported"),
-      lsp: expect.stringContaining("unsupported"),
+      lsp: expect.stringContaining("npm-signature-verified"),
       dap: expect.stringContaining("unsupported"),
       native: expect.stringContaining("unsupported"),
+    })
+    expect(manifest.guestImage.portableSessionControl.managedHelperArtifacts).toMatchObject({
+      typescriptLsp: {
+        admissionState: "source_wired_rebake_pending",
+        version: "5.3.0",
+        command: "/usr/local/bin/node",
+        target: { platform: "linux", arch: "x64" },
+      },
+      debugpyDapCandidate: {
+        admissionState: "unadmitted_unsigned_registry_artifact",
+        installed: false,
+        profileRef: null,
+      },
     })
     expect(manifest.isolation.policySchema).toBe("openagents.agent_computer_isolation_policy.v1")
     expect(manifest.isolation.workContextBindingRequired).toBe(true)
@@ -221,5 +238,22 @@ describe("Agent Computer GCE host setup script", () => {
     expect(buildScript.match(/vp pack/g)).toHaveLength(2)
     expect(buildScript.match(/--target node24/g)).toHaveLength(2)
     expect(buildScript).not.toContain("--exe")
+  })
+
+  test("rootfs bake blocks an invalid or missing npm signature", () => {
+    const buildScript = readFileSync(agentComputerImageBuildScript, "utf8")
+    expect(buildScript).toContain('TYPESCRIPT_LANGUAGE_SERVER_VERSION="5.3.0"')
+    expect(buildScript).toContain('TYPESCRIPT_VERSION="5.9.3"')
+    expect(buildScript).toMatch(/if ! chroot "\$MNT" \/bin\/sh -c[\s\S]+npm audit signatures --json[\s\S]+fail "TypeScript LSP npm signature verification failed"/u)
+    expect(buildScript).toContain("jq -e '.invalid == [] and .missing == []'")
+    expect(buildScript).toContain("signature verification reported invalid or missing signatures")
+    expect(buildScript).not.toContain("debugpy.whl")
+    expect(buildScript).not.toContain("typescript-language-server.tgz")
+    expect(buildScript).not.toContain('"$WORK/typescript.tgz"')
+    const invalidReport = spawnSync("jq", ["-e", ".invalid == [] and .missing == []"], {
+      input: JSON.stringify({ invalid: [{ name: "typescript-language-server" }], missing: [] }),
+      encoding: "utf8",
+    })
+    expect(invalidReport.status).not.toBe(0)
   })
 })

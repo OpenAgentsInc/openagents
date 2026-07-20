@@ -1,7 +1,8 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync } from "node:fs"
 import { createHash } from "node:crypto"
-import { cp, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises"
+import { spawn } from "node:child_process"
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -132,17 +133,50 @@ const canonical = (value: unknown): string => {
 const sha = (bytes: string | Uint8Array): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`
 
+const lspServerFixture = async (root: string): Promise<string> => {
+  const path = join(root, "lsp-server.cjs")
+  await writeFile(path, String.raw`
+let buffer = Buffer.alloc(0);
+const send = message => {
+  const body = Buffer.from(JSON.stringify(message));
+  process.stdout.write(Buffer.concat([Buffer.from("Content-Length: " + body.length + "\r\n\r\n"), body]));
+};
+process.stdin.on("data", chunk => {
+  buffer = Buffer.concat([buffer, chunk]);
+  while (true) {
+    const headerEnd = buffer.indexOf("\r\n\r\n");
+    if (headerEnd < 0) return;
+    const match = /Content-Length:\s*(\d+)/i.exec(buffer.subarray(0, headerEnd).toString("ascii"));
+    if (!match) process.exit(70);
+    const length = Number(match[1]);
+    if (buffer.length < headerEnd + 4 + length) return;
+    const message = JSON.parse(buffer.subarray(headerEnd + 4, headerEnd + 4 + length).toString("utf8"));
+    buffer = buffer.subarray(headerEnd + 4 + length);
+    if (message.id === 1) {
+      send({ jsonrpc: "2.0", id: 1, result: { capabilities: {} } });
+      send({ jsonrpc: "2.0", method: "$/typescriptVersion", params: { version: "5.9.3", source: "user-setting" } });
+    } else if (message.method === "shutdown") {
+      send({ jsonrpc: "2.0", id: message.id, result: null }); process.exit(0);
+    }
+  }
+});
+`)
+  return path
+}
+
 describe("retained Agent Computer portable-session-control", () => {
   test("starts one real generation-bound recursive watcher and disposes it", async () => {
     const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-"))
     roots.push(stateRoot)
     const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.watcher")
     await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    const lspServer = await lspServerFixture(stateRoot)
     const scope = {
       sessionRoot,
       destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.watcher.2",
       generation: 2,
       nodeBin: process.execPath,
+      lspCommand: [process.execPath, lspServer],
     }
     try {
       const started = await startPortableGuestHelpers(scope)
@@ -152,7 +186,11 @@ describe("retained Agent Computer portable-session-control", () => {
         instanceRef: expect.stringMatching(/^instance\.agent-computer\.portable\.watcher\./u),
         versionRef: expect.stringMatching(/^version\.node\.fs-watch-recursive\./u),
       })
-      expect(started.filter(helper => helper.kind !== "watcher").every(helper =>
+      expect(started.find(helper => helper.kind === "lsp")).toMatchObject({
+        readiness: "ready",
+        versionRef: expect.stringContaining("typescript-language-server.5_3_0.typescript.5_9_3"),
+      })
+      expect(started.filter(helper => helper.kind === "pty" || helper.kind === "dap" || helper.kind === "native").every(helper =>
         helper.readiness === "unsupported" && helper.instanceRef === null)).toBe(true)
       expect(await verifyPortableGuestHelpers(scope)).toEqual(started)
       expect(await startPortableGuestHelpers(scope)).toEqual(started)
@@ -168,11 +206,13 @@ describe("retained Agent Computer portable-session-control", () => {
     roots.push(stateRoot)
     const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.watcher-exit")
     await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    const lspServer = await lspServerFixture(stateRoot)
     const scope = {
       sessionRoot,
       destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.watcher-exit.2",
       generation: 2,
       nodeBin: process.execPath,
+      lspCommand: [process.execPath, lspServer],
     }
     await startPortableGuestHelpers(scope)
     try {
@@ -202,6 +242,81 @@ describe("retained Agent Computer portable-session-control", () => {
     await expect(readFile(join(sessionRoot, "portable-helpers.json"), "utf8")).rejects.toMatchObject({
       code: "ENOENT",
     })
+  })
+
+  test("cleans up the managed LSP child after malformed protocol or spawn failure", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-invalid-lsp-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.invalid-lsp")
+    await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    const childPidPath = join(stateRoot, "invalid-lsp.pid")
+    const invalidServerPath = join(stateRoot, "invalid-lsp.cjs")
+    await writeFile(invalidServerPath, String.raw`
+const { writeFileSync } = require("node:fs");
+writeFileSync(process.argv[2], String(process.pid));
+process.stdout.write("Invalid-Header\r\n\r\n{}");
+setInterval(() => undefined, 1000);
+`)
+    const scope = {
+      sessionRoot,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.invalid-lsp.2",
+      generation: 2,
+      nodeBin: process.execPath,
+      lspCommand: [process.execPath, invalidServerPath, childPidPath],
+    }
+    await expect(startPortableGuestHelpers(scope)).rejects.toThrow("protocol ready")
+    const childPid = Number(await readFile(childPidPath, "utf8"))
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      try { process.kill(childPid, 0) } catch { break }
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    expect(() => process.kill(childPid, 0)).toThrow()
+    expect((await readdir(sessionRoot)).filter(name => name.endsWith(".ready"))).toEqual([])
+    await expect(startPortableGuestHelpers({
+      ...scope,
+      lspCommand: [join(stateRoot, "missing-lsp")],
+    })).rejects.toThrow("protocol ready")
+    await expect(readFile(join(sessionRoot, "portable-helpers.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" })
+  })
+
+  test("refuses cleanup when the same helper instance remains live after SIGKILL", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-stuck-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.stuck-helper")
+    await mkdir(sessionRoot, { recursive: true })
+    const instanceRef = "instance.agent-computer.portable.lsp.stuck"
+    const child = spawn(process.execPath, ["-e", "setInterval(() => undefined, 1000)", instanceRef], {
+      stdio: "ignore",
+    })
+    if (child.pid === undefined) throw new Error("stuck helper fixture did not start")
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const helper = {
+      pid: child.pid,
+      instanceRef,
+      versionRef: "version.test.stuck-helper",
+      evidenceRefs: ["evidence.test.stuck-helper"],
+    }
+    await writeFile(join(sessionRoot, "portable-helpers.json"), JSON.stringify({
+      schema: "openagents.portable_guest_helper_state.v2",
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.stuck-helper.2",
+      generation: 2,
+      lsp: helper,
+      watcher: helper,
+    }))
+    const originalKill = process.kill
+    process.kill = ((pid, signal) => pid === child.pid && signal !== 0
+      ? true
+      : originalKill(pid, signal)) as typeof process.kill
+    try {
+      await expect(stopPortableGuestHelpers(sessionRoot)).rejects.toThrow(
+        "portable helper remained live after forced termination",
+      )
+      expect(await readFile(join(sessionRoot, "portable-helpers.json"), "utf8")).toContain(instanceRef)
+    } finally {
+      process.kill = originalKill
+      child.kill("SIGKILL")
+      await new Promise(resolve => child.once("exit", resolve))
+    }
   })
 
   test("keeps stage non-accepting, activates the graph, checkpoints, and reclaims exactly once", async () => {

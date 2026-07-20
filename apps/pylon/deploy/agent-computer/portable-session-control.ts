@@ -931,7 +931,14 @@ export const repositorySnapshot = async (sessionRoot: string) => {
   }
 }
 
-const PORTABLE_HELPER_STATE_SCHEMA = "openagents.portable_guest_helper_state.v1" as const
+const PORTABLE_HELPER_STATE_SCHEMA = "openagents.portable_guest_helper_state.v2" as const
+const TYPESCRIPT_LANGUAGE_SERVER_VERSION = "5.3.0"
+const TYPESCRIPT_VERSION = "5.9.3"
+const LSP_COMMAND = [
+  "/usr/local/bin/node",
+  "/opt/agent/typescript-lsp/node_modules/typescript-language-server/lib/cli.mjs",
+  "--stdio",
+] as const
 const WATCHER_PROGRAM = String.raw`
 const { watch, writeFileSync } = require("node:fs");
 const [workspace, readyPath, instanceRef] = process.argv.slice(1);
@@ -949,21 +956,108 @@ process.on("SIGTERM", stop);
 process.on("SIGINT", stop);
 `
 
+const LSP_HELPER_PROGRAM = String.raw`
+const { spawn } = require("node:child_process");
+const { writeFileSync } = require("node:fs");
+const { pathToFileURL } = require("node:url");
+const [workspace, readyPath, instanceRef, expectedVersion, commandJson, environmentJson] = process.argv.slice(1);
+const command = JSON.parse(commandJson);
+const environment = JSON.parse(environmentJson);
+if (!workspace || !readyPath || !instanceRef || !expectedVersion || !Array.isArray(command) || command.length === 0) process.exit(64);
+const child = spawn(command[0], command.slice(1), { stdio: ["pipe", "pipe", "pipe"], env: environment });
+let buffer = Buffer.alloc(0);
+let initialized = false;
+let versionObserved = false;
+let desiredExitCode = null;
+let childExitObserved = false;
+const childStopped = () => {
+  if (childExitObserved) return;
+  childExitObserved = true;
+  process.exit(desiredExitCode === null ? 70 : desiredExitCode);
+};
+child.once("exit", childStopped);
+child.once("close", childStopped);
+const terminateChild = (exitCode, gracefulMessage) => {
+  if (desiredExitCode !== null) return;
+  desiredExitCode = exitCode;
+  if (gracefulMessage) {
+    try { send(gracefulMessage); } catch { /* termination still continues */ }
+  }
+  const timer = setTimeout(() => {
+    if (child.pid && !child.killed) child.kill("SIGKILL");
+  }, 500);
+  timer.unref();
+  if (!gracefulMessage && child.pid && !child.killed) child.kill("SIGKILL");
+};
+const send = message => {
+  const body = Buffer.from(JSON.stringify(message));
+  child.stdin.write(Buffer.concat([Buffer.from("Content-Length: " + body.length + "\r\n\r\n"), body]));
+};
+const ready = () => {
+  if (initialized && versionObserved) writeFileSync(readyPath, instanceRef + "|" + expectedVersion, { mode: 0o600 });
+};
+const onMessage = message => {
+  if (message.id === 1 && message.result) {
+    initialized = true;
+    send({ jsonrpc: "2.0", method: "initialized", params: {} });
+    ready();
+  }
+  if (message.id === 2) send({ jsonrpc: "2.0", method: "exit", params: null });
+  if (message.method === "$/typescriptVersion" && message.params && message.params.version === expectedVersion) {
+    versionObserved = true;
+    ready();
+  }
+};
+child.stdout.on("data", chunk => {
+  buffer = Buffer.concat([buffer, chunk]);
+  while (true) {
+    const headerEnd = buffer.indexOf("\r\n\r\n");
+    if (headerEnd < 0) return;
+    const match = /(?:^|\r\n)Content-Length:\s*(\d+)/i.exec(buffer.subarray(0, headerEnd).toString("ascii"));
+    if (!match) { terminateChild(70); return; }
+    const length = Number(match[1]);
+    if (buffer.length < headerEnd + 4 + length) return;
+    const body = buffer.subarray(headerEnd + 4, headerEnd + 4 + length);
+    buffer = buffer.subarray(headerEnd + 4 + length);
+    try { onMessage(JSON.parse(body.toString("utf8"))); } catch { terminateChild(70); return; }
+  }
+});
+child.stderr.resume();
+child.on("error", () => terminateChild(70));
+child.stdin.on("error", () => terminateChild(70));
+child.stdout.on("error", () => terminateChild(70));
+send({ jsonrpc: "2.0", id: 1, method: "initialize", params: {
+  processId: null,
+  rootUri: pathToFileURL(workspace).href,
+  capabilities: {},
+  initializationOptions: { tsserver: { path: "/opt/agent/typescript-lsp/node_modules/typescript/lib" } },
+  workspaceFolders: [{ uri: pathToFileURL(workspace).href, name: "workspace" }],
+}});
+const stop = () => {
+  terminateChild(0, { jsonrpc: "2.0", id: 2, method: "shutdown", params: null });
+};
+process.on("SIGTERM", stop);
+process.on("SIGINT", stop);
+`
+
+type ManagedHelperProcessState = Readonly<{
+  pid: number
+  instanceRef: string
+  versionRef: string
+  evidenceRefs: ReadonlyArray<string>
+}>
+
 type PortableGuestHelperState = Readonly<{
   schema: typeof PORTABLE_HELPER_STATE_SCHEMA
   destinationRunnerSessionReservationRef: string
   generation: number
-  watcher: Readonly<{
-    pid: number
-    instanceRef: string
-    versionRef: string
-    evidenceRefs: ReadonlyArray<string>
-  }>
+  lsp: ManagedHelperProcessState
+  watcher: ManagedHelperProcessState
 }>
 
 const helperStatePath = (sessionRoot: string): string => join(sessionRoot, "portable-helpers.json")
 const helperReadyPath = (sessionRoot: string, instanceRef: string): string =>
-  join(sessionRoot, `watcher-${createHash("sha256").update(instanceRef).digest("hex").slice(0, 24)}.ready`)
+  join(sessionRoot, `helper-${createHash("sha256").update(instanceRef).digest("hex").slice(0, 24)}.ready`)
 
 const processIsLive = (pid: number): boolean => {
   if (!Number.isSafeInteger(pid) || pid <= 1) return false
@@ -975,11 +1069,28 @@ const processIsLive = (pid: number): boolean => {
   }
 }
 
-const helperProcessIsLive = async (state: PortableGuestHelperState): Promise<boolean> => {
-  if (!processIsLive(state.watcher.pid)) return false
+const helperProcessIsLive = async (state: ManagedHelperProcessState): Promise<boolean> => {
+  if (!processIsLive(state.pid)) return false
   if (!(await Runtime.file("/proc").exists())) return true
-  const commandLine = await readFile(`/proc/${state.watcher.pid}/cmdline`, "utf8").catch(() => "")
-  return commandLine.split("\0").includes(state.watcher.instanceRef)
+  const commandLine = await readFile(`/proc/${state.pid}/cmdline`, "utf8").catch(() => "")
+  return commandLine.split("\0").includes(state.instanceRef)
+}
+
+const terminateManagedHelper = async (helper: ManagedHelperProcessState): Promise<void> => {
+  if (!(await helperProcessIsLive(helper))) return
+  try { process.kill(helper.pid, "SIGTERM") } catch { return }
+  for (let attempt = 0; attempt < 100 && await helperProcessIsLive(helper); attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  if (await helperProcessIsLive(helper)) {
+    try { process.kill(helper.pid, "SIGKILL") } catch { /* already exited */ }
+    for (let attempt = 0; attempt < 50 && await helperProcessIsLive(helper); attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    if (await helperProcessIsLive(helper)) {
+      throw new PortableSessionControlError("portable helper remained live after forced termination")
+    }
+  }
 }
 
 const readHelperState = async (sessionRoot: string): Promise<PortableGuestHelperState | undefined> => {
@@ -999,24 +1110,23 @@ const assertHelperState = (
   if (state.schema !== PORTABLE_HELPER_STATE_SCHEMA ||
       state.destinationRunnerSessionReservationRef !== destinationRunnerSessionReservationRef ||
       state.generation !== generation ||
-      !SAFE_REF.test(state.watcher.instanceRef) ||
-      !SAFE_REF.test(state.watcher.versionRef) ||
-      state.watcher.evidenceRefs.length === 0 ||
-      state.watcher.evidenceRefs.some(ref => !SAFE_REF.test(ref)) ||
-      !Number.isSafeInteger(state.watcher.pid) || state.watcher.pid <= 1) {
+      ([state.lsp, state.watcher] as const).some(helper =>
+        !SAFE_REF.test(helper.instanceRef) || !SAFE_REF.test(helper.versionRef) ||
+        helper.evidenceRefs.length === 0 || helper.evidenceRefs.some(ref => !SAFE_REF.test(ref)) ||
+        !Number.isSafeInteger(helper.pid) || helper.pid <= 1)) {
     throw new PortableSessionControlError("portable helper state differs from the retained generation")
   }
 }
 
-const watcherReadiness = (state: PortableGuestHelperState): ReadonlyArray<PortableGuestHelperReadiness> =>
-  (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => kind === "watcher"
+const helperReadiness = (state: PortableGuestHelperState): ReadonlyArray<PortableGuestHelperReadiness> =>
+  (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => kind === "lsp" || kind === "watcher"
     ? {
         kind,
         readiness: "ready",
-        instanceRef: state.watcher.instanceRef,
-        versionRef: state.watcher.versionRef,
+        instanceRef: state[kind].instanceRef,
+        versionRef: state[kind].versionRef,
         omissionRef: null,
-        evidenceRefs: state.watcher.evidenceRefs,
+        evidenceRefs: state[kind].evidenceRefs,
       }
     : {
         kind,
@@ -1035,35 +1145,60 @@ export const verifyPortableGuestHelpers = async (input: Readonly<{
   const state = await readHelperState(input.sessionRoot)
   if (state === undefined) throw new PortableSessionControlError("portable helper state is missing")
   assertHelperState(state, input.destinationRunnerSessionReservationRef, input.generation)
-  if (!(await helperProcessIsLive(state)) ||
-      (await readFile(helperReadyPath(input.sessionRoot, state.watcher.instanceRef), "utf8").catch(() => "")) !== state.watcher.instanceRef) {
-    throw new PortableSessionControlError("portable watcher helper is not live")
+  for (const [kind, helper] of Object.entries({ lsp: state.lsp, watcher: state.watcher })) {
+    const expectedReady = `${helper.instanceRef}|${kind === "lsp" ? TYPESCRIPT_VERSION : "ready"}`
+    if (!(await helperProcessIsLive(helper)) ||
+        (await readFile(helperReadyPath(input.sessionRoot, helper.instanceRef), "utf8").catch(() => "")) !== expectedReady) {
+      throw new PortableSessionControlError(`portable ${kind} helper is not live`)
+    }
   }
-  return watcherReadiness(state)
+  return helperReadiness(state)
 }
 
 export const stopPortableGuestHelpers = async (sessionRoot: string): Promise<void> => {
   const state = await readHelperState(sessionRoot)
   if (state === undefined) return
-  if (await helperProcessIsLive(state)) {
-    try {
-      process.kill(state.watcher.pid, "SIGTERM")
-    } catch {
-      // A concurrently exited watcher is already disposed.
-    }
-    for (let attempt = 0; attempt < 50 && await helperProcessIsLive(state); attempt += 1) {
+  for (const helper of [state.lsp, state.watcher]) {
+    await terminateManagedHelper(helper)
+    await rm(helperReadyPath(sessionRoot, helper.instanceRef), { force: true })
+  }
+  await rm(helperStatePath(sessionRoot), { force: true })
+}
+
+const startManagedLspHelper = async (input: Readonly<{
+  sessionRoot: string
+  instanceRef: string
+  command: ReadonlyArray<string>
+  nodeBin: string
+}>): Promise<ManagedHelperProcessState> => {
+  const readyPath = helperReadyPath(input.sessionRoot, input.instanceRef)
+  let spawnFailure: Error | undefined
+  const child = spawn(input.nodeBin, [
+    "-e", LSP_HELPER_PROGRAM, workspacePath(input.sessionRoot), readyPath, input.instanceRef,
+    TYPESCRIPT_VERSION, JSON.stringify(input.command), JSON.stringify({ PATH: "/usr/local/bin:/usr/bin:/bin" }),
+  ], { detached: true, stdio: "ignore", env: { PATH: "/usr/local/bin:/usr/bin:/bin" } })
+  child.once("error", error => { spawnFailure = error })
+  child.unref()
+  if (child.pid === undefined) throw new PortableSessionControlError("portable lsp helper did not start")
+  const state: ManagedHelperProcessState = {
+    pid: child.pid,
+    instanceRef: input.instanceRef,
+    versionRef: `version.typescript-language-server.${TYPESCRIPT_LANGUAGE_SERVER_VERSION.replaceAll(".", "_")}.typescript.${TYPESCRIPT_VERSION.replaceAll(".", "_")}.node24.linux-x64`,
+    evidenceRefs: [stableRef("evidence.agent-computer.portable.lsp.protocol-ready", input.instanceRef)],
+  }
+  try {
+    const expectedReady = `${input.instanceRef}|${TYPESCRIPT_VERSION}`
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      if ((await readFile(readyPath, "utf8").catch(() => "")) === expectedReady && processIsLive(child.pid)) return state
+      if (spawnFailure !== undefined || !processIsLive(child.pid)) break
       await new Promise(resolve => setTimeout(resolve, 10))
     }
-    if (await helperProcessIsLive(state)) {
-      try {
-        process.kill(state.watcher.pid, "SIGKILL")
-      } catch {
-        // A concurrently exited watcher is already disposed.
-      }
-    }
+    throw new PortableSessionControlError("portable lsp helper did not report protocol ready")
+  } catch (error) {
+    await terminateManagedHelper(state)
+    await rm(readyPath, { force: true })
+    throw error
   }
-  await rm(helperReadyPath(sessionRoot, state.watcher.instanceRef), { force: true })
-  await rm(helperStatePath(sessionRoot), { force: true })
 }
 
 export const startPortableGuestHelpers = async (input: Readonly<{
@@ -1071,56 +1206,69 @@ export const startPortableGuestHelpers = async (input: Readonly<{
   destinationRunnerSessionReservationRef: string
   generation: number
   nodeBin?: string
+  lspCommand?: ReadonlyArray<string>
 }>): Promise<ReadonlyArray<PortableGuestHelperReadiness>> => {
   const prior = await readHelperState(input.sessionRoot)
   if (prior !== undefined) {
     assertHelperState(prior, input.destinationRunnerSessionReservationRef, input.generation)
     return verifyPortableGuestHelpers(input)
   }
-  const instanceRef = stableRef(
+  const watcherInstanceRef = stableRef(
     "instance.agent-computer.portable.watcher",
     `${input.destinationRunnerSessionReservationRef}|${input.generation}`,
   )
-  const readyPath = helperReadyPath(input.sessionRoot, instanceRef)
+  const lspInstanceRef = stableRef("instance.agent-computer.portable.lsp", `${input.destinationRunnerSessionReservationRef}|${input.generation}`)
+  const readyPath = helperReadyPath(input.sessionRoot, watcherInstanceRef)
   let spawnFailure: Error | undefined
-  const child = spawn(input.nodeBin ?? "/usr/local/bin/node", [
+  const nodeBin = input.nodeBin ?? "/usr/local/bin/node"
+  const child = spawn(nodeBin, [
     "-e",
     WATCHER_PROGRAM,
     workspacePath(input.sessionRoot),
     readyPath,
-    instanceRef,
+    watcherInstanceRef,
   ], { detached: true, stdio: "ignore", env: { PATH: "/usr/local/bin:/usr/bin:/bin" } })
   child.once("error", error => { spawnFailure = error })
   child.unref()
   if (child.pid === undefined) throw new PortableSessionControlError("portable watcher helper did not start")
-  const state: PortableGuestHelperState = {
-    schema: PORTABLE_HELPER_STATE_SCHEMA,
-    destinationRunnerSessionReservationRef: input.destinationRunnerSessionReservationRef,
-    generation: input.generation,
-    watcher: {
+  const watcher: ManagedHelperProcessState = {
       pid: child.pid,
-      instanceRef,
+      instanceRef: watcherInstanceRef,
       versionRef: `version.node.fs-watch-recursive.${process.versions.node.replaceAll(".", "_")}`,
-      evidenceRefs: [stableRef("evidence.agent-computer.portable.watcher.live", instanceRef)],
-    },
+      evidenceRefs: [stableRef("evidence.agent-computer.portable.watcher.live", watcherInstanceRef)],
   }
+  let lsp: ManagedHelperProcessState | undefined
   try {
     for (let attempt = 0; attempt < 100; attempt += 1) {
-      if ((await readFile(readyPath, "utf8").catch(() => "")) === instanceRef && processIsLive(child.pid)) {
+      if ((await readFile(readyPath, "utf8").catch(() => "")) === watcherInstanceRef && processIsLive(child.pid)) {
+        await writeFile(readyPath, `${watcherInstanceRef}|ready`, { mode: 0o600 })
+        lsp = await startManagedLspHelper({
+          sessionRoot: input.sessionRoot,
+          instanceRef: lspInstanceRef,
+          command: input.lspCommand ?? LSP_COMMAND,
+          nodeBin,
+        })
+        const state: PortableGuestHelperState = {
+          schema: PORTABLE_HELPER_STATE_SCHEMA,
+          destinationRunnerSessionReservationRef: input.destinationRunnerSessionReservationRef,
+          generation: input.generation,
+          lsp,
+          watcher,
+        }
         const path = helperStatePath(input.sessionRoot)
         const temporary = `${path}.tmp-${process.pid}`
         await writeFile(temporary, canonicalJson(state), { mode: 0o600 })
         await rename(temporary, path)
-        return watcherReadiness(state)
+        return helperReadiness(state)
       }
       if (spawnFailure !== undefined || !processIsLive(child.pid)) break
       await new Promise(resolve => setTimeout(resolve, 10))
     }
     throw new PortableSessionControlError("portable watcher helper did not report ready")
   } catch (error) {
-    if (processIsLive(child.pid)) {
-      try { process.kill(child.pid, "SIGKILL") } catch { /* already exited */ }
-    }
+    await terminateManagedHelper(watcher)
+    if (lsp !== undefined) await terminateManagedHelper(lsp)
+    await rm(helperReadyPath(input.sessionRoot, lspInstanceRef), { force: true })
     await rm(readyPath, { force: true })
     throw error
   }
