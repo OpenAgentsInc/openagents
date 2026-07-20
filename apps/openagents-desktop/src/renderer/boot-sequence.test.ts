@@ -6,6 +6,7 @@ import {
   bootSequenceReadyCount,
   bootSequenceScanning,
   projectBootSequenceAgents,
+  projectBootSequenceIdentity,
 } from "./boot-sequence.ts"
 import { initialDesktopShellState, type DesktopShellState } from "./shell.ts"
 
@@ -128,5 +129,63 @@ describe("boot sequence agent scan", () => {
     expect(bootSequenceScanning(agents)).toBe(true)
     // Claude Code (claude) available; codex still checking; grok/apple-fm off.
     expect(bootSequenceReadyCount(agents)).toBe(1)
+  })
+})
+
+describe("boot sequence sovereign identity scan (IDR-BS #9103)", () => {
+  const publicNpub = "npub1az708q3kd9zy6z6f44zav5ygvdwelkzspf6mtusttx47lft2z38sghk0w7"
+  const publicFingerprint = "d986ed01"
+
+  test("undefined identity state reads as checking for both rows", () => {
+    const rows = projectBootSequenceIdentity(base)
+    expect(rows.map((row) => row.id)).toEqual(["identity", "wallet"])
+    expect(rows.map((row) => row.label)).toEqual(["Identity", "Wallet"])
+    expect(rows.every((row) => row.status === "checking")).toBe(true)
+  })
+
+  test("an available rehydrated identity shows the truncated npub + wallet ready", () => {
+    const rows = projectBootSequenceIdentity(
+      withState({
+        identityBoot: {
+          status: "available",
+          npub: publicNpub,
+          walletFingerprint: publicFingerprint,
+          source: "rehydrated",
+          profileId: "openagents.legacy_unified_nostr_spark.v1",
+        },
+      }),
+    )
+    const identity = rows.find((row) => row.id === "identity")
+    const wallet = rows.find((row) => row.id === "wallet")
+    expect(identity?.status).toBe("available")
+    // Truncated for display, source suffixed, full npub never shown in the row.
+    expect(identity?.detail).toBe("npub1az708q3…ghk0w7 · rehydrated")
+    expect(identity?.detail?.includes(publicNpub)).toBe(false)
+    expect(wallet?.detail).toBe(`${publicFingerprint} · ready`)
+  })
+
+  test("a freshly created identity is labelled 'new'", () => {
+    const rows = projectBootSequenceIdentity(
+      withState({
+        identityBoot: {
+          status: "available",
+          npub: publicNpub,
+          walletFingerprint: publicFingerprint,
+          source: "created",
+          profileId: "openagents.legacy_unified_nostr_spark.v1",
+        },
+      }),
+    )
+    expect(rows.find((row) => row.id === "identity")?.detail).toBe("npub1az708q3…ghk0w7 · new")
+  })
+
+  test("an unavailable identity reads as not detected", () => {
+    const rows = projectBootSequenceIdentity(
+      withState({
+        identityBoot: { status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null },
+      }),
+    )
+    expect(rows.every((row) => row.status === "unavailable")).toBe(true)
+    expect(rows.map((row) => row.detail)).toEqual(["not detected", "not detected"])
   })
 })

@@ -1,7 +1,7 @@
 import { Button } from "#components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip";
 import { ReactBootSequence } from "./react-boot-sequence.tsx";
-import type { BootSequenceAgentLine } from "./boot-sequence.ts";
+import type { BootSequenceAgentLine, BootSequenceIdentityLine } from "./boot-sequence.ts";
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -1917,6 +1917,7 @@ export const ConversationTimeline = ({
   workingDirectory,
   agentName,
   bootSequenceAgents,
+  bootSequenceIdentity,
   report,
 }: {
   readonly page: CodexHistoryPage | null;
@@ -1927,6 +1928,7 @@ export const ConversationTimeline = ({
   readonly workingDirectory: string | null;
   readonly agentName: string;
   readonly bootSequenceAgents?: ReadonlyArray<BootSequenceAgentLine>;
+  readonly bootSequenceIdentity?: ReadonlyArray<BootSequenceIdentityLine>;
   readonly report: IntentReporter;
 }): ReactElement => {
   // Owner directive 2026-07-19: an empty conversation shows the Boot Sequence —
@@ -1936,7 +1938,7 @@ export const ConversationTimeline = ({
     return (
       <section className="oa-react-timeline-empty" aria-label="Conversation">
         {bootSequenceAgents === undefined || bootSequenceAgents.length === 0 ? null : (
-          <ReactBootSequence agents={bootSequenceAgents} />
+          <ReactBootSequence agents={bootSequenceAgents} identity={bootSequenceIdentity} />
         )}
       </section>
     );

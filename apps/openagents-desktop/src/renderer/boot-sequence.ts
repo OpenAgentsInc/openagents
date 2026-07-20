@@ -111,6 +111,56 @@ export const projectBootSequenceAgents = (
   ]
 }
 
+/**
+ * A Boot Sequence identity/wallet line (IDR-BS #9103). Same terminal-style shape
+ * as an agent line, but sourced from the main-owned sovereign identity host —
+ * public identifiers only.
+ */
+export type BootSequenceIdentityLine = Readonly<{
+  id: string
+  label: string
+  status: BootSequenceStatus
+  detail: string | null
+}>
+
+/** Truncate a long public identifier for display, e.g. `npub1abcd…wxyz`. */
+const truncateIdentifier = (value: string): string =>
+  value.length <= 20 ? value : `${value.slice(0, 12)}…${value.slice(-6)}`
+
+/**
+ * The sovereign identity scan lines for the Boot Sequence: the Nostr `npub` and
+ * the Spark wallet public fingerprint. PUBLIC data only — never the mnemonic,
+ * `nsec`, private key, or seed. `undefined` identity state reads as "checking".
+ */
+export const projectBootSequenceIdentity = (
+  state: DesktopShellState,
+): ReadonlyArray<BootSequenceIdentityLine> => {
+  const identity = state.identityBoot
+  const status: BootSequenceStatus = identity?.status ?? "checking"
+  const sourceLabel = identity?.source === "created" ? "new" : identity?.source === "rehydrated" ? "rehydrated" : null
+
+  const identityDetail =
+    status === "available" && identity?.npub != null
+      ? sourceLabel === null
+        ? truncateIdentifier(identity.npub)
+        : `${truncateIdentifier(identity.npub)} · ${sourceLabel}`
+      : status === "checking"
+        ? "deriving identity…"
+        : "not detected"
+
+  const walletDetail =
+    status === "available" && identity?.walletFingerprint != null
+      ? `${identity.walletFingerprint} · ready`
+      : status === "checking"
+        ? "deriving wallet…"
+        : "not detected"
+
+  return [
+    { id: "identity", label: "Identity", status, detail: identityDetail },
+    { id: "wallet", label: "Wallet", status, detail: walletDetail },
+  ]
+}
+
 /** Count of agents that reported ready. */
 export const bootSequenceReadyCount = (
   agents: ReadonlyArray<BootSequenceAgentLine>,

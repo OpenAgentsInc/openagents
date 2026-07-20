@@ -428,6 +428,21 @@ export type AppleFmBootState = Readonly<{
   testInference: string | null;
 }>;
 
+/**
+ * Boot Sequence sovereign-identity discovery result (IDR-BS #9103). PUBLIC data
+ * only: the Nostr `npub`, the Spark wallet public fingerprint, whether the
+ * identity was rehydrated from an existing mnemonic or freshly created, and the
+ * frozen derivation profile id. It never carries the mnemonic, `nsec`, private
+ * key, or seed — main derives it and forwards only this projection.
+ */
+export type IdentityBootState = Readonly<{
+  status: "checking" | "available" | "unavailable";
+  npub: string | null;
+  walletFingerprint: string | null;
+  source: "rehydrated" | "created" | null;
+  profileId: string | null;
+}>;
+
 export type ComposerReviewContext = Readonly<{
   repositoryRef: string;
   statusRef: string;
@@ -593,6 +608,13 @@ export type DesktopShellState = Readonly<{
    * "not yet probed" (the scan shows "checking"); the projection reads it.
    */
   appleFmBoot?: AppleFmBootState;
+  /**
+   * Sovereign identity discovery for the Boot Sequence (IDR-BS #9103). The
+   * renderer boot orchestrator probes the main-owned identity host on startup;
+   * main rehydrates or creates the mnemonic and returns ONLY the public
+   * projection. `undefined` means "not yet probed" (the row shows "checking").
+   */
+  identityBoot?: IdentityBootState;
   threads: ReadonlyArray<DesktopThread>;
   activeThreadId: string | null;
   /**

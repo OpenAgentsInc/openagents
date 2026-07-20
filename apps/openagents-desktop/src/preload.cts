@@ -367,6 +367,7 @@ import {
   unavailableAppleFmStatus,
   unavailableAppleFmStopResult,
 } from "./apple-fm-contract.ts"
+import { decodeIdentityStatus, IdentityStatusChannel, unavailableIdentityStatus } from "./identity-contract.ts"
 import {
   DesktopTurnEventChannel,
   DesktopTurnSubmitChannel,
@@ -1059,6 +1060,17 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     stop: async () => decodeAppleFmStopResult(
       await ipcRenderer.invoke(AppleFmStopChannel),
     ) ?? unavailableAppleFmStopResult(),
+  },
+  /**
+   * Sovereign identity for the Boot Sequence (IDR-BS #9103). Main owns the
+   * mnemonic and derives ONLY the public projection (`npub` + Spark public
+   * fingerprint); the renderer never sees a secret. The decoder rejects any
+   * non-public shape and falls back to the unavailable projection.
+   */
+  identity: {
+    status: async () => decodeIdentityStatus(
+      await ipcRenderer.invoke(IdentityStatusChannel),
+    ) ?? unavailableIdentityStatus(),
   },
   /**
    * AFS-03 shared turn kernel (local "OpenAgents authority" chat path). The

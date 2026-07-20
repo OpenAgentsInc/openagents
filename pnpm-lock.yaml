@@ -548,6 +548,9 @@ importers:
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../../packages/runtime-platform
+      '@openagentsinc/sovereign-identity':
+        specifier: workspace:*
+        version: link:../../packages/sovereign-identity
       '@openagentsinc/ui':
         specifier: workspace:*
         version: link:../../packages/ui

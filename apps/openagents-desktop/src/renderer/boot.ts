@@ -114,8 +114,9 @@ import {
   makeLocalHarnessChatHost,
   type ClaudeLocalRendererBridge,
 } from "./local-harness.ts"
-import { withHarnessLanes, type AppleFmBootState, type DesktopTurnRendererHost, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
+import { withHarnessLanes, type AppleFmBootState, type DesktopTurnRendererHost, type DesktopWorkspaceName, type HarnessLanes, type IdentityBootState } from "./shell.ts"
 import type { AppleFmStartTurnRequest, AppleFmStatus, AppleFmStopResult, AppleFmTurnResult } from "../apple-fm-contract.ts"
+import type { IdentityStatus } from "../identity-contract.ts"
 import type { DesktopTurnEventFrame, DesktopTurnSubmitResult } from "../turn/desktop-turn-ipc.ts"
 import { unavailableFullAutoRunOutcome, type FullAutoRunRendererHost } from "../full-auto-run-ipc-contract.ts"
 import { decodeProviderLaneComposerProjections } from "../provider-lane-capabilities.ts"
@@ -198,6 +199,10 @@ type DesktopBridge = Readonly<{
     refresh?: () => Promise<AppleFmStatus>
     startTurn?: (request: AppleFmStartTurnRequest) => Promise<AppleFmTurnResult>
     stop?: () => Promise<AppleFmStopResult>
+  }>
+  /** Sovereign identity host (IDR-BS #9103). Public projection only. */
+  identity?: Readonly<{
+    status?: () => Promise<IdentityStatus>
   }>
   /** AFS-03 (#9081) shared turn kernel submit bridge. Optional across preload rolls. */
   turn?: Readonly<{
@@ -1283,6 +1288,32 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       if (turn != null && turn.outcome === "completed" && turn.text !== null) {
         await setBoot({ status: "available", detail, testInference: turn.text.trim().slice(0, 200) })
       }
+    })().catch(() => {})
+    // Sovereign identity discovery for the Boot Sequence (IDR-BS #9103). Probe
+    // the main-owned identity host, which rehydrates an existing mnemonic or
+    // creates one, and derives ONLY the public projection (npub + Spark public
+    // fingerprint). Non-blocking — the shell mounts immediately and the identity
+    // rows update when evidence lands. The renderer never sees a secret.
+    void (async () => {
+      const setIdentityBoot = (boot: IdentityBootState): Promise<unknown> =>
+        Effect.runPromise(SubscriptionRef.update(state, current => ({ ...current, identityBoot: boot })))
+      const identity = readBridge()?.identity
+      if (identity?.status === undefined) {
+        await setIdentityBoot({ status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null })
+        return
+      }
+      const status = await identity.status().catch(() => null)
+      if (status === null || status.status !== "available") {
+        await setIdentityBoot({ status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null })
+        return
+      }
+      await setIdentityBoot({
+        status: "available",
+        npub: status.npub,
+        walletFingerprint: status.walletFingerprint,
+        source: status.source,
+        profileId: status.profileId,
+      })
     })().catch(() => {})
     let historyRequestSequence = 0
     const restoreHistory = (): { selectedThreadRef:string;offset:number;selectedItemRef:string|null;railCollapsed:boolean;expandedThreadRefs:ReadonlyArray<string> } | null => { try { const value=JSON.parse(localStorage.getItem("openagents.desktop.history.v1")??"null");return value&&typeof value.selectedThreadRef==="string"&&Number.isInteger(value.offset)&&value.offset>=0&&value.offset<=1_000_000&&typeof value.railCollapsed==="boolean"&&(value.selectedItemRef===null||typeof value.selectedItemRef==="string")&&Array.isArray(value.expandedThreadRefs)&&value.expandedThreadRefs.every((ref:unknown)=>typeof ref==="string")?value:null } catch{return null} }

@@ -335,8 +335,11 @@ describe("React workbench shell", () => {
     const boot = empty?.querySelector(".oa-react-boot-sequence")
     expect(boot).not.toBeNull()
     expect(boot?.textContent).toContain("scanning for available agents")
+    // IDR-BS (#9103): the sovereign identity + wallet rows lead the scan, then
+    // the coding-agent rows follow.
+    expect(boot?.textContent).toContain("sovereign identity")
     expect([...(boot?.querySelectorAll(".oa-react-boot-label") ?? [])].map(node => node.textContent))
-      .toEqual(["Codex", "Claude Code", "Grok", "Apple FM"])
+      .toEqual(["Identity", "Wallet", "Codex", "Claude Code", "Grok", "Apple FM"])
     const header = container.querySelector(".oa-react-conversation-header--bare")
     expect(header).not.toBeNull()
     const dir = header?.querySelector<HTMLButtonElement>(".oa-react-conversation-working-directory")

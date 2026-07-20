@@ -423,6 +423,13 @@ import {
 } from "./apple-fm-contract.ts"
 import { createAppleFmHost, type AppleFmHost, type AppleFmLauncher } from "./apple-fm-host.ts"
 import { createPackagedAppleFmLauncher, appleFmHelperSupported } from "./apple-fm-native-helper.ts"
+import { IdentityStatusChannel } from "./identity-contract.ts"
+import { createIdentityHost, type IdentityLoader } from "./identity-host.ts"
+import {
+  loadOrCreateNostrIdentity,
+  resolveNostrIdentityPath,
+  resolvePylonHome,
+} from "@openagentsinc/pylon-core/shared"
 import {
   DesktopWorkspaceChooseChannel,
   DesktopWorkspaceFilesChannel,
@@ -3952,6 +3959,28 @@ ipcMain.handle(AppleFmStartTurnChannel, (_event, value: unknown) => {
   return request === null ? invalidAppleFmTurn() : appleFmHost.runTurn(request.prompt)
 })
 ipcMain.handle(AppleFmStopChannel, () => appleFmHost.stop())
+
+// Sovereign identity for the Boot Sequence (IDR-BS #9103). Main owns the one
+// BIP-39 mnemonic: the existing Pylon loader rehydrates an existing mnemonic or
+// creates a new one (never overwriting an existing file), and the host derives
+// ONLY the public projection (`npub` + Spark public fingerprint) via the frozen
+// IDR-00 derivation. The mnemonic, `nsec`, private key, and seed never leave
+// main. Fail-soft: any error yields the `unavailable` projection.
+const desktopIdentityLoader: IdentityLoader = {
+  loadOrCreate: async () => {
+    const paths = resolvePylonHome(process.env)
+    // Determine the source BEFORE the loader may create a fresh mnemonic: an
+    // existing file rehydrates, a missing one is created. The loader never
+    // overwrites an existing mnemonic.
+    const resolution = resolveNostrIdentityPath(paths, process.env)
+    const existed = existsSync(resolution.path)
+    const identity = await loadOrCreateNostrIdentity(paths, process.env)
+    return { source: existed ? "rehydrated" : "created", mnemonic: identity.mnemonic }
+  },
+}
+const identityHost = createIdentityHost(desktopIdentityLoader)
+ipcMain.handle(IdentityStatusChannel, () => identityHost.status())
+
 // Stop an owned sidecar on shutdown; an adopted operator bridge is never
 // stopped, and dispose() is idempotent.
 app.on("before-quit", () => {

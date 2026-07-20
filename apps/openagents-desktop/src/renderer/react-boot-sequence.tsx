@@ -4,6 +4,7 @@ import {
   bootSequenceReadyCount,
   bootSequenceScanning,
   type BootSequenceAgentLine,
+  type BootSequenceIdentityLine,
 } from "./boot-sequence.ts"
 
 const statusGlyph = (status: BootSequenceAgentLine["status"]): string =>
@@ -17,8 +18,11 @@ const statusGlyph = (status: BootSequenceAgentLine["status"]): string =>
  */
 export const ReactBootSequence = ({
   agents,
+  identity,
 }: {
   readonly agents: ReadonlyArray<BootSequenceAgentLine>
+  /** Sovereign identity/wallet lines (IDR-BS #9103). Public identifiers only. */
+  readonly identity?: ReadonlyArray<BootSequenceIdentityLine>
 }): ReactElement => {
   const ready = bootSequenceReadyCount(agents)
   const scanning = bootSequenceScanning(agents)
@@ -27,6 +31,21 @@ export const ReactBootSequence = ({
       <ol className="oa-react-boot-lines">
         <li className="oa-react-boot-line" data-kind="title">BOOT SEQUENCE</li>
         <li className="oa-react-boot-line" data-kind="banner">Initializing OpenAgents</li>
+        {identity === undefined || identity.length === 0 ? null : (
+          <>
+            <li className="oa-react-boot-line" data-kind="scan">sovereign identity</li>
+            {identity.map((line) => (
+              <li key={line.id} className="oa-react-boot-line" data-kind="identity" data-status={line.status}>
+                <span aria-hidden="true" className="oa-react-boot-glyph">{statusGlyph(line.status)}</span>
+                <span className="oa-react-boot-label">{line.label}</span>
+                {line.detail === null ? null : <span className="oa-react-boot-detail">{line.detail}</span>}
+                <span className="sr-only">
+                  {line.status === "available" ? "available" : line.status === "checking" ? "checking" : "unavailable"}
+                </span>
+              </li>
+            ))}
+          </>
+        )}
         <li className="oa-react-boot-line" data-kind="scan">scanning for available agents</li>
         {agents.map((agent) => (
           <li key={agent.id} className="oa-react-boot-line" data-kind="agent" data-status={agent.status}>
