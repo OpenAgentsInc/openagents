@@ -27,7 +27,7 @@ type Row = Readonly<{
   operation_ref: string;
   request_fingerprint: string;
   action: "install" | "wipe";
-  capability: "provider" | "scm_read" | "scm_write" | "tool" | "api";
+  capability: "provider" | "scm_read" | "scm_write" | "tool" | "api" | null;
   command_execution_claim_ref: string;
   owner_user_id: string;
   pylon_ref: string;
@@ -639,15 +639,20 @@ export class PostgresPortableOwnerLocalCapabilityOperationStore {
     // eslint-disable-next-line unicorn/no-array-sort
     permissionRefs.sort((left, right) => left.localeCompare(right));
     if (
-      permissionRefs.length === 0 ||
       new Set(permissionRefs).size !== permissionRefs.length ||
       canonical(permissionRefs) !== canonical(request.permissionRefs) ||
       portableOwnerLocalCapabilityPermissionFingerprint(request.permissionRefs) !==
         request.permissionFingerprint ||
       request.sourceLeaseRef === request.destinationLeaseRef ||
       request.sourceGrantRef === request.destinationGrantRef ||
-      (request.action === "install" && request.installationRef !== null) ||
-      (request.action === "wipe" && request.installationRef === null)
+      (request.action === "install" &&
+        (request.capability === null ||
+          request.installationRef !== null ||
+          permissionRefs.length === 0)) ||
+      (request.action === "wipe" &&
+        (request.capability !== null ||
+          request.installationRef === null ||
+          permissionRefs.length !== 0))
     ) {
       throw fail("invalid", "capability refs or permission fingerprint are invalid");
     }

@@ -152,10 +152,13 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
     fixture: Awaited<ReturnType<typeof seedExecution>>,
     action: "install" | "wipe" = "install",
   ) => {
-    const permissionRefs = ["permission.github.write", "permission.provider.use"];
+    const permissionRefs =
+      action === "install"
+        ? ["permission.github.write", "permission.provider.use"]
+        : [];
     const identity = {
       action,
-      capability: "scm_write" as const,
+      capability: action === "install" ? ("scm_write" as const) : null,
       commandExecutionClaimRef: fixture.commandExecutionClaimRef,
       ownerRef,
       pylonRef,

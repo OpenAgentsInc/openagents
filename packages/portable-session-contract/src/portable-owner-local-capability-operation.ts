@@ -36,7 +36,7 @@ export const PortableOwnerLocalCapabilityOperationRequestSchema = Schema.Struct(
   schema: Schema.Literal(PORTABLE_OWNER_LOCAL_CAPABILITY_OPERATION_SCHEMA_VERSION),
   operationRef: PortableRef,
   action: PortableOwnerLocalCapabilityOperationActionSchema,
-  capability: PortableOwnerLocalCapabilityKindSchema,
+  capability: Schema.NullOr(PortableOwnerLocalCapabilityKindSchema),
   commandExecutionClaimRef: PortableRef,
   ownerRef: PortableRef,
   pylonRef: PortableRef,
