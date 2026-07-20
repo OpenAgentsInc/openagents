@@ -3225,7 +3225,10 @@ const broadcastTerminalEvent = (event: TerminalEvent): void => {
   }
   void ideRunHost.then((host) => host.observeTerminalEvent(event))
 }
-const confirmTerminalPreview = async (url: string): Promise<boolean> => {
+const confirmTerminalPreview = async (
+  url: string,
+  authorize: () => boolean,
+): Promise<boolean> => {
   const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed()) ?? null
   const options = {
     type: "question" as const,
@@ -3239,11 +3242,13 @@ const confirmTerminalPreview = async (url: string): Promise<boolean> => {
     ? await dialog.showMessageBox(options)
     : await dialog.showMessageBox(window, options)
   if (result.response !== 1) return false
+  if (!authorize()) return false
   await shell.openExternal(url)
   return true
 }
 const terminalHost = makeTerminalHost({
   workspace: terminalWorkspaceBinding,
+  mutationAuthority: workspacePortableMutationAuthority,
   emit: broadcastTerminalEvent,
   persistencePath: path.join(app.getPath("userData"), "terminals.json"),
   openPreview: confirmTerminalPreview,
