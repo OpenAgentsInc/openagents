@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:3945651cda0bbac8e8d787bad3136517e6788a7c033e6fcb280894b15971584d",
+  "sourceDigest": "sha256:9d42e58454d92af8bf18210d3cc70661c39aead07aa4cf9e8f2f85a83e73e02b",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2646,6 +2646,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/sovereign-identity",
+      "kind": "package",
+      "owningPath": "packages/sovereign-identity",
+      "title": "@openagentsinc/sovereign-identity",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/sovereign-identity (2 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/sqlite-runtime",
       "kind": "package",
       "owningPath": "packages/sqlite-runtime",
@@ -3075,17 +3092,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 160,
+    "totalSurfaces": 161,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 42,
-      "package": 85,
+      "package": 86,
       "public-endpoint": 2,
       "release-pipeline": 8,
       "worker": 1
     },
-    "withOracle": 146,
+    "withOracle": 147,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3093,7 +3110,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 114,
+      "designed": 115,
       "inconclusive": 9,
       "mapped": 32,
       "out-of-scope": 5
