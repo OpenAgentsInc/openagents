@@ -58,6 +58,12 @@ const packagedOwnerLocalJourneyPath = path.join(
   "ide",
   "2026-07-20-ide-13-packaged-owner-local-journey.json",
 );
+const checkpointAdmissionFaultsPath = path.join(
+  appRoot,
+  "benchmarks",
+  "ide",
+  "2026-07-20-ide-13-checkpoint-admission-faults.json",
+);
 const git = (...args: string[]): string =>
   execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
 const valueAt = (values: ReadonlyArray<number>, percentile: number): number =>
@@ -264,6 +270,26 @@ const packagedOwnerLocalJourney = Schema.decodeUnknownSync(
     passed: Schema.Literal(true),
   }),
 )(JSON.parse(readFileSync(packagedOwnerLocalJourneyPath, "utf8")));
+const checkpointAdmissionFaults = Schema.decodeUnknownSync(
+  Schema.Struct({
+    candidateCommitSha: Schema.String,
+    baseCommitSha: Schema.String,
+    cases: Schema.Array(
+      Schema.Struct({
+        scenario: Schema.Literals(IDE_PORTABLE_FAULT_SCENARIOS),
+        evidenceClass: IdePortableEvidenceClassSchema,
+        outcome: Schema.Literals(["passed", "not_run"]),
+        rejectionRef: Schema.NullOr(Schema.String),
+      }),
+    ),
+    summary: Schema.Struct({
+      passedSimulatorCount: Schema.Literal(6),
+      notRunCount: Schema.Literal(2),
+      acceptanceContributionCount: Schema.Literal(0),
+      acceptanceReady: Schema.Literal(false),
+    }),
+  }),
+)(JSON.parse(readFileSync(checkpointAdmissionFaultsPath, "utf8")));
 const candidateCommitSha = ownerLocalInput.cohort.candidateCommitSha;
 const baseCommitSha = ownerLocalInput.cohort.baseCommitSha;
 if (
@@ -278,12 +304,22 @@ if (
   ownerLocalRecoveryFaults.cohortRef !== ownerLocalInput.cohort.cohortRef ||
   ownerLocalExecutorResume.candidateCommitSha !== candidateCommitSha ||
   ownerLocalExecutorResume.baseCommitSha !== baseCommitSha ||
-  packagedOwnerLocalJourney.candidateCommitSha !== candidateCommitSha
+  packagedOwnerLocalJourney.candidateCommitSha !== candidateCommitSha ||
+  checkpointAdmissionFaults.candidateCommitSha !== candidateCommitSha ||
+  checkpointAdmissionFaults.baseCommitSha !== baseCommitSha
 ) {
   throw new Error("IDE-13 owner-local cohort evidence is stale");
 }
 const strongerFaultsByScenario = new Map(
-  ownerLocalRecoveryFaults.cases.map((fault) => [fault.scenario, fault]),
+  [...checkpointAdmissionFaults.cases, ...ownerLocalRecoveryFaults.cases].map((fault) => [
+    fault.scenario,
+    {
+      evidenceClass: fault.evidenceClass,
+      outcome: fault.outcome,
+      recoveryPointRef: "recoveryPointRef" in fault ? fault.recoveryPointRef : fault.rejectionRef,
+      receiptRef: "receiptRef" in fault ? fault.receiptRef : fault.rejectionRef,
+    },
+  ]),
 );
 const ownerLocalCohort = {
   ...ownerLocalInput.cohort,
@@ -293,7 +329,7 @@ const ownerLocalCohort = {
       "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
   },
   metrics: ownerLocalPerformance.metrics,
-  result: `${ownerLocalInput.cohort.result} The phase and resource distributions use ${ownerLocalPerformance.repetitions} complete real owner-local runs under ${ownerLocalPerformance.receiptRef}. The required fault inventory records ${ownerLocalFaultMatrix.summary.passedRealLocalCount} passed injected transition-partition rows. One additional checkpoint-store crash ran as real local evidence. Three worker recovery cases ran only as simulator evidence. One bounded accepted work ref resumed and settled exactly once at the destination. A signed-out packaged shell stayed alive concurrently with a same-host owner-local journey, but it did not initiate or authenticate that move.`,
+  result: `${ownerLocalInput.cohort.result} The phase and resource distributions use ${ownerLocalPerformance.repetitions} complete real owner-local runs under ${ownerLocalPerformance.receiptRef}. The required fault inventory records ${ownerLocalFaultMatrix.summary.passedRealLocalCount} passed injected transition-partition rows. One additional checkpoint-store crash ran as real local evidence. Nine worker or checkpoint-admission cases ran only as simulator evidence. One bounded accepted work ref resumed and settled exactly once at the destination. A signed-out packaged shell stayed alive concurrently with a same-host owner-local journey, but it did not initiate or authenticate that move.`,
 };
 git("merge-base", "--is-ancestor", candidateCommitSha, "HEAD");
 const allowedEvidencePaths = new Set([
@@ -305,6 +341,7 @@ const allowedEvidencePaths = new Set([
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey-trace.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.png",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-checkpoint-admission-faults.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json",
   "apps/openagents-desktop/scripts/ide-portable-evidence.ts",
 ]);
@@ -489,6 +526,13 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
       result: "passed",
       receiptRef:
         "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+    },
+    {
+      checkRef: "checkpoint-admission-fault-addendum",
+      evidenceClass: "regression",
+      result: "passed",
+      receiptRef:
+        "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-checkpoint-admission-faults.json",
     },
     {
       checkRef: "owner-local-bounded-work-resume",
@@ -725,7 +769,7 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
     "DAP and native helper profiles have no admitted signed installed artifacts.",
     "The owner-managed enrollment and checkpoint-key custody design requires the recorded owner decision.",
     "The managed root filesystem needs a Linux x64 rebuild before the live Firecracker proof can run.",
-    "Nine real local fault rows passed. Three other required rows passed only with simulator fixtures, and 15 required fault, restart, teardown, or older-recovery-point rows did not run.",
+    "Nine real local fault rows passed. Nine other required rows passed only with simulator fixtures, and nine required fault, restart, teardown, or older-recovery-point rows did not run.",
     "A signed-out packaged shell ran concurrently with one same-host owner-local move. The packaged shell did not initiate or authenticate the move, and packaged authenticated journeys did not run on each required target.",
     "The complete phase and resource metric matrices are absent for the owner-managed, OpenAgents-managed, and admitted provider cohorts.",
     "The independent reviewer and owner dispositions are absent.",
