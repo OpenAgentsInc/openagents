@@ -497,6 +497,9 @@ importers:
       '@openagentsinc/agent-turn-store':
         specifier: workspace:*
         version: link:../../packages/agent-turn-store
+      '@openagentsinc/apple-fm-runtime':
+        specifier: workspace:*
+        version: link:../../packages/apple-fm-runtime
       '@openagentsinc/assurance-spec':
         specifier: workspace:*
         version: link:../../packages/assurance-spec
@@ -1395,6 +1398,9 @@ importers:
 
   apps/pylon/packages/runtime:
     dependencies:
+      '@openagentsinc/apple-fm-runtime':
+        specifier: workspace:*
+        version: link:../../../../packages/apple-fm-runtime
       '@openagentsinc/blueprint-contracts':
         specifier: workspace:*
         version: link:../../../../packages/blueprint-contracts

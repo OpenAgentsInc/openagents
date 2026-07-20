@@ -90,7 +90,7 @@ describe("Apple FM Swift sidecar staging admission (AFM-7)", () => {
     expect(plannedAsarPlacement("native/arm64/foundation-bridge")).toBe("extra-resource")
     expect(
       closureOwnerForDestination("native/arm64/foundation-bridge", descriptor, new Map(), "0.1.0"),
-    ).toEqual({ name: "foundation-bridge", version: "0.1.1", provenance: "workspace-crate" })
+    ).toEqual({ name: "foundation-bridge", version: "0.1.3", provenance: "workspace-crate" })
   })
 
   test("the per-file closure ledgers the bridge beside the voice helper", () => {
@@ -98,7 +98,7 @@ describe("Apple FM Swift sidecar staging admission (AFM-7)", () => {
     const bridge = entries.find((entry) => entry.destination === "native/arm64/foundation-bridge")
     expect(bridge).toMatchObject({
       name: "foundation-bridge",
-      version: "0.1.1",
+      version: "0.1.3",
       architecture: "arm64",
       fileKind: "executable",
       asarPlacement: "extra-resource",

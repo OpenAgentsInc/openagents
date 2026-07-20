@@ -320,6 +320,7 @@ import {
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { desktopAfsTurnKernelEnabled, installDesktopTurnKernel } from "./turn/desktop-turn-main.ts"
+import { makeDesktopAppleFmProviderRegistry } from "./turn/desktop-apple-fm-provider.ts"
 import {
   filterLocallyOwnedCodexHistoryCatalog,
   filterLocallyOwnedCodexHistorySearch,
@@ -412,7 +413,7 @@ import {
   decodeAppleFmStartTurnRequest,
   invalidAppleFmTurn,
 } from "./apple-fm-contract.ts"
-import { createAppleFmHost, type AppleFmLauncher } from "./apple-fm-host.ts"
+import { createAppleFmHost, type AppleFmHost, type AppleFmLauncher } from "./apple-fm-host.ts"
 import { createPackagedAppleFmLauncher, appleFmHelperSupported } from "./apple-fm-native-helper.ts"
 import {
   DesktopWorkspaceChooseChannel,
@@ -1348,7 +1349,11 @@ const localTurnJournal = openLocalTurnJournal(
 // AFS-01 (#9079): compose the shared UI-neutral turn kernel in Electron main,
 // behind an explicit rollback flag. Default OFF keeps the existing renderer
 // provider-lane path as the live path (removed in AFS-03). Additive and
-// isolated; real Desktop provider-lane wiring lands in AFS-02.
+// isolated.
+// AFS-02 (#9080): register Apple FM as the local inference lane. The supervisor
+// is constructed later in this module, so it is resolved lazily through
+// `appleFmHostRef`, set once the host exists.
+let appleFmHostRef: AppleFmHost | null = null
 if (desktopAfsTurnKernelEnabled()) {
   installDesktopTurnKernel({
     ipcMain: {
@@ -1361,6 +1366,7 @@ if (desktopAfsTurnKernelEnabled()) {
     },
     threadStore: threads(),
     journalFilePath: path.join(app.getPath("userData"), "agent-turns", "journal.json"),
+    providerRegistry: makeDesktopAppleFmProviderRegistry(() => appleFmHostRef),
   })
 }
 const fullAutoRegistry = openFullAutoRegistry(
@@ -3795,6 +3801,9 @@ const appleFmLauncher: AppleFmLauncher =
         },
       })
 const appleFmHost = createAppleFmHost(appleFmLauncher)
+// AFS-02 (#9080): publish the supervisor to the lazily-bound turn-kernel
+// provider registry composed above.
+appleFmHostRef = appleFmHost
 ipcMain.handle(AppleFmStatusChannel, (_event, value: unknown) => {
   const refresh = typeof value === "object" && value !== null && (value as { refresh?: unknown }).refresh === true
   return refresh ? appleFmHost.refresh() : appleFmHost.ensureStarted()

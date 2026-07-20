@@ -23,8 +23,7 @@ import { createHash } from "node:crypto"
 import { spawn, type ChildProcess } from "node:child_process"
 import { readFileSync, statSync } from "node:fs"
 import path from "node:path"
-import { Effect } from "effect"
-import { makeAppleFmClient } from "@openagentsinc/pylon-runtime"
+import { appleFmComplete, appleFmProbe } from "@openagentsinc/apple-fm-runtime/node"
 import type {
   AppleFmLaunchOutcome,
   AppleFmLauncher,
@@ -93,67 +92,29 @@ export const spawnAppleFmHelper = (absolutePath: string, port: number): ChildPro
   })
 
 // ---------------------------------------------------------------------------
-// In-process Pylon FM client adapters (health + one bounded turn).
+// Loopback FM client adapters (health + one bounded turn).
+//
+// AFS-02: these delegate to the neutral `@openagentsinc/apple-fm-runtime`
+// loopback client, removing the Desktop dependency on the nested Pylon runtime.
+// The bounded, public-safe `AppleFmProbe`/`AppleFmLauncherTurn` shapes are
+// preserved so the supervisor and the existing tests are unchanged.
 // ---------------------------------------------------------------------------
 
-/** A bounded lower-snake token from an arbitrary failure string. */
-const boundedToken = (value: string): string =>
-  value.toLowerCase().replace(/[^a-z0-9_.]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120) || "unknown"
-
 /**
- * Probe live readiness through the Pylon FM client. Never throws; a registry or
- * transport failure maps to an `unreachable` probe. The client already redacts
- * base URLs in its receipts; we surface only bounded, public-safe fields.
+ * Probe live readiness through the neutral loopback client. Never throws; a
+ * transport or shape failure maps to a bounded public-safe probe.
  */
-export const appleFmClientProbe = async (
+export const appleFmClientProbe = (
   baseUrl: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<AppleFmProbe> => {
-  try {
-    const client = await Effect.runPromise(makeAppleFmClient({ explicitBaseUrl: baseUrl, fetch: fetchImpl }))
-    const readiness = await Effect.runPromise(client.health())
-    return {
-      status: readiness.status,
-      ready: readiness.ready,
-      ...(readiness.health?.modelId ?? readiness.health?.model
-        ? { model: readiness.health?.modelId ?? readiness.health?.model }
-        : {}),
-      profileId: readiness.profile.id,
-      // The current bridge estimates usage from character counts; report that
-      // honestly at readiness time. A turn's own usage truth is authoritative.
-      usageTruth: readiness.ready ? "estimated" : "unknown",
-      ...(readiness.unavailableReason ? { unavailableReason: readiness.unavailableReason } : {}),
-    }
-  } catch {
-    return { status: "unreachable", ready: false, unavailableReason: "bridge_unreachable" }
-  }
-}
+): Promise<AppleFmProbe> => appleFmProbe(baseUrl, fetchImpl)
 
-/** Run one bounded read-only completion through the Pylon FM client. */
-export const appleFmClientComplete = async (
+/** Run one bounded read-only completion through the neutral loopback client. */
+export const appleFmClientComplete = (
   baseUrl: string,
   prompt: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<AppleFmLauncherTurn> => {
-  try {
-    const client = await Effect.runPromise(makeAppleFmClient({ explicitBaseUrl: baseUrl, fetch: fetchImpl }))
-    const result = await Effect.runPromise(Effect.result(client.completePlainText([{ role: "user", content: prompt }])))
-    if (result._tag === "Success") {
-      const completion = result.success
-      return {
-        outcome: "completed",
-        text: completion.text.slice(0, 8192),
-        usageTruth: completion.usage.truth,
-        ...(typeof completion.usage.promptTokens === "number" ? { promptTokens: completion.usage.promptTokens } : {}),
-        ...(typeof completion.usage.completionTokens === "number" ? { completionTokens: completion.usage.completionTokens } : {}),
-        ...(typeof completion.usage.totalTokens === "number" ? { totalTokens: completion.usage.totalTokens } : {}),
-      }
-    }
-    return { outcome: "failed", usageTruth: "unknown", failureClass: boundedToken(result.failure.failureClass) }
-  } catch {
-    return { outcome: "failed", usageTruth: "unknown", failureClass: "bridge_unreachable" }
-  }
-}
+): Promise<AppleFmLauncherTurn> => appleFmComplete(baseUrl, prompt, fetchImpl)
 
 // ---------------------------------------------------------------------------
 // Packaged launcher — adopt an existing healthy bridge, else verify + spawn.

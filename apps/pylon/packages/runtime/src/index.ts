@@ -4,6 +4,7 @@ export * from "./backends/apple-fm/blueprint-tools.js";
 export * from "./backends/apple-fm/bridge-process.js";
 export * from "./backends/apple-fm/client.js";
 export * from "./backends/apple-fm/contract.js";
+export * from "./backends/apple-fm/neutral-runtime.js";
 export * from "./backends/apple-fm/program-run-evidence.js";
 export * from "./backends/apple-fm/receipts.js";
 export * from "./backends/apple-fm/tools.js";

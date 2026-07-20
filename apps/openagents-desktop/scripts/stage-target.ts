@@ -66,6 +66,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
+import { APPLE_FM_CANONICAL_HELPER_VERSION } from "@openagentsinc/apple-fm-runtime";
+
 import {
   type DesktopArtifactFormat,
   type DesktopBuildArtifactInput,
@@ -94,11 +96,13 @@ const checkoutRoot = path.resolve(appRoot, "../..");
 const DESKTOP_PACKAGE_FILTER = "@openagentsinc/openagents-desktop";
 
 /**
- * Apple Foundation Models Swift sidecar (AFM-7 #9076). Version mirrors the
- * bridge identity in `apps/pylon/swift/foundation-bridge` (main.swift 0.1.1)
- * and the manifest written by the dev build + release staging steps.
+ * Apple Foundation Models Swift sidecar (AFM-7 #9076). AFS-02 (#9080) makes the
+ * neutral `@openagentsinc/apple-fm-runtime` package the SINGLE wire-version
+ * source: the Desktop staging pin is derived from `APPLE_FM_CANONICAL_HELPER_VERSION`
+ * rather than a second literal that can drift (the AFS-00 check flagged a
+ * `0.1.3` helper vs `0.1.1` staging mismatch; this reconciles it from one source).
  */
-const APPLE_FM_BRIDGE_VERSION = "0.1.1";
+const APPLE_FM_BRIDGE_VERSION = APPLE_FM_CANONICAL_HELPER_VERSION;
 
 // ---------------------------------------------------------------------------
 // Staging plan — pure projection of a descriptor into worker commands
