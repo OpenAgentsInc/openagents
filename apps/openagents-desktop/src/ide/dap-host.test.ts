@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
@@ -27,6 +28,9 @@ const operationRef = () =>
   IdeDebugOperationRefSchema.make(`ide.debug-operation.host-${++operationSequence}`);
 const configurationDigest = (configuration: IdeDebugConfiguration): string =>
   createHash("sha256").update(JSON.stringify(configuration)).digest("hex");
+const fixtureAdapter = fileURLToPath(
+  new URL("../../scripts/fixtures/ide-dap-fixture.cjs", import.meta.url),
+);
 
 const temporaryRoots: Array<string> = [];
 const openedHosts: Array<IdeDapHost> = [];
@@ -55,7 +59,7 @@ const fixtureEntry = (
       configurationRef: configuration.configurationRef,
       configurationDigest: configurationDigest(configuration),
       executable: process.execPath,
-      argv: [path.resolve("scripts/fixtures/ide-dap-fixture.cjs"), ...adapterArguments],
+      argv: [fixtureAdapter, ...adapterArguments],
       cwd: root,
       environment: { PATH: process.env.PATH ?? "" },
       adapterId: "fixture",
