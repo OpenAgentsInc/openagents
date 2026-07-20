@@ -52,6 +52,12 @@ const ownerLocalExecutorResumePath = path.join(
   "ide",
   "2026-07-20-ide-13-owner-local-executor-resume.json",
 );
+const ownerLocalExecutorCrashRecoveryPath = path.join(
+  appRoot,
+  "benchmarks",
+  "ide",
+  "2026-07-20-ide-13-owner-local-executor-crash-recovery.json",
+);
 const packagedOwnerLocalJourneyPath = path.join(
   appRoot,
   "benchmarks",
@@ -252,16 +258,47 @@ const ownerLocalExecutorResume = Schema.decodeUnknownSync(
     }),
   }),
 )(JSON.parse(readFileSync(ownerLocalExecutorResumePath, "utf8")));
+const ownerLocalExecutorCrashRecovery = Schema.decodeUnknownSync(
+  Schema.Struct({
+    candidateCommitSha: Schema.String,
+    baseCommitSha: Schema.String,
+    evidenceClass: Schema.Literal("real_local"),
+    crash: Schema.Struct({
+      processConfirmedDead: Schema.Literal(true),
+      durableEffectApplicationCount: Schema.Literal(1),
+      preRecoveryState: Schema.Literal("running"),
+    }),
+    recovery: Schema.Struct({
+      exactScopeVerified: Schema.Literal(true),
+      recoveryContract: Schema.Literal("durable_idempotency_reconcile_v1"),
+      reconciliationCount: Schema.Literal(1),
+      recoveryExecuteCount: Schema.Literal(0),
+      firstResult: Schema.Literal("recovered"),
+      replayResult: Schema.Literal("replayed"),
+      settlementState: Schema.Literal("settled"),
+      receiptRef: Schema.String,
+    }),
+    teardown: Schema.Struct({ controlResidue: Schema.Literal(0) }),
+    authority: Schema.Struct({
+      productionDispatchEnabled: Schema.Literal(false),
+      networkCalls: Schema.Literal(0),
+      providerCalls: Schema.Literal(0),
+      secretMaterialInReceipt: Schema.Literal(false),
+    }),
+  }),
+)(JSON.parse(readFileSync(ownerLocalExecutorCrashRecoveryPath, "utf8")));
 const packagedOwnerLocalJourney = Schema.decodeUnknownSync(
   Schema.Struct({
     candidateCommitSha: Schema.String,
     evidenceClass: Schema.Literal("real_local"),
-    proofClass: Schema.Literal("packaged_shell_concurrent_owner_local_target"),
+    proofClass: Schema.Literal("packaged_shell_initiated_owner_local_target"),
     packagedShell: Schema.Struct({
       isolatedAppProof: Schema.Literal(true),
       signedOutLocalOnly: Schema.Literal(true),
       authenticatedSyncClaimed: Schema.Literal(false),
-      initiatedMoveClaimed: Schema.Literal(false),
+      initiatedMoveClaimed: Schema.Literal(true),
+      trustedRendererPreloadIpcMainBoundaryUsed: Schema.Literal(true),
+      isolatedProofAdmissionBoundaryUsed: Schema.Literal(true),
     }),
     teardown: Schema.Struct({
       survivingProcessCount: Schema.Literal(0),
@@ -304,13 +341,15 @@ if (
   ownerLocalRecoveryFaults.cohortRef !== ownerLocalInput.cohort.cohortRef ||
   ownerLocalExecutorResume.candidateCommitSha !== candidateCommitSha ||
   ownerLocalExecutorResume.baseCommitSha !== baseCommitSha ||
+  ownerLocalExecutorCrashRecovery.candidateCommitSha !== candidateCommitSha ||
+  ownerLocalExecutorCrashRecovery.baseCommitSha !== baseCommitSha ||
   packagedOwnerLocalJourney.candidateCommitSha !== candidateCommitSha ||
   checkpointAdmissionFaults.candidateCommitSha !== candidateCommitSha ||
   checkpointAdmissionFaults.baseCommitSha !== baseCommitSha
 ) {
   throw new Error("IDE-13 owner-local cohort evidence is stale");
 }
-const strongerFaultsByScenario = new Map(
+const supplementalFaultsByScenario = new Map(
   [...checkpointAdmissionFaults.cases, ...ownerLocalRecoveryFaults.cases].map((fault) => [
     fault.scenario,
     {
@@ -321,6 +360,14 @@ const strongerFaultsByScenario = new Map(
     },
   ]),
 );
+const evidenceRank = {
+  not_run: 0,
+  simulator: 1,
+  real_local: 2,
+  real_owner_managed: 2,
+  real_openagents_managed: 2,
+  real_managed_provider: 2,
+} as const;
 const ownerLocalCohort = {
   ...ownerLocalInput.cohort,
   journeys: {
@@ -329,7 +376,7 @@ const ownerLocalCohort = {
       "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
   },
   metrics: ownerLocalPerformance.metrics,
-  result: `${ownerLocalInput.cohort.result} Ten-run phase and resource distributions passed. Fault evidence is 9 real local, 9 simulator, and 9 not run. One bounded accepted work ref resumed and settled once. A signed-out packaged shell stayed alive during the same-host journey but did not initiate or authenticate it.`,
+  result: `${ownerLocalInput.cohort.result} Ten-run phase and resource distributions passed. Consolidated fault evidence is 14 real local, 8 simulator, and 5 not run. One bounded accepted work ref resumed and settled once. One interrupted bounded handler reconciled its durable effect without a second execution. A signed-out packaged shell admitted the bounded move through its trusted IPC boundary before the same-host owner-local journey; it did not authenticate Sync.`,
 };
 git("merge-base", "--is-ancestor", candidateCommitSha, "HEAD");
 const allowedEvidencePaths = new Set([
@@ -338,6 +385,7 @@ const allowedEvidencePaths = new Set([
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-crash-recovery.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey-trace.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.png",
@@ -542,7 +590,14 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
         "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json",
     },
     {
-      checkRef: "packaged-owner-local-concurrent-journey",
+      checkRef: "owner-local-bounded-work-crash-recovery",
+      evidenceClass: "regression",
+      result: "passed",
+      receiptRef:
+        "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-crash-recovery.json",
+    },
+    {
+      checkRef: "packaged-owner-local-initiated-journey",
       evidenceClass: "packaged_fail_closed",
       result: "passed",
       receiptRef:
@@ -723,6 +778,17 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
       receiptRef: ownerLocalExecutorResume.execution.receiptRef,
     },
     {
+      recoveryRef: "recovery:owner-local-bounded-work-crash",
+      cohortRef: ownerLocalInput.cohort.cohortRef,
+      targetClass: "owner_local",
+      scenario:
+        "A verified dead executor left one durable effect and a running row. The destination reconciled that effect, settled it without a second execution, and replayed the same receipt.",
+      evidenceClass: "real_local",
+      outcome: "passed",
+      recoveryPointRef: "owner-local-generation-2-durable-idempotency-reconciliation",
+      receiptRef: ownerLocalExecutorCrashRecovery.recovery.receiptRef,
+    },
+    {
       recoveryRef: "recovery:provider-eviction",
       cohortRef: "cohort:managed-provider:unclaimed",
       targetClass: "managed_provider",
@@ -734,8 +800,13 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
     },
   ],
   faultFacts: ownerLocalFaultMatrix.cases.map((fault) => {
+    const supplemental =
+      fault.phase === null ? supplementalFaultsByScenario.get(fault.scenario) : undefined;
     const stronger =
-      fault.phase === null ? strongerFaultsByScenario.get(fault.scenario) : undefined;
+      supplemental !== undefined &&
+      evidenceRank[supplemental.evidenceClass] > evidenceRank[fault.evidenceClass]
+        ? supplemental
+        : undefined;
     return {
       faultRef: fault.faultRef,
       cohortRef: ownerLocalInput.cohort.cohortRef,

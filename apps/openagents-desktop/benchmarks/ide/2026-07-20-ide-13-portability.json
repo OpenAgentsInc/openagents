@@ -1,9 +1,9 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-evidence.v3",
   "issue": "IDE-13",
-  "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
-  "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
-  "generatedAt": "2026-07-20T19:03:26.903Z",
+  "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+  "baseCommitSha": "7da626270496737d9e94c32263a2c3de152a0b90",
+  "generatedAt": "2026-07-20T19:48:32.647Z",
   "producerRef": "openagents:ide-13-implementation",
   "acceptanceRefs": {
     "candidateRef": null,
@@ -167,7 +167,13 @@
       "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json"
     },
     {
-      "checkRef": "packaged-owner-local-concurrent-journey",
+      "checkRef": "owner-local-bounded-work-crash-recovery",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-crash-recovery.json"
+    },
+    {
+      "checkRef": "packaged-owner-local-initiated-journey",
       "evidenceClass": "packaged_fail_closed",
       "result": "passed",
       "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.json"
@@ -206,12 +212,12 @@
       },
       "targetRef": "target.ide13.owner-local.cohort.a",
       "artifact": {
-        "ref": "artifact.portable-checkpoint.a72d505dd888f83de05a4a67c461d017",
-        "sha256": "c629978855f6c57a984a45d476823a8db01ad0b4fa561beabd4967c447d0398d",
-        "bytes": 1381
+        "ref": "artifact.portable-checkpoint.3f3a13a110ccff734236929425dde355",
+        "sha256": "bd6dc69e982ec14dc6b8545f71aad54332505dd1ff397639e3085a2f81f01e39",
+        "bytes": 1373
       },
-      "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
-      "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
+      "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+      "baseCommitSha": "7da626270496737d9e94c32263a2c3de152a0b90",
       "capabilityState": "degraded",
       "custody": "owner_device",
       "networkDestinations": [],
@@ -240,7 +246,7 @@
         {
           "phase": "upload",
           "evidenceClass": "real_local",
-          "receiptRef": "receipt.ide13.owner-local.upload.db0fbde1c6b65401eb4e0c121dd66894",
+          "receiptRef": "receipt.ide13.owner-local.upload.3d5130e910c01f52feefaeb0b7b8c52c",
           "operationRef": "operation.ide13.owner-local.move.custody.upload",
           "attachmentGeneration": 1,
           "result": "passed"
@@ -248,7 +254,7 @@
         {
           "phase": "redeem",
           "evidenceClass": "real_local",
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.e00e252c9ed89011479b0309288d6ac4",
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.ace3572cb0232ceca8886de933bd240b",
           "operationRef": "operation.ide13.owner-local.move.destination.stage",
           "attachmentGeneration": 2,
           "result": "passed"
@@ -293,13 +299,13 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 0.4075000000000273,
-          "p95": 0.4673339999999371,
-          "p99": 0.4673339999999371,
+          "p50": 0.5076249999983702,
+          "p95": 0.931416999999783,
+          "p99": 0.931416999999783,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.43baa83b428390fa9eeb5c05a81115a3"
+          "receiptRef": "receipt.ide13.owner-local.performance.39a6b90543cca98e07004572e35415b3"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.checkpoint",
@@ -307,13 +313,13 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 41.9328749999986,
-          "p95": 43.97350000000006,
-          "p99": 43.97350000000006,
+          "p50": 43.36016599999857,
+          "p95": 85.71845800000006,
+          "p99": 85.71845800000006,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.30db7b0f3b3726623ed267c4dfda11b3"
+          "receiptRef": "receipt.ide13.owner-local.performance.9547ecda7f6cdaeac0f2b758b78b39f0"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.upload",
@@ -321,13 +327,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 45.80479100000002,
-          "p95": 51.26520900000003,
-          "p99": 51.26520900000003,
+          "p50": 45.29975000000013,
+          "p95": 80.85758299999998,
+          "p99": 80.85758299999998,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.791280491dbe5c4d4999bd29a3118903"
+          "receiptRef": "receipt.ide13.owner-local.performance.8ecb47c8fb30b9abcbbc7f6f97e3a9b2"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -335,13 +341,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 87.55866700000115,
-          "p95": 93.20454199999949,
-          "p99": 93.20454199999949,
+          "p50": 92.05816700000014,
+          "p95": 236.27112499999998,
+          "p99": 236.27112499999998,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.248594c140cac8546705a73f6c2c4d28"
+          "receiptRef": "receipt.ide13.owner-local.performance.f96b4b57df517ba6389ff7796000886e"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -349,13 +355,13 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 55.19312500000024,
-          "p95": 57.48241699999926,
-          "p99": 57.48241699999926,
+          "p50": 55.65083400000003,
+          "p95": 74.45316700000012,
+          "p99": 74.45316700000012,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.fbeabb8f509cdb41dddf3d37d331d8b0"
+          "receiptRef": "receipt.ide13.owner-local.performance.ac768a280b04614b6fb2496402a8c1c0"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.helper_readiness",
@@ -363,13 +369,13 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 0.005500000000211003,
-          "p95": 0.018332999999984168,
-          "p99": 0.018332999999984168,
+          "p50": 0.004875000000538421,
+          "p95": 0.01212500000019645,
+          "p99": 0.01212500000019645,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.d5ea0af39f2f669a9e94dbd9b88de334"
+          "receiptRef": "receipt.ide13.owner-local.performance.f2e74e3561be040475d5faace5767cb7"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.failback",
@@ -377,13 +383,13 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 530.5847910000002,
-          "p95": 537.5750000000007,
-          "p99": 537.5750000000007,
+          "p50": 530.1174580000006,
+          "p95": 638.8510000000001,
+          "p99": 638.8510000000001,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.e1eab9e07e8e2fee401f8a979c5613e3"
+          "receiptRef": "receipt.ide13.owner-local.performance.4ce79f6325af1357eac87e31e5077a3c"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.teardown",
@@ -391,13 +397,13 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 302.97829100000126,
-          "p95": 305.11429199999975,
-          "p99": 305.11429199999975,
+          "p50": 303.32633299999907,
+          "p95": 306.6662919999999,
+          "p99": 306.6662919999999,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.381a9f497ad2cf90b67fa7aef227e1d8"
+          "receiptRef": "receipt.ide13.owner-local.performance.caef58606d5cfad06f3e5e0238486418"
         },
         {
           "metricRef": "metric.ide13.owner-local.checkpoint_size",
@@ -405,13 +411,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 10,
-          "p50": 1378,
-          "p95": 1381,
-          "p99": 1381,
+          "p50": 1379,
+          "p95": 1380,
+          "p99": 1380,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.ff29be776add98fff15d7d2527c61e87"
+          "receiptRef": "receipt.ide13.owner-local.performance.00d6d0f00862d64b16c215c5a635e57a"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -419,13 +425,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 10,
-          "p50": 11.587440834599738,
-          "p95": 12.014086025786645,
-          "p99": 12.014086025786645,
+          "p50": 10.607407405623356,
+          "p95": 11.824147762515254,
+          "p99": 11.824147762515254,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.09c02640fdd25fb11d27b1f2ff575edd"
+          "receiptRef": "receipt.ide13.owner-local.performance.ba670132a72797da119fc18277cbe6ea"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -433,13 +439,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 10,
-          "p50": 290881536,
-          "p95": 293519360,
-          "p99": 293519360,
+          "p50": 357384192,
+          "p95": 359251968,
+          "p99": 359251968,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.bdab457cb33976e934caabe5be1f6772"
+          "receiptRef": "receipt.ide13.owner-local.performance.b07227977d9c2ef3e721a623956f7e18"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -453,7 +459,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.e9a987705c69d8a595cc9c1c9601240f"
+          "receiptRef": "receipt.ide13.owner-local.performance.b250a161a391b101859502f848722aea"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -467,7 +473,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.dc79e54a307b24ada911bfe7f7d872ac"
+          "receiptRef": "receipt.ide13.owner-local.performance.19525ea7b6da1595969c47a7697da255"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -481,7 +487,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.24732218632eb9883f49bd79b199cc36"
+          "receiptRef": "receipt.ide13.owner-local.performance.737fad3fa42ad7859f9950cc251733bd"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -495,7 +501,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.43382205fd3b05da3ee8ea19d22df66b"
+          "receiptRef": "receipt.ide13.owner-local.performance.48b27f7e536fd88f06d10e6c1c132556"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -503,16 +509,16 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 302.97829100000126,
-          "p95": 305.11429199999975,
-          "p99": 305.11429199999975,
+          "p50": 303.32633299999907,
+          "p95": 306.6662919999999,
+          "p99": 306.6662919999999,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.c48cd0cf8adeddfad5d564822ced6948"
+          "receiptRef": "receipt.ide13.owner-local.performance.b781cbe30ddc9d73d17ed1346de3651d"
         }
       ],
-      "result": "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The destination started a signature-verified TypeScript LSP. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. DAP and native stayed unsupported because no signed executable profile is admitted for them. Ten-run phase and resource distributions passed. Fault evidence is 9 real local, 9 simulator, and 9 not run. One bounded accepted work ref resumed and settled once. A signed-out packaged shell stayed alive during the same-host journey but did not initiate or authenticate it."
+      "result": "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The destination started a signature-verified TypeScript LSP. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. DAP and native stayed unsupported because no signed executable profile is admitted for them. Ten-run phase and resource distributions passed. Consolidated fault evidence is 14 real local, 8 simulator, and 5 not run. One bounded accepted work ref resumed and settled once. One interrupted bounded handler reconciled its durable effect without a second execution. A signed-out packaged shell admitted the bounded move through its trusted IPC boundary before the same-host owner-local journey; it did not authenticate Sync."
     },
     {
       "cohortRef": "cohort:owner-managed:simulator",
@@ -538,8 +544,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
-      "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
+      "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+      "baseCommitSha": "7da626270496737d9e94c32263a2c3de152a0b90",
       "capabilityState": "unverified",
       "custody": "owner_managed",
       "networkDestinations": [],
@@ -639,8 +645,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
-      "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
+      "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+      "baseCommitSha": "7da626270496737d9e94c32263a2c3de152a0b90",
       "capabilityState": "unverified",
       "custody": "openagents_managed",
       "networkDestinations": [],
@@ -740,8 +746,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
-      "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
+      "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+      "baseCommitSha": "7da626270496737d9e94c32263a2c3de152a0b90",
       "capabilityState": "unsupported",
       "custody": "unverified",
       "networkDestinations": [],
@@ -857,7 +863,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "owner-local-generation-2-attachment",
-      "receiptRef": "receipt.ide13.owner-local.replay.b05fc64af62b52fc634f70a9639835f7"
+      "receiptRef": "receipt.ide13.owner-local.replay.7e4d5f150959739865fe496c20f7c9de"
     },
     {
       "recoveryRef": "recovery:pylon-restart",
@@ -880,6 +886,16 @@
       "receiptRef": "receipt.pylon.portable.owner-local-work.23457dfdd2e5518ad074be6a71455d55"
     },
     {
+      "recoveryRef": "recovery:owner-local-bounded-work-crash",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "A verified dead executor left one durable effect and a running row. The destination reconciled that effect, settled it without a second execution, and replayed the same receipt.",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "owner-local-generation-2-durable-idempotency-reconciliation",
+      "receiptRef": "receipt.pylon.portable.owner-local-work.0511fc80d5c7926ccdc30f6e7253fedf"
+    },
+    {
       "recoveryRef": "recovery:provider-eviction",
       "cohortRef": "cohort:managed-provider:unclaimed",
       "targetClass": "managed_provider",
@@ -900,7 +916,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.agent_quiesced.4c76e00686868261446d94d0",
-      "receiptRef": "receipt.ide13.owner-local.fault.8f342d7642cabd14de6b5c66f392bfb8"
+      "receiptRef": "receipt.ide13.owner-local.fault.001010ad8d518c43df05994e2d25e120"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.checkpoint",
@@ -911,7 +927,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.checkpoint.f89cd37b0e524045087fc9af",
-      "receiptRef": "receipt.ide13.owner-local.fault.5af0bf339b6233f148489c5b75a0b2d2"
+      "receiptRef": "receipt.ide13.owner-local.fault.d7b66d5a5e458388b099319fb52d5d74"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.upload",
@@ -921,8 +937,8 @@
       "phase": "upload",
       "evidenceClass": "real_local",
       "outcome": "passed",
-      "recoveryPointRef": "receipt.ide13.owner-local.upload.66e79be2dc961d06e9a253ed4206b1be",
-      "receiptRef": "receipt.ide13.owner-local.fault.c1b3755f20034fb79c264d02a474e552"
+      "recoveryPointRef": "receipt.ide13.owner-local.upload.52cd19d91c30d744f4ebf575ca7f6483",
+      "receiptRef": "receipt.ide13.owner-local.fault.c022384c60546e5379986cc9f5b48f67"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.redeem",
@@ -932,8 +948,8 @@
       "phase": "redeem",
       "evidenceClass": "real_local",
       "outcome": "passed",
-      "recoveryPointRef": "receipt.pylon.portable.artifact_materialized.43e8c7f4524b8aca9d120143fee4fceb",
-      "receiptRef": "receipt.ide13.owner-local.fault.b24313df33e0e103ebaa9e2d75c34cae"
+      "recoveryPointRef": "receipt.pylon.portable.artifact_materialized.95cfa7eebdc07743d4013c5d99e77244",
+      "receiptRef": "receipt.ide13.owner-local.fault.f295e98c7f10445402249df87e6922c7"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.attach",
@@ -944,7 +960,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
-      "receiptRef": "receipt.ide13.owner-local.fault.421409c7276dc0a971f99a97b8c0cee6"
+      "receiptRef": "receipt.ide13.owner-local.fault.66fdb1d8a977a08811b957c52ee9a60e"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.helper_readiness",
@@ -955,7 +971,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.ide13.owner-local.helpers.1cbc836f75cac0a97936a027bdcbcf27",
-      "receiptRef": "receipt.ide13.owner-local.fault.ab714e22b76704106ef425dcea2afb17"
+      "receiptRef": "receipt.ide13.owner-local.fault.5adbb8f5225483168d6cdc5fd9d049ac"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.failback",
@@ -966,7 +982,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.destination_activation.f2a6ffbcadb2d1f8fbcefdb57e03fcc8",
-      "receiptRef": "receipt.ide13.owner-local.fault.f1857ea389a49698ff3d5d5ad51c8ce1"
+      "receiptRef": "receipt.ide13.owner-local.fault.a1a4f7ece1533366ecea070f9ca5ab24"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.teardown",
@@ -977,7 +993,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.source_cleanup.fadb8dcbee3ab1ce8ee60e2b",
-      "receiptRef": "receipt.ide13.owner-local.fault.fbf570792df56030f9dceb683f9691e1"
+      "receiptRef": "receipt.ide13.owner-local.fault.0ecfc66d39cc7392aa60bb9f4ddd8ec7"
     },
     {
       "faultRef": "fault.ide13.owner-local.coordinator_crash",
@@ -988,7 +1004,7 @@
       "evidenceClass": "simulator",
       "outcome": "passed",
       "recoveryPointRef": "recovery.pylon.owner-local.file-journal.claimed",
-      "receiptRef": "receipt.ide13.owner-local.coordinator-crash.34b3e3046f2dbad9246ac45dfade28ff"
+      "receiptRef": "receipt.ide13.owner-local.coordinator-crash.494a9d3b9b1e3a90e211741b633050a5"
     },
     {
       "faultRef": "fault.ide13.owner-local.checkpoint_store_crash",
@@ -999,7 +1015,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.portable-checkpoint-deletion.9b0cf9b58942396afa774cb146da9f44",
-      "receiptRef": "receipt.ide13.owner-local.checkpoint-store-crash.d4e8ec47b6b17a5fd7fd071fe2de3fa7"
+      "receiptRef": "receipt.ide13.owner-local.checkpoint-store-crash.0babf7f362f69f1cc78cfaa3cd493605"
     },
     {
       "faultRef": "fault.ide13.owner-local.provider_crash",
@@ -1018,10 +1034,10 @@
       "targetClass": "owner_local",
       "scenario": "duplicate_event",
       "phase": null,
-      "evidenceClass": "simulator",
+      "evidenceClass": "real_local",
       "outcome": "passed",
-      "recoveryPointRef": "recovery.pylon.owner-local.operation-ref-deduplication",
-      "receiptRef": "receipt.ide13.owner-local.duplicate-event.34b3e3046f2dbad9246ac45dfade28ff"
+      "recoveryPointRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
+      "receiptRef": "receipt.ide13.owner-local.duplicate-event-replay.72e347131e7087b1675fbfeb39ea1135"
     },
     {
       "faultRef": "fault.ide13.owner-local.reordered_event",
@@ -1029,10 +1045,10 @@
       "targetClass": "owner_local",
       "scenario": "reordered_event",
       "phase": null,
-      "evidenceClass": "not_run",
-      "outcome": "not_run",
-      "recoveryPointRef": null,
-      "receiptRef": null
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
+      "receiptRef": "receipt.ide13.owner-local.reordered-event-refused.022fc9ccc37582dbaa37e68130706bef"
     },
     {
       "faultRef": "fault.ide13.owner-local.old_generation_command",
@@ -1040,10 +1056,10 @@
       "targetClass": "owner_local",
       "scenario": "old_generation_command",
       "phase": null,
-      "evidenceClass": "not_run",
-      "outcome": "not_run",
-      "recoveryPointRef": null,
-      "receiptRef": null
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
+      "receiptRef": "receipt.ide13.owner-local.old-generation-command-refused.73e1276fcfd26cd0d99c7973877095de"
     },
     {
       "faultRef": "fault.ide13.owner-local.lease_expiry_clock_skew",
@@ -1054,7 +1070,7 @@
       "evidenceClass": "simulator",
       "outcome": "passed",
       "recoveryPointRef": "recovery.pylon.owner-local.claim-expired-refusal",
-      "receiptRef": "receipt.ide13.owner-local.lease-expiry.34b3e3046f2dbad9246ac45dfade28ff"
+      "receiptRef": "receipt.ide13.owner-local.lease-expiry.494a9d3b9b1e3a90e211741b633050a5"
     },
     {
       "faultRef": "fault.ide13.owner-local.corrupt_checkpoint",
@@ -1064,8 +1080,8 @@
       "phase": null,
       "evidenceClass": "simulator",
       "outcome": "passed",
-      "recoveryPointRef": "rejection.ide13.checkpoint-admission.294c60a9f887fa657a79eaed89775aac",
-      "receiptRef": "rejection.ide13.checkpoint-admission.294c60a9f887fa657a79eaed89775aac"
+      "recoveryPointRef": "rejection.ide13.checkpoint-admission.09dd7c0239b0de9957ce1ef48c35fe7b",
+      "receiptRef": "rejection.ide13.checkpoint-admission.09dd7c0239b0de9957ce1ef48c35fe7b"
     },
     {
       "faultRef": "fault.ide13.owner-local.truncated_checkpoint",
@@ -1139,10 +1155,10 @@
       "targetClass": "owner_local",
       "scenario": "source_revocation_failure",
       "phase": null,
-      "evidenceClass": "not_run",
-      "outcome": "not_run",
-      "recoveryPointRef": null,
-      "receiptRef": null
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.source_cleanup.6e8b7c0d9de01c4772dc6226",
+      "receiptRef": "receipt.ide13.owner-local.source-cleanup-retry.6aee42822db0d7a1f2e41a89aa0a1d17"
     },
     {
       "faultRef": "fault.ide13.owner-local.dual_attachment_claim",
@@ -1150,10 +1166,10 @@
       "targetClass": "owner_local",
       "scenario": "dual_attachment_claim",
       "phase": null,
-      "evidenceClass": "not_run",
-      "outcome": "not_run",
-      "recoveryPointRef": null,
-      "receiptRef": null
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.artifact_materialized.e19cebda5079f8d1246e816de93e1257",
+      "receiptRef": "receipt.ide13.owner-local.dual-attachment-refused.d2e5537e7deeeaef10ed74e3ec53e33a"
     },
     {
       "faultRef": "fault.ide13.owner-local.target_offline_or_evicted",

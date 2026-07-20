@@ -1,9 +1,9 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-owner-local-executor-crash-recovery.v1",
   "evidenceClass": "real_local",
-  "generatedAt": "2026-07-20T19:18:12.834Z",
-  "candidateCommitSha": "abdee2b89608c78c5bb0ffd01d2323db3feefb55",
-  "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
+  "generatedAt": "2026-07-20T19:43:35.249Z",
+  "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+  "baseCommitSha": "7da626270496737d9e94c32263a2c3de152a0b90",
   "placement": {
     "targetClass": "owner_local",
     "sourceGeneration": 1,
@@ -28,7 +28,9 @@
     "settlementState": "settled",
     "resultRef": "result.ide13.owner-local.crash-recovery.safe-edit",
     "receiptRef": "receipt.pylon.portable.owner-local-work.0511fc80d5c7926ccdc30f6e7253fedf",
-    "evidenceRefs": ["evidence.ide13.owner-local.crash-recovery.safe-edit.applied"]
+    "evidenceRefs": [
+      "evidence.ide13.owner-local.crash-recovery.safe-edit.applied"
+    ]
   },
   "teardown": {
     "controlResidue": 0

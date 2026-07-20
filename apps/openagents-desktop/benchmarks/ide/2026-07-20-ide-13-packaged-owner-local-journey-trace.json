@@ -1,8 +1,8 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-packaged-owner-local-package-initiated-trace.v2",
   "issue": "IDE-13",
-  "candidateCommitSha": "08c54c35994a2f77031af8cc90a5d03bd0728865",
-  "artifactTreeSha256": "711ca7d121e1002f83a98cb7ece4a89ed95d733279d3f96e44cf69162cfead99",
+  "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+  "artifactTreeSha256": "0f7149e87390591517b9c4c9f28645cc44a113a5d9f93eea0dd0568310f388cc",
   "events": [
     {
       "kind": "packaged_shell_ready",

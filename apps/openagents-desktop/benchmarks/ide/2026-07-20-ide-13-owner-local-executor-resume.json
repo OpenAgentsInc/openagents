@@ -1,9 +1,9 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-owner-local-executor-resume.v1",
   "evidenceClass": "real_local",
-  "generatedAt": "2026-07-20T19:03:14.023Z",
-  "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
-  "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
+  "generatedAt": "2026-07-20T19:43:35.899Z",
+  "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+  "baseCommitSha": "7da626270496737d9e94c32263a2c3de152a0b90",
   "placement": {
     "targetClass": "owner_local",
     "adapterRef": "adapter.pylon.owner-local.control-session.v1",
@@ -14,9 +14,9 @@
     "finalFenceGeneration": 3
   },
   "checkpoint": {
-    "artifactRef": "artifact.portable-checkpoint.a0e314ab0b522f23a6d288a76492b925",
-    "sha256": "8d9d5aae6f231da2ebda114d96a6da1672a6553d0bd3d778c471f626b9b7693b",
-    "bytes": 1504,
+    "artifactRef": "artifact.portable-checkpoint.6b2f2c94e0907ed79f56fde6bd19ddec",
+    "sha256": "51b98a2d8276ae191f30ef78016b5402720464032dfde77e2e383717155d99bb",
+    "bytes": 1496,
     "encryptedCustody": true,
     "custodyDeleted": true
   },
