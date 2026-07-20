@@ -25,6 +25,12 @@ const ownerLocalCohortPath = path.join(
   "ide",
   "2026-07-20-ide-13-owner-local-real-cohort.json",
 );
+const ownerLocalPerformancePath = path.join(
+  appRoot,
+  "benchmarks",
+  "ide",
+  "2026-07-20-ide-13-owner-local-performance.json",
+);
 const git = (...args: string[]): string =>
   execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
 const valueAt = (values: ReadonlyArray<number>, percentile: number): number =>
@@ -143,11 +149,35 @@ const ownerLocalInput = Schema.decodeUnknownSync(
     }),
   }),
 )(JSON.parse(readFileSync(ownerLocalCohortPath, "utf8")));
+const ownerLocalPerformance = Schema.decodeUnknownSync(
+  Schema.Struct({
+    candidateCommitSha: Schema.String,
+    baseCommitSha: Schema.String,
+    cohortRef: Schema.String,
+    evidenceClass: Schema.Literal("real_local"),
+    repetitions: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(5)),
+    metrics: IdePortablePlacementCohortSchema.fields.metrics,
+    receiptRef: Schema.String,
+  }),
+)(JSON.parse(readFileSync(ownerLocalPerformancePath, "utf8")));
 const candidateCommitSha = ownerLocalInput.cohort.candidateCommitSha;
 const baseCommitSha = ownerLocalInput.cohort.baseCommitSha;
+if (
+  ownerLocalPerformance.candidateCommitSha !== candidateCommitSha ||
+  ownerLocalPerformance.baseCommitSha !== baseCommitSha ||
+  ownerLocalPerformance.cohortRef !== ownerLocalInput.cohort.cohortRef
+) {
+  throw new Error("IDE-13 owner-local performance evidence is stale");
+}
+const ownerLocalCohort = {
+  ...ownerLocalInput.cohort,
+  metrics: ownerLocalPerformance.metrics,
+  result: `${ownerLocalInput.cohort.result} The phase and resource distributions use ${ownerLocalPerformance.repetitions} complete real owner-local runs under ${ownerLocalPerformance.receiptRef}.`,
+};
 git("merge-base", "--is-ancestor", candidateCommitSha, "HEAD");
 const allowedEvidencePaths = new Set([
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json",
   "apps/openagents-desktop/scripts/ide-portable-evidence.ts",
 ]);
@@ -313,6 +343,13 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
         "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
     },
     {
+      checkRef: "owner-local-real-performance-cohort",
+      evidenceClass: "regression",
+      result: "passed",
+      receiptRef:
+        "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
+    },
+    {
       checkRef: "workspace-search-revocation",
       evidenceClass: "regression",
       result: "passed",
@@ -327,7 +364,7 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
     },
   ],
   placementCohorts: [
-    ownerLocalInput.cohort,
+    ownerLocalCohort,
     {
       cohortRef: "cohort:owner-managed:simulator",
       targetClass: "owner_managed",
@@ -522,7 +559,7 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
     "The managed root filesystem needs a Linux x64 rebuild before the live Firecracker proof can run.",
     "The real transition fault, restart, teardown, and older-recovery-point matrix did not run.",
     "The packaged authenticated move journeys did not run on each required target.",
-    "The complete phase, size, CPU, memory, network, queue, lease, resource, and teardown metric matrices are absent.",
+    "The complete phase and resource metric matrices are absent for the owner-managed, OpenAgents-managed, and admitted provider cohorts.",
     "The independent reviewer and owner dispositions are absent.",
   ],
 });

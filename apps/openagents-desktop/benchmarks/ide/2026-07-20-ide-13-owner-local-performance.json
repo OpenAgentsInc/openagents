@@ -1,7 +1,7 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-owner-local-performance.v1",
-  "generatedAt": "2026-07-20T18:25:08.961Z",
-  "candidateCommitSha": "7d7b38a3d2724dc9a1bdf1a96c476a409836e41c",
+  "generatedAt": "2026-07-20T18:26:43.256Z",
+  "candidateCommitSha": "2a966237bfb1bd86bb84776506eb387a8ae5066f",
   "baseCommitSha": "d9882cde361de8da89def2f2ac266fd6d8800cc7",
   "cohortRef": "cohort.ide13.owner-local.real.1",
   "evidenceClass": "real_local",
@@ -10,8 +10,8 @@
   "samples": [
     {
       "sample": 1,
-      "artifactSha256": "16c852ce6c895b918e601f591d34323eadc34dc3f853466550d4324bd3c3c985",
-      "artifactBytes": 1380,
+      "artifactSha256": "cf0f2b1f75e658bbcfe3582c96fc718f9612324ca20ccb49466d5598e858ca4f",
+      "artifactBytes": 1379,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -19,9 +19,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 6.533541000000014,
-          "p95": 6.533541000000014,
-          "p99": 6.533541000000014,
+          "p50": 10.164375000000291,
+          "p95": 10.164375000000291,
+          "p99": 10.164375000000291,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -33,9 +33,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 63.95237499999996,
-          "p95": 63.95237499999996,
-          "p99": 63.95237499999996,
+          "p50": 133.1778330000002,
+          "p95": 133.1778330000002,
+          "p99": 133.1778330000002,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -47,13 +47,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 84.69487500000014,
-          "p95": 84.69487500000014,
-          "p99": 84.69487500000014,
+          "p50": 156.336542,
+          "p95": 156.336542,
+          "p99": 156.336542,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.54cc270880e75256c298839241928a5d"
+          "receiptRef": "receipt.ide13.owner-local.upload.bb00f21369d02c852e75b49fe8179483"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -61,13 +61,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 140.27224999999999,
-          "p95": 140.27224999999999,
-          "p99": 140.27224999999999,
+          "p50": 336.89008300000023,
+          "p95": 336.89008300000023,
+          "p99": 336.89008300000023,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.53c032c6faf980f27258365a8daefef8"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.04334241532ab951f0ad6fe2baaa514a"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -75,9 +75,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 67.4374170000001,
-          "p95": 67.4374170000001,
-          "p99": 67.4374170000001,
+          "p50": 117.74291600000015,
+          "p95": 117.74291600000015,
+          "p99": 117.74291600000015,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -89,9 +89,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.03683299999988776,
-          "p95": 0.03683299999988776,
-          "p99": 0.03683299999988776,
+          "p50": 0.07016699999985576,
+          "p95": 0.07016699999985576,
+          "p99": 0.07016699999985576,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -103,9 +103,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 636.404583,
-          "p95": 636.404583,
-          "p99": 636.404583,
+          "p50": 1019.8997079999999,
+          "p95": 1019.8997079999999,
+          "p99": 1019.8997079999999,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -117,9 +117,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 326.082042,
-          "p95": 326.082042,
-          "p99": 326.082042,
+          "p50": 400.2448750000003,
+          "p95": 400.2448750000003,
+          "p99": 400.2448750000003,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -131,13 +131,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1380,
-          "p95": 1380,
-          "p99": 1380,
+          "p50": 1379,
+          "p95": 1379,
+          "p99": 1379,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.b5090bb88c9b677df9e2cfd2cb496b89"
+          "receiptRef": "receipt.ide13.owner-local.metrics.32efe68792e6f54f85c87f20c822afb4"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -145,13 +145,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 11.102162182492235,
-          "p95": 11.102162182492235,
-          "p99": 11.102162182492235,
+          "p50": 12.033743250726202,
+          "p95": 12.033743250726202,
+          "p99": 12.033743250726202,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.b5090bb88c9b677df9e2cfd2cb496b89"
+          "receiptRef": "receipt.ide13.owner-local.metrics.32efe68792e6f54f85c87f20c822afb4"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -159,13 +159,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 261570560,
-          "p95": 261570560,
-          "p99": 261570560,
+          "p50": 290127872,
+          "p95": 290127872,
+          "p99": 290127872,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.b5090bb88c9b677df9e2cfd2cb496b89"
+          "receiptRef": "receipt.ide13.owner-local.metrics.32efe68792e6f54f85c87f20c822afb4"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -179,7 +179,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.b5090bb88c9b677df9e2cfd2cb496b89"
+          "receiptRef": "receipt.ide13.owner-local.metrics.32efe68792e6f54f85c87f20c822afb4"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -193,7 +193,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.b5090bb88c9b677df9e2cfd2cb496b89"
+          "receiptRef": "receipt.ide13.owner-local.metrics.32efe68792e6f54f85c87f20c822afb4"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -207,7 +207,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.b5090bb88c9b677df9e2cfd2cb496b89"
+          "receiptRef": "receipt.ide13.owner-local.metrics.32efe68792e6f54f85c87f20c822afb4"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -221,7 +221,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.b5090bb88c9b677df9e2cfd2cb496b89"
+          "receiptRef": "receipt.ide13.owner-local.metrics.32efe68792e6f54f85c87f20c822afb4"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -229,20 +229,20 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 326.082042,
-          "p95": 326.082042,
-          "p99": 326.082042,
+          "p50": 400.2448750000003,
+          "p95": 400.2448750000003,
+          "p99": 400.2448750000003,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.b5090bb88c9b677df9e2cfd2cb496b89"
+          "receiptRef": "receipt.ide13.owner-local.metrics.32efe68792e6f54f85c87f20c822afb4"
         }
       ]
     },
     {
       "sample": 2,
-      "artifactSha256": "0dfefeaa256e2c68e22f8f13b4796ffecbad9ad4d99ac4d13b73d65fd0f0433e",
-      "artifactBytes": 1379,
+      "artifactSha256": "70d336ff9745fcd2123c2d1782b041a71a086b8dc2a692b5a2cf3300ea5cc59f",
+      "artifactBytes": 1376,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -250,9 +250,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.7525829999999587,
-          "p95": 0.7525829999999587,
-          "p99": 0.7525829999999587,
+          "p50": 3.2345830000003843,
+          "p95": 3.2345830000003843,
+          "p99": 3.2345830000003843,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -264,9 +264,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 62.34550000000036,
-          "p95": 62.34550000000036,
-          "p99": 62.34550000000036,
+          "p50": 122.76104200000009,
+          "p95": 122.76104200000009,
+          "p99": 122.76104200000009,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -278,13 +278,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 74.1119590000003,
-          "p95": 74.1119590000003,
-          "p99": 74.1119590000003,
+          "p50": 152.13787500000035,
+          "p95": 152.13787500000035,
+          "p99": 152.13787500000035,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.6be04750915000bdbf128cf496ac2697"
+          "receiptRef": "receipt.ide13.owner-local.upload.bd87169c437c7d6011bede1e888f341c"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -292,13 +292,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 169.81608300000016,
-          "p95": 169.81608300000016,
-          "p99": 169.81608300000016,
+          "p50": 326.1532909999996,
+          "p95": 326.1532909999996,
+          "p99": 326.1532909999996,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.836883c0737bbb7a7dc746877228e49c"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.152c3766ef9a6430015c8038ac806466"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -306,9 +306,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 67.17916699999978,
-          "p95": 67.17916699999978,
-          "p99": 67.17916699999978,
+          "p50": 91.95349999999962,
+          "p95": 91.95349999999962,
+          "p99": 91.95349999999962,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -320,9 +320,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.005625000000236469,
-          "p95": 0.005625000000236469,
-          "p99": 0.005625000000236469,
+          "p50": 0.01099999999951251,
+          "p95": 0.01099999999951251,
+          "p99": 0.01099999999951251,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -334,9 +334,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 647.238625,
-          "p95": 647.238625,
-          "p99": 647.238625,
+          "p50": 828.1967500000001,
+          "p95": 828.1967500000001,
+          "p99": 828.1967500000001,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -348,9 +348,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 323.2375000000002,
-          "p95": 323.2375000000002,
-          "p99": 323.2375000000002,
+          "p50": 403.3214159999998,
+          "p95": 403.3214159999998,
+          "p99": 403.3214159999998,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -362,13 +362,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1379,
-          "p95": 1379,
-          "p99": 1379,
+          "p50": 1376,
+          "p95": 1376,
+          "p99": 1376,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.e2c013c757d45660b6ccc8d93627d695"
+          "receiptRef": "receipt.ide13.owner-local.metrics.b03bda808b61f33fd4ef00cb858c4f41"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -376,13 +376,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 9.28958525782469,
-          "p95": 9.28958525782469,
-          "p99": 9.28958525782469,
+          "p50": 9.290829304310755,
+          "p95": 9.290829304310755,
+          "p99": 9.290829304310755,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.e2c013c757d45660b6ccc8d93627d695"
+          "receiptRef": "receipt.ide13.owner-local.metrics.b03bda808b61f33fd4ef00cb858c4f41"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -390,13 +390,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 271859712,
-          "p95": 271859712,
-          "p99": 271859712,
+          "p50": 290553856,
+          "p95": 290553856,
+          "p99": 290553856,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.e2c013c757d45660b6ccc8d93627d695"
+          "receiptRef": "receipt.ide13.owner-local.metrics.b03bda808b61f33fd4ef00cb858c4f41"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -410,7 +410,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.e2c013c757d45660b6ccc8d93627d695"
+          "receiptRef": "receipt.ide13.owner-local.metrics.b03bda808b61f33fd4ef00cb858c4f41"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -424,7 +424,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.e2c013c757d45660b6ccc8d93627d695"
+          "receiptRef": "receipt.ide13.owner-local.metrics.b03bda808b61f33fd4ef00cb858c4f41"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -438,7 +438,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.e2c013c757d45660b6ccc8d93627d695"
+          "receiptRef": "receipt.ide13.owner-local.metrics.b03bda808b61f33fd4ef00cb858c4f41"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -452,7 +452,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.e2c013c757d45660b6ccc8d93627d695"
+          "receiptRef": "receipt.ide13.owner-local.metrics.b03bda808b61f33fd4ef00cb858c4f41"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -460,20 +460,20 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 323.2375000000002,
-          "p95": 323.2375000000002,
-          "p99": 323.2375000000002,
+          "p50": 403.3214159999998,
+          "p95": 403.3214159999998,
+          "p99": 403.3214159999998,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.e2c013c757d45660b6ccc8d93627d695"
+          "receiptRef": "receipt.ide13.owner-local.metrics.b03bda808b61f33fd4ef00cb858c4f41"
         }
       ]
     },
     {
       "sample": 3,
-      "artifactSha256": "7fc69ec79bc2a8f4d05c2f369a99120c5868f61c497fdf775494be2ed499263f",
-      "artifactBytes": 1380,
+      "artifactSha256": "8131d56bc3475dbd724eb1eb4e9e0aa5bc801bff2ee3f120284bb888b54fe0d0",
+      "artifactBytes": 1382,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -481,9 +481,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.6738339999992604,
-          "p95": 0.6738339999992604,
-          "p99": 0.6738339999992604,
+          "p50": 1.5701250000001892,
+          "p95": 1.5701250000001892,
+          "p99": 1.5701250000001892,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -495,9 +495,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 56.83666600000015,
-          "p95": 56.83666600000015,
-          "p99": 56.83666600000015,
+          "p50": 102.96020899999985,
+          "p95": 102.96020899999985,
+          "p99": 102.96020899999985,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -509,13 +509,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 64.86745900000005,
-          "p95": 64.86745900000005,
-          "p99": 64.86745900000005,
+          "p50": 134.2523340000007,
+          "p95": 134.2523340000007,
+          "p99": 134.2523340000007,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.a8831f7acf9c11f21cb4aa08ac29d856"
+          "receiptRef": "receipt.ide13.owner-local.upload.a03b5e6fd85dcff7e373ce262b438b7b"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -523,13 +523,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 130.3362500000003,
-          "p95": 130.3362500000003,
-          "p99": 130.3362500000003,
+          "p50": 310.5999159999992,
+          "p95": 310.5999159999992,
+          "p99": 310.5999159999992,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.f23cc6f93dc9df32b256f454a3aa14b2"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.008ee19203a7098bf99bff14b6ca0f5e"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -537,9 +537,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 59.55108300000029,
-          "p95": 59.55108300000029,
-          "p99": 59.55108300000029,
+          "p50": 108.67958399999952,
+          "p95": 108.67958399999952,
+          "p99": 108.67958399999952,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -551,9 +551,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.0034580000001369626,
-          "p95": 0.0034580000001369626,
-          "p99": 0.0034580000001369626,
+          "p50": 0.0049580000013520475,
+          "p95": 0.0049580000013520475,
+          "p99": 0.0049580000013520475,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -565,9 +565,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 623.8639169999997,
-          "p95": 623.8639169999997,
-          "p99": 623.8639169999997,
+          "p50": 912.894792000001,
+          "p95": 912.894792000001,
+          "p99": 912.894792000001,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -579,9 +579,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 329.75774999999976,
-          "p95": 329.75774999999976,
-          "p99": 329.75774999999976,
+          "p50": 395.67854199999965,
+          "p95": 395.67854199999965,
+          "p99": 395.67854199999965,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -593,13 +593,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1380,
-          "p95": 1380,
-          "p99": 1380,
+          "p50": 1382,
+          "p95": 1382,
+          "p99": 1382,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.cfd5c80598bc31fafe8b5f575c338782"
+          "receiptRef": "receipt.ide13.owner-local.metrics.65af763ae2b774947f2844f2b5903d34"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -607,13 +607,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 12.552081720361672,
-          "p95": 12.552081720361672,
-          "p99": 12.552081720361672,
+          "p50": 8.57558980444025,
+          "p95": 8.57558980444025,
+          "p99": 8.57558980444025,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.cfd5c80598bc31fafe8b5f575c338782"
+          "receiptRef": "receipt.ide13.owner-local.metrics.65af763ae2b774947f2844f2b5903d34"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -621,13 +621,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 282181632,
-          "p95": 282181632,
-          "p99": 282181632,
+          "p50": 300728320,
+          "p95": 300728320,
+          "p99": 300728320,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.cfd5c80598bc31fafe8b5f575c338782"
+          "receiptRef": "receipt.ide13.owner-local.metrics.65af763ae2b774947f2844f2b5903d34"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -641,7 +641,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.cfd5c80598bc31fafe8b5f575c338782"
+          "receiptRef": "receipt.ide13.owner-local.metrics.65af763ae2b774947f2844f2b5903d34"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -655,7 +655,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.cfd5c80598bc31fafe8b5f575c338782"
+          "receiptRef": "receipt.ide13.owner-local.metrics.65af763ae2b774947f2844f2b5903d34"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -669,7 +669,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.cfd5c80598bc31fafe8b5f575c338782"
+          "receiptRef": "receipt.ide13.owner-local.metrics.65af763ae2b774947f2844f2b5903d34"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -683,7 +683,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.cfd5c80598bc31fafe8b5f575c338782"
+          "receiptRef": "receipt.ide13.owner-local.metrics.65af763ae2b774947f2844f2b5903d34"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -691,20 +691,20 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 329.75774999999976,
-          "p95": 329.75774999999976,
-          "p99": 329.75774999999976,
+          "p50": 395.67854199999965,
+          "p95": 395.67854199999965,
+          "p99": 395.67854199999965,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.cfd5c80598bc31fafe8b5f575c338782"
+          "receiptRef": "receipt.ide13.owner-local.metrics.65af763ae2b774947f2844f2b5903d34"
         }
       ]
     },
     {
       "sample": 4,
-      "artifactSha256": "b55031663e6ced607cbb25b39ccc3a5437fb3b1030d49740af2ccd8d4150bf53",
-      "artifactBytes": 1380,
+      "artifactSha256": "6e11823a7539ee977c911c3ce1ae3658332f6c13da9edfb92f2e5a47afeda20e",
+      "artifactBytes": 1379,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -712,9 +712,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.6937909999996918,
-          "p95": 0.6937909999996918,
-          "p99": 0.6937909999996918,
+          "p50": 1.7738750000007713,
+          "p95": 1.7738750000007713,
+          "p99": 1.7738750000007713,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -726,9 +726,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 60.50029199999972,
-          "p95": 60.50029199999972,
-          "p99": 60.50029199999972,
+          "p50": 136.8497499999994,
+          "p95": 136.8497499999994,
+          "p99": 136.8497499999994,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -740,13 +740,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 77.74625000000015,
-          "p95": 77.74625000000015,
-          "p99": 77.74625000000015,
+          "p50": 138.5068339999998,
+          "p95": 138.5068339999998,
+          "p99": 138.5068339999998,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.1d51f23d9b2e6de7770d804d171c87f2"
+          "receiptRef": "receipt.ide13.owner-local.upload.9881bf3ddce43ea08d9d45f7cec71b62"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -754,13 +754,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 103.03049999999985,
-          "p95": 103.03049999999985,
-          "p99": 103.03049999999985,
+          "p50": 242.51024999999936,
+          "p95": 242.51024999999936,
+          "p99": 242.51024999999936,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.3897c9bb503367e6adbd70208e2c0b7b"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.6815cca7c726d9c4dfe1ba01d60f9e88"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -768,9 +768,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 58.57291699999951,
-          "p95": 58.57291699999951,
-          "p99": 58.57291699999951,
+          "p50": 177.8595839999998,
+          "p95": 177.8595839999998,
+          "p99": 177.8595839999998,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -782,9 +782,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.003416999999899417,
-          "p95": 0.003416999999899417,
-          "p99": 0.003416999999899417,
+          "p50": 0.004166999999142718,
+          "p95": 0.004166999999142718,
+          "p99": 0.004166999999142718,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -796,9 +796,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 515.7067080000006,
-          "p95": 515.7067080000006,
-          "p99": 515.7067080000006,
+          "p50": 946.2974169999998,
+          "p95": 946.2974169999998,
+          "p99": 946.2974169999998,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -810,9 +810,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 309.435375,
-          "p95": 309.435375,
-          "p99": 309.435375,
+          "p50": 387.801958,
+          "p95": 387.801958,
+          "p99": 387.801958,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -824,13 +824,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1380,
-          "p95": 1380,
-          "p99": 1380,
+          "p50": 1379,
+          "p95": 1379,
+          "p99": 1379,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.1a1174a4e14f1acbddc6ff0991e71aeb"
+          "receiptRef": "receipt.ide13.owner-local.metrics.1985b7727f30bfd9f6d122bd959f5320"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -838,13 +838,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 12.04662359886809,
-          "p95": 12.04662359886809,
-          "p99": 12.04662359886809,
+          "p50": 7.617068644482614,
+          "p95": 7.617068644482614,
+          "p99": 7.617068644482614,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.1a1174a4e14f1acbddc6ff0991e71aeb"
+          "receiptRef": "receipt.ide13.owner-local.metrics.1985b7727f30bfd9f6d122bd959f5320"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -852,13 +852,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 288079872,
-          "p95": 288079872,
-          "p99": 288079872,
+          "p50": 310214656,
+          "p95": 310214656,
+          "p99": 310214656,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.1a1174a4e14f1acbddc6ff0991e71aeb"
+          "receiptRef": "receipt.ide13.owner-local.metrics.1985b7727f30bfd9f6d122bd959f5320"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -872,7 +872,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.1a1174a4e14f1acbddc6ff0991e71aeb"
+          "receiptRef": "receipt.ide13.owner-local.metrics.1985b7727f30bfd9f6d122bd959f5320"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -886,7 +886,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.1a1174a4e14f1acbddc6ff0991e71aeb"
+          "receiptRef": "receipt.ide13.owner-local.metrics.1985b7727f30bfd9f6d122bd959f5320"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -900,7 +900,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.1a1174a4e14f1acbddc6ff0991e71aeb"
+          "receiptRef": "receipt.ide13.owner-local.metrics.1985b7727f30bfd9f6d122bd959f5320"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -914,7 +914,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.1a1174a4e14f1acbddc6ff0991e71aeb"
+          "receiptRef": "receipt.ide13.owner-local.metrics.1985b7727f30bfd9f6d122bd959f5320"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -922,19 +922,19 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 309.435375,
-          "p95": 309.435375,
-          "p99": 309.435375,
+          "p50": 387.801958,
+          "p95": 387.801958,
+          "p99": 387.801958,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.1a1174a4e14f1acbddc6ff0991e71aeb"
+          "receiptRef": "receipt.ide13.owner-local.metrics.1985b7727f30bfd9f6d122bd959f5320"
         }
       ]
     },
     {
       "sample": 5,
-      "artifactSha256": "786532ef6f651d98cf141c72146797488aa9dc1024630c6224e3091be51b2099",
+      "artifactSha256": "d6c2918c06f37398e6732db72d7924561f28e6acd40eb66e3efbb4fadbb02517",
       "artifactBytes": 1379,
       "metrics": [
         {
@@ -943,9 +943,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.5982090000006792,
-          "p95": 0.5982090000006792,
-          "p99": 0.5982090000006792,
+          "p50": 1.1623749999998836,
+          "p95": 1.1623749999998836,
+          "p99": 1.1623749999998836,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -957,9 +957,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 46.94608299999982,
-          "p95": 46.94608299999982,
-          "p99": 46.94608299999982,
+          "p50": 113.82316700000047,
+          "p95": 113.82316700000047,
+          "p99": 113.82316700000047,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -971,13 +971,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 55.01341700000012,
-          "p95": 55.01341700000012,
-          "p99": 55.01341700000012,
+          "p50": 120.77695800000038,
+          "p95": 120.77695800000038,
+          "p99": 120.77695800000038,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.0d4a5515c8de64da52b2a4bd899b3df5"
+          "receiptRef": "receipt.ide13.owner-local.upload.9dfe58ba03c9d4a1eaac14f12f9a99f0"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -985,13 +985,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 124.81670800000029,
-          "p95": 124.81670800000029,
-          "p99": 124.81670800000029,
+          "p50": 299.7482080000009,
+          "p95": 299.7482080000009,
+          "p99": 299.7482080000009,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.41a9759ce4490532f15d32251e034cfe"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.cceffd415863a84c9bc034897aa203ef"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -999,9 +999,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 65.70004100000006,
-          "p95": 65.70004100000006,
-          "p99": 65.70004100000006,
+          "p50": 125.12924999999996,
+          "p95": 125.12924999999996,
+          "p99": 125.12924999999996,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1013,9 +1013,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.004500000000007276,
-          "p95": 0.004500000000007276,
-          "p99": 0.004500000000007276,
+          "p50": 0.003584000000046217,
+          "p95": 0.003584000000046217,
+          "p99": 0.003584000000046217,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1027,9 +1027,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 568.1884999999993,
-          "p95": 568.1884999999993,
-          "p99": 568.1884999999993,
+          "p50": 1041.5576249999995,
+          "p95": 1041.5576249999995,
+          "p99": 1041.5576249999995,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1041,9 +1041,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 313.5897499999992,
-          "p95": 313.5897499999992,
-          "p99": 313.5897499999992,
+          "p50": 451.41020800000115,
+          "p95": 451.41020800000115,
+          "p99": 451.41020800000115,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1061,7 +1061,7 @@
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.a1d11b857c463cdfa635413fd4bf221d"
+          "receiptRef": "receipt.ide13.owner-local.metrics.4a92d322c69ec1fdbea5cedd0d73f9fb"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -1069,13 +1069,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 12.309795228660501,
-          "p95": 12.309795228660501,
-          "p99": 12.309795228660501,
+          "p50": 9.293645213142605,
+          "p95": 9.293645213142605,
+          "p99": 9.293645213142605,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.a1d11b857c463cdfa635413fd4bf221d"
+          "receiptRef": "receipt.ide13.owner-local.metrics.4a92d322c69ec1fdbea5cedd0d73f9fb"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -1083,13 +1083,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 289816576,
-          "p95": 289816576,
-          "p99": 289816576,
+          "p50": 316571648,
+          "p95": 316571648,
+          "p99": 316571648,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.a1d11b857c463cdfa635413fd4bf221d"
+          "receiptRef": "receipt.ide13.owner-local.metrics.4a92d322c69ec1fdbea5cedd0d73f9fb"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -1103,7 +1103,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.a1d11b857c463cdfa635413fd4bf221d"
+          "receiptRef": "receipt.ide13.owner-local.metrics.4a92d322c69ec1fdbea5cedd0d73f9fb"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -1117,7 +1117,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.a1d11b857c463cdfa635413fd4bf221d"
+          "receiptRef": "receipt.ide13.owner-local.metrics.4a92d322c69ec1fdbea5cedd0d73f9fb"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -1131,7 +1131,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.a1d11b857c463cdfa635413fd4bf221d"
+          "receiptRef": "receipt.ide13.owner-local.metrics.4a92d322c69ec1fdbea5cedd0d73f9fb"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -1145,7 +1145,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.a1d11b857c463cdfa635413fd4bf221d"
+          "receiptRef": "receipt.ide13.owner-local.metrics.4a92d322c69ec1fdbea5cedd0d73f9fb"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -1153,20 +1153,20 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 313.5897499999992,
-          "p95": 313.5897499999992,
-          "p99": 313.5897499999992,
+          "p50": 451.41020800000115,
+          "p95": 451.41020800000115,
+          "p99": 451.41020800000115,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.a1d11b857c463cdfa635413fd4bf221d"
+          "receiptRef": "receipt.ide13.owner-local.metrics.4a92d322c69ec1fdbea5cedd0d73f9fb"
         }
       ]
     },
     {
       "sample": 6,
-      "artifactSha256": "c0b2d4511130aeec1d439b3e88c36ba4ae1a57c32da97d042a146541a75bef7e",
-      "artifactBytes": 1366,
+      "artifactSha256": "451f43da958f14e777e5359682d30f13a9917088d1575b2f3d513bace9c7e1c8",
+      "artifactBytes": 1381,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -1174,9 +1174,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.6401249999998981,
-          "p95": 0.6401249999998981,
-          "p99": 0.6401249999998981,
+          "p50": 1.4399169999996957,
+          "p95": 1.4399169999996957,
+          "p99": 1.4399169999996957,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1188,9 +1188,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 59.83862500000032,
-          "p95": 59.83862500000032,
-          "p99": 59.83862500000032,
+          "p50": 109.7274580000012,
+          "p95": 109.7274580000012,
+          "p99": 109.7274580000012,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1202,13 +1202,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 60.8056660000002,
-          "p95": 60.8056660000002,
-          "p99": 60.8056660000002,
+          "p50": 139.30925000000025,
+          "p95": 139.30925000000025,
+          "p99": 139.30925000000025,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.f6ee94005c86fef261d5ad1ca7211ae6"
+          "receiptRef": "receipt.ide13.owner-local.upload.b1ba08f2a956fb101b06c761d2dafcf4"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -1216,13 +1216,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 119.7729589999999,
-          "p95": 119.7729589999999,
-          "p99": 119.7729589999999,
+          "p50": 296.20516699999826,
+          "p95": 296.20516699999826,
+          "p99": 296.20516699999826,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.94da577d23b6be7ec8aa47d68a5efaaa"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.c91f8b36b9de1984aea0d2a88cdcdd45"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -1230,9 +1230,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 64.18525000000045,
-          "p95": 64.18525000000045,
-          "p99": 64.18525000000045,
+          "p50": 94.18429099999776,
+          "p95": 94.18429099999776,
+          "p99": 94.18429099999776,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1244,9 +1244,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.0037500000016734703,
-          "p95": 0.0037500000016734703,
-          "p99": 0.0037500000016734703,
+          "p50": 0.005167000002984423,
+          "p95": 0.005167000002984423,
+          "p99": 0.005167000002984423,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1258,9 +1258,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 568.1632499999996,
-          "p95": 568.1632499999996,
-          "p99": 568.1632499999996,
+          "p50": 1025.5947500000002,
+          "p95": 1025.5947500000002,
+          "p99": 1025.5947500000002,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1272,9 +1272,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 319.6353340000005,
-          "p95": 319.6353340000005,
-          "p99": 319.6353340000005,
+          "p50": 422.4528329999994,
+          "p95": 422.4528329999994,
+          "p99": 422.4528329999994,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1286,13 +1286,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1366,
-          "p95": 1366,
-          "p99": 1366,
+          "p50": 1381,
+          "p95": 1381,
+          "p99": 1381,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.bd90c8b55912d40977c8c0d0e4e49fc0"
+          "receiptRef": "receipt.ide13.owner-local.metrics.241f2177bd377940f37b716aaf446947"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -1300,13 +1300,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 12.166622545998,
-          "p95": 12.166622545998,
-          "p99": 12.166622545998,
+          "p50": 9.383543353158094,
+          "p95": 9.383543353158094,
+          "p99": 9.383543353158094,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.bd90c8b55912d40977c8c0d0e4e49fc0"
+          "receiptRef": "receipt.ide13.owner-local.metrics.241f2177bd377940f37b716aaf446947"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -1314,13 +1314,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 290078720,
-          "p95": 290078720,
-          "p99": 290078720,
+          "p50": 317112320,
+          "p95": 317112320,
+          "p99": 317112320,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.bd90c8b55912d40977c8c0d0e4e49fc0"
+          "receiptRef": "receipt.ide13.owner-local.metrics.241f2177bd377940f37b716aaf446947"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -1334,7 +1334,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.bd90c8b55912d40977c8c0d0e4e49fc0"
+          "receiptRef": "receipt.ide13.owner-local.metrics.241f2177bd377940f37b716aaf446947"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -1348,7 +1348,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.bd90c8b55912d40977c8c0d0e4e49fc0"
+          "receiptRef": "receipt.ide13.owner-local.metrics.241f2177bd377940f37b716aaf446947"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -1362,7 +1362,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.bd90c8b55912d40977c8c0d0e4e49fc0"
+          "receiptRef": "receipt.ide13.owner-local.metrics.241f2177bd377940f37b716aaf446947"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -1376,7 +1376,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.bd90c8b55912d40977c8c0d0e4e49fc0"
+          "receiptRef": "receipt.ide13.owner-local.metrics.241f2177bd377940f37b716aaf446947"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -1384,20 +1384,20 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 319.6353340000005,
-          "p95": 319.6353340000005,
-          "p99": 319.6353340000005,
+          "p50": 422.4528329999994,
+          "p95": 422.4528329999994,
+          "p99": 422.4528329999994,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.bd90c8b55912d40977c8c0d0e4e49fc0"
+          "receiptRef": "receipt.ide13.owner-local.metrics.241f2177bd377940f37b716aaf446947"
         }
       ]
     },
     {
       "sample": 7,
-      "artifactSha256": "c5bb7ef56fac32674174d1ad888fcbcd879927f7f87ae05de21036a77d22bfc3",
-      "artifactBytes": 1379,
+      "artifactSha256": "808e91c3b2c4c16a2d74aa4e9e68cd5b3dbc1a12c7bb9b92306542fc90752b9c",
+      "artifactBytes": 1378,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -1405,9 +1405,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.4852080000000569,
-          "p95": 0.4852080000000569,
-          "p99": 0.4852080000000569,
+          "p50": 0.9597089999988384,
+          "p95": 0.9597089999988384,
+          "p99": 0.9597089999988384,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1419,9 +1419,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 54.02887499999997,
-          "p95": 54.02887499999997,
-          "p99": 54.02887499999997,
+          "p50": 112.12995800000135,
+          "p95": 112.12995800000135,
+          "p99": 112.12995800000135,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1433,13 +1433,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 60.594999999999345,
-          "p95": 60.594999999999345,
-          "p99": 60.594999999999345,
+          "p50": 161.8843339999985,
+          "p95": 161.8843339999985,
+          "p99": 161.8843339999985,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.5117a8fdba56c1ce1cc7433e173b1701"
+          "receiptRef": "receipt.ide13.owner-local.upload.f4286d07199861886800885284a88afc"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -1447,13 +1447,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 103.23916699999972,
-          "p95": 103.23916699999972,
-          "p99": 103.23916699999972,
+          "p50": 255.81025000000227,
+          "p95": 255.81025000000227,
+          "p99": 255.81025000000227,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.a8274bc71d18f8cff8b4675be695bc0e"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.3dd849c4aa2cc79ec883cfddf6077b20"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -1461,9 +1461,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 58.63404199999968,
-          "p95": 58.63404199999968,
-          "p99": 58.63404199999968,
+          "p50": 102.1795409999977,
+          "p95": 102.1795409999977,
+          "p99": 102.1795409999977,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1475,9 +1475,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.003416999999899417,
-          "p95": 0.003416999999899417,
-          "p99": 0.003416999999899417,
+          "p50": 0.003833000002487097,
+          "p95": 0.003833000002487097,
+          "p99": 0.003833000002487097,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1489,9 +1489,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 528.6577500000003,
-          "p95": 528.6577500000003,
-          "p99": 528.6577500000003,
+          "p50": 870.9118329999983,
+          "p95": 870.9118329999983,
+          "p99": 870.9118329999983,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1503,9 +1503,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 308.0737079999999,
-          "p95": 308.0737079999999,
-          "p99": 308.0737079999999,
+          "p50": 374.0535830000008,
+          "p95": 374.0535830000008,
+          "p99": 374.0535830000008,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1517,13 +1517,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1379,
-          "p95": 1379,
-          "p99": 1379,
+          "p50": 1378,
+          "p95": 1378,
+          "p99": 1378,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.4d7eb2a6f3cb1cc4ed7b66477db8bdd7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.879f7b6a042e049be6508b647677f7f2"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -1531,13 +1531,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 12.415925096316583,
-          "p95": 12.415925096316583,
-          "p99": 12.415925096316583,
+          "p50": 10.228002169896083,
+          "p95": 10.228002169896083,
+          "p99": 10.228002169896083,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.4d7eb2a6f3cb1cc4ed7b66477db8bdd7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.879f7b6a042e049be6508b647677f7f2"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -1545,13 +1545,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 290963456,
-          "p95": 290963456,
-          "p99": 290963456,
+          "p50": 317243392,
+          "p95": 317243392,
+          "p99": 317243392,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.4d7eb2a6f3cb1cc4ed7b66477db8bdd7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.879f7b6a042e049be6508b647677f7f2"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -1565,7 +1565,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.4d7eb2a6f3cb1cc4ed7b66477db8bdd7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.879f7b6a042e049be6508b647677f7f2"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -1579,7 +1579,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.4d7eb2a6f3cb1cc4ed7b66477db8bdd7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.879f7b6a042e049be6508b647677f7f2"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -1593,7 +1593,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.4d7eb2a6f3cb1cc4ed7b66477db8bdd7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.879f7b6a042e049be6508b647677f7f2"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -1607,7 +1607,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.4d7eb2a6f3cb1cc4ed7b66477db8bdd7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.879f7b6a042e049be6508b647677f7f2"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -1615,20 +1615,20 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 308.0737079999999,
-          "p95": 308.0737079999999,
-          "p99": 308.0737079999999,
+          "p50": 374.0535830000008,
+          "p95": 374.0535830000008,
+          "p99": 374.0535830000008,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.4d7eb2a6f3cb1cc4ed7b66477db8bdd7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.879f7b6a042e049be6508b647677f7f2"
         }
       ]
     },
     {
       "sample": 8,
-      "artifactSha256": "ab8940824dbddf47b968f5abbd790360b9322220994277af135a32257b5db63f",
-      "artifactBytes": 1380,
+      "artifactSha256": "2cb64a82a02e4ae2af750112a730918c40bc4a98982a1f82835bf56fbb53c5bb",
+      "artifactBytes": 1383,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -1636,9 +1636,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.4394590000010794,
-          "p95": 0.4394590000010794,
-          "p99": 0.4394590000010794,
+          "p50": 1.3873329999987618,
+          "p95": 1.3873329999987618,
+          "p99": 1.3873329999987618,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1650,9 +1650,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 42.67820799999936,
-          "p95": 42.67820799999936,
-          "p99": 42.67820799999936,
+          "p50": 103.40579199999775,
+          "p95": 103.40579199999775,
+          "p99": 103.40579199999775,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1664,13 +1664,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 52.78883399999904,
-          "p95": 52.78883399999904,
-          "p99": 52.78883399999904,
+          "p50": 142.7601250000007,
+          "p95": 142.7601250000007,
+          "p99": 142.7601250000007,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.0225b63652ef5ea84e3275f53a6778f7"
+          "receiptRef": "receipt.ide13.owner-local.upload.4afe293578827eab1c62bff1df0db463"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -1678,13 +1678,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 95.4482079999998,
-          "p95": 95.4482079999998,
-          "p99": 95.4482079999998,
+          "p50": 221.1844170000004,
+          "p95": 221.1844170000004,
+          "p99": 221.1844170000004,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.f85229f5bb8c3492ad465b0c5c348ce0"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.2d128cead9143bf31cdeaf0ffaa06fdc"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -1692,9 +1692,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 55.687457999998514,
-          "p95": 55.687457999998514,
-          "p99": 55.687457999998514,
+          "p50": 92.82087500000125,
+          "p95": 92.82087500000125,
+          "p99": 92.82087500000125,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1706,9 +1706,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.0033750000002328306,
-          "p95": 0.0033750000002328306,
-          "p99": 0.0033750000002328306,
+          "p50": 0.006708999997499632,
+          "p95": 0.006708999997499632,
+          "p99": 0.006708999997499632,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1720,9 +1720,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 513.3052919999991,
-          "p95": 513.3052919999991,
-          "p99": 513.3052919999991,
+          "p50": 791.2051659999997,
+          "p95": 791.2051659999997,
+          "p99": 791.2051659999997,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1734,9 +1734,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 308.4203749999997,
-          "p95": 308.4203749999997,
-          "p99": 308.4203749999997,
+          "p50": 360.10058299999946,
+          "p95": 360.10058299999946,
+          "p99": 360.10058299999946,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1748,13 +1748,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1380,
-          "p95": 1380,
-          "p99": 1380,
+          "p50": 1383,
+          "p95": 1383,
+          "p99": 1383,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.7ccb1a2f91bde0fa9c41fde74a64c0e7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.78b0845b2d5c1ad89a83b6b05816fd6c"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -1762,13 +1762,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 10.76075631709382,
-          "p95": 10.76075631709382,
-          "p99": 10.76075631709382,
+          "p50": 11.267226327924675,
+          "p95": 11.267226327924675,
+          "p99": 11.267226327924675,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.7ccb1a2f91bde0fa9c41fde74a64c0e7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.78b0845b2d5c1ad89a83b6b05816fd6c"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -1776,13 +1776,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 291225600,
-          "p95": 291225600,
-          "p99": 291225600,
+          "p50": 317456384,
+          "p95": 317456384,
+          "p99": 317456384,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.7ccb1a2f91bde0fa9c41fde74a64c0e7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.78b0845b2d5c1ad89a83b6b05816fd6c"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -1796,7 +1796,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.7ccb1a2f91bde0fa9c41fde74a64c0e7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.78b0845b2d5c1ad89a83b6b05816fd6c"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -1810,7 +1810,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.7ccb1a2f91bde0fa9c41fde74a64c0e7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.78b0845b2d5c1ad89a83b6b05816fd6c"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -1824,7 +1824,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.7ccb1a2f91bde0fa9c41fde74a64c0e7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.78b0845b2d5c1ad89a83b6b05816fd6c"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -1838,7 +1838,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.7ccb1a2f91bde0fa9c41fde74a64c0e7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.78b0845b2d5c1ad89a83b6b05816fd6c"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -1846,20 +1846,20 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 308.4203749999997,
-          "p95": 308.4203749999997,
-          "p99": 308.4203749999997,
+          "p50": 360.10058299999946,
+          "p95": 360.10058299999946,
+          "p99": 360.10058299999946,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.7ccb1a2f91bde0fa9c41fde74a64c0e7"
+          "receiptRef": "receipt.ide13.owner-local.metrics.78b0845b2d5c1ad89a83b6b05816fd6c"
         }
       ]
     },
     {
       "sample": 9,
-      "artifactSha256": "8c150abead57a09bdee7b85dff67670b039dd293ea10999bf7970a1cc0cf76e1",
-      "artifactBytes": 1376,
+      "artifactSha256": "dd324a28a060284ab67d2074e9adbf380750e94e0bad5ee39ccb214ac4859ed8",
+      "artifactBytes": 1378,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -1867,9 +1867,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.4366250000002765,
-          "p95": 0.4366250000002765,
-          "p99": 0.4366250000002765,
+          "p50": 1.6830420000005688,
+          "p95": 1.6830420000005688,
+          "p99": 1.6830420000005688,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1881,9 +1881,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 47.981958000000304,
-          "p95": 47.981958000000304,
-          "p99": 47.981958000000304,
+          "p50": 118.63279200000034,
+          "p95": 118.63279200000034,
+          "p99": 118.63279200000034,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1895,13 +1895,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 58.91883400000006,
-          "p95": 58.91883400000006,
-          "p99": 58.91883400000006,
+          "p50": 124.1130000000012,
+          "p95": 124.1130000000012,
+          "p99": 124.1130000000012,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.20414928f04513e8b33ab13faf4e43fe"
+          "receiptRef": "receipt.ide13.owner-local.upload.ff778d78276a9393fc9e515921c1c69f"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -1909,13 +1909,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 104.07429199999933,
-          "p95": 104.07429199999933,
-          "p99": 104.07429199999933,
+          "p50": 254.78637500000332,
+          "p95": 254.78637500000332,
+          "p99": 254.78637500000332,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.11d15b9a85dfa133cd30f6347f20e7bc"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.48c0528f10800353fbfe84019aa65a65"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -1923,9 +1923,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 57.70824999999968,
-          "p95": 57.70824999999968,
-          "p99": 57.70824999999968,
+          "p50": 79.14445800000249,
+          "p95": 79.14445800000249,
+          "p99": 79.14445800000249,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1937,9 +1937,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.0032920000012381934,
-          "p95": 0.0032920000012381934,
-          "p99": 0.0032920000012381934,
+          "p50": 0.00429200000144192,
+          "p95": 0.00429200000144192,
+          "p99": 0.00429200000144192,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1951,9 +1951,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 533.8378750000011,
-          "p95": 533.8378750000011,
-          "p99": 533.8378750000011,
+          "p50": 843.2477500000023,
+          "p95": 843.2477500000023,
+          "p99": 843.2477500000023,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1965,9 +1965,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 310.00045800000044,
-          "p95": 310.00045800000044,
-          "p99": 310.00045800000044,
+          "p50": 382.6350409999977,
+          "p95": 382.6350409999977,
+          "p99": 382.6350409999977,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -1979,13 +1979,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1376,
-          "p95": 1376,
-          "p99": 1376,
+          "p50": 1378,
+          "p95": 1378,
+          "p99": 1378,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.3ba86257db600d4a6ba3975325524c69"
+          "receiptRef": "receipt.ide13.owner-local.metrics.922d9a3cbaf3573d23c9581ed54eeafe"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -1993,13 +1993,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 11.66131609087147,
-          "p95": 11.66131609087147,
-          "p99": 11.66131609087147,
+          "p50": 11.02088979469104,
+          "p95": 11.02088979469104,
+          "p99": 11.02088979469104,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.3ba86257db600d4a6ba3975325524c69"
+          "receiptRef": "receipt.ide13.owner-local.metrics.922d9a3cbaf3573d23c9581ed54eeafe"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -2007,13 +2007,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 291454976,
-          "p95": 291454976,
-          "p99": 291454976,
+          "p50": 317767680,
+          "p95": 317767680,
+          "p99": 317767680,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.3ba86257db600d4a6ba3975325524c69"
+          "receiptRef": "receipt.ide13.owner-local.metrics.922d9a3cbaf3573d23c9581ed54eeafe"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -2027,7 +2027,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.3ba86257db600d4a6ba3975325524c69"
+          "receiptRef": "receipt.ide13.owner-local.metrics.922d9a3cbaf3573d23c9581ed54eeafe"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -2041,7 +2041,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.3ba86257db600d4a6ba3975325524c69"
+          "receiptRef": "receipt.ide13.owner-local.metrics.922d9a3cbaf3573d23c9581ed54eeafe"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -2055,7 +2055,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.3ba86257db600d4a6ba3975325524c69"
+          "receiptRef": "receipt.ide13.owner-local.metrics.922d9a3cbaf3573d23c9581ed54eeafe"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -2069,7 +2069,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.3ba86257db600d4a6ba3975325524c69"
+          "receiptRef": "receipt.ide13.owner-local.metrics.922d9a3cbaf3573d23c9581ed54eeafe"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -2077,20 +2077,20 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 310.00045800000044,
-          "p95": 310.00045800000044,
-          "p99": 310.00045800000044,
+          "p50": 382.6350409999977,
+          "p95": 382.6350409999977,
+          "p99": 382.6350409999977,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.3ba86257db600d4a6ba3975325524c69"
+          "receiptRef": "receipt.ide13.owner-local.metrics.922d9a3cbaf3573d23c9581ed54eeafe"
         }
       ]
     },
     {
       "sample": 10,
-      "artifactSha256": "4c4ac0967ffbb9543ebba15e4a29affe5d290c056aa93760ddbdba63ada77a6a",
-      "artifactBytes": 1376,
+      "artifactSha256": "8c9ac3dd9d67fd4c66ebf130f0c57397ecb5d71a3d02bfaa81e66205d201a195",
+      "artifactBytes": 1377,
       "metrics": [
         {
           "metricRef": "metric.ide13.owner-local.phase.quiesce",
@@ -2098,9 +2098,9 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.46208300000034797,
-          "p95": 0.46208300000034797,
-          "p99": 0.46208300000034797,
+          "p50": 1.0843750000021828,
+          "p95": 1.0843750000021828,
+          "p99": 1.0843750000021828,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -2112,9 +2112,9 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 41.73191699999916,
-          "p95": 41.73191699999916,
-          "p99": 41.73191699999916,
+          "p50": 94.74929200000042,
+          "p95": 94.74929200000042,
+          "p99": 94.74929200000042,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -2126,13 +2126,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 50.9793750000008,
-          "p95": 50.9793750000008,
-          "p99": 50.9793750000008,
+          "p50": 106.40533399999913,
+          "p95": 106.40533399999913,
+          "p99": 106.40533399999913,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.upload.e3e7bf346c3509cc434a9389668b709f"
+          "receiptRef": "receipt.ide13.owner-local.upload.abf732967f05c59ef4a569e5d5ef00c8"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -2140,13 +2140,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 93.81225000000086,
-          "p95": 93.81225000000086,
-          "p99": 93.81225000000086,
+          "p50": 215.60783300000185,
+          "p95": 215.60783300000185,
+          "p99": 215.60783300000185,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.66b4642c34aee66bb577473efc4b3102"
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.094748dd92d4d8434e42e5d8ad038091"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -2154,9 +2154,9 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 54.80358299999898,
-          "p95": 54.80358299999898,
-          "p99": 54.80358299999898,
+          "p50": 103.63354199999958,
+          "p95": 103.63354199999958,
+          "p99": 103.63354199999958,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -2168,9 +2168,9 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 0.003832999998849118,
-          "p95": 0.003832999998849118,
-          "p99": 0.003832999998849118,
+          "p50": 0.007166999999753898,
+          "p95": 0.007166999999753898,
+          "p99": 0.007166999999753898,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -2182,9 +2182,9 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 509.4061249999995,
-          "p95": 509.4061249999995,
-          "p99": 509.4061249999995,
+          "p50": 784.4595829999998,
+          "p95": 784.4595829999998,
+          "p99": 784.4595829999998,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -2196,9 +2196,9 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 305.01654100000087,
-          "p95": 305.01654100000087,
-          "p99": 305.01654100000087,
+          "p50": 387.1306250000016,
+          "p95": 387.1306250000016,
+          "p99": 387.1306250000016,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
@@ -2210,13 +2210,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 1376,
-          "p95": 1376,
-          "p99": 1376,
+          "p50": 1377,
+          "p95": 1377,
+          "p99": 1377,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.25e68e0e9d468d3b65bb830cdad4d406"
+          "receiptRef": "receipt.ide13.owner-local.metrics.9366fb012eab30b1b2e05a977b54d837"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -2224,13 +2224,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 1,
-          "p50": 11.616061561764331,
-          "p95": 11.616061561764331,
-          "p99": 11.616061561764331,
+          "p50": 11.795377113830904,
+          "p95": 11.795377113830904,
+          "p99": 11.795377113830904,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.25e68e0e9d468d3b65bb830cdad4d406"
+          "receiptRef": "receipt.ide13.owner-local.metrics.9366fb012eab30b1b2e05a977b54d837"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -2238,13 +2238,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 1,
-          "p50": 291700736,
-          "p95": 291700736,
-          "p99": 291700736,
+          "p50": 318455808,
+          "p95": 318455808,
+          "p99": 318455808,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.25e68e0e9d468d3b65bb830cdad4d406"
+          "receiptRef": "receipt.ide13.owner-local.metrics.9366fb012eab30b1b2e05a977b54d837"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -2258,7 +2258,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.25e68e0e9d468d3b65bb830cdad4d406"
+          "receiptRef": "receipt.ide13.owner-local.metrics.9366fb012eab30b1b2e05a977b54d837"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -2272,7 +2272,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.25e68e0e9d468d3b65bb830cdad4d406"
+          "receiptRef": "receipt.ide13.owner-local.metrics.9366fb012eab30b1b2e05a977b54d837"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -2286,7 +2286,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.25e68e0e9d468d3b65bb830cdad4d406"
+          "receiptRef": "receipt.ide13.owner-local.metrics.9366fb012eab30b1b2e05a977b54d837"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -2300,7 +2300,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.25e68e0e9d468d3b65bb830cdad4d406"
+          "receiptRef": "receipt.ide13.owner-local.metrics.9366fb012eab30b1b2e05a977b54d837"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -2308,13 +2308,13 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1,
-          "p50": 305.01654100000087,
-          "p95": 305.01654100000087,
-          "p99": 305.01654100000087,
+          "p50": 387.1306250000016,
+          "p95": 387.1306250000016,
+          "p99": 387.1306250000016,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.metrics.25e68e0e9d468d3b65bb830cdad4d406"
+          "receiptRef": "receipt.ide13.owner-local.metrics.9366fb012eab30b1b2e05a977b54d837"
         }
       ]
     }
@@ -2326,13 +2326,13 @@
       "phase": "quiesce",
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 0.5982090000006792,
-      "p95": 0.7525829999999587,
-      "p99": 0.7525829999999587,
+      "p50": 1.4399169999996957,
+      "p95": 3.2345830000003843,
+      "p99": 3.2345830000003843,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.8c5cb0bc073155e263cc48bd5ec963b2"
+      "receiptRef": "receipt.ide13.owner-local.performance.daf48cbf640f69c371161180673600bc"
     },
     {
       "metricRef": "metric.ide13.owner-local.phase.checkpoint",
@@ -2340,13 +2340,13 @@
       "phase": "checkpoint",
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 54.02887499999997,
-      "p95": 62.34550000000036,
-      "p99": 62.34550000000036,
+      "p50": 112.12995800000135,
+      "p95": 133.1778330000002,
+      "p99": 133.1778330000002,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.68c793757e960c04388f85a9e22fc6a1"
+      "receiptRef": "receipt.ide13.owner-local.performance.30bcc7d3aa1bf28d8d8ec0b9960dd541"
     },
     {
       "metricRef": "metric.ide13.owner-local.phase.upload",
@@ -2354,13 +2354,13 @@
       "phase": "upload",
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 60.594999999999345,
-      "p95": 77.74625000000015,
-      "p99": 77.74625000000015,
+      "p50": 138.5068339999998,
+      "p95": 156.336542,
+      "p99": 156.336542,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.06c43950a59e410bcd731a66d8ecd87d"
+      "receiptRef": "receipt.ide13.owner-local.performance.a04253c0946fd7c985499d898ca9a79e"
     },
     {
       "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -2368,13 +2368,13 @@
       "phase": "redeem",
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 104.07429199999933,
-      "p95": 140.27224999999999,
-      "p99": 140.27224999999999,
+      "p50": 255.81025000000227,
+      "p95": 326.1532909999996,
+      "p99": 326.1532909999996,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.8a96a6e37c6722e59621aff13db61164"
+      "receiptRef": "receipt.ide13.owner-local.performance.00e4ca21f1ff1ed553bbe5f88a4c6804"
     },
     {
       "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -2382,13 +2382,13 @@
       "phase": "attach",
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 58.63404199999968,
-      "p95": 67.17916699999978,
-      "p99": 67.17916699999978,
+      "p50": 102.1795409999977,
+      "p95": 125.12924999999996,
+      "p99": 125.12924999999996,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.3664c7e6c083296e5f068501b416f9d4"
+      "receiptRef": "receipt.ide13.owner-local.performance.71cf45fec9cf6e7673faa9a671a4b599"
     },
     {
       "metricRef": "metric.ide13.owner-local.phase.helper_readiness",
@@ -2396,13 +2396,13 @@
       "phase": "helper_readiness",
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 0.0034580000001369626,
-      "p95": 0.005625000000236469,
-      "p99": 0.005625000000236469,
+      "p50": 0.0049580000013520475,
+      "p95": 0.01099999999951251,
+      "p99": 0.01099999999951251,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.a26adf5639479279fa70ee6b6604b0be"
+      "receiptRef": "receipt.ide13.owner-local.performance.c07a9f5cdf779faabe6e2cbb37e92abb"
     },
     {
       "metricRef": "metric.ide13.owner-local.phase.failback",
@@ -2410,13 +2410,13 @@
       "phase": "failback",
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 533.8378750000011,
-      "p95": 636.404583,
-      "p99": 636.404583,
+      "p50": 870.9118329999983,
+      "p95": 1025.5947500000002,
+      "p99": 1025.5947500000002,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.fa7e8e222e38825c82682eef17e1ed82"
+      "receiptRef": "receipt.ide13.owner-local.performance.2fcbbd33d78213f43fd336671a1e534b"
     },
     {
       "metricRef": "metric.ide13.owner-local.phase.teardown",
@@ -2424,13 +2424,13 @@
       "phase": "teardown",
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 310.00045800000044,
-      "p95": 326.082042,
-      "p99": 326.082042,
+      "p50": 387.801958,
+      "p95": 422.4528329999994,
+      "p99": 422.4528329999994,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.8278eb52394aace2c18f2923d9c8df1b"
+      "receiptRef": "receipt.ide13.owner-local.performance.39021bae42610a71c5a14ebc008063d7"
     },
     {
       "metricRef": "metric.ide13.owner-local.checkpoint_size",
@@ -2439,12 +2439,12 @@
       "unit": "bytes",
       "repetitions": 10,
       "p50": 1379,
-      "p95": 1380,
-      "p99": 1380,
+      "p95": 1382,
+      "p99": 1382,
       "thresholdP95": 67108864,
       "thresholdP99": 67108864,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.34530ae2cab16af7b81f71573d0b7cf2"
+      "receiptRef": "receipt.ide13.owner-local.performance.662fd3b3e1f9190155006284d93e61c0"
     },
     {
       "metricRef": "metric.ide13.owner-local.cpu",
@@ -2452,13 +2452,13 @@
       "phase": null,
       "unit": "percent",
       "repetitions": 10,
-      "p50": 11.66131609087147,
-      "p95": 12.415925096316583,
-      "p99": 12.415925096316583,
+      "p50": 9.383543353158094,
+      "p95": 11.795377113830904,
+      "p99": 11.795377113830904,
       "thresholdP95": 100,
       "thresholdP99": 100,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.03fbab35aa7d208b99b625debac50ed1"
+      "receiptRef": "receipt.ide13.owner-local.performance.c32cae0e0cc04c8bc530bd4d1974ebfa"
     },
     {
       "metricRef": "metric.ide13.owner-local.memory",
@@ -2466,13 +2466,13 @@
       "phase": null,
       "unit": "bytes",
       "repetitions": 10,
-      "p50": 289816576,
-      "p95": 291454976,
-      "p99": 291454976,
+      "p50": 316571648,
+      "p95": 317767680,
+      "p99": 317767680,
       "thresholdP95": 2147483648,
       "thresholdP99": 2147483648,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.dbd1166563fb3dbf39097af3c7d1f1de"
+      "receiptRef": "receipt.ide13.owner-local.performance.42b4945bf0483caba14c527c0f1cf8aa"
     },
     {
       "metricRef": "metric.ide13.owner-local.network",
@@ -2486,7 +2486,7 @@
       "thresholdP95": 0,
       "thresholdP99": 0,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.d88966ed9c6a9bb2ca8acc056e382ff2"
+      "receiptRef": "receipt.ide13.owner-local.performance.8a71c2d50d5d52c51a80d64761665100"
     },
     {
       "metricRef": "metric.ide13.owner-local.queue",
@@ -2500,7 +2500,7 @@
       "thresholdP95": 0,
       "thresholdP99": 0,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.43a8827efddb859f10b4f6f931eea61e"
+      "receiptRef": "receipt.ide13.owner-local.performance.642ecba99e4040df5694ce4ec9b5723c"
     },
     {
       "metricRef": "metric.ide13.owner-local.lease",
@@ -2514,7 +2514,7 @@
       "thresholdP95": 1,
       "thresholdP99": 1,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.394aececf8ac3693630c0ff1fd65309c"
+      "receiptRef": "receipt.ide13.owner-local.performance.d41c93677d40d52293a1ff0c8b49147f"
     },
     {
       "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -2528,7 +2528,7 @@
       "thresholdP95": 0,
       "thresholdP99": 0,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.3ff739e14687994e4dce48665ba1fbe4"
+      "receiptRef": "receipt.ide13.owner-local.performance.b7c3b0524c8d56b8efb616895ed9bafc"
     },
     {
       "metricRef": "metric.ide13.owner-local.teardown",
@@ -2536,14 +2536,14 @@
       "phase": null,
       "unit": "milliseconds",
       "repetitions": 10,
-      "p50": 310.00045800000044,
-      "p95": 326.082042,
-      "p99": 326.082042,
+      "p50": 387.801958,
+      "p95": 422.4528329999994,
+      "p99": 422.4528329999994,
       "thresholdP95": 30000,
       "thresholdP99": 30000,
       "passed": true,
-      "receiptRef": "receipt.ide13.owner-local.performance.e409671f009e55423162361768e08092"
+      "receiptRef": "receipt.ide13.owner-local.performance.c7a73aee8bb4d3d2abe4ba633c9c7ebd"
     }
   ],
-  "receiptRef": "receipt.ide13.owner-local.performance.3703d6b1bfa81cab5a80fcd94bdb2372"
+  "receiptRef": "receipt.ide13.owner-local.performance.5f8359a18592c650e7fae57c90dd07d1"
 }
