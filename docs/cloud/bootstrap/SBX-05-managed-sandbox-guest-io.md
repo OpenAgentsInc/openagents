@@ -93,6 +93,12 @@ Both guest drivers use `--ssh-key-expire-after=10m`, the relative-duration
 gcloud flag. They must not pass a duration to `--ssh-key-expiration`, which is
 an absolute-timestamp flag and fails before guest-key installation.
 
+The immutable guest image owns `/var/lib/openagents/managed-sandbox-io` as the
+unprivileged request-transfer root. A systemd-tmpfiles rule recreates
+`/run/openagents-managed-sandbox/io` with mode `0700` and `openagents`
+ownership at every boot. Readiness does not admit an image unless the smoke
+probe verifies both roots and their exact ownership and mode.
+
 ## Fault response
 
 The component refuses these classes before it returns success:

@@ -16,4 +16,21 @@ describe('managed-sandbox guest transport contract', () => {
       expect(source).not.toContain('--tunnel-through-iap')
     })
   }
+
+  test('guest image admits unprivileged I/O transport and scratch roots', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, 'build-managed-sandbox-guest-image.sh'),
+      'utf8',
+    )
+    expect(source).toContain('/var/lib/openagents/managed-sandbox-io')
+    expect(source).toContain(
+      'd /run/openagents-managed-sandbox/io 0700 openagents openagents -',
+    )
+    expect(source).toContain(
+      "stat -c '%U:%G:%a' /var/lib/openagents/managed-sandbox-io",
+    )
+    expect(source).toContain(
+      "stat -c '%U:%G:%a' /run/openagents-managed-sandbox/io",
+    )
+  })
 })

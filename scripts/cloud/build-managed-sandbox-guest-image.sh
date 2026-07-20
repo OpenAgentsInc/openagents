@@ -68,8 +68,16 @@ apt-get install -y --no-install-recommends bubblewrap ca-certificates curl git i
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y --no-install-recommends nodejs
 id openagents >/dev/null 2>&1 || useradd --create-home --shell /bin/bash openagents
-install -d -o openagents -g openagents -m 0700 /workspace /var/lib/openagents/managed-sandbox-turns
+install -d -o openagents -g openagents -m 0700 \
+  /workspace \
+  /var/lib/openagents/managed-sandbox-turns \
+  /var/lib/openagents/managed-sandbox-io
 install -d -o root -g root -m 0755 /opt/openagents-managed-sandbox
+cat >/etc/tmpfiles.d/openagents-managed-sandbox.conf <<'TMPFILES'
+d /run/openagents-managed-sandbox 0750 openagents openagents -
+d /run/openagents-managed-sandbox/io 0700 openagents openagents -
+TMPFILES
+systemd-tmpfiles --create /etc/tmpfiles.d/openagents-managed-sandbox.conf
 cd /opt/openagents-managed-sandbox
 npm init -y >/dev/null
 npm install --omit=dev --save-exact \
@@ -138,6 +146,11 @@ ip -4 -o address show scope global | grep -q 'inet '
 test -x /usr/bin/node
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
+test -d /var/lib/openagents/managed-sandbox-turns
+test -d /var/lib/openagents/managed-sandbox-io
+test -d /run/openagents-managed-sandbox/io
+test "$(stat -c '%U:%G:%a' /var/lib/openagents/managed-sandbox-io)" = 'openagents:openagents:700'
+test "$(stat -c '%U:%G:%a' /run/openagents-managed-sandbox/io)" = 'openagents:openagents:700'
 test -d /opt/openagents-managed-sandbox/node_modules/@openai/codex-sdk
 test -d /opt/openagents-managed-sandbox/node_modules/@anthropic-ai/claude-agent-sdk
 systemctl is-active --quiet openagents-managed-sandbox-hostkeys.service

@@ -52,7 +52,7 @@ controller projects the bounded read-only tools (`read_file`, `list_files`,
 selects one tool plus a parsed argument and calls the controller's loopback tool
 callback with the session token, then keeps the callback URL/token out of logs
 and public evidence. The controller confines every tool to the workspace and
-refuses escapes; native model-driven tool-argument generation is a future
+refuses escapes. Native model-driven tool-argument generation is a future
 enhancement.
 
 ## Frozen wire schema

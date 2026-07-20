@@ -13524,7 +13524,7 @@
     },
     {
       "path": "apps/pylon/swift/foundation-bridge/README.md",
-      "sha256": "7e8aa02e666cb0935bfab1e4ef4890b9b5943e096cd36903798b658d62efd22a",
+      "sha256": "600a60b430d52cce1b668b6a8c9f1a02aa70244d36818a01a80c63c5c84f7818",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -15008,7 +15008,7 @@
     },
     {
       "path": "docs/apple-fm/2026-07-19-apple-fm-swift-bridge-full-audit-and-openagents-desktop-plan.md",
-      "sha256": "c048b93e35e3c0ee8a572a26e78d2810c08e8e17996839a150671b548bd36e1e",
+      "sha256": "e7b2602cd872c49a1e083f63c3671901a2b2f8a358d05bccd1ff0f67a8d09216",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -15031,7 +15031,7 @@
     },
     {
       "path": "docs/apple-fm/apple-fm-cli.md",
-      "sha256": "dd664f6e9d62a9f1f7ce71513c11da41d2e040bfeb1c19963b11c6a3d1648903",
+      "sha256": "f3df889b2e07d855b0594d2e4f02fbacbdbd1105012e2a414d741a4c541480b0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19760,7 +19760,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md",
-      "sha256": "460402cee3ecb1c3af85896bc63689cef1b55dc37251767e523bd6c57543eab3",
+      "sha256": "351e21002a113a09b2c954e14a7799ead7e21d08169a10118c83f771f4c3cc88",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
