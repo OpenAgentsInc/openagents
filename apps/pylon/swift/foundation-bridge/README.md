@@ -51,5 +51,20 @@ projects a `read_file` tool and the prompt asks for local file inspection, the
 bridge calls Pylon's loopback tool callback with the session token and then
 keeps the callback URL/token out of logs and public evidence.
 
+## Frozen wire schema
+
+The exact JSON this bridge accepts and emits on every endpoint (field names and
+casing included) is frozen as a versioned Effect Schema contract at
+`packages/runtime/src/backends/apple-fm/wire.ts`
+(`APPLE_FM_BRIDGE_WIRE_VERSION = "openagents.apple_fm.bridge.wire.v0.2"`). It is
+the single source of truth both this Swift helper and every TypeScript consumer
+are proven against. Conformance is enforced by
+`packages/runtime/src/backends/apple-fm/wire-conformance.test.ts`: captured wire
+fixtures decode through the schema, a deliberate shape drift is rejected, and an
+opt-in admitted-Mac sweep
+(`OPENAGENTS_APPLE_FM_REAL_BRIDGE=1`) validates the live bridge. Bump both
+`bridgeVersion` in `main.swift` and `APPLE_FM_BRIDGE_WIRE_VERSION` together when
+the wire changes.
+
 The helper logs startup and listener failures only. It does not log prompts,
 message bodies, local files, secrets, or provider payloads by default.
