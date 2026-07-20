@@ -143,6 +143,7 @@ const phase = (
     resultCheckpointRef: null,
     resultCheckpointObjectRef: null,
     resultCheckpointDigest: null,
+    resultCheckpointManifestDigest: null,
     resultDestinationActivationReceipt: null,
     resultEvidenceRefs: [],
     errorRef: null,

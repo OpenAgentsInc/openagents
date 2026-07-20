@@ -36,6 +36,7 @@ import type {
   PortableCheckpointBundle,
 } from "./portable-session-move.js";
 import type { SyncSql } from "./sql.js";
+import type { PortableGrantAuthorityBinding } from "./portable-capability-runtime-adapters.js";
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u;
 const FORBIDDEN_PRIVATE_MATERIAL =
@@ -96,21 +97,39 @@ export type PortableCommandCapabilityGrantFact = Readonly<{
   expiresAt: string;
 }>;
 
+export type PortableCommandCapabilityGrantFactScope = Readonly<{
+  commandExecutionClaimRef: string;
+  commandLeaseExpiresAt: string;
+  ownerRef: string;
+  sessionRef: string;
+  sourceAttachmentRef: string;
+  sourceGeneration: number;
+  sourceTargetRef: string;
+  destinationAttachmentRef: string;
+  destinationGeneration: number;
+  destinationTargetRef: string;
+  sourceLeaseRefs: ReadonlyArray<string>;
+}>;
+
+export type PortableCommandCapabilityGrantResolution = Readonly<{
+  facts: ReadonlyArray<PortableCommandCapabilityGrantFact>;
+  bindings: ReadonlyArray<PortableGrantAuthorityBinding>;
+}>;
+
 export type PortableCommandCapabilityGrantFactResolver = Readonly<{
   resolve: (
-    scope: Readonly<{
-      commandExecutionClaimRef: string;
-      ownerRef: string;
-      sessionRef: string;
-      sourceAttachmentRef: string;
-      sourceGeneration: number;
-      sourceTargetRef: string;
-      destinationAttachmentRef: string;
-      destinationGeneration: number;
-      destinationTargetRef: string;
-      sourceLeaseRefs: ReadonlyArray<string>;
-    }>,
-  ) => Promise<ReadonlyArray<PortableCommandCapabilityGrantFact>>;
+    scope: PortableCommandCapabilityGrantFactScope,
+  ) => Promise<PortableCommandCapabilityGrantResolution>;
+}>;
+
+export type PortableCommandBrokerFactory = Readonly<{
+  create: (input: Readonly<{
+    claim: PortableCommandExecutionClaim;
+    source: PortableTargetDescriptor;
+    destination: PortableTargetDescriptor;
+    grantBindings: ReadonlyArray<PortableGrantAuthorityBinding>;
+    capabilityTransfers: ReadonlyArray<PortableCapabilityTransfer>;
+  }>) => Promise<PortableSessionMoveRuntimeBrokerConfig>;
 }>;
 
 export type PortableCommandPylonBindingResolver = Readonly<{
@@ -143,7 +162,7 @@ export type PortableCommandCheckpointArtifactResolver = Readonly<{
 
 export type PostgresPortableSessionCommandResolverConfig = Readonly<{
   sql: SyncSql;
-  broker: PortableSessionMoveRuntimeBrokerConfig;
+  brokerFactory: PortableCommandBrokerFactory;
   pylonBindings: PortableCommandPylonBindingResolver;
   capabilityGrantFacts: PortableCommandCapabilityGrantFactResolver;
   checkpointArtifacts: PortableCommandCheckpointArtifactResolver;
@@ -324,7 +343,6 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
         "portable target health or identity differs from the execution claim",
       );
     }
-    this.assertBrokerTargets(source, destination);
 
     let decodedSourceLeaseRefs: ReadonlyArray<string>;
     try {
@@ -343,6 +361,7 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
     );
     const factScope = {
       commandExecutionClaimRef: claim.claimRef,
+      commandLeaseExpiresAt: claim.leaseExpiresAt,
       ownerRef: claim.ownerRef,
       sessionRef: claim.sessionRef,
       sourceAttachmentRef: claim.sourceAttachmentRef,
@@ -353,8 +372,17 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
       destinationTargetRef: claim.destinationTargetRef,
       sourceLeaseRefs,
     } as const;
-    const grantFacts = await this.config.capabilityGrantFacts.resolve(factScope);
-    const capabilityTransfers = this.capabilityTransfers(claim, sourceLeaseRefs, grantFacts, now);
+    const grantResolution = await this.config.capabilityGrantFacts.resolve(factScope);
+    const capabilityTransfers = this.capabilityTransfers(claim, sourceLeaseRefs, grantResolution.facts, now);
+    this.assertGrantBindings(claim, sourceLeaseRefs, grantResolution.bindings);
+    const broker = await this.config.brokerFactory.create({
+      claim,
+      source,
+      destination,
+      grantBindings: grantResolution.bindings,
+      capabilityTransfers,
+    });
+    this.assertBrokerTargets(broker, source, destination);
     const operationExpiresAt = new Date(
       Math.min(new Date(command.expiresAt).valueOf(), new Date(claim.leaseExpiresAt).valueOf()),
     ).toISOString();
@@ -384,19 +412,20 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
         source: new PostgresPortablePhaseTarget(targetConfig(source)),
         destination: new PostgresPortablePhaseTarget(targetConfig(destination)),
       },
-      broker: this.config.broker,
+      broker,
     };
   }
 
   private assertBrokerTargets(
+    broker: PortableSessionMoveRuntimeBrokerConfig,
     source: PortableTargetDescriptor,
     destination: PortableTargetDescriptor,
   ): void {
     for (const target of [source, destination]) {
-      const binding = this.config.broker.targets.find(
+      const binding = broker.targets.find(
         (candidate) => candidate.targetRef === target.targetRef,
       );
-      const adapter = this.config.broker.adapters.find(
+      const adapter = broker.adapters.find(
         (candidate) => candidate.adapterRef === target.adapterRef,
       );
       if (
@@ -412,6 +441,30 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
           "portable broker target binding differs from durable target authority",
         );
       }
+    }
+  }
+
+  private assertGrantBindings(
+    claim: PortableCommandExecutionClaim,
+    sourceLeaseRefs: ReadonlyArray<string>,
+    bindings: ReadonlyArray<PortableGrantAuthorityBinding>,
+  ): void {
+    assertRefsOnly(bindings, "portable grant bindings contain private material");
+    if (
+      bindings.length !== sourceLeaseRefs.length ||
+      new Set(bindings.map(binding => binding.grantRef)).size !== bindings.length ||
+      bindings.some(binding =>
+        !SAFE_REF.test(binding.grantRef) || binding.ownerUserId !== claim.ownerRef ||
+        !["provider", "github"].includes(binding.kind) ||
+        (binding.kind === "provider" &&
+          (binding.providerAccountRef === undefined || !SAFE_REF.test(binding.providerAccountRef))) ||
+        (binding.kind === "github" && binding.providerAccountRef !== undefined) ||
+        (binding.runnerSessionId !== undefined && !SAFE_REF.test(binding.runnerSessionId)))
+    ) {
+      throw new PortableSessionCommandRunnerError(
+        "capability_mismatch",
+        "portable grant bindings do not match the exact owner capability set",
+      );
     }
   }
 
@@ -518,7 +571,7 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
 export type PostgresPortableSessionCommandRunnerConfig = Readonly<{
   sql: SyncSql;
   transaction: <A>(run: (writer: SyncTransactionWriter) => Promise<A>) => Promise<A>;
-  broker: PortableSessionMoveRuntimeBrokerConfig;
+  brokerFactory: PortableCommandBrokerFactory;
   pylonBindings: PortableCommandPylonBindingResolver;
   capabilityGrantFacts: PortableCommandCapabilityGrantFactResolver;
   checkpointArtifacts: PortableCommandCheckpointArtifactResolver;
@@ -537,7 +590,7 @@ export class PostgresPortableSessionCommandRunner {
     });
     const resolver = new PostgresPortableSessionCommandResolver({
       sql: config.sql,
-      broker: config.broker,
+      brokerFactory: config.brokerFactory,
       pylonBindings: config.pylonBindings,
       capabilityGrantFacts: config.capabilityGrantFacts,
       checkpointArtifacts: config.checkpointArtifacts,

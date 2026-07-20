@@ -72,7 +72,7 @@ const config = (): PortableSessionCommandDispatchConfig => ({
   transaction: async <A>(_run: (writer: SyncTransactionWriter) => Promise<A>) => {
     throw new Error("move transaction must not run through the mocked dispatch test");
   },
-  broker: {
+  brokerFactory: { create: async () => ({
     vault: {
       withSourceGrantMaterial: async () => {
         throw new Error("vault facts are intentionally absent from this unit test");
@@ -81,7 +81,7 @@ const config = (): PortableSessionCommandDispatchConfig => ({
     },
     targets: [],
     adapters: [],
-  },
+  }) },
   pylonBindings: {
     resolve: async () => {
       throw new Error("Pylon facts are intentionally absent from this unit test");

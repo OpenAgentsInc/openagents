@@ -1026,6 +1026,7 @@ import {
 } from './provider-account-mobile-routes'
 import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
 import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
+import { resolvePortableCapabilityGrantFacts } from './portable-capability-grant-facts'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
@@ -4237,7 +4238,34 @@ const handlePortableCapabilityGrantAuthorityApi = async (
     )
   }
   const path = new URL(request.url).pathname
+  const isFacts = path.endsWith('/facts')
   const isReissue = path.endsWith('/reissue')
+  if (isFacts) {
+    const grantRefs = Array.isArray(body.grantRefs)
+      ? body.grantRefs.filter((value): value is string => typeof value === 'string')
+      : []
+    if (grantRefs.length !== (Array.isArray(body.grantRefs) ? body.grantRefs.length : -1)) {
+      return noStoreJsonResponse({ error: 'bad_request', reason: 'grantRefs are invalid' }, { status: 400 })
+    }
+    const postgres = postgresIdentityAuthStoreForEnv(env)
+    if (postgres === undefined) {
+      return noStoreJsonResponse({ error: 'provider_grant_authority_unavailable' }, { status: 503 })
+    }
+    try {
+      const facts = await resolvePortableCapabilityGrantFacts({
+        ownerUserId,
+        grantRefs,
+        provider: makeAuthoritativePostgresProviderGrantRepository(
+          makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+          postgres.queryRows,
+        ),
+        github: makeGitHubWriteRepositoryForEnv(env),
+      })
+      return noStoreJsonResponse({ facts, material: 'excluded' })
+    } catch {
+      return noStoreJsonResponse({ error: 'portable_capability_grant_facts_refused' }, { status: 409 })
+    }
+  }
   if (
     (!isReissue && grantRef === undefined) ||
     (isReissue &&
@@ -13084,6 +13112,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       '/api/portable-capability-grants/provider/reissue',
       '/api/portable-capability-grants/github/revoke',
       '/api/portable-capability-grants/github/reissue',
+      '/api/portable-capability-grants/facts',
     ] as const
   ).map(path => ({
     path,

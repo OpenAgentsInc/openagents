@@ -194,17 +194,24 @@ const config = (
   authority: PortableSessionAuthoritySnapshot = snapshot(),
 ): PostgresPortableSessionCommandResolverConfig => ({
   sql: neverSql,
-  broker: broker(),
+  brokerFactory: { create: async () => broker() },
   pylonBindings: {
     resolve: async (scope) => ({ ...scope, pylonRef: `pylon.${scope.targetRef}` }),
   },
   capabilityGrantFacts: {
-    resolve: async (scope) =>
-      scope.sourceLeaseRefs.map((sourceLeaseRef) => ({
+    resolve: async (scope) => ({
+      facts: scope.sourceLeaseRefs.map((sourceLeaseRef) => ({
         sourceLeaseRef,
         destinationSourceGrantRef: `grant.${sourceLeaseRef}.destination`,
         expiresAt: "2026-07-20T12:09:00.000Z",
       })),
+      bindings: [{
+        grantRef: "grant.ide13.source",
+        ownerUserId: ownerRef,
+        kind: "provider",
+        providerAccountRef: "provider-account.ide13",
+      }],
+    }),
   },
   checkpointArtifacts: {
     resolve: async () => {
@@ -219,7 +226,12 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("portable session command production resolver", () => {
   it("binds exact durable command, target, and capability facts", async () => {
-    const resolved = await new PostgresPortableSessionCommandResolver(config()).resolve(claim);
+    const resolverConfig = config();
+    const create = vi.fn(resolverConfig.brokerFactory.create);
+    const resolved = await new PostgresPortableSessionCommandResolver({
+      ...resolverConfig,
+      brokerFactory: { create },
+    }).resolve(claim);
 
     expect(resolved.moveRef).toBe(claim.claimRef);
     expect(resolved.move.command).toEqual(command);
@@ -234,6 +246,15 @@ describe("portable session command production resolver", () => {
         expiresAt: "2026-07-20T12:09:00.000Z",
       },
     ]);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      claim,
+      grantBindings: [{
+        grantRef: "grant.ide13.source",
+        ownerUserId: ownerRef,
+        kind: "provider",
+        providerAccountRef: "provider-account.ide13",
+      }],
+    }));
   });
 
   it("rejects foreign owner authority before target effects", async () => {
@@ -308,7 +329,7 @@ describe("portable session command production resolver", () => {
     await expect(
       new PostgresPortableSessionCommandResolver({
         ...resolverConfig,
-        capabilityGrantFacts: { resolve: async () => [] },
+        capabilityGrantFacts: { resolve: async () => ({ facts: [], bindings: [] }) },
       }).resolve(claim),
     ).rejects.toMatchObject({ code: "capability_mismatch" });
   });
@@ -493,7 +514,7 @@ describe("portable session command production runner", () => {
       transaction: async () => {
         throw new Error("transaction must not run through the mocked canonical runtime");
       },
-      broker: broker(),
+      brokerFactory: { create: async () => broker() },
       pylonBindings: config().pylonBindings,
       capabilityGrantFacts: config().capabilityGrantFacts,
       checkpointArtifacts: config().checkpointArtifacts,
