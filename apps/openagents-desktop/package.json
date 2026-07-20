@@ -100,6 +100,7 @@
     "@openagentsinc/managed-sandbox-contract": "workspace:*",
     "@openagentsinc/product-spec": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",
+    "@openagentsinc/pylon-runtime": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/ui": "workspace:*",
     "@pierre/diffs": "1.2.12",

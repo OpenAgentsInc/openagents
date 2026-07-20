@@ -405,6 +405,15 @@ import { makeDesktopHostLifecycle } from "./desktop-host-lifecycle.ts"
 import { createDesktopVoiceHost, type VoiceNativeMedia } from "./voice-host.ts"
 import { createPackagedVoiceNativeMedia } from "./voice-native-helper.ts"
 import {
+  AppleFmStartTurnChannel,
+  AppleFmStatusChannel,
+  AppleFmStopChannel,
+  decodeAppleFmStartTurnRequest,
+  invalidAppleFmTurn,
+} from "./apple-fm-contract.ts"
+import { createAppleFmHost, type AppleFmLauncher } from "./apple-fm-host.ts"
+import { createPackagedAppleFmLauncher, appleFmHelperSupported } from "./apple-fm-native-helper.ts"
+import {
   DesktopWorkspaceChooseChannel,
   DesktopWorkspaceFilesChannel,
   DesktopWorkspaceGitDiffChannel,
@@ -3631,6 +3640,46 @@ ipcMain.handle(DesktopPreferencesResetChannel, () => {
   const preferences = preferencesStore.reset()
   desktopCodexUsageOutbox.clear()
   return preferences
+})
+
+// Apple Foundation Models local mode (AFM-6 #9075). The host owns the Swift
+// `foundation-bridge` sidecar lifecycle and the in-process Pylon FM runtime
+// authority; the renderer only sees the bounded, public-safe projection. On
+// smoke or any non-Apple-Silicon platform the launcher reports not-supported,
+// so no sidecar is resolved, spawned, or probed.
+const appleFmLauncher: AppleFmLauncher =
+  smokeMode || !appleFmHelperSupported()
+    ? { supported: () => false, launch: () => Promise.resolve({ kind: "helper_missing", blockerRef: "blocker.apple_fm.not_supported" }) }
+    : createPackagedAppleFmLauncher({
+        resourcesPath: app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), "dist"),
+        verifySignature: absolutePath => {
+          if (!app.isPackaged) return true
+          try {
+            execFileSync("/usr/bin/codesign", ["--verify", "--strict", absolutePath], { stdio: "ignore" })
+            return true
+          } catch {
+            return false
+          }
+        },
+      })
+const appleFmHost = createAppleFmHost(appleFmLauncher)
+ipcMain.handle(AppleFmStatusChannel, (_event, value: unknown) => {
+  const refresh = typeof value === "object" && value !== null && (value as { refresh?: unknown }).refresh === true
+  return refresh ? appleFmHost.refresh() : appleFmHost.ensureStarted()
+})
+ipcMain.handle(AppleFmStartTurnChannel, (_event, value: unknown) => {
+  const request = decodeAppleFmStartTurnRequest(value)
+  return request === null ? invalidAppleFmTurn() : appleFmHost.runTurn(request.prompt)
+})
+ipcMain.handle(AppleFmStopChannel, () => appleFmHost.stop())
+// Stop an owned sidecar on shutdown; an adopted operator bridge is never
+// stopped, and dispose() is idempotent.
+app.on("before-quit", () => {
+  try {
+    appleFmHost.dispose()
+  } catch {
+    /* best-effort teardown */
+  }
 })
 
 // Diagnostics / watchdog (CUT-24 #8704). Collect live health from the existing

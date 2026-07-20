@@ -339,6 +339,18 @@ import {
   DesktopPreferencesUpdateChannel,
 } from "./desktop-preferences-contract.ts"
 import {
+  AppleFmStartTurnChannel,
+  AppleFmStatusChannel,
+  AppleFmStopChannel,
+  decodeAppleFmStartTurnRequest,
+  decodeAppleFmStatus,
+  decodeAppleFmStopResult,
+  decodeAppleFmTurnResult,
+  invalidAppleFmTurn,
+  unavailableAppleFmStatus,
+  unavailableAppleFmStopResult,
+} from "./apple-fm-contract.ts"
+import {
   UsageLedgerEventChannel,
   UsageLedgerSnapshotChannel,
   decodeUsageLedgerSnapshot,
@@ -966,6 +978,31 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
   },
   fleetRuns: {
     list: () => ipcRenderer.invoke(FleetRunProjectionListChannel),
+  },
+  /**
+   * Apple Foundation Models local mode (AFM-6, #9075): READ-ONLY typed
+   * readiness plus one bounded read-only turn. Every payload is schema-decoded
+   * at this boundary — a malformed request never reaches main, and a malformed
+   * response resolves to a public-safe typed fallback. The renderer never sees
+   * the bridge path, loopback base URL, callback token, or raw transcript.
+   */
+  appleFm: {
+    status: async () => decodeAppleFmStatus(
+      await ipcRenderer.invoke(AppleFmStatusChannel),
+    ) ?? unavailableAppleFmStatus(),
+    refresh: async () => decodeAppleFmStatus(
+      await ipcRenderer.invoke(AppleFmStatusChannel, { refresh: true }),
+    ) ?? unavailableAppleFmStatus(),
+    startTurn: async (value: unknown) => {
+      const request = decodeAppleFmStartTurnRequest(value)
+      if (request === null) return invalidAppleFmTurn()
+      return decodeAppleFmTurnResult(
+        await ipcRenderer.invoke(AppleFmStartTurnChannel, request),
+      ) ?? invalidAppleFmTurn()
+    },
+    stop: async () => decodeAppleFmStopResult(
+      await ipcRenderer.invoke(AppleFmStopChannel),
+    ) ?? unavailableAppleFmStopResult(),
   },
   /**
    * Fable local lane (#8712): schema-checked on both sides of the boundary.

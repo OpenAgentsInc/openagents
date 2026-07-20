@@ -526,6 +526,9 @@ importers:
       '@openagentsinc/pylon-core':
         specifier: workspace:*
         version: link:../../packages/pylon-core
+      '@openagentsinc/pylon-runtime':
+        specifier: workspace:*
+        version: link:../pylon/packages/runtime
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../../packages/runtime-platform
