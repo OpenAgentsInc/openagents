@@ -1,0 +1,24 @@
+diff --git a/resources/spec.ejs b/resources/spec.ejs
+index e07a8a3..f13dff5 100644
+--- a/resources/spec.ejs
++++ b/resources/spec.ejs
+@@ -28,15 +28,15 @@ cp <%= process.platform === 'darwin' ? '-R' : '-r' %> usr/* %{buildroot}/usr/
+
+
+ %files
+-/usr/bin/<%= name %>
++/usr/bin/<%= binaryName || name %>
+ /usr/lib/<%= name %>/
+-/usr/share/applications/<%= name %>.desktop
++/usr/share/applications/<%= desktopFileName || name %>.desktop
+ /usr/share/doc/<%= name %>/
+ <% if (_.isObject(icon)) {
+   _.forEach(icon, function (path, resolution) {
+-    %>/usr/share/icons/hicolor/<%= resolution %>/apps/<%= name %><%= resolution === 'symbolic' ? '-symbolic' : '' %>.<%= ['scalable', 'symbolic'].includes(resolution) ? 'svg' : 'png' %>
++    %>/usr/share/icons/hicolor/<%= resolution %>/apps/<%= iconName || name %><%= resolution === 'symbolic' ? '-symbolic' : '' %>.<%= ['scalable', 'symbolic'].includes(resolution) ? 'svg' : 'png' %>
+ <% }) } else {
+-  %>/usr/share/pixmaps/<%= name %>.png
++  %>/usr/share/pixmaps/<%= iconName || name %>.png
+ <% } %>
+
+ <% if (pre) {

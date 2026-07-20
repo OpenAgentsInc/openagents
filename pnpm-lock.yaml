@@ -30,6 +30,7 @@ packageExtensionsChecksum: sha256-q5WdBF7BCWKzly/tgcivWtVAQ00t1e/WaEGl0+mhjaI=
 
 patchedDependencies:
   electron-installer-common@0.10.4: a1b1b1fe2cb13041b23248884df37684b9c9004e9ece6748b7b5073a4579a458
+  electron-installer-redhat@3.4.0: b2c436ac0a107342f61f3552393db1bc02bf369b8929055f0634d4469a98f914
   foldkit@0.102.1: 23e03456038cf39cbdfff7504bc067e12d21b2d3ab8fa5692478cb5d9e4f03b0
 
 importers:
@@ -12825,7 +12826,7 @@ snapshots:
       '@electron-forge/maker-base': 7.11.2
       '@electron-forge/shared-types': 7.11.2
     optionalDependencies:
-      electron-installer-redhat: 3.4.0
+      electron-installer-redhat: 3.4.0(patch_hash=b2c436ac0a107342f61f3552393db1bc02bf369b8929055f0634d4469a98f914)
     transitivePeerDependencies:
       - bluebird
       - supports-color
@@ -17633,7 +17634,7 @@ snapshots:
       - supports-color
     optional: true
 
-  electron-installer-redhat@3.4.0:
+  electron-installer-redhat@3.4.0(patch_hash=b2c436ac0a107342f61f3552393db1bc02bf369b8929055f0634d4469a98f914):
     dependencies:
       '@malept/cross-spawn-promise': 1.1.1
       debug: 4.4.3
