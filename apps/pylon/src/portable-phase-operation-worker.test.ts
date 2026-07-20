@@ -11,6 +11,10 @@ import {
   PylonPortablePhaseTransportError,
   type PylonPortablePhaseOperationClient,
 } from "./portable-phase-operation-client.js";
+import type {
+  PylonPortablePhaseClaimJournal,
+  PylonPortablePhaseClaimJournalEntry,
+} from "./portable-phase-operation-claim-journal.js";
 import {
   makePylonPortablePhaseExecutor,
   PylonPortablePhaseWorker,
@@ -81,6 +85,41 @@ const claimedRecord = (
   updatedAt: now.toISOString(),
 });
 
+const memoryJournal = (
+  initial: ReadonlyArray<PylonPortablePhaseClaimJournalEntry> = [],
+): PylonPortablePhaseClaimJournal => {
+  const entries = new Map(
+    initial.map((entry) => [entry.record.request.operationRef, entry] as const),
+  );
+  return {
+    entries: async () => [...entries.values()],
+    put: async (entry) => {
+      entries.set(entry.record.request.operationRef, entry);
+    },
+    remove: async (operationRef) => {
+      entries.delete(operationRef);
+    },
+  };
+};
+
+const crashAfterPut = (
+  journal: PylonPortablePhaseClaimJournal,
+  predicate: (entry: PylonPortablePhaseClaimJournalEntry) => boolean,
+): PylonPortablePhaseClaimJournal => {
+  let crashed = false;
+  return {
+    entries: journal.entries,
+    remove: journal.remove,
+    put: async (entry) => {
+      await journal.put(entry);
+      if (!crashed && predicate(entry)) {
+        crashed = true;
+        throw new Error("simulated process crash");
+      }
+    },
+  };
+};
+
 const fakeClient = (source: PortablePhaseOperationRecord) => {
   const calls: {
     claims: PortablePhaseOperationClaimRequest[];
@@ -90,6 +129,7 @@ const fakeClient = (source: PortablePhaseOperationRecord) => {
   let current = source;
   const client: PylonPortablePhaseOperationClient = {
     pending: async () => (current.state === "pending" ? [current] : []),
+    read: async () => current,
     claim: async (request) => {
       calls.claims.push(request);
       current = claimedRecord(source, request);
@@ -136,6 +176,13 @@ describe("Pylon portable phase HTTP client", () => {
       targetRef,
       fetchImpl: (async (url, init) => {
         calls.push({ url: String(url), init: init ?? {} });
+        if (new URL(String(url)).pathname.includes("/reconcile/")) {
+          return Response.json({
+            schema: "openagents.portable_phase_operation_transport.v1",
+            operation: source,
+            status: "reconciled",
+          });
+        }
         return Response.json({
           schema: "openagents.portable_phase_operation_transport.v1",
           operations: [source],
@@ -150,6 +197,10 @@ describe("Pylon portable phase HTTP client", () => {
     );
     expect(new URL(firstCall.url).searchParams.get("limit")).toBe("4");
     expect(firstCall.init.headers).toMatchObject({ Authorization: "Bearer private-agent-token" });
+    expect(await client.read(source.request.operationRef)).toEqual(source);
+    expect(new URL(calls.at(1)?.url ?? "https://invalid.test").pathname).toBe(
+      `/api/pylons/${pylonRef}/portable-targets/${targetRef}/phase-operations/reconcile/${source.request.operationRef}`,
+    );
 
     const drift = makePylonPortablePhaseOperationClient({
       agentToken: "private-agent-token",
@@ -192,6 +243,7 @@ describe("Pylon portable phase worker", () => {
       releaseExecution = resolve;
     });
     const executor: PylonPortablePhaseExecutor = {
+      recoverySemantics: async () => "operation_ref_idempotent",
       execute: async () => {
         await executionGate;
         return {
@@ -202,9 +254,11 @@ describe("Pylon portable phase worker", () => {
         };
       },
     };
+    const journal = memoryJournal();
     const worker = new PylonPortablePhaseWorker({
       client,
       executor,
+      journal,
       pylonRef,
       targetRef,
       workerInstanceRef,
@@ -243,6 +297,7 @@ describe("Pylon portable phase worker", () => {
     const worker = new PylonPortablePhaseWorker({
       client,
       executor: makePylonPortablePhaseExecutor({ resolve: async () => undefined }),
+      journal: memoryJournal(),
       pylonRef,
       targetRef,
       workerInstanceRef,
@@ -268,6 +323,7 @@ describe("Pylon portable phase worker", () => {
     const worker = new PylonPortablePhaseWorker({
       client,
       executor: {
+        recoverySemantics: async () => "not_proven",
         execute: async (_request, signal) => {
           executing();
           return new Promise((_resolve, reject) =>
@@ -275,6 +331,7 @@ describe("Pylon portable phase worker", () => {
           );
         },
       },
+      journal: memoryJournal(),
       pylonRef,
       targetRef,
       workerInstanceRef,
@@ -288,25 +345,87 @@ describe("Pylon portable phase worker", () => {
     expect(worker.uncertainOperationRefs()).toEqual([source.request.operationRef]);
   });
 
-  test("retries an identical completion after a lost acknowledgement without re-execution", async () => {
+  test("recovers a crash after claim by reconciling and renewing the same worker claim", async () => {
     const source = record();
     const fixture = fakeClient(source);
+    const journal = memoryJournal();
     let executions = 0;
-    let completionAttempts = 0;
-    const attempted: PortablePhaseOperationResultRequest[] = [];
-    const originalComplete = fixture.client.complete;
-    const client: PylonPortablePhaseOperationClient = {
-      ...fixture.client,
-      complete: async (request, signal) => {
-        attempted.push(request);
-        completionAttempts += 1;
-        if (completionAttempts === 1) throw new PylonPortablePhaseTransportError("network_failed");
-        return originalComplete(request, signal);
+    const executor: PylonPortablePhaseExecutor = {
+      recoverySemantics: async () => "operation_ref_idempotent",
+      execute: async () => {
+        executions += 1;
+        return {
+          checkpointRef: null,
+          checkpointObjectRef: null,
+          checkpointDigest: null,
+          evidenceRefs: [],
+        };
       },
     };
-    const worker = new PylonPortablePhaseWorker({
-      client,
+    const first = new PylonPortablePhaseWorker({
+      client: fixture.client,
+      executor,
+      journal: crashAfterPut(
+        journal,
+        (entry) => entry.state === "claimed" && entry.leaseRevision === 1,
+      ),
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+    });
+    await expect(first.runPass()).rejects.toThrow("simulated process crash");
+    expect(executions).toBe(0);
+
+    const restarted = new PylonPortablePhaseWorker({
+      client: fixture.client,
+      executor,
+      journal,
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+    });
+    await restarted.runPass();
+    expect(fixture.calls.claims).toHaveLength(1);
+    expect(fixture.calls.renewals).toHaveLength(1);
+    expect(fixture.calls.renewals[0]).toMatchObject({
+      claimRef: fixture.calls.claims[0]?.claimRef,
+      workerInstanceRef,
+      expectedLeaseRevision: 1,
+    });
+    expect(executions).toBe(1);
+  });
+
+  test("recovers a crash after renewal without accepting lease revision drift", async () => {
+    const source = record();
+    const fixture = fakeClient(source);
+    const journal = memoryJournal();
+    const never = new Promise<never>(() => undefined);
+    const first = new PylonPortablePhaseWorker({
+      client: fixture.client,
       executor: {
+        recoverySemantics: async () => "operation_ref_idempotent",
+        execute: async () => never,
+      },
+      journal: crashAfterPut(
+        journal,
+        (entry) => entry.state === "executing" && entry.leaseRevision === 2,
+      ),
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+      waitForRenewal: async () => "renew",
+    });
+    await expect(first.runPass()).rejects.toThrow("simulated process crash");
+    expect(fixture.calls.renewals).toHaveLength(1);
+
+    let executions = 0;
+    const restarted = new PylonPortablePhaseWorker({
+      client: fixture.client,
+      executor: {
+        recoverySemantics: async () => "operation_ref_idempotent",
         execute: async () => {
           executions += 1;
           return {
@@ -317,17 +436,157 @@ describe("Pylon portable phase worker", () => {
           };
         },
       },
+      journal,
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+    });
+    await restarted.runPass();
+    expect(fixture.calls.renewals.map((renewal) => renewal.expectedLeaseRevision)).toEqual([1, 2]);
+    expect(executions).toBe(1);
+  });
+
+  test("re-executes uncertain work only with proven operation-ref idempotency", async () => {
+    const source = record();
+    const fixture = fakeClient(source);
+    const journal = memoryJournal();
+    const controller = new AbortController();
+    let started!: () => void;
+    const executing = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const first = new PylonPortablePhaseWorker({
+      client: fixture.client,
+      executor: {
+        recoverySemantics: async () => "not_proven",
+        execute: async (_request, signal) => {
+          started();
+          return new Promise((_resolve, reject) =>
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+          );
+        },
+      },
+      journal,
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+    });
+    const pass = first.runPass(controller.signal);
+    await executing;
+    controller.abort(new Error("simulated crash during execution"));
+    await pass;
+
+    const denied = new PylonPortablePhaseWorker({
+      client: fixture.client,
+      executor: {
+        recoverySemantics: async () => "not_proven",
+        execute: async () => {
+          throw new Error("must not execute");
+        },
+      },
+      journal,
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+    });
+    await expect(denied.runPass()).rejects.toMatchObject({
+      reason: "non_idempotent_uncertain",
+    });
+
+    let recoveredExecutions = 0;
+    const admitted = new PylonPortablePhaseWorker({
+      client: fixture.client,
+      executor: {
+        recoverySemantics: async () => "operation_ref_idempotent",
+        execute: async () => {
+          recoveredExecutions += 1;
+          return {
+            checkpointRef: null,
+            checkpointObjectRef: null,
+            checkpointDigest: null,
+            evidenceRefs: [],
+          };
+        },
+      },
+      journal,
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+    });
+    await admitted.runPass();
+    expect(recoveredExecutions).toBe(1);
+  });
+
+  test("retries an identical completion after a lost acknowledgement without re-execution", async () => {
+    const source = record();
+    const fixture = fakeClient(source);
+    const journal = memoryJournal();
+    let executions = 0;
+    let completionAttempts = 0;
+    const attempted: PortablePhaseOperationResultRequest[] = [];
+    const originalComplete = fixture.client.complete;
+    const client: PylonPortablePhaseOperationClient = {
+      ...fixture.client,
+      complete: async (request, signal) => {
+        attempted.push(request);
+        completionAttempts += 1;
+        if (completionAttempts === 1) {
+          await originalComplete(request, signal);
+          throw new PylonPortablePhaseTransportError("network_failed");
+        }
+        return originalComplete(request, signal);
+      },
+    };
+    const worker = new PylonPortablePhaseWorker({
+      client,
+      executor: {
+        recoverySemantics: async () => "operation_ref_idempotent",
+        execute: async () => {
+          executions += 1;
+          return {
+            checkpointRef: null,
+            checkpointObjectRef: null,
+            checkpointDigest: null,
+            evidenceRefs: [],
+          };
+        },
+      },
+      journal,
       pylonRef,
       targetRef,
       workerInstanceRef,
       now: () => now,
     });
     await expect(worker.runPass()).rejects.toMatchObject({ failure: "network_failed" });
-    await worker.runPass();
+    const restarted = new PylonPortablePhaseWorker({
+      client,
+      executor: {
+        recoverySemantics: async () => "operation_ref_idempotent",
+        execute: async () => {
+          executions += 1;
+          return {
+            checkpointRef: null,
+            checkpointObjectRef: null,
+            checkpointDigest: null,
+            evidenceRefs: [],
+          };
+        },
+      },
+      journal,
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+    });
+    await restarted.runPass();
     expect(executions).toBe(1);
     expect(attempted).toHaveLength(2);
     expect(attempted[1]).toEqual(attempted[0]);
-    expect(fixture.calls.completions).toHaveLength(1);
-    expect(fixture.calls.completions[0]).toEqual(attempted[0]);
+    expect(fixture.calls.completions).toHaveLength(2);
+    expect(fixture.calls.completions).toEqual(attempted);
   });
 });

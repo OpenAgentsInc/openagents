@@ -18,6 +18,11 @@ const PendingResponse = S.Struct({
   schema: S.Literal(RESPONSE_SCHEMA),
   operations: S.Array(PortablePhaseOperationRecordSchema),
 });
+const ReconcileResponse = S.Struct({
+  schema: S.Literal(RESPONSE_SCHEMA),
+  operation: PortablePhaseOperationRecordSchema,
+  status: S.Literal("reconciled"),
+});
 const ClaimResponse = S.Struct({
   schema: S.Literal(RESPONSE_SCHEMA),
   operation: PortablePhaseOperationRecordSchema,
@@ -56,6 +61,7 @@ export type PylonPortablePhaseOperationClient = Readonly<{
     limit: number,
     signal?: AbortSignal,
   ) => Promise<ReadonlyArray<PortablePhaseOperationRecord>>;
+  read: (operationRef: string, signal?: AbortSignal) => Promise<PortablePhaseOperationRecord>;
   claim: (
     request: PortablePhaseOperationClaimRequest,
     signal?: AbortSignal,
@@ -147,7 +153,7 @@ export const makePylonPortablePhaseOperationClient = (
   const route = `/api/pylons/${encodeURIComponent(options.pylonRef)}/portable-targets/${encodeURIComponent(options.targetRef)}/phase-operations`;
 
   const request = async (
-    suffix: "" | "/claim" | "/renew" | "/complete",
+    suffix: string,
     init: RequestInit,
     query?: URLSearchParams,
     signal?: AbortSignal,
@@ -163,7 +169,7 @@ export const makePylonPortablePhaseOperationClient = (
         headers: {
           Accept: "application/json",
           Authorization: `Bearer ${options.agentToken}`,
-          ...(init.headers ?? {}),
+          ...init.headers,
         },
         signal: requestSignal,
       });
@@ -200,6 +206,24 @@ export const makePylonPortablePhaseOperationClient = (
       )
         throw transportError("bad_response");
       return decoded.operations;
+    },
+    read: async (operationRef, signal) => {
+      if (!SAFE_REF.test(operationRef)) throw transportError("invalid_request");
+      const raw = await request(
+        `/reconcile/${encodeURIComponent(operationRef)}`,
+        { method: "GET" },
+        undefined,
+        signal,
+      );
+      const decoded = decode(ReconcileResponse, raw);
+      if (
+        decoded.operation.request.operationRef !== operationRef ||
+        decoded.operation.request.pylonRef !== options.pylonRef ||
+        decoded.operation.request.targetRef !== options.targetRef
+      ) {
+        throw transportError("bad_response");
+      }
+      return decoded.operation;
     },
     claim: async (body, signal) => {
       const exact = S.decodeUnknownSync(PortablePhaseOperationClaimRequestSchema)(body, {

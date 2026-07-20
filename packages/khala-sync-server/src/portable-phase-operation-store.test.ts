@@ -197,6 +197,12 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
       }),
     ).rejects.toMatchObject({ code: "conflict" });
     expect(await store.pending(pylonRef, sourceTargetRef)).toContainEqual(first.operation);
+    expect(await store.read(pylonRef, sourceTargetRef, request.operationRef)).toEqual(
+      first.operation,
+    );
+    await expect(
+      store.read("pylon.ide13.phase.other", sourceTargetRef, request.operationRef),
+    ).rejects.toMatchObject({ code: "not_found" });
     expect(await store.pending("pylon.ide13.phase.other", sourceTargetRef)).toEqual([]);
     await sql`
       UPDATE khala_sync_portable_phase_operations

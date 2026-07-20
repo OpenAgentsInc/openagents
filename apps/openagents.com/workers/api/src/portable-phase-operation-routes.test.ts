@@ -112,6 +112,7 @@ type Calls = {
   renew: Array<PortablePhaseOperationRenewRequest>;
   complete: Array<PortablePhaseOperationResultRequest>;
   pending: Array<Readonly<{ pylonRef: string; targetRef: string; limit: number }>>;
+  read: Array<Readonly<{ pylonRef: string; targetRef: string; operationRef: string }>>;
   resolved: Array<Readonly<{ ownerUserId: string; pylonRef: string; targetRef: string }>>;
 };
 
@@ -122,7 +123,7 @@ const setup = (
     targetState?: "ready" | "unavailable" | "not_found";
   }>,
 ) => {
-  const calls: Calls = { claim: [], renew: [], complete: [], pending: [], resolved: [] };
+  const calls: Calls = { claim: [], renew: [], complete: [], pending: [], read: [], resolved: [] };
   const routes = makePortablePhaseOperationRoutes({
     authenticate: async () =>
       options?.authenticated === false
@@ -142,6 +143,14 @@ const setup = (
             limit: limit ?? 32,
           });
           return [record()];
+        },
+        read: async (inputPylonRef, inputTargetRef, operationRef) => {
+          calls.read.push({
+            pylonRef: String(inputPylonRef),
+            targetRef: String(inputTargetRef),
+            operationRef: String(operationRef),
+          });
+          return record("claimed");
         },
         claim: async (input) => {
           calls.claim.push(input as PortablePhaseOperationClaimRequest);
@@ -248,6 +257,17 @@ describe("portable phase operation Pylon routes (IDE-13)", () => {
     expect(await response?.json()).toMatchObject({ status: "replayed" });
     expect(calls.claim).toEqual([claimBody]);
     expect(calls.claim[0]).not.toHaveProperty("rawPayload");
+  });
+
+  test("reconciles one authenticated operation in the exact Pylon target scope", async () => {
+    const { calls, route } = setup();
+    const response = await route(request(`${basePath}/reconcile/${claimBody.operationRef}`), {});
+    expect(response?.status).toBe(200);
+    expect(await response?.json()).toMatchObject({
+      status: "reconciled",
+      operation: { request: { operationRef: claimBody.operationRef, pylonRef, targetRef } },
+    });
+    expect(calls.read).toEqual([{ pylonRef, targetRef, operationRef: claimBody.operationRef }]);
   });
 
   test("rejects a path/body binding mismatch before the store", async () => {

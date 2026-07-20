@@ -25,7 +25,7 @@ export type PortablePhaseRouteActor = Readonly<{
 
 type PortablePhaseExchange = Pick<
   PostgresPortablePhaseOperationStore,
-  "claim" | "complete" | "pending" | "renew"
+  "claim" | "complete" | "pending" | "read" | "renew"
 >;
 
 export type PortablePhaseOperationRouteDependencies<Bindings> = Readonly<{
@@ -124,7 +124,7 @@ export const makePortablePhaseOperationRoutes = <Bindings>(
   ): Promise<HttpResponse> | undefined => {
     const url = new URL(request.url);
     const match =
-      /^\/api\/pylons\/([^/]+)\/portable-targets\/([^/]+)\/phase-operations(?:\/(claim|renew|complete))?$/.exec(
+      /^\/api\/pylons\/([^/]+)\/portable-targets\/([^/]+)\/phase-operations(?:\/(claim|renew|complete)|\/reconcile\/([^/]+))?$/.exec(
         url.pathname,
       );
     if (match === null) return undefined;
@@ -139,6 +139,13 @@ export const makePortablePhaseOperationRoutes = <Bindings>(
         return response({ error: "invalid_path", retryable: false }, 400);
       }
       const operation = match[3];
+      let reconcileOperationRef: string | undefined;
+      try {
+        reconcileOperationRef =
+          match[4] === undefined ? undefined : decodePathRef(decodeURIComponent(match[4]));
+      } catch {
+        return response({ error: "invalid_path", retryable: false }, 400);
+      }
       const expectedMethod = operation === undefined ? "GET" : "POST";
       if (request.method !== expectedMethod) {
         return methodNotAllowed([expectedMethod]);
@@ -187,6 +194,12 @@ export const makePortablePhaseOperationRoutes = <Bindings>(
 
       try {
         if (operation === undefined) {
+          if (reconcileOperationRef !== undefined) {
+            const exact = await dependencies.withExchange(env, (exchange) =>
+              exchange.read(pylonRef, targetRef, reconcileOperationRef),
+            );
+            return response({ operation: exact, status: "reconciled" });
+          }
           const rawLimit = url.searchParams.get("limit") ?? "32";
           const limit = Number(rawLimit);
           if (!Number.isSafeInteger(limit) || limit < 1 || limit > 32) {

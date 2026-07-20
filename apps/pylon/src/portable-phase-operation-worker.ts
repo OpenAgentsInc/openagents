@@ -1,11 +1,16 @@
 import { createHash } from "node:crypto";
 import type {
+  PortablePhaseOperationClaimRequest,
   PortablePhaseOperationRecord,
   PortablePhaseOperationRequest,
   PortablePhaseOperationResultRequest,
 } from "@openagentsinc/portable-session-contract";
 
 import type { PylonPortablePhaseOperationClient } from "./portable-phase-operation-client.js";
+import type {
+  PylonPortablePhaseClaimJournal,
+  PylonPortablePhaseClaimJournalEntry,
+} from "./portable-phase-operation-claim-journal.js";
 import type { PylonOwnerLocalExecutionTarget } from "./portable-session-target.js";
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u;
@@ -35,6 +40,9 @@ export type PylonPortablePhaseExecutor = Readonly<{
     request: PortablePhaseOperationRequest,
     signal: AbortSignal,
   ) => Promise<PylonPortablePhaseExecutionResult>;
+  recoverySemantics: (
+    request: PortablePhaseOperationRequest,
+  ) => Promise<"not_proven" | "operation_ref_idempotent">;
 }>;
 
 type TargetCall =
@@ -69,6 +77,7 @@ export type PylonPortablePhaseTargetResolver = Readonly<{
     | Readonly<{
         target: PylonOwnerLocalExecutionTarget;
         call: TargetCall;
+        operationRefSemantics: "not_proven" | "operation_ref_idempotent";
       }>
     | undefined
   >;
@@ -137,9 +146,8 @@ const result = (evidenceRefs: ReadonlyArray<string>): PylonPortablePhaseExecutio
  */
 export const makePylonPortablePhaseExecutor = (
   resolver: PylonPortablePhaseTargetResolver,
-): PylonPortablePhaseExecutor => ({
-  execute: async (request, signal) => {
-    if (signal.aborted) throw signal.reason;
+): PylonPortablePhaseExecutor => {
+  const resolveExact = async (request: PortablePhaseOperationRequest) => {
     const resolved = await resolver.resolve(request);
     if (resolved === undefined) {
       throw new PylonPortablePhaseExecutionError(
@@ -150,33 +158,48 @@ export const makePylonPortablePhaseExecutor = (
       throw new PylonPortablePhaseExecutionError("error.pylon.portable-phase.target-mismatch");
     }
     assertCallBinding(request, resolved.call);
-    if (signal.aborted) throw signal.reason;
-    switch (resolved.call.kind) {
-      case "quiesce":
-        return result((await resolved.target.quiesceGraph(resolved.call.input)).evidenceRefs);
-      case "checkpoint-create": {
-        const bundle = await resolved.target.createCheckpoint(resolved.call.input);
-        return {
-          checkpointRef: bundle.checkpoint.checkpointRef,
-          checkpointObjectRef: resolved.call.checkpointObjectRef,
-          checkpointDigest: bundle.checkpoint.digest,
-          evidenceRefs: bundle.checkpoint.receiptRefs,
-        };
+    return resolved;
+  };
+  return {
+    recoverySemantics: async (request) => {
+      try {
+        return (await resolveExact(request)).operationRefSemantics;
+      } catch {
+        return "not_proven";
       }
-      case "source-cleanup":
-        return result((await resolved.target.cleanupSource(resolved.call.input)).evidenceRefs);
-      case "checkpoint-stage":
-        return result((await resolved.target.stageCheckpoint(resolved.call.input)).evidenceRefs);
-      case "destination-activate":
-        return result((await resolved.target.activate(resolved.call.input)).evidenceRefs);
-      case "staged-abort":
-        return result((await resolved.target.abortStaged(resolved.call.input)).evidenceRefs);
-    }
-  },
-});
+    },
+    execute: async (request, signal) => {
+      if (signal.aborted) throw signal.reason;
+      const resolved = await resolveExact(request);
+      if (signal.aborted) throw signal.reason;
+      switch (resolved.call.kind) {
+        case "quiesce":
+          return result((await resolved.target.quiesceGraph(resolved.call.input)).evidenceRefs);
+        case "checkpoint-create": {
+          const bundle = await resolved.target.createCheckpoint(resolved.call.input);
+          return {
+            checkpointRef: bundle.checkpoint.checkpointRef,
+            checkpointObjectRef: resolved.call.checkpointObjectRef,
+            checkpointDigest: bundle.checkpoint.digest,
+            evidenceRefs: bundle.checkpoint.receiptRefs,
+          };
+        }
+        case "source-cleanup":
+          return result((await resolved.target.cleanupSource(resolved.call.input)).evidenceRefs);
+        case "checkpoint-stage":
+          return result((await resolved.target.stageCheckpoint(resolved.call.input)).evidenceRefs);
+        case "destination-activate":
+          return result((await resolved.target.activate(resolved.call.input)).evidenceRefs);
+        case "staged-abort":
+          return result((await resolved.target.abortStaged(resolved.call.input)).evidenceRefs);
+      }
+    },
+  };
+};
 
 type ActiveClaim = {
   record: PortablePhaseOperationRecord;
+  claimRequest: PortablePhaseOperationClaimRequest;
   claimRef: string;
   claimGeneration: number;
   leaseRevision: number;
@@ -185,9 +208,25 @@ type ActiveClaim = {
   uncertain: boolean;
 };
 
+export class PylonPortablePhaseRecoveryError extends Error {
+  override readonly name = "PylonPortablePhaseRecoveryError";
+
+  constructor(
+    readonly reason:
+      | "claim_expired"
+      | "claim_taken_over"
+      | "non_idempotent_uncertain"
+      | "revision_drift"
+      | "server_bytes_drift",
+  ) {
+    super(`Pylon portable phase recovery failed closed: ${reason}`);
+  }
+}
+
 export type PylonPortablePhaseWorkerOptions = Readonly<{
   client: PylonPortablePhaseOperationClient;
   executor: PylonPortablePhaseExecutor;
+  journal: PylonPortablePhaseClaimJournal;
   pylonRef: string;
   targetRef: string;
   workerInstanceRef: string;
@@ -268,6 +307,7 @@ export class PylonPortablePhaseWorker {
   private readonly pollLimit: number;
   private readonly leaseDurationMs: number;
   private readonly renewalIntervalMs: number;
+  private recovered = false;
 
   constructor(private readonly options: PylonPortablePhaseWorkerOptions) {
     if (
@@ -296,10 +336,12 @@ export class PylonPortablePhaseWorker {
   }
 
   uncertainOperationRefs(): ReadonlyArray<string> {
-    return [...this.active]
+    const refs = [...this.active]
       .filter(([, claim]) => claim.uncertain)
-      .map(([operationRef]) => operationRef)
-      .sort();
+      .map(([operationRef]) => operationRef);
+    // This is a new array. Sorting it cannot mutate worker state.
+    // eslint-disable-next-line unicorn/no-array-sort
+    return refs.sort();
   }
 
   private leaseExpiry(record: PortablePhaseOperationRecord, after: Date): string {
@@ -310,20 +352,161 @@ export class PylonPortablePhaseWorker {
     return new Date(next).toISOString();
   }
 
+  private claimFromRecord(
+    record: PortablePhaseOperationRecord,
+    claimRequest: PortablePhaseOperationClaimRequest,
+  ): ActiveClaim {
+    if (
+      record.state !== "claimed" ||
+      record.claimRef === null ||
+      record.claimRef !== claimRequest.claimRef ||
+      record.workerInstanceRef !== this.options.workerInstanceRef ||
+      claimRequest.workerInstanceRef !== this.options.workerInstanceRef ||
+      record.request.operationRef !== claimRequest.operationRef ||
+      record.request.pylonRef !== claimRequest.pylonRef ||
+      record.request.targetRef !== claimRequest.targetRef ||
+      record.claimGeneration === null ||
+      record.leaseRevision === null ||
+      record.leaseExpiresAt === null
+    ) {
+      throw new PylonPortablePhaseRecoveryError("claim_taken_over");
+    }
+    return {
+      record,
+      claimRequest,
+      claimRef: record.claimRef,
+      claimGeneration: record.claimGeneration,
+      leaseRevision: record.leaseRevision,
+      leaseExpiresAt: record.leaseExpiresAt,
+      uncertain: false,
+    };
+  }
+
+  private journalEntry(
+    claim: ActiveClaim,
+    state: PylonPortablePhaseClaimJournalEntry["state"],
+  ): PylonPortablePhaseClaimJournalEntry {
+    return {
+      record: claim.record,
+      claimRequest: claim.claimRequest,
+      claimGeneration: claim.claimGeneration,
+      leaseRevision: claim.leaseRevision,
+      leaseExpiresAt: claim.leaseExpiresAt,
+      state,
+      completion: claim.completion ?? null,
+    };
+  }
+
+  private async persistClaim(
+    claim: ActiveClaim,
+    state: PylonPortablePhaseClaimJournalEntry["state"],
+  ): Promise<void> {
+    await this.options.journal.put(this.journalEntry(claim, state));
+  }
+
+  private assertServerClaim(
+    server: PortablePhaseOperationRecord,
+    entry: PylonPortablePhaseClaimJournalEntry,
+  ): void {
+    if (!exactRecordBinding(server, entry.record.request)) {
+      throw new PylonPortablePhaseRecoveryError("server_bytes_drift");
+    }
+    if (
+      server.state !== "claimed" ||
+      server.claimRef !== entry.claimRequest.claimRef ||
+      server.workerInstanceRef !== this.options.workerInstanceRef ||
+      server.claimGeneration !== entry.claimGeneration
+    ) {
+      throw new PylonPortablePhaseRecoveryError("claim_taken_over");
+    }
+    if (
+      server.leaseRevision !== entry.leaseRevision ||
+      server.leaseExpiresAt !== entry.leaseExpiresAt
+    ) {
+      throw new PylonPortablePhaseRecoveryError("revision_drift");
+    }
+    if (
+      server.leaseExpiresAt === null ||
+      new Date(server.leaseExpiresAt) <= this.now() ||
+      new Date(server.request.expiresAt) <= this.now()
+    ) {
+      throw new PylonPortablePhaseRecoveryError("claim_expired");
+    }
+  }
+
+  private async renewClaim(
+    claim: ActiveClaim,
+    state: "claimed" | "executing",
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (new Date(claim.leaseExpiresAt) <= this.now()) {
+      throw new PylonPortablePhaseRecoveryError("claim_expired");
+    }
+    const renewedExpiry = this.leaseExpiry(claim.record, new Date(claim.leaseExpiresAt));
+    if (new Date(renewedExpiry) <= new Date(claim.leaseExpiresAt)) return;
+    const request = claim.record.request;
+    const renewed = await this.options.client.renew(
+      {
+        schema: "openagents.portable_phase_operation.v1",
+        claimRef: claim.claimRef,
+        sessionRef: request.sessionRef,
+        attachmentRef: request.attachmentRef,
+        attachmentGeneration: request.attachmentGeneration,
+        pylonRef: request.pylonRef,
+        targetRef: request.targetRef,
+        workerInstanceRef: this.options.workerInstanceRef,
+        claimGeneration: claim.claimGeneration,
+        expectedLeaseRevision: claim.leaseRevision,
+        leaseExpiresAt: renewedExpiry,
+      },
+      signal,
+    );
+    if (
+      !exactRecordBinding(renewed.operation, request) ||
+      renewed.operation.claimRef !== claim.claimRef ||
+      renewed.operation.workerInstanceRef !== this.options.workerInstanceRef ||
+      renewed.operation.claimGeneration !== claim.claimGeneration ||
+      renewed.operation.leaseRevision !== claim.leaseRevision + 1 ||
+      renewed.operation.leaseExpiresAt !== renewedExpiry
+    ) {
+      throw new PylonPortablePhaseRecoveryError("revision_drift");
+    }
+    claim.record = renewed.operation;
+    claim.leaseRevision = renewed.operation.leaseRevision;
+    claim.leaseExpiresAt = renewed.operation.leaseExpiresAt;
+    await this.persistClaim(claim, state);
+  }
+
   private async postCompletion(claim: ActiveClaim, signal: AbortSignal): Promise<void> {
     if (claim.completion === undefined) return;
     const response = await this.options.client.complete(claim.completion, signal);
+    const completion = claim.completion;
     if (
       !exactRecordBinding(response.operation, claim.record.request) ||
-      !["completed", "failed", "replayed"].includes(response.status)
+      !["completed", "failed", "replayed"].includes(response.status) ||
+      response.operation.state !== completion.resultStatus ||
+      response.operation.leaseRevision !== completion.expectedLeaseRevision + 1 ||
+      response.operation.resultRef !== completion.resultRef ||
+      response.operation.resultStatus !== completion.resultStatus ||
+      response.operation.resultCheckpointRef !== completion.checkpointRef ||
+      response.operation.resultCheckpointObjectRef !== completion.checkpointObjectRef ||
+      response.operation.resultCheckpointDigest !== completion.checkpointDigest ||
+      response.operation.errorRef !== completion.errorRef ||
+      response.operation.completedAt !== completion.completedAt ||
+      response.operation.resultEvidenceRefs.length !== completion.evidenceRefs.length ||
+      !response.operation.resultEvidenceRefs.every(
+        (ref, index) => ref === completion.evidenceRefs[index],
+      )
     ) {
       throw new Error("portable phase completion acknowledgement is invalid");
     }
+    await this.options.journal.remove(claim.record.request.operationRef);
     this.active.delete(claim.record.request.operationRef);
   }
 
   private async executeClaim(claim: ActiveClaim, signal: AbortSignal): Promise<void> {
     const request = claim.record.request;
+    await this.persistClaim(claim, "executing");
     const execution = this.options.executor
       .execute(request, signal)
       .then((value) => ({ _tag: "success" as const, value }))
@@ -339,6 +522,7 @@ export class PylonPortablePhaseWorker {
       } catch (error) {
         if (signal.aborted) {
           claim.uncertain = true;
+          await this.persistClaim(claim, "uncertain");
           return;
         }
         throw error;
@@ -347,37 +531,11 @@ export class PylonPortablePhaseWorker {
         settled = next;
         break;
       }
-      const renewedExpiry = this.leaseExpiry(claim.record, new Date(claim.leaseExpiresAt));
-      if (renewedExpiry === claim.leaseExpiresAt) continue;
-      const renewed = await this.options.client.renew(
-        {
-          schema: "openagents.portable_phase_operation.v1",
-          claimRef: claim.claimRef,
-          sessionRef: request.sessionRef,
-          attachmentRef: request.attachmentRef,
-          attachmentGeneration: request.attachmentGeneration,
-          pylonRef: request.pylonRef,
-          targetRef: request.targetRef,
-          workerInstanceRef: this.options.workerInstanceRef,
-          claimGeneration: claim.claimGeneration,
-          expectedLeaseRevision: claim.leaseRevision,
-          leaseExpiresAt: renewedExpiry,
-        },
-        signal,
-      );
-      if (
-        !exactRecordBinding(renewed.operation, request) ||
-        renewed.operation.claimRef !== claim.claimRef ||
-        renewed.operation.claimGeneration !== claim.claimGeneration ||
-        renewed.operation.leaseRevision === null ||
-        renewed.operation.leaseExpiresAt === null
-      )
-        throw new Error("portable phase renewal acknowledgement is invalid");
-      claim.leaseRevision = renewed.operation.leaseRevision;
-      claim.leaseExpiresAt = renewed.operation.leaseExpiresAt;
+      await this.renewClaim(claim, "executing", signal);
     }
     if (signal.aborted) {
       claim.uncertain = true;
+      await this.persistClaim(claim, "uncertain");
       return;
     }
     let status: "completed" | "failed";
@@ -400,6 +558,7 @@ export class PylonPortablePhaseWorker {
     } else {
       if (signal.aborted) {
         claim.uncertain = true;
+        await this.persistClaim(claim, "uncertain");
         return;
       }
       status = "failed";
@@ -430,10 +589,84 @@ export class PylonPortablePhaseWorker {
       errorRef,
       completedAt,
     };
+    await this.persistClaim(claim, "completion_pending");
     await this.postCompletion(claim, signal);
   }
 
+  private async recoverJournal(signal: AbortSignal): Promise<void> {
+    if (this.recovered) return;
+    const entries = await this.options.journal.entries();
+    for (const entry of entries) {
+      if (signal.aborted) return;
+      const operationRef = entry.record.request.operationRef;
+      if (this.active.has(operationRef)) continue;
+      let server = await this.options.client.read(operationRef, signal);
+      if (!exactRecordBinding(server, entry.record.request)) {
+        throw new PylonPortablePhaseRecoveryError("server_bytes_drift");
+      }
+      if (entry.state === "claiming") {
+        if (server.state === "pending") {
+          if (new Date(entry.claimRequest.leaseExpiresAt) <= this.now()) {
+            await this.options.journal.remove(operationRef);
+            continue;
+          }
+          const claimed = await this.options.client.claim(entry.claimRequest, signal);
+          server = claimed.operation;
+        }
+        if (
+          server.state !== "claimed" ||
+          server.claimRef !== entry.claimRequest.claimRef ||
+          server.workerInstanceRef !== this.options.workerInstanceRef
+        ) {
+          throw new PylonPortablePhaseRecoveryError("claim_taken_over");
+        }
+        if (server.leaseExpiresAt === null || new Date(server.leaseExpiresAt) <= this.now()) {
+          throw new PylonPortablePhaseRecoveryError("claim_expired");
+        }
+        const claim = this.claimFromRecord(server, entry.claimRequest);
+        this.active.set(operationRef, claim);
+        await this.persistClaim(claim, "claimed");
+        await this.renewClaim(claim, "claimed", signal);
+        await this.executeClaim(claim, signal);
+        continue;
+      }
+
+      if (entry.state === "completion_pending") {
+        if (
+          server.claimRef !== entry.claimRequest.claimRef ||
+          server.workerInstanceRef !== this.options.workerInstanceRef ||
+          server.claimGeneration !== entry.claimGeneration
+        ) {
+          throw new PylonPortablePhaseRecoveryError("claim_taken_over");
+        }
+        const claim = this.claimFromRecord(entry.record, entry.claimRequest);
+        claim.completion = entry.completion ?? undefined;
+        this.active.set(operationRef, claim);
+        await this.postCompletion(claim, signal);
+        continue;
+      }
+
+      this.assertServerClaim(server, entry);
+      const claim = this.claimFromRecord(server, entry.claimRequest);
+      this.active.set(operationRef, claim);
+      if (entry.state === "executing" || entry.state === "uncertain") {
+        if (
+          (await this.options.executor.recoverySemantics(server.request)) !==
+          "operation_ref_idempotent"
+        ) {
+          claim.uncertain = true;
+          await this.persistClaim(claim, "uncertain");
+          throw new PylonPortablePhaseRecoveryError("non_idempotent_uncertain");
+        }
+      }
+      await this.renewClaim(claim, "claimed", signal);
+      await this.executeClaim(claim, signal);
+    }
+    this.recovered = true;
+  }
+
   async runPass(signal: AbortSignal = new AbortController().signal): Promise<number> {
+    await this.recoverJournal(signal);
     for (const claim of this.active.values()) {
       if (signal.aborted) return 0;
       if (claim.uncertain) continue;
@@ -451,28 +684,40 @@ export class PylonPortablePhaseWorker {
       )
         continue;
       const leaseExpiresAt = this.leaseExpiry(record, this.now());
-      const claimed = await this.options.client.claim(
-        {
-          schema: "openagents.portable_phase_operation.v1",
-          operationRef: request.operationRef,
-          claimRef: stableRef(
-            "claim.pylon.portable-phase",
-            `${request.operationRef}:${this.options.workerInstanceRef}`,
-          ),
-          sessionRef: request.sessionRef,
-          attachmentRef: request.attachmentRef,
-          attachmentGeneration: request.attachmentGeneration,
-          pylonRef: request.pylonRef,
-          targetRef: request.targetRef,
-          workerInstanceRef: this.options.workerInstanceRef,
-          leaseExpiresAt,
-        },
-        signal,
-      );
+      const claimRequest = {
+        schema: "openagents.portable_phase_operation.v1",
+        operationRef: request.operationRef,
+        claimRef: stableRef(
+          "claim.pylon.portable-phase",
+          `${request.operationRef}:${this.options.workerInstanceRef}`,
+        ),
+        sessionRef: request.sessionRef,
+        attachmentRef: request.attachmentRef,
+        attachmentGeneration: request.attachmentGeneration,
+        pylonRef: request.pylonRef,
+        targetRef: request.targetRef,
+        workerInstanceRef: this.options.workerInstanceRef,
+        leaseExpiresAt,
+      } as const;
+      await this.options.journal.put({
+        record,
+        claimRequest,
+        claimGeneration: null,
+        leaseRevision: null,
+        leaseExpiresAt: null,
+        state: "claiming",
+        completion: null,
+      });
+      // A transport failure after this point has an unknown server outcome.
+      // Reconcile the durable intent before the next poll in this process.
+      this.recovered = false;
+      const claimed = await this.options.client.claim(claimRequest, signal);
       if (
         !exactRecordBinding(claimed.operation, request) ||
         claimed.operation.state !== "claimed" ||
         claimed.operation.claimRef === null ||
+        claimed.operation.claimRef !== claimRequest.claimRef ||
+        claimed.operation.workerInstanceRef !== this.options.workerInstanceRef ||
         claimed.operation.claimGeneration === null ||
         claimed.operation.leaseRevision === null ||
         claimed.operation.leaseExpiresAt === null
@@ -492,6 +737,7 @@ export class PylonPortablePhaseWorker {
         throw new Error("portable phase claim acknowledgement is incomplete");
       const active: ActiveClaim = {
         record: claimed.operation,
+        claimRequest,
         claimRef,
         claimGeneration,
         leaseRevision,
@@ -499,6 +745,7 @@ export class PylonPortablePhaseWorker {
         uncertain: false,
       };
       this.active.set(request.operationRef, active);
+      await this.persistClaim(active, "claimed");
       await this.executeClaim(active, signal);
       handled += 1;
     }

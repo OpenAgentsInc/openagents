@@ -362,6 +362,38 @@ export class PostgresPortablePhaseOperationStore {
     return rows.map(rowToRecord);
   }
 
+  async read(
+    pylonRefInput: unknown,
+    targetRefInput: unknown,
+    operationRefInput: unknown,
+  ): Promise<PortablePhaseOperationRecord> {
+    let pylonRef: string;
+    let targetRef: string;
+    let operationRef: string;
+    try {
+      pylonRef = decodeRef(pylonRefInput);
+      targetRef = decodeRef(targetRefInput);
+      operationRef = decodeRef(operationRefInput);
+    } catch {
+      throw new PortablePhaseOperationStoreError("invalid", "portable phase binding is invalid");
+    }
+    const rows: Row[] = await this.sql`
+      SELECT * FROM khala_sync_portable_phase_operations
+      WHERE operation_ref = ${operationRef}
+        AND pylon_ref = ${pylonRef}
+        AND target_ref = ${targetRef}
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (row === undefined) {
+      throw new PortablePhaseOperationStoreError(
+        "not_found",
+        "portable phase operation does not exist in the exact target scope",
+      );
+    }
+    return rowToRecord(row);
+  }
+
   async claim(input: unknown): Promise<{
     readonly status: "claimed" | "replayed";
     readonly operation: PortablePhaseOperationRecord;
