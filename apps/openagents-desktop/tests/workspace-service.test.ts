@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "vite-plus/test"
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -50,6 +50,7 @@ import type {
   WorkspaceSearchHost,
   WorkspaceSearchRequest,
 } from "../src/workspace-search-host.ts"
+import type { IdePortableMutationAuthority } from "../src/ide/portable-mutation-authority.ts"
 import { isolatedGitEnvironment, runGitFixture } from "./git-fixture.ts"
 
 const roots: string[] = []
@@ -355,6 +356,141 @@ describe("Desktop bounded workspace service", () => {
     expect(() => workspace.summary()).toThrow("workspace_disposed")
     expect(workspace.read(file)).toBeNull()
     expect(workspace.gitStatus()).toEqual({ state: "unavailable" })
+  })
+
+  test("keeps reads available and performs no mutation IO when portable authority refuses", () => {
+    const root = makeRoot()
+    const file = path.join(root, "README.md")
+    writeFileSync(file, "before")
+    mkdirSync(path.join(root, "archive"))
+    const mutationCalls: string[] = []
+    const documentCalls: string[] = []
+    const authority: IdePortableMutationAuthority = {
+      authorize: () => ({ _tag: "Refused", reason: "sync_unavailable" }),
+      reauthorize: () => false,
+    }
+    const workspace = openWorkspaceService(root, {
+      grantRef: "workspace.grant.portable",
+      mutationAuthority: authority,
+      mutationIo: {
+        createFile: () => mutationCalls.push("createFile"),
+        createDirectory: () => mutationCalls.push("createDirectory"),
+        rename: () => mutationCalls.push("rename"),
+        copyFile: () => mutationCalls.push("copyFile"),
+        deleteFile: () => mutationCalls.push("deleteFile"),
+        deleteDirectory: () => mutationCalls.push("deleteDirectory"),
+      },
+      documentIo: {
+        read: absolutePath => {
+          documentCalls.push("read")
+          return readFileSync(absolutePath)
+        },
+        replace: () => documentCalls.push("replace"),
+        create: () => documentCalls.push("create"),
+      },
+    })
+
+    const opened = workspace.openDocument({ grantRef: workspace.grantRef, pathRef: "README.md" })
+    expect(opened.state).toBe("available")
+    expect(workspace.read(file)?.content).toBe("before")
+    expect(workspace.createEntry({ parentRef: "", name: "new.txt", kind: "file" }).state).toBe("unavailable")
+    expect(workspace.renameEntry({ pathRef: "README.md", name: "renamed.md", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.moveEntry({ pathRef: "README.md", destinationParentRef: "", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.copyEntry({ pathRef: "README.md", destinationParentRef: "", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.duplicateEntry({ pathRef: "README.md", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.deleteEntry({ pathRef: "README.md", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.saveDocument({
+      grantRef: workspace.grantRef,
+      pathRef: "README.md",
+      content: "after",
+      expectedRevisionRef: "unused",
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    expect(workspace.saveDocumentAs({
+      grantRef: workspace.grantRef,
+      pathRef: "new.md",
+      content: "after",
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    expect(workspace.save({ path: file, content: "after", expectedRevision: "unused" }).state).toBe("unavailable")
+    expect(mutationCalls).toEqual([])
+    expect(documentCalls).toEqual(["read"])
+    expect(readFileSync(file, "utf8")).toBe("before")
+    workspace.dispose()
+  })
+
+  test("re-reads the portable permit immediately before each write boundary", () => {
+    const root = makeRoot()
+    const file = path.join(root, "README.md")
+    writeFileSync(file, "before")
+    mkdirSync(path.join(root, "archive"))
+    const writes: string[] = []
+    let reauthorizationCount = 0
+    const permit = {
+      _tag: "Portable" as const,
+      key: "portable:attachment.1:1",
+      grantRef: "workspace.grant.portable",
+      sessionRef: "session.1",
+      workContextRef: "work-context.1",
+      attachmentRef: "attachment.1",
+      generation: 1,
+      targetRef: "target.local.1",
+    }
+    const authority: IdePortableMutationAuthority = {
+      authorize: () => ({ _tag: "Permitted", permit }),
+      reauthorize: () => {
+        reauthorizationCount += 1
+        return false
+      },
+    }
+    const workspace = openWorkspaceService(root, {
+      grantRef: permit.grantRef,
+      mutationAuthority: authority,
+      mutationIo: {
+        createFile: () => writes.push("createFile"),
+        createDirectory: () => writes.push("createDirectory"),
+        rename: () => writes.push("rename"),
+        copyFile: () => writes.push("copyFile"),
+        deleteFile: () => writes.push("deleteFile"),
+        deleteDirectory: () => writes.push("deleteDirectory"),
+      },
+      documentIo: {
+        read: absolutePath => readFileSync(absolutePath),
+        replace: () => writes.push("replace"),
+        create: () => writes.push("create"),
+      },
+    })
+
+    expect(workspace.createEntry({ parentRef: "", name: "new.txt", kind: "file" }).state).toBe("unavailable")
+    const tree = workspace.tree({ directoryRef: "" })
+    if (tree.state !== "available") throw new Error("expected tree")
+    const readme = tree.entries.find(entry => entry.pathRef === "README.md")
+    if (readme === undefined) throw new Error("expected README entry")
+    const revisionInput = { pathRef: readme.pathRef, expectedRevisionRef: readme.revisionRef }
+    expect(workspace.renameEntry({ ...revisionInput, name: "renamed.md" }).state).toBe("unavailable")
+    expect(workspace.moveEntry({ ...revisionInput, destinationParentRef: "archive" }).state).toBe("unavailable")
+    expect(workspace.copyEntry({ ...revisionInput, destinationParentRef: "archive" }).state).toBe("unavailable")
+    expect(workspace.duplicateEntry(revisionInput).state).toBe("unavailable")
+    expect(workspace.deleteEntry(revisionInput).state).toBe("unavailable")
+    const opened = workspace.openDocument({ grantRef: permit.grantRef, pathRef: "README.md" })
+    if (opened.state !== "available") throw new Error("expected document")
+    expect(workspace.saveDocument({
+      grantRef: permit.grantRef,
+      pathRef: "README.md",
+      content: "after",
+      expectedRevisionRef: opened.document.revisionRef,
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    expect(workspace.saveDocumentAs({
+      grantRef: permit.grantRef,
+      pathRef: "new.md",
+      content: "after",
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    const current = workspace.read(file)
+    if (current === null) throw new Error("expected file")
+    expect(workspace.save({ path: file, content: "after", expectedRevision: current.revision }).state).toBe("unavailable")
+    expect(writes).toEqual([])
+    expect(reauthorizationCount).toBe(9)
+    expect(readFileSync(file, "utf8")).toBe("before")
+    expect(existsSync(path.join(root, "new.txt"))).toBe(false)
+    workspace.dispose()
   })
 
   test("reads and atomically saves an existing bounded text file with a new revision", () => {

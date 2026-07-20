@@ -476,6 +476,7 @@ import {
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
 import { openAdmittedDesktopWorkspace } from "./desktop-workspace-admission.ts"
+import { workspaceAdmissionFromSnapshot } from "./desktop-coding-catalog.ts"
 import {
   DesktopIdeAgentCodeCommandChannel,
   DesktopIdeAgentCodeSnapshotChannel,
@@ -514,6 +515,7 @@ import {
   decodeIdePortableClientCommand,
   emptyIdePortableClientSnapshot,
 } from "./ide/portable-client-contract.ts"
+import { makeIdePortableMutationAuthority } from "./ide/portable-mutation-authority.ts"
 import {
   openIdeManagedSandboxHost,
   type IdeManagedSandboxHost,
@@ -2366,7 +2368,31 @@ const withProductSpecWorkroom = <A>(
     ? productSpecUnavailable("Choose an admitted coding workspace before using ProductSpec work.")
     : work(authority)
 }
+const knownPortableWorkspaceSessions = new Set<string>()
+const workspacePortableMutationAuthority = makeIdePortableMutationAuthority({
+  admission: () => {
+    const catalog = hostLifecycle.sync()?.codingCatalog()
+    return catalog === null || catalog === undefined
+      ? null
+      : workspaceAdmissionFromSnapshot(catalog.snapshot())
+  },
+  portableSnapshot: () => {
+    const snapshot = hostLifecycle.sync()?.portableSnapshot() ?? null
+    if (snapshot !== null) {
+      for (const session of snapshot.sessions) knownPortableWorkspaceSessions.add(session.sessionRef)
+    }
+    return snapshot
+  },
+  identityTier: () => hostLifecycle.sync()?.status().identityTier ?? "unavailable",
+  knownPortableSession: sessionRef => {
+    if (knownPortableWorkspaceSessions.has(sessionRef)) return true
+    const catalog = hostLifecycle.sync()?.codingCatalog()?.snapshot()
+    return catalog?.catalog.sessions.some(session =>
+      session.sessionRef === sessionRef && session.currentAttachmentRef !== null) ?? false
+  },
+})
 const openSelectedWorkspace = (root: string) => openWorkspaceService(root, {
+  mutationAuthority: workspacePortableMutationAuthority,
   reveal: absolutePath => {
     shell.showItemInFolder(absolutePath)
     return true
@@ -2380,6 +2406,7 @@ const installAdmittedCodingWorkspace = (root: string): boolean => {
     root,
     (selectedRoot, grantRef) => openWorkspaceService(selectedRoot, {
       grantRef,
+      mutationAuthority: workspacePortableMutationAuthority,
       reveal: absolutePath => {
         shell.showItemInFolder(absolutePath)
         return true
