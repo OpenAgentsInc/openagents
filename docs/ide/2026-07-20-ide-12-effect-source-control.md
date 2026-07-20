@@ -1,7 +1,7 @@
 # IDE-12 Effect source control
 
-Date: 2026-07-20  
-Issue: [#9040](https://github.com/OpenAgentsInc/openagents/issues/9040)  
+Date: 2026-07-20
+Issue: [#9040](https://github.com/OpenAgentsInc/openagents/issues/9040)
 State: implemented candidate. Independent review is not complete.
 
 ## Result
