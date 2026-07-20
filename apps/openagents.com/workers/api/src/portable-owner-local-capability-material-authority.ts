@@ -96,6 +96,8 @@ export const makePortableOwnerLocalCapabilityMaterialAuthority = (
   const now = (dependencies.now ?? (() => new Date()))();
   let material: Uint8Array | undefined;
   let grantExpiresAt: string | undefined;
+  let providerAccountRef: string | undefined;
+  let githubConnectionRef: string | undefined;
 
   try {
     if (authority.capability === "provider") {
@@ -114,6 +116,7 @@ export const makePortableOwnerLocalCapabilityMaterialAuthority = (
         throw new Error("provider destination grant scope is invalid");
       }
       grantExpiresAt = existing.expiresAt;
+      providerAccountRef = existing.providerAccountRef;
       if (existing.status === "issued") {
         const resolved = await dependencies.resolveProviderGrant({
           actorAgentUserId: authority.actorAgentUserId,
@@ -156,6 +159,7 @@ export const makePortableOwnerLocalCapabilityMaterialAuthority = (
         throw new Error("GitHub destination grant scope is invalid");
       }
       grantExpiresAt = existing.expiresAt;
+      githubConnectionRef = existing.connectionRef;
       if (existing.status === "issued") {
         const resolved = await dependencies.resolveGitHubGrant({
           grantRef: authority.destinationGrantRef,
@@ -197,6 +201,47 @@ export const makePortableOwnerLocalCapabilityMaterialAuthority = (
       Date.parse(grantExpiresAt) <= (dependencies.now ?? (() => new Date()))().getTime()
     ) {
       throw new Error("destination runner session authority changed");
+    }
+    if (providerAccountRef !== undefined) {
+      const finalGrant = await dependencies.readProviderGrant(authority.destinationGrantRef);
+      if (
+        finalGrant === undefined ||
+        finalGrant.userId !== authority.ownerRef ||
+        finalGrant.provider !== dependencies.providerKind ||
+        finalGrant.providerAccountRef !== providerAccountRef ||
+        finalGrant.runnerSessionId !== runnerSessionRef ||
+        finalGrant.requestedAction !== EXPECTED_ACTION ||
+        finalGrant.status !== "used" ||
+        !hasExactAncestry(finalGrant.metadataJson, authority.sourceGrantRef) ||
+        Date.parse(finalGrant.expiresAt) <=
+          (dependencies.now ?? (() => new Date()))().getTime()
+      ) {
+        throw new Error("provider destination grant authority changed");
+      }
+    } else if (githubConnectionRef !== undefined) {
+      const [finalGrant, finalConnection] = await Promise.all([
+        dependencies.readGitHubGrant(authority.destinationGrantRef),
+        dependencies.readGitHubConnection(authority.ownerRef),
+      ]);
+      if (
+        finalGrant === undefined ||
+        finalGrant.userId !== authority.ownerRef ||
+        finalGrant.connectionRef !== githubConnectionRef ||
+        finalGrant.runnerSessionId !== runnerSessionRef ||
+        finalGrant.requestedAction !== EXPECTED_ACTION ||
+        finalGrant.status !== "used" ||
+        !hasExactAncestry(finalGrant.metadataJson, authority.sourceGrantRef) ||
+        Date.parse(finalGrant.expiresAt) <=
+          (dependencies.now ?? (() => new Date()))().getTime() ||
+        finalConnection === undefined ||
+        finalConnection.connectionRef !== githubConnectionRef ||
+        finalConnection.secretRef !== finalGrant.secretRef ||
+        !dependencies.githubScopesSatisfy(finalConnection.scopes)
+      ) {
+        throw new Error("GitHub destination grant authority changed");
+      }
+    } else {
+      throw new Error("destination grant authority is unavailable");
     }
     return material;
   } catch (error) {

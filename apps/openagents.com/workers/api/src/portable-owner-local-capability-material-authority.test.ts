@@ -63,37 +63,43 @@ const githubGrant = (overrides: Readonly<Record<string, unknown>> = {}) => ({
 
 const dependencies = (
   overrides: Partial<PortableOwnerLocalCapabilityMaterialAuthorityDependencies> = {},
-): PortableOwnerLocalCapabilityMaterialAuthorityDependencies => ({
-  recheckAuthority: async () => ({ destinationRunnerSessionRef: runnerSessionRef }),
-  readProviderGrant: async () => providerGrant(),
-  resolveProviderGrant: async () => ({
-    grantRef: destinationGrantRef,
-    ownerUserId: "owner.ide13.1",
-    providerAccountRef: "provider.account.ide13.1",
-    runnerSessionId: runnerSessionRef,
-    requestedAction: "portable_session_resume",
-    status: "used",
-  }),
-  readProviderMaterial: async () => new TextEncoder().encode("provider-private"),
-  readGitHubGrant: async () => githubGrant(),
-  resolveGitHubGrant: async () => ({
-    grantRef: destinationGrantRef,
-    connectionRef: "github.connection.ide13.1",
-    runnerSessionId: runnerSessionRef,
-    requestedAction: "portable_session_resume",
-    scopes: ["repo"],
-  }),
-  readGitHubConnection: async () => ({
-    connectionRef: "github.connection.ide13.1",
-    secretRef: "github.secret.ide13.1",
-    scopes: ["repo"],
-  }),
-  readGitHubMaterial: async () => new TextEncoder().encode("github-private"),
-  githubScopesSatisfy: scopes => scopes.includes("repo"),
-  providerKind: "chatgpt-codex",
-  now: () => new Date("2026-07-20T15:00:00.000Z"),
-  ...overrides,
-});
+): PortableOwnerLocalCapabilityMaterialAuthorityDependencies => {
+  let providerReads = 0;
+  let githubReads = 0;
+  return {
+    recheckAuthority: async () => ({ destinationRunnerSessionRef: runnerSessionRef }),
+    readProviderGrant: async () =>
+      providerGrant({ status: providerReads++ === 0 ? "issued" : "used" }),
+    resolveProviderGrant: async () => ({
+      grantRef: destinationGrantRef,
+      ownerUserId: "owner.ide13.1",
+      providerAccountRef: "provider.account.ide13.1",
+      runnerSessionId: runnerSessionRef,
+      requestedAction: "portable_session_resume",
+      status: "used",
+    }),
+    readProviderMaterial: async () => new TextEncoder().encode("provider-private"),
+    readGitHubGrant: async () =>
+      githubGrant({ status: githubReads++ === 0 ? "issued" : "used" }),
+    resolveGitHubGrant: async () => ({
+      grantRef: destinationGrantRef,
+      connectionRef: "github.connection.ide13.1",
+      runnerSessionId: runnerSessionRef,
+      requestedAction: "portable_session_resume",
+      scopes: ["repo"],
+    }),
+    readGitHubConnection: async () => ({
+      connectionRef: "github.connection.ide13.1",
+      secretRef: "github.secret.ide13.1",
+      scopes: ["repo"],
+    }),
+    readGitHubMaterial: async () => new TextEncoder().encode("github-private"),
+    githubScopesSatisfy: scopes => scopes.includes("repo"),
+    providerKind: "chatgpt-codex",
+    now: () => new Date("2026-07-20T15:00:00.000Z"),
+    ...overrides,
+  };
+};
 
 describe("owner-local capability material authority", () => {
   test("resolves exact provider material with the authenticated Pylon actor", async () => {
@@ -174,6 +180,21 @@ describe("owner-local capability material authority", () => {
       }),
     );
     await expect(redeem()).rejects.toThrow("destination runner session authority changed");
+    expect(material.every(byte => byte === 0)).toBe(true);
+  });
+
+  test("zeroes material when the destination grant is revoked after custody read", async () => {
+    let reads = 0;
+    const material = new TextEncoder().encode("zero-on-grant-drift");
+    const redeem = makePortableOwnerLocalCapabilityMaterialAuthority(
+      authority(),
+      dependencies({
+        readProviderGrant: async () =>
+          providerGrant({ status: reads++ === 0 ? "issued" : "revoked" }),
+        readProviderMaterial: async () => material,
+      }),
+    );
+    await expect(redeem()).rejects.toThrow("provider destination grant authority changed");
     expect(material.every(byte => byte === 0)).toBe(true);
   });
 });

@@ -9797,8 +9797,15 @@ const recheckPortableOwnerLocalCapabilityMaterialAuthority = async (
       SELECT result_destination_runner_session_reservation_ref
       FROM khala_sync_portable_phase_operations
       WHERE command_execution_claim_ref = ${authority.commandExecutionClaimRef}
+        AND owner_user_id = ${authority.ownerRef}
+        AND session_ref = ${authority.sessionRef}
+        AND attachment_ref = ${authority.attachmentRef}
+        AND attachment_generation = ${authority.attachmentGeneration}
+        AND target_ref = ${authority.targetRef}
+        AND pylon_ref = ${authority.pylonRef}
         AND kind = 'checkpoint-stage'
         AND state = 'completed'
+        AND expires_at > NOW()
       LIMIT 1
     `
     const runnerRef = runnerRows[0]?.result_destination_runner_session_reservation_ref
