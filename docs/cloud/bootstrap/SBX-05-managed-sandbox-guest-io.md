@@ -89,6 +89,10 @@ kills the process group on timeout or output excess, scans returned bytes for
 secret-shaped material, and removes operation scratch before it emits a
 success receipt.
 
+Both guest drivers use `--ssh-key-expire-after=10m`, the relative-duration
+gcloud flag. They must not pass a duration to `--ssh-key-expiration`, which is
+an absolute-timestamp flag and fails before guest-key installation.
+
 ## Fault response
 
 The component refuses these classes before it returns success:

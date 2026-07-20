@@ -15030,6 +15030,28 @@
       }
     },
     {
+      "path": "docs/apple-fm/apple-fm-cli.md",
+      "sha256": "dd664f6e9d62a9f1f7ce71513c11da41d2e040bfeb1c19963b11c6a3d1648903",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/artanis/2026-06-06-artanis-deployment-readiness-audit.md",
       "sha256": "d346f7631283c480afeec623b929a7d30544a04be8c13696feecd1012af0e244",
       "reason": "Immutable historical or evidence source data",
@@ -19738,7 +19760,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md",
-      "sha256": "286033624970b7a9907948d91e252b262f7386074a0dcca082d98f5698da5fdf",
+      "sha256": "460402cee3ecb1c3af85896bc63689cef1b55dc37251767e523bd6c57543eab3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

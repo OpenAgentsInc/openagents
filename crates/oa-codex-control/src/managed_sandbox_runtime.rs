@@ -1028,7 +1028,7 @@ fn guest_io_probe_args(project_id: &str, zone: &str, resource_name: &str) -> Vec
         zone.to_string(),
         "--internal-ip".to_string(),
         "--quiet".to_string(),
-        "--ssh-key-expiration=10m".to_string(),
+        "--ssh-key-expire-after=10m".to_string(),
         "--ssh-flag=-oBatchMode=yes".to_string(),
         "--ssh-flag=-oConnectTimeout=5".to_string(),
         "--ssh-flag=-oConnectionAttempts=1".to_string(),
@@ -2159,6 +2159,8 @@ mod tests {
             ["compute", "ssh", "openagents@oa-msb-generation"]
         );
         assert!(args.contains(&"--internal-ip".to_string()));
+        assert!(args.contains(&"--ssh-key-expire-after=10m".to_string()));
+        assert!(!args.contains(&"--ssh-key-expiration=10m".to_string()));
         assert!(args.contains(&"--ssh-flag=-oBatchMode=yes".to_string()));
         assert!(args.contains(&"--ssh-flag=-oConnectTimeout=5".to_string()));
         assert_eq!(

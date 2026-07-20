@@ -9,7 +9,7 @@ The Apple Foundation Models backend has a runnable CLI in the Pylon runtime
 All commands run against the local Swift bridge on `http://127.0.0.1:11435` by
 default. Add `--auto-launch` to start or adopt the bridge automatically (AFM-1
 launcher): a bridge the CLI launches is stopped on exit unless you pass
-`--stop-on-exit false`; an already-running bridge is adopted and never stopped.
+`--stop-on-exit false`. An already-running bridge is adopted and never stopped.
 Add `--json` for a public-safe machine-readable result.
 
 ## Commands
