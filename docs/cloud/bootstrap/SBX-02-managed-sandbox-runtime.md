@@ -73,9 +73,11 @@ revision in the acceptance evidence. Image sealing preserves an empty
 `/etc/machine-id` path so systemd can generate a fresh clone identity and DHCP
 client ID. Before admission, the builder boots the sealed image as a private,
 no-identity smoke VM and requires observed DHCP, metadata startup, per-guest
-SSH host keys, the workload metadata guard, and SSH service readiness. Only a
-passing image receives `openagents-boot-smoke=passed`. A failed newly-created
-image and its smoke VM are deleted by the builder cleanup path.
+SSH host keys, the workload metadata guard, SSH service readiness, both pinned
+agent SDKs, and both guest drivers. The smoke also proves the exact metadata
+v1 network path. Only a passing image receives
+`openagents-boot-smoke=passed`. A failed newly-created image and its smoke VM
+are deleted by the builder cleanup path.
 
 The operational native and Box-compatible authorities use the single profile
 ref `profile.sbx.gce.e2-small.v1`. That ref is part of the operational profile
@@ -186,6 +188,11 @@ A generation mismatch returns a conflict.
 `reconcile` observes an uncertain create, resume, stop, or delete and converges
 the same provider ownership.
 It does not select a different region, image, machine, or provider.
+Create and resume poll only the generation-specific serial boot marker. After
+the marker appears, or once the bounded marker window expires, the control
+plane performs one complete instance, identity, metadata, ingress, and egress
+attestation. This keeps the failure path inside the bridge request budget
+without weakening the facts required for `ready`.
 
 ## Cleanup
 
@@ -222,7 +229,8 @@ for the independent gate and `--environment production` only after staging
 acceptance. Cloud Build submissions are asynchronous and the scripts poll the
 authoritative build status. They do not depend on permission to stream the
 default logs bucket. Re-running the immutable guest image build verifies and
-reuses an exact `READY` image only when its recorded source revision matches.
+reuses an exact `READY` image only when its recorded source revision matches
+and its `openagents-boot-smoke` label is `passed`.
 
 ## Owner-gated live component acceptance
 

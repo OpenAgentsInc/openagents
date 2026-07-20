@@ -19070,7 +19070,7 @@
     },
     {
       "path": "docs/cloud/INVARIANTS.md",
-      "sha256": "e9bc3228db5e4e97bb3e92329a55feeb6578a0eeb81d4e3da09f0393cfe5a57e",
+      "sha256": "5eacf1c6ade8e69ea34d7b23918f7140d2787643fe2fe28d0eb999525c60a253",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19671,7 +19671,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md",
-      "sha256": "40a39d27c02380fd4dbc31126062eabdc914f7ca556f4bf84845d4cb89185685",
+      "sha256": "d59f8374e5b168eca6efb548a069f4401989afabd1c8f105779a9cba0a3384a4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

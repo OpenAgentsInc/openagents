@@ -123,6 +123,9 @@ rm -f /etc/ssh/ssh_host_*
 # for the cloned boot. Removing the path makes systemd-networkd unable to
 # derive its DHCP identity, which strands an otherwise RUNNING GCE guest.
 truncate -s 0 /etc/machine-id
+rm -f /var/lib/dbus/machine-id /var/lib/systemd/random-seed
+install -d -m 0755 /var/lib/dbus
+ln -s /etc/machine-id /var/lib/dbus/machine-id
 truncate -s 0 /var/log/wtmp /var/log/btmp /var/log/lastlog 2>/dev/null || true
 sync
 SETUP
@@ -132,11 +135,18 @@ cat >"$smoke_file" <<'SMOKE'
 set -eu
 test -s /etc/machine-id
 ip -4 -o address show scope global | grep -q 'inet '
+test -x /usr/bin/node
+test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs
+test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
+test -d /opt/openagents-managed-sandbox/node_modules/@openai/codex-sdk
+test -d /opt/openagents-managed-sandbox/node_modules/@anthropic-ai/claude-agent-sdk
 systemctl is-active --quiet openagents-managed-sandbox-hostkeys.service
 systemctl is-active --quiet openagents-managed-sandbox-metadata-guard.service
 systemctl is-active --quiet ssh.service
 find /etc/ssh -maxdepth 1 -type f -name 'ssh_host_*_key' -size +0c | grep -q .
 /usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT
+curl -fsS -H 'Metadata-Flavor: Google' \
+  http://metadata.google.internal/computeMetadata/v1/instance/name >/dev/null
 printf 'OA_MSB_IMAGE_SMOKE_READY\n' >/dev/ttyS0
 SMOKE
 

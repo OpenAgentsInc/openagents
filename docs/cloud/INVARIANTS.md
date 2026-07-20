@@ -250,8 +250,10 @@ design context only.
 - The operational image builder must preserve an empty `/etc/machine-id` file,
   then boot the sealed image once as a private no-identity VM. Image admission
   requires observed DHCP, metadata startup, regenerated SSH host keys, active
-  SSH, and the workload metadata guard. A failed newly-created image remains
-  unadmitted and is deleted with its exact builder/smoke resources.
+  SSH, the workload metadata guard, both pinned agent SDKs, and both guest
+  drivers. The smoke must also prove exact metadata v1 networking. A failed
+  newly-created image remains unadmitted and is deleted with its exact
+  builder/smoke resources.
 - Readiness polling must finish within the bridge timeout. A transport timeout
   cannot erase cleanup ownership. The live harness attempts reconciliation.
   If authority is unavailable, it deletes only its deterministic resource
