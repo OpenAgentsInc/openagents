@@ -420,6 +420,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
               specifier === "./ide/agent-code.ts" ||
               specifier === "./ide/cursor.ts" ||
               specifier === "./ide/managed-sandbox.ts" ||
+              specifier === "./ide/portable.ts" ||
               specifier === "../ide/run-contract.ts" ||
               // AFS-03/04 shared turn kernel host: boot wires the typed turn IPC
               // (submit/event-frame types) into the renderer turn host adapter.
@@ -432,6 +433,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
               specifier === "./ide/agent-code.ts" ||
               specifier === "./ide/cursor.ts" ||
               specifier === "./ide/managed-sandbox.ts" ||
+              specifier === "./ide/portable.ts" ||
               // AFS-03/04 shared turn kernel host: shell renders the typed turn
               // submit/event-frame result facts through the renderer turn host,
               // and the safe turn projection / redacted message chain types.

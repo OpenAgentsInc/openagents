@@ -509,6 +509,12 @@ import {
   emptyIdeManagedSandboxSnapshot,
 } from "./ide/managed-sandbox-contract.ts"
 import {
+  DesktopIdePortableCommandChannel,
+  DesktopIdePortableSnapshotChannel,
+  decodeIdePortableClientCommand,
+  emptyIdePortableClientSnapshot,
+} from "./ide/portable-client-contract.ts"
+import {
   openIdeManagedSandboxHost,
   type IdeManagedSandboxHost,
 } from "./ide/managed-sandbox-host.ts"
@@ -2716,6 +2722,30 @@ ipcMain.handle(DesktopIdeManagedSandboxCommandChannel, async (event, value: unkn
         snapshot: emptyIdeManagedSandboxSnapshot(),
       }
     : host.command(value)
+})
+ipcMain.handle(DesktopIdePortableSnapshotChannel, async (event) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return emptyIdePortableClientSnapshot()
+  const portable = hostLifecycle.sync()?.portableSessions() ?? null
+  if (portable === null) return emptyIdePortableClientSnapshot()
+  try {
+    return await Effect.runPromise(portable.snapshot())
+  } catch {
+    return emptyIdePortableClientSnapshot()
+  }
+})
+ipcMain.handle(DesktopIdePortableCommandChannel, async (event, value: unknown) => {
+  const command = decodeIdePortableClientCommand(value)
+  if (!isTrustedRuntimeGatewaySender(event) || command === null) {
+    return { _tag: "Refused", reason: "invalid_input" } as const
+  }
+  const portable = hostLifecycle.sync()?.portableSessions() ?? null
+  if (portable === null) return { _tag: "Refused", reason: "unavailable" } as const
+  try {
+    const mutationRef = await Effect.runPromise(portable.request(command))
+    return { _tag: "Requested", mutationRef: String(mutationRef) } as const
+  } catch {
+    return { _tag: "Refused", reason: "request_failed" } as const
+  }
 })
 ipcMain.handle(DesktopWorkspaceLanguageRequestChannel, async (event, value: unknown) => {
   const request = decodeIdeLanguageRequest(value)

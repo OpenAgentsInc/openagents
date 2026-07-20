@@ -139,6 +139,14 @@ import {
   decodeIdeManagedSandboxSnapshot,
   emptyIdeManagedSandboxSnapshot,
 } from "./ide/managed-sandbox-contract.ts"
+import {
+  DesktopIdePortableCommandChannel,
+  DesktopIdePortableSnapshotChannel,
+  decodeIdePortableClientCommand,
+  decodeIdePortableClientCommandResult,
+  decodeIdePortableClientSnapshot,
+  emptyIdePortableClientSnapshot,
+} from "./ide/portable-client-contract.ts"
 import { desktopLaunchContextFromArgv } from "./desktop-launch-context.ts"
 import { invokeDesktopThreadExportWrite } from "./thread-export-bridge-contract.ts"
 import { invokeDesktopThreadExportCreate } from "./thread-export-create-bridge-contract.ts"
@@ -538,6 +546,18 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
         message: "The managed-sandbox response is invalid.",
         snapshot: emptyIdeManagedSandboxSnapshot(),
       }
+    },
+  },
+  idePortability: {
+    snapshot: async () => decodeIdePortableClientSnapshot(
+      await ipcRenderer.invoke(DesktopIdePortableSnapshotChannel),
+    ) ?? emptyIdePortableClientSnapshot(),
+    command: async (value: unknown) => {
+      const command = decodeIdePortableClientCommand(value)
+      if (command === null) return { _tag: "Refused", reason: "invalid_input" } as const
+      return decodeIdePortableClientCommandResult(
+        await ipcRenderer.invoke(DesktopIdePortableCommandChannel, command),
+      ) ?? { _tag: "Refused", reason: "request_failed" } as const
     },
   },
   runtimeRequest: async (value: unknown) => {
