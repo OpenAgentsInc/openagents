@@ -932,7 +932,8 @@ export class PostgresPortablePhaseOperationStore {
       stage === undefined ||
       stage.state !== "completed" ||
       stage.result_status !== "completed" ||
-      reservationRef === null ||
+      typeof reservationRef !== "string" ||
+      reservationRef.length === 0 ||
       stage.command_ref !== activation.command_ref ||
       stage.owner_user_id !== activation.owner_user_id ||
       stage.owner_user_id !== executionBinding.owner_user_id ||
