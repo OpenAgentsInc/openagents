@@ -36,13 +36,14 @@
 // The #8917 coordinator is expected to provide a `kind: "real"` implementation
 // of exactly these methods (align or object on the issue):
 //
-//   - checkWorkerInventory(plan): verify the five-target owned worker registry
+//   - checkWorkerInventory(plan): verify the four-target owned worker registry
 //     is healthy and admits the plan's targets (GCE in `openagentsgemini` for
-//     linux-x64/linux-arm64/win32-x64, owned Tailnet Macs for darwin-arm64/
-//     darwin-x64). Windows is x64-only. Preflight-time; no builds started.
+//     linux-x64/linux-arm64, owned Tailnet Macs for darwin-arm64/darwin-x64).
+//     `win32-x64` is an OPTIONAL experimental portable outside the signed
+//     required set (#8920). Preflight-time; no builds started.
 //   - bringUpWorkers(plan): start/verify the owned workers for the plan.
 //   - fanOutTargets(plan): build, stage (DIST-03 stage-target descriptors),
-//     sign, and verify all five targets/all formats; converge evidence.
+//     sign, and verify all four required targets/all formats; converge evidence.
 //   - runReleaseGates(plan): per-target release gates plus the automatable
 //     platform install/update proofs; named native-host steps surface as
 //     explicit receipt lines.
@@ -105,10 +106,16 @@ export type ReleaseChannel = (typeof releaseChannels)[number];
 export const RELEASE_VERSION_PATTERN =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.(0|[1-9]\d*))?$/;
 
+// Owner amendment 2026-07-20 (#8920, DIST-01): the signed ReleaseSet, its
+// convergence, and atomic promotion require only the four mac+linux cells.
+// `win32-x64` is an OPTIONAL, unsigned experimental portable that is excluded
+// from this set, so its absence never blocks convergence or promotion. This
+// mirrors `releaseTargetKeys` in
+// apps/openagents-desktop/src/release-set-contract.ts (guarded by
+// scripts/release.test.ts).
 export const releaseTargetKeys = [
   "darwin-arm64",
   "darwin-x64",
-  "win32-x64",
   "linux-arm64",
   "linux-x64",
 ] as const;
@@ -181,14 +188,14 @@ export const RELEASE_STEP_GRAPH: readonly ReleaseStepDefinition[] = [
   },
   {
     id: "worker_bring_up",
-    title: "Bring up/verify the owned five-target workers (GCE + Tailnet)",
+    title: "Bring up/verify the owned four-target workers (GCE + Tailnet)",
     kind: "port",
     ports: ["coordinator"],
     dependsOn: ["preflight"],
   },
   {
     id: "fan_out",
-    title: "Fan out: build/stage/sign/verify all five targets; converge evidence",
+    title: "Fan out: build/stage/sign/verify all four required targets; converge evidence",
     kind: "port",
     ports: ["coordinator"],
     dependsOn: ["worker_bring_up"],
@@ -421,11 +428,11 @@ export const createFixtureCoordinatorPort = (
     checkWorkerInventory: (plan) =>
       fixtureCall(calls, failState, options, "checkWorkerInventory", [
         `fixture: worker inventory healthy for ${plan.targets.length} targets`,
-        "fixture: darwin-arm64/darwin-x64 = owned Tailnet Macs; linux-x64/linux-arm64/win32-x64 = GCE openagentsgemini; Windows is x64-only",
+        "fixture: darwin-arm64/darwin-x64 = owned Tailnet Macs; linux-x64/linux-arm64 = GCE openagentsgemini; win32-x64 is an optional experimental portable outside the signed required set",
       ]),
     bringUpWorkers: (plan) =>
       fixtureCall(calls, failState, options, "bringUpWorkers", [
-        `fixture: ${plan.targets.length}/6 workers up (no cloud spend in dry-run)`,
+        `fixture: ${plan.targets.length}/${plan.targets.length} workers up (no cloud spend in dry-run)`,
       ]),
     fanOutTargets: (plan) =>
       fixtureCall(

@@ -40,10 +40,13 @@ import {
 const V2_VERSION = '2.4.0-rc.3'
 const V1_VERSION = '0.1.0-rc.13'
 
+// Owner amendment 2026-07-20 (#8920, DIST-01): the signed `/download` surface
+// carries exactly the four mac+linux targets; `win32-x64` is an optional
+// experimental portable outside it (a Windows visitor gets an honest
+// detected-unavailable state, exercised by `chooseWindowsUnavailable` below).
 const minimumOs: Record<DesktopDownloadTarget, string> = {
   'darwin-arm64': '13.5',
   'darwin-x64': '13.5',
-  'win32-x64': '10.0.19045',
   'linux-arm64': 'glibc 2.35',
   'linux-x64': 'glibc 2.35',
 }
@@ -51,7 +54,6 @@ const minimumOs: Record<DesktopDownloadTarget, string> = {
 const formatsByTarget: Record<DesktopDownloadTarget, readonly DesktopDownloadFormat[]> = {
   'darwin-arm64': ['dmg', 'zip'],
   'darwin-x64': ['dmg', 'zip'],
-  'win32-x64': ['nsis'],
   'linux-arm64': ['appimage', 'deb', 'rpm'],
   'linux-x64': ['appimage', 'deb', 'rpm'],
 }
@@ -59,7 +61,6 @@ const formatsByTarget: Record<DesktopDownloadTarget, readonly DesktopDownloadFor
 const preferredFormat: Record<DesktopDownloadTarget, DesktopDownloadFormat> = {
   'darwin-arm64': 'dmg',
   'darwin-x64': 'dmg',
-  'win32-x64': 'nsis',
   'linux-arm64': 'appimage',
   'linux-x64': 'appimage',
 }
@@ -91,7 +92,7 @@ const header = {
   channel: 'rc',
   version: V2_VERSION,
   releasedAt: '2026-07-16T12:00:00Z',
-  releaseNotes: 'Adds Windows and Linux targets plus a faster reconnect path.',
+  releaseNotes: 'Adds Linux targets plus a faster reconnect path.',
   sourceRevision: 'a'.repeat(40),
 } as const
 
@@ -195,7 +196,7 @@ describe('/download page — resolver-driven states', () => {
     expect(html).toContain(escapedHref('darwin-arm64', 'zip'))
     // Release notes (the #8927 seam) render from the resolution.
     expect(html).toContain(`What’s new in ${V2_VERSION}`)
-    expect(html).toContain('Adds Windows and Linux targets plus a faster reconnect path.')
+    expect(html).toContain('Adds Linux targets plus a faster reconnect path.')
     // Verification guidance with the release-set checksum.
     expect(html).toContain('Verification and support')
     expect(html).toContain('ab'.repeat(32))
@@ -211,8 +212,9 @@ describe('/download page — resolver-driven states', () => {
     // Full rollout: no pending rows remain.
     expect(html).not.toContain('Not yet available')
     expect(html).not.toContain('Coming soon')
-    // Platform guidance honestly explains formats once targets exist.
-    expect(html).toContain('installs per-user')
+    // Platform guidance honestly explains formats once targets exist. Windows
+    // is no longer a signed section (#8920), so its per-user guidance is gone.
+    expect(html).not.toContain('installs per-user')
     expect(html).toContain('package manager, which then owns updates and rollback')
     expect(html).toContain('Macs with Apple silicon (M1 or later)')
   })
@@ -237,10 +239,13 @@ describe('/download page — resolver-driven states', () => {
         expect(html).not.toContain(escapedHref(target, format))
       }
     }
-    expect(html.match(/Not yet available/g)).toHaveLength(4)
-    expect(html.match(/Coming soon/g)).toHaveLength(4)
+    // Three unavailable signed targets remain (darwin-x64, linux-x64,
+    // linux-arm64) once darwin-arm64 is promoted. Windows is no longer part of
+    // the signed `/download` surface (#8920), so it is not one of them.
+    expect(html.match(/Not yet available/g)).toHaveLength(3)
+    expect(html.match(/Coming soon/g)).toHaveLength(3)
     expect(html).toContain('The Intel build is not yet available.')
-    expect(html).toContain('Windows builds are not yet available.')
+    expect(html).not.toContain('Windows builds are not yet available.')
     expect(html).toContain('Linux builds are not yet available.')
     // Any non-null `releaseNotes` on the (only) `release_set_v2` source
     // renders as-is — the resolver contract is the trust boundary for its
@@ -320,8 +325,9 @@ describe('/download page — semantic structure and keyboard access', () => {
     expect(document.querySelectorAll('h1')).toHaveLength(1)
     expect(document.querySelector('h1')?.textContent).toBe('Download OpenAgents Desktop')
 
-    // Each platform section is a labeled region with its own heading.
-    for (const platform of ['darwin', 'win32', 'linux']) {
+    // Each signed platform section is a labeled region with its own heading.
+    // Windows is not a signed `/download` section (#8920).
+    for (const platform of ['darwin', 'linux']) {
       const section = document.querySelector(`[aria-labelledby="oa-platform-${platform}"]`)
       expect(section, platform).not.toBeNull()
       expect(document.getElementById(`oa-platform-${platform}`)?.tagName).toBe('H3')
@@ -369,7 +375,9 @@ describe('/download head projections', () => {
     expect(partial).not.toContain('Linux')
 
     const full = downloadPageDescription(ok(fullAvailable))
-    expect(full).toContain('Windows')
+    // Windows is outside the signed `/download` catalog (#8920), so the
+    // description never advertises it; Linux remains a signed platform.
+    expect(full).not.toContain('Windows')
     expect(full).toContain('Linux')
 
     expect(downloadPageDescription(ok(unavailableFeed))).toContain('temporarily unavailable')
@@ -393,7 +401,8 @@ describe('/download head projections', () => {
     const full = JSON.parse(downloadPageStructuredData(ok(fullAvailable)) ?? 'null') as {
       operatingSystem: string
     }
-    expect(full.operatingSystem).toContain('Windows')
+    expect(full.operatingSystem).not.toContain('Windows')
+    expect(full.operatingSystem).toContain('macOS')
     expect(full.operatingSystem).toContain('Linux')
   })
 })
@@ -411,8 +420,7 @@ describe('/download helpers', () => {
     expect(formatByteSize(303_959_067)).toBe('304 MB')
     expect(formatByteSize(1_500_000_000)).toBe('1.5 GB')
     expect(formatByteSize(950_000)).toBe('1 MB')
-    expect(targetLabel('win32-x64')).toBe('Windows · x64')
-    expect(minimumOsLabel('win32-x64', '10.0.19045')).toBe('Windows 10.0.19045 or later')
+    expect(targetLabel('darwin-x64')).toBe('macOS · Intel')
     expect(minimumOsLabel('linux-x64', 'glibc 2.35')).toBe('Linux with glibc 2.35 or later')
   })
 
@@ -449,12 +457,12 @@ describe('/download helpers', () => {
     }) as typeof fetch
 
     const loaded = await fetchDesktopDownloadResolution(
-      { target: 'win32-x64', format: 'nsis', channel: 'rc' },
+      { target: 'linux-x64', format: 'deb', channel: 'rc' },
       okFetch,
     )
     expect(loaded.state).toBe('ok')
     expect(seen[0]).toBe(
-      '/api/public/desktop-download?target=win32-x64&format=nsis&channel=rc',
+      '/api/public/desktop-download?target=linux-x64&format=deb&channel=rc',
     )
 
     const httpError = await fetchDesktopDownloadResolution(
@@ -547,11 +555,13 @@ describe('/download helpers', () => {
   })
 
   test('format vocabulary stays in lockstep with the release-set contract', () => {
+    // The format vocabulary stays the full six-format release vocabulary
+    // (nsis remains for the drift guard), but `win32-x64` is no longer a signed
+    // download target (#8920).
     expect(desktopDownloadFormats).toEqual(['dmg', 'zip', 'nsis', 'appimage', 'deb', 'rpm'])
     expect(desktopDownloadTargets).toEqual([
       'darwin-arm64',
       'darwin-x64',
-      'win32-x64',
       'linux-arm64',
       'linux-x64',
     ])

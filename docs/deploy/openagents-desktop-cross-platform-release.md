@@ -86,6 +86,19 @@ descriptor and runtime package aliases are non-promotable compatibility
 scaffolding only. Adding Windows ARM64 later requires a reviewed ProductSpec
 and ReleaseSet policy revision plus native Windows-on-Arm acceptance evidence.
 
+Owner amendment 2026-07-20 (#8920) makes `win32-x64` an OPTIONAL, experimental
+cell. This amendment removes `win32-x64` from the signed ReleaseSet, the
+promotion required-cell set, `/download` signed availability, and auto-update.
+The signed required cells are therefore only `darwin-arm64`, `darwin-x64`,
+`linux-arm64`, and `linux-x64`. A missing or unsigned `win32-x64` MUST NOT block
+convergence or atomic promotion, and `win32-x64` makes no support claim.
+
+Windows x64 ships only as an unsigned experimental portable that stays outside
+the signed feed. A future signed Windows path needs its own issue. That path
+restores the `Valid` Authenticode publisher gate from exactly `OpenAgents, Inc.`
+before publication and install. This amendment does not change any macOS or
+Linux signing, notarization, or native-receipt requirement.
+
 Minimum supported environments are:
 
 | Target         | Minimum supported environment                                                    | Native proof requirement                                             |
@@ -199,8 +212,11 @@ channel pointer or authorize an older remote manifest.
 
 ReleaseSet v2 is the single selection authority defined by [#8915](https://github.com/OpenAgentsInc/openagents/issues/8915).
 It MUST be a bounded, canonical, schema-validated document signed by the
-pinned Ed25519 release key. It contains exactly the five target keys and the
-required formats when a complete cross-platform set is promoted. It also
+pinned Ed25519 release key. It contains exactly the four signed required
+target cells (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`) and
+their required formats when a complete cross-platform set is promoted. Per the
+#8920 owner amendment, the optional `win32-x64` cell never enters this signed
+document. It also
 contains the bounded, reviewed human release-notes text and digest-bound refs
 for the full human and agent changelog artifacts defined in §15.1. Changelog
 generation and review therefore finish before the final canonical bytes are
@@ -290,8 +306,9 @@ quarantine state. No raw address or credential enters public receipts.
 
 GitHub Actions and GitHub-hosted CI are prohibited. Owned orchestration fixes
 one source revision, version, and channel. It runs common gates one time. It
-starts five target builds and validates the native receipts. It converges all
-cells and requests an isolated signature.
+starts the four required target builds and validates the native receipts. It
+converges all required cells and requests an isolated signature. The optional
+`win32-x64` portable, when built, stays outside this signed convergence.
 
 Then, it serves a candidate and
 performs one atomic promotion.
@@ -348,8 +365,8 @@ paths between the last delivered source revision and the candidate:
   services and MUST NOT manufacture a Desktop version.
 - documentation-only changes create no binary release.
 - any Desktop main/renderer/native/package change, a Desktop-consumed shared
-  package change, or the root lockfile triggers the complete five-target
-  Desktop matrix.
+  package change, or the root lockfile triggers the complete four-target
+  required Desktop matrix.
 
 This is deterministic product-path classification after the release route has
 already been selected. It is not user-intent or tool routing. Overlapping paths
@@ -584,7 +601,7 @@ The following invariants never weaken during this program:
 | Strict monotonic update. No remote downgrade | model/property tests and publisher/current-feed tests                 | candidate convergence + promotion refusal/success     |
 | Fail-closed production signing               | credential-absence and unsigned-marker tests                          | platform signing receipts                             |
 | macOS app and outer-DMG trust                | Gatekeeper/notary/staple contract tests and native scripts            | downloaded mounted-artifact receipt per architecture  |
-| Complete matrix before promotion             | coordinator model and missing/duplicate/mismatch tests                | five-target convergence receipt                       |
+| Complete matrix before promotion             | coordinator model and missing/duplicate/mismatch tests                | four-target convergence receipt                       |
 | Native target proof before support           | target/format acceptance registry tests                               | native clean-install/update/rollback boundary receipt |
 | Mobile feed preservation                     | `oa-updates` route/asset regression and candidate probe               | pre/post-promotion mobile manifest receipt            |
 | No GitHub Actions/hosted CI authority        | repository authority guard                                            | owned coordinator/runner attestations                 |

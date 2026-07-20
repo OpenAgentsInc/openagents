@@ -116,10 +116,11 @@ const SOURCE_REVISION = /^[0-9a-f]{40}$/;
 const PUBLIC_REF = /^[A-Za-z0-9@#][A-Za-z0-9@#._:/ -]{0,239}$/;
 const ARTIFACT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$/;
 
+// Signed-ReleaseSet required cells only (#8920, DIST-01): `win32-x64` is an
+// optional experimental portable and never enters the signed GitHub asset set.
 const requiredFormatsByTarget: Readonly<Record<ReleaseTargetKey, readonly string[]>> = {
   "darwin-arm64": ["dmg", "zip"],
   "darwin-x64": ["dmg", "zip"],
-  "win32-x64": ["nsis"],
   "linux-arm64": ["appimage", "deb", "rpm"],
   "linux-x64": ["appimage", "deb", "rpm"],
 };
@@ -130,14 +131,9 @@ const expectedArtifactName = (
   target: ReleaseTargetKey,
   format: string,
 ): string => {
-  const [platform, architecture] = target.split("-") as [
-    "darwin" | "win32" | "linux",
-    "arm64" | "x64",
-  ];
+  const [platform, architecture] = target.split("-") as ["darwin" | "linux", "arm64" | "x64"];
   if (platform === "darwin")
     return `OpenAgents-${version}-${channel}-darwin-${architecture}.${format}`;
-  if (platform === "win32")
-    return `OpenAgents-${version}-${channel}-win32-${architecture}-setup.exe`;
   const extension = format === "appimage" ? "AppImage" : format;
   return `OpenAgents-${version}-${channel}-linux-${architecture}.${extension}`;
 };

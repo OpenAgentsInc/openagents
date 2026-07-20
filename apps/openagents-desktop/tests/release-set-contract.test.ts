@@ -100,18 +100,22 @@ const validReleaseSet: ReleaseSet = {
 const clone = (value: unknown): any => structuredClone(value);
 
 describe("ReleaseSet v2 bounded schema and canonicalization", () => {
-  test("uses the five-target release profile while staging retains future target descriptors", () => {
-    expect(releaseTargetKeys).toEqual([
-      "darwin-arm64",
-      "darwin-x64",
-      "win32-x64",
-      "linux-arm64",
-      "linux-x64",
-    ]);
-    expect(desktopTargetKeys).toContain("win32-arm64");
+  test("uses the four signed mac+linux release profile while staging retains the optional Windows descriptors", () => {
+    // Owner amendment 2026-07-20 (#8920, DIST-01): the signed ReleaseSet
+    // required cells are exactly the four mac+linux targets. `win32-x64` is an
+    // OPTIONAL experimental portable excluded from the signed set, and the
+    // dormant `win32-arm64` remains staging-only scaffolding.
+    expect(releaseTargetKeys).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"]);
+    expect(releaseTargetKeys).not.toContain("win32-x64");
     expect(releaseTargetKeys).not.toContain("win32-arm64");
+    // The staging/build enum still carries both Windows descriptors so the
+    // optional portable (and a future signed Windows path) can be built.
+    expect(desktopTargetKeys).toContain("win32-x64");
+    expect(desktopTargetKeys).toContain("win32-arm64");
+    // The signed set covers every release format except nsis (Windows-only),
+    // which is now outside the signed matrix.
     expect([...new Set(Object.values(requiredFormatsByTarget).flat())]).toEqual(
-      desktopArtifactFormats,
+      desktopArtifactFormats.filter((format) => format !== "nsis"),
     );
   });
   test("accepts the exact complete matrix and produces insertion-order-independent canonical bytes", () => {
@@ -142,7 +146,7 @@ describe("ReleaseSet v2 bounded schema and canonicalization", () => {
     expect(decodeReleaseSet(missingTarget)).toMatchObject({ ok: false });
 
     const duplicateTarget = clone(validReleaseSet);
-    duplicateTarget.targets[4] = duplicateTarget.targets[3]!;
+    duplicateTarget.targets[3] = duplicateTarget.targets[2]!;
     expect(decodeReleaseSet(duplicateTarget)).toMatchObject({
       ok: false,
       detail: "target_set_incomplete_or_not_canonical",
@@ -371,6 +375,19 @@ describe("ReleaseSet deterministic selection and bounded v1 migration", () => {
       expect(selected).toMatchObject({ ok: true, target });
       if (selected.ok) expect(selected.artifact.format).toBe(preferredFormatByTarget[target]);
     }
+    // Owner amendment #8920 (DIST-01): a Windows x64 host is detected but the
+    // signed ReleaseSet carries no win32 cell, so selection is target_unavailable
+    // — win32-x64 never enters the signed support surface.
+    expect(
+      selectReleaseArtifact({
+        releaseSet: validReleaseSet,
+        installedChannel: channel,
+        installedVersion: "2.4.0-rc.2",
+        platform: "win32",
+        architecture: "x64",
+        hostVersion: "11.0.26100",
+      }),
+    ).toEqual({ ok: false, reason: "target_unavailable" });
     expect(
       selectReleaseArtifact({
         releaseSet: validReleaseSet,
@@ -438,7 +455,7 @@ describe("ReleaseSet deterministic selection and bounded v1 migration", () => {
     ) as unknown;
     expect(decodeReleaseSet(golden)).toMatchObject({ ok: true });
     expect(createHash("sha256").update(canonicalizeReleaseSet(golden)).digest("hex")).toBe(
-      "80711cc499eb76df8a60d53a87028679db21b1354edf85cf6e058faa4ebce42d",
+      "f1b85ac09cbefba4fec7434a1a5055b071ac520a692035715d9c48651c6b9224",
     );
   });
 });

@@ -26,10 +26,13 @@ import {
 export const COORDINATOR_SCHEMA = "openagents.desktop.release_coordinator.v1" as const;
 export const WORKER_RECEIPT_SCHEMA = "openagents.desktop.worker_receipt.v1" as const;
 
+// Owner amendment 2026-07-20 (#8920, DIST-01): the coordinator convergence and
+// promotion model requires only the four signed mac+linux cells. `win32-x64`
+// is an OPTIONAL experimental portable that never enters this required set, so
+// its absence can never block convergence or promotion.
 export const formatsByTarget: Readonly<Record<ReleaseTargetKey, readonly string[]>> = {
   "darwin-arm64": ["dmg", "zip"],
   "darwin-x64": ["dmg", "zip"],
-  "win32-x64": ["nsis"],
   "linux-arm64": ["appimage", "deb", "rpm"],
   "linux-x64": ["appimage", "deb", "rpm"],
 };
@@ -802,7 +805,9 @@ export const createOwnedReleaseCoordinator = (
       );
       return {
         receiptLines: [
-          redactedLine(`coordinator: exact 5-target inventory bound to plan sha256:${digest}`),
+          redactedLine(
+            `coordinator: exact ${releaseTargetKeys.length}-target inventory bound to plan sha256:${digest}`,
+          ),
         ],
       };
     },
@@ -849,7 +854,7 @@ export const createOwnedReleaseCoordinator = (
       return {
         receiptLines: [
           redactedLine(
-            `coordinator: ${releaseTargetKeys.length}/5 workers healthy; idle-stop is mandatory on exit`,
+            `coordinator: ${releaseTargetKeys.length}/${releaseTargetKeys.length} workers healthy; idle-stop is mandatory on exit`,
           ),
         ],
       };
@@ -993,10 +998,16 @@ export const createOwnedReleaseCoordinator = (
       if (receipts.some((receipt) => receipt === undefined))
         throw new ReleaseCoordinatorError("matrix_incomplete", "not every target completed");
       const matrixDigest = sha256(canonicalJson(receipts));
+      const artifactCount = releaseTargetKeys.reduce(
+        (total, target) => total + formatsByTarget[target].length,
+        0,
+      );
       await save({ ...durableState, phase: "converged", matrixDigest });
       return {
         receiptLines: [
-          redactedLine(`coordinator: 5 targets / 11 artifacts converged sha256:${matrixDigest}`),
+          redactedLine(
+            `coordinator: ${releaseTargetKeys.length} targets / ${artifactCount} artifacts converged sha256:${matrixDigest}`,
+          ),
         ],
       };
     },

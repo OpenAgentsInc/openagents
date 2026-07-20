@@ -86,8 +86,8 @@ export const planReleaseImpact = (inputPaths: readonly string[]): ReleaseImpactP
       requiresDesktopVersionBump = true;
       reasons.add(
         isDesktopRenderer(path)
-          ? "Desktop renderer bytes changed; signed renderer OTA is not admitted yet, so all five Desktop targets are required."
-          : "Desktop host, runtime, dependency, or shared Desktop closure changed; all five Desktop targets are required.",
+          ? "Desktop renderer bytes changed; signed renderer OTA is not admitted yet, so all four required Desktop targets are required."
+          : "Desktop host, runtime, dependency, or shared Desktop closure changed; all four required Desktop targets are required.",
       );
     }
     if (isWeb(path)) {

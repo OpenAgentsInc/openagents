@@ -34,10 +34,18 @@ export const DESKTOP_DOWNLOAD_RESOLUTION_SCHEMA =
 // Bounded literal vocab, mirrored client-safe from the release-set contract
 // (the contract module is server-only; these lists are asserted against the
 // typed contract below so drift fails typecheck, not at runtime).
+//
+// Owner amendment 2026-07-20 (#8920, DIST-01): `win32-x64` is an OPTIONAL
+// experimental portable excluded from the signed ReleaseSet and from
+// `/download` signed availability, so it is NOT a signed download target. The
+// signed download targets are exactly the four mac+linux cells. A Windows
+// visitor is still handled by detection and gets an honest unavailable state.
+// The format vocabulary below stays the full six-format release vocabulary
+// (the `nsis` literal remains so the drift guard against `ReleaseFormat`
+// holds).
 export const desktopDownloadTargets = [
   'darwin-arm64',
   'darwin-x64',
-  'win32-x64',
   'linux-arm64',
   'linux-x64',
 ] as const

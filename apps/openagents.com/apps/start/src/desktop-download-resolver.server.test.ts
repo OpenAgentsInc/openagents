@@ -254,13 +254,18 @@ describe('client detection (bounded field parsing)', () => {
   })
 })
 
-// --- resolution: five targets, alternatives, overrides -----------------------
+// --- resolution: four signed targets, alternatives, overrides ----------------
+//
+// Owner amendment 2026-07-20 (#8920, DIST-01): the signed ReleaseSet carries
+// exactly the four mac+linux cells; `win32-x64` is an OPTIONAL experimental
+// portable excluded from the signed feed, so a Windows host resolves to an
+// honest target_unavailable state (covered below) rather than a signed
+// artifact.
 
 describe('resolution from the verified release set', () => {
   const targetMatrix: ReadonlyArray<[Record<string, string>, string, string]> = [
     [{ 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' }, 'darwin-arm64', 'dmg'],
     [{ 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"x86"', 'sec-ch-ua-bitness': '"64"' }, 'darwin-x64', 'dmg'],
-    [{ 'sec-ch-ua-platform': '"Windows"', 'sec-ch-ua-arch': '"x86"', 'sec-ch-ua-bitness': '"64"' }, 'win32-x64', 'nsis'],
     [{ 'sec-ch-ua-platform': '"Linux"', 'sec-ch-ua-arch': '"arm"' }, 'linux-arm64', 'appimage'],
     [{ 'sec-ch-ua-platform': '"Linux"', 'sec-ch-ua-arch': '"x86"', 'sec-ch-ua-bitness': '"64"' }, 'linux-x64', 'appimage'],
   ]
@@ -288,9 +293,10 @@ describe('resolution from the verified release set', () => {
       headers: { 'sec-ch-ua-platform': '"macOS"', 'sec-ch-ua-arch': '"arm"' },
     })
     const alternatives = body.alternatives as Array<Record<string, unknown>>
-    // Total fixture catalog is 11 artifacts (darwin-arm64:2, darwin-x64:2,
-    // win32-x64:1, linux-arm64:3, linux-x64:3) minus the 1 selected = 10.
-    expect(alternatives).toHaveLength(10)
+    // Signed catalog is 10 artifacts (darwin-arm64:2, darwin-x64:2,
+    // linux-arm64:3, linux-x64:3) minus the 1 selected = 9. `win32-x64` is
+    // optional/experimental and never enters the signed feed (#8920).
+    expect(alternatives).toHaveLength(9)
     expect(alternatives[0]).toMatchObject({ target: 'darwin-arm64', format: 'zip' })
     // Every OTHER target's full format list is present — not just its
     // preferred format. A detected client must never have promoted formats
@@ -300,7 +306,6 @@ describe('resolution from the verified release set', () => {
       [
         'darwin-x64:dmg',
         'darwin-x64:zip',
-        'win32-x64:nsis',
         'linux-arm64:appimage',
         'linux-arm64:deb',
         'linux-arm64:rpm',
@@ -309,8 +314,10 @@ describe('resolution from the verified release set', () => {
         'linux-x64:rpm',
       ].toSorted(),
     )
+    // No win32 artifact ever appears in the signed alternatives.
+    expect(others.some(row => String(row.target).startsWith('win32'))).toBe(false)
     const preferredCount = others.filter(row => row.preferred === true).length
-    expect(preferredCount).toBe(4) // one preferred format per other target
+    expect(preferredCount).toBe(3) // one preferred format per other signed target
   })
 
   test('unknown client fails open to choose_manually with the full verified catalog', async () => {
@@ -319,7 +326,7 @@ describe('resolution from the verified release set', () => {
     expect(body.reason).toBe('unknown_client')
     expect(body.selected).toBeUndefined()
     const options = body.options as Array<Record<string, unknown>>
-    expect(options).toHaveLength(11)
+    expect(options).toHaveLength(10)
     for (const option of options) {
       expect(String(option.url)).toMatch(/^https:\/\//)
       expect(option.version).toBe(RC_VERSION)
@@ -335,19 +342,32 @@ describe('resolution from the verified release set', () => {
     expect((body.detection as Record<string, unknown>).architecture).toBeNull()
   })
 
-  test('Windows ARM64 is detected but never admitted as a release target', async () => {
-    const { body } = await resolveJson(makeResolver(), {
-      headers: { 'sec-ch-ua-platform': '"Windows"', 'sec-ch-ua-arch': '"arm"' },
+  // #8920 (DIST-01): Windows on either architecture is detected but the signed
+  // ReleaseSet carries no win32 cell, so both resolve to an honest
+  // target_unavailable and no win32 artifact appears in the offered catalog.
+  for (const [label, arch] of [
+    ['x64', '"x86"'],
+    ['ARM64', '"arm"'],
+  ] as const) {
+    test(`Windows ${label} is detected but never admitted as a signed release target`, async () => {
+      const { body } = await resolveJson(makeResolver(), {
+        headers: {
+          'sec-ch-ua-platform': '"Windows"',
+          'sec-ch-ua-arch': arch,
+          ...(arch === '"x86"' ? { 'sec-ch-ua-bitness': '"64"' } : {}),
+        },
+      })
+      expect(body.availability).toBe('choose_manually')
+      expect(body.reason).toBe('target_unavailable')
+      expect((body.detection as Record<string, unknown>).platform).toBe('win32')
+      expect(body.selected).toBeUndefined()
+      expect(
+        (body.options as Array<Record<string, unknown>>).some(row =>
+          String(row.target).startsWith('win32'),
+        ),
+      ).toBe(false)
     })
-    expect(body.availability).toBe('choose_manually')
-    expect(body.reason).toBe('target_unavailable')
-    expect(body.selected).toBeUndefined()
-    expect(
-      (body.options as Array<Record<string, unknown>>).some(
-        row => row.target === 'win32-arm64',
-      ),
-    ).toBe(false)
-  })
+  }
 
   test('explicit target/format override wins over detection', async () => {
     const { body } = await resolveJson(makeResolver(), {
@@ -363,11 +383,21 @@ describe('resolution from the verified release set', () => {
   })
 
   test('a format the target does not offer chooses manually, never a wrong link', async () => {
+    // darwin-arm64 offers dmg/zip, never deb — a globally valid format that is
+    // absent for the selected target chooses manually instead of a wrong link.
     const { body } = await resolveJson(makeResolver(), {
-      query: '?target=win32-x64&format=dmg',
+      query: '?target=darwin-arm64&format=deb',
     })
     expect(body.availability).toBe('choose_manually')
     expect(body.reason).toBe('format_unavailable')
+  })
+
+  test('an explicit win32-x64 override is refused as an unknown target, never a signed link', async () => {
+    // `win32-x64` is no longer a signed override target (#8920), so the typed
+    // override schema rejects it as a malformed request rather than resolving a
+    // signed artifact.
+    const { response } = await resolveJson(makeResolver(), { query: '?target=win32-x64&format=nsis' })
+    expect(response.status).toBe(400)
   })
 
   test('a malformed override is a typed 400, not a guess', async () => {
@@ -922,10 +952,11 @@ describe('verified artifact redirect', () => {
   })
 
   test('a format valid globally but absent for the target is a 404', async () => {
+    // rpm is a valid global format but darwin-arm64 never offers it.
     const response = await makeResolver().handle(
       request({
         path: DESKTOP_DOWNLOAD_ARTIFACT_PATH,
-        query: '?target=win32-x64&format=rpm',
+        query: '?target=darwin-arm64&format=rpm',
       }),
     )
     expect(response?.status).toBe(404)

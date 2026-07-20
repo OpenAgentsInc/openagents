@@ -192,7 +192,9 @@ describe("GitHub release publisher", () => {
       limitations: [],
     };
 
-    expect(() => validateReleasePublication(value.root, partial)).toThrow(/exactly 11 artifacts/);
+    // Signed ReleaseSet is the four mac+linux cells = 10 artifacts (#8920);
+    // win32-x64 is optional and never part of the signed set.
+    expect(() => validateReleasePublication(value.root, partial)).toThrow(/exactly 10 artifacts/);
   });
 
   test("strict decoder refuses unknown manifest fields", () => {

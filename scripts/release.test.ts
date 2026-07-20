@@ -443,8 +443,9 @@ describe("resume after failure", () => {
     for (const id of releaseStepIds) {
       expect(result.state.steps[id].status).toBe("succeeded");
     }
-    // Receipt lines from the pre-failure steps survived the resume.
-    expect(result.state.steps.fan_out.receiptLines.length).toBe(5);
+    // Receipt lines from the pre-failure steps survived the resume — one per
+    // fanned-out target, now the four signed mac+linux cells (#8920).
+    expect(result.state.steps.fan_out.receiptLines.length).toBe(4);
   });
 
   test("resume refuses a state file with the wrong schema", () => {

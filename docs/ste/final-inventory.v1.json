@@ -21178,7 +21178,7 @@
     },
     {
       "path": "docs/deploy/openagents-desktop-cross-platform-release.md",
-      "sha256": "295cfe721e5823bbf957452b7003f5f2b5ada30fadc4d82d6a20f0e4651a53d4",
+      "sha256": "f29386d522f9f7219dce7cf78609da739488718010b2bbc3ba6f5094340958c4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

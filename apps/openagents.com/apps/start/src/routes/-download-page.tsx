@@ -88,7 +88,6 @@ export const architectureLabel = (target: DesktopDownloadTarget): string => {
       return 'Intel'
     case 'linux-arm64':
       return 'ARM64'
-    case 'win32-x64':
     case 'linux-x64':
       return 'x64'
   }
@@ -120,8 +119,12 @@ export const minimumOsLabel = (
 }
 
 // ---------------------------------------------------------------------------
-// Platform matrix structure — the five release-set targets, always rendered,
-// with availability admitted exclusively by the resolver catalog.
+// Platform matrix structure — the four signed release-set targets, always
+// rendered, with availability admitted exclusively by the resolver catalog.
+// Owner amendment 2026-07-20 (#8920, DIST-01): `win32-x64` is an OPTIONAL
+// experimental portable excluded from the signed `/download` surface, so no
+// Windows section is advertised here. A Windows visitor is still detected and
+// gets an honest "not yet available for Windows" state from the resolver.
 // ---------------------------------------------------------------------------
 
 type PlatformSection = Readonly<{
@@ -132,7 +135,6 @@ type PlatformSection = Readonly<{
 
 export const PLATFORM_SECTIONS: readonly PlatformSection[] = [
   { platform: 'darwin', mark: 'M', targets: ['darwin-arm64', 'darwin-x64'] },
-  { platform: 'win32', mark: 'W', targets: ['win32-x64'] },
   { platform: 'linux', mark: 'L', targets: ['linux-x64', 'linux-arm64'] },
 ]
 

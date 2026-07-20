@@ -28,7 +28,9 @@ describe("release impact planner", () => {
     const plan = planReleaseImpact(["packages/ui/src/desktop-workbench.css", "pnpm-lock.yaml"]);
 
     expect(plan.actions).toEqual(["desktop_full_matrix"]);
-    expect(plan.desktopTargets).toHaveLength(5);
+    // Owner amendment #8920 (DIST-01): the signed required matrix is the four
+    // mac+linux cells; win32-x64 is an optional experimental portable outside it.
+    expect(plan.desktopTargets).toHaveLength(4);
   });
 
   test("selects independent mobile and web lanes without a Desktop build", () => {

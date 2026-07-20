@@ -32,15 +32,22 @@ export const RELEASE_SET_SCHEMA_ID = "openagents.desktop.release_set.v2" as cons
 export const RELEASE_SET_SCHEMA_VERSION = 2 as const;
 
 /**
- * Promotable ReleaseSet v2 profile. The staging contract intentionally keeps
- * a dormant win32-arm64 descriptor so a future ProductSpec revision can add
- * it without recreating target-build primitives, but Windows releases are
- * x64-only until that explicit policy change.
+ * Promotable ReleaseSet v2 profile — the signed ReleaseSet required-cell set.
+ *
+ * Owner amendment 2026-07-20 (#8920, DIST-01) makes `win32-x64` an OPTIONAL,
+ * experimental cell: it is EXCLUDED from the signed ReleaseSet, atomic
+ * promotion, `/download` signed availability, and auto-update, and it never
+ * makes a support claim. The signed required cells are therefore exactly
+ * `darwin-{arm64,x64}` and `linux-{arm64,x64}`. The staging contract
+ * (`desktopTargetKeys`) still carries the `win32-x64` and dormant
+ * `win32-arm64` build descriptors so the optional unsigned experimental
+ * Windows portable — and a future signed Windows path under its own issue —
+ * can be built without recreating target-build primitives, but neither enters
+ * this signed set.
  */
 export const releaseTargetKeys = [
   "darwin-arm64",
   "darwin-x64",
-  "win32-x64",
   "linux-arm64",
   "linux-x64",
 ] as const satisfies readonly DesktopTargetKey[];
@@ -61,7 +68,6 @@ export const requiredFormatsByTarget: Readonly<Record<ReleaseTargetKey, readonly
   {
     "darwin-arm64": macReleaseFormats,
     "darwin-x64": macReleaseFormats,
-    "win32-x64": windowsReleaseFormats,
     "linux-arm64": linuxReleaseFormats,
     "linux-x64": linuxReleaseFormats,
   };
@@ -69,7 +75,6 @@ export const requiredFormatsByTarget: Readonly<Record<ReleaseTargetKey, readonly
 export const preferredFormatByTarget: Readonly<Record<ReleaseTargetKey, ReleaseFormat>> = {
   "darwin-arm64": "dmg",
   "darwin-x64": "dmg",
-  "win32-x64": "nsis",
   "linux-arm64": "appimage",
   "linux-x64": "appimage",
 };
@@ -77,7 +82,6 @@ export const preferredFormatByTarget: Readonly<Record<ReleaseTargetKey, ReleaseF
 export const minimumOsByTarget: Readonly<Record<ReleaseTargetKey, string>> = {
   "darwin-arm64": "13.5",
   "darwin-x64": "13.5",
-  "win32-x64": "10.0.19045",
   "linux-arm64": "glibc 2.35",
   "linux-x64": "glibc 2.35",
 };
@@ -219,14 +223,9 @@ const expectedArtifactName = (
   target: ReleaseTargetKey,
   format: ReleaseFormat,
 ): string => {
-  const [platform, architecture] = target.split("-") as [
-    "darwin" | "win32" | "linux",
-    "arm64" | "x64",
-  ];
+  const [platform, architecture] = target.split("-") as ["darwin" | "linux", "arm64" | "x64"];
   if (platform === "darwin")
     return `OpenAgents-${version}-${channel}-darwin-${architecture}.${format}`;
-  if (platform === "win32")
-    return `OpenAgents-${version}-${channel}-win32-${architecture}-setup.exe`;
   const extension = format === "appimage" ? "AppImage" : format;
   return `OpenAgents-${version}-${channel}-linux-${architecture}.${extension}`;
 };

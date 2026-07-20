@@ -88,7 +88,9 @@ describe("ReleaseSet v2 candidate admission", () => {
     }))
     expect(feed.metrics()).toMatchObject({
       "candidate_admitted.rc": 1,
-      "target_count.rc": 5,
+      // Signed ReleaseSet carries the four mac+linux cells (#8920); win32-x64
+      // is optional and outside the signed feed.
+      "target_count.rc": 4,
     })
   })
 

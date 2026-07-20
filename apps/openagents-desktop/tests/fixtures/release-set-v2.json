@@ -98,28 +98,6 @@
       ]
     },
     {
-      "target": "win32-x64",
-      "minimumOs": "10.0.19045",
-      "preferredFormat": "nsis",
-      "artifacts": [
-        {
-          "target": "win32-x64",
-          "format": "nsis",
-          "name": "OpenAgents-2.4.0-rc.3-rc-win32-x64-setup.exe",
-          "url": "https://storage.googleapis.com/openagents-fixtures/desktop/rc/2.4.0-rc.3/win32-x64/OpenAgents-2.4.0-rc.3-rc-win32-x64-setup.exe",
-          "objectIdentity": "desktop/rc/2.4.0-rc.3/win32-x64/OpenAgents-2.4.0-rc.3-rc-win32-x64-setup.exe",
-          "sha256": "2d3e9ca74fd01c41c06a9e1a51fa122a3b1f9846a03ccd58122d09927906917f",
-          "byteLength": 31,
-          "componentLedgerSha256": "8c1e73ccf622e7fcdcbfb876c6a8d780f1b2b85e64c9f2169565550955426e95",
-          "componentLedgerRef": "receipt/ledger/win32-x64",
-          "buildReceiptRef": "receipt/build/win32-x64/nsis",
-          "signingPolicyId": "desktop-release-policy-v2",
-          "version": "2.4.0-rc.3",
-          "sourceRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        }
-      ]
-    },
-    {
       "target": "linux-arm64",
       "minimumOs": "glibc 2.35",
       "preferredFormat": "appimage",

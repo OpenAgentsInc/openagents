@@ -342,7 +342,7 @@ const converge = async (fixture: Fixture, releasePlan = plan()) => {
 };
 
 describe("owned Desktop release coordinator", () => {
-  test("converges exactly five targets/eleven artifacts and atomically promotes only accepted candidate", async () => {
+  test("converges exactly four required mac+linux targets/ten artifacts and atomically promotes only accepted candidate", async () => {
     const fixture = makeFixture();
     const { port, releasePlan } = await converge(fixture);
     await port.publishCandidate(releasePlan);
@@ -355,17 +355,44 @@ describe("owned Desktop release coordinator", () => {
       phase: "promoted",
       promotionRef: "pointer:rc-18",
     });
+    // Owner amendment #8920 (DIST-01): the signed required matrix is exactly the
+    // four mac+linux cells; `win32-x64` is optional and never enters it.
     expect(Object.keys(state!.targets)).toEqual([...releaseTargetKeys]);
+    expect(releaseTargetKeys).not.toContain("win32-x64");
     expect(
       Object.values(state!.targets).flatMap((target) => target?.receipt?.payload.artifacts ?? []),
-    ).toHaveLength(11);
-    expect(fixture.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(10);
+    ).toHaveLength(10);
+    // Two idle-stop sweeps (publishCandidate + promoteChannelPointer) across the
+    // four-worker inventory.
+    expect(fixture.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(8);
   });
 
-  test("fails closed when a required native Windows x64 host is unavailable", () => {
-    const fixture = makeFixture({ unavailableTarget: "win32-x64" });
+  test("promotes with mac+linux only when win32-x64 is entirely absent", async () => {
+    // The whole fixture is built from the four required cells, so a run in which
+    // `win32-x64` never appears (no worker, no target, no artifact) still
+    // converges and promotes — the optional Windows cell can never block it.
+    const fixture = makeFixture();
+    const { port, releasePlan } = await converge(fixture);
+    await port.publishCandidate(releasePlan);
+    const result = await port.promoteChannelPointer(releasePlan);
+    expect(result.receiptLines[0]).toContain("atomic rc pointer promoted");
+
+    const state = await fixture.store.load(releasePlan.transactionRef);
+    expect(state?.phase).toBe("promoted");
+    // No win32 identity ever entered the coordinator state, dispatch calls, or
+    // the converged artifact set — the signed surface carries no Windows claim.
+    expect(Object.keys(state!.targets).some((target) => target.startsWith("win32"))).toBe(false);
+    expect(fixture.calls.some((call) => call.includes("win32"))).toBe(false);
+    const artifacts = Object.values(state!.targets).flatMap(
+      (target) => target?.receipt?.payload.artifacts ?? [],
+    );
+    expect(artifacts.some((artifact) => artifact.name.includes("win32"))).toBe(false);
+  });
+
+  test("fails closed when a required native mac/linux host is unavailable", () => {
+    const fixture = makeFixture({ unavailableTarget: "linux-x64" });
     expect(() => coordinator(fixture)).toThrowError(
-      expect.objectContaining({ code: "worker_inventory_unavailable", target: "win32-x64" }),
+      expect.objectContaining({ code: "worker_inventory_unavailable", target: "linux-x64" }),
     );
   });
 
@@ -393,7 +420,8 @@ describe("owned Desktop release coordinator", () => {
       code: "worker_receipt_invalid",
       target: "darwin-x64",
     });
-    expect(fixture.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(5);
+    // One idle-stop sweep across the four-worker required inventory (#8920).
+    expect(fixture.calls.filter((call) => call.startsWith("stop:"))).toHaveLength(4);
   });
 
   test.each([
