@@ -2852,12 +2852,13 @@ const gitGithubService = openGitGithubService(
 )
 const ideSourceControlHost = openIdeSourceControlHost({
   workspace: () => {
+    if (smokeMode) return { root: smokeGitRoot, grantRef: "workspace.grant.smoke" }
     const workspace = hostLifecycle.workspace()
     if (workspace !== null) {
       try { return { root: workspace.summary().root, grantRef: workspace.grantRef } }
       catch { return null }
     }
-    return smokeMode ? { root: smokeGitRoot, grantRef: "workspace.grant.smoke" } : null
+    return null
   },
   recoveryRoot: path.join(app.getPath("userData"), "ide-source-control", "recovery"),
 })
