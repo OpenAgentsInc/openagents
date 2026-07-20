@@ -1694,6 +1694,13 @@ export function createControlSessionActions(options: {
           new Set(agents.map(item => item.controlSessionRef)).size !== agents.length) {
         throw new Error("portable control-session binding must contain unique agents and sessions")
       }
+      const existing = portableBindings.get(input.sessionRef)
+      if (existing !== undefined) {
+        if (JSON.stringify(existing.input) !== JSON.stringify(input)) {
+          throw new Error("portable control-session binding conflicts")
+        }
+        return
+      }
       for (const item of agents) {
         if (!records.has(item.controlSessionRef)) throw new Error("portable control session is absent")
       }
@@ -1720,13 +1727,6 @@ export function createControlSessionActions(options: {
             }
           }),
         }))
-      }
-      const existing = portableBindings.get(input.sessionRef)
-      if (existing !== undefined) {
-        if (JSON.stringify(existing.input) !== JSON.stringify(input)) {
-          throw new Error("portable control-session binding conflicts")
-        }
-        return
       }
       portableBindings.set(input.sessionRef, { input, state: "accepting" })
     },

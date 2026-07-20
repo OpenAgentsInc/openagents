@@ -124,6 +124,15 @@ describe("durable portable control-session restart recovery", () => {
       portableRuntimeInstanceRef: "runtime.pylon.port03.after_restart",
       summary,
     })
+    expect(() => restarted.portable.bind({
+      sessionRef,
+      attachmentRef,
+      generation: 1,
+      agents: before.agents.map(agent => ({
+        agentRef: agent.agentRef,
+        controlSessionRef: agent.controlSessionRef,
+      })),
+    })).not.toThrow()
     const recoveryInput = {
       recoveryRef: "recovery.port03.restart.binding.1",
       sessionRef,

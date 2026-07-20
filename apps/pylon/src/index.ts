@@ -82,6 +82,7 @@ import {
   type ControlSessionProjection,
 } from './node/control-sessions.js'
 import { PylonPortableSessionOperationLedger } from './portable-session-operation-ledger.js'
+import { registerPylonOwnerLocalExecutionTarget } from './portable-owner-local-target-startup.js'
 import { makePylonPortableCheckpointArtifactClient } from './portable-checkpoint-artifact-client.js'
 import {
   openPylonPortablePhaseProductionWorker,
@@ -696,11 +697,13 @@ function makeAssignmentActions() {
   }
 }
 
-function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) {
-  const portableDatabase = openLegacySqliteDatabase(`${summary.paths.home}/portable-session-operations.sqlite`)
+function makeSessionActions(
+  summary: ReturnType<typeof createBootstrapSummary>,
+  portableLedger: PylonPortableSessionOperationLedger,
+) {
   return createControlSessionActions({
     summary,
-    portableLedger: new PylonPortableSessionOperationLedger(portableDatabase),
+    portableLedger,
     // #4997: build the OpenAgents Cloud executor from env when a cloud control
     // plane is configured (OA_CLOUD_CONTROL_URL + OA_CLOUD_CONTROL_TOKEN). When
     // it is not, this returns null and cloud lanes degrade to the local
@@ -909,7 +912,13 @@ const runHeadlessNode = Effect.gen(function* () {
   const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
   const controlPort = Number(Runtime.env.PYLON_CONTROL_PORT ?? defaultControlPort)
   const headlessAssignmentActions = makeAssignmentActions()
-  const headlessSessionActions = makeSessionActions(bootstrapSummary)
+  const portableDatabase = yield* Effect.try({
+    try: () => openLegacySqliteDatabase(`${bootstrapSummary.paths.home}/portable-session-operations.sqlite`),
+    catch: () => new Error('failed to open owner-local portable session operation ledger'),
+  })
+  yield* Effect.addFinalizer(() => Effect.sync(() => portableDatabase.close()))
+  const portableLedger = new PylonPortableSessionOperationLedger(portableDatabase)
+  const headlessSessionActions = makeSessionActions(bootstrapSummary, portableLedger)
   const headlessExternalTailer = startExternalSessionTailer()
   const headlessSessionsWithExternal = wrapSessionsWithExternal(headlessSessionActions, headlessExternalTailer)
   const headlessIntentQueue = createIntentQueue({
@@ -930,10 +939,16 @@ const runHeadlessNode = Effect.gen(function* () {
   let portablePhaseContextStore: PylonPortablePhaseContextAdmissionStore | null = null
   if (Runtime.env.PYLON_PORTABLE_PHASE_WORKER === '1') {
     const targetRef = Runtime.env.PYLON_PORTABLE_PHASE_TARGET_REF
+    const sessionRef = Runtime.env.PYLON_PORTABLE_PHASE_SESSION_REF
     const agentToken = presenceClientOptions.agentToken
-    if (presenceBaseUrl === undefined || agentToken === undefined || targetRef === undefined) {
+    if (
+      presenceBaseUrl === undefined ||
+      agentToken === undefined ||
+      targetRef === undefined ||
+      sessionRef === undefined
+    ) {
       return yield* Effect.fail(
-        new Error('portable phase worker requires authenticated base URL and an exact target ref'),
+        new Error('portable phase worker requires authenticated base URL and exact target and session refs'),
       )
     }
     const portablePhaseAdmission = yield* Effect.tryPromise({
@@ -947,6 +962,17 @@ const runHeadlessNode = Effect.gen(function* () {
     portablePhaseContextStore = portablePhaseAdmission.store
     portablePhaseAdmission.store.purge()
     yield* Effect.addFinalizer(() => Effect.sync(() => portablePhaseAdmission.close()))
+    yield* Effect.tryPromise({
+      try: () => registerPylonOwnerLocalExecutionTarget({
+        pylonRef: localState.identity.pylonRef,
+        targetRef,
+        sessionRef,
+        ledger: portableLedger,
+        lifecycle: headlessSessionActions.portable,
+        registry: pylonPrivatePortablePhaseContexts,
+      }),
+      catch: () => new Error('failed to register exact owner-local portable phase target'),
+    })
     const durablePhaseResolver = makeDurablePylonPortablePhaseTargetResolver({
       store: portablePhaseAdmission.store,
       target: targetRef => pylonPrivatePortablePhaseContexts.target(targetRef),
