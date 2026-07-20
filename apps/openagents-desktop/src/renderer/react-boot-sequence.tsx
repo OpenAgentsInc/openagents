@@ -41,7 +41,7 @@ export const ReactBootSequence = ({
             {agent.testInference === null || agent.testInference === undefined ? null : (
               <li className="oa-react-boot-line" data-kind="test-inference">
                 <span aria-hidden="true" className="oa-react-boot-glyph">↳</span>
-                <span className="oa-react-boot-detail">test inference: {agent.testInference}</span>
+                <span className="oa-react-boot-detail">Inference test: {agent.testInference}</span>
               </li>
             )}
           </Fragment>

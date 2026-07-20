@@ -1278,7 +1278,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }
       const detail = status.model ?? status.mode
       await setBoot({ status: "available", detail, testInference: null })
-      const turn = await appleFm.startTurn?.({ prompt: "Reply in one short sentence to confirm you are online." })
+      const turn = await appleFm.startTurn?.({ prompt: "Only respond with SYSTEM_ONLINE" })
         .catch(() => null)
       if (turn != null && turn.outcome === "completed" && turn.text !== null) {
         await setBoot({ status: "available", detail, testInference: turn.text.trim().slice(0, 200) })
