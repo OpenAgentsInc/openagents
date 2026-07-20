@@ -3565,10 +3565,14 @@ const currentCodexHostServices = async () => {
 }
 const currentCodexExperimentalRuntime = async () => {
   const binary = codexRuntimeAuthority.executable()
-  if (binary === null) throw new Error("Codex runtime is unavailable")
+  const grantRef = hostLifecycle.workspace()?.grantRef ?? null
+  if (binary === null || grantRef === null) throw new Error("Codex runtime and WorkContext are required")
   const runtimeCwd = path.join(app.getPath("userData"), "claude-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
-  return codexExperimentalRuntimes.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" })
+  return codexExperimentalRuntimes.forTarget(
+    { binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" },
+    { grantRef, mutationAuthority: workspacePortableMutationAuthority },
+  )
 }
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
@@ -4299,6 +4303,14 @@ const laneDispatcher = makeProviderLaneDispatcher({
     },
   },
   captureTurnCheckpoint,
+  portableMutation: {
+    resolve: () => {
+      const grantRef = hostLifecycle.workspace()?.grantRef ?? null
+      return grantRef === null
+        ? null
+        : { grantRef, authority: workspacePortableMutationAuthority }
+    },
+  },
   localTurnFlushers,
   isQuitting: () => desktopIsQuitting,
   onTurnEventProjected: (request, event, background) => {

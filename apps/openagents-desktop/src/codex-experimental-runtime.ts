@@ -337,8 +337,14 @@ export const makeCodexExperimentalRuntime = (options: Readonly<{
   return runtime
 }
 
-export type CodexExperimentalRuntimeRegistry = Readonly<{ forTarget: (target: CodexAppServerPoolTarget) => Promise<CodexExperimentalRuntime>; close: () => void }>
-export const makeCodexExperimentalRuntimeRegistry = (options: Readonly<{ supervisor: CodexAppServerSupervisor; spoolRoot: string; receiptRoot: string; mutationAuthority?: IdePortableMutationAuthority; grantRef?: string }>): CodexExperimentalRuntimeRegistry => {
+export type CodexExperimentalRuntimeRegistry = Readonly<{
+  forTarget: (
+    target: CodexAppServerPoolTarget,
+    portable?: Readonly<{ mutationAuthority: IdePortableMutationAuthority; grantRef: string }>,
+  ) => Promise<CodexExperimentalRuntime>
+  close: () => void
+}>
+export const makeCodexExperimentalRuntimeRegistry = (options: Readonly<{ supervisor: CodexAppServerSupervisor; spoolRoot: string; receiptRoot: string }>): CodexExperimentalRuntimeRegistry => {
   const entries = new Map<string, Promise<CodexExperimentalRuntime>>(); let closed = false
-  return { forTarget: target => { if (closed) return Promise.reject(new CodexExperimentalError("closed", "Experimental registry is closed")); if (!codexExperimentalManifestGate.enabled) return Promise.reject(new CodexExperimentalError("manifest_incomplete", "Experimental manifest is incomplete")); const experimentalTarget = { ...target, experimentalApi: true }; const key = codexAppServerPoolKey(experimentalTarget); const existing = entries.get(key); if (existing !== undefined) return existing; const created = options.supervisor.acquire(experimentalTarget).then(lease => makeCodexExperimentalRuntime({ lease, spoolRoot: resolve(options.spoolRoot, hash(key)), receiptPath: resolve(options.receiptRoot, `${hash(key)}.json`), ...(options.mutationAuthority === undefined ? {} : { mutationAuthority: options.mutationAuthority }), ...(options.grantRef === undefined ? {} : { grantRef: options.grantRef }) }), error => { entries.delete(key); throw error }); entries.set(key, created); return created }, close: () => { if (closed) return; closed = true; for (const entry of entries.values()) void entry.then(value => value.close(), () => undefined); entries.clear() } }
+  return { forTarget: (target, portable) => { if (closed) return Promise.reject(new CodexExperimentalError("closed", "Experimental registry is closed")); if (!codexExperimentalManifestGate.enabled) return Promise.reject(new CodexExperimentalError("manifest_incomplete", "Experimental manifest is incomplete")); const experimentalTarget = { ...target, experimentalApi: true }; const key = `${codexAppServerPoolKey(experimentalTarget)}\0${portable?.grantRef ?? "unbound"}`; const existing = entries.get(key); if (existing !== undefined) return existing; const created = options.supervisor.acquire(experimentalTarget).then(lease => makeCodexExperimentalRuntime({ lease, spoolRoot: resolve(options.spoolRoot, hash(key)), receiptPath: resolve(options.receiptRoot, `${hash(key)}.json`), ...(portable ?? {}) }), error => { entries.delete(key); throw error }); entries.set(key, created); return created }, close: () => { if (closed) return; closed = true; for (const entry of entries.values()) void entry.then(value => value.close(), () => undefined); entries.clear() } }
 }
