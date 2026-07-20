@@ -133,6 +133,7 @@ describe("portable command capability grant facts", () => {
     ]);
     expect(result.bindings).toEqual([
       {
+        sourceLeaseRef: "lease.ide13.source",
         grantRef: "grant.ide13.source",
         ownerUserId: scope.ownerRef,
         kind: "provider",
@@ -140,6 +141,57 @@ describe("portable command capability grant facts", () => {
         runnerSessionId: "runner-session.ide13",
       },
     ]);
+  });
+
+  it("preserves each durable lease-to-grant mapping when authority facts are reordered", async () => {
+    const secondLeaseRef = "lease.ide13.source-two";
+    const secondGrantRef = "grant.ide13.source-two";
+    const twoLeaseScope = {
+      ...scope,
+      sourceLeaseRefs: [scope.sourceLeaseRefs[0]!, secondLeaseRef],
+    };
+    const twoLeaseState = {
+      ...state,
+      records: [
+        ...state.records,
+        {
+          ...state.records[0]!,
+          lease: { ...state.records[0]!.lease, leaseRef: secondLeaseRef },
+          sourceGrantRef: secondGrantRef,
+        },
+      ],
+    };
+    const resolver = new PostgresPortableCommandCapabilityGrantFactResolver({
+      sql: sqlWith(twoLeaseState),
+      authority: {
+        resolve: async () => [
+          {
+            grantRef: secondGrantRef,
+            ownerUserId: scope.ownerRef,
+            kind: "provider",
+            providerAccountRef: "provider-account.ide13.two",
+            status: "issued",
+            expiresAt: "2026-07-20T12:09:00.000Z",
+          },
+          {
+            grantRef: "grant.ide13.source",
+            ownerUserId: scope.ownerRef,
+            kind: "provider",
+            providerAccountRef: "provider-account.ide13.one",
+            status: "issued",
+            expiresAt: "2026-07-20T12:09:00.000Z",
+          },
+        ],
+      },
+      now: () => "2026-07-20T12:00:00.000Z",
+    });
+
+    await expect(resolver.resolve(twoLeaseScope)).resolves.toMatchObject({
+      bindings: [
+        { sourceLeaseRef: "lease.ide13.source", grantRef: "grant.ide13.source" },
+        { sourceLeaseRef: secondLeaseRef, grantRef: secondGrantRef },
+      ],
+    });
   });
 
   it("rejects a broker lease-set mismatch before the grant authority call", async () => {

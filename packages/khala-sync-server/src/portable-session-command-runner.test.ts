@@ -205,12 +205,15 @@ const config = (
         destinationSourceGrantRef: `grant.${sourceLeaseRef}.destination`,
         expiresAt: "2026-07-20T12:09:00.000Z",
       })),
-      bindings: [{
-        grantRef: "grant.ide13.source",
-        ownerUserId: ownerRef,
-        kind: "provider",
-        providerAccountRef: "provider-account.ide13",
-      }],
+      bindings: [
+        {
+          sourceLeaseRef: "lease.ide13.source",
+          grantRef: "grant.ide13.source",
+          ownerUserId: ownerRef,
+          kind: "provider",
+          providerAccountRef: "provider-account.ide13",
+        },
+      ],
     }),
   },
   checkpointArtifacts: {
@@ -246,15 +249,20 @@ describe("portable session command production resolver", () => {
         expiresAt: "2026-07-20T12:09:00.000Z",
       },
     ]);
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      claim,
-      grantBindings: [{
-        grantRef: "grant.ide13.source",
-        ownerUserId: ownerRef,
-        kind: "provider",
-        providerAccountRef: "provider-account.ide13",
-      }],
-    }));
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claim,
+        grantBindings: [
+          {
+            sourceLeaseRef: "lease.ide13.source",
+            grantRef: "grant.ide13.source",
+            ownerUserId: ownerRef,
+            kind: "provider",
+            providerAccountRef: "provider-account.ide13",
+          },
+        ],
+      }),
+    );
   });
 
   it("rejects foreign owner authority before target effects", async () => {

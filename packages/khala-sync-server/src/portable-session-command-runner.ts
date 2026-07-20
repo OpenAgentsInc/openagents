@@ -113,8 +113,12 @@ export type PortableCommandCapabilityGrantFactScope = Readonly<{
 
 export type PortableCommandCapabilityGrantResolution = Readonly<{
   facts: ReadonlyArray<PortableCommandCapabilityGrantFact>;
-  bindings: ReadonlyArray<PortableGrantAuthorityBinding>;
+  bindings: ReadonlyArray<PortableCommandGrantAuthorityBinding>;
 }>;
+
+/** Exact durable source-lease to grant-authority binding for one command. */
+export type PortableCommandGrantAuthorityBinding = PortableGrantAuthorityBinding &
+  Readonly<{ sourceLeaseRef: string }>;
 
 export type PortableCommandCapabilityGrantFactResolver = Readonly<{
   resolve: (
@@ -123,13 +127,15 @@ export type PortableCommandCapabilityGrantFactResolver = Readonly<{
 }>;
 
 export type PortableCommandBrokerFactory = Readonly<{
-  create: (input: Readonly<{
-    claim: PortableCommandExecutionClaim;
-    source: PortableTargetDescriptor;
-    destination: PortableTargetDescriptor;
-    grantBindings: ReadonlyArray<PortableGrantAuthorityBinding>;
-    capabilityTransfers: ReadonlyArray<PortableCapabilityTransfer>;
-  }>) => Promise<PortableSessionMoveRuntimeBrokerConfig>;
+  create: (
+    input: Readonly<{
+      claim: PortableCommandExecutionClaim;
+      source: PortableTargetDescriptor;
+      destination: PortableTargetDescriptor;
+      grantBindings: ReadonlyArray<PortableCommandGrantAuthorityBinding>;
+      capabilityTransfers: ReadonlyArray<PortableCapabilityTransfer>;
+    }>,
+  ) => Promise<PortableSessionMoveRuntimeBrokerConfig>;
 }>;
 
 export type PortableCommandPylonBindingResolver = Readonly<{
@@ -374,7 +380,12 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
       sourceLeaseRefs,
     } as const;
     const grantResolution = await this.config.capabilityGrantFacts.resolve(factScope);
-    const capabilityTransfers = this.capabilityTransfers(claim, sourceLeaseRefs, grantResolution.facts, now);
+    const capabilityTransfers = this.capabilityTransfers(
+      claim,
+      sourceLeaseRefs,
+      grantResolution.facts,
+      now,
+    );
     this.assertGrantBindings(claim, sourceLeaseRefs, grantResolution.bindings);
     const broker = await this.config.brokerFactory.create({
       claim,
@@ -424,9 +435,7 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
     destination: PortableTargetDescriptor,
   ): void {
     for (const target of [source, destination]) {
-      const binding = broker.targets.find(
-        (candidate) => candidate.targetRef === target.targetRef,
-      );
+      const binding = broker.targets.find((candidate) => candidate.targetRef === target.targetRef);
       const adapter = broker.adapters.find(
         (candidate) => candidate.adapterRef === target.adapterRef,
       );
@@ -449,19 +458,29 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
   private assertGrantBindings(
     claim: PortableCommandExecutionClaim,
     sourceLeaseRefs: ReadonlyArray<string>,
-    bindings: ReadonlyArray<PortableGrantAuthorityBinding>,
+    bindings: ReadonlyArray<PortableCommandGrantAuthorityBinding>,
   ): void {
     assertRefsOnly(bindings, "portable grant bindings contain private material");
     if (
       bindings.length !== sourceLeaseRefs.length ||
-      new Set(bindings.map(binding => binding.grantRef)).size !== bindings.length ||
-      bindings.some(binding =>
-        !SAFE_REF.test(binding.grantRef) || binding.ownerUserId !== claim.ownerRef ||
-        !["provider", "github"].includes(binding.kind) ||
-        (binding.kind === "provider" &&
-          (binding.providerAccountRef === undefined || !SAFE_REF.test(binding.providerAccountRef))) ||
-        (binding.kind === "github" && binding.providerAccountRef !== undefined) ||
-        (binding.runnerSessionId !== undefined && !SAFE_REF.test(binding.runnerSessionId)))
+      new Set(bindings.map((binding) => binding.grantRef)).size !== bindings.length ||
+      new Set(bindings.map((binding) => binding.sourceLeaseRef)).size !== bindings.length ||
+      !sameSet(
+        bindings.map((binding) => binding.sourceLeaseRef),
+        sourceLeaseRefs,
+      ) ||
+      bindings.some(
+        (binding) =>
+          !SAFE_REF.test(binding.sourceLeaseRef) ||
+          !SAFE_REF.test(binding.grantRef) ||
+          binding.ownerUserId !== claim.ownerRef ||
+          !["provider", "github"].includes(binding.kind) ||
+          (binding.kind === "provider" &&
+            (binding.providerAccountRef === undefined ||
+              !SAFE_REF.test(binding.providerAccountRef))) ||
+          (binding.kind === "github" && binding.providerAccountRef !== undefined) ||
+          (binding.runnerSessionId !== undefined && !SAFE_REF.test(binding.runnerSessionId)),
+      )
     ) {
       throw new PortableSessionCommandRunnerError(
         "capability_mismatch",

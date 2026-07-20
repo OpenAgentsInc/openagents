@@ -10,6 +10,7 @@ import type {
   PortableCommandCapabilityGrantFact,
   PortableCommandCapabilityGrantFactScope,
   PortableCommandCapabilityGrantResolution,
+  PortableCommandGrantAuthorityBinding,
 } from "./portable-session-command-runner.js";
 import type { SyncSql } from "./sql.js";
 
@@ -242,7 +243,7 @@ export class PostgresPortableCommandCapabilityGrantFactResolver {
     });
     const byRef = new Map(authorityFacts.map((fact) => [fact.grantRef, fact]));
     const now = new Date(this.config.now?.() ?? new Date().toISOString());
-    const bindings: PortableGrantAuthorityBinding[] = [];
+    const bindings: PortableCommandGrantAuthorityBinding[] = [];
     const facts: PortableCommandCapabilityGrantFact[] = records.map((record) => {
       const authority = byRef.get(record.sourceGrantRef);
       if (
@@ -255,6 +256,7 @@ export class PostgresPortableCommandCapabilityGrantFactResolver {
           "source grant is not active for owner",
         );
       bindings.push({
+        sourceLeaseRef: record.lease.leaseRef,
         grantRef: authority.grantRef,
         ownerUserId: authority.ownerUserId,
         kind: authority.kind,
