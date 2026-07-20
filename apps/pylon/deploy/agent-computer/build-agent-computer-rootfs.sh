@@ -193,7 +193,7 @@ if [ -z "$TURN_RUNNER" ]; then
   TURN_RUNNER="$WORK/turn-runner"
   (cd "$REPO_ROOT" && vp pack \
     apps/pylon/deploy/agent-computer/turn-runner.ts \
-    --out-dir "$WORK/turn-runner-build" --platform node --target node24 --exe)
+    --out-dir "$WORK/turn-runner-build" --platform node --target node24)
   TURN_RUNNER="$WORK/turn-runner-build/turn-runner.mjs"
 fi
 [ -f "$TURN_RUNNER" ] || fail "turn-runner binary not found: $TURN_RUNNER"
@@ -206,7 +206,7 @@ if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
   (cd "$REPO_ROOT" && vp pack \
     apps/pylon/deploy/agent-computer/portable-session-control.ts \
     --out-dir "$WORK/portable-session-control-build" \
-    --platform node --target node24 --exe)
+    --platform node --target node24)
   PORTABLE_SESSION_CONTROL="$WORK/portable-session-control-build/portable-session-control.mjs"
 fi
 [ -f "$PORTABLE_SESSION_CONTROL" ] \

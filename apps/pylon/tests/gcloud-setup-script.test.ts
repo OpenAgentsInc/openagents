@@ -19,6 +19,13 @@ const agentComputerImageManifest = join(
   "agent-computer",
   "agent-computer-image.manifest.json",
 )
+const agentComputerImageBuildScript = join(
+  import.meta.dirname,
+  "..",
+  "deploy",
+  "agent-computer",
+  "build-agent-computer-rootfs.sh",
+)
 
 describe("GCloud Pylon setup script", () => {
   test("dry-run does not print env-file secrets", () => {
@@ -169,6 +176,12 @@ describe("Agent Computer GCE host setup script", () => {
       guestImage: {
         scratchWipeReceiptRequired: boolean
         microvmDestroyReceiptRequired: boolean
+        portableSessionControl: {
+          status: string
+          helperProfile: Record<"pty" | "lsp" | "dap" | "watcher" | "native", string> & {
+            schema: string
+          }
+        }
       }
       isolation: {
         policySchema: string
@@ -184,6 +197,15 @@ describe("Agent Computer GCE host setup script", () => {
 
     expect(manifest.guestImage.scratchWipeReceiptRequired).toBe(true)
     expect(manifest.guestImage.microvmDestroyReceiptRequired).toBe(true)
+    expect(manifest.guestImage.portableSessionControl.status).toContain("rebake_pending")
+    expect(manifest.guestImage.portableSessionControl.helperProfile).toMatchObject({
+      schema: "openagents.portable_guest_helper_profile.v1",
+      watcher: expect.stringContaining("ready handshake"),
+      pty: expect.stringContaining("unsupported"),
+      lsp: expect.stringContaining("unsupported"),
+      dap: expect.stringContaining("unsupported"),
+      native: expect.stringContaining("unsupported"),
+    })
     expect(manifest.isolation.policySchema).toBe("openagents.agent_computer_isolation_policy.v1")
     expect(manifest.isolation.workContextBindingRequired).toBe(true)
     expect(manifest.isolation.noCrossContextReuse).toBe(true)
@@ -192,5 +214,12 @@ describe("Agent Computer GCE host setup script", () => {
     expect(manifest.isolation.noRawUserOAuthTokens).toBe(true)
     expect(manifest.isolation.noProviderMasterKeys).toBe(true)
     expect(manifest.isolation.noInboundGuestServices).toBe(true)
+  })
+
+  test("rootfs bake packages Node 24 scripts without the unsupported host exe mode", () => {
+    const buildScript = readFileSync(agentComputerImageBuildScript, "utf8")
+    expect(buildScript.match(/vp pack/g)).toHaveLength(2)
+    expect(buildScript.match(/--target node24/g)).toHaveLength(2)
+    expect(buildScript).not.toContain("--exe")
   })
 })

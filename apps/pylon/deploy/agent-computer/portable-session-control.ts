@@ -11,6 +11,7 @@ import { Runtime } from "@openagentsinc/runtime-platform"
  */
 
 import { createHash } from "node:crypto"
+import { spawn } from "node:child_process"
 import { chmod, lstat, mkdir, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises"
 import { dirname, join, posix } from "node:path"
 
@@ -43,11 +44,31 @@ type ControllerState = Readonly<{
   operations: Record<string, Readonly<{ fingerprint: string; response: unknown }>>
 }>
 
+type PortableGuestHelperKind = "pty" | "lsp" | "dap" | "watcher" | "native"
+type PortableGuestHelperReadiness = Readonly<{
+  kind: PortableGuestHelperKind
+  readiness: "ready" | "unsupported"
+  instanceRef: string | null
+  versionRef: string | null
+  omissionRef: string | null
+  evidenceRefs: ReadonlyArray<string>
+}>
+
 export type PortableSessionGuestRuntime = Readonly<{
   prepare: (input: Readonly<{ sessionRoot: string; agentRefs: ReadonlyArray<string> }>) => Promise<void>
   verifyStage: (input: Readonly<{ sessionRoot: string; bundle: Record<string, unknown> }>) => Promise<void>
   verifyCapabilities: (input: Readonly<{ sessionRoot: string; leaseRefs: ReadonlyArray<string> }>) => Promise<void>
-  activate: (input: Readonly<{ sessionRoot: string; agentRefs: ReadonlyArray<string> }>) => Promise<void>
+  activate: (input: Readonly<{
+    sessionRoot: string
+    agentRefs: ReadonlyArray<string>
+    destinationRunnerSessionReservationRef: string
+    generation: number
+  }>) => Promise<ReadonlyArray<PortableGuestHelperReadiness>>
+  verifyActivation: (input: Readonly<{
+    sessionRoot: string
+    destinationRunnerSessionReservationRef: string
+    generation: number
+  }>) => Promise<void>
   continueWork: (input: Readonly<{
     sessionRoot: string
     ownerRef: string
@@ -106,6 +127,31 @@ const asString = (value: unknown, field: string): string => {
     throw new PortableSessionControlError(`${field} must be a public-safe ref`)
   }
   return value
+}
+
+const validateHelperReadiness = (helpers: ReadonlyArray<PortableGuestHelperReadiness>): void => {
+  const expected = ["pty", "lsp", "dap", "watcher", "native"] as const
+  if (helpers.length !== expected.length || expected.some(kind =>
+    helpers.filter(helper => helper.kind === kind).length !== 1)) {
+    throw new PortableSessionControlError("activation helper inventory is incomplete")
+  }
+  for (const helper of helpers) {
+    if (Object.keys(helper).sort().join("\0") !==
+        ["evidenceRefs", "instanceRef", "kind", "omissionRef", "readiness", "versionRef"].join("\0") ||
+        new Set(helper.evidenceRefs).size !== helper.evidenceRefs.length ||
+        helper.evidenceRefs.some(ref => !SAFE_REF.test(ref))) {
+      throw new PortableSessionControlError("activation helper receipt is invalid")
+    }
+    if (helper.readiness === "ready") {
+      if (helper.instanceRef === null || helper.versionRef === null || helper.omissionRef !== null ||
+          !SAFE_REF.test(helper.instanceRef) || !SAFE_REF.test(helper.versionRef) || helper.evidenceRefs.length === 0) {
+        throw new PortableSessionControlError("ready helper has no live identity evidence")
+      }
+    } else if (helper.instanceRef !== null || helper.versionRef !== null || helper.omissionRef === null ||
+               !SAFE_REF.test(helper.omissionRef) || helper.evidenceRefs.length !== 0) {
+      throw new PortableSessionControlError("unsupported helper claims a live identity")
+    }
+  }
 }
 
 const publicSafe = <A>(value: A): A => {
@@ -308,6 +354,16 @@ export const executePortableSessionControl = async (input: Readonly<{
   const replay = state?.operations[operation.operationRef]
   if (replay !== undefined) {
     if (replay.fingerprint !== fingerprint) throw new PortableSessionControlError("operation bytes conflict")
+    if (operation.action === "activate") {
+      await input.runtime.verifyActivation({
+        sessionRoot,
+        destinationRunnerSessionReservationRef: asString(
+          operation.payload.destinationRunnerSessionReservationRef,
+          "destinationRunnerSessionReservationRef",
+        ),
+        generation: operation.generation,
+      })
+    }
     return replay.response
   }
 
@@ -347,17 +403,66 @@ export const executePortableSessionControl = async (input: Readonly<{
     const agentRefs = graphAgentRefs(graph)
     if (operation.action === "activate") {
       if (state.state !== "staged") throw new PortableSessionControlError("activation requires stage")
-      asString(operation.payload.authorityEvidenceRef, "authorityEvidenceRef")
+      const checkpointRef = asString(operation.payload.checkpointRef, "checkpointRef")
+      const authorityEvidenceRef = asString(operation.payload.authorityEvidenceRef, "authorityEvidenceRef")
+      const authenticationPolicyRef = asString(operation.payload.authenticationPolicyRef, "authenticationPolicyRef")
+      const destinationRunnerSessionReservationRef = asString(
+        operation.payload.destinationRunnerSessionReservationRef,
+        "destinationRunnerSessionReservationRef",
+      )
+      const helpersObservedAt = asString(operation.payload.helpersObservedAt, "helpersObservedAt")
+      if (!Number.isFinite(new Date(helpersObservedAt).valueOf())) {
+        throw new PortableSessionControlError("helpersObservedAt must be an ISO timestamp")
+      }
       if (!Array.isArray(operation.payload.capabilityLeaseRefs) || operation.payload.capabilityLeaseRefs.length === 0) {
         throw new PortableSessionControlError("activation requires installed capability lease refs")
       }
       const leaseRefs = operation.payload.capabilityLeaseRefs.map((value, index) => asString(value, `capabilityLeaseRefs[${index}]`))
+      if (new Set(leaseRefs).size !== leaseRefs.length) {
+        throw new PortableSessionControlError("activation capability lease refs must be unique")
+      }
       await input.runtime.verifyCapabilities({ sessionRoot, leaseRefs })
-      await input.runtime.activate({ sessionRoot, agentRefs })
+      const helpers = await input.runtime.activate({
+        sessionRoot,
+        agentRefs,
+        destinationRunnerSessionReservationRef,
+        generation: operation.generation,
+      })
+      try {
+        validateHelperReadiness(helpers)
+      } catch (error) {
+        await input.runtime.quiesce({ sessionRoot, agentRefs }).catch(() => undefined)
+        throw error
+      }
+      const activationEvidenceRef = stableRef("evidence.agent-computer.activate", operation.operationRef)
       response = {
+        schema: "openagents.ide_portable_destination_activation.v1",
+        receiptRef: stableRef("receipt.agent-computer.destination-activation", operation.operationRef),
+        operationRef: operation.operationRef,
+        sessionRef: operation.sessionRef,
+        checkpointRef,
+        destinationTargetRef: operation.targetRef,
+        destinationAttachmentRef: operation.attachmentRef,
+        destinationRunnerSessionReservationRef,
+        destinationGeneration: operation.generation,
+        authentication: {
+          state: "reauthenticated",
+          policyRef: authenticationPolicyRef,
+          evidenceRef: authorityEvidenceRef,
+          observedAt: helpersObservedAt,
+          expiresAt: null,
+        },
+        helpersObservedAt,
+        helpers,
         activatedAgentRefs: agentRefs,
         acceptedWorkRefs: [],
-        evidenceRefs: [stableRef("evidence.agent-computer.activate", operation.operationRef)],
+        evidenceRefs: [
+          ...new Set([
+            authorityEvidenceRef,
+            activationEvidenceRef,
+            ...helpers.flatMap(helper => helper.evidenceRefs),
+          ]),
+        ],
       }
       state = { ...state, state: "active" }
     } else if (operation.action === "quiesce") {
@@ -825,6 +930,201 @@ export const repositorySnapshot = async (sessionRoot: string) => {
   }
 }
 
+const PORTABLE_HELPER_STATE_SCHEMA = "openagents.portable_guest_helper_state.v1" as const
+const WATCHER_PROGRAM = String.raw`
+const { watch, writeFileSync } = require("node:fs");
+const [workspace, readyPath, instanceRef] = process.argv.slice(1);
+if (!workspace || !readyPath || !instanceRef) process.exit(64);
+let watcher;
+try {
+  watcher = watch(workspace, { recursive: true, persistent: true }, () => undefined);
+  watcher.on("error", () => process.exit(70));
+  writeFileSync(readyPath, instanceRef, { mode: 0o600 });
+} catch {
+  process.exit(70);
+}
+const stop = () => { watcher.close(); process.exit(0); };
+process.on("SIGTERM", stop);
+process.on("SIGINT", stop);
+`
+
+type PortableGuestHelperState = Readonly<{
+  schema: typeof PORTABLE_HELPER_STATE_SCHEMA
+  destinationRunnerSessionReservationRef: string
+  generation: number
+  watcher: Readonly<{
+    pid: number
+    instanceRef: string
+    versionRef: string
+    evidenceRefs: ReadonlyArray<string>
+  }>
+}>
+
+const helperStatePath = (sessionRoot: string): string => join(sessionRoot, "portable-helpers.json")
+const helperReadyPath = (sessionRoot: string, instanceRef: string): string =>
+  join(sessionRoot, `watcher-${createHash("sha256").update(instanceRef).digest("hex").slice(0, 24)}.ready`)
+
+const processIsLive = (pid: number): boolean => {
+  if (!Number.isSafeInteger(pid) || pid <= 1) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const helperProcessIsLive = async (state: PortableGuestHelperState): Promise<boolean> => {
+  if (!processIsLive(state.watcher.pid)) return false
+  if (!(await Runtime.file("/proc").exists())) return true
+  const commandLine = await readFile(`/proc/${state.watcher.pid}/cmdline`, "utf8").catch(() => "")
+  return commandLine.split("\0").includes(state.watcher.instanceRef)
+}
+
+const readHelperState = async (sessionRoot: string): Promise<PortableGuestHelperState | undefined> => {
+  try {
+    return JSON.parse(await readFile(helperStatePath(sessionRoot), "utf8")) as PortableGuestHelperState
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined
+    throw error
+  }
+}
+
+const assertHelperState = (
+  state: PortableGuestHelperState,
+  destinationRunnerSessionReservationRef: string,
+  generation: number,
+): void => {
+  if (state.schema !== PORTABLE_HELPER_STATE_SCHEMA ||
+      state.destinationRunnerSessionReservationRef !== destinationRunnerSessionReservationRef ||
+      state.generation !== generation ||
+      !SAFE_REF.test(state.watcher.instanceRef) ||
+      !SAFE_REF.test(state.watcher.versionRef) ||
+      state.watcher.evidenceRefs.length === 0 ||
+      state.watcher.evidenceRefs.some(ref => !SAFE_REF.test(ref)) ||
+      !Number.isSafeInteger(state.watcher.pid) || state.watcher.pid <= 1) {
+    throw new PortableSessionControlError("portable helper state differs from the retained generation")
+  }
+}
+
+const watcherReadiness = (state: PortableGuestHelperState): ReadonlyArray<PortableGuestHelperReadiness> =>
+  (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => kind === "watcher"
+    ? {
+        kind,
+        readiness: "ready",
+        instanceRef: state.watcher.instanceRef,
+        versionRef: state.watcher.versionRef,
+        omissionRef: null,
+        evidenceRefs: state.watcher.evidenceRefs,
+      }
+    : {
+        kind,
+        readiness: "unsupported",
+        instanceRef: null,
+        versionRef: null,
+        omissionRef: `omission.agent-computer.portable.${kind}.image_adapter_unavailable`,
+        evidenceRefs: [],
+      })
+
+export const verifyPortableGuestHelpers = async (input: Readonly<{
+  sessionRoot: string
+  destinationRunnerSessionReservationRef: string
+  generation: number
+}>): Promise<ReadonlyArray<PortableGuestHelperReadiness>> => {
+  const state = await readHelperState(input.sessionRoot)
+  if (state === undefined) throw new PortableSessionControlError("portable helper state is missing")
+  assertHelperState(state, input.destinationRunnerSessionReservationRef, input.generation)
+  if (!(await helperProcessIsLive(state)) ||
+      (await readFile(helperReadyPath(input.sessionRoot, state.watcher.instanceRef), "utf8").catch(() => "")) !== state.watcher.instanceRef) {
+    throw new PortableSessionControlError("portable watcher helper is not live")
+  }
+  return watcherReadiness(state)
+}
+
+export const stopPortableGuestHelpers = async (sessionRoot: string): Promise<void> => {
+  const state = await readHelperState(sessionRoot)
+  if (state === undefined) return
+  if (await helperProcessIsLive(state)) {
+    try {
+      process.kill(state.watcher.pid, "SIGTERM")
+    } catch {
+      // A concurrently exited watcher is already disposed.
+    }
+    for (let attempt = 0; attempt < 50 && await helperProcessIsLive(state); attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    if (await helperProcessIsLive(state)) {
+      try {
+        process.kill(state.watcher.pid, "SIGKILL")
+      } catch {
+        // A concurrently exited watcher is already disposed.
+      }
+    }
+  }
+  await rm(helperReadyPath(sessionRoot, state.watcher.instanceRef), { force: true })
+  await rm(helperStatePath(sessionRoot), { force: true })
+}
+
+export const startPortableGuestHelpers = async (input: Readonly<{
+  sessionRoot: string
+  destinationRunnerSessionReservationRef: string
+  generation: number
+  nodeBin?: string
+}>): Promise<ReadonlyArray<PortableGuestHelperReadiness>> => {
+  const prior = await readHelperState(input.sessionRoot)
+  if (prior !== undefined) {
+    assertHelperState(prior, input.destinationRunnerSessionReservationRef, input.generation)
+    return verifyPortableGuestHelpers(input)
+  }
+  const instanceRef = stableRef(
+    "instance.agent-computer.portable.watcher",
+    `${input.destinationRunnerSessionReservationRef}|${input.generation}`,
+  )
+  const readyPath = helperReadyPath(input.sessionRoot, instanceRef)
+  let spawnFailure: Error | undefined
+  const child = spawn(input.nodeBin ?? "/usr/local/bin/node", [
+    "-e",
+    WATCHER_PROGRAM,
+    workspacePath(input.sessionRoot),
+    readyPath,
+    instanceRef,
+  ], { detached: true, stdio: "ignore", env: { PATH: "/usr/local/bin:/usr/bin:/bin" } })
+  child.once("error", error => { spawnFailure = error })
+  child.unref()
+  if (child.pid === undefined) throw new PortableSessionControlError("portable watcher helper did not start")
+  const state: PortableGuestHelperState = {
+    schema: PORTABLE_HELPER_STATE_SCHEMA,
+    destinationRunnerSessionReservationRef: input.destinationRunnerSessionReservationRef,
+    generation: input.generation,
+    watcher: {
+      pid: child.pid,
+      instanceRef,
+      versionRef: `version.node.fs-watch-recursive.${process.versions.node.replaceAll(".", "_")}`,
+      evidenceRefs: [stableRef("evidence.agent-computer.portable.watcher.live", instanceRef)],
+    },
+  }
+  try {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if ((await readFile(readyPath, "utf8").catch(() => "")) === instanceRef && processIsLive(child.pid)) {
+        const path = helperStatePath(input.sessionRoot)
+        const temporary = `${path}.tmp-${process.pid}`
+        await writeFile(temporary, canonicalJson(state), { mode: 0o600 })
+        await rename(temporary, path)
+        return watcherReadiness(state)
+      }
+      if (spawnFailure !== undefined || !processIsLive(child.pid)) break
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    throw new PortableSessionControlError("portable watcher helper did not report ready")
+  } catch (error) {
+    if (processIsLive(child.pid)) {
+      try { process.kill(child.pid, "SIGKILL") } catch { /* already exited */ }
+    }
+    await rm(readyPath, { force: true })
+    throw error
+  }
+}
+
 export const productionRuntime: PortableSessionGuestRuntime = {
   repositorySnapshot,
   prepare: async ({ sessionRoot, agentRefs }) => {
@@ -872,10 +1172,32 @@ export const productionRuntime: PortableSessionGuestRuntime = {
       publicSafe(marker)
     }
   },
-  activate: async ({ sessionRoot, agentRefs }) => {
-    for (const agentRef of agentRefs) {
-      await transitionLifecycle(agentStatePath(sessionRoot, agentRef), "running")
+  activate: async ({ sessionRoot, agentRefs, destinationRunnerSessionReservationRef, generation }) => {
+    const activated: string[] = []
+    try {
+      for (const agentRef of agentRefs) {
+        await transitionLifecycle(agentStatePath(sessionRoot, agentRef), "running")
+        activated.push(agentRef)
+      }
+      return await startPortableGuestHelpers({
+        sessionRoot,
+        destinationRunnerSessionReservationRef,
+        generation,
+      })
+    } catch (error) {
+      await stopPortableGuestHelpers(sessionRoot).catch(() => undefined)
+      for (const agentRef of activated.reverse()) {
+        await transitionLifecycle(agentStatePath(sessionRoot, agentRef), "paused").catch(() => undefined)
+      }
+      throw error
     }
+  },
+  verifyActivation: async ({ sessionRoot, destinationRunnerSessionReservationRef, generation }) => {
+    await verifyPortableGuestHelpers({
+      sessionRoot,
+      destinationRunnerSessionReservationRef,
+      generation,
+    })
   },
   continueWork: async ({ sessionRoot, ownerRef, repositoryRef, providerLeaseRef, turns }) => {
     const materialLeaf = createHash("sha256").update(providerLeaseRef).digest("hex").slice(0, 24)
@@ -962,6 +1284,7 @@ export const productionRuntime: PortableSessionGuestRuntime = {
     return completed
   },
   quiesce: async ({ sessionRoot, agentRefs }) => {
+    await stopPortableGuestHelpers(sessionRoot)
     for (const agentRef of agentRefs) {
       await transitionLifecycle(agentStatePath(sessionRoot, agentRef), "paused")
     }
@@ -970,6 +1293,7 @@ export const productionRuntime: PortableSessionGuestRuntime = {
     // The authenticated host tears the entire Firecracker VM down only after
     // this fixed controller returns. Removing guest session state here is the
     // inner wipe; host VM teardown is the authoritative process/port fence.
+    await stopPortableGuestHelpers(sessionRoot)
     await rm(workspacePath(sessionRoot), { recursive: true, force: true })
     await rm(join(sessionRoot, "agents"), { recursive: true, force: true })
   },

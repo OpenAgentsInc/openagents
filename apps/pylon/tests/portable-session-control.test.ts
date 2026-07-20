@@ -16,6 +16,9 @@ import {
   portableSessionRoot,
   productionRuntime,
   repositorySnapshot,
+  startPortableGuestHelpers,
+  stopPortableGuestHelpers,
+  verifyPortableGuestHelpers,
   PortableSessionControlError,
   type PortableSessionGuestRuntime,
 } from "../deploy/agent-computer/portable-session-control.js"
@@ -63,6 +66,27 @@ const bundle = {
   }],
 }
 
+const helperReadiness = () => (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
+  kind,
+  readiness: "unsupported" as const,
+  instanceRef: null,
+  versionRef: null,
+  omissionRef: `omission.agent-computer.portable.${kind}.test_unavailable`,
+  evidenceRefs: [],
+}))
+
+const activationPayload = (
+  authorityEvidenceRef = "evidence.port03.guest.authority",
+  capabilityLeaseRefs: ReadonlyArray<string> = ["lease.port03.guest"],
+) => ({
+  checkpointRef: "checkpoint.port03.guest.source",
+  authorityEvidenceRef,
+  destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.2",
+  authenticationPolicyRef: "policy.portable.destination.openagents_managed.v1",
+  helpersObservedAt: "2026-07-20T16:40:00.000Z",
+  capabilityLeaseRefs,
+})
+
 const fixture = async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-control-"))
   roots.push(stateRoot)
@@ -71,7 +95,8 @@ const fixture = async () => {
     prepare: async () => { calls.push("prepare") },
     verifyStage: async () => { calls.push("stage") },
     verifyCapabilities: async () => { calls.push("capabilities") },
-    activate: async () => { calls.push("activate") },
+    activate: async () => { calls.push("activate"); return helperReadiness() },
+    verifyActivation: async () => { calls.push("verify-activation") },
     continueWork: async ({ turns }) => {
       calls.push("continue")
       return turns.map((turn, index) => ({
@@ -108,6 +133,77 @@ const sha = (bytes: string | Uint8Array): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`
 
 describe("retained Agent Computer portable-session-control", () => {
+  test("starts one real generation-bound recursive watcher and disposes it", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.watcher")
+    await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    const scope = {
+      sessionRoot,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.watcher.2",
+      generation: 2,
+      nodeBin: process.execPath,
+    }
+    try {
+      const started = await startPortableGuestHelpers(scope)
+      expect(started).toHaveLength(5)
+      expect(started.find(helper => helper.kind === "watcher")).toMatchObject({
+        readiness: "ready",
+        instanceRef: expect.stringMatching(/^instance\.agent-computer\.portable\.watcher\./u),
+        versionRef: expect.stringMatching(/^version\.node\.fs-watch-recursive\./u),
+      })
+      expect(started.filter(helper => helper.kind !== "watcher").every(helper =>
+        helper.readiness === "unsupported" && helper.instanceRef === null)).toBe(true)
+      expect(await verifyPortableGuestHelpers(scope)).toEqual(started)
+      expect(await startPortableGuestHelpers(scope)).toEqual(started)
+      await expect(startPortableGuestHelpers({ ...scope, generation: 3 })).rejects.toThrow("generation")
+    } finally {
+      await stopPortableGuestHelpers(sessionRoot)
+    }
+    await expect(verifyPortableGuestHelpers(scope)).rejects.toThrow("missing")
+  })
+
+  test("refuses replay after the concrete watcher process exits", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-exit-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.watcher-exit")
+    await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    const scope = {
+      sessionRoot,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.watcher-exit.2",
+      generation: 2,
+      nodeBin: process.execPath,
+    }
+    await startPortableGuestHelpers(scope)
+    try {
+      const state = JSON.parse(await readFile(join(sessionRoot, "portable-helpers.json"), "utf8")) as {
+        watcher: { pid: number }
+      }
+      process.kill(state.watcher.pid, "SIGKILL")
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await expect(verifyPortableGuestHelpers(scope)).rejects.toThrow("not live")
+      await expect(startPortableGuestHelpers(scope)).rejects.toThrow("not live")
+    } finally {
+      await stopPortableGuestHelpers(sessionRoot)
+    }
+  })
+
+  test("fails closed when the pinned watcher runtime is unavailable", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-missing-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.watcher-missing")
+    await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    await expect(startPortableGuestHelpers({
+      sessionRoot,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.watcher-missing.2",
+      generation: 2,
+      nodeBin: join(stateRoot, "missing-node"),
+    })).rejects.toThrow("did not start")
+    await expect(readFile(join(sessionRoot, "portable-helpers.json"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    })
+  })
+
   test("keeps stage non-accepting, activates the graph, checkpoints, and reclaims exactly once", async () => {
     const { stateRoot, calls, runtime } = await fixture()
     const stage = operation("stage", "operation.port03.guest.stage", { bundle, capabilityLeaseRefs: ["lease.port03.guest"] })
@@ -118,8 +214,7 @@ describe("retained Agent Computer portable-session-control", () => {
 
     await expect(executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.activate.invalid", {
-        authorityEvidenceRef: "evidence.port03.guest.authority",
-        capabilityLeaseRefs: [],
+        ...activationPayload("evidence.port03.guest.authority", []),
       }),
       stateRoot,
       runtime,
@@ -127,16 +222,47 @@ describe("retained Agent Computer portable-session-control", () => {
 
     const activated = await executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.activate", {
-        authorityEvidenceRef: "evidence.port03.guest.authority",
-        capabilityLeaseRefs: ["lease.port03.guest"],
+        ...activationPayload(),
       }),
       stateRoot,
       runtime,
     })
     expect(activated).toMatchObject({
+      schema: "openagents.ide_portable_destination_activation.v1",
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.2",
+      authentication: {
+        state: "reauthenticated",
+        policyRef: "policy.portable.destination.openagents_managed.v1",
+        evidenceRef: "evidence.port03.guest.authority",
+      },
+      helpers: expect.arrayContaining([
+        expect.objectContaining({ kind: "watcher", readiness: "unsupported" }),
+      ]),
       activatedAgentRefs: ["agent.port03.guest.root", "agent.port03.guest.child"],
       acceptedWorkRefs: [],
     })
+    expect(Object.keys(activated as Record<string, unknown>).sort()).toEqual([
+      "acceptedWorkRefs",
+      "activatedAgentRefs",
+      "authentication",
+      "checkpointRef",
+      "destinationAttachmentRef",
+      "destinationGeneration",
+      "destinationRunnerSessionReservationRef",
+      "destinationTargetRef",
+      "evidenceRefs",
+      "helpers",
+      "helpersObservedAt",
+      "operationRef",
+      "receiptRef",
+      "schema",
+      "sessionRef",
+    ])
+    expect(await executePortableSessionControl({
+      operation: operation("activate", "operation.port03.guest.activate", activationPayload()),
+      stateRoot,
+      runtime,
+    })).toEqual(activated)
     await executePortableSessionControl({
       operation: operation("quiesce", "operation.port03.guest.quiesce", { graph, threadCursors: bundle.threadCursors }),
       stateRoot,
@@ -167,7 +293,7 @@ describe("retained Agent Computer portable-session-control", () => {
       runtime,
     })
     expect(reclaimed).toMatchObject({ processes: "released", scratch: "released", ports: "released" })
-    expect(calls).toEqual(["stage", "capabilities", "activate", "quiesce", "reclaim"])
+    expect(calls).toEqual(["stage", "capabilities", "activate", "verify-activation", "quiesce", "reclaim"])
   })
 
   test("rejects conflicting replay and private-shaped payloads", async () => {
@@ -227,8 +353,7 @@ describe("retained Agent Computer portable-session-control", () => {
     })
     await executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.continue.activate", {
-        authorityEvidenceRef: "evidence.port03.guest.authority",
-        capabilityLeaseRefs: ["lease.port03.guest"],
+        ...activationPayload(),
       }),
       stateRoot,
       runtime,
@@ -372,7 +497,8 @@ describe("retained Agent Computer portable-session-control", () => {
     })
     const preparedRuntime: PortableSessionGuestRuntime = {
       ...productionRuntime,
-      activate: async () => undefined,
+      activate: async () => helperReadiness(),
+      verifyActivation: async () => undefined,
       quiesce: async () => undefined,
       verifyCapabilities: async () => undefined,
       prepare: async ({ sessionRoot, agentRefs }) => {
@@ -402,8 +528,10 @@ describe("retained Agent Computer portable-session-control", () => {
 
     await executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.materialized-activate", {
-        authorityEvidenceRef: "evidence.port03.guest.materialized-authority",
-        capabilityLeaseRefs: ["lease.port03.guest.provider"],
+        ...activationPayload(
+          "evidence.port03.guest.materialized-authority",
+          ["lease.port03.guest.provider"],
+        ),
       }),
       stateRoot,
       runtime: preparedRuntime,

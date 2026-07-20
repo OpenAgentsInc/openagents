@@ -96,10 +96,18 @@
       "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
     },
     "portableSessionControl": {
-      "status": "checkpoint_materializer_and_continuation_source_wired_rebake_pending",
+      "status": "destination_activation_and_watcher_source_wired_rebake_pending",
       "source": "apps/pylon/deploy/agent-computer/portable-session-control.ts",
       "guestInstallPath": "/opt/agent/portable-session-control",
       "contract": "fixed PORT-03 stage/materialize/activate/continue/quiesce/checkpoint/export/abort/reclaim/wipeCapability protocol; checkpoint and capability bytes plus private continuation tasks cross only authenticated bounded seams; no arbitrary command surface",
+      "helperProfile": {
+        "schema": "openagents.portable_guest_helper_profile.v1",
+        "watcher": "ready only after the pinned Node 24 recursive fs.watch process writes its generation-bound ready handshake; activation replay checks process liveness; quiesce and reclaim terminate it",
+        "pty": "unsupported: no admitted PTY helper is present in this image",
+        "lsp": "unsupported: no language-server profile or binary is present in this image",
+        "dap": "unsupported: no debug-adapter profile or binary is present in this image",
+        "native": "unsupported: the TypeScript controller is not a native helper"
+      },
       "bakeReceiptField": "portableSessionControlSha256",
       "portableSessionControlSha256": "820f18c5ea9b24f072f9e41755881b8235ab5e3835e00c7793780d4ddb659437",
       "liveBootProof": {
@@ -111,7 +119,7 @@
         "provisionReceiptDigest": "sha256:371df018106efd86d8e39796956ddac881b8ea3cd5d1b68ee480ca21819e08b1",
         "cleanupReceiptDigest": "sha256:1dfa54ec2d6fd22171182d3ebbc36094a593b5b37cfbfae685560d07826ae399"
       },
-      "note": "The recorded digest proves the prior capability controller image only. Source now also verifies and reverse-exports a bounded Git-bundle/post-image tar.zst (including safe relative symlinks), compensates failed prepares, reconciles missing-VM teardown replay, and runs one cursor-fenced oa-workroomd/Codex turn for the canonical root and each child with refs-only receipts. Re-bake and a full live chain are required before updating portableSessionControlSha256 or claiming PORT-03 completion."
+      "note": "The recorded digest proves the prior capability controller image only. Source now also returns the exact reservation/authentication/helper-bound destination activation receipt and supervises one real generation-bound recursive Node watcher. PTY, LSP, DAP, and native helpers remain explicit unsupported omissions. Source also verifies and reverse-exports a bounded Git-bundle/post-image tar.zst (including safe relative symlinks), compensates failed prepares, reconciles missing-VM teardown replay, and runs one cursor-fenced oa-workroomd/Codex turn for the canonical root and each child with refs-only receipts. Re-bake and a full live chain are required before updating portableSessionControlSha256 or claiming PORT-03 completion."
     },
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
