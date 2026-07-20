@@ -21237,6 +21237,20 @@
       }
     },
     {
+      "path": "docs/deploy/receipts/2026-07-20-linux-rpm-and-arm64.md",
+      "sha256": "21d99e65e82ee82ae95a1ccb06de55b321d0d63a96ec6155208d6cffda36421e",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/deploy/receipts/2026-07-20-linux-signed-candidate.md",
       "sha256": "66971d58d10c8574c299b75432ec090365f9f477925efb12d4f6134595b0120f",
       "reason": "Immutable historical or evidence source data",
@@ -21258,6 +21272,20 @@
         "source": "Immutable historical or evidence source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/deploy/receipts/2026-07-20-macos-x64-signed-candidate.md",
+      "sha256": "eaafd0e95316e435d494c913409f338ad77ebea30c7edf9f3e068e7e3dbeb940",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
       }
     },
     {
