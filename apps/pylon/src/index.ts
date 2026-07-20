@@ -87,6 +87,11 @@ import {
   portablePhaseWorkerInstanceRef,
   pylonPrivatePortablePhaseContexts,
 } from './portable-phase-production.js'
+import {
+  makeDurablePylonPortablePhaseTargetResolver,
+  openPylonPortablePhaseContextAdmissionStore,
+  type PylonPortablePhaseContextAdmissionStore,
+} from './portable-phase-context-admission.js'
 import { resolveCloudControlConfig } from './cloud-control-client.js'
 import { makeCloudControlSessionExecutor } from './openagents-cloud-provider.js'
 import { collectPylonContextProjection } from './context-projection.js'
@@ -921,6 +926,7 @@ const runHeadlessNode = Effect.gen(function* () {
       env: Runtime.env,
     })
   const presenceClientOptions = currentPresenceClientOptions()
+  let portablePhaseContextStore: PylonPortablePhaseContextAdmissionStore | null = null
   if (Runtime.env.PYLON_PORTABLE_PHASE_WORKER === '1') {
     const targetRef = Runtime.env.PYLON_PORTABLE_PHASE_TARGET_REF
     const agentToken = presenceClientOptions.agentToken
@@ -929,6 +935,21 @@ const runHeadlessNode = Effect.gen(function* () {
         new Error('portable phase worker requires authenticated base URL and an exact target ref'),
       )
     }
+    const portablePhaseAdmission = yield* Effect.tryPromise({
+      try: () => openPylonPortablePhaseContextAdmissionStore({
+        databasePath: `${bootstrapSummary.paths.home}/portable-phase/context-admissions.sqlite`,
+        pylonRef: localState.identity.pylonRef,
+        targetRef,
+      }),
+      catch: () => new Error('failed to open private portable phase context admission store'),
+    })
+    portablePhaseContextStore = portablePhaseAdmission.store
+    portablePhaseAdmission.store.purge()
+    yield* Effect.addFinalizer(() => Effect.sync(() => portablePhaseAdmission.close()))
+    const durablePhaseResolver = makeDurablePylonPortablePhaseTargetResolver({
+      store: portablePhaseAdmission.store,
+      target: targetRef => pylonPrivatePortablePhaseContexts.target(targetRef),
+    })
     const portablePhaseWorker = yield* Effect.tryPromise({
       try: () => openPylonPortablePhaseProductionWorker({
         agentToken,
@@ -937,7 +958,11 @@ const runHeadlessNode = Effect.gen(function* () {
         targetRef,
         workerInstanceRef: portablePhaseWorkerInstanceRef(localState.identity.pylonRef, targetRef),
         stateDirectory: bootstrapSummary.paths.home,
-        resolver: pylonPrivatePortablePhaseContexts.resolver,
+        resolver: durablePhaseResolver,
+        onTerminalAcknowledged: operationRef => {
+          portablePhaseAdmission.store.acknowledgeTerminal(operationRef)
+          portablePhaseAdmission.store.purge()
+        },
         onFault: (errorRef) => logToUi(`[PortablePhase] Worker stopped: ${errorRef}`, 'info'),
       }),
       catch: () => new Error('failed to configure portable phase worker'),
@@ -1033,6 +1058,7 @@ const runHeadlessNode = Effect.gen(function* () {
   // action returns the unsupervised projection byte-for-byte unchanged.
   appleFmSupervisedLaunch =
     Runtime.env.PYLON_APPLE_FM_SUPERVISE === '1' ? createAppleFmSupervisedLaunch({ discover: { env: Runtime.env } }) : null
+  const activePortablePhaseContextStore = portablePhaseContextStore
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
     actions: {
@@ -1086,6 +1112,12 @@ const runHeadlessNode = Effect.gen(function* () {
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
       fleetRuns: fleetRunActivation,
       fleetRunIntakeStatus: async () => fleetRunIntakePoller?.status() ?? disabledPylonFleetRunIntakePollerStatus(),
+      ...(activePortablePhaseContextStore === null
+        ? {}
+        : {
+            portablePhaseContextAdmit: async (input: Parameters<PylonPortablePhaseContextAdmissionStore['admit']>[0]) =>
+              activePortablePhaseContextStore.admit(input),
+          }),
     },
     port: controlPort,
     hostname: Runtime.env.PYLON_CONTROL_HOST ?? '127.0.0.1',

@@ -149,6 +149,7 @@ describe("Pylon portable phase production composition", () => {
       privateContexts.admit(initial.request, exactContext(initial));
       let current = initial;
       let authorization = "";
+      const terminalAcknowledgements: string[] = [];
       let complete!: () => void;
       const completed = new Promise<void>((resolve) => {
         complete = resolve;
@@ -217,6 +218,9 @@ describe("Pylon portable phase production composition", () => {
         resolver: privateContexts.resolver,
         fetchImpl,
         pollIntervalMs: 250,
+        onTerminalAcknowledged: (operationRef) => {
+          terminalAcknowledgements.push(operationRef);
+        },
       });
       await completed;
       await service.close();
@@ -224,6 +228,7 @@ describe("Pylon portable phase production composition", () => {
       expect(authorization).toBe("Bearer private-agent-token");
       expect(current.state).toBe("completed");
       expect(current.resultEvidenceRefs).toEqual(["evidence.ide13.production.quiesced"]);
+      expect(terminalAcknowledgements).toEqual([initial.request.operationRef]);
       const privateDirectory = join(stateDirectory, "portable-phase");
       const journalDirectory = join(privateDirectory, "claims");
       expect((await stat(privateDirectory)).mode & 0o077).toBe(0);

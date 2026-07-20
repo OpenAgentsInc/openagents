@@ -40,6 +40,7 @@ import {
   type VirtualMergeQueuePrFastForwardRequest,
   type VirtualMergeQueueProjection,
 } from "../blueprint-gates/virtual-merge-queue.js"
+import type { PylonPortablePhaseContextAdmissionInput } from "../portable-phase-context-admission.js"
 
 export const defaultControlPort = 4716
 export const controlTokenFileName = "control-token"
@@ -131,6 +132,7 @@ export type ControlCommand =
       projection: VirtualMergeQueueProjection
       request: VirtualMergeQueuePrFastForwardRequest
     }
+  | { type: "portable_phase.context.admit"; admission: PylonPortablePhaseContextAdmissionInput }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -184,6 +186,9 @@ export interface ControlCommandActions {
     disarm: (runRef: string) => Promise<unknown>
   }
   fleetRunIntakeStatus?: () => Promise<unknown>
+  portablePhaseContextAdmit?: (
+    input: PylonPortablePhaseContextAdmissionInput,
+  ) => Promise<unknown>
 }
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
@@ -430,6 +435,11 @@ export const startControlServer = (
             projection: command.projection,
             request: command.request,
           })
+        case "portable_phase.context.admit":
+          if (!options.actions.portablePhaseContextAdmit) {
+            throw new Error("portable phase context admission unavailable on this node")
+          }
+          return options.actions.portablePhaseContextAdmit(command.admission)
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }
@@ -878,6 +888,15 @@ export const startControlServer = (
               ) {
                 return Response.json(
                   { ok: false, error: "fleet run activation requires a loopback control server" },
+                  { status: 403 },
+                )
+              }
+              if (
+                command.type === "portable_phase.context.admit" &&
+                !isLoopbackHostname(options.hostname ?? "127.0.0.1")
+              ) {
+                return Response.json(
+                  { ok: false, error: "portable phase context admission requires loopback" },
                   { status: 403 },
                 )
               }

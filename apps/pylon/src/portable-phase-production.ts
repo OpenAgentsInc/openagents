@@ -63,6 +63,7 @@ export const makePylonPrivatePortablePhaseContextResolver = () => {
     string,
     Readonly<{ requestFingerprint: string; context: ExactPhaseContext }>
   >();
+  const targets = new Map<string, ExactPhaseContext["target"]>();
 
   const resolver: PylonPortablePhaseTargetResolver = {
     resolve: async (request) => {
@@ -98,7 +99,19 @@ export const makePylonPrivatePortablePhaseContextResolver = () => {
         );
       }
       contexts.set(request.operationRef, { requestFingerprint: exact, context });
+      targets.set(context.target.targetRef, context.target);
     },
+    registerTarget: (target: ExactPhaseContext["target"]): void => {
+      const current = targets.get(target.targetRef);
+      if (current !== undefined && current !== target) {
+        throw new PylonPortablePhaseProductionError(
+          "error.pylon.portable-phase.invalid-production-config",
+        );
+      }
+      targets.set(target.targetRef, target);
+    },
+    target: (targetRef: string): ExactPhaseContext["target"] | undefined =>
+      targets.get(targetRef),
     remove: (operationRef: string): void => {
       contexts.delete(operationRef);
     },
@@ -142,6 +155,7 @@ const abortableDelay = (milliseconds: number, signal: AbortSignal): Promise<void
 const preflightClient = (
   client: PylonPortablePhaseOperationClient,
   resolver: PylonPortablePhaseTargetResolver,
+  onTerminalAcknowledged?: (operationRef: string) => void,
 ): PylonPortablePhaseOperationClient => ({
   ...client,
   pending: async (limit, signal) => {
@@ -154,6 +168,11 @@ const preflightClient = (
       }
     }
     return pending;
+  },
+  complete: async (request, signal) => {
+    const response = await client.complete(request, signal);
+    onTerminalAcknowledged?.(response.operation.request.operationRef);
+    return response;
   },
 });
 
@@ -168,6 +187,7 @@ export type OpenPylonPortablePhaseProductionWorkerOptions = Readonly<{
   fetchImpl?: typeof globalThis.fetch;
   pollIntervalMs?: number;
   onFault?: (errorRef: PylonPortablePhaseProductionError["errorRef"]) => void;
+  onTerminalAcknowledged?: (operationRef: string) => void;
 }>;
 
 export type PylonPortablePhaseProductionWorker = Readonly<{
@@ -218,7 +238,7 @@ export const openPylonPortablePhaseProductionWorker = async (
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
   });
   const worker = new PylonPortablePhaseWorker({
-    client: preflightClient(client, options.resolver),
+    client: preflightClient(client, options.resolver, options.onTerminalAcknowledged),
     executor: makePylonPortablePhaseExecutor(options.resolver),
     journal: makePylonPortablePhaseClaimJournal({
       directory: journalDirectory,
