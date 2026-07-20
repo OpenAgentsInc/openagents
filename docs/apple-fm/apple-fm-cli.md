@@ -18,8 +18,8 @@ Add `--json` for a public-safe machine-readable result.
 | --- | --- |
 | `apple-fm health [--json]` | Typed readiness (`ready` / `unavailable` / `unsupported` / `malformed` / `unreachable`). No inference. |
 | `apple-fm status` | Readiness plus the redacted availability receipt (human format). |
-| `apple-fm infer --prompt TEXT [--auto-launch] [--json]` | One real one-shot completion. Prints the text and the honest usage truth. Alias: `chat`. |
-| `apple-fm session --prompt TEXT [--auto-launch] [--json]` | A bounded turn through the real session endpoints (`POST /v1/sessions` + `responses/stream`, SSE). |
+| `apple-fm infer --prompt TEXT [--auto-launch] [--stream] [--json]` | One real one-shot completion. Prints the text and the honest usage truth. Alias: `chat`. `--stream` routes through the streaming session path. |
+| `apple-fm session --prompt TEXT [--auto-launch] [--stream] [--json]` | A bounded turn through the real session endpoints (`POST /v1/sessions` + `responses/stream`, SSE). The bridge emits real progressive snapshots; `--stream` renders the reconstructed incremental deltas. |
 | `apple-fm tool --workspace DIR [--path FILE] --prompt TEXT [--auto-launch] [--json]` | A bounded read-only tool-use turn over a real workspace (Blueprint-selected tools). |
 | `apple-fm smoke [--prompt TEXT]` | Require readiness, then complete a short prompt. |
 | `apple-fm tool-stream-demo` | The original fixture-driven tool-stream demonstration. |

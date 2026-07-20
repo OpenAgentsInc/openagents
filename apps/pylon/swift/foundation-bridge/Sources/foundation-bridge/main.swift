@@ -3,7 +3,7 @@ import Foundation
 import FoundationModels
 import Network
 
-private let bridgeVersion = "0.1.2"
+private let bridgeVersion = "0.1.3"
 private let defaultPort: UInt16 = 11435
 private let modelId = "apple-foundation-model"
 private let maxRequestBytes = 1_048_576
@@ -88,14 +88,36 @@ actor AppleFmHandler {
         return SessionCreateResponse(session: SessionDescriptor(id: sessionId))
     }
 
-    func streamSession(id: String, request: SessionStreamRequest) async throws -> ChatCompletionResponse {
-        let session = sessions[id]
-        let toolOutcome = await performToolCallbackIfRequested(session: session, prompt: request.prompt)
+    func streamSession(id: String, request: SessionStreamRequest) async throws -> SessionStreamResult {
+        let bridgeSession = sessions[id]
+        let toolOutcome = await performToolCallbackIfRequested(session: bridgeSession, prompt: request.prompt)
         let prompt = buildSessionPrompt(prompt: request.prompt, toolOutcome: toolOutcome)
 
-        return try await complete(
-            ChatCompletionRequest(model: modelId, messages: [ChatMessage(role: "user", content: prompt, name: nil, toolCallId: nil)])
-        )
+        let availability = health()
+        guard availability.ready else {
+            throw BridgeError.notReady(availability)
+        }
+
+        // Real incremental streaming: `streamResponse(to:)` yields progressive
+        // Snapshots whose `.content` grows toward the final answer. We emit one
+        // SSE snapshot frame per progression step (HTTP body is buffered, but the
+        // snapshot sequence reflects the actual generation progression).
+        let session = LanguageModelSession()
+        var snapshots: [String] = []
+        do {
+            let stream = session.streamResponse(to: prompt)
+            for try await partial in stream {
+                snapshots.append(partial.content)
+            }
+        } catch {
+            throw BridgeError.generationFailed("Apple Foundation Models streaming failed: \(error.localizedDescription)")
+        }
+
+        let finalOutput = snapshots.last ?? ""
+        // FoundationModels does not expose exact token usage, so usage is an
+        // honest character-derived estimate — never labeled exact.
+        let usage = estimateUsage(prompt: prompt, completion: finalOutput)
+        return SessionStreamResult(snapshots: snapshots, finalOutput: finalOutput, model: modelId, usage: usage)
     }
 
     func complete(_ request: ChatCompletionRequest) async throws -> ChatCompletionResponse {
@@ -478,16 +500,18 @@ final class HttpServer: @unchecked Sendable {
     private func streamSessionResponse(_ request: HttpRequest, sessionId: String) async -> HttpResponse {
         do {
             let decoded = try JSONDecoder().decode(SessionStreamRequest.self, from: request.body)
-            let completion = try await handler.streamSession(id: sessionId, request: decoded)
-            let output = completion.choices.first?.message.content ?? ""
-            let usage = completion.usage ?? UsageMeasurement(truth: "unknown", promptTokens: nil, completionTokens: nil, totalTokens: nil)
-            let snapshot = StreamSnapshot(sequence: 0, content: output, output: output, finishReason: "stop")
-            let completed = StreamCompleted(output: output, content: output, model: completion.model ?? modelId, usage: usage)
-            let body = [
-                encodeSse(event: "snapshot", value: snapshot),
-                encodeSse(event: "completed", value: completed)
-            ].joined(separator: "")
-            return HttpResponse(status: 200, contentType: "text/event-stream; charset=utf-8", body: Data(body.utf8))
+            let result = try await handler.streamSession(id: sessionId, request: decoded)
+            var frames: [String] = []
+            if result.snapshots.isEmpty {
+                frames.append(encodeSse(event: "snapshot", value: StreamSnapshot(sequence: 0, content: result.finalOutput, output: result.finalOutput, finishReason: "stop")))
+            } else {
+                for (index, snapshot) in result.snapshots.enumerated() {
+                    let isLast = index == result.snapshots.count - 1
+                    frames.append(encodeSse(event: "snapshot", value: StreamSnapshot(sequence: index, content: snapshot, output: snapshot, finishReason: isLast ? "stop" : nil)))
+                }
+            }
+            frames.append(encodeSse(event: "completed", value: StreamCompleted(output: result.finalOutput, content: result.finalOutput, model: result.model, usage: result.usage)))
+            return HttpResponse(status: 200, contentType: "text/event-stream; charset=utf-8", body: Data(frames.joined().utf8))
         } catch BridgeError.notReady(let health) {
             return HttpResponse.json(
                 status: 503,
@@ -737,7 +761,14 @@ struct StreamSnapshot: Codable {
     let sequence: Int
     let content: String
     let output: String
-    let finishReason: String
+    let finishReason: String?
+}
+
+struct SessionStreamResult {
+    let snapshots: [String]
+    let finalOutput: String
+    let model: String
+    let usage: UsageMeasurement
 }
 
 struct StreamCompleted: Codable {

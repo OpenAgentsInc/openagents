@@ -101,6 +101,39 @@ describe("Apple FM runnable CLI commands", () => {
     expect(Array.isArray(out.events)).toBe(true);
   });
 
+  test("apple-fm session --stream reconstructs the progressive snapshot deltas", async () => {
+    const streamFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/v1/sessions" && (init?.method ?? "GET") === "POST") {
+        return Response.json({ session: { id: "apple_fm_session_test" } });
+      }
+      if (url.pathname === "/v1/sessions/apple_fm_session_test/responses/stream") {
+        // Three progressive (cumulative) snapshots, then completed.
+        const body =
+          `event: snapshot\ndata: {"content":"Red","output":"Red","sequence":0}\n\n` +
+          `event: snapshot\ndata: {"content":"Red Green","output":"Red Green","sequence":1}\n\n` +
+          `event: snapshot\ndata: {"content":"Red Green Blue","finishReason":"stop","output":"Red Green Blue","sequence":2}\n\n` +
+          `event: completed\ndata: {"content":"Red Green Blue","model":"apple-foundation-model","output":"Red Green Blue","usage":{"completionTokens":3,"promptTokens":2,"totalTokens":5,"truth":"estimated"}}\n\n`;
+        return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const json = await Effect.runPromise(
+      runProbeCli(["apple-fm", "session", "--base-url", "http://127.0.0.1:11439", "--prompt", "colors", "--json"], { env: {}, fetch: streamFetch }),
+    );
+    const out = JSON.parse(json.stdout);
+    expect(out.snapshots).toBe(3);
+    expect(out.usage.truth).toBe("estimated");
+
+    const streamed = await Effect.runPromise(
+      runProbeCli(["apple-fm", "session", "--base-url", "http://127.0.0.1:11439", "--prompt", "colors", "--stream"], { env: {}, fetch: streamFetch }),
+    );
+    expect(streamed.stdout).toContain("snapshots: 3");
+    // Deltas reconstruct the final text ("Red" + " Green" + " Blue").
+    expect(streamed.stdout).toContain("stream: Red Green Blue");
+  });
+
   test("apple-fm infer surfaces a not-ready bridge as a typed failure, not a fake success", async () => {
     const result = await Effect.runPromise(
       runProbeCli(["apple-fm", "infer", "--base-url", "http://127.0.0.1:11439", "--prompt", "hi", "--json"], {

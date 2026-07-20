@@ -649,6 +649,11 @@ function appleFmInfer(
   deps: ProbeCliDeps,
 ): Effect.Effect<ProbeCliResult, ProbeCliError> {
   return Effect.gen(function* () {
+    // `infer --stream` shows progressive output; route it through the streaming
+    // session path (the bridge emits real incremental snapshots there).
+    if (options.stream === true) {
+      return yield* appleFmSession(options, deps);
+    }
     const client = yield* makeAppleFmClient({
       profileId: stringOption(options, "profile"),
       explicitBaseUrl: stringOption(options, "base-url"),
@@ -736,10 +741,15 @@ function appleFmSession(
 
     yield* recordCliAppleFmTokenUsage({ command: "apple-fm.session", deps, result: result.completion });
 
+    const snapshotContents = result.events
+      .filter((event) => event.kind === "assistant_snapshot" && typeof event.content === "string")
+      .map((event) => event.content as string);
+
     if (options.json === true) {
       const out = {
         command: "apple-fm.session",
         bridgeSessionId: result.bridgeSessionId,
+        snapshots: snapshotContents.length,
         events: result.events.map((event) => event.kind),
         text: result.completion.text,
         usage: result.completion.usage,
@@ -748,19 +758,31 @@ function appleFmSession(
       return { exitCode: 0, stdout: `${JSON.stringify(out, null, 2)}\n`, stderr: "" };
     }
 
-    return {
-      exitCode: 0,
-      stdout:
-        [
-          "Apple FM session",
-          `bridgeSessionId: ${result.bridgeSessionId}`,
-          `events: ${result.events.map((event) => event.kind).join(" -> ")}`,
-          `text: ${result.completion.text}`,
-          `usage: ${formatUsage(result.completion.usage)}`,
-        ].join("\n") + "\n",
-      stderr: "",
-    };
+    const lines = [
+      "Apple FM session",
+      `bridgeSessionId: ${result.bridgeSessionId}`,
+      `snapshots: ${snapshotContents.length}`,
+    ];
+    if (options.stream === true) {
+      // The loopback response is buffered, so this renders the real snapshot
+      // progression as reconstructed incremental deltas rather than live tokens.
+      lines.push(`stream: ${renderSnapshotDeltas(snapshotContents)}`);
+    }
+    lines.push(`text: ${result.completion.text}`);
+    lines.push(`usage: ${formatUsage(result.completion.usage)}`);
+    return { exitCode: 0, stdout: lines.join("\n") + "\n", stderr: "" };
   });
+}
+
+/** Reconstruct the incremental stream from cumulative snapshot contents. */
+function renderSnapshotDeltas(snapshotContents: ReadonlyArray<string>): string {
+  let previous = "";
+  const deltas: string[] = [];
+  for (const content of snapshotContents) {
+    deltas.push(content.startsWith(previous) ? content.slice(previous.length) : content);
+    previous = content;
+  }
+  return deltas.join("");
 }
 
 function appleFmSmoke(
@@ -1005,8 +1027,8 @@ function usage(): string {
     "  public-safe machine-readable result.",
     "  probe apple-fm health [--base-url URL] [--profile apple-fm-local] [--json]",
     "  probe apple-fm status [--base-url URL] [--profile apple-fm-local]",
-    "  probe apple-fm infer  [--auto-launch] [--prompt TEXT] [--base-url URL] [--json]",
-    "  probe apple-fm session [--auto-launch] [--prompt TEXT] [--base-url URL] [--json]",
+    "  probe apple-fm infer  [--auto-launch] [--prompt TEXT] [--stream] [--base-url URL] [--json]",
+    "  probe apple-fm session [--auto-launch] [--prompt TEXT] [--stream] [--base-url URL] [--json]",
     "  probe apple-fm tool   [--auto-launch] --workspace DIR [--path FILE] [--prompt TEXT] [--json]",
     "  probe apple-fm smoke [--base-url URL] [--profile apple-fm-local] [--prompt TEXT]",
     "  probe apple-fm tool-stream-demo [--base-url URL] [--path FILE] [--prompt TEXT]",
