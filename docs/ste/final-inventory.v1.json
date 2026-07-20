@@ -15056,6 +15056,20 @@
       }
     },
     {
+      "path": "docs/apple-fm/2026-07-20-apple-fm-subagent-dispatcher-analysis.md",
+      "sha256": "d75ee9bdcaece70372dfe9a7e17652a8d220a1544721fd70b17eb17daaa1b789",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-07-20-free-on-device-inference-ide-analysis.md",
       "sha256": "d7c0d02416c5ff181c291c457f5ed410eb1cc0745c3c60133e2fe0af000da3de",
       "reason": "Immutable historical or evidence source data",
