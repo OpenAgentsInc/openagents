@@ -185,6 +185,45 @@ const lifecycleBinding = (
   bundle: source.bundle,
 })
 
+const transportClaim = (bundle: PylonPortableCheckpointBundle) => ({
+  schema: "openagents.portable_command_execution.v1" as const,
+  claimRef: "claim.portable.artifact.move.1",
+  commandRef: "command.portable.artifact.move.1",
+  ownerRef: bundle.executionBinding.ownerRef,
+  sessionRef: bundle.checkpoint.sessionRef,
+  commandKind: "move" as const,
+  commandFingerprint: sha("command.portable.artifact.move.1"),
+  claimFingerprint: sha("claim.portable.artifact.move.1"),
+  sourceAttachmentRef: bundle.checkpoint.sourceAttachmentRef,
+  sourceGeneration: bundle.checkpoint.sourceGeneration,
+  destinationTargetRef: "target.portable.artifact.managed",
+  executorEnvironmentRef: "pylon.portable.artifact.source",
+  workerInstanceRef: "worker.portable.artifact.source.1",
+  claimGeneration: 1,
+  leaseRevision: 1,
+  state: "claimed" as const,
+  claimedAt: "2026-07-20T00:00:00.000Z",
+  leaseExpiresAt: "2030-07-20T00:00:00.000Z",
+  updatedAt: "2026-07-20T00:00:00.000Z",
+  terminalStatus: null,
+  pendingReconcileRef: null,
+  outcomeRef: null,
+  evidenceRefs: [],
+})
+
+const custodyTransport = async (
+  source: Awaited<ReturnType<typeof artifactFixture>>,
+  directory: string,
+) => {
+  const store = new PylonPortableCheckpointArtifactStore(custodyConfig(directory))
+  await store.registerArtifact({ bundle: source.bundle, artifact: source.artifact })
+  return store.exportCustodyObject({
+    checkpointRef: source.bundle.checkpoint.checkpointRef,
+    commandClaim: transportClaim(source.bundle),
+    byteLimit: 100 * 1024 * 1024,
+  })
+}
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
@@ -652,4 +691,137 @@ test("fails closed when checkpoint custody exceeds its file-count bound", async 
   await expect(
     new PylonPortableCheckpointArtifactStore(config).resolve(source.request),
   ).rejects.toMatchObject({ code: "artifact_too_large" })
+})
+
+test("exports and imports an opaque custody object with byte-idempotent replay", async () => {
+  const source = await artifactFixture()
+  const exported = await custodyTransport(source, join(source.root, ".transport-source"))
+  const destinationDirectory = join(source.root, ".transport-destination")
+  const destination = new PylonPortableCheckpointArtifactStore(custodyConfig(destinationDirectory))
+
+  const first = await destination.importCustodyObject(exported)
+  const replay = await new PylonPortableCheckpointArtifactStore(
+    custodyConfig(destinationDirectory),
+  ).importCustodyObject(exported)
+
+  expect(replay).toEqual(first)
+  expect(first).toMatchObject({
+    objectDigest: sha(exported.bytes),
+    artifactDigest: source.artifact.digest,
+    checkpointDigest: source.bundle.checkpoint.digest,
+    sourcePylonRef: "pylon.portable.artifact.source",
+    targetRef: "target.portable.artifact.managed",
+    secretMaterial: "excluded",
+  })
+  const objectPath = await onlyFile(destinationDirectory)
+  expect((await stat(objectPath)).mode & 0o777).toBe(0o600)
+  expect(new Uint8Array(await readFile(objectPath))).toEqual(exported.bytes)
+  expect((await destination.resolve(source.request)).digest).toBe(source.artifact.digest)
+})
+
+test("rejects transport digest tampering, partial input, and changed bindings", async () => {
+  const source = await artifactFixture()
+  const exported = await custodyTransport(source, join(source.root, ".transport-invalid-source"))
+  const makeDestination = (name: string) =>
+    new PylonPortableCheckpointArtifactStore(custodyConfig(join(source.root, name)))
+
+  await expect(
+    makeDestination(".transport-digest-target").importCustodyObject({
+      ...exported,
+      manifest: { ...exported.manifest, objectDigest: sha("wrong object") },
+    }),
+  ).rejects.toMatchObject({ code: "transport_invalid" })
+  await expect(
+    makeDestination(".transport-partial-target").importCustodyObject({
+      ...exported,
+      bytes: exported.bytes.subarray(0, exported.bytes.byteLength - 1),
+    }),
+  ).rejects.toMatchObject({ code: "transport_invalid" })
+  await expect(
+    makeDestination(".transport-binding-target").importCustodyObject({
+      ...exported,
+      manifest: { ...exported.manifest, ownerRef: "owner.portable.artifact.other" },
+    }),
+  ).rejects.toMatchObject({ code: "invalid_binding" })
+  await expect(
+    makeDestination(".transport-target-binding").importCustodyObject({
+      ...exported,
+      manifest: { ...exported.manifest, targetRef: "target.portable.artifact.other" },
+    }),
+  ).rejects.toMatchObject({ code: "invalid_binding" })
+})
+
+test("rejects custody policy and key downgrades before persistence", async () => {
+  const source = await artifactFixture()
+  const exported = await custodyTransport(source, join(source.root, ".transport-policy-source"))
+  const otherKey = Uint8Array.from({ length: 32 }, (_, index) => 99 - index)
+  await expect(
+    new PylonPortableCheckpointArtifactStore({
+      ...custodyConfig(join(source.root, ".transport-policy-target")),
+      policy: "openagents_managed" as const,
+    }).importCustodyObject(exported),
+  ).rejects.toMatchObject({ code: "transport_invalid" })
+  await expect(
+    new PylonPortableCheckpointArtifactStore(
+      custodyConfig(
+        join(source.root, ".transport-key-target"),
+        otherKey,
+        "key.portable.checkpoint.other",
+      ),
+    ).importCustodyObject(exported),
+  ).rejects.toMatchObject({ code: "transport_invalid" })
+  await expect(
+    new PylonPortableCheckpointArtifactStore({
+      custodyDirectory: join(source.root, ".transport-plaintext-target"),
+      policy: "owner_device_not_required" as const,
+    }).importCustodyObject(exported),
+  ).rejects.toMatchObject({ code: "plaintext_downgrade" })
+})
+
+test("rejects expired custody transport without writing the object", async () => {
+  const source = await artifactFixture()
+  const sourceDirectory = join(source.root, ".transport-expiry-source")
+  const clock = new Date("2026-07-20T00:00:00.000Z")
+  const sourceStore = new PylonPortableCheckpointArtifactStore({
+    ...custodyConfig(sourceDirectory),
+    now: () => clock,
+  })
+  await sourceStore.registerArtifact({ bundle: source.bundle, artifact: source.artifact })
+  const claim = {
+    ...transportClaim(source.bundle),
+    leaseExpiresAt: "2026-07-20T00:00:10.000Z",
+  }
+  const exported = await sourceStore.exportCustodyObject({
+    checkpointRef: source.bundle.checkpoint.checkpointRef,
+    commandClaim: claim,
+    byteLimit: 100 * 1024 * 1024,
+  })
+  const destinationDirectory = join(source.root, ".transport-expiry-target")
+  await expect(
+    new PylonPortableCheckpointArtifactStore({
+      ...custodyConfig(destinationDirectory),
+      now: () => new Date("2026-07-20T00:00:11.000Z"),
+    }).importCustodyObject(exported),
+  ).rejects.toMatchObject({ code: "transport_invalid" })
+  await expect(stat(destinationDirectory)).rejects.toMatchObject({ code: "ENOENT" })
+})
+
+test("rejects conflicting replay and a durable deletion tombstone", async () => {
+  const source = await artifactFixture()
+  const first = await custodyTransport(source, join(source.root, ".transport-replay-source-1"))
+  const second = await custodyTransport(source, join(source.root, ".transport-replay-source-2"))
+  expect(second.bytes).not.toEqual(first.bytes)
+  const destinationDirectory = join(source.root, ".transport-replay-target")
+  const destination = new PylonPortableCheckpointArtifactStore(custodyConfig(destinationDirectory))
+  await destination.importCustodyObject(first)
+  await expect(destination.importCustodyObject(second)).rejects.toMatchObject({
+    code: "replay_conflict",
+  })
+
+  await destination.deleteArtifact(
+    lifecycleBinding(source, "operation.checkpoint.transport.delete"),
+  )
+  await expect(destination.importCustodyObject(first)).rejects.toMatchObject({
+    code: "unavailable",
+  })
 })
