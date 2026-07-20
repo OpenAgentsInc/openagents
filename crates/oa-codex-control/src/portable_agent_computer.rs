@@ -1389,12 +1389,11 @@ fn validate_activation_response(
             required_string(response, "destinationRunnerSessionReservationRef")?,
             resource.destination_runner_session_reservation_ref.clone(),
         ),
-        (
-            required_string(response, "helpersObservedAt")?,
-            expected_observed_at.clone(),
-        ),
     ];
-    if exact.iter().any(|(actual, expected)| actual != expected)
+    let helpers_observed_at = required_string(response, "helpersObservedAt")?;
+    if helpers_observed_at.len() > 64
+        || !helpers_observed_at.ends_with('Z')
+        || exact.iter().any(|(actual, expected)| actual != expected)
         || response
             .get("destinationGeneration")
             .and_then(Value::as_u64)

@@ -220,6 +220,7 @@ describe("retained Agent Computer portable-session-control", () => {
       runtime,
     })).rejects.toThrow("capability")
 
+    const activationStartedAt = Date.now()
     const activated = await executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.activate", {
         ...activationPayload(),
@@ -241,7 +242,12 @@ describe("retained Agent Computer portable-session-control", () => {
       activatedAgentRefs: ["agent.port03.guest.root", "agent.port03.guest.child"],
       acceptedWorkRefs: [],
     })
-    expect(Object.keys(activated as Record<string, unknown>).sort()).toEqual([
+    const activatedRecord = activated as Record<string, unknown>
+    expect(Date.parse(String(activatedRecord.helpersObservedAt))).toBeGreaterThanOrEqual(activationStartedAt)
+    expect((activatedRecord.authentication as Record<string, unknown>).observedAt).toBe(
+      activationPayload().helpersObservedAt,
+    )
+    expect(Object.keys(activatedRecord).sort()).toEqual([
       "acceptedWorkRefs",
       "activatedAgentRefs",
       "authentication",

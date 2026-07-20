@@ -410,8 +410,8 @@ export const executePortableSessionControl = async (input: Readonly<{
         operation.payload.destinationRunnerSessionReservationRef,
         "destinationRunnerSessionReservationRef",
       )
-      const helpersObservedAt = asString(operation.payload.helpersObservedAt, "helpersObservedAt")
-      if (!Number.isFinite(new Date(helpersObservedAt).valueOf())) {
+      const authenticationObservedAt = asString(operation.payload.helpersObservedAt, "helpersObservedAt")
+      if (!Number.isFinite(new Date(authenticationObservedAt).valueOf())) {
         throw new PortableSessionControlError("helpersObservedAt must be an ISO timestamp")
       }
       if (!Array.isArray(operation.payload.capabilityLeaseRefs) || operation.payload.capabilityLeaseRefs.length === 0) {
@@ -434,6 +434,7 @@ export const executePortableSessionControl = async (input: Readonly<{
         await input.runtime.quiesce({ sessionRoot, agentRefs }).catch(() => undefined)
         throw error
       }
+      const helpersObservedAt = new Date().toISOString()
       const activationEvidenceRef = stableRef("evidence.agent-computer.activate", operation.operationRef)
       response = {
         schema: "openagents.ide_portable_destination_activation.v1",
@@ -449,7 +450,7 @@ export const executePortableSessionControl = async (input: Readonly<{
           state: "reauthenticated",
           policyRef: authenticationPolicyRef,
           evidenceRef: authorityEvidenceRef,
-          observedAt: helpersObservedAt,
+          observedAt: authenticationObservedAt,
           expiresAt: null,
         },
         helpersObservedAt,
