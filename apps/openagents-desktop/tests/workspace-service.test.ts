@@ -1073,11 +1073,20 @@ describe("Desktop bounded workspace service", () => {
         for (const resolve of [...active]) resolve({ state: "unavailable", message: "Workspace search was cancelled." })
       },
       activeCount: () => active.size,
-      dispose: () => {
-        if (disposed) return
+      quiesce: async () => {
+        if (!disposed) {
+          disposed = true
+          disposals += 1
+          for (const resolve of [...active]) resolve({ state: "unavailable", message: "The selected workspace has been disposed." })
+        }
+        return { state: "quiesced" }
+      },
+      dispose: async () => {
+        if (disposed) return { state: "quiesced" as const }
         disposed = true
         disposals += 1
         for (const resolve of [...active]) resolve({ state: "unavailable", message: "The selected workspace has been disposed." })
+        return { state: "quiesced" as const }
       },
     }
     const workspace = openWorkspaceService(root, {
@@ -1117,6 +1126,125 @@ describe("Desktop bounded workspace service", () => {
     expect(await closing.result).toEqual({ state: "unavailable", message: "The selected workspace has been disposed." })
     expect(disposals).toBe(1)
     expect(searchHost.activeCount()).toBe(0)
+  })
+
+  test("rotates search and watcher generations and never admits a stale portable page", async () => {
+    const root = makeRoot()
+    let generation: number | null = 1
+    const currentPermit = () => generation === null ? null : ({
+      _tag: "Portable" as const,
+      key: `portable:workspace.grant.search:session.search:work.search:attachment.${generation}:${generation}:target.search`,
+      grantRef: "workspace.grant.search",
+      sessionRef: "session.search",
+      workContextRef: "work.search",
+      attachmentRef: `attachment.${generation}`,
+      generation,
+      targetRef: "target.search",
+    })
+    const authority: IdePortableMutationAuthority = {
+      authorize: grantRef => {
+        const permit = currentPermit()
+        return permit !== null && permit.grantRef === grantRef
+          ? { _tag: "Permitted", permit }
+          : { _tag: "Refused", reason: "admission_unavailable" }
+      },
+      reauthorize: permit => currentPermit()?.key === permit.key,
+    }
+    const pending: Array<(page: ReturnType<typeof searchWorkspace>) => void> = []
+    let hostQuiesced = false
+    const searchHost: WorkspaceSearchHost = {
+      start: request => {
+        if (hostQuiesced) {
+          return {
+            taskRef: "workspace.search.task.quiesced",
+            result: Promise.resolve({ state: "unavailable", message: "Workspace search is quiesced on this host." }),
+            cancel: () => undefined,
+          }
+        }
+        let resolveResult!: (page: ReturnType<typeof searchWorkspace>) => void
+        const result = new Promise<ReturnType<typeof searchWorkspace>>(resolve => { resolveResult = resolve })
+        pending.push(resolveResult)
+        return {
+          taskRef: `workspace.search.task.${pending.length}`,
+          result,
+          cancel: () => resolveResult({ state: "unavailable", message: `cancelled:${request.query}` }),
+        }
+      },
+      cancelAll: () => undefined,
+      activeCount: () => 0,
+      quiesce: async () => {
+        hostQuiesced = true
+        return { state: "quiesced" }
+      },
+      dispose: async () => {
+        hostQuiesced = true
+        return { state: "quiesced" }
+      },
+    }
+    const watcherCallbacks: Array<(pathRef: string | null) => void> = []
+    const watcherClosed: Array<() => boolean> = []
+    const authorityChecks: Array<() => void> = []
+    const scheduled: Array<() => void> = []
+    const workspace = openWorkspaceService(root, {
+      grantRef: "workspace.grant.search",
+      mutationAuthority: authority,
+      searchHostFactory: () => searchHost,
+      watchFactory: (_watchedRoot, onChange) => {
+        let closed = false
+        watcherCallbacks.push(onChange)
+        watcherClosed.push(() => closed)
+        return { close: () => { closed = true } }
+      },
+      monitorSearchAuthority: check => {
+        authorityChecks.push(check)
+        return { close: () => undefined }
+      },
+      watchScheduler: flush => {
+        scheduled.push(flush)
+        return { cancel: () => undefined }
+      },
+    })
+    const changes: DesktopWorkspaceChange[] = []
+    const subscription = workspace.subscribe(change => changes.push(change))
+    expect(watcherCallbacks).toHaveLength(1)
+    watcherCallbacks[0]!("queued-before-move.ts")
+    expect(scheduled).toHaveLength(1)
+
+    const stale = workspace.search({ query: "stale", mode: "content" })
+    generation = 2
+    pending[0]!(searchWorkspace({ root, grantRef: workspace.grantRef, query: "stale", mode: "content", epoch: 0 }))
+    expect(await stale.result).toEqual({
+      state: "unavailable",
+      message: "The workspace search authority changed before its result was admitted.",
+    })
+    scheduled.shift()?.()
+    expect(changes).toEqual([])
+    expect(watcherClosed[0]!()).toBe(true)
+    expect(watcherCallbacks).toHaveLength(2)
+    watcherCallbacks[0]!("stale.ts")
+    expect(scheduled).toHaveLength(0)
+    authorityChecks[0]!()
+    expect(watcherCallbacks).toHaveLength(2)
+
+    const current = workspace.search({ query: "current", mode: "content" })
+    const currentPage = searchWorkspace({ root, grantRef: workspace.grantRef, query: "current", mode: "content", epoch: 0 })
+    pending[1]!(currentPage)
+    expect(await current.result).toEqual(currentPage)
+    expect((await workspace.search({ query: "current", mode: "content" }).result)).toEqual(currentPage)
+    expect(pending).toHaveLength(2)
+
+    watcherCallbacks[1]!("current.ts")
+    scheduled.shift()?.()
+    expect(changes).toEqual([{ kind: "changed", pathRef: "current.ts", pathRefs: ["current.ts"], epoch: 1 }])
+    const quiescing = workspace.quiesceSearch()
+    await expect(quiescing).resolves.toEqual({ state: "quiesced" })
+    await expect(workspace.quiesceSearch()).resolves.toEqual({ state: "quiesced" })
+    expect((await workspace.search({ query: "after", mode: "path" }).result)).toEqual({
+      state: "unavailable",
+      message: "Workspace search is quiesced on this host.",
+    })
+    subscription.close()
+    await workspace.dispose()
   })
 
   test("paginates a large root behind the fixed tree bound", () => {

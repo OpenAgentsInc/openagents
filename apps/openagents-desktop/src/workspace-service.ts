@@ -20,6 +20,7 @@ import type {
 import {
   makeWorkspaceSearchHost,
   type WorkspaceSearchHost,
+  type WorkspaceSearchQuiesceResult,
   type WorkspaceSearchTask,
 } from "./workspace-search-host.ts"
 import { desktopWorkerUrl } from "./desktop-worker-location.ts"
@@ -39,6 +40,7 @@ import type {
 } from "./ide/language-contract.ts"
 import type {
   IdePortableMutationAuthority,
+  IdePortableMutationPermit,
 } from "./ide/portable-mutation-authority.ts"
 
 const maxEntries = 120
@@ -1192,7 +1194,8 @@ export type DesktopWorkspaceService = Readonly<{
   languageCancel: (input: IdeLanguageCancelRequest) => Promise<IdeLanguageCancelResponse>
   languageStop: (input: IdeLanguageStopRequest) => Promise<IdeLanguageStopResponse>
   languageSnapshot: () => Promise<IdeLanguageServiceSnapshot>
-  dispose: () => void
+  quiesceSearch: () => Promise<WorkspaceSearchQuiesceResult>
+  dispose: () => Promise<WorkspaceSearchQuiesceResult>
 }>
 
 export const WORKSPACE_WATCH_COALESCE_MS = 75
@@ -1219,6 +1222,7 @@ export const openWorkspaceService = (
     searchHostFactory?: (root: string, grantRef: string) => WorkspaceSearchHost
     languageHostFactory?: (root: string, grantRef: string) => WorkspaceLanguageHost
     mutationAuthority?: IdePortableMutationAuthority
+    monitorSearchAuthority?: (check: () => void) => Readonly<{ close: () => void }>
     mutationIo?: WorkspaceMutationIo
     documentIo?: WorkspaceDocumentIo
     reveal?: (absolutePath: string) => Promise<boolean> | boolean
@@ -1231,6 +1235,11 @@ export const openWorkspaceService = (
     root,
     grantRef,
     desktopWorkerUrl(import.meta.url, "workspace-search-worker.js"),
+    undefined,
+    {
+      ...(options.mutationAuthority === undefined ? {} : { mutationAuthority: options.mutationAuthority }),
+      ...(options.monitorSearchAuthority === undefined ? {} : { monitorAuthority: options.monitorSearchAuthority }),
+    },
   )
   const languageHost = options.languageHostFactory?.(root, grantRef) ?? makeWorkspaceLanguageHost(
     root,
@@ -1247,14 +1256,34 @@ export const openWorkspaceService = (
       : null
   }
   let disposed = false
+  let searchQuiesced = false
+  let searchQuiescePromise: Promise<WorkspaceSearchQuiesceResult> | null = null
   let epoch = 0
   let watcher: Readonly<{ close: () => void }> | null = null
+  let watcherPermit: IdePortableMutationPermit | null = null
+  let watcherAuthorityMonitor: Readonly<{ close: () => void }> | null = null
+  let watcherGeneration = 0
   let watchFlushTimer: Readonly<{ cancel: () => void }> | null = null
   let watchOverflow = false
   const pendingWatchPaths = new Set<string>()
   const listeners = new Set<(change: DesktopWorkspaceChange) => void>()
   const treeCache = new Map<string, DesktopWorkspaceTreePage>()
   const searchCache = new Map<string, DesktopWorkspaceSearchPage>()
+  const unavailableSearchTask = (message: string): WorkspaceSearchTask => ({
+    taskRef: `workspace.search.unavailable.${randomUUID()}`,
+    result: Promise.resolve({ state: "unavailable", message }),
+    cancel: () => undefined,
+  })
+  const captureSearchPermit = (): IdePortableMutationPermit | null | false => {
+    const authority = options.mutationAuthority
+    if (authority === undefined) return null
+    const authorization = authority.authorize(grantRef)
+    return authorization._tag === "Permitted" ? authorization.permit : false
+  }
+  const searchPermitIsCurrent = (permit: IdePortableMutationPermit | null | false): boolean =>
+    options.mutationAuthority === undefined || (
+      permit !== false && permit !== null && options.mutationAuthority.reauthorize(permit)
+    )
   const notify = (kind: DesktopWorkspaceChange["kind"], changedPathRef: string | null, pathRefs?: ReadonlyArray<string>) => {
     epoch += 1
     searchHost.cancelAll()
@@ -1269,7 +1298,14 @@ export const openWorkspaceService = (
   }
   const flushWatchChanges = () => {
     cancelWatchFlush()
-    if (disposed) return
+    if (disposed || searchQuiesced) return
+    if (watcher !== null && !searchPermitIsCurrent(watcherPermit)) {
+      closeWatcher()
+      searchHost.cancelAll()
+      searchCache.clear()
+      ensureWatcher()
+      return
+    }
     if (watchOverflow) {
       watchOverflow = false
       pendingWatchPaths.clear()
@@ -1306,19 +1342,51 @@ export const openWorkspaceService = (
     return { close: () => native.close() }
   }
   const ensureWatcher = () => {
-    if (watcher !== null || disposed || listeners.size === 0) return
+    if (watcher !== null || disposed || searchQuiesced || listeners.size === 0) return
+    const permit = captureSearchPermit()
+    if (!searchPermitIsCurrent(permit)) return
+    const generation = ++watcherGeneration
     try {
       watcher = (options.watchFactory ?? defaultWatchFactory)(root, pathRef => {
-        if (disposed) return
+        if (
+          disposed ||
+          searchQuiesced ||
+          generation !== watcherGeneration ||
+          !searchPermitIsCurrent(permit)
+        ) return
         enqueueWatchChange(pathRef)
       })
+      watcherPermit = permit === false ? null : permit
+      if (!searchPermitIsCurrent(permit)) {
+        closeWatcher()
+        return
+      }
+      if (permit !== null && permit !== false) {
+        const monitor = options.monitorSearchAuthority ?? (check => {
+          const timer = setInterval(check, 25)
+          timer.unref()
+          return { close: () => clearInterval(timer) }
+        })
+        watcherAuthorityMonitor = monitor(() => {
+          if (generation !== watcherGeneration || searchPermitIsCurrent(permit)) return
+          closeWatcher()
+          searchHost.cancelAll()
+          searchCache.clear()
+          ensureWatcher()
+        })
+      }
     } catch {
+      closeWatcher()
       notify("overflow", null)
     }
   }
   const closeWatcher = () => {
     const active = watcher
     watcher = null
+    watcherPermit = null
+    watcherGeneration += 1
+    watcherAuthorityMonitor?.close()
+    watcherAuthorityMonitor = null
     active?.close()
     cancelWatchFlush()
     watchOverflow = false
@@ -1344,11 +1412,17 @@ export const openWorkspaceService = (
       return page
     },
     search: request => {
-      if (disposed) return searchHost.start({ query: "", mode: request.mode, epoch })
+      if (disposed) return unavailableSearchTask("The selected workspace has been disposed.")
+      if (searchQuiesced) return unavailableSearchTask("Workspace search is quiesced on this host.")
+      const permit = captureSearchPermit()
+      if (!searchPermitIsCurrent(permit)) {
+        return unavailableSearchTask("The current workspace placement does not permit this search.")
+      }
       const query = request.query.trim().slice(0, 200)
       const offset = boundedInteger(request.offset, 0, maxSearchResults)
       const limit = Math.max(1, boundedInteger(request.limit, 40, maxSearchResults))
-      const key = `${request.mode}\0${revisionFor(Buffer.from(query))}\0${offset}\0${limit}\0${epoch}`
+      const permitKey = permit === null || permit === false ? "local" : permit.key
+      const key = `${request.mode}\0${revisionFor(Buffer.from(query))}\0${offset}\0${limit}\0${epoch}\0${permitKey}`
       const cached = searchCache.get(key)
       if (cached !== undefined) {
         return {
@@ -1362,7 +1436,10 @@ export const openWorkspaceService = (
       return {
         ...task,
         result: task.result.then(page => {
-          if (!disposed && epoch === startedEpoch && page.state === "available") searchCache.set(key, page)
+          if (!searchPermitIsCurrent(permit)) {
+            return { state: "unavailable" as const, message: "The workspace search authority changed before its result was admitted." }
+          }
+          if (!disposed && !searchQuiesced && epoch === startedEpoch && page.state === "available") searchCache.set(key, page)
           return page
         }),
       }
@@ -1480,15 +1557,24 @@ export const openWorkspaceService = (
     languageCancel: input => languageHost.cancel(input),
     languageStop: input => languageHost.stop(input),
     languageSnapshot: () => languageHost.snapshot(),
+    quiesceSearch: () => {
+      searchQuiesced = true
+      closeWatcher()
+      searchCache.clear()
+      if (searchQuiescePromise === null) searchQuiescePromise = searchHost.quiesce()
+      return searchQuiescePromise
+    },
     dispose: () => {
-      if (disposed) return
+      if (disposed) return searchQuiescePromise ?? searchHost.quiesce()
       disposed = true
+      searchQuiesced = true
       closeWatcher()
       listeners.clear()
       treeCache.clear()
       searchCache.clear()
-      searchHost.dispose()
+      searchQuiescePromise = searchHost.dispose()
       languageHost.dispose()
+      return searchQuiescePromise
     },
   }
 }
