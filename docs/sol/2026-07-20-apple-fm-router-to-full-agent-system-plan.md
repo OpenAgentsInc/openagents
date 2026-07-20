@@ -679,7 +679,7 @@ local context.
 
 ## Work packet sequence
 
-The program has eleven packets. A packet can start only after its dependencies
+The program has twelve packets. A packet can start only after its dependencies
 pass. The current IDE-13 program keeps its roadmap position. These packets must
 coordinate any shared host, IPC, generated catalog, or release file with the
 IDE-13 owner.
