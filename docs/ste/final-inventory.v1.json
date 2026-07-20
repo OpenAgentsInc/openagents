@@ -14062,7 +14062,7 @@
     },
     {
       "path": "docs/DEPLOYMENT.md",
-      "sha256": "380741f2252c3673a3e0acbc21228ffdfa6c235b964bcaf905c1aaf52c4a584a",
+      "sha256": "a8685c5f6a1dab2fc9d35710a0f7831ff25f9d670feb16a2febcf448c2a117c0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -21089,6 +21089,28 @@
       }
     },
     {
+      "path": "docs/deploy/2026-07-20-owned-infra-cross-platform-desktop-build-runbook.md",
+      "sha256": "d2b5ded231e86802a232ede802873061bd91209e70ab58c534f1a3855067b1d1",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/deploy/README.md",
       "sha256": "349d718559d66cdaf5a0de915435557ecf8af254da213ae821964eba8101a4fd",
       "reason": "Final review of a converted document",
@@ -21220,12 +21242,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
