@@ -13,7 +13,7 @@ import {
 
 const decodeReceipt = Schema.decodeUnknownSync(Ide13OwnerLocalRealFaultMatrixReceiptSchema);
 
-test("runs honest owner-local transition partition cases and records the missing seams", async () => {
+test("runs honest owner-local injected faults and records the missing seams", async () => {
   const root = await mkdtemp(join(tmpdir(), "ide13-owner-local-fault-matrix-test-"));
   const outputPath = join(root, "receipt.json");
   try {
@@ -29,12 +29,25 @@ test("runs honest owner-local transition partition cases and records the missing
     expect(receipt.cases).toHaveLength(IDE_PORTABLE_REQUIRED_FAULT_CASES.length);
     expect(receipt.summary).toEqual({
       requiredCaseCount: IDE_PORTABLE_REQUIRED_FAULT_CASES.length,
-      passedRealLocalCount: 8,
-      notRunCount: 19,
+      passedRealLocalCount: 11,
+      notRunCount: 16,
       acceptanceReady: false,
     });
-    expect(receipt.cases.filter((fault) => fault.outcome === "passed")).toHaveLength(8);
-    expect(receipt.cases.filter((fault) => fault.outcome === "not_run")).toHaveLength(19);
+    expect(receipt.cases.filter((fault) => fault.outcome === "passed")).toHaveLength(11);
+    expect(receipt.cases.filter((fault) => fault.outcome === "not_run")).toHaveLength(16);
+    expect(
+      receipt.cases
+        .filter((fault) =>
+          ["old_generation_command", "dual_attachment_claim", "source_revocation_failure"].includes(
+            fault.scenario,
+          ),
+        )
+        .map((fault) => [fault.scenario, fault.evidenceClass, fault.outcome]),
+    ).toEqual([
+      ["old_generation_command", "real_local", "passed"],
+      ["source_revocation_failure", "real_local", "passed"],
+      ["dual_attachment_claim", "real_local", "passed"],
+    ]);
     expect(
       receipt.cases
         .filter((fault) => fault.outcome === "passed")

@@ -12,7 +12,11 @@ import {
   IdePortableEvidenceClassSchema,
   IdePortablePhaseSchema,
 } from "../../openagents-desktop/src/ide/portable-evidence-contract.ts";
-import { runIde13OwnerLocalRealCohort } from "./ide13-owner-local-real-cohort.js";
+import {
+  type Ide13OwnerLocalAuthorityFaultProof,
+  type Ide13OwnerLocalAuthorityFaultScenario,
+  runIde13OwnerLocalRealCohort,
+} from "./ide13-owner-local-real-cohort.js";
 
 const GIT_SHA = /^[a-f0-9]{40}$/u;
 const REF = Schema.String.check(
@@ -107,6 +111,12 @@ const identity = (fault: (typeof IDE_PORTABLE_REQUIRED_FAULT_CASES)[number]): st
 const omittedReason = (scenario: string): string =>
   `The production owner-local composition does not have a source-controlled ${scenario} injection seam. This case did not run and does not contribute acceptance evidence.`;
 
+const AUTHORITY_FAULT_SCENARIOS = new Set<Ide13OwnerLocalAuthorityFaultScenario>([
+  "old_generation_command",
+  "dual_attachment_claim",
+  "source_revocation_failure",
+]);
+
 export const runIde13OwnerLocalRealFaultMatrix = async (
   input: Readonly<{
     candidateCommitSha?: string;
@@ -134,6 +144,53 @@ export const runIde13OwnerLocalRealFaultMatrix = async (
   const cases = await Promise.all(
     IDE_PORTABLE_REQUIRED_FAULT_CASES.map(
       async (fault): Promise<Schema.Schema.Type<typeof FaultCaseSchema>> => {
+        if (
+          AUTHORITY_FAULT_SCENARIOS.has(fault.scenario as Ide13OwnerLocalAuthorityFaultScenario)
+        ) {
+          const scenario = fault.scenario as Ide13OwnerLocalAuthorityFaultScenario;
+          const startedAt = performance.now();
+          let faultProof: Ide13OwnerLocalAuthorityFaultProof | null = null;
+          const cohort = await runIde13OwnerLocalRealCohort({
+            candidateCommitSha,
+            injectedAuthorityFaultScenario: scenario,
+            onInjectedAuthorityFaultProof: (proof) => {
+              faultProof = proof;
+            },
+            repositoryRoot,
+          });
+          const elapsedMilliseconds = performance.now() - startedAt;
+          if (elapsedMilliseconds > DEADLINE_MILLISECONDS) {
+            throw new Error(`owner-local ${identity(fault)} exceeded its cleanup deadline`);
+          }
+          if (faultProof === null || faultProof.scenario !== scenario) {
+            throw new Error(`owner-local ${identity(fault)} lacks an exact authority fault proof`);
+          }
+          const resourceCleanup = cohort.cohort.metrics.find(
+            (row) => row.metric === "resource_cleanup",
+          );
+          const queue = cohort.cohort.metrics.find((row) => row.metric === "queue");
+          if (resourceCleanup?.p99 !== 0 || queue?.p99 !== 0) {
+            throw new Error(`owner-local ${identity(fault)} left resource or session residue`);
+          }
+          safetyProofRefs.add(faultProof.receiptRef);
+          safetyProofRefs.add(cohort.proofs.teardownReceiptRef);
+          safetyProofRefs.add(cohort.proofs.sourceCustodyDeletionReceiptRef);
+          safetyProofRefs.add(cohort.proofs.failbackCustodyDeletionReceiptRef);
+          return {
+            faultRef: `fault.ide13.owner-local.${scenario}`,
+            scenario,
+            phase: null,
+            evidenceClass: "real_local",
+            outcome: "passed",
+            productionBoundaryRef: faultProof.productionBoundaryRef,
+            injectedFaultRef: faultProof.injectedFaultRef,
+            recoveryPointRef: faultProof.recoveryPointRef,
+            receiptRef: faultProof.receiptRef,
+            elapsedMilliseconds,
+            deadlineMilliseconds: DEADLINE_MILLISECONDS,
+            disclosure: faultProof.disclosure,
+          };
+        }
         if (fault.scenario !== "transition_partition" || fault.phase === null) {
           return {
             faultRef: `fault.ide13.owner-local.${fault.scenario}`,

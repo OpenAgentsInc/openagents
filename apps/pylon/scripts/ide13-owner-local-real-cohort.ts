@@ -11,7 +11,7 @@ import {
   type PortableAgentGraph,
   type PortableSessionExecutionBinding,
 } from "@openagentsinc/portable-session-contract";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import {
   IdePortablePlacementCohortSchema,
@@ -47,7 +47,10 @@ import {
   PylonPortableCheckpointArtifactStore,
   type PylonPortableCheckpointDeletionReceipt,
 } from "../src/portable-session-checkpoint-artifact.js";
-import { PylonPortableSessionOperationLedger } from "../src/portable-session-operation-ledger.js";
+import {
+  PylonPortableOperationLedgerError,
+  PylonPortableSessionOperationLedger,
+} from "../src/portable-session-operation-ledger.js";
 import { createPylonOwnerLocalExecutionTarget } from "../src/portable-session-target.js";
 
 const Ref = Schema.String.check(
@@ -105,6 +108,20 @@ const decodeReceipt = Schema.decodeUnknownSync(Ide13OwnerLocalRealCohortReceiptS
 
 type Metric = Ide13OwnerLocalRealCohortReceipt["cohort"]["metrics"][number];
 type Phase = (typeof IDE_PORTABLE_PHASES)[number];
+
+export type Ide13OwnerLocalAuthorityFaultScenario =
+  | "old_generation_command"
+  | "dual_attachment_claim"
+  | "source_revocation_failure";
+
+export type Ide13OwnerLocalAuthorityFaultProof = Readonly<{
+  scenario: Ide13OwnerLocalAuthorityFaultScenario;
+  productionBoundaryRef: string;
+  injectedFaultRef: string;
+  recoveryPointRef: string;
+  receiptRef: string;
+  disclosure: string;
+}>;
 
 const sha256 = (value: string | Uint8Array): string =>
   createHash("sha256").update(value).digest("hex");
@@ -245,8 +262,10 @@ const assertDeletion = (receipt: PylonPortableCheckpointDeletionReceipt): string
 export const runIde13OwnerLocalRealCohort = async (
   input: Readonly<{
     candidateCommitSha?: string;
+    injectedAuthorityFaultScenario?: Ide13OwnerLocalAuthorityFaultScenario;
     injectedCheckpointStoreCrash?: boolean;
     injectedTransitionPartitionPhase?: Phase;
+    onInjectedAuthorityFaultProof?: (proof: Ide13OwnerLocalAuthorityFaultProof) => void;
     outputPath?: string;
     repositoryRoot?: string;
   }> = {},
@@ -285,6 +304,14 @@ export const runIde13OwnerLocalRealCohort = async (
   const wallStarted = performance.now();
   let injectedTransitionPartition = false;
   let injectedCheckpointStoreCrash = false;
+  let injectedSourceCleanupFailure = false;
+  let authorityFaultProof: Ide13OwnerLocalAuthorityFaultProof | null = null;
+  const recordAuthorityFaultProof = (proof: Ide13OwnerLocalAuthorityFaultProof): void => {
+    if (authorityFaultProof !== null) {
+      throw new Error("owner-local authority fault produced more than one proof");
+    }
+    authorityFaultProof = proof;
+  };
   const runPhase = async <A>(phase: Phase, operation: () => Promise<A>): Promise<A> => {
     if (input.injectedTransitionPartitionPhase === phase && injectedTransitionPartition === false) {
       injectedTransitionPartition = true;
@@ -457,10 +484,23 @@ export const runIde13OwnerLocalRealCohort = async (
       authority: authorityPort,
       rehydrator: rehydratorB,
     });
+    const sourceALifecycle =
+      input.injectedAuthorityFaultScenario === "source_revocation_failure"
+        ? {
+            ...actions.portable,
+            cleanup: async (cleanupInput: Parameters<typeof actions.portable.cleanup>[0]) => {
+              if (!injectedSourceCleanupFailure) {
+                injectedSourceCleanupFailure = true;
+                throw new Error("injected owner-local source cleanup refusal");
+              }
+              return actions.portable.cleanup(cleanupInput);
+            },
+          }
+        : actions.portable;
     const sourceA = await createPylonOwnerLocalExecutionTarget({
       targetRef: targetARef,
       ledger,
-      lifecycle: actions.portable,
+      lifecycle: sourceALifecycle,
       binding,
       destination: destinationB,
       checkpointArtifacts: producerA,
@@ -520,13 +560,43 @@ export const runIde13OwnerLocalRealCohort = async (
       }),
     );
     phaseMilliseconds.set("upload", upload.milliseconds);
-    await sourceA.cleanupSource({
+    const cleanupAInput = {
       operationRef: "operation.ide13.owner-local.move.source.cleanup",
       sessionRef,
       attachmentRef: attachmentA1,
       generation: 1,
       agentRefs: [agentRef],
-    });
+    };
+    if (input.injectedAuthorityFaultScenario === "source_revocation_failure") {
+      try {
+        await sourceA.cleanupSource(cleanupAInput);
+        throw new Error("injected owner-local source cleanup refusal was not observed");
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          error.message !== "injected owner-local source cleanup refusal"
+        ) {
+          throw error;
+        }
+      }
+      const cleanupRetry = await sourceA.cleanupSource(cleanupAInput);
+      recordAuthorityFaultProof({
+        scenario: "source_revocation_failure",
+        productionBoundaryRef: "boundary.pylon.owner-local.lifecycle.cleanup",
+        injectedFaultRef: "injected-fault.ide13.owner-local.source-cleanup-refusal",
+        recoveryPointRef:
+          cleanupRetry.evidenceRefs[0] ??
+          stableRef("receipt.ide13.owner-local.source-cleanup-retry", candidateCommitSha),
+        receiptRef: stableRef(
+          "receipt.ide13.owner-local.source-cleanup-retry",
+          `${candidateCommitSha}:${cleanupRetry.evidenceRefs.join(":")}`,
+        ),
+        disclosure:
+          "The source-controlled harness injected one cleanup refusal at the production owner-local lifecycle boundary. The exact durable cleanup operation retried, completed, and later passed the full-composition residue checks. This was not an external authority refusal.",
+      });
+    } else {
+      await sourceA.cleanupSource(cleanupAInput);
+    }
     const stageBInput = {
       operationRef: "operation.ide13.owner-local.move.destination.stage",
       bundle: checkpointA.value,
@@ -553,6 +623,48 @@ export const runIde13OwnerLocalRealCohort = async (
     }
     if (!staleGenerationRejected)
       throw new Error("owner-local stale destination generation was accepted");
+    if (input.injectedAuthorityFaultScenario === "dual_attachment_claim") {
+      try {
+        await Effect.runPromise(
+          ledger.admitDestinationOperation({
+            operationRef: "operation.ide13.owner-local.fault.dual-attachment.stage",
+            sessionRef,
+            sourceAttachmentRef: attachmentA1,
+            sourceGeneration: 1,
+            destinationAttachmentRef: "attachment.ide13.owner-local.cohort.competing.2",
+            destinationGeneration: 2,
+            kind: "stage",
+            exactInput: {
+              sessionRef,
+              destinationAttachmentRef: "attachment.ide13.owner-local.cohort.competing.2",
+              destinationGeneration: 2,
+            },
+          }),
+        );
+        throw new Error("owner-local competing attachment claim was accepted");
+      } catch (error) {
+        if (
+          !(error instanceof PylonPortableOperationLedgerError) ||
+          error.reason !== "conflicting_replay"
+        ) {
+          throw error;
+        }
+      }
+      recordAuthorityFaultProof({
+        scenario: "dual_attachment_claim",
+        productionBoundaryRef:
+          "boundary.pylon.portable-operation-ledger.admit-destination-operation",
+        injectedFaultRef: "injected-fault.ide13.owner-local.dual-attachment-claim",
+        recoveryPointRef:
+          stageB.value.evidenceRefs[0] ?? stageB.value.destinationRunnerSessionReservationRef,
+        receiptRef: stableRef(
+          "receipt.ide13.owner-local.dual-attachment-refused",
+          `${candidateCommitSha}:${stageB.value.destinationRunnerSessionReservationRef}`,
+        ),
+        disclosure:
+          "After the real owner-local destination staged attachment B at generation 2, the source-controlled harness submitted a competing attachment claim for the same generation while generation 1 remained the current quiesced source. The production durable ledger rejected the claim as conflicting_replay, and the full composition continued through activation, failback, and teardown.",
+      });
+    }
     setAuthority({
       sessionRef,
       targetRef: targetBRef,
@@ -582,6 +694,39 @@ export const runIde13OwnerLocalRealCohort = async (
     const replayedActivationB = await destinationB.activate(activateBInput);
     if (replayedActivationB.receiptRef !== activatedB.value.receiptRef) {
       throw new Error("owner-local activation replay changed its receipt");
+    }
+    if (input.injectedAuthorityFaultScenario === "old_generation_command") {
+      try {
+        await Effect.runPromise(
+          ledger.admitOperation({
+            operationRef: "operation.ide13.owner-local.fault.old-generation-command",
+            sessionRef,
+            attachmentRef: attachmentA1,
+            generation: 1,
+            kind: "quiesce",
+          }),
+        );
+        throw new Error("owner-local old-generation command was accepted");
+      } catch (error) {
+        if (
+          !(error instanceof PylonPortableOperationLedgerError) ||
+          error.reason !== "stale_generation"
+        ) {
+          throw error;
+        }
+      }
+      recordAuthorityFaultProof({
+        scenario: "old_generation_command",
+        productionBoundaryRef: "boundary.pylon.portable-operation-ledger.admit-operation",
+        injectedFaultRef: "injected-fault.ide13.owner-local.old-generation-command",
+        recoveryPointRef: activatedB.value.receiptRef,
+        receiptRef: stableRef(
+          "receipt.ide13.owner-local.old-generation-command-refused",
+          `${candidateCommitSha}:${activatedB.value.receiptRef}`,
+        ),
+        disclosure:
+          "After the real owner-local move activated generation 2, the source-controlled harness submitted a generation 1 operation to the production durable ledger. The ledger rejected it as stale_generation, and the full composition continued through failback and teardown.",
+      });
     }
     const deleteAInput = {
       operationRef: "operation.ide13.owner-local.move.custody.delete",
@@ -817,6 +962,12 @@ export const runIde13OwnerLocalRealCohort = async (
     const cpuPercent = ((cpu.user + cpu.system) / wallMicroseconds) * 100;
     const resourceResidue =
       nonTerminalSessions + activeCustodyObjects + supervisor.disposalFailures().length;
+    if (input.injectedAuthorityFaultScenario !== undefined) {
+      if (authorityFaultProof === null) {
+        throw new Error("owner-local authority fault did not produce an exact proof");
+      }
+      input.onInjectedAuthorityFaultProof?.(authorityFaultProof);
+    }
     const metricReceipt = stableRef(
       "receipt.ide13.owner-local.metrics",
       `${candidateCommitSha}:${upload.value.digest}:${finalCheckpoint.checkpoint.digest}`,
