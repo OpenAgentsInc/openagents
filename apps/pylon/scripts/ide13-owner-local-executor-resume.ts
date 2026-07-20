@@ -338,27 +338,39 @@ export const runIde13OwnerLocalExecutorResume = async (
     const handlers = new Map([
       [
         handlerRef,
-        async (
-          handlerInput: Readonly<{
-            workspaceRoot: string;
-            sourceGeneration: number;
-            destinationGeneration: number;
-          }>,
-        ) => {
-          handlerExecutionCount += 1;
-          if (handlerInput.sourceGeneration !== 1 || handlerInput.destinationGeneration !== 2) {
-            throw new Error("bounded handler received a stale generation");
-          }
-          const trackedPath = join(handlerInput.workspaceRoot, "tracked.txt");
-          await writeFile(
-            trackedPath,
-            `${await readFile(trackedPath, "utf8")}destination settled work\n`,
-            "utf8",
-          );
-          return {
-            resultRef: "result.ide13.owner-local.executor-resume.safe-edit",
-            evidenceRefs: ["evidence.ide13.owner-local.executor-resume.safe-edit.settled"],
-          };
+        {
+          recoveryContract: "durable_idempotency_reconcile_v1" as const,
+          reconcile: async (handlerInput: Readonly<{ workspaceRoot: string }>) =>
+            (await readFile(join(handlerInput.workspaceRoot, "tracked.txt"), "utf8")).endsWith(
+              "destination settled work\n",
+            )
+              ? {
+                  resultRef: "result.ide13.owner-local.executor-resume.safe-edit",
+                  evidenceRefs: ["evidence.ide13.owner-local.executor-resume.safe-edit.settled"],
+                }
+              : null,
+          execute: async (
+            handlerInput: Readonly<{
+              workspaceRoot: string;
+              sourceGeneration: number;
+              destinationGeneration: number;
+            }>,
+          ) => {
+            handlerExecutionCount += 1;
+            if (handlerInput.sourceGeneration !== 1 || handlerInput.destinationGeneration !== 2) {
+              throw new Error("bounded handler received a stale generation");
+            }
+            const trackedPath = join(handlerInput.workspaceRoot, "tracked.txt");
+            await writeFile(
+              trackedPath,
+              `${await readFile(trackedPath, "utf8")}destination settled work\n`,
+              "utf8",
+            );
+            return {
+              resultRef: "result.ide13.owner-local.executor-resume.safe-edit",
+              evidenceRefs: ["evidence.ide13.owner-local.executor-resume.safe-edit.settled"],
+            };
+          },
         },
       ],
     ]);

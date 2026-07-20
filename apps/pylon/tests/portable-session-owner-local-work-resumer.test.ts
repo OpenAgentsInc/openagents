@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from "vite-plus/test";
 import { PylonPortableSessionOperationLedger } from "../src/portable-session-operation-ledger.js";
 import {
   createPylonPortableOwnerLocalWorkResumer,
+  type PylonPortableOwnerLocalWorkHandler,
   PylonPortableOwnerLocalWorkResumeError,
 } from "../src/portable-session-owner-local-work-resumer.js";
 
@@ -80,16 +81,24 @@ describe("Pylon owner-local portable accepted-work resumer", () => {
       handlers: new Map([
         [
           handlerRef,
-          async (input) => {
-            executionCount += 1;
-            expect(input.sourceGeneration).toBe(1);
-            expect(input.destinationGeneration).toBe(2);
-            const path = join(input.workspaceRoot, "tracked.txt");
-            await writeFile(path, `${await readFile(path, "utf8")}resumed generation 2\n`, "utf8");
-            return {
-              resultRef: "result.ide13.owner-local.resume.safe-edit",
-              evidenceRefs: ["evidence.ide13.owner-local.resume.safe-edit.settled"],
-            };
+          {
+            recoveryContract: "durable_idempotency_reconcile_v1",
+            reconcile: async () => null,
+            execute: async (input) => {
+              executionCount += 1;
+              expect(input.sourceGeneration).toBe(1);
+              expect(input.destinationGeneration).toBe(2);
+              const path = join(input.workspaceRoot, "tracked.txt");
+              await writeFile(
+                path,
+                `${await readFile(path, "utf8")}resumed generation 2\n`,
+                "utf8",
+              );
+              return {
+                resultRef: "result.ide13.owner-local.resume.safe-edit",
+                evidenceRefs: ["evidence.ide13.owner-local.resume.safe-edit.settled"],
+              };
+            },
           },
         ],
       ]),
@@ -141,6 +150,235 @@ describe("Pylon owner-local portable accepted-work resumer", () => {
     expect(executionCount).toBe(1);
   });
 
+  test("reconciles a durable effect after executor death without executing the handler twice", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openagents-portable-work-crash-recovery-"));
+    roots.push(root);
+    const workspace = join(root, "workspace");
+    const databasePath = join(root, "portable.sqlite");
+    const durableEffectPath = join(workspace, "durable-effect.json");
+    await mkdir(workspace, { recursive: true });
+    let database = openLegacySqliteDatabase(databasePath);
+    let ledger = new PylonPortableSessionOperationLedger(database);
+    insertFence(database, sourceAttachmentRef, 1);
+    let executionCount = 0;
+    let reconciliationCount = 0;
+    const result = {
+      resultRef: "result.ide13.owner-local.resume.crash-recovered",
+      evidenceRefs: ["evidence.ide13.owner-local.resume.crash-recovered"],
+    };
+    const handler: PylonPortableOwnerLocalWorkHandler = {
+      recoveryContract: "durable_idempotency_reconcile_v1",
+      reconcile: async (input) => {
+        reconciliationCount += 1;
+        const durable = await readFile(durableEffectPath, "utf8").then(JSON.parse, () => null);
+        return durable?.idempotencyRef === input.idempotencyRef ? result : null;
+      },
+      execute: async (input) => {
+        executionCount += 1;
+        await writeFile(
+          durableEffectPath,
+          `${JSON.stringify({ idempotencyRef: input.idempotencyRef })}\n`,
+          "utf8",
+        );
+        throw new Error("injected executor death after durable effect");
+      },
+    };
+    let resumer = createPylonPortableOwnerLocalWorkResumer({
+      database,
+      ledger,
+      handlers: new Map([[handlerRef, handler]]),
+    });
+    await resumer.accept({
+      workRef,
+      handlerRef,
+      sessionRef,
+      sourceAttachmentRef,
+      sourceGeneration: 1,
+      agentRef,
+      workspaceRoot: workspace,
+    });
+    advanceFence(database, sourceAttachmentRef, destinationAttachmentRef, 1);
+    const request = {
+      operationRef,
+      workRef,
+      agentRef,
+      sessionRef,
+      destinationAttachmentRef,
+      destinationGeneration: 2,
+      workspaceRoot: workspace,
+    };
+    await expect(resumer.resume(request)).rejects.toMatchObject({ reason: "executor_failed" });
+    expect(resumer.readState(workRef)).toBe("running");
+
+    database.close();
+    database = openLegacySqliteDatabase(databasePath);
+    ledger = new PylonPortableSessionOperationLedger(database);
+    resumer = createPylonPortableOwnerLocalWorkResumer({
+      database,
+      ledger,
+      handlers: new Map([[handlerRef, handler]]),
+    });
+    await expect(resumer.resume(request)).rejects.toMatchObject({ reason: "conflicting_replay" });
+    await expect(
+      resumer.resume({
+        ...request,
+        interruptionEvidenceRef: "evidence.ide13.owner-local.executor.interrupted.1",
+      }),
+    ).rejects.toMatchObject({ reason: "unverified_recovery" });
+    resumer = createPylonPortableOwnerLocalWorkResumer({
+      database,
+      ledger,
+      handlers: new Map([[handlerRef, handler]]),
+      recoveryAuthority: {
+        authorityRef: "authority.ide13.owner-local.executor-process-death.v1",
+        verifyInterrupted: async (input) =>
+          input.interruptionEvidenceRef === "evidence.ide13.owner-local.executor.interrupted.1" &&
+          input.workRef === workRef &&
+          input.operationRef === operationRef &&
+          input.sessionRef === sessionRef &&
+          input.destinationAttachmentRef === destinationAttachmentRef &&
+          input.destinationGeneration === 2 &&
+          input.activeRecoveryEvidenceRef === null,
+      },
+    });
+    const recovered = await resumer.resume({
+      ...request,
+      interruptionEvidenceRef: "evidence.ide13.owner-local.executor.interrupted.1",
+    });
+    expect(recovered.replay).toBe("recovered");
+    expect(recovered.resultRef).toBe(result.resultRef);
+    expect(executionCount).toBe(1);
+    expect(reconciliationCount).toBe(1);
+    expect(resumer.readState(workRef)).toBe("settled");
+    const replayed = await resumer.resume(request);
+    expect(replayed.replay).toBe("replayed");
+    expect(executionCount).toBe(1);
+    expect(reconciliationCount).toBe(1);
+    database.close();
+  });
+
+  test("refuses a handler without the durable recovery contract", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openagents-portable-work-unsafe-handler-"));
+    roots.push(root);
+    const workspace = join(root, "workspace");
+    await mkdir(workspace, { recursive: true });
+    const database = openLegacySqliteDatabase(join(root, "portable.sqlite"));
+    const ledger = new PylonPortableSessionOperationLedger(database);
+    insertFence(database, sourceAttachmentRef, 1);
+    const unsafeHandler = (async () => ({
+      resultRef: "result.ide13.owner-local.resume.unsafe",
+      evidenceRefs: ["evidence.ide13.owner-local.resume.unsafe"],
+    })) as unknown as PylonPortableOwnerLocalWorkHandler;
+    const resumer = createPylonPortableOwnerLocalWorkResumer({
+      database,
+      ledger,
+      handlers: new Map([[handlerRef, unsafeHandler]]),
+    });
+    await expect(
+      resumer.accept({
+        workRef,
+        handlerRef,
+        sessionRef,
+        sourceAttachmentRef,
+        sourceGeneration: 1,
+        agentRef,
+        workspaceRoot: workspace,
+      }),
+    ).rejects.toMatchObject({ reason: "unsafe_handler" });
+    database.close();
+  });
+
+  test("admits only one concurrent recovery claim against the observed interruption epoch", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openagents-portable-work-recovery-cas-"));
+    roots.push(root);
+    const workspace = join(root, "workspace");
+    await mkdir(workspace, { recursive: true });
+    const database = openLegacySqliteDatabase(join(root, "portable.sqlite"));
+    const ledger = new PylonPortableSessionOperationLedger(database);
+    insertFence(database, sourceAttachmentRef, 1);
+    const failedHandler: PylonPortableOwnerLocalWorkHandler = {
+      recoveryContract: "durable_idempotency_reconcile_v1",
+      reconcile: async () => null,
+      execute: async () => {
+        throw new Error("injected interrupted executor");
+      },
+    };
+    let resumer = createPylonPortableOwnerLocalWorkResumer({
+      database,
+      ledger,
+      handlers: new Map([[handlerRef, failedHandler]]),
+    });
+    await resumer.accept({
+      workRef,
+      handlerRef,
+      sessionRef,
+      sourceAttachmentRef,
+      sourceGeneration: 1,
+      agentRef,
+      workspaceRoot: workspace,
+    });
+    advanceFence(database, sourceAttachmentRef, destinationAttachmentRef, 1);
+    const request = {
+      operationRef,
+      workRef,
+      agentRef,
+      sessionRef,
+      destinationAttachmentRef,
+      destinationGeneration: 2,
+      workspaceRoot: workspace,
+    };
+    await expect(resumer.resume(request)).rejects.toMatchObject({ reason: "executor_failed" });
+    let verificationCount = 0;
+    let releaseVerification: (() => void) | undefined;
+    const verificationBarrier = new Promise<void>((resolve) => {
+      releaseVerification = resolve;
+    });
+    let reconciliationCount = 0;
+    const recoveryHandler: PylonPortableOwnerLocalWorkHandler = {
+      recoveryContract: "durable_idempotency_reconcile_v1",
+      reconcile: async () => {
+        reconciliationCount += 1;
+        return {
+          resultRef: "result.ide13.owner-local.resume.concurrent-recovery",
+          evidenceRefs: ["evidence.ide13.owner-local.resume.concurrent-recovery"],
+        };
+      },
+      execute: async () => {
+        throw new Error("concurrent recovery must reconcile the prior effect");
+      },
+    };
+    resumer = createPylonPortableOwnerLocalWorkResumer({
+      database,
+      ledger,
+      handlers: new Map([[handlerRef, recoveryHandler]]),
+      recoveryAuthority: {
+        authorityRef: "authority.ide13.owner-local.executor-process-death.concurrent",
+        verifyInterrupted: async ({ activeRecoveryEvidenceRef }) => {
+          expect(activeRecoveryEvidenceRef).toBeNull();
+          verificationCount += 1;
+          if (verificationCount === 2) releaseVerification?.();
+          await verificationBarrier;
+          return true;
+        },
+      },
+    });
+    const attempts = await Promise.allSettled([
+      resumer.resume({
+        ...request,
+        interruptionEvidenceRef: "evidence.ide13.owner-local.executor.interrupted.concurrent.a",
+      }),
+      resumer.resume({
+        ...request,
+        interruptionEvidenceRef: "evidence.ide13.owner-local.executor.interrupted.concurrent.b",
+      }),
+    ]);
+    expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter((attempt) => attempt.status === "rejected")).toHaveLength(1);
+    expect(reconciliationCount).toBe(1);
+    expect(resumer.readState(workRef)).toBe("settled");
+    database.close();
+  });
+
   test("refuses stale generations, conflicting replay, and an unknown destination handler", async () => {
     const root = await mkdtemp(join(tmpdir(), "openagents-portable-work-fence-"));
     roots.push(root);
@@ -152,10 +390,14 @@ describe("Pylon owner-local portable accepted-work resumer", () => {
     const handlers = new Map([
       [
         handlerRef,
-        async () => ({
-          resultRef: "result.ide13.owner-local.resume.fixture",
-          evidenceRefs: ["evidence.ide13.owner-local.resume.fixture"],
-        }),
+        {
+          recoveryContract: "durable_idempotency_reconcile_v1",
+          reconcile: async () => null,
+          execute: async () => ({
+            resultRef: "result.ide13.owner-local.resume.fixture",
+            evidenceRefs: ["evidence.ide13.owner-local.resume.fixture"],
+          }),
+        },
       ],
     ]);
     const resumer = createPylonPortableOwnerLocalWorkResumer({ database, ledger, handlers });

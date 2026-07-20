@@ -53,7 +53,7 @@ export const PylonPortableOwnerLocalWorkResumeReceiptSchema = Schema.Struct({
   resultRef: Ref,
   evidenceRefs: Schema.Array(Ref).check(Schema.isMinLength(1), Schema.isMaxLength(32)),
   processState: Schema.Literal("excluded"),
-  replay: Schema.Literals(["executed", "replayed"]),
+  replay: Schema.Literals(["executed", "recovered", "replayed"]),
 });
 
 export interface PylonPortableOwnerLocalWorkResumeReceipt extends Schema.Schema.Type<
@@ -63,20 +63,49 @@ export interface PylonPortableOwnerLocalWorkResumeReceipt extends Schema.Schema.
 const decodeWorkCheckpoint = Schema.decodeUnknownSync(PylonPortableOwnerLocalWorkCheckpointSchema);
 const decodeWorkReceipt = Schema.decodeUnknownSync(PylonPortableOwnerLocalWorkResumeReceiptSchema);
 
-export type PylonPortableOwnerLocalWorkHandler = (
-  input: Readonly<{
-    workRef: string;
-    agentRef: string;
-    workspaceRoot: string;
-    sourceGeneration: number;
-    destinationGeneration: number;
-  }>,
-) => Promise<
-  Readonly<{
-    resultRef: string;
-    evidenceRefs: ReadonlyArray<string>;
-  }>
->;
+export type PylonPortableOwnerLocalWorkResult = Readonly<{
+  resultRef: string;
+  evidenceRefs: ReadonlyArray<string>;
+}>;
+
+export type PylonPortableOwnerLocalWorkHandlerInput = Readonly<{
+  workRef: string;
+  agentRef: string;
+  workspaceRoot: string;
+  sourceGeneration: number;
+  destinationGeneration: number;
+  idempotencyRef: string;
+}>;
+
+/**
+ * A handler is admitted only when it can reconcile the durable effect for one
+ * stable idempotency ref. Reconcile must return the exact prior result when the
+ * effect exists, and null only when execute is safe to call with the same ref.
+ */
+export interface PylonPortableOwnerLocalWorkHandler {
+  readonly recoveryContract: "durable_idempotency_reconcile_v1";
+  readonly reconcile: (
+    input: PylonPortableOwnerLocalWorkHandlerInput,
+  ) => Promise<PylonPortableOwnerLocalWorkResult | null>;
+  readonly execute: (
+    input: PylonPortableOwnerLocalWorkHandlerInput,
+  ) => Promise<PylonPortableOwnerLocalWorkResult>;
+}
+
+export interface PylonPortableOwnerLocalWorkRecoveryAuthority {
+  readonly authorityRef: string;
+  readonly verifyInterrupted: (
+    input: Readonly<{
+      interruptionEvidenceRef: string;
+      workRef: string;
+      operationRef: string;
+      sessionRef: string;
+      destinationAttachmentRef: string;
+      destinationGeneration: number;
+      activeRecoveryEvidenceRef: string | null;
+    }>,
+  ) => Promise<boolean>;
+}
 
 type WorkRow = Readonly<{
   work_ref: string;
@@ -90,6 +119,7 @@ type WorkRow = Readonly<{
   operation_ref: string | null;
   destination_attachment_ref: string | null;
   destination_generation: number | null;
+  recovery_evidence_ref: string | null;
   receipt_json: string | null;
 }>;
 
@@ -103,6 +133,8 @@ export class PylonPortableOwnerLocalWorkResumeError extends Error {
       | "executor_failed"
       | "invalid_checkpoint"
       | "stale_generation"
+      | "unverified_recovery"
+      | "unsafe_handler"
       | "unknown_handler",
     message: string,
   ) {
@@ -178,13 +210,54 @@ const decodeReceipt = (value: unknown): PylonPortableOwnerLocalWorkResumeReceipt
   }
 };
 
+const assertAdmittedHandler = (
+  handler: PylonPortableOwnerLocalWorkHandler | undefined,
+): PylonPortableOwnerLocalWorkHandler => {
+  if (handler === undefined) {
+    throw new PylonPortableOwnerLocalWorkResumeError(
+      "unknown_handler",
+      "owner-local accepted-work handler is not installed at the destination",
+    );
+  }
+  if (
+    handler.recoveryContract !== "durable_idempotency_reconcile_v1" ||
+    typeof handler.reconcile !== "function" ||
+    typeof handler.execute !== "function"
+  ) {
+    throw new PylonPortableOwnerLocalWorkResumeError(
+      "unsafe_handler",
+      "owner-local accepted-work handler has no admitted durable recovery contract",
+    );
+  }
+  return handler;
+};
+
+const validateResult = (
+  completed: PylonPortableOwnerLocalWorkResult,
+): PylonPortableOwnerLocalWorkResult => {
+  assertRef(completed.resultRef, "resultRef");
+  if (
+    completed.evidenceRefs.length === 0 ||
+    completed.evidenceRefs.length > 32 ||
+    new Set(completed.evidenceRefs).size !== completed.evidenceRefs.length
+  ) {
+    throw new Error("executor evidence is invalid");
+  }
+  for (const evidenceRef of completed.evidenceRefs) assertRef(evidenceRef, "evidenceRef");
+  return completed;
+};
+
 export const createPylonPortableOwnerLocalWorkResumer = (
   input: Readonly<{
     database: Database;
     ledger: PylonPortableSessionOperationLedger;
     handlers: ReadonlyMap<string, PylonPortableOwnerLocalWorkHandler>;
+    recoveryAuthority?: PylonPortableOwnerLocalWorkRecoveryAuthority;
   }>,
 ) => {
+  if (input.recoveryAuthority !== undefined) {
+    assertRef(input.recoveryAuthority.authorityRef, "recoveryAuthority.authorityRef");
+  }
   input.database.exec(`
     CREATE TABLE IF NOT EXISTS pylon_portable_owner_local_work (
       work_ref TEXT PRIMARY KEY,
@@ -198,16 +271,27 @@ export const createPylonPortableOwnerLocalWorkResumer = (
       operation_ref TEXT,
       destination_attachment_ref TEXT,
       destination_generation INTEGER,
+      recovery_evidence_ref TEXT,
       receipt_json TEXT
     )
   `);
+
+  const columns = input.database
+    .query("PRAGMA table_info(pylon_portable_owner_local_work)")
+    .all() as ReadonlyArray<Readonly<{ name: string }>> | undefined;
+  if (!(columns ?? []).some((column) => column.name === "recovery_evidence_ref")) {
+    input.database.exec(
+      "ALTER TABLE pylon_portable_owner_local_work ADD COLUMN recovery_evidence_ref TEXT",
+    );
+  }
 
   const readRow = (workRef: string): WorkRow | null =>
     input.database
       .query(`
     SELECT work_ref, fingerprint, session_ref, source_attachment_ref,
            source_generation, agent_ref, handler_ref, state, operation_ref,
-           destination_attachment_ref, destination_generation, receipt_json
+           destination_attachment_ref, destination_generation, recovery_evidence_ref,
+           receipt_json
     FROM pylon_portable_owner_local_work WHERE work_ref = ?
   `)
       .get(workRef) as WorkRow | null;
@@ -266,12 +350,7 @@ export const createPylonPortableOwnerLocalWorkResumer = (
           "owner-local accepted-work generation is invalid",
         );
       }
-      if (!input.handlers.has(accepted.handlerRef)) {
-        throw new PylonPortableOwnerLocalWorkResumeError(
-          "unknown_handler",
-          "owner-local accepted work names no registered handler",
-        );
-      }
+      assertAdmittedHandler(input.handlers.get(accepted.handlerRef));
       assertFence({
         sessionRef: accepted.sessionRef,
         attachmentRef: accepted.sourceAttachmentRef,
@@ -335,6 +414,7 @@ export const createPylonPortableOwnerLocalWorkResumer = (
         destinationAttachmentRef: string;
         destinationGeneration: number;
         workspaceRoot: string;
+        interruptionEvidenceRef?: string;
       }>,
     ): Promise<PylonPortableOwnerLocalWorkResumeReceipt> => {
       assertWorkspace(resume.workspaceRoot);
@@ -346,6 +426,9 @@ export const createPylonPortableOwnerLocalWorkResumer = (
         destinationAttachmentRef: resume.destinationAttachmentRef,
       }))
         assertRef(value, field);
+      if (resume.interruptionEvidenceRef !== undefined) {
+        assertRef(resume.interruptionEvidenceRef, "interruptionEvidenceRef");
+      }
       if (
         !Number.isSafeInteger(resume.destinationGeneration) ||
         resume.destinationGeneration <= 1
@@ -404,14 +487,44 @@ export const createPylonPortableOwnerLocalWorkResumer = (
           "owner-local accepted-work checkpoint does not bind the destination generation",
         );
       }
-      const handler = input.handlers.get(checkpoint.handlerRef);
-      if (handler === undefined) {
-        throw new PylonPortableOwnerLocalWorkResumeError(
-          "unknown_handler",
-          "owner-local accepted-work handler is not installed at the destination",
-        );
+      const handler = assertAdmittedHandler(input.handlers.get(checkpoint.handlerRef));
+      let verifiedRecoveryPrior: string | null | undefined;
+      if (resume.interruptionEvidenceRef !== undefined) {
+        const interrupted = readRow(resume.workRef);
+        if (
+          interrupted === null ||
+          interrupted.state !== "running" ||
+          interrupted.operation_ref !== resume.operationRef ||
+          interrupted.session_ref !== resume.sessionRef ||
+          interrupted.agent_ref !== resume.agentRef ||
+          interrupted.destination_attachment_ref !== resume.destinationAttachmentRef ||
+          Number(interrupted.destination_generation) !== resume.destinationGeneration ||
+          interrupted.recovery_evidence_ref === resume.interruptionEvidenceRef ||
+          input.recoveryAuthority === undefined
+        ) {
+          throw new PylonPortableOwnerLocalWorkResumeError(
+            "unverified_recovery",
+            "owner-local work recovery has no verified interrupted executor",
+          );
+        }
+        const verified = await input.recoveryAuthority.verifyInterrupted({
+          interruptionEvidenceRef: resume.interruptionEvidenceRef,
+          workRef: resume.workRef,
+          operationRef: resume.operationRef,
+          sessionRef: resume.sessionRef,
+          destinationAttachmentRef: resume.destinationAttachmentRef,
+          destinationGeneration: resume.destinationGeneration,
+          activeRecoveryEvidenceRef: interrupted.recovery_evidence_ref,
+        });
+        if (!verified) {
+          throw new PylonPortableOwnerLocalWorkResumeError(
+            "unverified_recovery",
+            "owner-local work recovery has no verified interrupted executor",
+          );
+        }
+        verifiedRecoveryPrior = interrupted.recovery_evidence_ref;
       }
-      const replay = input.database
+      const claim = input.database
         .transaction(() => {
           const row = readRow(resume.workRef);
           if (row === null || row.fingerprint !== fingerprint(checkpoint)) {
@@ -432,12 +545,57 @@ export const createPylonPortableOwnerLocalWorkResumer = (
                 "owner-local settled work conflicts with the resume request",
               );
             }
-            return decodeReceipt(JSON.parse(row.receipt_json));
+            return {
+              kind: "settled" as const,
+              receipt: decodeReceipt(JSON.parse(row.receipt_json)),
+            };
           }
-          if (row.state !== "accepted") {
+          if (row.state === "running") {
+            if (
+              resume.interruptionEvidenceRef === undefined ||
+              row.operation_ref !== resume.operationRef ||
+              row.destination_attachment_ref !== resume.destinationAttachmentRef ||
+              Number(row.destination_generation) !== resume.destinationGeneration ||
+              row.recovery_evidence_ref === resume.interruptionEvidenceRef
+            ) {
+              throw new PylonPortableOwnerLocalWorkResumeError(
+                "conflicting_replay",
+                "owner-local accepted work already has an active executor",
+              );
+            }
+            const recoveryCas =
+              verifiedRecoveryPrior === null
+                ? "recovery_evidence_ref IS NULL"
+                : "recovery_evidence_ref = ?";
+            const recoveryArguments = [
+              resume.interruptionEvidenceRef,
+              resume.workRef,
+              resume.operationRef,
+              resume.destinationAttachmentRef,
+              resume.destinationGeneration,
+              ...(verifiedRecoveryPrior === null ? [] : [verifiedRecoveryPrior]),
+            ];
+            const recovered = input.database
+              .query(`
+            UPDATE pylon_portable_owner_local_work
+            SET recovery_evidence_ref = ?
+            WHERE work_ref = ? AND state = 'running' AND operation_ref = ?
+              AND destination_attachment_ref = ? AND destination_generation = ?
+              AND ${recoveryCas}
+          `)
+              .run(...recoveryArguments);
+            if (recovered.changes !== 1) {
+              throw new PylonPortableOwnerLocalWorkResumeError(
+                "conflicting_replay",
+                "owner-local work recovery lost its interruption evidence fence",
+              );
+            }
+            return { kind: "recover" as const };
+          }
+          if (resume.interruptionEvidenceRef !== undefined) {
             throw new PylonPortableOwnerLocalWorkResumeError(
               "conflicting_replay",
-              "owner-local accepted work already has an active executor",
+              "owner-local recovery evidence does not bind an interrupted executor",
             );
           }
           const claimed = input.database
@@ -459,41 +617,30 @@ export const createPylonPortableOwnerLocalWorkResumer = (
               "owner-local work executor lost its exclusive claim",
             );
           }
-          return undefined;
+          return { kind: "execute" as const };
         })
         .immediate();
-      if (replay !== undefined) {
+      if (claim.kind === "settled") {
         await removeCheckpoint(resume.workspaceRoot, resume.workRef);
-        return { ...replay, replay: "replayed" };
+        return { ...claim.receipt, replay: "replayed" };
       }
 
-      let completed: Awaited<ReturnType<PylonPortableOwnerLocalWorkHandler>>;
+      const handlerInput: PylonPortableOwnerLocalWorkHandlerInput = {
+        workRef: checkpoint.workRef,
+        agentRef: checkpoint.agentRef,
+        workspaceRoot: resume.workspaceRoot,
+        sourceGeneration: checkpoint.sourceGeneration,
+        destinationGeneration: resume.destinationGeneration,
+        idempotencyRef: stableRef(
+          "idempotency.pylon.portable.owner-local-work",
+          `${fingerprint(checkpoint)}:${resume.operationRef}`,
+        ),
+      };
+      let completed: PylonPortableOwnerLocalWorkResult;
       try {
-        completed = await handler({
-          workRef: checkpoint.workRef,
-          agentRef: checkpoint.agentRef,
-          workspaceRoot: resume.workspaceRoot,
-          sourceGeneration: checkpoint.sourceGeneration,
-          destinationGeneration: resume.destinationGeneration,
-        });
-        assertRef(completed.resultRef, "resultRef");
-        if (
-          completed.evidenceRefs.length === 0 ||
-          completed.evidenceRefs.length > 32 ||
-          new Set(completed.evidenceRefs).size !== completed.evidenceRefs.length
-        ) {
-          throw new Error("executor evidence is invalid");
-        }
-        for (const evidenceRef of completed.evidenceRefs) assertRef(evidenceRef, "evidenceRef");
+        const reconciled = claim.kind === "recover" ? await handler.reconcile(handlerInput) : null;
+        completed = validateResult(reconciled ?? (await handler.execute(handlerInput)));
       } catch (error) {
-        input.database
-          .query(`
-          UPDATE pylon_portable_owner_local_work
-          SET state = 'accepted', operation_ref = NULL,
-              destination_attachment_ref = NULL, destination_generation = NULL
-          WHERE work_ref = ? AND state = 'running' AND operation_ref = ?
-        `)
-          .run(resume.workRef, resume.operationRef);
         throw new PylonPortableOwnerLocalWorkResumeError(
           "executor_failed",
           error instanceof Error
@@ -517,7 +664,7 @@ export const createPylonPortableOwnerLocalWorkResumer = (
         resultRef: completed.resultRef,
         evidenceRefs: completed.evidenceRefs,
         processState: "excluded",
-        replay: "executed",
+        replay: claim.kind === "recover" ? "recovered" : "executed",
       });
       input.database
         .transaction(() => {
