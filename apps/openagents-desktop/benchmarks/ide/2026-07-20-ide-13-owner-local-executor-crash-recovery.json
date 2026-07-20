@@ -1,8 +1,8 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-owner-local-executor-crash-recovery.v1",
   "evidenceClass": "real_local",
-  "generatedAt": "2026-07-20T19:17:09.316Z",
-  "candidateCommitSha": "5e1867bfc0ca8ca5f2b244e2d139c4510da13941",
+  "generatedAt": "2026-07-20T19:18:12.834Z",
+  "candidateCommitSha": "abdee2b89608c78c5bb0ffd01d2323db3feefb55",
   "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
   "placement": {
     "targetClass": "owner_local",
