@@ -31,3 +31,5 @@ export const IDE_RUNTIME_RESERVED = true as const;
 export type IdeRuntimeContextManifestRef = ContextManifestRef;
 export type IdeRuntimeProjectRef = ProjectRef;
 export type IdeRuntimeWorktreeRef = WorktreeRef;
+
+export * from "./ide-review-projection.js";
