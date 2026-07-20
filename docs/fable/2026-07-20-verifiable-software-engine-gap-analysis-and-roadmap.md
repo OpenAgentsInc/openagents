@@ -268,6 +268,30 @@ to owner-admitted program in one day:
   priced tiers and bonded outcomes on the existing settlement-free grammar,
   activating rails only under `AUTHORITY.md` and the payment invariants.
 
+**Update (2026-07-20, same day):** the owner admitted the phase 0-1 packets,
+and they now have owning issues under epic VSE-00
+[#9104](https://github.com/OpenAgentsInc/openagents/issues/9104):
+VERIFY-FRESH plus the AR-3 full-fidelity wiring is VSE-01
+[#9105](https://github.com/OpenAgentsInc/openagents/issues/9105), the
+governance-drift reconciliation (G6) is VSE-02
+[#9106](https://github.com/OpenAgentsInc/openagents/issues/9106),
+VERIFY-CAPACITY is VSE-03
+[#9108](https://github.com/OpenAgentsInc/openagents/issues/9108), and
+VERIFY-DONE is VSE-04
+[#9109](https://github.com/OpenAgentsInc/openagents/issues/9109).
+VERIFY-PUBLIC, VERIFY-SERVER, and VERIFY-PRICED remain unminted by design,
+in later phases. The same direction made Full Auto the first verifiable
+mode: epic FAV-00
+[#9110](https://github.com/OpenAgentsInc/openagents/issues/9110) with
+packets #9111–#9114 connects the four-provider readiness flow
+(Codex/Claude/Grok/Apple FM) to readiness-gated, at-capacity Full Auto,
+per
+[`2026-07-20-full-auto-first-verifiable-mode.md`](./2026-07-20-full-auto-first-verifiable-mode.md)
+and roadmap revision 126, owner decision 30. That reorders this
+document's roadmap in one respect: Full Auto is not just the first loop
+through the eight stages, it is the declared bootstrap instrument for all
+of them.
+
 ## V. Falsifiers — how we will know the engine runs
 
 The thesis fails, or holds, on observable events. In rough order:

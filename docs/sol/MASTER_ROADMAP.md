@@ -3,31 +3,27 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-20
-- Revision: 125
+- Revision: 126
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: Full Auto epic #8967 is the active P0 product program,
-  #8978/#8979 are its remaining assurance/release chain. Managed-sandbox epic
-  #9023 is P1 parallel from SBX-00 #9029 without bypassing Full Auto, IDE
-  dependencies, or SBX-09. Distribution #8913, Amp/T3 ledgers, and live
-  defects retain their independent gates. ASSURE-REPO epic #9055 (#9056-#9060)
-  is owner-admitted 2026-07-19 as a parallel repo-verification program
+  owner-directed 2026-07-20 to ship as the first verifiable mode (decision
+  30), #8978/#8979 are its remaining assurance/release chain. FAV-00 #9110
+  (#9111-#9114) connects the four-provider readiness flow, VSE-00 #9104
+  (#9105/#9106/#9108/#9109) owns engine groundwork. Managed-sandbox epic
+  #9023 stays P1 parallel, distribution #8913, Amp/T3 ledgers, and live
+  defects retain their independent gates. Closed ASSURE-REPO truth lives in
+  execution-order item 9
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
-- Documentation cleanup: SOL-DOC-01 through SOL-DOC-11 are closed, the
-  one-time ordered migration is complete and maintained by the generated
-  manifest/freshness guard. Receipts: SOL-DOC-04 #8726 authority compaction
-  `6bfe97fddb`, SOL-DOC-05 #8727 receipt/issue-source index `991f908b6b`,
-  SOL-DOC-06 #8728 decision/falsifier/manifest extraction `6e8b55b86e`,
-  SOL-DOC-07 #8729 archive-first removal `b62ad88136` with Backroom
-  `dec8ae52`/`b9645456` and OpenAgents `c608527eda`, SOL-DOC-08 #8730
-  freshness guard and pinned snapshot `1e46778733`, SOL-DOC-09 #8731
-  92-document disposition manifest `7f1bc65e4a`, SOL-DOC-10 #8742 diary
-  archive `03135f5d61` with Backroom `9c710a93`/`d7993ef5` and OpenAgents
-  `a2e3b64f3b`, SOL-DOC-11 #8743 P0-P6 exit proof `9ae6f9e837`. No additional
-  one-time cleanup issue remains. See the
+- Documentation cleanup: SOL-DOC-01 through SOL-DOC-11 are closed, complete,
+  and guard-maintained. Receipts: #8726 `6bfe97fddb`, #8727 `991f908b6b`,
+  #8728 `6e8b55b86e`, #8729 `b62ad88136` (Backroom `dec8ae52`/`b9645456`,
+  OpenAgents `c608527eda`), #8730 `1e46778733`, #8731 `7f1bc65e4a`, #8742
+  `03135f5d61` (Backroom `9c710a93`/`d7993ef5`, OpenAgents `a2e3b64f3b`),
+  #8743 `9ae6f9e837`. No one-time cleanup issue remains. See the
   [`cleanup ledger`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md).
 
 This file owns product direction, durable gates, issue projection, and dependency
@@ -77,15 +73,14 @@ run-evidence core.
 ### Canonical waves
 
 1. **Wave 0 — make local Full Auto credible.** Complete at the owner-real
-   development rung: #9000 and #9001 repaired mission/thread authority, and
-   #9002/#8976 passed all six visible real-provider rows plus automatic
-   same-pass rotation at `3123d926a3`. The
-   [`acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md)
-   is the public-safe evidence. #8978 now owns independent proof admission and
-   #8979 consumes that evidence plus #8913/#8925 signed release identity. A
-   real 24–48 hour owner-AFK run with a reviewable report remains a release
-   confidence target, not a reason to reopen the completed implementation
-   sprint.
+   development rung: #9000/#9001 repaired mission/thread authority and
+   #9002/#8976 passed all six real-provider rows plus same-pass rotation at
+   `3123d926a3`, per the
+   [`acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md).
+   #8978 owns independent proof admission, #8979 consumes that evidence plus
+   #8913/#8925 signed release identity. A 24–48 hour owner-AFK run with a
+   reviewable report remains a release confidence target, not a reason to
+   reopen the completed implementation sprint.
 2. **Wave 1 — release and operator depth.** Finish the owned platform matrix,
    signed artifacts, promotion, and one-command release, continue the admitted
    T3 mobile ledger and the exact Amp packet stream without colliding with Full
@@ -116,15 +111,14 @@ and Full Auto projection slices have been reauthorized and landed.
 Owner direction admits [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023), the [`accepted plan`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md), and [`ProductSpec`](../../specs/openagents/managed-agent-sandboxes.product-spec.md).
 The generation-fenced resource reports GCE VM or Firecracker isolation
 honestly, native GCP/workroom truth remains authority and Box is compatibility
-only. SBX-00..09 lead from contract to live IDE/Sarah proof, SBX-10 is deferred.
-Portable movement and cross-machine Full Auto stay separately gated.
-SBX-00 through SBX-08 are code-landed. The native Worker broker serves closed
-Sarah tools, Desktop endpoints, and bounded mobile and authenticated-web routes.
-The clients share one safe schema and exact-byte outboxes. Only durable native
-outcomes complete actions. SBX-09's producer-run staging matrix now proves live
-GCP, cleanup, cost, rollback, Desktop, and Sarah journeys. Production and
-public claims stay off until an independent verifier and the owner record the
-remaining AssuranceSpec dispositions.
+only. SBX-10 is deferred, portable movement and cross-machine Full Auto stay
+separately gated. SBX-00 through SBX-08 are code-landed: the native broker
+serves closed Sarah tools, Desktop endpoints, and bounded mobile and
+authenticated-web routes over one safe schema with exact-byte outboxes, and
+only durable native outcomes complete actions. SBX-09's producer-run staging
+matrix proves live GCP, cleanup, cost, rollback, Desktop, and Sarah journeys.
+Production and public claims stay off until an independent verifier and the
+owner record the remaining AssuranceSpec dispositions.
 
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
@@ -267,6 +261,14 @@ there is no remaining AssuranceSpec program queue.
     not blanket dispatch.** Their acceptance criteria define the target shape,
     the canonical waves, live issues, accepted packet ledgers, owner gates, and
     proof rungs in this file decide what may execute and what may be claimed.
+30. **Full Auto ships as the first verifiable mode (owner direction
+    2026-07-20).** The four-provider readiness flow (Codex/Claude/Grok/
+    Apple FM) gates owner-ordered, at-capacity operation, and roadmap work
+    executes as verifiable runs. FAV-00 #9110 (#9111-#9114) owns the
+    [`connection design`](../fable/2026-07-20-full-auto-first-verifiable-mode.md).
+    Apple FM stays advisory-only, routing stays inside the owner grant,
+    concurrency needs its own spec revision (#9114), #8978/#8979 remain the
+    only path to assurance and release claims.
 
 ## Product and authority model
 
@@ -522,14 +524,12 @@ Snapshot: the schema-versioned
 [`live roadmap issue artifact`](./live-roadmap-issues.json), refreshed from
 GitHub before dispatch and age-checked by the offline documentation guard.
 
-- Full Auto rev 10 is no longer the legacy boolean-only system described by
-  the original audit. `FullAutoRun` mission/lifecycle authority (#8969), the
-  exact overnight eviction regression (#8970), main-owned liveness/stall
-  classification (#8971), bounded private report/public-safe receipt (#8972),
-  offline/private analyzer/comparison (#8973), and objective-safe provider
-  handoff (#8975) are code-landed and fixture-proven. The dedicated launcher/
-  run view, visible six-test batch, assurance, and signed packaged admission
-  remain open and no public AFK-reliability claim follows from the landed core.
+- Full Auto's durable core (#8969-#8975), dedicated run UX, routing and
+  guardrails (#8987/#8991), and the owner-real six-test Codex/Claude matrix
+  with same-pass rotation (#8976/#9000-#9002) are code-landed and
+  receipt-proven at `3123d926a3`. Independent assurance #8978 and signed
+  packaged admission #8979 remain open, no public AFK-reliability claim
+  follows from the landed core.
 - The mobile projection/first-screen slice (#8981/#8982) is code-landed and
   fixture-proven, #8980 is closed with fixture and iOS Simulator observation
   of the parent journey. This proves neither remote run control, physical-
@@ -561,12 +561,12 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 This guarded projection excludes `area:docs`, live issue claims still own
 dispatch and exact plans own dependency order.
 
-| Program              | Open issues                                                                 | Owning plan                                                          |
-| -------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Basic IDE closure    | #9014                                                                       | `docs/ide/ROADMAP.md`                                                |
-| Managed sandboxes    | #9023, #9032, #9033                                                         | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`                |
-| Agent IDE and parity | #9035, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                                |
-| ASSURE-REPO          | #9055, #9056, #9057, #9058, #9059, #9060                                    | `specs/openagents/assure-repo-codebase-verification.product-spec.md` |
+| Program              | Open issues                                                    | Owning plan                                                       |
+| -------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Managed sandboxes    | #9023, #9032, #9033                                            | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`             |
+| Agent IDE and parity | #9035, #9041, #9042, #9043, #9044, #9045, #9046, #9047         | `docs/ide/ROADMAP.md`                                             |
+| VSE engine groundwork | #9104, #9105, #9106, #9108, #9109                             | `docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md` |
+| Full Auto first verifiable mode | #9110, #9111, #9112, #9113, #9114                   | `docs/fable/2026-07-20-full-auto-first-verifiable-mode.md`        |
 
 The superseded broad program/client, CUT-27, AUDIO-8, and non-reauthorized PORT
 outcomes remain closed `not planned`, their bodies were not rewritten and
@@ -587,10 +587,9 @@ following issues and accepted ledgers remain exact successor authority:
    Observatory proof baseline, neither needs to be re-proved to start a bounded
    successor packet.
 2. Continue Full Auto from the completed owner-real development receipt:
-   #8978 consumes the implemented proof targets and performs independent
-   admission, #8979 consumes the dogfood/assurance evidence plus exact signed
-   release identity. Do not reroute these remaining gates into another runtime
-   rewrite.
+   #8978 performs independent admission, #8979 consumes the dogfood and
+   assurance evidence plus exact signed release identity. Do not reroute
+   these remaining gates into another runtime rewrite.
 3. Keep #9023 ordered through SBX-09 before activating SBX-10. The producer-run
    live matrix is green, while production/public claims and Phase 2 wait for
    the independent assurance and owner-observation dispositions.
@@ -612,16 +611,15 @@ following issues and accepted ledgers remain exact successor authority:
 8. Keep #8984 and any supported security, privacy, data-loss,
    accessibility, outage, or compatibility defect independently claimable,
    a failing completion gate or first-run path blocks its affected proof rung.
-9. Start ASSURE-REPO #9055 at AR-0 #9056 and AR-2 #9058 while Full Auto
-   remains P0. The program maps and grades repo verification. It does not
-   create a second completion gate, weaken an oracle, self-admit, flip a
-   promise, or make a public claim. AR-1 #9057 follows the inventory. AR-3
-   #9059 runs honestly-labeled degraded before IDE-10 #9038, reaches full
-   fidelity after IDE-10 plus SBX-06 #9027, and follows #8978. AR-4 #9060
-   rides the document-check path. Owning intent:
-   `specs/openagents/assure-repo-codebase-verification.product-spec.md`
-   @ spec_revision: 1, owner-admitted 2026-07-19 from the Verifiable
-   Software essay Addendum III.
+9. ASSURE-REPO #9055 (#9056-#9060) closed 2026-07-19/20 with inventory,
+   grading, false-green audit, degraded sweep, and drift oracles delivered,
+   no second completion gate, nothing self-admitted. Standing operations
+   continue under VSE-00 #9104: #9105 sweep fidelity (follows #8978), #9106
+   drift, #9108 independent review, #9109 done-condition oracles.
+10. Execute the first-verifiable-mode connection under FAV-00 #9110 in
+    packet order: #9111 readiness-gated routing, #9112 four-lane rotation
+    parity, #9113 Apple FM advisory capacity, #9114 capacity ledger plus
+    concurrency spec revision. No packet forks or outranks #8978/#8979.
 
 Completed Node/pnpm/Vite Plus cutover, MVP, and public ProductSpec/
 AssuranceSpec distribution remain accepted infrastructure. They are not the

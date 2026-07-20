@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-19T20:44:46.295Z",
+  "generatedAt": "2026-07-20T23:05:19.513Z",
   "repository": "OpenAgentsInc/openagents",
   "label": "roadmap:sol",
   "excludedLabels": [
@@ -8,22 +8,6 @@
   ],
   "maxAgeHours": 168,
   "issues": [
-    {
-      "labels": [
-        "master-task",
-        "type:feature",
-        "priority:P0",
-        "effect",
-        "owner:desktop",
-        "desktop",
-        "tracking",
-        "roadmap:sol"
-      ],
-      "number": 9014,
-      "state": "OPEN",
-      "title": "EPIC — IDE-00–IDE-07: ship the daily-use OpenAgents basic IDE",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9014"
-    },
     {
       "labels": [
         "master-task",
@@ -43,51 +27,6 @@
     {
       "labels": [
         "type:feature",
-        "effect",
-        "owner:desktop",
-        "desktop",
-        "gcp",
-        "roadmap:sol",
-        "priority:P1-parallel"
-      ],
-      "number": 9027,
-      "state": "OPEN",
-      "title": "SBX-06 — Integrate managed sandboxes into the OpenAgents IDE project and agent graphs",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9027"
-    },
-    {
-      "labels": [
-        "backend",
-        "type:feature",
-        "effect",
-        "gcp",
-        "roadmap:sol",
-        "area:sarah",
-        "priority:P1-parallel"
-      ],
-      "number": 9030,
-      "state": "OPEN",
-      "title": "SBX-07 — Give Sarah a typed managed-sandbox lifecycle and dispatch broker",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9030"
-    },
-    {
-      "labels": [
-        "ui",
-        "type:feature",
-        "mobile",
-        "gcp",
-        "projections",
-        "roadmap:sol",
-        "priority:P1-parallel"
-      ],
-      "number": 9031,
-      "state": "OPEN",
-      "title": "SBX-08 — Project managed sandbox supervision to mobile and web",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9031"
-    },
-    {
-      "labels": [
-        "type:feature",
         "area:security",
         "phase-2",
         "gcp",
@@ -103,13 +42,13 @@
     {
       "labels": [
         "qa",
+        "priority:P0",
         "area:testing",
         "receipts",
         "gcp",
         "deployment",
         "type:proof",
-        "roadmap:sol",
-        "priority:P1-parallel"
+        "roadmap:sol"
       ],
       "number": 9033,
       "state": "OPEN",
@@ -131,57 +70,6 @@
       "state": "OPEN",
       "title": "EPIC — IDE-08–IDE-19: ship the agent IDE, portable platform, and Cursor parity",
       "url": "https://github.com/OpenAgentsInc/openagents/issues/9035"
-    },
-    {
-      "labels": [
-        "ui",
-        "type:feature",
-        "priority:P0",
-        "effect",
-        "area:testing",
-        "area:protocol",
-        "owner:desktop",
-        "desktop",
-        "roadmap:sol"
-      ],
-      "number": 9038,
-      "state": "OPEN",
-      "title": "IDE-10 — Integrate terminal, tasks, tests, and Output over one Effect project graph",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9038"
-    },
-    {
-      "labels": [
-        "ui",
-        "type:feature",
-        "priority:P0",
-        "effect",
-        "area:testing",
-        "area:protocol",
-        "owner:desktop",
-        "desktop",
-        "roadmap:sol"
-      ],
-      "number": 9039,
-      "state": "OPEN",
-      "title": "IDE-11 — Integrate debug through a supervised Effect DAP capability graph",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9039"
-    },
-    {
-      "labels": [
-        "ui",
-        "type:feature",
-        "priority:P0",
-        "effect",
-        "area:testing",
-        "area:protocol",
-        "owner:desktop",
-        "desktop",
-        "roadmap:sol"
-      ],
-      "number": 9040,
-      "state": "OPEN",
-      "title": "IDE-12 — Complete Git, worktrees, review, and delivery with exact-version receipts",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9040"
     },
     {
       "labels": [
@@ -321,13 +209,12 @@
       "labels": [
         "qa",
         "type:feature",
-        "area:testing",
         "roadmap:sol"
       ],
-      "number": 9055,
+      "number": 9104,
       "state": "OPEN",
-      "title": "EPIC — ASSURE-REPO: programmatic verification of the OpenAgents codebase surface",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9055"
+      "title": "VSE-00 EPIC — Verifiable-software engine groundwork (sweep fidelity, governance drift, independent review, done-condition oracles)",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9104"
     },
     {
       "labels": [
@@ -336,58 +223,99 @@
         "area:testing",
         "roadmap:sol"
       ],
-      "number": 9056,
+      "number": 9105,
       "state": "OPEN",
-      "title": "AR-0 — Generate the typed repo surface inventory with loss accounting",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9056"
+      "title": "VSE-01 — Wire the standing repo verification sweep to full fidelity with freshness gates",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9105"
+    },
+    {
+      "labels": [
+        "documentation",
+        "type:feature",
+        "roadmap:sol"
+      ],
+      "number": 9106,
+      "state": "OPEN",
+      "title": "VSE-02 — Reconcile governance drift and extend drift oracles to roadmap and issue-visible claims",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9106"
     },
     {
       "labels": [
         "qa",
         "type:feature",
-        "area:testing",
         "roadmap:sol"
       ],
-      "number": 9057,
+      "number": 9108,
       "state": "OPEN",
-      "title": "AR-1 — Grade assurance obligations over the surface inventory",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9057"
+      "title": "VSE-03 — Specify the standing independent-review function (reviewer separation, cadence, budget)",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9108"
     },
     {
       "labels": [
-        "qa",
+        "engine",
         "type:feature",
-        "area:testing",
         "roadmap:sol"
       ],
-      "number": 9058,
+      "number": 9109,
       "state": "OPEN",
-      "title": "AR-2 — Audit existing suites for false greens and extend mutation evidence",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9058"
+      "title": "VSE-04 — Done-condition verification for autonomous runs as a separately admitted contract",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9109"
     },
     {
       "labels": [
-        "qa",
+        "engine",
         "type:feature",
-        "area:testing",
+        "priority:P0",
         "roadmap:sol"
       ],
-      "number": 9059,
+      "number": 9110,
       "state": "OPEN",
-      "title": "AR-3 — Run the standing repo verification sweep as a Full Auto lane",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9059"
+      "title": "FAV-00 EPIC — Full Auto: the first verifiable mode (readiness-gated four-provider capacity bootstraps the roadmap)",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9110"
     },
     {
       "labels": [
-        "qa",
+        "engine",
         "type:feature",
-        "area:testing",
         "roadmap:sol"
       ],
-      "number": 9060,
+      "number": 9111,
       "state": "OPEN",
-      "title": "AR-4 — Add drift oracles for the repository's own claims",
-      "url": "https://github.com/OpenAgentsInc/openagents/issues/9060"
+      "title": "FAV-01 — Readiness-gated Full Auto routing: bind the BOOT SEQUENCE provider probes to run start",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9111"
+    },
+    {
+      "labels": [
+        "engine",
+        "type:feature",
+        "roadmap:sol"
+      ],
+      "number": 9112,
+      "state": "OPEN",
+      "title": "FAV-02 — Four-lane rotation parity: prove Grok and Cursor rows in the owner-real matrix",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9112"
+    },
+    {
+      "labels": [
+        "engine",
+        "type:feature",
+        "roadmap:sol"
+      ],
+      "number": 9113,
+      "state": "OPEN",
+      "title": "FAV-03 — Apple FM at capacity in its admitted role: advisory router and run analyzer inside Full Auto (no action authority)",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9113"
+    },
+    {
+      "labels": [
+        "engine",
+        "type:feature",
+        "roadmap:sol"
+      ],
+      "number": 9114,
+      "state": "OPEN",
+      "title": "FAV-04 — Full Auto capacity semantics: readiness-gated capacity ledger and owner-directed bounded concurrency",
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/9114"
     }
   ]
 }

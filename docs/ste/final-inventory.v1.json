@@ -23791,8 +23791,30 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-20-full-auto-first-verifiable-mode.md",
+      "sha256": "b54560a6472734c3188461aa3baea0c8b21010daee773e8fbd9171568d5f6204",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md",
-      "sha256": "8e8094cc802fc5825e771225516e0168c7d9bd0088fdca47d0b35a237676a30f",
+      "sha256": "f9ddc45281846f233d45e592b15b88bcdf9de9f275818ce00f4c3853c93a50f9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40564,7 +40586,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "09c8d4b869124290d378063cf6833674fabe5df899e700599a22ec5e480018d4",
+      "sha256": "3e9837cb0e447a11ed56a43ca722c2fccd2e53107e6770771da5abd704ad7d0b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40645,7 +40667,7 @@
     },
     {
       "path": "docs/sol/issues/README.md",
-      "sha256": "75affc66105f1d17e4e7700a87bf8fb1edbd508d995866bcc107edadf46374a0",
+      "sha256": "c1f632664e3bbfa5d4befd426e6af3f1655dea5df3fbc0b25a11eb0d176e5c0a",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",

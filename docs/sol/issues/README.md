@@ -29,14 +29,17 @@ dispatch authority.
 
 ## Live issues represented by an owning plan
 
-- [`OpenAgents IDE roadmap`](../../ide/ROADMAP.md) represents basic-IDE parent
-  #9014 and agent-IDE/parity epic and packets #9035, #9038, #9039, #9040,
-  #9041, #9042, #9043, #9044, #9045, #9046, and #9047.
+- [`OpenAgents IDE roadmap`](../../ide/ROADMAP.md) represents the
+  agent-IDE/parity epic and packets #9035, #9041, #9042, #9043, #9044,
+  #9045, #9046, and #9047.
 - [`Managed agent sandboxes accepted plan`](../2026-07-19-managed-agent-sandboxes-accepted-plan.md)
-  represents epic and packets #9023, #9027, #9030, #9031, #9032, and #9033.
-- [`ASSURE-REPO ProductSpec`](../../../specs/openagents/assure-repo-codebase-verification.product-spec.md)
-  represents epic and packets #9055, #9056, #9057, #9058, #9059, and #9060,
-  owner-admitted 2026-07-19 from the Verifiable Software essay Addendum III.
+  represents epic and packets #9023, #9032, and #9033.
+- [`Verifiable-software engine gap analysis`](../../fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md)
+  represents the VSE-00 engine-groundwork epic and packets #9104, #9105,
+  #9106, #9108, and #9109, owner-admitted 2026-07-20.
+- [`Full Auto first verifiable mode design`](../../fable/2026-07-20-full-auto-first-verifiable-mode.md)
+  represents the FAV-00 epic and packets #9110, #9111, #9112, #9113, and
+  #9114, owner-directed 2026-07-20.
 
 The Node/pnpm/Vite Plus program and all folded leaves are closed evidence.
 
