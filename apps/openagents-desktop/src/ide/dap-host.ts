@@ -15,6 +15,7 @@ import {
   IdeDebugModuleRefSchema,
   IdeDebugOperationRefSchema,
   IdeDebugProtocolFailure,
+  IdeDebugStaleEvent,
   IdeDebugPersistenceSchema,
   IdeDebugSnapshotSchema,
   IdeDebugSourceRefSchema,
@@ -48,6 +49,10 @@ import type { DapEvent, DapResponse } from "./dap-transport.ts";
 import { IdeLanguageGenerationSchema, IdeServiceGenerationSchema } from "./project-contract.ts";
 import { ideRunBindingFor } from "./run-host.ts";
 import type { IdeRunActor } from "./run-contract.ts";
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./portable-mutation-authority.ts";
 
 const JsonObjectSchema = Schema.Record(Schema.String, Schema.Json);
 const DapSourceSchema = Schema.Struct({
@@ -186,6 +191,7 @@ export type IdeDapSourceResolverInput = Readonly<{
 
 export type IdeDapHostOptions = Readonly<{
   workspace: () => IdeDapWorkspaceBinding | null;
+  mutationAuthority: IdePortableMutationAuthority;
   discoverConfigurations: (
     input: IdeDapDiscoveryInput,
   ) =>
@@ -229,6 +235,9 @@ type MutableRuntime = {
   operations: Map<string, AbortController>;
   resolveSource: IdeDapHostOptions["resolveSource"];
   eventTail: Promise<void>;
+  mutationAuthority: IdePortableMutationAuthority;
+  permit: IdePortableMutationPermit | null;
+  revocationScheduled: boolean;
 };
 
 const fullDigest = (value: string): string => createHash("sha256").update(value).digest("hex");
@@ -245,6 +254,15 @@ const fenceOf = (session: IdeDebugSession): Fence => ({
   adapterGeneration: session.adapterGeneration,
   targetGeneration: session.targetGeneration,
 });
+
+const assertPortablePermit = (runtime: MutableRuntime, operation: string): void => {
+  if (runtime.permit === null || !runtime.mutationAuthority.reauthorize(runtime.permit)) {
+    throw new IdeDebugStaleEvent({
+      operation,
+      detail: "The portable workspace attachment changed before the DAP operation completed.",
+    });
+  }
+};
 
 export const ideDebugBindingFor = (workspace: IdeDapWorkspaceBinding) => {
   const run = ideRunBindingFor({
@@ -384,13 +402,30 @@ const applyEvent = async (
   fence: Fence,
   event: IdeDebugAdapterEvent,
 ): Promise<void> => {
+  assertPortablePermit(runtime, "IdeDap.adapterEvent");
   await Effect.runPromise(runtime.service.applyAdapterEvent({ ...fence, event }));
+  assertPortablePermit(runtime, "IdeDap.adapterEvent.result");
+};
+
+const requestWithPermit = async (
+  runtime: MutableRuntime,
+  client: DapClient,
+  ...request: Parameters<DapClient["request"]>
+): Promise<DapResponse> => {
+  assertPortablePermit(runtime, `IdeDap.request.${request[0]}`);
+  const response = await client.request(...request);
+  assertPortablePermit(runtime, `IdeDap.request.${request[0]}.result`);
+  return response;
 };
 
 const refreshGraph = async (runtime: MutableRuntime, fence: Fence): Promise<void> => {
   const client = runtime.client;
   if (client === null || client.isExited()) return;
-  const threadsBody = decodeBody(ThreadsBodySchema, await client.request("threads"), "threads");
+  const threadsBody = decodeBody(
+    ThreadsBodySchema,
+    await requestWithPermit(runtime, client, "threads"),
+    "threads",
+  );
   const threads: Array<IdeDebugThread> = [];
   const frames: Array<IdeDebugFrame> = [];
   const scopes: Array<IdeDebugScope> = [];
@@ -408,7 +443,7 @@ const refreshGraph = async (runtime: MutableRuntime, fence: Fence): Promise<void
     if (reference <= 0 || variables.length >= 50_000) return;
     const body = decodeBody(
       VariablesBodySchema,
-      await client.request("variables", { variablesReference: reference }),
+      await requestWithPermit(runtime, client, "variables", { variablesReference: reference }),
       "variables",
     );
     for (const [index, candidate] of body.variables.entries()) {
@@ -454,7 +489,7 @@ const refreshGraph = async (runtime: MutableRuntime, fence: Fence): Promise<void
     });
     const stackBody = decodeBody(
       StackBodySchema,
-      await client.request("stackTrace", { threadId: thread.id }),
+      await requestWithPermit(runtime, client, "stackTrace", { threadId: thread.id }),
       "stackTrace",
     );
     for (const frame of stackBody.stackFrames) {
@@ -486,7 +521,7 @@ const refreshGraph = async (runtime: MutableRuntime, fence: Fence): Promise<void
       });
       const scopeBody = decodeBody(
         ScopesBodySchema,
-        await client.request("scopes", { frameId: frame.id }),
+        await requestWithPermit(runtime, client, "scopes", { frameId: frame.id }),
         "scopes",
       );
       for (const [scopeIndex, scope] of scopeBody.scopes.entries()) {
@@ -514,7 +549,7 @@ const refreshGraph = async (runtime: MutableRuntime, fence: Fence): Promise<void
   if (supports("modules")) {
     const body = decodeBody(
       ModulesBodySchema,
-      await client.request("modules", { startModule: 0, moduleCount: 10_000 }),
+      await requestWithPermit(runtime, client, "modules", { startModule: 0, moduleCount: 10_000 }),
       "modules",
     );
     for (const module of body.modules)
@@ -533,7 +568,7 @@ const refreshGraph = async (runtime: MutableRuntime, fence: Fence): Promise<void
   if (supports("loaded_sources")) {
     const body = decodeBody(
       SourcesBodySchema,
-      await client.request("loadedSources"),
+      await requestWithPermit(runtime, client, "loadedSources"),
       "loadedSources",
     );
     for (const source of body.sources) loadedSources.push(sourceOf(runtime, source));
@@ -646,6 +681,17 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
     await Effect.runPromise(Scope.close(current.scope, Exit.void)).catch(() => undefined);
   };
 
+  const portablePermitIsLive = (current: MutableRuntime): boolean =>
+    current.permit !== null && options.mutationAuthority.reauthorize(current.permit);
+
+  const schedulePortableRevocation = (current: MutableRuntime): void => {
+    if (current.revocationScheduled) return;
+    current.revocationScheduled = true;
+    queueMicrotask(() => {
+      if (runtime === current) void closeRuntime("portable workspace attachment changed");
+    });
+  };
+
   const ensureRuntime = async (): Promise<MutableRuntime | null> => {
     if (disposed) return null;
     const workspace = options.workspace();
@@ -684,6 +730,9 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
       operations: new Map(),
       resolveSource: options.resolveSource,
       eventTail: Promise.resolve(),
+      mutationAuthority: options.mutationAuthority,
+      permit: null,
+      revocationScheduled: false,
     };
     runtime = opened;
     if (options.emit !== undefined)
@@ -697,7 +746,11 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
   };
 
   const snapshot = async (): Promise<IdeDebugSnapshot | null> => {
-    const current = await ensureRuntime();
+    let current = await ensureRuntime();
+    if (current !== null && current.client !== null && !portablePermitIsLive(current)) {
+      await closeRuntime("portable workspace attachment changed");
+      current = await ensureRuntime();
+    }
     return current === null ? null : Effect.runPromise(current.service.snapshot);
   };
 
@@ -855,6 +908,15 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
   ): Promise<typeof Schema.Json.Type | null> => {
     if (current.client !== null && !current.client.isExited())
       throw new Error("A DAP session is already active.");
+    const authorization = options.mutationAuthority.authorize(current.grantRef);
+    if (authorization._tag === "Refused") {
+      throw new IdeDebugStaleEvent({
+        operation: "IdeDap.start",
+        detail: "The current portable workspace attachment cannot start a debug adapter.",
+      });
+    }
+    current.permit = authorization.permit;
+    assertPortablePermit(current, "IdeDap.start");
     const admitted = await admittedEntry(current, command.configurationRef);
     current.sourceByRef.clear();
     current.sourceKeys.clear();
@@ -866,6 +928,7 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
         ? admitted.configuration.intent.prelaunchTaskRef
         : null;
     if (prelaunchTaskRef !== null) {
+      assertPortablePermit(current, "IdeDap.prelaunch");
       if (
         options.runTask === undefined ||
         !(await options.runTask(prelaunchTaskRef, command.actor))
@@ -875,6 +938,7 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
           detail: `Prelaunch task ${prelaunchTaskRef} did not complete successfully.`,
         });
       }
+      assertPortablePermit(current, "IdeDap.prelaunch.result");
     }
     current.secretValues = Object.values(admitted.resolution.environment).filter(
       (value) => value.length >= 4,
@@ -887,6 +951,7 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
         actor: command.actor,
       }),
     );
+    assertPortablePermit(current, "IdeDap.start.service-result");
     return activateSession(
       current,
       session,
@@ -919,7 +984,9 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
       const source = dapSource ?? { path: fallback?.pathRef };
       const response = decodeBody(
         BreakpointsBodySchema,
-        await client.request(
+        await requestWithPermit(
+          current,
+          client,
           "setBreakpoints",
           {
             source,
@@ -952,7 +1019,9 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
     if (functions.length > 0) {
       const body = decodeBody(
         BreakpointsBodySchema,
-        await client.request(
+        await requestWithPermit(
+          current,
+          client,
           "setFunctionBreakpoints",
           {
             breakpoints: functions.map((entry) => ({
@@ -979,7 +1048,9 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
     if (data.length > 0) {
       const body = decodeBody(
         BreakpointsBodySchema,
-        await client.request(
+        await requestWithPermit(
+          current,
+          client,
           "setDataBreakpoints",
           {
             breakpoints: data.map((entry) => ({
@@ -1026,6 +1097,7 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
     const initializedEvent = new Promise<void>((resolve) => {
       signalInitialized = resolve;
     });
+    assertPortablePermit(current, "IdeDap.adapter.spawn");
     const client = (options.openClient ?? openDapClient)({
       launch: {
         executable: resolution.executable,
@@ -1035,12 +1107,20 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
         timeoutMs: startingSession.configuration.timeoutMs,
       },
       onEvent: (event) => {
+        if (!portablePermitIsLive(current)) {
+          schedulePortableRevocation(current);
+          return;
+        }
         if (event.event === "initialized") signalInitialized();
         const handled = handleEvent(current, immutableFence, event);
         current.eventTail = handled.catch(() => undefined);
         return handled;
       },
       onExit: (exit) => {
+        if (!portablePermitIsLive(current)) {
+          schedulePortableRevocation(current);
+          return;
+        }
         if (exit.stderr === "") return;
         return applyEvent(current, immutableFence, {
           _tag: "AdapterFailed",
@@ -1049,11 +1129,21 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
       },
     });
     current.client = client;
+    if (!portablePermitIsLive(current)) {
+      await client.dispose("portable workspace attachment changed").catch(() => undefined);
+      current.client = null;
+      throw new IdeDebugStaleEvent({
+        operation: "IdeDap.adapter.spawn",
+        detail: "The portable workspace attachment changed while the debug adapter started.",
+      });
+    }
     const signal = current.operations.get(operationRef)?.signal;
     const requestOptions = signal === undefined ? undefined : { signal };
     const initialized = decodeBody(
       InitializeBodySchema,
-      await client.request(
+      await requestWithPermit(
+        current,
+        client,
         "initialize",
         {
           clientID: "openagents",
@@ -1075,12 +1165,16 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
       }),
     );
     current.session = session;
-    const startOutcome = client
-      .request(resolution.startCommand, resolution.startArguments, requestOptions)
-      .then(
-        (response) => ({ _tag: "Succeeded" as const, response }),
-        (error: unknown) => ({ _tag: "Failed" as const, error }),
-      );
+    const startOutcome = requestWithPermit(
+      current,
+      client,
+      resolution.startCommand,
+      resolution.startArguments,
+      requestOptions,
+    ).then(
+      (response) => ({ _tag: "Succeeded" as const, response }),
+      (error: unknown) => ({ _tag: "Failed" as const, error }),
+    );
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
@@ -1115,11 +1209,12 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
     if (
       capabilities.some((entry) => entry.capability === "configuration_done" && entry.supported)
     ) {
-      await client.request("configurationDone", undefined, requestOptions);
+      await requestWithPermit(current, client, "configurationDone", undefined, requestOptions);
     }
     const started = await startOutcome;
     if (started._tag === "Failed") throw started.error;
     await client.drainEvents();
+    assertPortablePermit(current, "IdeDap.adapter.events-drained");
     await current.eventTail;
     await refreshGraph(current, immutableFence);
     return { sessionRef: session.sessionRef, pid: client.pid };
@@ -1129,6 +1224,16 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
     current: MutableRuntime,
     command: IdeDebugCommand,
   ): Promise<typeof Schema.Json.Type | null> => {
+    if (
+      command._tag !== "Discover" &&
+      command._tag !== "Validate" &&
+      command._tag !== "Start" &&
+      command._tag !== "Cancel" &&
+      command._tag !== "DeleteRetainedData" &&
+      command._tag !== "Cleanup"
+    ) {
+      assertPortablePermit(current, `IdeDap.${command._tag}`);
+    }
     switch (command._tag) {
       case "Discover": {
         const configurations = await discover(current);
@@ -1170,9 +1275,7 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
         const terminalOperation =
           command.operation === "terminate" || command.operation === "disconnect";
         const argumentsValue: Record<string, typeof Schema.Json.Type> =
-          command.operation === "disconnect"
-            ? { restart: false, terminateDebuggee: false }
-            : {};
+          command.operation === "disconnect" ? { restart: false, terminateDebuggee: false } : {};
         const thread = current.session?.threads[0];
         const threadId =
           thread === undefined ? undefined : current.threadIdByRef.get(thread.threadRef);
@@ -1186,9 +1289,13 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
         let response: Awaited<ReturnType<DapClient["request"]>> | null = null;
         let adapterFailure: string | null = null;
         try {
-          response = await client.request(commandName(command.operation), argumentsValue, {
-            signal: current.operations.get(command.operationRef)?.signal,
-          });
+          response = await requestWithPermit(
+            current,
+            client,
+            commandName(command.operation),
+            argumentsValue,
+            { signal: current.operations.get(command.operationRef)?.signal },
+          );
         } catch (cause) {
           if (!terminalOperation) throw cause;
           adapterFailure = clean(
@@ -1209,19 +1316,25 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
             changed.configuration.intent._tag === "Launch"
               ? changed.configuration.intent.postdebugTaskRef
               : null;
-          if (
-            postdebugTaskRef !== null &&
-            (options.runTask === undefined ||
-              !(await options.runTask(postdebugTaskRef, command.actor)))
-          ) {
-            throw new IdeDebugProtocolFailure({
-              operation: "IdeDap.postdebug",
-              detail: `Postdebug task ${postdebugTaskRef} did not complete successfully.`,
-            });
+          if (postdebugTaskRef !== null) {
+            assertPortablePermit(current, "IdeDap.postdebug");
+            if (
+              options.runTask === undefined ||
+              !(await options.runTask(postdebugTaskRef, command.actor))
+            ) {
+              throw new IdeDebugProtocolFailure({
+                operation: "IdeDap.postdebug",
+                detail: `Postdebug task ${postdebugTaskRef} did not complete successfully.`,
+              });
+            }
+            assertPortablePermit(current, "IdeDap.postdebug.result");
           }
         }
         return adapterFailure === null
-          ? { adapterAcknowledged: true, response: response === null ? null : responsePayload(response) }
+          ? {
+              adapterAcknowledged: true,
+              response: response === null ? null : responsePayload(response),
+            }
           : { adapterAcknowledged: false, adapterFailure };
       }
       case "Evaluate": {
@@ -1232,7 +1345,9 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
           command.frameRef === null ? undefined : current.frameIdByRef.get(command.frameRef);
         const body = decodeBody(
           EvaluateBodySchema,
-          await client.request(
+          await requestWithPermit(
+            current,
+            client,
             "evaluate",
             {
               expression: command.expression,
@@ -1266,7 +1381,9 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
         await Effect.runPromise(current.service.preflightSetVariable(command));
         const body = decodeBody(
           SetVariableBodySchema,
-          await client.request(
+          await requestWithPermit(
+            current,
+            client,
             "setVariable",
             {
               variablesReference: target.variablesReference,
@@ -1295,7 +1412,9 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
         if (dapSource === undefined) throw new Error("The DAP source identity is unavailable.");
         const body = decodeBody(
           SourceBodySchema,
-          await client.request(
+          await requestWithPermit(
+            current,
+            client,
             "source",
             { source: dapSource, sourceReference: dapSource.sourceReference ?? 0 },
             { signal: current.operations.get(command.operationRef)?.signal },
@@ -1392,6 +1511,9 @@ export const openIdeDapHost = async (options: IdeDapHostOptions): Promise<IdeDap
             : tagged.includes("Admission")
               ? "not_admitted"
               : "unavailable";
+        if (reason === "stale_generation" && runtime !== null) {
+          schedulePortableRevocation(runtime);
+        }
         return refused(runtime ?? current, reason, message);
       } finally {
         current.operations.delete(requested.operationRef);

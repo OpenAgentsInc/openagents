@@ -3208,6 +3208,7 @@ const runIdeDebugTask = async (
 }
 const ideDebugHost = openIdeDapHost({
   workspace: terminalWorkspaceBinding,
+  mutationAuthority: workspacePortableMutationAuthority,
   discoverConfigurations: ({ root, binding }) => discoverIdeDebugManifest({ root, binding }),
   resolveSource: resolveIdeDebugSource,
   runTask: runIdeDebugTask,
