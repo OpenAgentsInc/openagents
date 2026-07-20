@@ -38,6 +38,7 @@ export type PylonOwnerLocalTargetStartupInput = Readonly<{
   ledger: PylonPortableSessionOperationLedger;
   lifecycle: PylonPortableControlSessionLifecycle;
   registry: PylonOwnerLocalTargetRegistry;
+  onBinding?: (binding: PylonPortableControlBinding) => void;
 }>;
 
 const fail = (
@@ -113,5 +114,6 @@ export const registerPylonOwnerLocalExecutionTarget = async (
   if (input.registry.target(input.targetRef) !== target) {
     throw fail("target_registration_failed");
   }
+  input.onBinding?.(binding);
   return target;
 };

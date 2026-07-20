@@ -85,8 +85,9 @@ const exactPathBinding = (
 ): boolean => body.pylonRef === pylonRef && body.targetRef === targetRef;
 
 /**
- * Resolve only a server-admitted target/Pylon/owner tuple. The phase row is
- * server-created. Thus, a caller cannot select an unrelated ready target.
+ * Resolve only a current server-admitted target/Pylon/owner binding. The
+ * binding exists before a phase row, so command dispatch does not depend on
+ * the phase row that it is about to create.
  */
 export const resolvePortablePhaseTarget = async (
   sql: SyncSql,
@@ -103,10 +104,13 @@ export const resolvePortablePhaseTarget = async (
       AND target.owner_user_id = ${input.ownerUserId}
       AND EXISTS (
         SELECT 1
-        FROM khala_sync_portable_phase_operations AS operation
-        WHERE operation.owner_user_id = ${input.ownerUserId}
-          AND operation.pylon_ref = ${input.pylonRef}
-          AND operation.target_ref = ${input.targetRef}
+        FROM khala_sync_portable_target_pylon_bindings AS binding
+        WHERE binding.owner_user_id = ${input.ownerUserId}
+          AND binding.pylon_ref = ${input.pylonRef}
+          AND binding.target_ref = ${input.targetRef}
+          AND binding.state = 'active'
+          AND binding.health IN ('ready', 'draining')
+          AND binding.expires_at > CURRENT_TIMESTAMP
       )
     LIMIT 1
   `;

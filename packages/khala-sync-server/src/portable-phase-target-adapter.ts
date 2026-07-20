@@ -115,6 +115,7 @@ export type PostgresPortablePhaseTargetConfig = Readonly<{
   resolvePylonRef: (
     input: Readonly<{
       ownerRef: string;
+      sessionRef: string;
       targetRef: string;
       commandExecutionClaimRef: string;
     }>,
@@ -641,6 +642,7 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
     this.resolvedPylonRef ??= this.config
       .resolvePylonRef({
         ownerRef: this.claim.ownerRef,
+        sessionRef: this.claim.sessionRef,
         targetRef: this.targetRef,
         commandExecutionClaimRef: this.claim.claimRef,
       })

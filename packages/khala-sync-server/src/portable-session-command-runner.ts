@@ -137,6 +137,7 @@ export type PortableCommandPylonBindingResolver = Readonly<{
     scope: Readonly<{
       commandExecutionClaimRef: string;
       ownerRef: string;
+      sessionRef: string;
       targetRef: string;
     }>,
   ) => Promise<
@@ -394,6 +395,7 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
       resolvePylonRef: (
         scope: Readonly<{
           ownerRef: string;
+          sessionRef: string;
           targetRef: string;
           commandExecutionClaimRef: string;
         }>,
@@ -518,6 +520,7 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
   private async resolvePylon(
     scope: Readonly<{
       ownerRef: string;
+      sessionRef: string;
       targetRef: string;
       commandExecutionClaimRef: string;
     }>,

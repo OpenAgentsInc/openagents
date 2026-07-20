@@ -1,6 +1,7 @@
 import {
   FleetRunAuthorityError,
   PostgresPortablePhaseOperationStore,
+  PostgresPortableTargetPylonBindingStore,
   RUNTIME_START_TURN_MUTATOR_NAME,
   type FleetRunAuthorityRepositoryShape,
   type FleetSteeringExchangeRepositoryShape,
@@ -1101,6 +1102,7 @@ import {
   makePortablePhaseOperationRoutes,
   resolvePortablePhaseTarget,
 } from './portable-phase-operation-routes'
+import { makePortableTargetPylonBindingRoutes } from './portable-target-pylon-binding-routes'
 import {
   type PylonCapacityFunnelSnapshotStore,
   handlePylonCapacityFunnelApi,
@@ -9711,6 +9713,41 @@ const portableCheckpointArtifactRoutes =
     },
   })
 
+const portableTargetPylonBindingRoutes =
+  makePortableTargetPylonBindingRoutes<WorkerBindings>({
+    authenticate: async (request, env, pylonRef) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
+      if (registration?.ownerAgentUserId !== session.user.id) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        ownerAgentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    withStore: async (env, use) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable target Pylon binding storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await use(new PostgresPortableTargetPylonBindingStore(client.sql))
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+  })
+
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
@@ -9814,6 +9851,8 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     portablePhaseOperationRoutes.routePortablePhaseOperationRequest,
   routePortableCheckpointArtifactRequest:
     portableCheckpointArtifactRoutes.routePortableCheckpointArtifactRequest,
+  routePortableTargetPylonBindingRequest:
+    portableTargetPylonBindingRoutes.route,
 })
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({

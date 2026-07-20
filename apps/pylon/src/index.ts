@@ -81,9 +81,16 @@ import {
   type ControlSessionSpawnCommand,
   type ControlSessionProjection,
 } from './node/control-sessions.js'
-import { PylonPortableSessionOperationLedger } from './portable-session-operation-ledger.js'
+import {
+  PylonPortableSessionOperationLedger,
+  type PylonPortableControlBinding,
+} from './portable-session-operation-ledger.js'
 import { registerPylonOwnerLocalExecutionTarget } from './portable-owner-local-target-startup.js'
 import { makePylonPortableCheckpointArtifactClient } from './portable-checkpoint-artifact-client.js'
+import {
+  makePylonPortableTargetBindingClient,
+  type PylonPortableTargetBindingClient,
+} from './portable-target-pylon-binding-client.js'
 import {
   openPylonPortablePhaseProductionWorker,
   portablePhaseWorkerInstanceRef,
@@ -937,6 +944,7 @@ const runHeadlessNode = Effect.gen(function* () {
     })
   const presenceClientOptions = currentPresenceClientOptions()
   let portablePhaseContextStore: PylonPortablePhaseContextAdmissionStore | null = null
+  let portableTargetBindingClient: PylonPortableTargetBindingClient | null = null
   if (Runtime.env.PYLON_PORTABLE_PHASE_WORKER === '1') {
     const targetRef = Runtime.env.PYLON_PORTABLE_PHASE_TARGET_REF
     const sessionRef = Runtime.env.PYLON_PORTABLE_PHASE_SESSION_REF
@@ -962,6 +970,7 @@ const runHeadlessNode = Effect.gen(function* () {
     portablePhaseContextStore = portablePhaseAdmission.store
     portablePhaseAdmission.store.purge()
     yield* Effect.addFinalizer(() => Effect.sync(() => portablePhaseAdmission.close()))
+    let portableControlBinding: PylonPortableControlBinding | undefined
     yield* Effect.tryPromise({
       try: () => registerPylonOwnerLocalExecutionTarget({
         pylonRef: localState.identity.pylonRef,
@@ -970,9 +979,27 @@ const runHeadlessNode = Effect.gen(function* () {
         ledger: portableLedger,
         lifecycle: headlessSessionActions.portable,
         registry: pylonPrivatePortablePhaseContexts,
+        onBinding: binding => {
+          portableControlBinding = binding
+        },
       }),
       catch: () => new Error('failed to register exact owner-local portable phase target'),
     })
+    if (portableControlBinding === undefined) {
+      return yield* Effect.fail(new Error('portable phase worker has no exact local target binding'))
+    }
+    const workerInstanceRef = portablePhaseWorkerInstanceRef(localState.identity.pylonRef, targetRef)
+    portableTargetBindingClient = makePylonPortableTargetBindingClient({
+      agentToken,
+      baseUrl: presenceBaseUrl,
+      pylonRef: localState.identity.pylonRef,
+      sessionRef,
+      targetRef,
+      workerInstanceRef,
+      binding: portableControlBinding,
+    })
+    const targetBindingClient = portableTargetBindingClient
+    yield* Effect.addFinalizer(() => Effect.promise(() => targetBindingClient.revoke().catch(() => undefined)))
     const durablePhaseResolver = makeDurablePylonPortablePhaseTargetResolver({
       store: portablePhaseAdmission.store,
       target: targetRef => pylonPrivatePortablePhaseContexts.target(targetRef),
@@ -992,7 +1019,7 @@ const runHeadlessNode = Effect.gen(function* () {
           baseUrl: presenceBaseUrl,
           pylonRef: localState.identity.pylonRef,
           targetRef,
-          workerInstanceRef: portablePhaseWorkerInstanceRef(localState.identity.pylonRef, targetRef),
+          workerInstanceRef,
           stateDirectory: bootstrapSummary.paths.home,
           resolver: durablePhaseResolver,
           ...(artifactTransport === undefined ? {} : { artifactTransport }),
@@ -1185,8 +1212,16 @@ const runHeadlessNode = Effect.gen(function* () {
     },
     heartbeat: {
       baseUrl: presenceBaseUrl,
-      register: () => registerPylon(bootstrapSummary, currentPresenceClientOptions()),
-      heartbeat: () => sendHeartbeat(bootstrapSummary, currentPresenceClientOptions()),
+      register: async () => {
+        const registration = await registerPylon(bootstrapSummary, currentPresenceClientOptions())
+        await portableTargetBindingClient?.admitOrRenew()
+        return registration
+      },
+      heartbeat: async () => {
+        const heartbeat = await sendHeartbeat(bootstrapSummary, currentPresenceClientOptions())
+        await portableTargetBindingClient?.admitOrRenew()
+        return heartbeat
+      },
     },
   })
   if (presenceBaseUrl && Runtime.env.PYLON_ASSIGNMENT_WORKER === '1') {
