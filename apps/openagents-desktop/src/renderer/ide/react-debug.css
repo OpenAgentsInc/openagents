@@ -1,0 +1,597 @@
+.oa-debug-workbench,
+.oa-debug-loading {
+  min-width: 0;
+  min-height: 20rem;
+  color: var(--en-color-textPrimary);
+}
+
+.oa-debug-workbench {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--en-spacing-2);
+  overflow: hidden;
+}
+
+.oa-debug-header,
+.oa-debug-session,
+.oa-debug-session-summary,
+.oa-debug-controls,
+.oa-debug-panel-tabs,
+.oa-debug-variables > section > header,
+.oa-debug-console > header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+
+.oa-debug-header {
+  flex-wrap: wrap;
+  padding-block: var(--en-spacing-1);
+}
+
+.oa-debug-title {
+  display: flex;
+  min-width: min(22rem, 100%);
+  flex: 1;
+  flex-direction: column;
+}
+
+.oa-debug-title small,
+.oa-debug-generations,
+.oa-debug-lifecycle-reason,
+.oa-debug-disclosure dd,
+.oa-debug-execution small,
+.oa-debug-execution p,
+.oa-debug-variables small,
+.oa-debug-watch small,
+.oa-debug-breakpoints small,
+.oa-debug-sources span,
+.oa-debug-receipts span,
+.oa-debug-receipts small,
+.oa-debug-empty p {
+  color: var(--en-color-textMuted);
+}
+
+.oa-debug-configuration-select,
+.oa-debug-session-summary > label {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-1);
+  color: var(--en-color-textMuted);
+  font-size: var(--en-font-size-xs);
+}
+
+.oa-debug-configuration-select select,
+.oa-debug-session-summary select {
+  min-height: 2rem;
+  max-width: min(24rem, 45vw);
+  padding-inline: var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-debug-configuration-select select:focus-visible,
+.oa-debug-session-summary select:focus-visible,
+.oa-debug-panel-tabs > button:focus-visible,
+.oa-debug-execution button:focus-visible,
+.oa-debug-sources button:focus-visible {
+  outline: 2px solid var(--en-color-accent);
+  outline-offset: 2px;
+}
+
+.oa-debug-notice {
+  margin: 0;
+  padding: var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-debug-notice[data-kind="warning"] {
+  color: var(--en-color-warning);
+}
+.oa-debug-notice[data-kind="error"] {
+  color: var(--en-color-danger);
+}
+
+.oa-debug-disclosure {
+  border-block: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-debug-disclosure > summary {
+  display: flex;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+  padding-inline: var(--en-spacing-2);
+  cursor: pointer;
+}
+
+.oa-debug-disclosure > summary::marker {
+  color: var(--en-color-accent);
+}
+
+.oa-debug-disclosure dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  margin: 0;
+  padding: 0 var(--en-spacing-2) var(--en-spacing-2);
+  gap: var(--en-spacing-2) var(--en-spacing-4);
+}
+
+.oa-debug-disclosure dl > div {
+  min-width: 0;
+}
+
+.oa-debug-disclosure dt {
+  margin-bottom: var(--en-spacing-1);
+  color: var(--en-color-textMuted);
+  font-size: var(--en-font-size-xs);
+}
+
+.oa-debug-disclosure dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.oa-debug-disclosure > p {
+  margin: 0 var(--en-spacing-2) var(--en-spacing-2);
+  color: var(--en-color-danger);
+}
+
+.oa-debug-session {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding-block: var(--en-spacing-1);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-debug-session-summary {
+  flex: 1 1 30rem;
+  flex-wrap: wrap;
+}
+
+.oa-debug-controls {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.oa-debug-status {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: var(--en-spacing-1);
+  color: var(--en-color-textMuted);
+  font-size: var(--en-font-size-xs);
+  white-space: nowrap;
+}
+
+.oa-debug-status-mark {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.oa-debug-status[data-tone="success"] {
+  color: var(--en-color-success);
+}
+.oa-debug-status[data-tone="warning"] {
+  color: var(--en-color-warning);
+}
+.oa-debug-status[data-tone="danger"] {
+  color: var(--en-color-danger);
+}
+.oa-debug-status[data-tone="success"] .oa-debug-status-mark {
+  background: currentColor;
+}
+.oa-debug-status[data-tone="warning"] .oa-debug-status-mark {
+  border-radius: 0;
+  transform: rotate(45deg);
+}
+.oa-debug-status[data-tone="danger"] .oa-debug-status-mark {
+  border-radius: 0;
+  background: currentColor;
+}
+
+.oa-debug-grid {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(13rem, 18rem) minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surface);
+}
+
+.oa-debug-execution {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-inline-end: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-debug-execution > section + section {
+  border-top: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-debug-execution header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--en-spacing-2);
+  color: var(--en-color-textMuted);
+  font-size: var(--en-font-size-xs);
+}
+
+.oa-debug-execution ul,
+.oa-debug-execution ol,
+.oa-debug-breakpoints ul,
+.oa-debug-sources ul,
+.oa-debug-console ol,
+.oa-debug-receipts ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-debug-execution li {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.oa-debug-execution button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-2);
+  border: 0;
+  background: transparent;
+  color: var(--en-color-textPrimary);
+  text-align: start;
+}
+
+.oa-debug-execution button:hover,
+.oa-debug-execution button[aria-current="true"] {
+  background: var(--en-color-surfaceOverlay);
+}
+
+.oa-debug-execution button[aria-current="true"] {
+  box-shadow: inset 0 -2px 0 var(--en-color-accent);
+}
+
+.oa-debug-execution button > span,
+.oa-debug-execution button > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-debug-execution li > small,
+.oa-debug-execution section > p {
+  margin: 0;
+  padding: 0 var(--en-spacing-2) var(--en-spacing-2);
+}
+
+.oa-debug-inspector {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.oa-debug-panel-tabs {
+  flex: 0 0 auto;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-debug-panel-tabs > button {
+  min-height: 2.25rem;
+  padding-inline: var(--en-spacing-2);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--en-color-textMuted);
+  white-space: nowrap;
+}
+
+.oa-debug-panel-tabs > button[aria-selected="true"] {
+  border-bottom-color: var(--en-color-accent);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-debug-panel {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+}
+
+.oa-debug-panel:focus-visible {
+  outline: 2px solid var(--en-color-accent);
+  outline-offset: -2px;
+}
+
+.oa-debug-empty,
+.oa-debug-loading {
+  display: grid;
+  place-content: center;
+  padding: var(--en-spacing-4);
+  text-align: center;
+}
+
+.oa-debug-empty p,
+.oa-debug-loading p {
+  max-width: 65ch;
+  margin: var(--en-spacing-1) 0 0;
+}
+
+.oa-debug-loading > button {
+  justify-self: center;
+  margin-top: var(--en-spacing-2);
+}
+
+.oa-debug-variables > section + section {
+  border-top: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-debug-variables > section > header {
+  padding: var(--en-spacing-2);
+  background: var(--en-color-surfaceRaised);
+}
+
+.oa-debug-variables > section > header > span:last-child {
+  margin-left: auto;
+  color: var(--en-color-textMuted);
+}
+.oa-debug-variables p {
+  padding-inline: var(--en-spacing-2);
+  color: var(--en-color-textMuted);
+}
+
+.oa-debug-variables dl,
+.oa-debug-watch dl {
+  margin: 0;
+}
+
+.oa-debug-variables dl > div,
+.oa-debug-watch dl > div {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(8rem, 0.7fr) minmax(12rem, 1.3fr);
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-2);
+  border-top: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-debug-variables dt,
+.oa-debug-watch dt {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.oa-debug-variables dd,
+.oa-debug-watch dd {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  margin: 0;
+}
+
+.oa-debug-variables code,
+.oa-debug-watch code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--en-color-textPrimary);
+  font-family: var(--oa-font-mono);
+}
+
+.oa-debug-variables form,
+.oa-debug-watch form {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: var(--en-spacing-2);
+}
+
+.oa-debug-watch > form {
+  padding: var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-debug-breakpoints li,
+.oa-debug-sources li,
+.oa-debug-receipts li {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(12rem, 1fr) auto;
+  gap: var(--en-spacing-1) var(--en-spacing-2);
+  padding: var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-debug-breakpoints label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+
+.oa-debug-breakpoints small,
+.oa-debug-breakpoints p,
+.oa-debug-sources span,
+.oa-debug-receipts span,
+.oa-debug-receipts small {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.oa-debug-console > header {
+  min-height: 2.25rem;
+  padding-inline: var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textMuted);
+}
+
+.oa-debug-console li {
+  display: flex;
+  min-width: 0;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-1) var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textPrimary);
+  font-family: var(--oa-font-mono);
+  white-space: pre-wrap;
+}
+
+.oa-debug-console li[data-category="stderr"] {
+  color: var(--en-color-danger);
+}
+.oa-debug-console li > span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.oa-debug-console li > small {
+  color: var(--en-color-warning);
+}
+
+.oa-debug-modules {
+  overflow-x: auto;
+}
+.oa-debug-modules table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: start;
+}
+.oa-debug-modules caption {
+  padding: var(--en-spacing-2);
+  color: var(--en-color-textMuted);
+  text-align: start;
+}
+.oa-debug-modules th,
+.oa-debug-modules td {
+  padding: var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  text-align: start;
+}
+.oa-debug-modules thead th {
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textMuted);
+}
+
+.oa-debug-sources button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--en-color-textPrimary);
+  text-align: start;
+}
+
+.oa-debug-sources button:not(:disabled):hover strong {
+  color: var(--en-color-accent);
+}
+.oa-debug-sources button:disabled {
+  color: var(--en-color-textMuted);
+}
+.oa-debug-sources button small {
+  overflow-wrap: anywhere;
+  color: var(--en-color-textMuted);
+}
+.oa-debug-receipts li > span {
+  grid-column: auto;
+}
+.oa-debug-receipts li > small {
+  font-family: var(--oa-font-mono);
+  overflow-wrap: anywhere;
+}
+
+.oa-debug-retention-controls {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--en-spacing-2);
+  border-top: 1px solid var(--en-color-borderSubtle);
+}
+
+.oa-debug-retention-controls > div {
+  display: flex;
+  max-width: 65ch;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--en-spacing-2);
+}
+
+.oa-debug-retention-controls p {
+  flex: 1 1 24rem;
+  margin: 0;
+  color: var(--en-color-warning);
+}
+
+@media (max-width: 960px) {
+  .oa-debug-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(10rem, 36%) minmax(0, 1fr);
+  }
+
+  .oa-debug-execution {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--en-color-borderSubtle);
+  }
+}
+
+@media (max-width: 640px) {
+  .oa-debug-header,
+  .oa-debug-session,
+  .oa-debug-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .oa-debug-controls > button {
+    width: 100%;
+  }
+  .oa-debug-configuration-select,
+  .oa-debug-session-summary > label {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .oa-debug-configuration-select select,
+  .oa-debug-session-summary select {
+    max-width: none;
+    width: 100%;
+  }
+  .oa-debug-variables dl > div,
+  .oa-debug-watch dl > div {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-debug-workbench *,
+  .oa-debug-workbench *::before,
+  .oa-debug-workbench *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

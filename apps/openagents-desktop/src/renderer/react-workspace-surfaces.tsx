@@ -17,6 +17,7 @@ import type { IdeReviewIntent, IdeReviewSelection } from "../ide/review-contract
 import { activeGitReviewSource } from "./ide/review-source.ts"
 import { AgentProposalList, AgentProposalReviewPanel } from "./react-agent-code.tsx"
 import { ReactIdeCursor } from "./ide/react-cursor.tsx"
+import { ReactIdeDebugPanel } from "./ide/react-debug.tsx"
 import { ReactIdeRunPanel, type IdeRunPanelMode } from "./ide/react-run.tsx"
 import { ReactXtermProjection } from "./ide/react-xterm.tsx"
 import {
@@ -466,13 +467,13 @@ const GitBranchLabel = ({ branch }: { readonly branch: string | null }): ReactEl
 export const ReactTerminalSurface = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const terminal = state.terminal
   const active = terminal.sessions.find(session => session.sessionRef === terminal.activeRef) ?? null
-  const [mode, setMode] = useState<"terminal" | IdeRunPanelMode>("terminal")
+  const [mode, setMode] = useState<"terminal" | "debug" | IdeRunPanelMode>("terminal")
   const xtermInput = useCallback((data: string) => dispatch(report, "TerminalPtyInputReceived", data), [report])
   const xtermResize = useCallback((cols: number, rows: number) => dispatch(report, "TerminalResizeRequested", { cols, rows }), [report])
   const xtermPreview = useCallback((port: number) => dispatch(report, "TerminalPreviewOpenRequested", port), [report])
   return <section className="oa-react-terminal-workbench" aria-label="Terminal surface">
-    <nav className="oa-react-run-modes" role="tablist" aria-label="Terminal tasks tests and Output" onKeyDown={event => tablistKey(event, ["terminal", "tasks", "tests", "output"], mode, candidate => setMode(candidate))}>
-      {(["terminal", "tasks", "tests", "output"] as const).map((candidate) => <button aria-selected={mode === candidate} key={candidate} onClick={() => setMode(candidate)} role="tab" tabIndex={mode === candidate ? 0 : -1} type="button">{candidate === "output" ? "Output" : candidate[0]!.toLocaleUpperCase() + candidate.slice(1)}</button>)}
+    <nav className="oa-react-run-modes" role="tablist" aria-label="Terminal debug tasks tests and Output" onKeyDown={event => tablistKey(event, ["terminal", "debug", "tasks", "tests", "output"], mode, candidate => setMode(candidate))}>
+      {(["terminal", "debug", "tasks", "tests", "output"] as const).map((candidate) => <button aria-selected={mode === candidate} key={candidate} onClick={() => setMode(candidate)} role="tab" tabIndex={mode === candidate ? 0 : -1} type="button">{candidate === "output" ? "Output" : candidate[0]!.toLocaleUpperCase() + candidate.slice(1)}</button>)}
     </nav>
     {mode === "terminal" ? <>
     <header className="oa-react-terminal-tabs">
@@ -493,7 +494,7 @@ export const ReactTerminalSurface = ({ state, report }: { readonly state: Deskto
       <ReactXtermProjection session={active} onInput={xtermInput} onResize={xtermResize} onOpenPreview={xtermPreview} />
       {active.previews.length === 0 ? null : <div className="oa-react-terminal-previews" aria-label="Detected previews">{active.previews.map(preview => <button disabled={!preview.ready} key={preview.port} onClick={() => dispatch(report, "TerminalPreviewOpenRequested", preview.port)} type="button">{preview.ready ? "Open" : "Waiting for"} localhost:{preview.port}</button>)}</div>}
     </>}
-    </> : <ReactIdeRunPanel mode={mode} />}
+    </> : mode === "debug" ? <ReactIdeDebugPanel /> : <ReactIdeRunPanel mode={mode} />}
   </section>
 }
 
