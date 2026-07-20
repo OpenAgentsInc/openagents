@@ -19760,7 +19760,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md",
-      "sha256": "fe4559ab3369e84e0e60d46524ca92c4a8348c4009ab7d11e8f6c671d17672a6",
+      "sha256": "dce2e8022e41eb35220adedc2ca42229b824db5cfd6708452ae334936883cada",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

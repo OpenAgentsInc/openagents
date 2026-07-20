@@ -55,6 +55,13 @@ clean scratch, closed ingress, and denied egress.
 The control guard places its driver in a process group. It kills that group if
 the driver exceeds the declared command deadline plus a short control margin.
 
+File reads, writes, and artifact reads admit a bounded 120-second whole-driver
+duration. That outer bound includes the internal SSH connection and request
+transfer needed to reach an exact private guest. It does not grant guest compute
+or network access. Commands continue to use the caller's requested
+timeout exactly. For every action, the control guard adds only a two-second
+settlement margin before it kills the complete driver process group.
+
 ## Artifact policy
 
 Artifact bytes use base64 only on the private control channel. The Worker

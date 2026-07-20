@@ -53,6 +53,7 @@ import {
 const BASE_PATH = '/v1'
 const DEFAULT_LIMIT = 50
 const MAX_LIMIT = 100
+const BOUNDED_FILE_IO_DURATION_MILLIS = 120_000
 
 export type BoxV1Principal = Readonly<{
   actorRef: string
@@ -1654,7 +1655,7 @@ const makeBoxCompatibilityService = (input: {
           'file_read',
           'file_read',
           key,
-          30_000,
+          BOUNDED_FILE_IO_DURATION_MILLIS,
         )
         const result = yield* input.runtime.readFile({
           principal: input.principal,
@@ -1685,7 +1686,7 @@ const makeBoxCompatibilityService = (input: {
           'file_write',
           'file_write',
           key,
-          30_000,
+          BOUNDED_FILE_IO_DURATION_MILLIS,
         )
         const byteLength = yield* contentByteLength(body.content, encoding)
         if (byteLength > admission.limits.maxFileBytes) {
@@ -1761,7 +1762,7 @@ const makeBoxCompatibilityService = (input: {
           'artifact_read',
           'artifact_read',
           key,
-          30_000,
+          BOUNDED_FILE_IO_DURATION_MILLIS,
         )
         return yield* input.runtime.artifact({
           principal: input.principal,

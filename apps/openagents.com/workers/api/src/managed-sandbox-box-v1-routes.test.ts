@@ -631,7 +631,24 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
   })
 
   test('enforces SBX-05 guest I/O admission and projects bounded receipts', async () => {
-    const harness = makeHandler()
+    const baseRuntime = makeBoxV1MemoryRuntime()
+    const admittedDurations: Array<number> = []
+    const runtime: ReturnType<typeof makeBoxV1MemoryRuntime> = {
+      ...baseRuntime,
+      readFile: input => {
+        admittedDurations.push(input.limits.maxDurationMillis)
+        return baseRuntime.readFile(input)
+      },
+      writeFile: input => {
+        admittedDurations.push(input.limits.maxDurationMillis)
+        return baseRuntime.writeFile(input)
+      },
+      artifact: input => {
+        admittedDurations.push(input.limits.maxDurationMillis)
+        return baseRuntime.artifact(input)
+      },
+    }
+    const harness = makeHandler({ runtime })
     const api = apiFor(
       'https://local-box.test/v1',
       'test-token',
@@ -698,6 +715,7 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
     expect(rawArtifact.headers.get('x-openagents-receipt-ref')).toMatch(
       /^receipt\./,
     )
+    expect(admittedDurations).toEqual([120_000, 120_000, 120_000])
 
     for (const path of [
       '/etc/passwd',

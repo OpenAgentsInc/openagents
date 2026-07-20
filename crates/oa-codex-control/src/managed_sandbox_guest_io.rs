@@ -29,6 +29,7 @@ const MAX_OUTPUT_BYTES: u64 = 256 * 1024;
 const MAX_DURATION_MILLIS: u64 = 60 * 60 * 1_000;
 const MAX_PROCESSES: u64 = 64;
 const MAX_DRIVER_RESPONSE_BYTES: u64 = 24 * 1024 * 1024;
+const DRIVER_SETTLEMENT_GRACE_MILLIS: u64 = 2_000;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -432,11 +433,7 @@ fn execute_with_driver(
             .read_to_end(&mut bytes)
             .map(|_| bytes)
     });
-    let allowed = request
-        .timeout_millis
-        .unwrap_or(30_000)
-        .saturating_add(2_000)
-        .min(MAX_DURATION_MILLIS + 2_000);
+    let allowed = driver_deadline_millis(&request);
     let deadline = Instant::now() + Duration::from_millis(allowed);
     let status = loop {
         match child.try_wait() {
@@ -467,6 +464,14 @@ fn execute_with_driver(
         .map_err(|_| GuestIoError::unavailable("guest_io_driver_response_invalid"))?;
     validate_response(&request, &response)?;
     Ok(response)
+}
+
+fn driver_deadline_millis(request: &ManagedSandboxGuestIoRequest) -> u64 {
+    request
+        .timeout_millis
+        .unwrap_or(request.limits.max_duration_millis)
+        .saturating_add(DRIVER_SETTLEMENT_GRACE_MILLIS)
+        .min(MAX_DURATION_MILLIS + DRIVER_SETTLEMENT_GRACE_MILLIS)
 }
 
 fn kill_process_tree(child: &mut std::process::Child) {
@@ -948,6 +953,18 @@ mod tests {
             }
             validate_response(&request, &response).unwrap();
         }
+    }
+
+    #[test]
+    fn derives_the_driver_deadline_from_the_action_contract() {
+        let mut file = request(GuestIoAction::WriteFile);
+        file.limits.max_duration_millis = 120_000;
+        assert_eq!(driver_deadline_millis(&file), 122_000);
+
+        let mut command = request(GuestIoAction::ExecuteCommand);
+        command.timeout_millis = Some(1_000);
+        command.limits.max_duration_millis = 120_000;
+        assert_eq!(driver_deadline_millis(&command), 3_000);
     }
 
     #[test]
