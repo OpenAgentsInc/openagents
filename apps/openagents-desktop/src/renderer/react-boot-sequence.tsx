@@ -23,8 +23,9 @@ export const ReactBootSequence = ({
   const ready = bootSequenceReadyCount(agents)
   const scanning = bootSequenceScanning(agents)
   return (
-    <section className="oa-react-boot-sequence" aria-label="Boot sequence: available agents">
+    <section className="oa-react-boot-sequence" aria-label="BOOT SEQUENCE: available agents">
       <ol className="oa-react-boot-lines">
+        <li className="oa-react-boot-line" data-kind="title">BOOT SEQUENCE</li>
         <li className="oa-react-boot-line" data-kind="banner">OpenAgents — initializing</li>
         <li className="oa-react-boot-line" data-kind="scan">scanning for available agents</li>
         {agents.map((agent) => (
