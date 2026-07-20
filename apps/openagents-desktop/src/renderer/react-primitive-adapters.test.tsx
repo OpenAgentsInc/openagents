@@ -316,7 +316,7 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-codex-update-notice")).toBeNull()
   })
 
-  test("keeps the empty conversation bare and shows the working directory in the header", async () => {
+  test("shows the Boot Sequence in the empty conversation and the working directory in the header", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)
     const received: Array<{ name: string; payload: unknown }> = []
@@ -326,12 +326,17 @@ describe("React workbench shell", () => {
       workingDirectory: "/Users/example/project",
     }
     await render(root, <WorkbenchShell state={state} report={report} />)
-    // Owner UI directive 2026-07-19: the empty conversation is a bare region;
-    // the working directory moved to the bare header as the only header item.
+    // Owner UI directive 2026-07-19: the empty conversation shows the terminal-
+    // style Boot Sequence (agent scan); the working directory is the only header
+    // item. No centered prompt.
     const empty = container.querySelector(".oa-react-timeline-empty")
     expect(empty).not.toBeNull()
-    expect(empty?.textContent).toBe("")
     expect(container.querySelector(".oa-react-timeline-empty h2")).toBeNull()
+    const boot = empty?.querySelector(".oa-react-boot-sequence")
+    expect(boot).not.toBeNull()
+    expect(boot?.textContent).toContain("scanning for available agents")
+    expect([...(boot?.querySelectorAll(".oa-react-boot-label") ?? [])].map(node => node.textContent))
+      .toEqual(["Codex", "Claude Code", "Grok", "Apple FM"])
     const header = container.querySelector(".oa-react-conversation-header--bare")
     expect(header).not.toBeNull()
     const dir = header?.querySelector<HTMLButtonElement>(".oa-react-conversation-working-directory")

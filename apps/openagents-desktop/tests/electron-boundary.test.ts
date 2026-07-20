@@ -336,6 +336,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     "monaco-editor-host.tsx",
     "react-agent-code.tsx",
     "react-agent-context.tsx",
+    "react-boot-sequence.tsx",
     "react-composer.tsx",
     "react-primitive-adapters.tsx",
     "react-review.tsx",

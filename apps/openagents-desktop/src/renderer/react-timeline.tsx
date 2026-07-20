@@ -1,5 +1,7 @@
 import { Button } from "#components/ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
+import { ReactBootSequence } from "./react-boot-sequence.tsx"
+import type { BootSequenceAgentLine } from "./boot-sequence.ts"
 import {
   MessageScroller,
   MessageScrollerButton,
@@ -1284,7 +1286,7 @@ export const ReactTimeline = (props: TimelineProps): ReactElement =>
     <TimelineScroller {...props} />
   </MessageScrollerProvider>
 
-export const ConversationTimeline = ({ page, notes, loadingEdge, working, waitingForAnswer, workingDirectory, agentName, report }: {
+export const ConversationTimeline = ({ page, notes, loadingEdge, working, waitingForAnswer, workingDirectory, agentName, bootSequenceAgents, report }: {
   readonly page: CodexHistoryPage | null
   readonly notes: ReadonlyArray<DesktopNoteEntry>
   readonly loadingEdge: "top" | "bottom" | null
@@ -1292,9 +1294,15 @@ export const ConversationTimeline = ({ page, notes, loadingEdge, working, waitin
   readonly waitingForAnswer?: boolean
   readonly workingDirectory: string | null
   readonly agentName: string
+  readonly bootSequenceAgents?: ReadonlyArray<BootSequenceAgentLine>
   readonly report: IntentReporter
 }): ReactElement => {
-  if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation" />
+  // Owner directive 2026-07-19: an empty conversation shows the Boot Sequence —
+  // a terminal-style scan of which agents are available — instead of a blank
+  // region. It reflects live discovery state and updates as lanes resolve.
+  if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation">
+    {bootSequenceAgents === undefined || bootSequenceAgents.length === 0 ? null : <ReactBootSequence agents={bootSequenceAgents} />}
+  </section>
   const records = page === null ? projectLocalTimelineRecords(notes) : projectReactTimelineRecords(page.items)
   return <ReactTimeline sessionKey={page?.selectedThreadRef ?? "local"} records={records}
     loadedItemCount={page?.items.length ?? records.length} offset={page?.offset ?? 0}

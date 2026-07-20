@@ -223,6 +223,46 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "The React workbench, shell intent-loop, runtime-workspace, and Electron boundary suites plus Desktop typecheck enforce presentation, cancel/selection semantics, and the single WorkContext authority.",
       },
       {
+        contractId: "openagents_desktop.chat.boot_sequence_agent_scan.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "boot sequence / agent discovery",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-19" },
+        statement:
+          "When the app opens, show a neutral terminal-style scan (monospace, small, faded) that checks which agents are available — Codex, Claude Code, Grok, Apple FM — and keep track of the discovered harnesses so the system knows it can use them.",
+        authorityBoundary:
+          "The Boot Sequence is a pure PROJECTION over the discovery state the shell already owns: harnessLanes for the built-in codex/fable transports and providerLaneCapabilities for admitted ACP peers. It invents no discovery authority — an agent is 'available' only when its lane reports it can run a turn, 'checking' while verifying, otherwise 'unavailable'. Apple FM is listed as a known target the desktop does not yet detect (mobile-only bridge today). The surface renders in the empty conversation, reflects live state as lanes resolve, and communicates results without granting any run, spend, or admission authority of its own.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/boot-sequence.ts",
+          "apps/openagents-desktop/src/renderer/react-boot-sequence.tsx",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "apps/openagents-desktop/src/renderer/boot-sequence.test.ts",
+          "packages/ui/src/desktop-workbench.css",
+        ],
+        oracles: [
+          {
+            id: "boot_sequence.projects_real_agent_discovery",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/boot-sequence.test.ts",
+            description:
+              "Proves the scan projects the curated Codex/Claude Code/Grok/Apple FM order, maps a verifying lane to 'checking', a ready lane to 'available' with its model, an admitted Grok ACP lane to 'available', a quarantined lane and Apple FM to 'unavailable', and derives ready-count/scanning from those lines.",
+          },
+          {
+            id: "boot_sequence.renders_in_empty_conversation",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
+            description:
+              "Proves the empty conversation renders the terminal-style Boot Sequence with the four agent labels instead of a blank region, while the working directory stays the only header item.",
+          },
+        ],
+        verification:
+          "Desktop boot-sequence unit, React workbench, and Electron boundary suites plus Desktop typecheck.",
+      },
+      {
         contractId: "openagents_desktop.window.launch_fills_work_area.v1",
         state: "enforced",
         surface: "openagents-desktop",

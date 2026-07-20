@@ -81,6 +81,7 @@ import { capabilityForActiveLane, desktopConversationShortcutLabel, formatRelati
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
 import { StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
+import { projectBootSequenceAgents } from "./boot-sequence.ts"
 import { DESKTOP_STAGE_LABEL } from "./branding.ts"
 import { projectDesktopSidebarDestinations } from "./sidebar-destinations.ts"
 import { ReactBrowserPreviewSurface, ReactFilesSidebar, ReactReviewSurface, ReactTerminalSurface, ReactWorkspaceEditor } from "./react-workspace-surfaces.tsx"
@@ -915,7 +916,7 @@ export const WorkbenchShell = ({ state, report }: {
         </div> : null}
         header={<ConversationHeader state={state} report={report} />}
         notices={<StatusNotices state={state} report={report} />}
-        timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForActiveLane(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} report={report} />}
+        timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForActiveLane(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} bootSequenceAgents={projectBootSequenceAgents(state)} report={report} />}
       />} />}
     {codexUpdateAvailable && dismissedCodexVersion !== codex.latestVersion
       ? <Alert className="oa-react-codex-update-notice" role="status">

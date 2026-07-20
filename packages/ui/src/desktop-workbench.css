@@ -3896,3 +3896,67 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-tool-result {
   font-family: var(--oa-font-mono);
 }
+
+/* Boot Sequence (owner directive 2026-07-19): neutral, terminal-style scan of
+   available agents shown in the empty conversation. Monospace, small, faded. */
+.oa-react-boot-sequence {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  padding: var(--en-spacing-6) var(--en-spacing-4);
+}
+
+.oa-react-boot-lines {
+  display: flex;
+  width: 100%;
+  max-width: 440px;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--oa-font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--en-color-textFaint);
+}
+
+.oa-react-boot-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.oa-react-boot-line[data-kind="banner"] {
+  color: var(--en-color-textMuted);
+  margin-bottom: var(--en-spacing-1);
+}
+
+.oa-react-boot-glyph {
+  flex: 0 0 auto;
+  width: 1ch;
+  text-align: center;
+}
+
+.oa-react-boot-line[data-status="available"] .oa-react-boot-glyph,
+.oa-react-boot-line[data-status="available"] .oa-react-boot-label {
+  color: var(--en-color-textMuted);
+}
+
+.oa-react-boot-label {
+  flex: 0 0 auto;
+  min-width: 96px;
+}
+
+.oa-react-boot-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--en-color-textFaint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oa-react-boot-line[data-kind="summary"] {
+  margin-top: var(--en-spacing-1);
+}
