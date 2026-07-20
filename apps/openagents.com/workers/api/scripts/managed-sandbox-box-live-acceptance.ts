@@ -137,7 +137,7 @@ const createWithReplay = async () => {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       return await api.create(
-        { createBoxRequest: { ttlSeconds: 3_600, noEnv: true } },
+        { createBoxRequest: { ttlSeconds: 1_800, noEnv: true } },
         retryHeaders('create'),
       )
     } catch (error) {
@@ -405,7 +405,7 @@ try {
     throw new Error(`create settled as ${created.box.state}`)
   }
   const createReplay = await api.create(
-    { createBoxRequest: { ttlSeconds: 3_600, noEnv: true } },
+    { createBoxRequest: { ttlSeconds: 1_800, noEnv: true } },
     retryHeaders('create'),
   )
   if (createReplay.box.id !== boxId) throw new Error('create replay diverged')
@@ -421,11 +421,11 @@ try {
   }
 
   const updated = await api.update(
-    { boxId, updateBoxRequest: { ttlSeconds: 3_540 } },
+    { boxId, updateBoxRequest: { ttlSeconds: 1_740 } },
     retryHeaders('update'),
   )
   const updateReplay = await api.update(
-    { boxId, updateBoxRequest: { ttlSeconds: 3_540 } },
+    { boxId, updateBoxRequest: { ttlSeconds: 1_740 } },
     retryHeaders('update'),
   )
   if (
