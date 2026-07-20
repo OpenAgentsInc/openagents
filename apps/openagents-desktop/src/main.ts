@@ -516,6 +516,7 @@ import {
   decodeIdePortableClientCommand,
   emptyIdePortableClientSnapshot,
 } from "./ide/portable-client-contract.ts"
+import { makeIde13IsolatedOwnerLocalProofDispatcher } from "./ide/portable-isolated-owner-local-proof.ts"
 import { makeIdePortableMutationAuthority } from "./ide/portable-mutation-authority.ts"
 import {
   makeDesktopSourceSafePoint,
@@ -882,6 +883,11 @@ const isolatedAppProofMode = isIsolatedAppProof({
   env: process.env,
   userDataPath: desktopUserDataPath,
   temporaryDirectory: app.getPath("temp"),
+})
+const ide13IsolatedOwnerLocalProof = makeIde13IsolatedOwnerLocalProofDispatcher({
+  env: process.env,
+  isolatedAppProof: isolatedAppProofMode,
+  packaged: app.isPackaged,
 })
 if (desktopPreviewMode && !isolatedAppProofMode) {
   throw new Error("OpenAgents Desktop preview requires an isolated OS-temporary userData profile")
@@ -2780,6 +2786,9 @@ ipcMain.handle(DesktopIdePortableCommandChannel, async (event, value: unknown) =
   const command = decodeIdePortableClientCommand(value)
   if (!isTrustedRuntimeGatewaySender(event) || command === null) {
     return { _tag: "Refused", reason: "invalid_input" } as const
+  }
+  if (ide13IsolatedOwnerLocalProof !== null) {
+    return await ide13IsolatedOwnerLocalProof.request(command)
   }
   const sync = hostLifecycle.sync()
   if (sync === null) return { _tag: "Refused", reason: "unavailable" } as const

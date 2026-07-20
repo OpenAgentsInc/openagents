@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -12,7 +12,10 @@ import {
   IdePortableClientCommandResultSchema,
   IdePortableClientSnapshotSchema,
 } from "../src/ide/portable-client-contract.ts";
-import { packagedArtifactTreeDigest, resolvePackagedApp } from "./ide-packaged-artifact.ts";
+import {
+  packagedArtifactTreeDigest,
+  resolvePackagedApp,
+} from "./ide-packaged-artifact.ts";
 
 const appRoot = path.resolve(import.meta.dirname, "..");
 const repositoryRoot = path.resolve(appRoot, "../..");
@@ -151,11 +154,11 @@ const OwnerLocalJourneyProjectionSchema = Schema.Struct({
 
 export const Ide13PackagedOwnerLocalJourneyReceiptSchema = Schema.Struct({
   schemaVersion: Schema.Literal(
-    "openagents.desktop.ide-portable-packaged-owner-local-composite.v1",
+    "openagents.desktop.ide-portable-packaged-owner-local-package-initiated.v2",
   ),
   issue: Schema.Literal("IDE-13"),
   evidenceClass: Schema.Literal("real_local"),
-  proofClass: Schema.Literal("packaged_shell_concurrent_owner_local_target"),
+  proofClass: Schema.Literal("packaged_shell_initiated_owner_local_target"),
   candidateCommitSha: Sha40,
   capturedAt: Schema.String,
   physicalHost: Schema.Struct({
@@ -179,7 +182,10 @@ export const Ide13PackagedOwnerLocalJourneyReceiptSchema = Schema.Struct({
     liveBeforeOwnerLocalJourney: Schema.Literal(true),
     liveAfterOwnerLocalJourney: Schema.Literal(true),
     authenticatedSyncClaimed: Schema.Literal(false),
-    initiatedMoveClaimed: Schema.Literal(false),
+    initiatedMoveClaimed: Schema.Literal(true),
+    trustedRendererPreloadIpcMainBoundaryUsed: Schema.Literal(true),
+    isolatedProofAdmissionBoundaryUsed: Schema.Literal(true),
+    requestedMutationRef: ReceiptRef,
   }),
   ownerLocalJourney: OwnerLocalJourneyProjectionSchema,
   concurrency: Schema.Struct({
@@ -206,7 +212,7 @@ export const Ide13PackagedOwnerLocalJourneyReceiptSchema = Schema.Struct({
 
 export const Ide13PackagedOwnerLocalJourneyTraceSchema = Schema.Struct({
   schemaVersion: Schema.Literal(
-    "openagents.desktop.ide-portable-packaged-owner-local-composite-trace.v1",
+    "openagents.desktop.ide-portable-packaged-owner-local-package-initiated-trace.v2",
   ),
   issue: Schema.Literal("IDE-13"),
   candidateCommitSha: Sha40,
@@ -219,7 +225,7 @@ export const Ide13PackagedOwnerLocalJourneyTraceSchema = Schema.Struct({
   ).check(Schema.isMaxLength(100)),
   privateMaterialIncluded: Schema.Literal(false),
   authenticatedSyncClaimed: Schema.Literal(false),
-  packagedShellInitiatedMoveClaimed: Schema.Literal(false),
+  packagedShellInitiatedMoveClaimed: Schema.Literal(true),
 });
 
 const git = (...args: ReadonlyArray<string>): string =>
@@ -458,6 +464,8 @@ const main = async (): Promise<void> => {
       .replace(forbiddenCredential, "«redacted»")
       .slice(0, 500);
 
+  const proofNonce = randomBytes(32).toString("hex");
+
   const appProcess = spawn(
     "open",
     ["-n", "-W", "-a", appPath, sourcePath, "--args", "--remote-debugging-port=0"],
@@ -468,6 +476,8 @@ const main = async (): Promise<void> => {
         OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
         OPENAGENTS_DESKTOP_USER_DATA: profile,
         OPENAGENTS_DESKTOP_LAUNCH_CWD: workspace,
+        OPENAGENTS_DESKTOP_IDE13_OWNER_LOCAL_PROOF: "1",
+        OPENAGENTS_DESKTOP_IDE13_OWNER_LOCAL_PROOF_NONCE: proofNonce,
         OA_DESKTOP_SKIP_DEV_VOICE_HELPER: "1",
       },
       stdio: "ignore",
@@ -551,6 +561,36 @@ const main = async (): Promise<void> => {
     }
 
     const aliveAtStart = isRunning(applicationPid);
+    const moveCommand = {
+      schema: "openagents.portable_session_command.v1",
+      commandRef: "command.ide13.isolated.move.1",
+      idempotencyKey: "idempotency.ide13.isolated.move.1",
+      ownerRef: "owner.ide13.isolated",
+      sessionRef: "session.ide13.isolated",
+      kind: "move",
+      expectedAttachmentRef: "attachment.ide13.isolated.1",
+      expectedGeneration: 1,
+      destinationTargetRef: "target.ide13.owner-local.2",
+      expiresAt: new Date(Date.now() + 4 * 60_000).toISOString(),
+    } as const;
+    const moveResult = Schema.decodeUnknownSync(IdePortableClientCommandResultSchema)(
+      await page.evaluate(async (command) => {
+        const api = (
+          globalThis as unknown as Readonly<{
+            openagentsDesktop?: Readonly<{
+              idePortability?: Readonly<{ command?: (value: unknown) => Promise<unknown> }>;
+            }>;
+          }>
+        ).openagentsDesktop?.idePortability;
+        return await api?.command?.(command);
+      }, moveCommand),
+    );
+    if (
+      moveResult._tag !== "Requested" ||
+      moveResult.mutationRef !== "mutation.ide13.isolated.move.1"
+    ) {
+      throw new Error(`IDE-13 packaged shell did not admit the isolated owner-local move request: ${JSON.stringify(moveResult)}`);
+    }
     const cohort = runOwnerLocalCohort(candidateCommitSha, cohortOutputPath);
     const aliveAtCompletion = isRunning(applicationPid);
     const after = await readBridge();
@@ -580,10 +620,10 @@ const main = async (): Promise<void> => {
     await surface.screenshot({ path: screenshotPath });
 
     receiptInput = {
-      schemaVersion: "openagents.desktop.ide-portable-packaged-owner-local-composite.v1",
+      schemaVersion: "openagents.desktop.ide-portable-packaged-owner-local-package-initiated.v2",
       issue: "IDE-13",
       evidenceClass: "real_local",
-      proofClass: "packaged_shell_concurrent_owner_local_target",
+      proofClass: "packaged_shell_initiated_owner_local_target",
       candidateCommitSha,
       capturedAt: new Date().toISOString(),
       physicalHost: {
@@ -607,7 +647,10 @@ const main = async (): Promise<void> => {
         liveBeforeOwnerLocalJourney: true,
         liveAfterOwnerLocalJourney: true,
         authenticatedSyncClaimed: false,
-        initiatedMoveClaimed: false,
+        initiatedMoveClaimed: true,
+        trustedRendererPreloadIpcMainBoundaryUsed: true,
+        isolatedProofAdmissionBoundaryUsed: true,
+        requestedMutationRef: "mutation.ide13.isolated.move.1",
       },
       ownerLocalJourney: cohort,
       concurrency: {
@@ -625,7 +668,7 @@ const main = async (): Promise<void> => {
       passed: true,
       limitations: [
         "The packaged application ran with isolated app proof and had no authenticated Sync authority.",
-        "The packaged shell did not initiate or authenticate the owner-local move.",
+        "The packaged shell admitted the bounded owner-local move through preload, trusted renderer IPC, and main before the proof harness ran the production owner-local target. It did not authenticate Sync.",
         "The production Pylon target ran on the same physical Mac with two logical owner-local targets. No cross-device target ran.",
         "The destination activated helpers after the move, but no Codex executor resumed and no work ref was accepted.",
         "DAP and native helpers stayed unsupported because no signed executable profile was admitted.",
@@ -633,7 +676,8 @@ const main = async (): Promise<void> => {
       ],
     };
     traceInput = {
-      schemaVersion: "openagents.desktop.ide-portable-packaged-owner-local-composite-trace.v1",
+      schemaVersion:
+        "openagents.desktop.ide-portable-packaged-owner-local-package-initiated-trace.v2",
       issue: "IDE-13",
       candidateCommitSha,
       artifactTreeSha256: artifact.sha256,
@@ -641,6 +685,11 @@ const main = async (): Promise<void> => {
         {
           kind: "packaged_shell_ready",
           message: "The isolated packaged shell exposed the fail-closed portable boundary.",
+        },
+        {
+          kind: "packaged_shell_move_command",
+          message:
+            "The packaged shell issued the exact bounded generation-1 owner-local move command through its production preload and IPC boundary.",
         },
         {
           kind: "owner_local_move",
@@ -660,7 +709,7 @@ const main = async (): Promise<void> => {
       ],
       privateMaterialIncluded: false,
       authenticatedSyncClaimed: false,
-      packagedShellInitiatedMoveClaimed: false,
+      packagedShellInitiatedMoveClaimed: true,
     };
   } finally {
     await browser?.close().catch(() => undefined);
