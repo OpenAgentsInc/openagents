@@ -705,6 +705,38 @@ to green, and the two supervision/from-install blockers clear.
 
 ---
 
+## 8b. Implementation Status (landed 2026-07-19)
+
+The backlog in §9 was implemented and merged to `main` under epic #9069:
+
+- **AFM-1 (#9070)** — one-shot bridge launcher/adopt/stop for the CLI
+  (`apps/pylon/packages/runtime/src/backends/apple-fm/bridge-process.ts`).
+- **AFM-2 (#9071)** — frozen, versioned wire contract
+  (`.../apple-fm/wire.ts`, `openagents.apple_fm.bridge.wire.v0.2`) with fake-
+  and opt-in real-bridge conformance tests.
+- **AFM-3 (#9072)** — runnable `apple-fm` CLI (`health`, `infer`/`chat`,
+  `session`, `tool`) with `--json` and `--auto-launch`.
+- **AFM-4 (#9073)** — bounded read-only workspace tool loop
+  (`read_file`/`list_files`/`code_search`, escape/symlink refusal + caps) with
+  a generalized Swift bridge dispatcher.
+- **AFM-5 (#9074)** — real progressive snapshot streaming (bridge v0.1.3,
+  FoundationModels `streamResponse(to:)`) and honest usage truth; CLI
+  `--stream`.
+- **AFM-6 (#9075)** — OpenAgents Desktop Effect Schema IPC + native helper +
+  host supervisor consuming the Pylon FM runtime in-process (renderer surface
+  deferred).
+- **AFM-7 (#9076)** — Desktop build/stage/bundle/sign wiring + entitlements +
+  allowlists (signed/notarized from-install smoke deferred pending Apple
+  credentials).
+
+All were proven end-to-end on an admitted Apple Silicon Mac (macOS 26.4, Swift
+6.3.3): real inference, a real bounded read-only tool turn, and progressive
+streaming through a bridge the launcher started and stopped. The Pylon runtime
+now carries `bridge-process`, `wire`, and `workspace-tools`; the CLI reference
+is `docs/apple-fm/apple-fm-cli.md`. Remaining to reach a green from-install
+product promise: the signed/notarized installer smoke (AFM-7 deferred item) and
+a renderer readiness surface (AFM-6 deferred item).
+
 ## 9. Implementation Backlog
 
 1. Add the macOS-arm64 Swift build step to `scripts/build.ts` (dev) and
