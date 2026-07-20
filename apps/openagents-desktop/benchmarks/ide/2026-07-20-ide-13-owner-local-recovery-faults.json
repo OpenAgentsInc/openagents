@@ -1,21 +1,21 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-owner-local-recovery-faults.v1",
-  "generatedAt": "2026-07-20T18:43:30.170Z",
-  "candidateCommitSha": "e93a47094879f8ded1e586cc52594c5373cdfec9",
+  "generatedAt": "2026-07-20T18:46:11.173Z",
+  "candidateCommitSha": "fbaaa98e4f0f2d52b4e7592e7d7ada08031ee4c4",
   "baseCommitSha": "bfe934b6da8bdb08016230f19ed2a41be77fc93c",
   "cohortRef": "cohort.ide13.owner-local.real.1",
   "cases": [
     {
       "scenario": "coordinator_crash",
-      "evidenceClass": "real_local",
+      "evidenceClass": "simulator",
       "outcome": "passed",
       "productionBoundaryRef": "boundary.pylon.owner-local.worker.claim-durable",
       "injectedFaultRef": "injected-fault.ide13.owner-local.coordinator-crash",
       "recoveryPointRef": "recovery.pylon.owner-local.file-journal.claimed",
-      "receiptRef": "receipt.ide13.owner-local.coordinator-crash.d711d61d488bfc004a85a9594665d536",
-      "elapsedMilliseconds": 190.11170800000014,
+      "receiptRef": "receipt.ide13.owner-local.coordinator-crash.d9fec40cbfb0a160afcdb46bb6b7d0c2",
+      "elapsedMilliseconds": 427.05375000000004,
       "deadlineMilliseconds": 120000,
-      "disclosure": "A source-controlled fault hook raised an exception after the production worker made its claimed lease durable. A new worker object recovered the file journal and completed the operation exactly once. This was not an external process death."
+      "disclosure": "A source-controlled fault hook raised an exception after the production worker made its claimed lease durable. A new worker object recovered the file journal and completed the operation exactly once against an in-memory control-plane fixture. This was not an external process death or a real owner-local cohort."
     },
     {
       "scenario": "checkpoint_store_crash",
@@ -24,34 +24,34 @@
       "productionBoundaryRef": "boundary.pylon.owner-local.checkpoint-custody.delete-object-removed",
       "injectedFaultRef": "injected-fault.ide13.owner-local.checkpoint-store-crash",
       "recoveryPointRef": "receipt.portable-checkpoint-deletion.9b0cf9b58942396afa774cb146da9f44",
-      "receiptRef": "receipt.ide13.owner-local.checkpoint-store-crash.4c64e2bc13c0d379a5bc2329390e3aa5",
-      "elapsedMilliseconds": 2173.9531660000002,
+      "receiptRef": "receipt.ide13.owner-local.checkpoint-store-crash.454e11eabc6797525e1011319ed4da35",
+      "elapsedMilliseconds": 2489.9056250000003,
       "deadlineMilliseconds": 120000,
       "disclosure": "A source-controlled fault hook raised an exception after the production custody store removed ciphertext and before closeout. A new store object resumed the durable delete intent and verified absence. This was not an external process death."
     },
     {
       "scenario": "duplicate_event",
-      "evidenceClass": "real_local",
+      "evidenceClass": "simulator",
       "outcome": "passed",
       "productionBoundaryRef": "boundary.pylon.owner-local.worker.pending-batch",
       "injectedFaultRef": "injected-fault.ide13.owner-local.duplicate-pending-operation",
       "recoveryPointRef": "recovery.pylon.owner-local.operation-ref-deduplication",
-      "receiptRef": "receipt.ide13.owner-local.duplicate-event.d711d61d488bfc004a85a9594665d536",
-      "elapsedMilliseconds": 190.11170800000014,
+      "receiptRef": "receipt.ide13.owner-local.duplicate-event.d9fec40cbfb0a160afcdb46bb6b7d0c2",
+      "elapsedMilliseconds": 427.05375000000004,
       "deadlineMilliseconds": 120000,
-      "disclosure": "The production worker received the same operation twice in one pending batch. Operation-ref admission executed and completed it once."
+      "disclosure": "The production worker received the same operation twice from an in-memory control-plane fixture. Operation-ref admission executed and completed it once. This was not a real owner-local cohort."
     },
     {
       "scenario": "lease_expiry_clock_skew",
-      "evidenceClass": "real_local",
+      "evidenceClass": "simulator",
       "outcome": "passed",
       "productionBoundaryRef": "boundary.pylon.owner-local.worker.lease-expiry",
       "injectedFaultRef": "injected-fault.ide13.owner-local.clock-after-request-expiry",
       "recoveryPointRef": "recovery.pylon.owner-local.claim-expired-refusal",
-      "receiptRef": "receipt.ide13.owner-local.lease-expiry.d711d61d488bfc004a85a9594665d536",
-      "elapsedMilliseconds": 190.11170800000014,
+      "receiptRef": "receipt.ide13.owner-local.lease-expiry.d9fec40cbfb0a160afcdb46bb6b7d0c2",
+      "elapsedMilliseconds": 427.05375000000004,
       "deadlineMilliseconds": 120000,
-      "disclosure": "The production worker clock was later than the request expiry. The worker refused the claim before a server mutation or executor call."
+      "disclosure": "The production worker clock was later than the fixture request expiry. The worker refused the claim before a control-plane mutation or executor call. This was not a real owner-local cohort."
     }
   ],
   "safety": {
