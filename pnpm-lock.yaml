@@ -1369,6 +1369,9 @@ importers:
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync
+      '@openagentsinc/khala-sync-server':
+        specifier: workspace:*
+        version: link:../../packages/khala-sync-server
       '@openagentsinc/khala-tools':
         specifier: workspace:*
         version: link:../../packages/khala-tools

@@ -15,6 +15,7 @@
     "./capture": "./src/capture.ts",
     "./hub": "./src/hub.ts",
     "./migrate": "./src/migrate.ts",
+    "./portable-capability-installation-ports": "./src/portable-capability-installation-ports.ts",
     "./test/local-postgres": "./src/test/local-postgres.ts"
   },
   "scripts": {

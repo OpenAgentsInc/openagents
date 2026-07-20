@@ -79,6 +79,7 @@
     "@openagentsinc/grok-harness": "workspace:*",
     "@openagentsinc/khala-fleet-intents": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-server": "workspace:*",
     "@openagentsinc/khala-tools": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",

@@ -83,10 +83,16 @@ const json = (body: unknown, status = 200): Response => Response.json(body, {
 
 export const makePylonOwnerLocalCapabilityTransportHandler = (config: Readonly<{
   bearerToken: string;
-  port: PylonOwnerLocalCapabilityInstallationPort;
+  port?: PylonOwnerLocalCapabilityInstallationPort;
+  portForAuthority?: (
+    authority: PylonOwnerLocalCapabilityAuthority,
+  ) => PylonOwnerLocalCapabilityInstallationPort;
   authorize: (authority: PylonOwnerLocalCapabilityAuthority) => Promise<boolean>;
 }>): ((request: Request) => Promise<Response>) => {
-  if (config.bearerToken.length < 16) throw new PylonOwnerLocalCapabilityTransportError({ reason: "invalid_config" });
+  if (
+    config.bearerToken.length < 16 ||
+    (config.port === undefined) === (config.portForAuthority === undefined)
+  ) throw new PylonOwnerLocalCapabilityTransportError({ reason: "invalid_config" });
   return async request => {
     const url = new URL(request.url);
     const action = url.pathname === `${PYLON_OWNER_LOCAL_CAPABILITY_PATH}/install`
@@ -109,6 +115,8 @@ export const makePylonOwnerLocalCapabilityTransportHandler = (config: Readonly<{
     if (!safe(leaseRef) || !(await config.authorize(authority))) {
       return json({ error: "authority_refused" }, 403);
     }
+    const port = config.portForAuthority?.(authority) ?? config.port;
+    if (port === undefined) return json({ error: "authority_refused" }, 403);
     const permissions = (h.get("x-openagents-permissions") ?? "").split(",").filter(Boolean);
     const installationRef = h.get("x-openagents-installation-ref") ?? undefined;
     const operationRef = pylonOwnerLocalCapabilityOperationRef({
@@ -122,7 +130,7 @@ export const makePylonOwnerLocalCapabilityTransportHandler = (config: Readonly<{
     try {
       if (action === "wipe") {
         if (installationRef === undefined || !SAFE_REF.test(installationRef) || permissions.length !== 0) return json({ error: "invalid_scope" }, 400);
-        const result = await config.port.wipe({ leaseRef, targetRef: authority.targetRef,
+        const result = await port.wipe({ leaseRef, targetRef: authority.targetRef,
           attachmentRef: authority.attachmentRef, attachmentGeneration: generation, installationRef });
         if (!SAFE_REF.test(result.wipeReceiptRef)) throw new Error("unsafe receipt");
         return json({ schema: "openagents.owner_local_capability_transport.v1", status: "wiped",
@@ -138,7 +146,7 @@ export const makePylonOwnerLocalCapabilityTransportHandler = (config: Readonly<{
       const bytes = new Uint8Array(await request.arrayBuffer());
       if (bytes.byteLength !== declared) { bytes.fill(0); return json({ error: "invalid_size" }, 400); }
       try {
-        const result = await config.port.install({
+        const result = await port.install({
           lease: { leaseRef, ownerRef: authority.ownerRef, sessionRef: authority.sessionRef,
             attachmentRef: authority.attachmentRef, attachmentGeneration: generation,
             targetRef: authority.targetRef, capability, expiresAt, state: "issued" },

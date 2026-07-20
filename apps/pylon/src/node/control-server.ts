@@ -41,6 +41,7 @@ import {
   type VirtualMergeQueueProjection,
 } from "../blueprint-gates/virtual-merge-queue.js"
 import type { PylonPortablePhaseContextAdmissionInput } from "../portable-phase-context-admission.js"
+import { PYLON_OWNER_LOCAL_CAPABILITY_PATH } from "../portable-owner-local-capability-transport.js"
 
 export const defaultControlPort = 4716
 export const controlTokenFileName = "control-token"
@@ -229,6 +230,7 @@ export interface ControlServerOptions {
   actions: ControlCommandActions
   hostname?: string
   port?: number
+  ownerLocalCapabilityHandler?: (request: Request) => Promise<Response>
 }
 
 export interface ControlServerHandle {
@@ -448,12 +450,24 @@ export const startControlServer = (
     const server = yield* Effect.try({
       try: () => {
         assertControlBindSafe(options)
+        if (
+          options.ownerLocalCapabilityHandler !== undefined &&
+          !isLoopbackHostname(options.hostname ?? "127.0.0.1")
+        ) {
+          throw new Error("refusing owner-local capability ingress on a non-loopback control server")
+        }
         return Runtime.serve({
           hostname: options.hostname ?? "127.0.0.1",
           port: options.port ?? defaultControlPort,
           idleTimeout: 0,
           fetch: async (request) => {
             const url = new URL(request.url)
+            if (url.pathname.startsWith(`${PYLON_OWNER_LOCAL_CAPABILITY_PATH}/`)) {
+              if (options.ownerLocalCapabilityHandler === undefined) {
+                return Response.json({ error: "not found" }, { status: 404 })
+              }
+              return options.ownerLocalCapabilityHandler(request)
+            }
             if (url.pathname === "/health") {
               return Response.json({
                 ok: true,

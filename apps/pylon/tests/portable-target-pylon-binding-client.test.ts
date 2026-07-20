@@ -64,15 +64,18 @@ describe("Pylon portable target binding client", () => {
             revision,
             state: init?.method === "DELETE" ? "revoked" : "active",
             health: init?.method === "DELETE" ? "revoked" : "ready",
-            expiresAt: "2026-07-20T13:05:00.000Z",
+            expiresAt: "2096-07-20T13:05:00.000Z",
           },
         });
       },
     });
 
+    expect(client.isCurrent()).toBe(false);
     await client.admitOrRenew();
+    expect(client.isCurrent()).toBe(true);
     await client.admitOrRenew("draining");
     await client.revoke();
+    expect(client.isCurrent()).toBe(false);
 
     const digest = portableTargetPylonBindingDigest(options);
     expect(digest).toMatch(/^sha256:[0-9a-f]{64}$/);

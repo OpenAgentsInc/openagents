@@ -25,6 +25,7 @@ const BindingResponse = Schema.Struct({
 export type PylonPortableTargetBindingClient = Readonly<{
   admitOrRenew: (health?: "ready" | "draining") => Promise<void>;
   revoke: () => Promise<void>;
+  isCurrent: () => boolean;
 }>;
 
 export type PylonPortableTargetBindingClientOptions = Readonly<{
@@ -104,6 +105,8 @@ export const makePylonPortableTargetBindingClient = (
   const evidenceRefs = [`evidence.portable-target-pylon.${digest.slice("sha256:".length)}`];
   const route = `/api/pylons/${encodeURIComponent(options.pylonRef)}/portable-target-bindings/${encodeURIComponent(options.targetRef)}`;
   let revision: number | undefined;
+  let current = false;
+  let currentUntil = 0;
 
   const readCurrent = async () => {
     const url = new URL(route, origin);
@@ -112,7 +115,10 @@ export const makePylonPortableTargetBindingClient = (
       method: "GET",
       headers: { authorization: `Bearer ${options.agentToken}` },
     });
-    if (response.status === 404) return;
+    if (response.status === 404) {
+      current = false;
+      return;
+    }
     if (!response.ok)
       throw new Error(`portable target Pylon binding read failed (${response.status})`);
     const decoded = Schema.decodeUnknownSync(BindingResponse)(await response.json(), {
@@ -124,10 +130,13 @@ export const makePylonPortableTargetBindingClient = (
       decoded.binding.targetRef !== options.targetRef ||
       decoded.binding.pylonRef !== options.pylonRef ||
       decoded.binding.workerInstanceRef !== options.workerInstanceRef ||
-      decoded.binding.bindingDigest !== digest
+      decoded.binding.bindingDigest !== digest ||
+      !Number.isFinite(Date.parse(decoded.binding.expiresAt))
     )
       throw new Error("portable target Pylon binding read is not exact");
     revision = decoded.binding.revision;
+    current = decoded.binding.health === "ready";
+    currentUntil = Date.parse(decoded.binding.expiresAt);
   };
 
   const send = async (method: "POST" | "DELETE", health: "ready" | "draining") => {
@@ -157,6 +166,16 @@ export const makePylonPortableTargetBindingClient = (
     const decoded = Schema.decodeUnknownSync(BindingResponse)(await response.json(), {
       onExcessProperty: "preserve",
     });
+    if (
+      decoded.binding.sessionRef !== options.sessionRef ||
+      decoded.binding.targetRef !== options.targetRef ||
+      decoded.binding.pylonRef !== options.pylonRef ||
+      decoded.binding.workerInstanceRef !== options.workerInstanceRef ||
+      decoded.binding.bindingDigest !== digest ||
+      !Number.isFinite(Date.parse(decoded.binding.expiresAt))
+    ) {
+      throw new Error("portable target Pylon binding response is not exact");
+    }
     if (method === "POST" && decoded.binding.state !== "active") {
       throw new Error("portable target Pylon binding response is not active");
     }
@@ -164,6 +183,8 @@ export const makePylonPortableTargetBindingClient = (
       throw new Error("portable target Pylon binding response is not revoked");
     }
     revision = decoded.binding.revision;
+    current = method === "POST" && decoded.binding.health === "ready";
+    currentUntil = Date.parse(decoded.binding.expiresAt);
   };
 
   return {
@@ -172,5 +193,6 @@ export const makePylonPortableTargetBindingClient = (
       await send("POST", health);
     },
     revoke: () => send("DELETE", "draining"),
+    isCurrent: () => current && currentUntil > Date.now(),
   };
 };

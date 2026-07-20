@@ -130,6 +130,28 @@ type AdmissionRow = {
   terminal_acknowledged_at: string | null
 }
 
+type CapabilityAuthorityRow = {
+  command_execution_claim_ref: string
+  owner_ref: string
+  pylon_ref: string
+  session_ref: string
+  attachment_ref: string
+  attachment_generation: number
+  target_ref: string
+  expires_at: string
+  authority_fingerprint: string
+}
+
+export type PylonPortableCapabilityAuthority = Readonly<{
+  commandExecutionClaimRef: string
+  ownerRef: string
+  pylonRef: string
+  sessionRef: string
+  attachmentRef: string
+  attachmentGeneration: number
+  targetRef: string
+}>
+
 const canonical = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`
   if (value !== null && typeof value === "object") {
@@ -261,6 +283,24 @@ export class PylonPortablePhaseContextAdmissionStore {
         state TEXT NOT NULL CHECK (state IN ('admitted', 'terminal_acknowledged')),
         terminal_acknowledged_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS pylon_portable_capability_authorities (
+        command_execution_claim_ref TEXT NOT NULL,
+        owner_ref TEXT NOT NULL,
+        pylon_ref TEXT NOT NULL,
+        session_ref TEXT NOT NULL,
+        attachment_ref TEXT NOT NULL,
+        attachment_generation INTEGER NOT NULL,
+        target_ref TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        authority_fingerprint TEXT NOT NULL,
+        PRIMARY KEY (
+          command_execution_claim_ref,
+          pylon_ref,
+          target_ref,
+          attachment_ref,
+          attachment_generation
+        )
+      );
     `)
   }
 
@@ -272,6 +312,55 @@ export class PylonPortablePhaseContextAdmissionStore {
         FROM pylon_portable_phase_context_admissions
        WHERE operation_ref = ?
     `).get(operationRef)
+  }
+
+  private persistCapabilityAuthority(request: PortablePhaseOperationRequest): void {
+    const authority = {
+      commandExecutionClaimRef: request.commandExecutionClaimRef,
+      ownerRef: request.ownerRef,
+      pylonRef: request.pylonRef,
+      sessionRef: request.sessionRef,
+      attachmentRef: request.attachmentRef,
+      attachmentGeneration: request.attachmentGeneration,
+      targetRef: request.targetRef,
+      expiresAt: request.expiresAt,
+    }
+    const authorityFingerprint = digest(canonical(authority))
+    const prior = this.database.query<CapabilityAuthorityRow, [string, string, string, string, number]>(`
+      SELECT command_execution_claim_ref, owner_ref, pylon_ref, session_ref,
+             attachment_ref, attachment_generation, target_ref, expires_at,
+             authority_fingerprint
+        FROM pylon_portable_capability_authorities
+       WHERE command_execution_claim_ref = ? AND pylon_ref = ? AND target_ref = ?
+         AND attachment_ref = ? AND attachment_generation = ?
+    `).get(
+      authority.commandExecutionClaimRef,
+      authority.pylonRef,
+      authority.targetRef,
+      authority.attachmentRef,
+      authority.attachmentGeneration,
+    )
+    if (prior !== null && prior.authority_fingerprint !== authorityFingerprint) {
+      throw new PylonPortablePhaseContextAdmissionError("conflicting_replay")
+    }
+    if (prior !== null) return
+    this.database.query(`
+      INSERT INTO pylon_portable_capability_authorities
+        (command_execution_claim_ref, owner_ref, pylon_ref, session_ref,
+         attachment_ref, attachment_generation, target_ref, expires_at,
+         authority_fingerprint)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      authority.commandExecutionClaimRef,
+      authority.ownerRef,
+      authority.pylonRef,
+      authority.sessionRef,
+      authority.attachmentRef,
+      authority.attachmentGeneration,
+      authority.targetRef,
+      authority.expiresAt,
+      authorityFingerprint,
+    )
   }
 
   admit(value: unknown): PylonPortablePhaseContextAdmissionRecord {
@@ -296,6 +385,7 @@ export class PylonPortablePhaseContextAdmissionStore {
           existing.recovery_semantics !== recoverySemantics ||
           existing.expires_at !== input.request.expiresAt
         ) throw new PylonPortablePhaseContextAdmissionError("conflicting_replay")
+        this.persistCapabilityAuthority(input.request)
         return this.decodeRow(existing).record
       }
       const admittedAt = this.now().toISOString()
@@ -316,6 +406,7 @@ export class PylonPortablePhaseContextAdmissionStore {
         admittedAt,
         input.request.expiresAt,
       )
+      this.persistCapabilityAuthority(input.request)
       return {
         schema: PYLON_PORTABLE_PHASE_CONTEXT_ADMISSION_SCHEMA,
         operationRef: input.request.operationRef,
@@ -389,11 +480,56 @@ export class PylonPortablePhaseContextAdmissionStore {
     }).immediate()
   }
 
+  authorizesCapability(authority: PylonPortableCapabilityAuthority): boolean {
+    const rows = this.database.query<CapabilityAuthorityRow, [string, string, string, string, number]>(`
+      SELECT command_execution_claim_ref, owner_ref, pylon_ref, session_ref,
+             attachment_ref, attachment_generation, target_ref, expires_at,
+             authority_fingerprint
+        FROM pylon_portable_capability_authorities
+       WHERE command_execution_claim_ref = ? AND pylon_ref = ? AND target_ref = ?
+         AND attachment_ref = ? AND attachment_generation = ?
+    `).all(
+      authority.commandExecutionClaimRef,
+      authority.pylonRef,
+      authority.targetRef,
+      authority.attachmentRef,
+      authority.attachmentGeneration,
+    )
+    return rows.some(row => {
+      const durable = {
+        commandExecutionClaimRef: row.command_execution_claim_ref,
+        ownerRef: row.owner_ref,
+        pylonRef: row.pylon_ref,
+        sessionRef: row.session_ref,
+        attachmentRef: row.attachment_ref,
+        attachmentGeneration: Number(row.attachment_generation),
+        targetRef: row.target_ref,
+        expiresAt: row.expires_at,
+      }
+      return durable.commandExecutionClaimRef === authority.commandExecutionClaimRef &&
+        durable.ownerRef === authority.ownerRef &&
+        durable.pylonRef === authority.pylonRef &&
+        durable.sessionRef === authority.sessionRef &&
+        durable.attachmentRef === authority.attachmentRef &&
+        durable.attachmentGeneration === authority.attachmentGeneration &&
+        durable.targetRef === authority.targetRef &&
+        Date.parse(durable.expiresAt) > this.now().getTime() &&
+        digest(canonical(durable)) === row.authority_fingerprint
+    })
+  }
+
   purge(): number {
-    return this.database.transaction(() => Number(this.database.query(`
-      DELETE FROM pylon_portable_phase_context_admissions
-       WHERE state = 'terminal_acknowledged' OR expires_at <= ?
-    `).run(this.now().toISOString()).changes)).immediate()
+    return this.database.transaction(() => {
+      const now = this.now().toISOString()
+      const deleted = Number(this.database.query(`
+        DELETE FROM pylon_portable_phase_context_admissions
+         WHERE state = 'terminal_acknowledged' OR expires_at <= ?
+      `).run(now).changes)
+      this.database.query(`
+        DELETE FROM pylon_portable_capability_authorities WHERE expires_at <= ?
+      `).run(now)
+      return deleted
+    }).immediate()
   }
 }
 

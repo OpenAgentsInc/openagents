@@ -86,6 +86,10 @@ import {
   type PylonPortableControlBinding,
 } from './portable-session-operation-ledger.js'
 import { registerPylonOwnerLocalExecutionTarget } from './portable-owner-local-target-startup.js'
+import {
+  isPylonOwnerLocalCapabilityIngressEnabled,
+  makePylonOwnerLocalCapabilityIngress,
+} from './portable-owner-local-capability-ingress.js'
 import { makePylonPortableCheckpointArtifactClient } from './portable-checkpoint-artifact-client.js'
 import {
   makePylonPortableTargetBindingClient,
@@ -945,6 +949,7 @@ const runHeadlessNode = Effect.gen(function* () {
   const presenceClientOptions = currentPresenceClientOptions()
   let portablePhaseContextStore: PylonPortablePhaseContextAdmissionStore | null = null
   let portableTargetBindingClient: PylonPortableTargetBindingClient | null = null
+  let portableWorkerScope: Readonly<{ targetRef: string; sessionRef: string }> | null = null
   if (Runtime.env.PYLON_PORTABLE_PHASE_WORKER === '1') {
     const targetRef = Runtime.env.PYLON_PORTABLE_PHASE_TARGET_REF
     const sessionRef = Runtime.env.PYLON_PORTABLE_PHASE_SESSION_REF
@@ -968,6 +973,7 @@ const runHeadlessNode = Effect.gen(function* () {
       catch: () => new Error('failed to open private portable phase context admission store'),
     })
     portablePhaseContextStore = portablePhaseAdmission.store
+    portableWorkerScope = { targetRef, sessionRef }
     portablePhaseAdmission.store.purge()
     yield* Effect.addFinalizer(() => Effect.sync(() => portablePhaseAdmission.close()))
     let portableControlBinding: PylonPortableControlBinding | undefined
@@ -1124,8 +1130,34 @@ const runHeadlessNode = Effect.gen(function* () {
   appleFmSupervisedLaunch =
     Runtime.env.PYLON_APPLE_FM_SUPERVISE === '1' ? createAppleFmSupervisedLaunch({ discover: { env: Runtime.env } }) : null
   const activePortablePhaseContextStore = portablePhaseContextStore
+  const ownerLocalCapabilityHandler = yield* Effect.try({
+    try: () => {
+      if (!isPylonOwnerLocalCapabilityIngressEnabled(Runtime.env)) return undefined
+      if (
+        activePortablePhaseContextStore === null ||
+        portableTargetBindingClient === null ||
+        portableWorkerScope === null
+      ) {
+        throw new Error('owner-local capability ingress requires the exact portable phase worker')
+      }
+      return makePylonOwnerLocalCapabilityIngress({
+        bearerToken: controlToken,
+        pylonHome: bootstrapSummary.paths.home,
+        pylonRef: localState.identity.pylonRef,
+        targetRef: portableWorkerScope.targetRef,
+        sessionRef: portableWorkerScope.sessionRef,
+        ledger: portableLedger,
+        authorityStore: activePortablePhaseContextStore,
+        targetBindingIsCurrent: () => portableTargetBindingClient?.isCurrent() === true,
+      })
+    },
+    catch: () => new Error('failed to configure owner-local capability ingress'),
+  })
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
+    ...(ownerLocalCapabilityHandler === undefined
+      ? {}
+      : { ownerLocalCapabilityHandler }),
     actions: {
       ...retiredMoneyControlActions,
       ...(headlessAssignmentActions
