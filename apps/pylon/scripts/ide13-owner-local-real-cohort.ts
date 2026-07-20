@@ -60,6 +60,7 @@ const COHORT_EVIDENCE_REPOSITORY_PATHS = new Set([
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
 ]);
 
 export const Ide13OwnerLocalRealCohortReceiptSchema = Schema.Struct({
@@ -244,6 +245,7 @@ const assertDeletion = (receipt: PylonPortableCheckpointDeletionReceipt): string
 export const runIde13OwnerLocalRealCohort = async (
   input: Readonly<{
     candidateCommitSha?: string;
+    injectedCheckpointStoreCrash?: boolean;
     injectedTransitionPartitionPhase?: Phase;
     outputPath?: string;
     repositoryRoot?: string;
@@ -282,6 +284,7 @@ export const runIde13OwnerLocalRealCohort = async (
   const cpuStarted = process.cpuUsage();
   const wallStarted = performance.now();
   let injectedTransitionPartition = false;
+  let injectedCheckpointStoreCrash = false;
   const runPhase = async <A>(phase: Phase, operation: () => Promise<A>): Promise<A> => {
     if (input.injectedTransitionPartitionPhase === phase && injectedTransitionPartition === false) {
       injectedTransitionPartition = true;
@@ -421,12 +424,25 @@ export const runIde13OwnerLocalRealCohort = async (
       authority = next;
     };
     const producerA = new PylonPortableCheckpointArtifactStore();
-    const custodyAConfig = {
+    const custodyABaseConfig = {
       custodyDirectory: join(root, "custody-a"),
       policy: "owner_managed" as const,
       keyRef: "key.ide13.owner-local.cohort.a",
       keyProvider: { loadKey: async () => Uint8Array.from(custodyKeyA) },
       retentionSeconds: 3_600,
+    };
+    const custodyAConfig = {
+      ...custodyABaseConfig,
+      ...(input.injectedCheckpointStoreCrash === true
+        ? {
+            faultInjector: (step: string) => {
+              if (step === "delete_object_removed" && !injectedCheckpointStoreCrash) {
+                injectedCheckpointStoreCrash = true;
+                throw new Error("injected owner-local checkpoint store crash");
+              }
+            },
+          }
+        : {}),
     };
     const custodyA = new PylonPortableCheckpointArtifactStore(custodyAConfig);
     const rehydratorB = createPylonPortableLocalRehydrator({
@@ -567,13 +583,29 @@ export const runIde13OwnerLocalRealCohort = async (
     if (replayedActivationB.receiptRef !== activatedB.value.receiptRef) {
       throw new Error("owner-local activation replay changed its receipt");
     }
-    const deletedA = await custodyA.deleteArtifact({
+    const deleteAInput = {
       operationRef: "operation.ide13.owner-local.move.custody.delete",
       ownerRef: executionBinding.ownerRef,
       sessionRef,
       checkpointRef: checkpointA.value.checkpoint.checkpointRef,
       bundle: checkpointA.value,
-    });
+    };
+    let deletedA: PylonPortableCheckpointDeletionReceipt;
+    try {
+      deletedA = await custodyA.deleteArtifact(deleteAInput);
+    } catch (error) {
+      if (
+        input.injectedCheckpointStoreCrash !== true ||
+        !injectedCheckpointStoreCrash ||
+        !(error instanceof Error) ||
+        error.message !== "injected owner-local checkpoint store crash"
+      ) {
+        throw error;
+      }
+      deletedA = await new PylonPortableCheckpointArtifactStore(custodyABaseConfig).deleteArtifact(
+        deleteAInput,
+      );
+    }
 
     const failback = await measure(() =>
       runPhase("failback", async () => {
@@ -936,6 +968,9 @@ export const runIde13OwnerLocalRealCohort = async (
       injectedTransitionPartition === false
     ) {
       throw new Error("owner-local transition partition probe did not reach its phase boundary");
+    }
+    if (input.injectedCheckpointStoreCrash === true && !injectedCheckpointStoreCrash) {
+      throw new Error("owner-local checkpoint store crash probe did not reach its boundary");
     }
     if (input.outputPath !== undefined) {
       await mkdir(dirname(input.outputPath), { recursive: true });

@@ -97,6 +97,7 @@ export type PylonPortableOwnerLocalCapabilityWorkerOptions = Readonly<{
   leaseDurationMs?: number;
   renewalIntervalMs?: number;
   waitForRenewal?: (milliseconds: number, signal: AbortSignal) => Promise<"renew">;
+  faultInjector?: (step: "claim_durable", operationRef: string) => Promise<void> | void;
 }>;
 
 const delay = (milliseconds: number, signal: AbortSignal): Promise<"renew"> =>
@@ -433,15 +434,18 @@ export class PylonPortableOwnerLocalCapabilityWorker {
   async runPass(signal: AbortSignal = new AbortController().signal): Promise<number> {
     await this.recover(signal);
     let handled = 0;
+    const observedOperationRefs = new Set<string>();
     for (const record of await this.options.client.pending(this.pollLimit, signal)) {
       const request = record.request;
       if (
         signal.aborted ||
         request.pylonRef !== this.options.pylonRef ||
         request.targetRef !== this.options.targetRef ||
-        this.active.has(request.operationRef)
+        this.active.has(request.operationRef) ||
+        observedOperationRefs.has(request.operationRef)
       )
         continue;
+      observedOperationRefs.add(request.operationRef);
       const claimRequest = {
         schema: "openagents.portable_owner_local_capability_operation.v1",
         operationRef: request.operationRef,
@@ -471,6 +475,7 @@ export class PylonPortableOwnerLocalCapabilityWorker {
       const claim = this.fromRecord(response.operation, claimRequest);
       this.active.set(request.operationRef, claim);
       await this.persist(claim, "claimed");
+      await this.options.faultInjector?.("claim_durable", request.operationRef);
       await this.execute(claim, signal);
       handled += 1;
     }
