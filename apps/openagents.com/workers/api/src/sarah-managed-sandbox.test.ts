@@ -141,6 +141,7 @@ const harness = (input?: {
   allow?: boolean;
   lifecycle?: ManagedSandboxResource["facts"]["lifecycle"];
   listed?: ReadonlyArray<ManagedSandboxResource>;
+  resumeGeneration?: number;
 }) => {
   const commands: Array<ManagedSandboxCommand> = [];
   const attachmentGenerations: Array<number | undefined> = [];
@@ -169,9 +170,12 @@ const harness = (input?: {
                 lifecycle: "provisioning",
               },
             })
-          : resource(
-              command._tag === "Delete" ? (input?.lifecycle ?? "deleting") : input?.lifecycle,
-            );
+          : S.decodeUnknownSync(ManagedSandboxResourceSchema)({
+              ...resource(
+                command._tag === "Delete" ? (input?.lifecycle ?? "deleting") : input?.lifecycle,
+              ),
+              resourceGeneration: command._tag === "Resume" ? (input?.resumeGeneration ?? 1) : 1,
+            });
       return Effect.succeed({
         command,
         resource: state,
@@ -331,7 +335,7 @@ describe("Sarah managed-sandbox broker", () => {
   });
 
   test("routes list, inspect, interrupt, stop, resume, and delete through their closed actions", async () => {
-    const fixture = harness();
+    const fixture = harness({ resumeGeneration: 2 });
     await execute(fixture.tools, "managed_sandboxes_list", {
       ...common,
       idempotencyRef: "idempotency.fixture.list",
@@ -367,6 +371,25 @@ describe("Sarah managed-sandbox broker", () => {
       "Resume",
       "Delete",
     ]);
+  });
+
+  test("accepts only the exact next generation returned by resume", async () => {
+    const resumed = await execute(
+      harness({ resumeGeneration: 2 }).tools,
+      "managed_sandbox_resume",
+      {
+        ...exact,
+        idempotencyRef: "idempotency.fixture.resume-next-generation",
+      },
+    );
+    expect(JSON.parse(resumed.content).resource.resourceGeneration).toBe(2);
+
+    await expect(
+      execute(harness({ resumeGeneration: 3 }).tools, "managed_sandbox_resume", {
+        ...exact,
+        idempotencyRef: "idempotency.fixture.resume-skipped-generation",
+      }),
+    ).rejects.toMatchObject({ reason: "managed_sandbox_scope_mismatch" });
   });
 
   test("fails closed when a list dependency crosses owner scope", async () => {

@@ -174,6 +174,7 @@ const exactScope = (
   resource: ManagedSandboxResource,
   scope: typeof ExactResourceScopeSchema.Type,
   ownerRef: string,
+  expectedResourceGeneration: number = scope.resourceGeneration,
 ): boolean =>
   resource.ownerRef === ownerRef &&
   resource.programRef === scope.programRef &&
@@ -182,7 +183,7 @@ const exactScope = (
   resource.target.targetRef === scope.targetRef &&
   resource.imageDigest === scope.imageDigest &&
   resource.profileRef === scope.profileRef &&
-  resource.resourceGeneration === scope.resourceGeneration &&
+  resource.resourceGeneration === expectedResourceGeneration &&
   resource.version >= scope.expectedVersion &&
   exactBudget(resource.budget, scope.budget) &&
   scope.capabilityRefs.every((ref) =>
@@ -634,6 +635,7 @@ export const makeSarahManagedSandboxTools = (
       extraRequired?: ReadonlyArray<string> | undefined;
       make: (value: A, baseFields: Readonly<Record<string, unknown>>) => ManagedSandboxCommand;
       prompt?: ((value: A) => string | undefined) | undefined;
+      resultResourceGeneration?: ((value: A) => number) | undefined;
     }>,
   ): SarahAgentTool => ({
     definition: {
@@ -665,6 +667,7 @@ export const makeSarahManagedSandboxTools = (
               payload.resource,
               raw as typeof ExactResourceScopeSchema.Type,
               deps.principal.ownerRef,
+              input.resultResourceGeneration?.(raw as A),
             )
             ? Effect.succeed(result)
             : Effect.fail(failure("managed_sandbox_scope_mismatch"));
@@ -805,6 +808,8 @@ export const makeSarahManagedSandboxTools = (
       schema: ActionSchema,
       extraProperties: { reasonRef: { type: "string" } },
       extraRequired: tag === "Resume" ? [] : ["reasonRef"],
+      resultResourceGeneration:
+        tag === "Resume" ? (value) => value.resourceGeneration + 1 : undefined,
       make: (value, baseFields) =>
         ({
           ...baseFields,

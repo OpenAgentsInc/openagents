@@ -31,6 +31,7 @@
     "smoke:probe-gepa-stage0": "node --import tsx scripts/probe-gepa-stage0-no-spend-campaign.ts",
     "smoke:qwen-remote-training": "node --import tsx scripts/qwen-remote-pylon-live-training.ts",
     "accept:managed-sandbox-box-live": "tsx scripts/managed-sandbox-box-live-acceptance.ts",
+    "accept:managed-sandbox-sarah-live": "tsx scripts/managed-sandbox-sarah-live-acceptance.ts",
     "test": "vp test --root ../../../.. --run --project @openagentsinc/api-worker",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start:cloudrun": "node --import tsx ./src/cloudrun/server.ts",
