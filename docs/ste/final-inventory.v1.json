@@ -304,7 +304,7 @@
     },
     {
       "path": "AGENTS.md",
-      "sha256": "3d4364065b74f9a174a578397a6724a92b7585f89084f4c8307fcf0fd89ce2d0",
+      "sha256": "2c476f51bf6bb1bd3ce7e488739444120fc53b08aea76810a31b7c618067b4e9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -340,7 +340,7 @@
     },
     {
       "path": "CLAUDE.md",
-      "sha256": "3d4364065b74f9a174a578397a6724a92b7585f89084f4c8307fcf0fd89ce2d0",
+      "sha256": "2c476f51bf6bb1bd3ce7e488739444120fc53b08aea76810a31b7c618067b4e9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19716,7 +19716,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md",
-      "sha256": "d59f8374e5b168eca6efb548a069f4401989afabd1c8f105779a9cba0a3384a4",
+      "sha256": "12e4c862abbfedd7a6100a31bef497b1b6fb94a352b815dfe53cc889f36c49ba",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
