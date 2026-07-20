@@ -1,6 +1,6 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
 import { createHash } from "node:crypto"
-import { lstat, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises"
+import { lstat, mkdtemp, readFile, readdir, readlink, rm, stat, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -16,6 +16,22 @@ import type { PylonPortableCheckpointBundle } from "../src/portable-session-oper
 const roots: string[] = []
 const sha = (value: string | Uint8Array): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`
+
+const custodyKey = Uint8Array.from({ length: 32 }, (_, index) => index + 1)
+const custodyConfig = (directory: string, key = custodyKey, keyRef = "key.portable.checkpoint.2026-07") => ({
+  custodyDirectory: directory,
+  policy: "owner_managed" as const,
+  keyRef,
+  keyProvider: { loadKey: async () => Uint8Array.from(key) },
+})
+
+const onlyFile = async (directory: string): Promise<string> => {
+  const files = await readdir(directory)
+  expect(files).toHaveLength(1)
+  const file = files.at(0)
+  if (file === undefined) throw new Error("checkpoint custody file is absent")
+  return join(directory, file)
+}
 
 const git = async (cwd: string, args: string[]): Promise<string> => {
   const proc = Runtime.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "pipe" })
@@ -207,11 +223,11 @@ test("retains managed checkpoint custody across process restart", async () => {
     bundle,
   })
   const custody = join(root, ".private-checkpoint-custody")
-  const first = new PylonPortableCheckpointArtifactStore(custody)
+  const first = new PylonPortableCheckpointArtifactStore(custodyConfig(custody))
   await first.registerArtifact({ bundle, artifact })
   artifact.bytes.fill(0)
 
-  const restarted = new PylonPortableCheckpointArtifactStore(custody)
+  const restarted = new PylonPortableCheckpointArtifactStore(custodyConfig(custody))
   const replay = await restarted.resolve({
     ownerRef: bundle.executionBinding.ownerRef,
     targetRef: "target.portable.artifact.local",
@@ -222,6 +238,110 @@ test("retains managed checkpoint custody across process restart", async () => {
     bundle,
   })
   expect(sha(replay.bytes)).toBe(replay.digest)
+  expect((await stat(await onlyFile(custody))).mode & 0o777).toBe(0o600)
+})
+
+test("encrypts checkpoint bytes and metadata with a fresh nonce", async () => {
+  const { bundle, root } = await fixture()
+  const producer = new PylonPortableCheckpointArtifactStore()
+  producer.register({ bundle, workingDirectory: root })
+  const input = {
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.managed",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.managed.2",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  }
+  const artifact = await producer.resolve(input)
+  const custody = join(root, ".encrypted-custody")
+  await new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).registerArtifact({ bundle, artifact })
+  const path = await onlyFile(custody)
+  const firstText = await readFile(path, "utf8")
+  const first = JSON.parse(firstText) as { nonceBase64: string }
+  await new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).registerArtifact({ bundle, artifact })
+  const secondText = await readFile(path, "utf8")
+  const second = JSON.parse(secondText) as { nonceBase64: string }
+
+  expect(second.nonceBase64).not.toBe(first.nonceBase64)
+  expect(secondText).not.toContain("tracked.txt")
+  expect(secondText).not.toContain("untracked\n")
+  expect(secondText).not.toContain(bundle.checkpoint.checkpointRef)
+  expect(secondText).not.toContain(Buffer.from(custodyKey).toString("base64"))
+  expect(secondText).not.toContain(Buffer.from(custodyKey).toString("hex"))
+})
+
+test("fails closed for tamper, wrong key, and rotated key ref", async () => {
+  const { bundle, root } = await fixture()
+  const producer = new PylonPortableCheckpointArtifactStore()
+  producer.register({ bundle, workingDirectory: root })
+  const request = {
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.managed",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.managed.2",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  }
+  const artifact = await producer.resolve(request)
+  const custody = join(root, ".tamper-custody")
+  await new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).registerArtifact({ bundle, artifact })
+  const wrongKey = Uint8Array.from({ length: 32 }, (_, index) => 255 - index)
+  await expect(new PylonPortableCheckpointArtifactStore(custodyConfig(custody, wrongKey)).resolve(request))
+    .rejects.toMatchObject({ code: "decrypt_failed" })
+  await expect(new PylonPortableCheckpointArtifactStore(
+    custodyConfig(custody, custodyKey, "key.portable.checkpoint.2026-08"),
+  ).resolve(request)).rejects.toMatchObject({ code: "key_ref_mismatch" })
+
+  const path = await onlyFile(custody)
+  const envelope = JSON.parse(await readFile(path, "utf8")) as { ciphertextBase64: string }
+  const ciphertext = Buffer.from(envelope.ciphertextBase64, "base64")
+  if (ciphertext.length === 0) throw new Error("checkpoint ciphertext is absent")
+  ciphertext[0] ^= 1
+  envelope.ciphertextBase64 = ciphertext.toString("base64")
+  await writeFile(path, JSON.stringify(envelope), { mode: 0o600 })
+  await expect(new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).resolve(request))
+    .rejects.toMatchObject({ code: "decrypt_failed" })
+})
+
+test("rejects plaintext custody without an explicit device policy", async () => {
+  const { bundle, root } = await fixture()
+  expect(() => new PylonPortableCheckpointArtifactStore(root)).toThrowError(
+    expect.objectContaining({ code: "plaintext_downgrade" }),
+  )
+  const downgradeCustody = await mkdtemp(join(tmpdir(), "oa-portable-plaintext-custody-"))
+  roots.push(downgradeCustody)
+  const name = createHash("sha256").update(bundle.checkpoint.checkpointRef).digest("hex")
+  await writeFile(join(downgradeCustody, `${name}.json`), "{}")
+  await expect(new PylonPortableCheckpointArtifactStore(custodyConfig(downgradeCustody)).resolve({
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.local",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.local.3",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  })).rejects.toMatchObject({ code: "plaintext_downgrade" })
+
+  const producer = new PylonPortableCheckpointArtifactStore()
+  producer.register({ bundle, workingDirectory: root })
+  const request = {
+    ownerRef: bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.local",
+    sessionRef: bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.local.3",
+    generation: 2,
+    checkpointRef: bundle.checkpoint.checkpointRef,
+    bundle,
+  }
+  const artifact = await producer.resolve(request)
+  const deviceCustody = join(root, ".device-custody")
+  const policy = { custodyDirectory: deviceCustody, policy: "owner_device_not_required" as const }
+  await new PylonPortableCheckpointArtifactStore(policy).registerArtifact({ bundle, artifact })
+  const replay = await new PylonPortableCheckpointArtifactStore(policy).resolve(request)
+  expect(replay.digest).toBe(artifact.digest)
 })
 
 test("rejects credential-shaped post-images", async () => {
