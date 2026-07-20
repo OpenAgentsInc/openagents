@@ -75,7 +75,14 @@ export type CodexHostServices = Readonly<{
 }>
 
 export type CodexHostServiceRegistry = Readonly<{
-  forTarget: (target: CodexAppServerPoolTarget, workspaceRoot: string) => Promise<CodexHostServices>
+  forTarget: (
+    target: CodexAppServerPoolTarget,
+    workspaceRoot: string,
+    portable?: Readonly<{
+      workspaceGrantRef: string
+      mutationAuthority: IdePortableMutationAuthority
+    }>,
+  ) => Promise<CodexHostServices>
   close: () => void
 }>
 
@@ -305,16 +312,17 @@ export const makeCodexHostServiceRegistry = (options: Readonly<{
   const entries = new Map<string, Promise<CodexHostServices>>()
   let closed = false
   return {
-    forTarget: (target, workspaceRoot) => {
+    forTarget: (target, workspaceRoot, portable) => {
       if (closed) return Promise.reject(new CodexHostServiceError("closed", "Codex host service registry is closed"))
       const canonicalRoot = realpathSync(workspaceRoot)
-      const identity = hash(`${codexAppServerPoolKey(target)}\0${canonicalRoot}`)
+      const identity = hash(`${codexAppServerPoolKey(target)}\0${canonicalRoot}\0${portable?.workspaceGrantRef ?? "unbound"}`)
       const existing = entries.get(identity); if (existing !== undefined) return existing
       const created = options.supervisor.acquire(target).then(lease => makeCodexHostServices({
         lease,
         workspaceRoot: canonicalRoot,
         spoolRoot: resolve(options.spoolRoot, identity),
         receiptPath: resolve(options.receiptRoot, `${identity}.json`),
+        ...(portable === undefined ? {} : portable),
       }), error => { entries.delete(identity); throw error })
       entries.set(identity, created)
       return created

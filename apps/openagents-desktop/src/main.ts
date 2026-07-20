@@ -3553,10 +3553,15 @@ const currentCodexEcosystem = async () => {
 const currentCodexHostServices = async () => {
   const binary = codexRuntimeAuthority.executable()
   const workroom = currentProductSpecWorkroom()
-  if (binary === null || workroom === null) throw new Error("Codex runtime and WorkContext are required")
+  const workspaceGrantRef = hostLifecycle.workspace()?.grantRef ?? null
+  if (binary === null || workroom === null || workspaceGrantRef === null) throw new Error("Codex runtime and WorkContext are required")
   const runtimeCwd = path.join(app.getPath("userData"), "claude-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
-  return codexHostServices.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" }, workroom.workspaceRoot)
+  return codexHostServices.forTarget(
+    { binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" },
+    workroom.workspaceRoot,
+    { workspaceGrantRef, mutationAuthority: workspacePortableMutationAuthority },
+  )
 }
 const currentCodexExperimentalRuntime = async () => {
   const binary = codexRuntimeAuthority.executable()
