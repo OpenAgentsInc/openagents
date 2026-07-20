@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-packaged-owner-local-composite-trace.v1",
+  "issue": "IDE-13",
+  "candidateCommitSha": "aa150008ab6d0e893c08d3cc9bcc8243f2d803f3",
+  "artifactTreeSha256": "521b9b1be1bb1e6195394fbd0e15865c3d1d5fd3a46af3807ea62aae01e7e88b",
+  "events": [
+    {
+      "kind": "packaged_shell_ready",
+      "message": "The isolated packaged shell exposed the fail-closed portable boundary."
+    },
+    {
+      "kind": "owner_local_move",
+      "message": "The production owner-local target completed generation 1 to 2 on the same physical host."
+    },
+    {
+      "kind": "owner_local_failback",
+      "message": "The production owner-local target completed generation 2 to 3 failback and teardown."
+    },
+    {
+      "kind": "packaged_shell_still_live",
+      "message": "The isolated packaged shell stayed live and unavailable after the owner-local journey."
+    }
+  ],
+  "privateMaterialIncluded": false,
+  "authenticatedSyncClaimed": false,
+  "packagedShellInitiatedMoveClaimed": false
+}
