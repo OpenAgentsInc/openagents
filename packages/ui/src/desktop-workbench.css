@@ -3928,17 +3928,25 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-boot-lines {
+  position: relative;
   display: flex;
   width: 100%;
   max-width: 440px;
   flex-direction: column;
   gap: 2px;
   margin: 0;
-  padding: 0;
+  /* Extra top padding clears the legend that sits on the top border. */
+  padding: var(--en-spacing-4) var(--en-spacing-4) var(--en-spacing-3);
   list-style: none;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-none, 0);
   font-family: var(--oa-font-mono);
   font-size: 12px;
   line-height: 1.7;
+  /* Owner directive 2026-07-20: model names left-aligned, not centered — the
+     empty conversation sets text-align:center; the scan overrides it so the
+     glyph/label/detail columns read as a clean left-aligned terminal table. */
+  text-align: left;
   color: var(--en-color-textFaint);
 }
 
@@ -3947,6 +3955,20 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   align-items: baseline;
   gap: 8px;
   min-width: 0;
+}
+
+/* "BOOT SEQUENCE" sits ON the top border: the border line bisects the text
+   vertically (half above, half below) with a bit of horizontal padding, like a
+   fieldset legend. Its background breaks the border line cleanly. */
+.oa-react-boot-line[data-kind="title"] {
+  position: absolute;
+  top: 0;
+  left: var(--en-spacing-3);
+  transform: translateY(-50%);
+  padding: 0 6px;
+  background: var(--en-color-background);
+  color: var(--en-color-textMuted);
+  letter-spacing: 0.14em;
 }
 
 .oa-react-boot-line[data-kind="banner"] {
