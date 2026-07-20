@@ -1,10 +1,10 @@
 {
-  "schemaVersion": "openagents.desktop.ide-portable-packaged-owner-local-composite.v1",
+  "schemaVersion": "openagents.desktop.ide-portable-packaged-owner-local-package-initiated.v2",
   "issue": "IDE-13",
   "evidenceClass": "real_local",
-  "proofClass": "packaged_shell_concurrent_owner_local_target",
-  "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
-  "capturedAt": "2026-07-20T19:03:20.970Z",
+  "proofClass": "packaged_shell_initiated_owner_local_target",
+  "candidateCommitSha": "08c54c35994a2f77031af8cc90a5d03bd0728865",
+  "capturedAt": "2026-07-20T19:37:14.526Z",
   "physicalHost": {
     "operatingSystem": "darwin",
     "architecture": "arm64",
@@ -12,9 +12,9 @@
   },
   "packagedArtifact": {
     "ref": "apps/openagents-desktop/out/OpenAgents RC-darwin-arm64/OpenAgents RC.app",
-    "treeSha256": "60094286055916a3bef114990686f93c3f8c530a3e8cbcff979f4b8bbbc6f41f",
+    "treeSha256": "711ca7d121e1002f83a98cb7ece4a89ed95d733279d3f96e44cf69162cfead99",
     "files": 362,
-    "bytes": 604026672,
+    "bytes": 604027670,
     "portabilityBoundaryPresent": true
   },
   "packagedShell": {
@@ -26,14 +26,17 @@
     "liveBeforeOwnerLocalJourney": true,
     "liveAfterOwnerLocalJourney": true,
     "authenticatedSyncClaimed": false,
-    "initiatedMoveClaimed": false
+    "initiatedMoveClaimed": true,
+    "trustedRendererPreloadIpcMainBoundaryUsed": true,
+    "isolatedProofAdmissionBoundaryUsed": true,
+    "requestedMutationRef": "mutation.ide13.isolated.move.1"
   },
   "ownerLocalJourney": {
     "cohortRef": "cohort.ide13.owner-local.real.1",
     "targetClass": "owner_local",
     "evidenceClass": "real_local",
     "journeyScope": "full_move",
-    "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
+    "candidateCommitSha": "08c54c35994a2f77031af8cc90a5d03bd0728865",
     "targetRef": "target.ide13.owner-local.cohort.a",
     "adapterKind": "production",
     "adapterRef": "adapter.pylon.owner-local.control-session.v1",
@@ -58,7 +61,7 @@
       "dap",
       "native"
     ],
-    "replayReceiptRef": "receipt.ide13.owner-local.replay.f6e45d047e51b542aa6b99426eb768b2",
+    "replayReceiptRef": "receipt.ide13.owner-local.replay.f7a0f054cd61dedcdfdb81286c71ebd4",
     "staleGenerationReceiptRef": "receipt.ide13.owner-local.stale-generation-refused.c2b7ec5970f3ec1c28050dbc5f63df07",
     "sourceCustodyDeletionReceiptRef": "receipt.portable-checkpoint-deletion.9b0cf9b58942396afa774cb146da9f44",
     "failbackCustodyDeletionReceiptRef": "receipt.portable-checkpoint-deletion.2af84106aa33c6026af86a37e98edbbb",
@@ -87,7 +90,7 @@
   "passed": true,
   "limitations": [
     "The packaged application ran with isolated app proof and had no authenticated Sync authority.",
-    "The packaged shell did not initiate or authenticate the owner-local move.",
+    "The packaged shell admitted the bounded owner-local move through preload, trusted renderer IPC, and main before the proof harness ran the production owner-local target. It did not authenticate Sync.",
     "The production Pylon target ran on the same physical Mac with two logical owner-local targets. No cross-device target ran.",
     "The destination activated helpers after the move, but no Codex executor resumed and no work ref was accepted.",
     "DAP and native helpers stayed unsupported because no signed executable profile was admitted.",

@@ -1,12 +1,16 @@
 {
-  "schemaVersion": "openagents.desktop.ide-portable-packaged-owner-local-composite-trace.v1",
+  "schemaVersion": "openagents.desktop.ide-portable-packaged-owner-local-package-initiated-trace.v2",
   "issue": "IDE-13",
-  "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
-  "artifactTreeSha256": "60094286055916a3bef114990686f93c3f8c530a3e8cbcff979f4b8bbbc6f41f",
+  "candidateCommitSha": "08c54c35994a2f77031af8cc90a5d03bd0728865",
+  "artifactTreeSha256": "711ca7d121e1002f83a98cb7ece4a89ed95d733279d3f96e44cf69162cfead99",
   "events": [
     {
       "kind": "packaged_shell_ready",
       "message": "The isolated packaged shell exposed the fail-closed portable boundary."
+    },
+    {
+      "kind": "packaged_shell_move_command",
+      "message": "The packaged shell issued the exact bounded generation-1 owner-local move command through its production preload and IPC boundary."
     },
     {
       "kind": "owner_local_move",
@@ -23,5 +27,5 @@
   ],
   "privateMaterialIncluded": false,
   "authenticatedSyncClaimed": false,
-  "packagedShellInitiatedMoveClaimed": false
+  "packagedShellInitiatedMoveClaimed": true
 }
