@@ -15,12 +15,13 @@
 | --- | --- | --- | --- |
 | Sarah active in mobile | 🟡 **Live but admission-gated** | Admin-email allowlist is one hardcoded address; bootstrap receipt mints on first admitted request | [#9065](https://github.com/OpenAgentsInc/openagents/issues/9065) SARAH-ACT-1 |
 | Delegating coding | 🟢 **Live in code** | Operational only: owner-linked Pylon Codex capacity must be online | #9065 (checklist item) |
-| Using managed sandboxes | 🟡 **Code-landed, default-off** | SBX-09 live GCP acceptance, then two env vars | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) SBX-09 (now P0) |
+| Using managed sandboxes | 🟡 **Staging live proof green; production off** | SBX-09 independent assurance + owner observation, then exact production env/image/control rollout | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) SBX-09 (P0) |
 | Push notifications to mobile | 🔴 **Two hard gaps** | Mobile never registers a push token; nothing emits notify-events | [#9062](https://github.com/OpenAgentsInc/openagents/issues/9062), [#9063](https://github.com/OpenAgentsInc/openagents/issues/9063) |
 | Sarah updates me proactively | 🔴 **Missing** | No code path originates a Sarah→owner message on delegation settlement | [#9064](https://github.com/OpenAgentsInc/openagents/issues/9064) |
 
 Fastest path to the full owner experience: **#9065 (activation) → #9062 +
-#9063 in parallel (push) → #9064 (proactive updates) → #9033 (sandbox flag)**.
+#9063 in parallel (push) → #9064 (proactive updates) → #9033 independent
+disposition and production sandbox rollout**.
 Nothing except SBX-09 requires new infrastructure; everything else is wiring
 between systems that already exist and test green.
 
@@ -91,7 +92,7 @@ When off, Sarah **sees** the eight tools and gets typed refusals
 (`runtimeAdmitted=false` fails `condition.existing_runtime_gate` before any
 target effect) — she can explain the blocker honestly but cannot mutate.
 
-**Why the flag is off, and the honest path to on.** Authority (Sarah profile
+**Why the production flag is off, and the honest path to on.** Authority (Sarah profile
 rev 4 `condition.managed_sandbox_runtime_admission`) and the roadmap both
 require **SBX-09 (#9033)** — independent live GCP acceptance: create→ready→
 real Codex/Claude turn→interrupt/settle→stop/resume/delete, cross-owner
@@ -99,12 +100,18 @@ denial, fault matrix, zero-residue cleanup, cost, rollback. "Active
 immediately" therefore means **execute SBX-09 now**, not skip it: profile
 text, SDK status, or a provider object cannot substitute for the live proof,
 and flipping the flag without it would put an unproven GCP mutation path in a
-model's hands. SBX-09 is re-prioritized to **P0** per this owner direction
-(comment on #9033), and its acceptance journey should include the Sarah
-create→dispatch→settle→delete path so the flag flip rides the same proof.
+model's hands. SBX-09 is re-prioritized to **P0** per this owner direction.
 
-After SBX-09: set the two missing env vars in the Cloud Run deploy config and
-the capability is live end-to-end.
+The producer-run 2026-07-20 staging matrix is now green: the exact eight-tool
+Sarah create→dispatch→settle→stop/resume/delete journey, quiet nonterminal
+check, interrupt replay, cross-owner denial, reconciliation, cost, rollback,
+and final zero-resource inventory are bound in
+`docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json`. Its assurance
+disposition remains `INCONCLUSIVE` because the producer cannot self-verify and
+the owner has not recorded live observation. After those two rows are
+recorded, production must deploy the exact accepted image/profile/control and
+bridge revisions plus both rollout flags; setting two booleans alone is not a
+complete production activation.
 
 **Deliberately not in scope:** SBX-08 (#9031, mobile/web sandbox supervision
 UI) improves observability of Sarah-created sandboxes but does not gate Sarah's
@@ -178,13 +185,13 @@ for future external callers.
 | [#9062](https://github.com/OpenAgentsInc/openagents/issues/9062) | SARAH-PUSH-1 — mobile Expo push-token registration + live delivery proof | P0 | Any push reaching the device |
 | [#9063](https://github.com/OpenAgentsInc/openagents/issues/9063) | SARAH-PUSH-2 — emit notify-events from Sarah turns + delegation settlement | P0 | Push having anything to say |
 | [#9064](https://github.com/OpenAgentsInc/openagents/issues/9064) | SARAH-PROACTIVE-1 — receipt-backed delegation-outcome thread updates | P0 | "Sarah updates me" without asking |
-| [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | SBX-09 — live GCP acceptance + rollout (pre-existing, re-prioritized P0) | P0 | Sandbox mutation flag flip |
-| [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | SBX-08 — mobile/web sandbox supervision (pre-existing) | P1 | Observability only, not gating |
+| [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | SBX-09 — staging matrix green; independent assurance, owner observation, production rollout pending | P0 | Production sandbox mutation |
+| [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | SBX-08 — mobile/web sandbox supervision | closed | Observability landed; not gating |
 
 Dependency shape: #9065 is independent and first. #9062 ∥ #9063 (join for the
 live end-to-end proof). #9064 depends on #9063 for its paired push. #9033 is
-independent of the push lane and unblocks the sandbox tools whenever its
-acceptance passes.
+independent of the push lane and unblocks production sandbox tools only after
+its independent and owner dispositions pass.
 
 ## 7. What this direction does NOT change
 
@@ -193,8 +200,9 @@ acceptance passes.
 - No new authority grants: every lane above operates inside root rev 6 /
   Sarah profile rev 4. #9065's allowlist change is admission plumbing for
   identities the owner explicitly names, not an authority expansion.
-- SBX-09 is accelerated, not bypassed. The flag stays off until its live
-  proof lands; refusing to shortcut it is what keeps "Sarah with cloud
+- SBX-09 is accelerated, not bypassed. The staging proof has landed; the
+  production flag stays off until independent assurance and owner observation
+  land. Refusing to shortcut those rows is what keeps "Sarah with cloud
   mutation authority" defensible.
 - The AssuranceSpec deficit (SARAH-AC-01..20 `needs_design`, see the program
   assessment §5) is unchanged by this direction and remains the release-grade

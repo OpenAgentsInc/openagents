@@ -1,6 +1,7 @@
 # SBX-02 managed-sandbox GCE runtime
 
-Status: implemented component. Public rollout remains blocked by SBX-09
+Status: staging live acceptance passed. Production/public rollout remains
+blocked by SBX-09 independent assurance and owner observation
 
 Issue: [#9028](https://github.com/OpenAgentsInc/openagents/issues/9028)
 
@@ -83,6 +84,22 @@ The operational native and Box-compatible authorities use the single profile
 ref `profile.sbx.gce.e2-small.v1`. That ref is part of the operational profile
 digest. The older `profile-ref://…` spelling in the historical component table
 above is not admitted for SBX-09 placement.
+
+The staging acceptance identity observed on 2026-07-20 is:
+
+| Field | Accepted value |
+| --- | --- |
+| image | `oa-msb-guest-sbx09-3dd83197c1` |
+| immutable image ID | `1398822442766466287` |
+| image digest | `sha256:87f99230b1723c0793ecb3e2097c9de612f0a53a8197a4bc27de3f9baa4c0314` |
+| profile digest | `sha256:c568f3f3d4cfbad0fda55b533531b5609dd9f45091eed74165b89a6dd3239ccf` |
+| control revision | `f14162831ccf4df4729580730922552bff656b27` |
+| bridge revision | `oa-managed-sandbox-bridge-staging-00006-ch8` |
+| bridge image | `oa-cloud-run-bridge:sbx09-34c30a6c6f` |
+
+These are staging evidence identities, not authorization to copy staging
+secrets or topology into production. Production remains separately isolated
+and must deploy exact reviewed production identities after the release gate.
 
 The operational profile uses
 `network-policy-ref://openagents/managed-sandbox/broker-only-v1`. Each
@@ -223,9 +240,12 @@ scripts/cloud/managed-sandbox-reconcile-live.ts
 It requires `--apply`, the live-cost owner gate, and one or more exact
 `--sandbox-ref` values. It never discovers or selects an owner resource by
 prefix, timestamp, prompt text, or provider inventory. For each exact ref it
-serially replays an active Create, Stop, Resume, or Delete reservation, settles
-an Interrupt that arrived after a terminal agent result as an explicit failed
-operation, then stops and deletes the resource. A provider Delete may be
+serially replays an active Create, Stop, Resume, or Delete reservation. If the
+resource still has a running turn, it issues one exact generation-fenced
+Interrupt and polls Inspect until a native terminal event makes the lifecycle
+idle or failed. It also settles an Interrupt that arrived after a terminal
+agent result as an explicit failed operation, then stops and deletes the
+resource. A provider Delete may be
 settled from `deleting` only after the independent GCE inventory reports zero
 managed-sandbox instances, firewall rules, and disks. It emits only sandbox-ref
 digests and aggregate inventory counts in its evidence file.
@@ -250,7 +270,8 @@ reconciliation so the durable lifecycle record also reaches `deleted`.
 
 ## Deployment inputs
 
-The service is default-off.
+Production remains default-off. Staging has both Worker gates enabled after
+the successful rollback/restore drill.
 Use `scripts/cloud/gcp-codex-control-deploy.sh --enable-managed-sandbox` to add
 the exact live profile to the control container.
 The deploy command requires the image project, exact image name, immutable
@@ -316,8 +337,10 @@ node and its restricted ingress rule were deleted after the run.
 
 SBX-02 component acceptance does not publish the route and does not prove the
 Box facade, a Codex or Claude turn, Desktop, Sarah, mobile, or web.
-SBX-09 owns the later independent end-to-end live acceptance and public
-rollout decision.
+SBX-09's producer-run end-to-end staging acceptance is recorded in
+[`docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json`](../../sol/evidence/2026-07-20-sbx09-live-acceptance.json).
+Independent assurance, owner observation, production rollout, and any public
+claim remain separate pending decisions.
 
 ### Desktop live acceptance
 
@@ -362,7 +385,16 @@ create cleanup, recovery-required cleanup, stop, resume, and delete.
 
 ## Rollback
 
-Remove `OA_MANAGED_SANDBOX_PROVISIONER=live_gce` from the control deployment to
+The tested Worker-level rollback removes both
+`MANAGED_SANDBOX_BOX_V1_ENABLED` and `MANAGED_SANDBOX_BROKER_ENABLED`. The
+2026-07-20 drill moved staging from `openagents-monolith-staging-00086-htr` to
+disabled revision `00087-4lq`, observed `/v1/me` change from an authenticated
+boundary (`401` for an invalid bearer) to absent (`404`), and kept compute,
+firewall, and disk inventory at zero. Restoring both flags produced
+`00088-bsr`, restored the `401` boundary, and still observed zero inventory.
+
+For a deeper provider rollback, remove
+`OA_MANAGED_SANDBOX_PROVISIONER=live_gce` from the control deployment to
 disable new managed-sandbox provider effects.
 Keep the state directory so a controlled reconciliation can clean existing
 ownership.

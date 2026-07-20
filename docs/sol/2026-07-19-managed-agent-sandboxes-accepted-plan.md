@@ -51,8 +51,8 @@ an adoption of Optibox source, or a second control plane.
 8. Sarah ProductSpec revision 4 owns the conversational action outcome.
    SBX-00 admits root authority revision 6 and Sarah revision 4 with eight closed
    actions.
-   Runtime admission still refuses mutation until SBX-07 lands the broker and
-   SBX-09 proves the live target. Sarah never
+   Production runtime admission still refuses mutation until SBX-07 lands the
+   broker and SBX-09 receives independent live-target acceptance. Sarah never
    receives generic `gcloud`, shell, database, topology, or container-admin
    access.
 9. Mobile revision 7, portable sessions revision 4, Desktop revision 7, and
@@ -100,8 +100,8 @@ or cleanup truth.
 | SBX-06 | [#9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | IDE project/agent graph integration                                   | SBX-04/05 plus IDE-08 #9036, IDE-10 #9038, and IDE-12 #9040 | complete, default-off Desktop consumer component accepted |
 | SBX-07 | [#9030](https://github.com/OpenAgentsInc/openagents/issues/9030) | Sarah lifecycle and dispatch broker                                   | SBX-00/04/05                                                | complete, default-off native broker component accepted    |
 | SBX-08 | [#9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | bounded mobile and web supervision                                    | SBX-06/07                                                   | complete, default-off controller components accepted      |
-| SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout                           | SBX-00 through SBX-08                                       | not started                                               |
-| SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2                        | SBX-09                                                      | not started                                               |
+| SBX-09 | [#9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independent live GCP acceptance and rollout                           | SBX-00 through SBX-08                                       | staging live matrix passed. Independent assurance and owner observation pending |
+| SBX-10 | [#9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | proven checkpoint/fork/private desktop Phase 2                        | SBX-09                                                      | blocked on SBX-09 independent disposition                 |
 
 The issues are native subissues of #9023. Each child owns one bounded claim.
 the epic is not a mutation claim. SBX-01, SBX-03, and the Assurance/model lane
@@ -109,6 +109,16 @@ may proceed in parallel only after SBX-00 freezes their shared schemas. SBX-02
 owns Cloud image and provisioner hot contracts. SBX-06 and SBX-07 may proceed
 in parallel after the runtime boundary is stable. SBX-09 is the only Phase 1
 live-acceptance and rollout gate.
+
+The producer-run SBX-09 staging matrix is recorded in
+[`2026-07-20-sbx09-live-acceptance.json`](./evidence/2026-07-20-sbx09-live-acceptance.json).
+The exact Box SDK, live GCE lifecycle, fault/cost matrix, Desktop and Sarah
+journeys, restart/reconnect, reconciliation, rollback, and final zero-residue
+observations passed. The aggregate deliberately records
+`independentAssurance=INCONCLUSIVE`: the evidence producer cannot satisfy the
+AssuranceSpec's independent-verifier boundary, and the owner has not yet
+recorded live observation. Production enablement, a public availability
+claim, issue closure, and SBX-10 activation therefore remain blocked.
 
 ## Phase 1 API boundary
 
@@ -145,8 +155,8 @@ consumed by IDE-13 #9041 and IDE-17 #9045 without claiming their broader exits.
 The implemented SBX-06 component retains the exact IDE-08 attachment and
 projects native managed lifecycle truth through main-owned, schema-decoded
 Desktop IPC. SBX-07 lands its authenticated Worker admission and command
-endpoints over the same native broker. They remain default-off, and packaged
-live acceptance remains gated by SBX-09.
+endpoints over the same native broker. Staging is now live-proven. Production
+and packaged release claims remain gated by SBX-09's independent disposition.
 
 ### Sarah
 
@@ -169,8 +179,9 @@ effective runtime, actor, attention, elapsed and idle time, lease, budget,
 structural event, safe outcome refs, and cleanup truth. Neither client receives
 the Box SDK, GCP client, prompt, runtime output, raw path, PTY, provider
 credential, generic shell, or lifecycle authority. A durable outcome is the
-only completion authority. SBX-09 still owns live rollout, and physical-device
-proof remains separate.
+only completion authority. SBX-09's staging journey is now observed, but
+production rollout still requires the independent assurance and
+owner-observation rows. Physical-device proof remains separate.
 
 ### Full Auto
 
@@ -221,7 +232,8 @@ provider account ran there. SBX-09 remains the only live acceptance and
 rollout gate. SBX-05 connects bounded files, commands, and artifacts to the
 private guest I/O route. It proves path, secret, quota, process, egress,
 digest, retention, and cleanup receipt faults at the component boundary. The
-guest driver and facade remain default-off until the live SBX-09 gate.
+guest driver and facade were default-off at component acceptance. Staging is
+now admitted. Production remains off pending the independent SBX-09 gate.
 
 ## Hot contracts
 

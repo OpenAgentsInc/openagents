@@ -1,0 +1,273 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx09_live_acceptance_aggregate.v1",
+  "capturedAt": "2026-07-20T11:39:27Z",
+  "environment": "staging",
+  "issue": 9033,
+  "verdicts": {
+    "stagingLiveAcceptance": "passed",
+    "phase1Implementation": "passed",
+    "independentAssurance": "inconclusive",
+    "publicReleaseGate": "blocked",
+    "productionRollout": "not_attempted",
+    "phase2Activation": "blocked"
+  },
+  "revisions": {
+    "aggregateParent": "860a31c3cc2f48a3435ac82c66d0704530fa6578",
+    "desktopInspectAndReconcileFix": "f06a8e9d7f21995974435286efbd5848d74ace36",
+    "sarahResumeAcceptanceFix": "7e805611f92034944f05e939abf57b6a02ba843b",
+    "boxLiveSource": "faccfe1d205dc15daae418a45215746878181b47",
+    "boxLiveWorker": "c124fc811c8a5c29f30a7050a06f0e3e824904cc",
+    "control": "f14162831ccf4df4729580730922552bff656b27",
+    "desktopWorker": "openagents-monolith-staging-00086-htr",
+    "bridge": "oa-managed-sandbox-bridge-staging-00006-ch8",
+    "rollbackDisabledWorker": "openagents-monolith-staging-00087-4lq",
+    "rollbackRestoredWorker": "openagents-monolith-staging-00088-bsr"
+  },
+  "runtimeIdentity": {
+    "project": "openagentsgemini",
+    "region": "us-central1",
+    "zone": "us-central1-a",
+    "targetRef": "target://openagents/google-cloud/managed-sandbox",
+    "profileRef": "profile.sbx.gce.e2-small.v1",
+    "provisionerRef": "provisioner-ref://openagents/oa-codex-control/gce-v1",
+    "machineClass": "e2-small",
+    "isolationClass": "gce_vm",
+    "networkPolicyRef": "network-policy-ref://openagents/managed-sandbox/broker-only-v1",
+    "imageName": "oa-msb-guest-sbx09-3dd83197c1",
+    "imageId": "1398822442766466287",
+    "imageDigest": "sha256:87f99230b1723c0793ecb3e2097c9de612f0a53a8197a4bc27de3f9baa4c0314",
+    "profileDigest": "sha256:c568f3f3d4cfbad0fda55b533531b5609dd9f45091eed74165b89a6dd3239ccf",
+    "controlPlaneInstanceRefDigest": "sha256:11fa8852eb440ca374ef2aba8cce151b54e3fb12f6275cd40a39fd5b5fe2bee8",
+    "bridgeImage": "us-central1-docker.pkg.dev/openagentsgemini/oa-cloud/oa-cloud-run-bridge:sbx09-34c30a6c6f"
+  },
+  "boxCompatibility": {
+    "passed": true,
+    "capturedAt": "2026-07-20T09:14:00.477Z",
+    "sdk": {
+      "package": "@asciidev/box-sdk",
+      "version": "0.0.24",
+      "license": "MIT",
+      "integrity": "sha512-w77vTWA+yrJ5O+FmchCkurjux1UZkQ5yeurnzX/FJTlQulEtj1xp0g/2cSh/GZWLXrgCV0exU99E+NyiilBeHA==",
+      "tarballSha256": "51ac532981c4791ab8662d800cd70b6f18d9a8a01abbd097c627bae3ae45aeb0"
+    },
+    "openApiSha256": "9ae1e0b7ded4a2d537bfa076f8e047baa2bdf7e3736de2cc397d349457c3cbac",
+    "translatorRef": "openagents.box_v1_translator.v1",
+    "artifactDigest": "sha256:5a8f497fc57c88329077f20ddb9ef79adc4bc17d038b3a456a1478db60b309bc",
+    "nativeEventCount": 10,
+    "maximumNativeEventSequence": 10,
+    "proof": {
+      "authentication": true,
+      "invalidTokenDenied": true,
+      "crossOwnerDenied": true,
+      "createReplay": true,
+      "updateReplay": true,
+      "fileRoundTrip": true,
+      "command": true,
+      "artifact": true,
+      "unsupportedTyped501": true,
+      "codexStructuralCompletion": true,
+      "claudeStructuralCompletion": true,
+      "orderedReconnect": true,
+      "longLivedBeyondControlWindow": true,
+      "controlRestartObserved": true,
+      "controlOutageObserved": true,
+      "controlReconnectObserved": true,
+      "interruptReplay": true,
+      "stopReplay": true,
+      "resumeReplay": true,
+      "staleGenerationCursorDenied": true,
+      "resumePersistence": true,
+      "outputQuotaEnforced": true,
+      "guestCrashObserved": true,
+      "guestCrashRecovery": true,
+      "expiredLeaseDenied": true,
+      "brokerCapabilityInitiallyAdmitted": true,
+      "brokerRevocationEnforced": true,
+      "deleteReplay": true
+    },
+    "emergencyCleanupAttempted": false,
+    "residue": {
+      "compute": 0,
+      "firewall": 0,
+      "scratch": 0,
+      "ingress": 0,
+      "grants": 0
+    }
+  },
+  "faultMatrix": {
+    "passed": true,
+    "capturedAt": "2026-07-20T09:21:32.711Z",
+    "proof": {
+      "ttlRefusal": true,
+      "budgetRefusal": true,
+      "capabilityQuotaRefusal": true,
+      "lostAcknowledgementReplay": true,
+      "duplicateReplay": true,
+      "idempotencyDriftRefusal": true,
+      "hardCapacityRefusal": true,
+      "programBudgetRefusal": true,
+      "ownerTenantIsolation": true,
+      "generationIsolation": true,
+      "cleanup": true
+    },
+    "measuredRunningMs": 124048,
+    "measuredCostMicrousd": 690,
+    "inventoryBeforeAndAfter": {
+      "managedInstances": 0,
+      "managedDisks": 0,
+      "managedFirewalls": 0,
+      "managedExternalIps": 0,
+      "managedServiceIdentityGrants": 0,
+      "managedCapabilityGrants": 0,
+      "retainedGuestImages": 11
+    }
+  },
+  "nativeLifecycle": {
+    "passed": true,
+    "capturedAt": "2026-07-20T09:31:17.369Z",
+    "journey": ["create", "probe", "stop", "resume", "probe", "stop", "delete"],
+    "finalGeneration": 2,
+    "cleanupObserved": true,
+    "measuredRunningMs": 207782,
+    "measuredCostMicrousd": 1155,
+    "emergencyCleanupAttempted": false,
+    "residue": {
+      "compute": 0,
+      "firewall": 0,
+      "scratch": 0,
+      "ingress": 0,
+      "grants": 0
+    }
+  },
+  "sarahJourney": {
+    "journeyProofPassed": true,
+    "aggregateFilePassed": false,
+    "capturedAt": "2026-07-20T10:54:39.971Z",
+    "sourceRevision": "7e805611f92034944f05e939abf57b6a02ba843b",
+    "ownerRefDigest": "sha256:7bc530262a6ed6114051ecf6b0079f99c8d02f59eabf81ce3ce8e541e9a58941",
+    "sandboxRefDigest": "sha256:3d79a6a223f7d8b2d03f863b2ed5c1112dddca2b66ca8dfb8310749c7fb07988",
+    "terminalReceiptDigest": "sha256:b059af00eae3ba4a6d6bfa6bfb4d7b0046e0ef0a21489ac0ceca5a45e07f3cea",
+    "proof": {
+      "exactEightToolInventory": true,
+      "noGenericAdminTool": true,
+      "authorityCreate": true,
+      "ownerScopedList": true,
+      "inspect": true,
+      "longRunningDispatch": true,
+      "orderedActivity": true,
+      "quietNotTerminal": true,
+      "interruptReplay": true,
+      "terminalReceipt": true,
+      "stop": true,
+      "resume": true,
+      "deleteCleanup": true,
+      "crossOwnerDeniedBeforeEffect": true
+    },
+    "concurrentResidueDisposition": {
+      "reason": "A separate signed-in Desktop consumer owned one active sandbox when the global oracle ran; the Sarah-owned resource was already deleted.",
+      "laterExactReconciliationPassed": true,
+      "finalGlobalInventory": {
+        "compute": 0,
+        "firewall": 0,
+        "scratch": 0
+      }
+    }
+  },
+  "desktopJourney": {
+    "passed": true,
+    "capturedAt": "2026-07-20T11:35:17.302Z",
+    "sourceRevision": "860a31c3cc2f48a3435ac82c66d0704530fa6578",
+    "ownerRefDigest": "sha256:7bc530262a6ed6114051ecf6b0079f99c8d02f59eabf81ce3ce8e541e9a58941",
+    "projectRefDigest": "sha256:79e1046f3de7dbef0b350b930384758ec6b70627b3db4336506562d8928df0bb",
+    "sandboxRefDigest": "sha256:8cf635964d37ee50a0c4428b3016c625f910444544b48c6ca8e4ff34159d312c",
+    "terminalReceiptDigest": "sha256:fb96af8200d1429d454a919fff2a3d5031cb04304b6589cc09d0451039648b0b",
+    "proof": {
+      "httpAdmission": true,
+      "exactTarget": true,
+      "create": true,
+      "ownerScopeDeniedBeforeEffect": true,
+      "identityContinuity": true,
+      "longRunningDispatch": true,
+      "quietNotTerminal": true,
+      "orderedEvents": true,
+      "interrupt": true,
+      "terminalReceipt": true,
+      "stop": true,
+      "resume": true,
+      "deleteCleanup": true,
+      "noCredentialInSnapshot": true,
+      "sourceAttachment": true
+    },
+    "emergencyCleanupAttempted": false,
+    "before": { "compute": 0, "firewall": 0, "scratch": 0, "ingress": 0 },
+    "after": { "compute": 0, "firewall": 0, "scratch": 0, "ingress": 0 }
+  },
+  "reconciliation": {
+    "defaultOff": true,
+    "exactSandboxRefsRequired": true,
+    "ownerGateRequired": true,
+    "runningTurnInterruptAndTerminalObservation": true,
+    "observations": [
+      {
+        "capturedAt": "2026-07-20T10:41:49.018Z",
+        "kind": "sarah_failed_run",
+        "passed": true,
+        "before": { "compute": 1, "firewall": 5, "scratch": 1 },
+        "after": { "compute": 0, "firewall": 0, "scratch": 0 }
+      },
+      {
+        "capturedAt": "2026-07-20T11:03:12.503Z",
+        "kind": "desktop_orphaned_projections",
+        "passed": true,
+        "before": { "compute": 1, "firewall": 5, "scratch": 1 },
+        "after": { "compute": 0, "firewall": 0, "scratch": 0 }
+      },
+      {
+        "capturedAt": "2026-07-20T11:18:31.469Z",
+        "kind": "desktop_running_turn",
+        "passed": true,
+        "before": { "compute": 1, "firewall": 5, "scratch": 1 },
+        "after": { "compute": 0, "firewall": 0, "scratch": 0 }
+      }
+    ]
+  },
+  "rollback": {
+    "passed": true,
+    "capturedAt": "2026-07-20T11:38:40Z",
+    "before": {
+      "revision": "openagents-monolith-staging-00086-htr",
+      "boxV1Enabled": true,
+      "brokerEnabled": true,
+      "invalidBearerHttpStatus": 401
+    },
+    "disabled": {
+      "revision": "openagents-monolith-staging-00087-4lq",
+      "boxV1Enabled": false,
+      "brokerEnabled": false,
+      "invalidBearerHttpStatus": 404,
+      "inventory": { "compute": 0, "firewall": 0, "scratch": 0 }
+    },
+    "restored": {
+      "revision": "openagents-monolith-staging-00088-bsr",
+      "boxV1Enabled": true,
+      "brokerEnabled": true,
+      "invalidBearerHttpStatus": 401,
+      "inventory": { "compute": 0, "firewall": 0, "scratch": 0 }
+    }
+  },
+  "assuranceDisposition": {
+    "producerMayVerify": false,
+    "independentReproductionRecorded": false,
+    "ownerDirectionRecorded": true,
+    "ownerLiveObservationRecorded": false,
+    "verdict": "INCONCLUSIVE",
+    "releaseEffect": "Staging acceptance may inform review, but production enablement, a public availability claim, issue closure, and SBX-10 activation remain blocked until an independent reviewer and the owner record the required dispositions."
+  },
+  "limitations": [
+    "The aggregate contains public-safe digests and observations, not raw sandbox refs, credentials, topology secrets, prompts, or runtime output.",
+    "The Sarah journey's own lifecycle proof passed, but its first global inventory overlapped an independently owned Desktop sandbox; later exact reconciliation restored global zero.",
+    "No production managed-sandbox flag, image/profile binding, control revision, bridge revision, or public promise was changed by this acceptance run.",
+    "Snapshot, fork, private desktop ingress, public VNC, secret cloning, process-memory migration, and cross-machine Full Auto admission remain unavailable.",
+    "Automated repo checks and producer-run live harnesses do not satisfy the AssuranceSpec's independent-review boundary."
+  ]
+}

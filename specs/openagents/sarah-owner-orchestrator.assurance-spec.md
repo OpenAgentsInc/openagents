@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.sarah.owner.orchestrator"
-assurance_revision: 4
+assurance_revision: 5
 title: "Sarah Owner Orchestrator AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -12,8 +12,9 @@ author: "OpenAgents"
 
 Revision 4 rebinds the unchanged revision-4 Sarah intent to the exact authority
 metadata bytes admitted by SBX-00 and designs SARAH-AC-21 through SARAH-AC-23.
-The earlier Sarah obligations remain honestly `needs_design`. This proposal
-claims neither execution, independent verification, admission, nor release.
+The earlier Sarah obligations remain honestly `needs_design`. Producer-run
+live observations now exist for SARAH-AC-21 through SARAH-AC-23, but this
+revision claims neither independent verification, admission, nor release.
 
 ## Subject
 
@@ -75,8 +76,9 @@ Every executable ProductSpec criterion is in assurance scope. No criterion is si
 ## Environments
 
 The managed-sandbox obligations use the same proposed cross-surface live rung
-as the managed-sandbox AssuranceSpec. It is an environment design, not a claim
-that the broker or live journey exists.
+as the managed-sandbox AssuranceSpec. The broker and producer-run live journey
+now exist, but the environment remains unadmitted until an independent
+verifier and the owner record their dispositions.
 
 ```assurancespec-environments
 {
@@ -90,7 +92,9 @@ that the broker or live journey exists.
     "candidate_artifact_refs": [
       "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
       "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
-      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json",
+      "apps/openagents.com/workers/api/scripts/managed-sandbox-sarah-live-acceptance.ts",
+      "docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json"
     ],
     "declared_scripts": [],
     "diagnostics": [
@@ -335,7 +339,9 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "candidate_artifact_refs": [
       "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
       "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
-      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json",
+      "apps/openagents.com/workers/api/scripts/managed-sandbox-sarah-live-acceptance.ts",
+      "docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json"
     ],
     "criterion_refs": [
       "SARAH-AC-21"
@@ -368,7 +374,9 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "candidate_artifact_refs": [
       "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
       "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
-      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json",
+      "apps/openagents.com/workers/api/scripts/managed-sandbox-sarah-live-acceptance.ts",
+      "docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json"
     ],
     "criterion_refs": [
       "SARAH-AC-22"
@@ -401,7 +409,9 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "candidate_artifact_refs": [
       "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
       "apps/openagents.com/workers/api/src/managed-sandbox-desktop-routes.test.ts",
-      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json",
+      "apps/openagents.com/workers/api/scripts/managed-sandbox-sarah-live-acceptance.ts",
+      "docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json"
     ],
     "criterion_refs": [
       "SARAH-AC-23"

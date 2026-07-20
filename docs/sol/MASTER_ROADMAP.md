@@ -2,8 +2,8 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-19
-- Revision: 124
+- Updated: 2026-07-20
+- Revision: 125
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: Full Auto epic #8967 is the active P0 product program,
   #8978/#8979 are its remaining assurance/release chain. Managed-sandbox epic
@@ -121,8 +121,10 @@ Portable movement and cross-machine Full Auto stay separately gated.
 SBX-00 through SBX-08 are code-landed. The native Worker broker serves closed
 Sarah tools, Desktop endpoints, and bounded mobile and authenticated-web routes.
 The clients share one safe schema and exact-byte outboxes. Only durable native
-outcomes complete actions. The broker flag stays off until SBX-09 proves the
-live GCP, cleanup, cost, rollback, packaged-client, and owner-thread journeys.
+outcomes complete actions. SBX-09's producer-run staging matrix now proves live
+GCP, cleanup, cost, rollback, Desktop, and Sarah journeys. Production and
+public claims stay off until an independent verifier and the owner record the
+remaining AssuranceSpec dispositions.
 
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
@@ -227,7 +229,7 @@ there is no remaining AssuranceSpec program queue.
 ## Owner decisions
 
 1. **The ProductSpec-native Codex Workroom MVP is the accepted baseline.** Its signed local-first Desktop journey stays proven, closed R0–R7 successors do not silently reopen.
-2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 managed-sandbox broker is code-landed and default-off. Mutation remains unavailable until SBX-09 admits the live target and rollout flag.
+2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 managed-sandbox broker is code-landed and staging-proven. Production mutation remains unavailable until SBX-09 receives independent assurance, owner observation, and the exact rollout flag disposition.
 3. **Desktop is the deep workbench, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** Unpacketized expansion cannot preempt Full Auto.
 4. **Retained UI uses Effect Native.** Electron, React Native/Expo, DOM, native, and canvas are hosts/renderers over shared typed components and intents.
 5. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes, local stores remain bounded caches/offline queues.
@@ -562,7 +564,7 @@ dispatch and exact plans own dependency order.
 | Program              | Open issues                                                                 | Owning plan                                                          |
 | -------------------- | --------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | Basic IDE closure    | #9014                                                                       | `docs/ide/ROADMAP.md`                                                |
-| Managed sandboxes    | #9023, #9027, #9030, #9031, #9032, #9033                                    | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`                |
+| Managed sandboxes    | #9023, #9032, #9033                                                         | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`                |
 | Agent IDE and parity | #9035, #9038, #9039, #9040, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                                |
 | ASSURE-REPO          | #9055, #9056, #9057, #9058, #9059, #9060                                    | `specs/openagents/assure-repo-codebase-verification.product-spec.md` |
 
@@ -589,9 +591,9 @@ following issues and accepted ledgers remain exact successor authority:
    admission, #8979 consumes the dogfood/assurance evidence plus exact signed
    release identity. Do not reroute these remaining gates into another runtime
    rewrite.
-3. Start #9023 at SBX-00 #9029 while Full Auto remains P0. SBX-06 waits for
-   IDE-08/10/12, Sarah mutation waits for SBX-00/07, and live/public claims
-   wait for SBX-09.
+3. Keep #9023 ordered through SBX-09 before activating SBX-10. The producer-run
+   live matrix is green, while production/public claims and Phase 2 wait for
+   the independent assurance and owner-observation dispositions.
 4. Retain closed #8980's simulator receipt as bounded first-screen evidence.
    Remote run control, report review, and physical-device acceptance require
    their next exact packet, do not infer them from that projection.

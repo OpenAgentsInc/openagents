@@ -19754,7 +19754,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-02-managed-sandbox-runtime.md",
-      "sha256": "4ac84b79bec55d7d52bd102d5012367c9481a55f91166360690b47004cc63724",
+      "sha256": "4f216edc55376ffdee481f8cca3b8228fdace79ebb1eff2cc8399e9eb6f5b60c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -21242,12 +21242,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -21280,12 +21278,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -26906,7 +26902,7 @@
     },
     {
       "path": "docs/ide/ROADMAP.md",
-      "sha256": "acbfc268d746a18e4ef8c4cfae8be0bc1fa01017c71c9d755001d1f037144ae0",
+      "sha256": "0b7590ccf355c1ba3b523e2429e722abef17ccdf25ace9d397fa034b9ec8e335",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -38452,7 +38448,7 @@
     },
     {
       "path": "docs/sarah/2026-07-19-sarah-activation-gap-analysis.md",
-      "sha256": "1d1cfdd8f3f2d5d89d33c5ab7c962603ad017c616ba77aa490cc66d5517a9038",
+      "sha256": "9b65c2af20f93f35f634922bbc83e7060fd972b79bc99a4c47b5de6e74059069",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -40294,7 +40290,7 @@
     },
     {
       "path": "docs/sol/2026-07-19-managed-agent-sandboxes-accepted-plan.md",
-      "sha256": "a20455a1e73780831cd1db69cf8133e856436a8128fba9174d08100b4532709a",
+      "sha256": "456ef755355f9618a6ec7c16da38ec49dae1db31101597784a530833cdc832de",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40376,7 +40372,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "1d23a61f1e6f7952306182978a61db88ad72da366b62caed6cc0f9be6fa9ccc8",
+      "sha256": "09c8d4b869124290d378063cf6833674fabe5df899e700599a22ec5e480018d4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -49220,7 +49216,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
-      "sha256": "de54bcf3150aadef28373db11a16759c416023963381de0a2b2740432404c56d",
+      "sha256": "73ce53d9ba9befd1e4747d9a158c56287cad1f76bb6c31d3b1e10f1ce62511c6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -49283,7 +49279,7 @@
     },
     {
       "path": "specs/openagents/sarah-owner-orchestrator.assurance-spec.md",
-      "sha256": "1047e076048b18f3649111ce6be38363190991ecea16185fd4eac72231881d60",
+      "sha256": "1f632c78454c53a161d0c73053d0832023967b6183cb49d998f9b98d1d59858a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

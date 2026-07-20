@@ -375,8 +375,8 @@ The post-basic-IDE implementation program is epic
 | [SBX-05 #9026](https://github.com/OpenAgentsInc/openagents/issues/9026) | implemented root-confined files, bounded process-tree commands, content-addressed artifacts, quotas, and public-safe receipts behind the default-off private guest route |
 | [SBX-06 #9027](https://github.com/OpenAgentsInc/openagents/issues/9027) | implemented the default-off, schema-decoded managed placement component and visible create/inspect/interrupt/stop/resume/delete projection consumed later by IDE-13 #9041 and IDE-17 #9045. It does not claim their broader exits or SBX-09 live acceptance |
 | [SBX-07 #9030](https://github.com/OpenAgentsInc/openagents/issues/9030) and [SBX-08 #9031](https://github.com/OpenAgentsInc/openagents/issues/9031) | implemented the default-off Sarah broker and bounded mobile/authenticated-web controllers over the same lifecycle authority. They do not create client-local runtime models, and SBX-09 remains the live gate |
-| [SBX-09 #9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | independently proves live GCP, SDK, Desktop, Sarah, isolation, cleanup, cost, and rollback before a release claim |
-| [SBX-10 #9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | defers checkpoint/fork/private desktop until Phase 1 is accepted and their distinct semantics pass |
+| [SBX-09 #9033](https://github.com/OpenAgentsInc/openagents/issues/9033) | producer-run staging GCP, SDK, Desktop, Sarah, isolation, cleanup, cost, reconciliation, and rollback are green. Independent assurance and owner observation still block release |
+| [SBX-10 #9032](https://github.com/OpenAgentsInc/openagents/issues/9032) | remains blocked until SBX-09 is independently accepted, then owns checkpoint/fork/private desktop semantics |
 
 The canonical intent and issue order are
 [`managed-agent-sandboxes.product-spec.md`](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
@@ -764,7 +764,9 @@ authenticated web decode one shared safe lifecycle/runtime/budget/cleanup
 schema and send exact version and generation-bound controls through durable
 outboxes. The implementation does not complete the broader code-review,
 publish/revoke, public `CodeShareBundle`, IDE-13, or IDE-14 exits. It remains
-default-off until SBX-09 live acceptance.
+default-off for production until SBX-09 independent assurance and owner
+observation. The producer-run staging controller journey is green and bound in
+the SBX-09 aggregate evidence.
 
 Exit: Desktop/mobile/web continuation and publish/revoke journeys pass without
 private-state leakage.
@@ -986,8 +988,9 @@ candidate. It preserved the TypeScript-only project-language limit, every
 later packet gap, and the epic's separate owner-acceptance boundary.
 
 IDE-08, IDE-09, IDE-10, IDE-11, and IDE-12 are implemented with exact evidence records.
-SBX-06 has also landed the default-off managed placement component without
-bypassing IDE-13, IDE-17, or SBX-09. The next packet is IDE-13: make project
+SBX-06 has also landed the managed placement component, and SBX-09 has now
+proved its staging Desktop journey and zero-residue cleanup without bypassing
+IDE-13, IDE-17, or the independent release gate. The next IDE packet is IDE-13: make project
 capabilities portable without combining placement, verification, delivery, or
 owner-acceptance authority.
 
@@ -995,5 +998,6 @@ In parallel at P1, managed-sandbox epic
 [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023) has begun with
 its contract freeze, durable lifecycle authority, runtime/guest components,
 and Desktop placement consumer. SBX-07 and SBX-08 have landed the default-off
-Sarah broker and bounded mobile/authenticated-web controller components. No
-managed placement release claim may bypass SBX-09 live acceptance.
+Sarah broker and bounded mobile/authenticated-web controller components. The
+SBX-09 producer matrix is green. No managed placement release claim may bypass
+its still-pending independent assurance and owner-observation disposition.

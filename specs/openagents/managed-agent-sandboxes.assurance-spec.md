@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.managed.agent.sandboxes"
-assurance_revision: 3
+assurance_revision: 4
 title: "OpenAgents Managed Agent Sandboxes AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -10,9 +10,11 @@ author: "OpenAgents"
 
 ## Assurance Objective
 
-This revision designs one falsifiable obligation for every managed-sandbox
-criterion. Contract, staged-runtime, and live GCP rungs remain separate:
-designed proof is not executed proof, and no fixture can satisfy a live gate.
+This revision binds the producer-run SBX-09 staging observations without
+rounding them up to independent acceptance. Contract, staged-runtime, and live
+GCP rungs remain separate: designed proof is not executed proof, no fixture
+can satisfy a live gate, and producer evidence cannot satisfy an independent
+verifier boundary.
 
 ## Subject
 
@@ -99,7 +101,8 @@ are satisfied, rather than silently excluded.
 
 Four proposed profiles preserve the proof ladder: local contract/model tests,
 staged runtime fault tests, owner-gated live GCP, and the cross-surface live
-Desktop/Sarah journey. None is admitted by this proposal.
+Desktop/Sarah journey. Producer observations now exist for every SBX-09 live
+row, but none is independently admitted by this revision.
 
 ```assurancespec-environments
 {
@@ -126,7 +129,11 @@ Desktop/Sarah journey. None is admitted by this proposal.
       "apps/openagents.com/workers/api/src/managed-sandbox-broker.test.ts",
       "apps/openagents.com/workers/api/src/managed-sandbox-desktop-routes.test.ts",
       "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
-      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json"
+      "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json",
+      "docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json",
+      "scripts/cloud/managed-sandbox-live-acceptance.ts",
+      "apps/openagents-desktop/scripts/managed-sandbox-live-acceptance.ts",
+      "apps/openagents.com/workers/api/scripts/managed-sandbox-sarah-live-acceptance.ts"
     ],
     "declared_scripts": [],
     "diagnostics": [
@@ -145,8 +152,8 @@ Desktop/Sarah journey. None is admitted by this proposal.
 
 Every obligation declares its domain, technique, environment, oracle, negative
 control, evidence rung, independent verifier boundary, and activation gate.
-The paths for later SBX issues are design targets, not claims that those files
-or observations exist today.
+Candidate paths are evidence inputs, not verdicts. The live aggregate records
+producer observations and an explicit inconclusive independent disposition.
 
 ```assurancespec-obligations
 [
@@ -702,7 +709,13 @@ or observations exist today.
     "technique": "deterministic_fault_matrix"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json",
+      "scripts/cloud/managed-sandbox-live-acceptance.ts",
+      "scripts/cloud/managed-sandbox-sbx09-fault-acceptance.ts",
+      "apps/openagents-desktop/scripts/managed-sandbox-live-acceptance.ts",
+      "apps/openagents.com/workers/api/scripts/managed-sandbox-sarah-live-acceptance.ts"
+    ],
     "criterion_refs": [
       "MSB-AC-18"
     ],
