@@ -1,0 +1,153 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-evidence.v1",
+  "issue": "IDE-13",
+  "candidateCommitSha": "8c30629bb9116ad0f15561b33d6194c8d5360895",
+  "generatedAt": "2026-07-20T07:23:04.962Z",
+  "environment": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.13.1"
+  },
+  "model": {
+    "maximumDepth": 12,
+    "exploredStates": 14,
+    "exploredTransitions": 252,
+    "staleWriteAttempts": 80,
+    "counterexamples": 0,
+    "passed": true
+  },
+  "metrics": [
+    {
+      "operation": "bounded-transition-model",
+      "repetitions": 100,
+      "p50Ms": 0.05591699999999378,
+      "p95Ms": 0.08629199999998605,
+      "p99Ms": 0.09141600000000949,
+      "thresholdP95Ms": 5,
+      "thresholdP99Ms": 10,
+      "passed": true
+    },
+    {
+      "operation": "checkpoint-schema-decode",
+      "repetitions": 1000,
+      "p50Ms": 0.009417000000013331,
+      "p95Ms": 0.023500000000012733,
+      "p99Ms": 0.055292000000008557,
+      "thresholdP95Ms": 1,
+      "thresholdP99Ms": 2,
+      "passed": true
+    }
+  ],
+  "placementCohorts": [
+    {
+      "targetClass": "owner_local",
+      "evidenceClass": "real_local",
+      "operatingSystem": "darwin",
+      "architecture": "arm64",
+      "adapterRef": "adapter.desktop.local",
+      "capabilityState": "ready",
+      "custody": "owner_device",
+      "networkDestinations": [],
+      "dataDestinations": [
+        "owner_device"
+      ],
+      "retentionSeconds": 3600,
+      "costFact": "no incremental provider cost",
+      "result": "Real local Node process ran the bounded model and decoded checkpoint boundary. It did not prove a cross-host move."
+    },
+    {
+      "targetClass": "owner_managed",
+      "evidenceClass": "deterministic_simulator",
+      "operatingSystem": "unknown",
+      "architecture": "unknown",
+      "adapterRef": "adapter.owner-managed.simulator",
+      "capabilityState": "unverified",
+      "custody": "owner_managed",
+      "networkDestinations": [],
+      "dataDestinations": [],
+      "retentionSeconds": 0,
+      "costFact": "not measured",
+      "result": "Contract and coordinator simulator only. No real owner-managed host cohort ran."
+    },
+    {
+      "targetClass": "openagents_managed",
+      "evidenceClass": "deterministic_simulator",
+      "operatingSystem": "linux",
+      "architecture": "unknown",
+      "adapterRef": "adapter.openagents-managed.simulator",
+      "capabilityState": "unverified",
+      "custody": "openagents_managed",
+      "networkDestinations": [],
+      "dataDestinations": [],
+      "retentionSeconds": 0,
+      "costFact": "not measured",
+      "result": "Existing managed-placement projection plus coordinator simulator only. SBX-09 live acceptance is absent."
+    },
+    {
+      "targetClass": "managed_provider",
+      "evidenceClass": "not_run",
+      "operatingSystem": "unknown",
+      "architecture": "unknown",
+      "adapterRef": "adapter.managed-provider.unadmitted",
+      "capabilityState": "unsupported",
+      "custody": "unverified",
+      "networkDestinations": [],
+      "dataDestinations": [],
+      "retentionSeconds": 0,
+      "costFact": "not applicable",
+      "result": "No audited provider is admitted or claimed."
+    }
+  ],
+  "faultCoverage": [
+    {
+      "fault": "stale generation command",
+      "evidence": "model",
+      "result": "passed",
+      "evidenceRef": "packages/portable-session-contract/src/ide13-model.test.ts"
+    },
+    {
+      "fault": "destination attach before source revocation",
+      "evidence": "model",
+      "result": "passed",
+      "evidenceRef": "packages/portable-session-contract/src/ide13-model.test.ts"
+    },
+    {
+      "fault": "duplicate, lost-ack, and replay",
+      "evidence": "model",
+      "result": "passed",
+      "evidenceRef": "packages/portable-session-contract/src/ide13-model.test.ts"
+    },
+    {
+      "fault": "cancel after destination stage and before source revoke",
+      "evidence": "regression",
+      "result": "passed",
+      "evidenceRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts"
+    },
+    {
+      "fault": "real network partition at each transition",
+      "evidence": "not_run",
+      "result": "gap",
+      "evidenceRef": "github.com/OpenAgentsInc/openagents/issues/9041"
+    },
+    {
+      "fault": "real provider eviction and older recovery-point failback",
+      "evidence": "not_run",
+      "result": "gap",
+      "evidenceRef": "github.com/OpenAgentsInc/openagents/issues/9041"
+    }
+  ],
+  "security": {
+    "forbiddenMaterialProjected": false,
+    "optimisticAuthorityProjected": false,
+    "staleGenerationAccepted": false,
+    "rawCredentialProjected": false
+  },
+  "implementationChecksPassed": true,
+  "acceptancePassed": false,
+  "remainingGaps": [
+    "Real owner-managed, OpenAgents-managed, and admitted-provider move cohorts did not run.",
+    "The complete transition fault-injection, restart, teardown, and older-recovery-point matrix did not run on real placements.",
+    "Packaged macOS, Windows, and Linux move journeys and independent owner or AssuranceSpec review are absent.",
+    "End-to-end p50, p95, and p99 quiesce, upload, redeem, attach, helper readiness, failback, resource, and size curves are absent."
+  ]
+}

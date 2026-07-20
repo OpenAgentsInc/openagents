@@ -2438,7 +2438,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/portable-session-contract (2 tracked test files)"
+          "ref": "packages/portable-session-contract (4 tracked test files)"
         },
         {
           "type": "behavior-contract",
