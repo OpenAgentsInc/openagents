@@ -100,6 +100,7 @@ const AFS_PACKAGES = [
   "apple-fm-runtime",
   "agent-surface",
   "dse",
+  "agent-experience-memory",
 ] as const;
 
 const AFS_PACKAGE_NAMES: Readonly<Record<(typeof AFS_PACKAGES)[number], string>> = {
@@ -109,6 +110,7 @@ const AFS_PACKAGE_NAMES: Readonly<Record<(typeof AFS_PACKAGES)[number], string>>
   "apple-fm-runtime": "@openagentsinc/apple-fm-runtime",
   "agent-surface": "@openagentsinc/agent-surface",
   dse: "@openagentsinc/dse",
+  "agent-experience-memory": "@openagentsinc/agent-experience-memory",
 };
 
 /**

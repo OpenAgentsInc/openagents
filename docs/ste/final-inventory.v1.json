@@ -15090,6 +15090,28 @@
       }
     },
     {
+      "path": "docs/apple-fm/2026-07-20-afs-10-owner-local-experience-memory.md",
+      "sha256": "86de53008e1fb9fd22953cee1e72207445115b86f78c422fa4f96fe6f58c575a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-07-20-afs-11-release-evidence.md",
       "sha256": "ace0a24c6d5aa749b5543fc538eb2d6997d7eca55323b8b418258db50ea7c672",
       "reason": "Immutable historical or evidence source data",
@@ -46112,6 +46134,28 @@
     {
       "path": "packages/agent-client-runtime-bridge/README.md",
       "sha256": "3b4627884efc37ca2e54ccdb5ff5dabf5e7e3699e513637e4b9d963608a64e87",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/agent-experience-memory/README.md",
+      "sha256": "cc156b689eaef11ec3cf4162c1c6b2eecf92c16d84657937973895de5b90776e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
