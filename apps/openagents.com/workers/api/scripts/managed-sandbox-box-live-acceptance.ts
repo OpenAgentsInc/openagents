@@ -786,7 +786,7 @@ try {
   }
   if (
     brokerAfterDelete.status !== 403 ||
-    brokerAfterDeleteBody.error !== 'permission_denied'
+    brokerAfterDeleteBody.error !== 'capability_revoked'
   ) {
     throw new Error(
       'deleted resource did not revoke its signed broker capability',
