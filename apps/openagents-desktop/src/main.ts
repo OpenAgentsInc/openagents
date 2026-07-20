@@ -147,6 +147,7 @@ import {
   ClaudeLocalQueueFollowupChannel,
   ClaudeLocalStartChannel,
   ClaudeLocalSteerChildChannel,
+  type ClaudeLocalEvent,
   decodeClaudeLocalAnswerQuestionRequest,
   decodeClaudeLocalInterruptRequest,
   decodeClaudeLocalQueueFollowupRequest,
@@ -322,7 +323,12 @@ import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { desktopAfsTurnKernelEnabled, installDesktopTurnKernel } from "./turn/desktop-turn-main.ts"
 import { makeDesktopAppleFmProviderRegistry } from "./turn/desktop-apple-fm-provider.ts"
 import type { AppleFmAvailableAgent } from "./turn/apple-fm-prompt.ts"
-import { makeCodexProviderRegistry, type CodexLaneReadiness } from "./turn/desktop-codex-provider.ts"
+import {
+  makeCodexProviderRegistry,
+  makeDelegateProviderRegistry,
+  type CodexLaneReadiness,
+  type CodexLaneTurnResult,
+} from "./turn/desktop-codex-provider.ts"
 import {
   filterLocallyOwnedCodexHistoryCatalog,
   filterLocallyOwnedCodexHistorySearch,
@@ -1361,6 +1367,11 @@ let appleFmHostRef: AppleFmHost | null = null
 // codex delegation turn through the existing lane once they exist.
 let codexLocalRuntimeRef: ReturnType<typeof makeCodexLocalRuntime> | null = null
 let codexLocalLaneRef: ProviderLane<null> | null = null
+// #9091: the claude-local and Grok ACP lanes are constructed later in this
+// module; resolve them lazily so a router recommendation can start ONE real
+// Claude/Grok delegation turn through the SAME lane the picker uses.
+let claudeLocalDelegateLaneRef: ProviderLane<Readonly<{ skillName: string | null }>> | null = null
+let grokDelegateLaneRef: ProviderLane<null> | null = null
 const codexDelegationReadiness = async (): Promise<CodexLaneReadiness> => {
   const runtime = codexLocalRuntimeRef
   if (runtime === null) return { ready: false, unavailableReason: "not_ready" }
@@ -1375,28 +1386,79 @@ const codexDelegationReadiness = async (): Promise<CodexLaneReadiness> => {
     return { ready: false, unavailableReason: "not_ready" }
   }
 }
-// AFS-04 follow-up: the host-owned connected-agent snapshot the on-device Apple
-// FM router prompt names. It is resolved lazily at turn time from the SAME
-// main-owned lane readiness the boot sequence and the delegation router use
-// (never renderer input): codex readiness for the delegate lane, the provider
-// lane registry for the Claude/Grok peers. Only codex `canDelegate` today —
-// AFS-04 wires codex first; the prompt offers a delegation JSON only for
-// delegate-capable agents, so the others are named but never hand-off targets.
-// `providerLaneEntries` is declared later in this module but only referenced
-// when a turn runs (after module init), so the forward reference is safe.
+// #9091: MAIN-OWNED delegate lane readiness for Claude Code and Grok, derived
+// from the SAME provider lane registry the boot sequence and picker use (never
+// renderer input). A lane is delegation-ready only when it is admitted AND
+// authenticated; anything else maps to the honest CodexLaneReadiness refusal
+// reason so the router refuses rather than fakes a start. `providerLaneEntries`
+// is declared later but only ever read at turn time (after module init), so the
+// forward reference is safe.
+const delegateLaneReadiness = async (laneRef: string): Promise<CodexLaneReadiness> => {
+  try {
+    const entries = await providerLaneEntries()
+    const entry = entries.find((candidate) => candidate.laneRef === laneRef)
+    if (entry === undefined) return { ready: false, unavailableReason: "not_ready" }
+    if (entry.admission !== "admitted") return { ready: false, unavailableReason: "policy_denied" }
+    if (entry.authentication !== "ready") return { ready: false, unavailableReason: "no_verified_account" }
+    return { ready: true }
+  } catch {
+    return { ready: false, unavailableReason: "not_ready" }
+  }
+}
+const claudeDelegationReadiness = (): Promise<CodexLaneReadiness> => delegateLaneReadiness("claude-local")
+const grokDelegationReadiness = (): Promise<CodexLaneReadiness> => delegateLaneReadiness("acp:grok-cli")
+// #9091: run ONE real delegation turn on the given owner-local lane, in the
+// background full-auto (no renderer to answer questions), streaming the frozen
+// ClaudeLocalEvent envelope through `emit`. Shared by the codex, claude, and
+// grok delegate providers so every lane folds into the SAME kernel projection
+// and redaction boundary. The host lane owns account/model/history; the kernel
+// provider only starts and observes.
+const runDelegateLaneTurn = async <Context>(
+  lane: ProviderLane<Context> | null,
+  input: {
+    readonly requestRef: string
+    readonly threadRef: string
+    readonly message: string
+    readonly emit: (event: ClaudeLocalEvent) => void
+  },
+): Promise<CodexLaneTurnResult> => {
+  if (lane === null) return { ok: false, reason: "session_failed", detail: "delegate lane not ready" }
+  const request = decodeClaudeLocalStartRequest({
+    turnRef: input.requestRef.slice(0, 120),
+    threadRef: input.threadRef,
+    message: input.message,
+    fullAuto: true,
+  })
+  if (request === null) return { ok: false, reason: "session_failed", detail: "invalid delegation request" }
+  const admission = lane.admit(request)
+  if (!admission.ok) return { ok: false, reason: "session_failed", detail: admission.error }
+  const result = await lane.runTurn({
+    request,
+    model: admission.model,
+    context: admission.context,
+    history: [],
+    message: input.message,
+    background: true,
+    emit: input.emit,
+  })
+  return result.ok ? { ok: true, text: result.text } : { ok: false, reason: result.reason, detail: result.detail }
+}
+// AFS-04 follow-up + #9091: the host-owned connected-agent snapshot the
+// on-device Apple FM router prompt names. It is resolved lazily at turn time
+// from the SAME main-owned lane readiness the boot sequence and the delegation
+// router use (never renderer input). Codex, Claude Code, and Grok are now all
+// delegate-capable, so the prompt offers each ready one a route-recommendation
+// JSON hand-off template (per-agent candidate string) via the generic prompt
+// builder; an unavailable agent is named-but-not-offered, never faked.
 const resolveAppleFmAvailableAgents = async (): Promise<ReadonlyArray<AppleFmAvailableAgent>> => {
   const codex = await codexDelegationReadiness()
   const agents: AppleFmAvailableAgent[] = [
     { candidate: "codex", label: "Codex", ready: codex.ready, canDelegate: true },
   ]
   try {
-    const entries = await providerLaneEntries()
-    const laneReady = (ref: string): boolean => {
-      const entry = entries.find((candidate) => candidate.laneRef === ref)
-      return entry !== undefined && entry.admission === "admitted" && entry.authentication === "ready"
-    }
-    agents.push({ candidate: "claude", label: "Claude Code", ready: laneReady("claude-local"), canDelegate: false })
-    agents.push({ candidate: "grok_acp", label: "Grok", ready: laneReady("acp:grok-cli"), canDelegate: false })
+    const [claude, grok] = await Promise.all([claudeDelegationReadiness(), grokDelegationReadiness()])
+    agents.push({ candidate: "claude", label: "Claude Code", ready: claude.ready, canDelegate: true })
+    agents.push({ candidate: "grok_acp", label: "Grok", ready: grok.ready, canDelegate: true })
   } catch {
     // Fail-soft: if the lane registry probe throws, keep codex-only awareness
     // rather than blocking the local turn.
@@ -1422,30 +1484,25 @@ if (desktopAfsTurnKernelEnabled()) {
     ),
     codexProvider: makeCodexProviderRegistry({
       readiness: codexDelegationReadiness,
-      runTurn: async ({ requestRef, threadRef, message, emit }) => {
-        const lane = codexLocalLaneRef
-        if (lane === null) return { ok: false, reason: "session_failed", detail: "codex lane not ready" }
-        const request = decodeClaudeLocalStartRequest({
-          turnRef: requestRef.slice(0, 120),
-          threadRef,
-          message,
-          fullAuto: true,
-        })
-        if (request === null) return { ok: false, reason: "session_failed", detail: "invalid delegation request" }
-        const admission = lane.admit(request)
-        if (!admission.ok) return { ok: false, reason: "session_failed", detail: admission.error }
-        const result = await lane.runTurn({
-          request,
-          model: admission.model,
-          context: admission.context,
-          history: [],
-          message,
-          background: true,
-          emit,
-        })
-        return result.ok ? { ok: true, text: result.text } : { ok: false, reason: result.reason, detail: result.detail }
-      },
+      runTurn: (input) => runDelegateLaneTurn(codexLocalLaneRef, input),
     }),
+    // #9091: Claude Code and Grok are now real delegate targets on the SAME
+    // router path as codex. Each starts ONE real subagent turn on its owner-local
+    // lane; readiness is MAIN-OWNED (claude-local / Grok ACP lane admission +
+    // authentication), and an unavailable lane produces no start and an honest
+    // refusal in the shared router.
+    delegateProviders: [
+      makeDelegateProviderRegistry({
+        candidate: "claude",
+        readiness: claudeDelegationReadiness,
+        runTurn: (input) => runDelegateLaneTurn(claudeLocalDelegateLaneRef, input),
+      }),
+      makeDelegateProviderRegistry({
+        candidate: "grok_acp",
+        readiness: grokDelegationReadiness,
+        runTurn: (input) => runDelegateLaneTurn(grokDelegateLaneRef, input),
+      }),
+    ],
   })
 }
 const fullAutoRegistry = openFullAutoRegistry(
@@ -4333,6 +4390,9 @@ const claudeLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
     if (request.fullAuto === true) void runFullAutoReconciliation()
   },
 }
+// #9091: expose the claude-local lane to the shared turn kernel's Claude
+// delegate provider (resolved lazily by the delegation runTurn).
+claudeLocalDelegateLaneRef = claudeLocalLane
 
 ipcMain.handle(ClaudeLocalStartChannel, async (event, value: unknown) => {
   const request = decodeClaudeLocalStartRequest(value)
@@ -4784,6 +4844,10 @@ const grokAcpClaudeEventLane: ProviderLane<null> = {
   ...grokAcpLane,
   eventChannel: ClaudeLocalEventChannel,
 }
+// #9091: expose the Grok ACP lane to the shared turn kernel's Grok delegate
+// provider. The delegation runs its real ACP turn through the SAME driver the
+// picker uses, projecting the frozen ClaudeLocalEvent envelope.
+grokDelegateLaneRef = grokAcpClaudeEventLane
 const cursorAcpClaudeEventLane: ProviderLane<null> = {
   ...cursorAcpLane,
   eventChannel: ClaudeLocalEventChannel,

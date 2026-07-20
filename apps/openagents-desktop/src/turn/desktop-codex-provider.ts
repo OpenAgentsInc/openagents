@@ -52,7 +52,18 @@ import type { ClaudeLocalEvent } from "../claude-local-contract.ts"
 export const CODEX_LOCAL_PROVIDER_REF = "provider.codex.local" as const
 export const CODEX_LOCAL_MODEL_ID = "openai/codex" as const
 
-/** The main-owned codex lane readiness snapshot, derived from `codexLocal.availability()`. */
+/**
+ * The delegate candidates the host can dispatch as a real subagent (#9091).
+ * Codex was first (AFS-04); Claude Code (`claude`) and Grok (`grok_acp`) reuse
+ * the SAME kernel provider, projection, and redaction boundary.
+ */
+export type DelegateCandidate = "codex" | "claude" | "grok_acp"
+
+/** A ref-safe token for each delegate candidate (branded refs disallow `_`). */
+const refTokenFor = (candidate: DelegateCandidate): string =>
+  candidate === "grok_acp" ? "grok" : candidate
+
+/** The main-owned delegate lane readiness snapshot, derived from lane availability. */
 export interface CodexLaneReadiness {
   readonly ready: boolean
   /** The health-ordered verified account ref (never a path), when ready. */
@@ -73,16 +84,22 @@ export type CodexLaneTurnResult =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly reason: string; readonly detail: string }
 
-export interface CodexProviderConfig {
+export interface DelegateProviderConfig {
+  /**
+   * The delegate candidate this registry represents. Selects the kernel
+   * descriptor identity (`codex`, `claude`, or `grok_acp`) so the shared router
+   * can dispatch the right lane. Defaults to `codex` for the AFS-04 call site.
+   */
+  readonly candidate?: DelegateCandidate
   readonly providerRef?: string
   readonly model?: string
-  /** Current codex lane readiness, from main-owned availability (never the renderer). */
+  /** Current delegate lane readiness, from main-owned availability (never the renderer). */
   readonly readiness: () => CodexLaneReadiness | Promise<CodexLaneReadiness>
   /**
-   * Run one real codex turn, streaming the frozen `ClaudeLocalEvent` envelope
-   * through `emit`. The host wires this to the codex-local lane dispatcher; a
-   * test passes a scripted fake. The adapter never selects an account or builds
-   * history — the host lane owns that.
+   * Run one real delegate turn, streaming the frozen `ClaudeLocalEvent` envelope
+   * through `emit`. The host wires this to the lane dispatcher (codex-local,
+   * claude-local, or the Grok ACP lane); a test passes a scripted fake. The
+   * adapter never selects an account or builds history — the host lane owns that.
    */
   readonly runTurn: (input: {
     readonly requestRef: string
@@ -93,6 +110,9 @@ export interface CodexProviderConfig {
   /** Deterministic id suffix source (tests inject a counter). */
   readonly nextId?: () => string
 }
+
+/** @deprecated Use {@link DelegateProviderConfig}. Retained for the AFS-04 codex call site. */
+export type CodexProviderConfig = DelegateProviderConfig
 
 const decodeProviderRef = S.decodeUnknownSync(TurnProviderRef)
 const decodeProviderTurnRef = S.decodeUnknownSync(ProviderTurnRef)
@@ -137,8 +157,9 @@ const startErrorReason = (
   }
 }
 
-/** Build the codex descriptor from main-owned readiness. */
-export const makeCodexDescriptor = (input: {
+/** Build a delegate provider descriptor from main-owned readiness. */
+export const makeDelegateDescriptor = (input: {
+  readonly candidate: DelegateCandidate
   readonly providerRef: string
   readonly model: string
   readonly readiness: CodexLaneReadiness
@@ -149,14 +170,14 @@ export const makeCodexDescriptor = (input: {
   return {
     schema: PROVIDER_SCHEMA_LITERAL,
     providerRef: decodeProviderRef(input.providerRef),
-    candidate: "codex",
+    candidate: input.candidate,
     model: input.model,
     placement: "owner_local",
     supportedIntents: ["Ask", "RecommendRoute", "ProposeEdit"],
     supportedCandidateKinds: ["answer"],
-    // Codex runs locally but sends turn input to the provider backend.
+    // The delegate lane runs locally but sends turn input to the provider backend.
     dataDestination: "remote_provider",
-    // The codex runtime reports exact provider token usage.
+    // The delegate runtime reports exact provider token usage.
     usageTruth: "exact",
     costClass: "metered_provider_tokens",
     maxContextChars: MAX_TURN_CONTEXT_CHARS,
@@ -168,6 +189,13 @@ export const makeCodexDescriptor = (input: {
     readiness,
   }
 }
+
+/** Build the codex descriptor from main-owned readiness (AFS-04 back-compat wrapper). */
+export const makeCodexDescriptor = (input: {
+  readonly providerRef: string
+  readonly model: string
+  readonly readiness: CodexLaneReadiness
+}): InferenceProviderDescriptor => makeDelegateDescriptor({ candidate: "codex", ...input })
 
 /** Read ONLY the file-change COUNT from a workbench item; never a path or diff. */
 const fileChangeCountOf = (item: unknown): number | undefined => {
@@ -222,16 +250,31 @@ export const redactCodexEvent = (event: ClaudeLocalEvent): ObservedAgentActivity
   }
 }
 
-/** Create the codex-local `ProviderRegistry` interface for one owner-local lane. */
-export const makeCodexProviderRegistry = (config: CodexProviderConfig): ProviderRegistryInterface => {
-  const providerRef = config.providerRef ?? CODEX_LOCAL_PROVIDER_REF
-  const model = config.model ?? CODEX_LOCAL_MODEL_ID
+/** The default provider ref for one delegate candidate's owner-local lane. */
+const defaultProviderRefFor = (candidate: DelegateCandidate): string =>
+  candidate === "codex" ? CODEX_LOCAL_PROVIDER_REF : `provider.${refTokenFor(candidate)}.local`
+
+/** The default descriptor model label for one delegate candidate. */
+const defaultModelFor = (candidate: DelegateCandidate): string =>
+  candidate === "codex" ? CODEX_LOCAL_MODEL_ID : candidate === "claude" ? "anthropic/claude" : "xai/grok"
+
+/**
+ * Create a delegate `ProviderRegistry` interface for one owner-local lane
+ * (codex-local, claude-local, or the Grok ACP lane). All three share the same
+ * kernel provider shape, redaction boundary, and readiness gate; only the
+ * candidate identity, provider ref, and model label differ (#9091).
+ */
+export const makeDelegateProviderRegistry = (config: DelegateProviderConfig): ProviderRegistryInterface => {
+  const candidate = config.candidate ?? "codex"
+  const refToken = refTokenFor(candidate)
+  const providerRef = config.providerRef ?? defaultProviderRefFor(candidate)
+  const model = config.model ?? defaultModelFor(candidate)
   let counter = 0
   const nextId = config.nextId ?? (() => `${(counter += 1)}`)
 
   const describe = Effect.gen(function* () {
     const readiness = yield* Effect.promise(async () => config.readiness())
-    return [makeCodexDescriptor({ providerRef, model, readiness })]
+    return [makeDelegateDescriptor({ candidate, providerRef, model, readiness })]
   })
 
   const startTurnMessage = (input: ProviderStartInput): string => {
@@ -247,10 +290,10 @@ export const makeCodexProviderRegistry = (config: CodexProviderConfig): Provider
     return {
       schema: CANDIDATE_SCHEMA_LITERAL,
       kind: "answer",
-      candidateRef: decodeCandidateRef(`candidate.codex.${requestRef}`),
+      candidateRef: decodeCandidateRef(`candidate.${refToken}.${requestRef}`),
       provenance: {
         providerRef: decodeProviderRef(providerRef),
-        candidate: "codex",
+        candidate,
         model,
         taskClass: "delegate",
         usageTruth: "exact",
@@ -271,7 +314,7 @@ export const makeCodexProviderRegistry = (config: CodexProviderConfig): Provider
       }
 
       const seed = nextId()
-      const providerTurnRef = decodeProviderTurnRef(`providerturn.codex.${seed}`)
+      const providerTurnRef = decodeProviderTurnRef(`providerturn.${refToken}.${seed}`)
       const message = startTurnMessage(input)
 
       const events = Stream.callback<ProviderStreamEvent>((queue) =>
@@ -305,7 +348,7 @@ export const makeCodexProviderRegistry = (config: CodexProviderConfig): Provider
             }),
           ).pipe(
             Effect.catch(() =>
-              Effect.succeed<CodexLaneTurnResult>({ ok: false, reason: "session_failed", detail: "codex lane stopped" }),
+              Effect.succeed<CodexLaneTurnResult>({ ok: false, reason: "session_failed", detail: "delegate lane stopped" }),
             ),
           )
 
@@ -327,3 +370,10 @@ export const makeCodexProviderRegistry = (config: CodexProviderConfig): Provider
 
   return { describe, start }
 }
+
+/**
+ * Create the codex-local delegate `ProviderRegistry` (AFS-04 back-compat alias
+ * for {@link makeDelegateProviderRegistry} with the `codex` candidate).
+ */
+export const makeCodexProviderRegistry = (config: CodexProviderConfig): ProviderRegistryInterface =>
+  makeDelegateProviderRegistry({ candidate: "codex", ...config })

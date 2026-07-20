@@ -133,6 +133,52 @@ const CODEX_ROUTE_JSON = JSON.stringify({
   confidence: 0.9,
 })
 
+const CLAUDE_ROUTE_JSON = JSON.stringify({
+  candidate: "claude",
+  taskClass: "delegate",
+  reasonCode: "needs_delegation",
+  confidence: 0.9,
+})
+
+const claudeDescriptor = (ready: boolean) =>
+  decodeDescriptor({
+    schema: PROVIDER_SCHEMA_LITERAL,
+    providerRef: "provider.claude.local",
+    candidate: "claude",
+    model: "anthropic/claude",
+    placement: "owner_local",
+    supportedIntents: ["Ask"],
+    supportedCandidateKinds: ["answer"],
+    dataDestination: "remote_provider",
+    usageTruth: "exact",
+    costClass: "metered_provider_tokens",
+    maxContextChars: 4000,
+    maxOutputChars: 8192,
+    supportsStreaming: true,
+    supportsCancellation: true,
+    supportsExternalTools: true,
+    supportsExternalActions: true,
+    readiness: ready ? { state: "ready" } : { state: "unavailable", reason: "account_unhealthy" },
+  })
+
+/** A fake claude delegate registry (#9091). */
+const claudeRegistry = (ready: boolean): ProviderRegistryInterface => ({
+  describe: Effect.succeed([claudeDescriptor(ready)]),
+  start: () =>
+    ready
+      ? Effect.succeed({
+          providerTurnRef: S.decodeUnknownSync(ProviderTurnRef)("providerturn.claude.1"),
+          events: Stream.fromIterable([
+            ProviderStreamEvent.Progress(),
+            ProviderStreamEvent.Chain({
+              entries: [decodeChainEntry({ entryRef: "e.0", role: "assistant", text: "claude delegated work summary" })],
+            }),
+            ProviderStreamEvent.Completed({ candidate: answerCandidateWith("candidate.claude.1", "claude done") }),
+          ]),
+        })
+      : Effect.fail(new ProviderStartError({ reason: "unauthorized" })),
+})
+
 const descriptor = decodeDescriptor({
   schema: PROVIDER_SCHEMA_LITERAL,
   providerRef: "provider.codex.1",
@@ -275,6 +321,26 @@ const installRouter = (routerAnswer: string, codexReady: boolean) => {
   return { handlers, sent, thread, kernel }
 }
 
+/** Install the router with a claude delegate lane wired via `delegateProviders` (#9091). */
+const installClaudeRouter = (routerAnswer: string, claudeReady: boolean) => {
+  const handlers = new Map<string, (event: unknown, value: unknown) => unknown>()
+  const sent: RecordedSend[] = []
+  const store = makeThreadStore(path.join(dir, "threads.json"))
+  const thread = store.newThread("Claude delegation turn")
+  const kernel = installDesktopTurnKernel({
+    ipcMain: {
+      handle: (channel, handler) => handlers.set(channel, handler),
+      removeHandler: (channel) => handlers.delete(channel),
+    },
+    sender: () => ({ isDestroyed: () => false, send: (channel, payload) => sent.push({ channel, payload }) }),
+    threadStore: store,
+    journalFilePath: path.join(dir, "agent-turns", "journal.json"),
+    providerRegistry: appleRouterRegistry(routerAnswer),
+    delegateProviders: [claudeRegistry(claudeReady)],
+  })
+  return { handlers, sent, thread, kernel }
+}
+
 const submitResultOf = (payload: unknown) => {
   const decoded = decodeDesktopTurnSubmitResult(payload)
   if (decoded._tag === "None") throw new Error("submit result did not decode")
@@ -343,6 +409,64 @@ describe("AFS-04 codex delegation router", () => {
           ((record.payload as { requestRef?: string }).requestRef ?? "").startsWith("request.codex."),
       )
       expect(codexTerminal).toBeUndefined()
+    } finally {
+      await kernel.dispose()
+    }
+  })
+
+  test("an admitted claude recommendation starts ONE real claude turn and returns delegated (#9091)", async () => {
+    const { handlers, sent, thread, kernel } = installClaudeRouter(CLAUDE_ROUTE_JSON, true)
+    try {
+      const submit = handlers.get(DesktopTurnSubmitChannel)!
+      const raw = await submit(null, { threadRef: thread.id, message: "task issue #9091 to claude" })
+      const result = submitResultOf(raw)
+      expect(result.outcome).toBe("delegated")
+      expect(result.provider).toBe("claude")
+      expect(result.delegationRequestRef).not.toBeNull()
+      expect(result.objective).toBe("task issue #9091 to claude")
+
+      const delegationRef = result.delegationRequestRef
+      await waitFor(() =>
+        sent.some(
+          (record) =>
+            record.channel === DesktopTurnEventChannel &&
+            (record.payload as { kind?: string; requestRef?: string }).kind === "terminal" &&
+            (record.payload as { requestRef?: string }).requestRef === delegationRef,
+        ),
+      )
+      const terminal = sent.find(
+        (record) =>
+          record.channel === DesktopTurnEventChannel &&
+          (record.payload as { kind?: string; requestRef?: string }).kind === "terminal" &&
+          (record.payload as { requestRef?: string }).requestRef === delegationRef,
+      )
+      expect(terminal).toBeDefined()
+      // The delegation request ref is ref-safe (no bare candidate underscore).
+      expect((delegationRef ?? "").startsWith("request.claude.")).toBe(true)
+      const projection = (terminal!.payload as { projection: { cardState: string; messageChain: unknown[] } }).projection
+      expect(projection.cardState).toBe("done")
+      expect(projection.messageChain.length).toBeGreaterThanOrEqual(1)
+    } finally {
+      await kernel.dispose()
+    }
+  })
+
+  test("an unavailable claude lane produces NO start and an honest refusal (#9091)", async () => {
+    const { handlers, sent, thread, kernel } = installClaudeRouter(CLAUDE_ROUTE_JSON, false)
+    try {
+      const submit = handlers.get(DesktopTurnSubmitChannel)!
+      const raw = await submit(null, { threadRef: thread.id, message: "task claude" })
+      const result = submitResultOf(raw)
+      expect(result.outcome).toBe("refused")
+      expect(result.provider).toBe("claude")
+      expect(result.delegationRequestRef).toBeNull()
+      await waitFor(() => false, 6)
+      const claudeTerminal = sent.find(
+        (record) =>
+          record.channel === DesktopTurnEventChannel &&
+          ((record.payload as { requestRef?: string }).requestRef ?? "").startsWith("request.claude."),
+      )
+      expect(claudeTerminal).toBeUndefined()
     } finally {
       await kernel.dispose()
     }

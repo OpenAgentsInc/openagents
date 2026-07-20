@@ -16,28 +16,42 @@ import type { CodexLaneReadiness } from "./desktop-codex-provider.ts"
  * The Apple FM router can recommend delegating a turn to a stronger subagent.
  * This module is the HOST decision layer: it decodes the model's advisory route
  * output (fail-closed, AFS-02) and combines it with MAIN-OWNED lane readiness to
- * decide, deterministically, whether to answer locally, delegate to Codex, or
- * refuse the delegation honestly.
+ * decide, deterministically, whether to answer locally, delegate to a connected
+ * coding agent, or refuse the delegation honestly.
+ *
+ * AFS-04 wired Codex first. Issue #9091 generalizes the SAME path to Claude Code
+ * (`claude` → the claude-local lane) and Grok (`grok_acp` → the admitted ACP
+ * lane), so all three behave identically: fail-closed decode, one start per
+ * recommendation, advisory-only, owner-scoped, and honest.
  *
  * The model proposes; the host acts and reports. The model's output is never the
  * evidence that a subagent ran. A recommendation for an unavailable,
  * unauthenticated, or unadmitted lane produces NO start — it degrades to an
- * honest refusal. Only a `delegate` decision for a ready lane starts one real
- * subagent turn.
+ * honest refusal. Only a `delegate` decision for a MAIN-OWNED ready lane starts
+ * one real subagent turn.
  */
 
-/** The delegate-capable candidates the Phase-1 host offers. Codex is the first. */
-export const DELEGATE_CANDIDATES: ReadonlyArray<TurnProviderCandidate> = ["codex"]
+/** The provider candidates the host can dispatch as a real delegate subagent. */
+export type DelegateProvider = "codex" | "claude" | "grok_acp"
+
+/** The delegate-capable candidates the host offers (Codex, Claude Code, Grok). */
+export const DELEGATE_CANDIDATES: ReadonlyArray<TurnProviderCandidate> = ["codex", "claude", "grok_acp"]
+
+const DELEGATE_PROVIDER_SET: ReadonlySet<TurnProviderCandidate> = new Set(DELEGATE_CANDIDATES)
+
+/** True when a decoded candidate is one the host can actually dispatch. */
+export const isDelegateProvider = (candidate: TurnProviderCandidate): candidate is DelegateProvider =>
+  DELEGATE_PROVIDER_SET.has(candidate)
 
 export type DelegationDecision =
   | { readonly kind: "answer"; readonly text: string }
   | {
       readonly kind: "delegate"
-      readonly provider: "codex"
+      readonly provider: DelegateProvider
       readonly objective: string
       readonly recommendation: RouteRecommendation
     }
-  | { readonly kind: "refuse_delegation"; readonly provider: "codex"; readonly reason: TurnRefusalReason }
+  | { readonly kind: "refuse_delegation"; readonly provider: DelegateProvider; readonly reason: TurnRefusalReason }
 
 export interface DelegationInput {
   /** The Apple FM turn output text (the advisory router result), or null. */
@@ -46,13 +60,17 @@ export interface DelegationInput {
   readonly objective: string
   /** The delegate-capable candidates the host admits. */
   readonly admittedDelegates?: ReadonlyArray<TurnProviderCandidate>
-  /** MAIN-OWNED codex lane readiness (never renderer input). */
-  readonly codexReadiness: CodexLaneReadiness
+  /**
+   * MAIN-OWNED per-lane readiness, keyed by delegate candidate (never renderer
+   * input). A candidate with no entry — a lane the host has not wired — is
+   * treated as unavailable and refused, never faked.
+   */
+  readonly readiness: Readonly<Partial<Record<DelegateProvider, CodexLaneReadiness>>>
 }
 
-/** Map a not-ready codex readiness into the honest delegation refusal reason. */
-const refusalReasonForReadiness = (readiness: CodexLaneReadiness): TurnRefusalReason => {
-  switch (readiness.unavailableReason) {
+/** Map a not-ready (or absent) lane readiness into the honest delegation refusal reason. */
+const refusalReasonForReadiness = (readiness: CodexLaneReadiness | undefined): TurnRefusalReason => {
+  switch (readiness?.unavailableReason) {
     case "no_codex_account":
     case "no_verified_account":
       return "provider_unauthorized"
@@ -71,7 +89,9 @@ const refusalReasonForReadiness = (readiness: CodexLaneReadiness): TurnRefusalRe
  * Decide what the host does with the Apple FM router output. Fail-closed: any
  * output that is not a valid `Recommendation` for an admitted delegate falls
  * back to answering with the advisory text; a malformed structured route is a
- * safe answer of its own decoded text, never a dispatch.
+ * safe answer of its own decoded text, never a dispatch. A recommendation for a
+ * delegate candidate whose MAIN-OWNED lane is not ready produces NO start and an
+ * honest refusal.
  */
 export const decideDelegation = (input: DelegationInput): DelegationDecision => {
   const answerText = input.answerText ?? ""
@@ -88,19 +108,20 @@ export const decideDelegation = (input: DelegationInput): DelegationDecision => 
   }
 
   const candidate = decoded.recommendation.candidate
-  if (candidate !== "codex") {
-    // Phase 1 only wires the codex delegate lane; other lanes answer for now.
+  if (!isDelegateProvider(candidate)) {
+    // Not a host-dispatchable delegate lane; answer with the advisory text.
     return { kind: "answer", text: answerText.trim() }
   }
 
-  if (!input.codexReadiness.ready) {
-    // The recommended lane is not runnable: no start, honest refusal.
-    return { kind: "refuse_delegation", provider: "codex", reason: refusalReasonForReadiness(input.codexReadiness) }
+  const readiness = input.readiness[candidate]
+  if (readiness === undefined || !readiness.ready) {
+    // The recommended lane is not runnable (or not wired): no start, honest refusal.
+    return { kind: "refuse_delegation", provider: candidate, reason: refusalReasonForReadiness(readiness) }
   }
 
   return {
     kind: "delegate",
-    provider: "codex",
+    provider: candidate,
     objective: input.objective,
     recommendation: decoded.recommendation,
   }

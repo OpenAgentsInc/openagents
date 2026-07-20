@@ -138,6 +138,46 @@ describe("buildOpenAgentsAppleFmPrompt — agent-awareness + delegation", () => 
     expect(prompt).not.toContain('"claude" for Claude Code')
   })
 
+  test("offers Claude Code and Grok as hand-off targets when delegate-capable (#9091)", () => {
+    const claudeDelegate: AppleFmAvailableAgent = { ...claudeReady, canDelegate: true }
+    const grokDelegate: AppleFmAvailableAgent = { ...grokReady, canDelegate: true }
+    const prompt = buildOpenAgentsAppleFmPrompt(
+      [{ role: "user", text: "task the fixture to claude" }],
+      [codexReady, claudeDelegate, grokDelegate],
+    )
+    // The delegation instruction is present and each ready delegate is mapped to
+    // its exact route-recommendation candidate string.
+    expect(prompt).toContain('reply with ONLY')
+    expect(prompt).toContain('"codex" for Codex')
+    expect(prompt).toContain('"claude" for Claude Code')
+    expect(prompt).toContain('"grok_acp" for Grok')
+  })
+
+  test("ROUND TRIP: a claude template in the prompt decodes to a claude delegation (#9091)", () => {
+    const claudeDelegate: AppleFmAvailableAgent = { ...claudeReady, canDelegate: true }
+    // The exact per-agent template the prompt tells the model to emit for claude.
+    const claudeTemplate = JSON.stringify({
+      candidate: "claude",
+      taskClass: "delegate",
+      reasonCode: "explicit_provider_request",
+      confidence: 0.9,
+    })
+    const prompt = buildOpenAgentsAppleFmPrompt(
+      [{ role: "user", text: "task this to claude" }],
+      [codexReady, claudeDelegate],
+    )
+    expect(prompt).toContain('"claude" for Claude Code')
+    const decoded = decodeAppleFmRouteOutput({ raw: claudeTemplate, admittedCandidates: ["codex", "claude", "grok_acp"] })
+    expect(decoded._tag).toBe("Recommendation")
+    const decision = decideDelegation({
+      answerText: claudeTemplate,
+      objective: "task this to claude",
+      readiness: { claude: { ready: true, accountRef: "acct.a" } },
+    })
+    expect(decision.kind).toBe("delegate")
+    if (decision.kind === "delegate") expect(decision.provider).toBe("claude")
+  })
+
   test("offers NO delegation JSON when no ready agent is delegate-capable", () => {
     const prompt = buildOpenAgentsAppleFmPrompt(
       [{ role: "user", text: "hi" }],
@@ -164,7 +204,7 @@ describe("buildOpenAgentsAppleFmPrompt — agent-awareness + delegation", () => 
     const decision = decideDelegation({
       answerText: template!,
       objective: "hand this off to codex",
-      codexReadiness: { ready: true, accountRef: "acct.a" },
+      readiness: { codex: { ready: true, accountRef: "acct.a" } },
     })
     expect(decision.kind).toBe("delegate")
     if (decision.kind === "delegate") {
@@ -178,7 +218,7 @@ describe("buildOpenAgentsAppleFmPrompt — agent-awareness + delegation", () => 
     const decision = decideDelegation({
       answerText: "I'm OpenAgents, running on Apple's on-device model. I can hand coding tasks to Codex.",
       objective: "who are you, what agents do you have",
-      codexReadiness: { ready: true, accountRef: "acct.a" },
+      readiness: { codex: { ready: true, accountRef: "acct.a" } },
     })
     expect(decision.kind).toBe("answer")
   })
@@ -187,14 +227,14 @@ describe("buildOpenAgentsAppleFmPrompt — agent-awareness + delegation", () => 
     const malformed = decideDelegation({
       answerText: '{"candidate":"codex","confidence":"high"}',
       objective: "x",
-      codexReadiness: { ready: true, accountRef: "acct.a" },
+      readiness: { codex: { ready: true, accountRef: "acct.a" } },
     })
     expect(malformed.kind).not.toBe("delegate")
 
     const actionClaim = decideDelegation({
       answerText: '{"candidate":"codex","command":"rm -rf /","confidence":0.9}',
       objective: "x",
-      codexReadiness: { ready: true, accountRef: "acct.a" },
+      readiness: { codex: { ready: true, accountRef: "acct.a" } },
     })
     expect(actionClaim.kind).not.toBe("delegate")
 
@@ -205,7 +245,7 @@ describe("buildOpenAgentsAppleFmPrompt — agent-awareness + delegation", () => 
     const unavailable = decideDelegation({
       answerText: template!,
       objective: "x",
-      codexReadiness: { ready: false, unavailableReason: "no_codex_account" },
+      readiness: { codex: { ready: false, unavailableReason: "no_codex_account" } },
     })
     expect(unavailable.kind).toBe("refuse_delegation")
   })

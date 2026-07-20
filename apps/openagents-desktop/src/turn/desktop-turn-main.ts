@@ -20,7 +20,7 @@ import {
 } from "@openagentsinc/agent-turn-runtime"
 
 import type { CodexLaneReadiness } from "./desktop-codex-provider.ts"
-import { decideDelegation } from "./desktop-delegation.ts"
+import { decideDelegation, isDelegateProvider, type DelegateProvider } from "./desktop-delegation.ts"
 import type { EditorContextRegistry } from "./editor-context-binding.ts"
 
 import type { makeThreadStore } from "../thread-store.ts"
@@ -104,7 +104,7 @@ const composeRegistries = (
     }),
 })
 
-/** Map a codex descriptor's readiness into the delegation readiness snapshot. */
+/** Map a delegate descriptor's readiness into the delegation readiness snapshot. */
 const codexReadinessOf = (descriptor: InferenceProviderDescriptor): CodexLaneReadiness => {
   if (descriptor.readiness.state === "ready") {
     return {
@@ -152,6 +152,14 @@ export interface InstallDesktopTurnKernelDeps {
    */
   readonly codexProvider?: ProviderRegistryInterface
   /**
+   * Additional delegate lane registries (#9091). Claude Code (`claude`) and Grok
+   * (`grok_acp`) register here so the SAME router can start ONE real delegation
+   * turn on the recommended lane. Each is folded into the kernel registry beside
+   * codex; the router admits a recommendation only when that lane's MAIN-OWNED
+   * descriptor is ready, and refuses honestly otherwise.
+   */
+  readonly delegateProviders?: ReadonlyArray<ProviderRegistryInterface>
+  /**
    * The AFS-05 editor-context registry. When present, an Editor agent-rail submit
    * that carries an `editorContext` binding registers it here before the kernel
    * runs, so the shared `ContextSource` feeds the Editor's IDE-08 context into the
@@ -187,10 +195,15 @@ export const installDesktopTurnKernel = (
   deps: InstallDesktopTurnKernelDeps,
 ): InstalledDesktopTurnKernel => {
   const baseRegistry = deps.providerRegistry ?? placeholderProviderRegistry
-  // AFS-04: fold the codex delegate lane into the kernel registry so a router
-  // recommendation can start one real codex turn on the same runtime.
+  // AFS-04 + #9091: fold every delegate lane (codex, claude, grok) into the
+  // kernel registry so a router recommendation can start one real delegation
+  // turn on the same runtime.
+  const delegateRegistries: ReadonlyArray<ProviderRegistryInterface> = [
+    ...(deps.codexProvider === undefined ? [] : [deps.codexProvider]),
+    ...(deps.delegateProviders ?? []),
+  ]
   const resolvedRegistry =
-    deps.codexProvider === undefined ? baseRegistry : composeRegistries([baseRegistry, deps.codexProvider])
+    delegateRegistries.length === 0 ? baseRegistry : composeRegistries([baseRegistry, ...delegateRegistries])
   const providerRegistryLayer = Layer.succeed(ProviderRegistry, ProviderRegistry.of(resolvedRegistry))
 
   const layer = TurnServiceLayer.pipe(
@@ -307,22 +320,23 @@ export const installDesktopTurnKernel = (
   // resolves the compact terminal facts. The renderer makes no route/prompt
   // decision.
   /**
-   * Start ONE real codex delegation turn on the kernel runtime, forked in the
+   * Start ONE real delegation turn on the kernel runtime, forked in the
    * background, and forward its terminal frame. The global progress forwarder
    * already streams the running frames. The card is created by the renderer only
    * after this start receipt (the `delegated` result), and it cannot show
-   * running before the kernel emits a running frame for this request.
+   * running before the kernel emits a running frame for this request. The lane
+   * is selected by `delegateProviderRef` (codex, claude, or grok).
    */
-  const startCodexDelegation = (input: {
+  const startDelegation = (input: {
     readonly delegationRequestRef: TurnRequestRef
     readonly threadRef: TurnThreadRef
     readonly objective: string
-    readonly codexProviderRef: string
+    readonly delegateProviderRef: string
     readonly recommendation: RouteRecommendation
   }): void => {
-    const codexCandidateSet = decodeCandidateSet({
+    const delegateCandidateSet = decodeCandidateSet({
       schema: OWNER_BOUND_CANDIDATE_SET_SCHEMA_LITERAL,
-      ordered: [input.codexProviderRef],
+      ordered: [input.delegateProviderRef],
       policyArtifactRef: DESKTOP_LOCAL_POLICY_ARTIFACT_REF,
     })
     runtime.runFork(
@@ -332,7 +346,7 @@ export const installDesktopTurnKernel = (
           requestRef: input.delegationRequestRef,
           threadRef: input.threadRef,
           intent: { _tag: "Ask" as const, text: input.objective },
-          candidateSet: codexCandidateSet,
+          candidateSet: delegateCandidateSet,
           recommendation: input.recommendation,
         })
         const sender = deps.sender()
@@ -367,10 +381,11 @@ export const installDesktopTurnKernel = (
     }
     return Effect.runPromise(resolvedRegistry.describe)
       .then((descriptors) => {
-        // The Apple FM router lane runs the turn. The codex lane is a delegate
-        // target, never the router; restrict the router set to the local lanes.
+        // The Apple FM router lane runs the turn. The delegate lanes (codex,
+        // claude, grok) are hand-off targets, never the router; restrict the
+        // router set to the local lanes.
         const routerDescriptors = descriptors.filter((descriptor) => descriptor.candidate === "apple_fm")
-        const codexDescriptor = descriptors.find((descriptor) => descriptor.candidate === "codex")
+        const delegateDescriptors = descriptors.filter((descriptor) => isDelegateProvider(descriptor.candidate))
         if (routerDescriptors.length === 0) return unavailableSubmit
         const candidateSet = decodeCandidateSet({
           schema: OWNER_BOUND_CANDIDATE_SET_SCHEMA_LITERAL,
@@ -393,41 +408,58 @@ export const installDesktopTurnKernel = (
             const answerText =
               result.candidate !== null && result.candidate.kind === "answer" ? result.candidate.text : null
 
-            // AFS-04 router: an admitted delegate recommendation starts one real
-            // codex turn. The host validates codex readiness (main-owned); an
-            // unavailable lane produces no start and an honest refusal.
-            if (codexDescriptor !== undefined && projection.cardState === "done" && answerText !== null) {
+            // AFS-04 + #9091 router: an admitted delegate recommendation (codex,
+            // claude, or grok) starts one real delegation turn. The host builds
+            // the readiness map from MAIN-OWNED descriptors; an unavailable,
+            // unauthenticated, or unadmitted lane produces no start and an honest
+            // refusal.
+            if (delegateDescriptors.length > 0 && projection.cardState === "done" && answerText !== null) {
+              const readiness: Partial<Record<DelegateProvider, CodexLaneReadiness>> = {}
+              for (const descriptor of delegateDescriptors) {
+                if (isDelegateProvider(descriptor.candidate)) {
+                  readiness[descriptor.candidate] = codexReadinessOf(descriptor)
+                }
+              }
               const decision = decideDelegation({
                 answerText,
                 objective: submit.message,
-                codexReadiness: codexReadinessOf(codexDescriptor),
+                readiness,
               })
               if (decision.kind === "delegate") {
-                const delegationRequestRef = decodeRequestRef(`request.codex.${randomUUID()}`)
-                startCodexDelegation({
-                  delegationRequestRef,
-                  threadRef: submit.threadRef,
-                  objective: decision.objective,
-                  codexProviderRef: codexDescriptor.providerRef,
-                  recommendation: decision.recommendation,
-                })
-                const delegated: DesktopTurnSubmitResult = {
-                  outcome: "delegated",
-                  text: null,
-                  provider: "codex",
-                  placement: codexDescriptor.placement,
-                  dataDestination: codexDescriptor.dataDestination,
-                  usageTruth: codexDescriptor.usageTruth,
-                  delegationRequestRef,
-                  objective: decision.objective,
+                const delegateDescriptor = delegateDescriptors.find(
+                  (descriptor) => descriptor.candidate === decision.provider,
+                )
+                if (delegateDescriptor !== undefined) {
+                  // Branded refs disallow `_`, so grok_acp uses a ref-safe token.
+                  const refToken = decision.provider === "grok_acp" ? "grok" : decision.provider
+                  const delegationRequestRef = decodeRequestRef(`request.${refToken}.${randomUUID()}`)
+                  startDelegation({
+                    delegationRequestRef,
+                    threadRef: submit.threadRef,
+                    objective: decision.objective,
+                    delegateProviderRef: delegateDescriptor.providerRef,
+                    recommendation: decision.recommendation,
+                  })
+                  const delegated: DesktopTurnSubmitResult = {
+                    outcome: "delegated",
+                    text: null,
+                    provider: decision.provider,
+                    placement: delegateDescriptor.placement,
+                    dataDestination: delegateDescriptor.dataDestination,
+                    usageTruth: delegateDescriptor.usageTruth,
+                    delegationRequestRef,
+                    objective: decision.objective,
+                  }
+                  return delegated
                 }
-                return delegated
+                // No descriptor for the decided provider (should not happen once
+                // gated by readiness): fall through to the honest answer path.
               }
               if (decision.kind === "refuse_delegation") {
                 const refused: DesktopTurnSubmitResult = {
                   outcome: "refused",
                   text: null,
-                  provider: "codex",
+                  provider: decision.provider,
                   placement: null,
                   dataDestination: null,
                   usageTruth: null,

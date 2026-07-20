@@ -3754,9 +3754,12 @@ export const makeDesktopShellHandlers = (
             : yield* Effect.promise(() =>
                 turnHost.submit({ threadRef: submissionThreadId, message }).catch(() => null),
               );
-        // AFS-04: the host started ONE real codex subagent turn. Seed the delegation
-        // card (after the start receipt) — its lifecycle then follows the fenced
-        // `turn:event` frames. It cannot show running before the host said so.
+        // AFS-04 + #9091: the host started ONE real subagent turn (codex, claude,
+        // or grok). Seed the delegation card (after the start receipt) — its
+        // lifecycle then follows the fenced `turn:event` frames. It cannot show
+        // running before the host said so. The card/inspector rendering is
+        // provider-agnostic; only the subagent name is derived from `provider` at
+        // this call site so the card names the real subagent honestly.
         if (
           result !== null &&
           result.outcome === "delegated" &&
@@ -3764,6 +3767,12 @@ export const makeDesktopShellHandlers = (
         ) {
           const delegationRef = result.delegationRequestRef;
           const objective = result.objective ?? message;
+          const subagentTitle =
+            result.provider === "claude"
+              ? "Claude subagent"
+              : result.provider === "grok_acp"
+                ? "Grok subagent"
+                : "Codex subagent";
           yield* SubscriptionRef.update(state, (cur) => ({
             ...cur,
             pending: false,
@@ -3779,7 +3788,7 @@ export const makeDesktopShellHandlers = (
                 role: "system" as const,
                 text: "",
                 timestamp: now(),
-                runtime: seedDelegationCard(delegationRef, objective),
+                runtime: { ...seedDelegationCard(delegationRef, objective), title: subagentTitle },
               },
             ],
           }));
