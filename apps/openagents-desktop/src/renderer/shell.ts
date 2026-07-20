@@ -2229,8 +2229,20 @@ export const buildOpenAgentsAppleFmPrompt = (
   notes: ReadonlyArray<DesktopNoteEntry>,
   maxChars: number = APPLE_FM_PROMPT_MAX_CHARS,
 ): string => {
+  // Owner directive 2026-07-20: the on-device model must not lie about actions
+  // or capabilities. It has NO tools and cannot do anything outside this text
+  // chat, so the preamble forbids claiming otherwise and forbids inventing
+  // facts/results. This is the only honesty control we have over a small local
+  // model — keep it strict.
   const preamble =
-    "You are OpenAgents, a concise on-device assistant. Answer the last user message briefly and helpfully."
+    "You are OpenAgents, a small language model running locally on this device. " +
+    "You have NO tools and CANNOT take any action: you cannot dispatch agents or subagents, " +
+    "set reminders, run commands, edit or read files, browse the web, remember anything after " +
+    "this chat, or do anything outside this text conversation. NEVER say you have done, will do, " +
+    "or are doing any such action. Do not invent facts, capabilities, results, or events. If asked " +
+    "to do something you cannot do, say plainly that you cannot take actions and can only answer " +
+    "questions in this chat. Answer only what you actually know, briefly and honestly; if you do " +
+    "not know, say so."
   const lines = notes
     .map((note) => {
       const text = note.text.trim()
@@ -2979,15 +2991,23 @@ export const makeDesktopShellHandlers = (
       yield* submitPendingMessage(current, message, "queue")
       return
     }
+    // Owner directive 2026-07-20: the OpenAgents-authority path (the current
+    // default) must NEVER be blocked by Codex/provider-lane readiness — the user
+    // must be able to submit immediately, even while Codex is still loading. The
+    // OpenAgents turn routes to the local on-device model or the fixed
+    // acknowledgement, so provider-lane evidence is irrelevant to it. These
+    // evidence gates therefore apply ONLY on the explicit provider path
+    // (`openAgentsStandby === false`).
+    const providerPath = current.openAgentsStandby === false
     // Evidence-gated send (#8712): an unavailable selected lane must not
     // accept the action — the composer keeps the draft and the caption
     // already names the reason. Never substitute another lane silently.
-    if (!current.harnessLanes[current.selectedHarness].available) return
+    if (providerPath && !current.harnessLanes[current.selectedHarness].available) return
     // #8977: gate against the REAL bound lane's evidence (which may be an
     // admitted ACP peer), not the codex/fable-only mapping.
     const laneCapabilities = capabilityForActiveLane(current)
-    if (laneCapabilities !== null && laneCapabilities.admission !== "admitted") return
-    if (laneCapabilities !== null && current.composerImages.length > 0 && !laneCapabilities.images) return
+    if (providerPath && laneCapabilities !== null && laneCapabilities.admission !== "admitted") return
+    if (providerPath && laneCapabilities !== null && current.composerImages.length > 0 && !laneCapabilities.images) return
     // Capability I1: a turn is submittable with text OR ≥1 image; an empty
     // turn with no images is a no-op (withNote returns state unchanged).
     if (message.trim() === "" && current.composerImages.length === 0 &&
@@ -5636,6 +5656,14 @@ const composerActionControl = (state: DesktopShellState): View => {
   // unchanged (an empty submit is a no-op), so the control stays enabled and the
   // disabled path is still reserved for an unavailable lane + its reason popover.
   const blank = state.input.trim() === "" && state.composerImages.length === 0
+  // Owner directive 2026-07-20: on the OpenAgents-authority path (the current
+  // default) the send control is NEVER disabled by Codex/provider-lane
+  // readiness and shows no lane-unavailable reason — the user submits
+  // immediately while Codex is still loading. The lane-evidence disable + reason
+  // popover survive ONLY on the explicit provider path (`openAgentsStandby ===
+  // false`).
+  const sendBlocked = state.openAgentsStandby === false && !lane.available
+  const blockedReason = lane.reason ?? "Send unavailable: selected lane cannot act"
   // ONE icon-only send control (owner statement 2026-07-11: "airplane icon in
   // composer OUTSIDE of the button is stupid. put it in , remove text 'send'"):
   // the paper-plane glyph lives INSIDE the button — no freestanding icon, no
@@ -5645,15 +5673,13 @@ const composerActionControl = (state: DesktopShellState): View => {
   // hover popover (no standing caption).
   return withDisabledReason(
     "shell-note",
-    !lane.available,
-    lane.available ? null : lane.reason ?? "Send unavailable: selected lane cannot act",
+    sendBlocked,
+    sendBlocked ? blockedReason : null,
     IconButton({
       key: "shell-note",
       icon: "ArrowUp",
-      accessibilityLabel: lane.available
-        ? "Send message"
-        : lane.reason ?? "Send unavailable: selected lane cannot act",
-      disabled: !lane.available,
+      accessibilityLabel: sendBlocked ? blockedReason : "Send message",
+      disabled: sendBlocked,
       onPress: IntentRef("DesktopNoteSubmitted"),
       style: blank
         ? { backgroundColor: "surfaceRaised", color: "textMuted", borderRadius: "full" }

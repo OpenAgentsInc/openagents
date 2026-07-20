@@ -1049,6 +1049,45 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(prompt.endsWith("Assistant:")).toBe(true)
   })
 
+  test("buildOpenAgentsAppleFmPrompt constrains the model against claiming actions or inventing results (owner directive 2026-07-20)", () => {
+    const prompt = buildOpenAgentsAppleFmPrompt([
+      { key: "u0", role: "user", text: "dispatch a subagent to set a reminder", timestamp: "18:00" },
+    ])
+    // The preamble must forbid claiming capabilities/actions and inventing facts.
+    expect(prompt).toContain("CANNOT take any action")
+    expect(prompt).toContain("cannot dispatch agents or subagents")
+    expect(prompt).toContain("NEVER say you have done, will do, or are doing any such action")
+    expect(prompt).toContain("Do not invent facts, capabilities, results, or events")
+  })
+
+  test("OpenAgents authority (owner directive 2026-07-20): a turn submits even while Codex is still loading — provider-lane readiness never blocks the OpenAgents path", async () => {
+    const calls: Array<unknown> = []
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
+      ...baseState,
+      openAgentsStandby: undefined,
+      // Codex lane is unavailable (still verifying/loading) — this must NOT block.
+      harnessLanes: { fable: { available: false, reason: "loading" }, codex: { available: false, reason: "Codex — verifying availability" } },
+      notes: [],
+    }))
+    const chatHost = {
+      listThreads: async () => [testThread],
+      newThread: async () => null,
+      openThread: async () => testThread,
+      sendMessage: async (input: unknown) => { calls.push(input); return { ok: true as const, thread: testThread } },
+    }
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Are you there?")))))
+    const final = await Effect.runPromise(SubscriptionRef.get(state))
+    // No provider turn was started, and the submission was NOT swallowed by the
+    // codex-lane gate: the user message committed and the OpenAgents reply landed.
+    expect(calls).toHaveLength(0)
+    expect(final.pending).toBe(false)
+    expect(final.notes.map((note) => ({ role: note.role, text: note.text }))).toEqual([
+      { role: "user", text: "Are you there?" },
+      { role: "assistant", text: "Stand by." },
+    ])
+  })
+
   test("Full Auto (#8853): a flagged turn sends fullAuto:true exactly once -- main, not the renderer, decides whether to continue", async () => {
     const completed = { ...testThread, notes: [{ key: "assistant.1", role: "assistant" as const, text: "Did the first thing.", timestamp: "18:05" }] }
     const calls: Array<{ message: string; fullAuto?: boolean }> = []

@@ -391,18 +391,26 @@ describe("design conformance (c): per-surface structural recipes", () => {
     expect(byKey(view, "shell-reasoning-select")).toBeUndefined()
   })
 
-  test("Codex availability is expressed only on Send through the exact reason tooltip", () => {
-    const state = baseState() // codex lane starts unavailable with a reason
-    const view = desktopShellView(state)
-    expect(byKey(view, "shell-harness-select")).toBeUndefined()
-    // The Send button is equally explained while the selected lane cannot act.
-    const sendReason = byKey(view, "shell-note-reason") as { _tag?: string; content?: string }
+  test("Codex availability is expressed on Send only on the explicit provider path, never on the OpenAgents-authority default", () => {
+    // Owner directive 2026-07-20: the OpenAgents-authority path (default, i.e.
+    // openAgentsStandby !== false) must NOT block Send or express Codex-lane
+    // readiness — the user submits immediately while Codex is still loading.
+    const authorityPath = baseState() // openAgentsStandby undefined (authority ON), codex lane unavailable
+    const authorityView = desktopShellView(authorityPath)
+    expect(byKey(authorityView, "shell-harness-select")).toBeUndefined()
+    // No disabled-reason tooltip on the authority path even though codex is unavailable.
+    expect(byKey(authorityView, "shell-note-reason")).toBeUndefined()
+
+    // On the explicit provider path, an unavailable selected lane IS explained on Send.
+    const providerPath: DesktopShellState = { ...baseState(), openAgentsStandby: false }
+    const providerView = desktopShellView(providerPath)
+    const sendReason = byKey(providerView, "shell-note-reason") as { _tag?: string; content?: string }
     expect(sendReason?._tag).toBe("Tooltip")
-    expect(String(sendReason?.content ?? "")).toBe(state.harnessLanes.codex.reason!)
+    expect(String(sendReason?.content ?? "")).toBe(providerPath.harnessLanes.codex.reason!)
     // An available lane renders the bare control — hover popovers are for
     // disabled controls only, and no standing caption exists either way.
     const available: DesktopShellState = {
-      ...state,
+      ...providerPath,
       harnessLanes: {
         fable: { available: true, reason: null },
         codex: { available: true, reason: null },
