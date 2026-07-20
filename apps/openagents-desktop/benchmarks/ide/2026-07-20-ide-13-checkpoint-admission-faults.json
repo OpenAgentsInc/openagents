@@ -1,0 +1,125 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-checkpoint-admission-faults.v1",
+  "evidenceContractVersion": "openagents.desktop.ide-portable-evidence.v3",
+  "generatedAt": "2026-07-20T18:57:16.262Z",
+  "candidateCommitSha": "ebd9140cf7f5b39d14ee33e64cb29ed1723d69c5",
+  "baseCommitSha": "33bf21d8c9df4d839d2f9b9f5504b69108a7fe18",
+  "harnessRef": "harness.ide13.checkpoint-admission.production-components.v1",
+  "cases": [
+    {
+      "faultRef": "fault.ide13.checkpoint-admission.corrupt_checkpoint",
+      "scenario": "corrupt_checkpoint",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.portable-local-rehydrator.stage",
+      "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.corrupt_checkpoint",
+      "rejectionRef": "rejection.ide13.checkpoint-admission.09dd7c0239b0de9957ce1ef48c35fe7b",
+      "elapsedMilliseconds": 236.44745799999987,
+      "deadlineMilliseconds": 30000,
+      "residueCount": 0,
+      "disclosure": "The harness used the production checkpoint artifact store or local rehydrator with a fixture repository and a source-controlled artifact mutation. It verified fail-closed rejection and no destination residue. This is simulator evidence, not a full owner-local move."
+    },
+    {
+      "faultRef": "fault.ide13.checkpoint-admission.truncated_checkpoint",
+      "scenario": "truncated_checkpoint",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.portable-local-rehydrator.stage",
+      "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.truncated_checkpoint",
+      "rejectionRef": "rejection.ide13.checkpoint-admission.29d5dda4cbb457cc9ab3f8c6f580a2e8",
+      "elapsedMilliseconds": 236.7710830000001,
+      "deadlineMilliseconds": 30000,
+      "residueCount": 0,
+      "disclosure": "The harness used the production checkpoint artifact store or local rehydrator with a fixture repository and a source-controlled artifact mutation. It verified fail-closed rejection and no destination residue. This is simulator evidence, not a full owner-local move."
+    },
+    {
+      "faultRef": "fault.ide13.checkpoint-admission.wrong_schema_checkpoint",
+      "scenario": "wrong_schema_checkpoint",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.portable-local-rehydrator.stage",
+      "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.wrong_schema_checkpoint",
+      "rejectionRef": "rejection.ide13.checkpoint-admission.cb4397a8b34ce9dd0891f5f91867e0ae",
+      "elapsedMilliseconds": 236.20220900000004,
+      "deadlineMilliseconds": 30000,
+      "residueCount": 0,
+      "disclosure": "The harness used the production checkpoint artifact store or local rehydrator with a fixture repository and a source-controlled artifact mutation. It verified fail-closed rejection and no destination residue. This is simulator evidence, not a full owner-local move."
+    },
+    {
+      "faultRef": "fault.ide13.checkpoint-admission.missing_artifact",
+      "scenario": "missing_artifact",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.portable-local-rehydrator.stage",
+      "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.missing_artifact",
+      "rejectionRef": "rejection.ide13.checkpoint-admission.de9106aafabe4f68c1a0381a692af761",
+      "elapsedMilliseconds": 235.60674999999992,
+      "deadlineMilliseconds": 30000,
+      "residueCount": 0,
+      "disclosure": "The harness used the production checkpoint artifact store or local rehydrator with a fixture repository and a source-controlled artifact mutation. It verified fail-closed rejection and no destination residue. This is simulator evidence, not a full owner-local move."
+    },
+    {
+      "faultRef": "fault.ide13.checkpoint-admission.auth_expiry_revocation",
+      "scenario": "auth_expiry_revocation",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.portable-destination-helper-supervisor.activate",
+      "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.auth_expiry_revocation",
+      "rejectionRef": "failure.pylon.portable-destination-helper.authentication_failed.a806167c3c360982cf7730a30286dd47ac7e8bef03f064450aa0f9c769920d70",
+      "elapsedMilliseconds": 0.3523330000000442,
+      "deadlineMilliseconds": 30000,
+      "residueCount": 0,
+      "disclosure": "The harness used the production helper supervisor with a fixture authenticator. It returned expired authentication and verified fail-closed admission before helper start. This is simulator evidence, not an external credential revocation."
+    },
+    {
+      "faultRef": "fault.ide13.checkpoint-admission.provider_capability_drift",
+      "scenario": "provider_capability_drift",
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "rejectionRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 30000,
+      "residueCount": 0,
+      "disclosure": "The production destination path has capability lease refs but no source-controlled authoritative provider-catalog drift seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.checkpoint-admission.destination_boot_failure",
+      "scenario": "destination_boot_failure",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.portable-destination-helper-supervisor.activate",
+      "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.destination_boot_failure",
+      "rejectionRef": "failure.pylon.portable-destination-helper.helper_start_failed.2953e68f3d018420c5bfcf06648b9712bd2506d3d68e94d521efe22fcd45391b",
+      "elapsedMilliseconds": 11.902250000000095,
+      "deadlineMilliseconds": 30000,
+      "residueCount": 0,
+      "disclosure": "The harness used the production helper supervisor with fixture adapters. It injected an LSP start failure after a PTY start and verified that the supervisor disposed the PTY. This is simulator evidence, not a real target boot failure."
+    },
+    {
+      "faultRef": "fault.ide13.checkpoint-admission.source_revocation_failure",
+      "scenario": "source_revocation_failure",
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "rejectionRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 30000,
+      "residueCount": 0,
+      "disclosure": "The production owner-local cleanup path has no source-controlled revocation failure seam that proves an external authority refusal. This case did not run and does not contribute acceptance evidence."
+    }
+  ],
+  "summary": {
+    "requiredCaseCount": 8,
+    "passedSimulatorCount": 6,
+    "notRunCount": 2,
+    "acceptanceContributionCount": 0,
+    "acceptanceReady": false
+  },
+  "safety": {
+    "forbiddenMaterialProjected": false,
+    "residueCount": 0
+  }
+}
