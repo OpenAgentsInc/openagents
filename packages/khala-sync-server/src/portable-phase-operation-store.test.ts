@@ -37,6 +37,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
       databaseUrl: pg.urlFor("khala_sync_ide13_phase_exchange"),
     });
     expect(result.applied).toContain("0084_portable_phase_operations.sql");
+    expect(result.applied).toContain("0085_portable_phase_destination_activation_receipt.sql");
     sql = SQL({ url: pg.urlFor("khala_sync_ide13_phase_exchange"), max: 10 });
     await sql`
       INSERT INTO khala_sync_portable_targets
@@ -334,6 +335,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
       checkpointRef: `checkpoint.ide13.phase.result.${fixture.suffix}`,
       checkpointObjectRef: `object.ide13.phase.result.${fixture.suffix}`,
       checkpointDigest: otherDigest,
+      destinationActivationReceipt: null,
       evidenceRefs: [`evidence.ide13.phase.result.${fixture.suffix}`],
       errorRef: null,
       completedAt: now,
@@ -388,6 +390,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
       checkpointRef: null,
       checkpointObjectRef: null,
       checkpointDigest: null,
+      destinationActivationReceipt: null,
       evidenceRefs: [`evidence.ide13.phase.failed.${fixture.suffix}`],
       errorRef: "error.ide13.phase.target_rejected",
       completedAt: now,
@@ -409,6 +412,87 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
     await expect(
       store.complete({ ...result, errorRef: "error.ide13.phase.other" }),
     ).rejects.toMatchObject({ code: "stale_revision" });
+  });
+
+  test("accepts only an exact complete destination activation receipt", async () => {
+    const fixture = await seedExecution();
+    const store = new PostgresPortablePhaseOperationStore(sql as unknown as SyncSql, () => now);
+    const operation = await store.enqueue(operationRequest(fixture, "destination-activate"));
+    const claimed = await store.claim(claimRequest(operation.operation.request, "activation"));
+    if (claimed.operation.claimRef === null) throw new Error("phase claim ref is missing");
+    const activationReceipt = {
+      schema: "openagents.ide_portable_destination_activation.v1" as const,
+      receiptRef: `receipt.ide13.phase.activation.${fixture.suffix}`,
+      operationRef: operation.operation.request.operationRef,
+      sessionRef: fixture.sessionRef,
+      checkpointRef: operation.operation.request.checkpointRef,
+      destinationTargetRef,
+      destinationAttachmentRef: operation.operation.request.attachmentRef,
+      destinationGeneration: 2,
+      authentication: {
+        state: "reauthenticated" as const,
+        policyRef: "policy.portable.destination.owner_managed.v1",
+        evidenceRef: `evidence.ide13.phase.auth.${fixture.suffix}`,
+        observedAt: now,
+        expiresAt: "2026-07-20T12:15:00.000Z",
+      },
+      helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map((kind) => ({
+        kind,
+        readiness: "unsupported" as const,
+        instanceRef: null,
+        versionRef: null,
+        omissionRef: `omission.ide13.phase.${kind}.${fixture.suffix}`,
+        evidenceRefs: [],
+      })),
+      activatedAgentRefs: [`agent.ide13.phase.root.${fixture.suffix}`],
+      acceptedWorkRefs: [],
+      evidenceRefs: [`evidence.ide13.phase.activation.${fixture.suffix}`],
+    };
+    const completion = {
+      schema: PORTABLE_PHASE_OPERATION_SCHEMA_VERSION,
+      claimRef: claimed.operation.claimRef,
+      sessionRef: fixture.sessionRef,
+      attachmentRef: operation.operation.request.attachmentRef,
+      attachmentGeneration: 2,
+      pylonRef,
+      targetRef: destinationTargetRef,
+      workerInstanceRef: "worker.ide13.phase.activation",
+      claimGeneration: 1,
+      expectedLeaseRevision: 1,
+      resultRef: `result.ide13.phase.activation.${fixture.suffix}`,
+      resultStatus: "completed" as const,
+      checkpointRef: null,
+      checkpointObjectRef: null,
+      checkpointDigest: null,
+      destinationActivationReceipt: activationReceipt,
+      evidenceRefs: activationReceipt.evidenceRefs,
+      errorRef: null,
+      completedAt: now,
+    };
+    await expect(
+      store.complete({
+        ...completion,
+        destinationActivationReceipt: {
+          ...activationReceipt,
+          destinationGeneration: 1,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    await expect(
+      store.complete({
+        ...completion,
+        destinationActivationReceipt: {
+          ...activationReceipt,
+          helpers: activationReceipt.helpers.slice(1),
+        },
+      }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    const completed = await store.complete(completion);
+    expect(completed.operation.resultDestinationActivationReceipt).toEqual(activationReceipt);
+    expect(await store.complete(completion)).toEqual({
+      status: "replayed",
+      operation: completed.operation,
+    });
   });
 
   test("rejects stale generation, wrong destination binding, and private material", async () => {

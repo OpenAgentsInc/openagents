@@ -266,6 +266,48 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
         leaseExpiresAt: "2026-07-20T12:10:00.000Z",
       });
       if (claimed.operation.claimRef === null) throw new Error("phase claim missing");
+      const resultRef = `result.ide13.adapter.phase.${request.kind}.${fixture.suffix}`;
+      const destinationActivationReceipt =
+        request.kind === "destination-activate" && resultStatus === "completed"
+          ? {
+              schema: "openagents.ide_portable_destination_activation.v1" as const,
+              receiptRef: `receipt.ide13.adapter.destination.${fixture.suffix}`,
+              operationRef: request.operationRef,
+              sessionRef: request.sessionRef,
+              checkpointRef: fixture.bundle.checkpoint.checkpointRef,
+              destinationTargetRef: request.targetRef,
+              destinationAttachmentRef: request.attachmentRef,
+              destinationGeneration: request.attachmentGeneration,
+              authentication: {
+                state: "reauthenticated" as const,
+                policyRef: "policy.portable.destination.owner_managed.v1",
+                evidenceRef: `evidence.ide13.adapter.authentication.${fixture.suffix}`,
+                observedAt: now,
+                expiresAt: "2026-07-20T12:15:00.000Z",
+              },
+              helpers: [
+                {
+                  kind: "pty" as const,
+                  readiness: "ready" as const,
+                  instanceRef: `instance.ide13.adapter.pty.${fixture.suffix}`,
+                  versionRef: "version.ide13.adapter.pty.v1",
+                  omissionRef: null,
+                  evidenceRefs: [`evidence.ide13.adapter.pty.${fixture.suffix}`],
+                },
+                ...(["lsp", "dap", "watcher", "native"] as const).map((kind) => ({
+                  kind,
+                  readiness: "unsupported" as const,
+                  instanceRef: null,
+                  versionRef: null,
+                  omissionRef: `omission.ide13.adapter.${kind}.${fixture.suffix}`,
+                  evidenceRefs: [],
+                })),
+              ],
+              activatedAgentRefs: fixture.bundle.graph.nodes.map((node) => node.agentRef),
+              acceptedWorkRefs: [],
+              evidenceRefs: [`evidence.ide13.adapter.activation.${fixture.suffix}`],
+            }
+          : null;
       await store.complete({
         schema: PORTABLE_PHASE_OPERATION_SCHEMA_VERSION,
         claimRef: claimed.operation.claimRef,
@@ -277,7 +319,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
         workerInstanceRef,
         claimGeneration: 1,
         expectedLeaseRevision: 1,
-        resultRef: `result.ide13.adapter.phase.${request.kind}.${fixture.suffix}`,
+        resultRef,
         resultStatus,
         checkpointRef:
           request.kind === "checkpoint-create" && resultStatus === "completed"
@@ -291,7 +333,10 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
           request.kind === "checkpoint-create" && resultStatus === "completed"
             ? fixture.bundle.checkpoint.digest
             : null,
-        evidenceRefs: [`evidence.ide13.adapter.phase.${request.kind}.${fixture.suffix}`],
+        destinationActivationReceipt,
+        evidenceRefs: destinationActivationReceipt?.evidenceRefs ?? [
+          `evidence.ide13.adapter.phase.${request.kind}.${fixture.suffix}`,
+        ],
         errorRef: resultStatus === "failed" ? "error.ide13.adapter.target_failed" : null,
         completedAt: now,
       });
@@ -379,6 +424,12 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
     expect(activation).toMatchObject({
       activatedAgentRefs: [fixture.bundle.graph.rootAgentRef],
       acceptedWorkRefs: [],
+    });
+    expect(activation.helpers[0]).toMatchObject({
+      kind: "pty",
+      readiness: "ready",
+      instanceRef: `instance.ide13.adapter.pty.${fixture.suffix}`,
+      versionRef: "version.ide13.adapter.pty.v1",
     });
     expect(observed).toEqual([
       "quiesce",

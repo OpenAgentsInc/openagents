@@ -1,11 +1,13 @@
 import { createHash } from "node:crypto";
-import type {
-  PortablePhaseOperationClaimRequest,
-  PortablePhaseOperationRecord,
-  PortablePhaseOperationRequest,
-  PortablePhaseOperationResultRequest,
+import { canonicalJson } from "@openagentsinc/khala-sync";
+import {
+  validateIdePortableDestinationActivationReceipt,
+  type IdePortableDestinationActivationReceipt,
+  type PortablePhaseOperationClaimRequest,
+  type PortablePhaseOperationRecord,
+  type PortablePhaseOperationRequest,
+  type PortablePhaseOperationResultRequest,
 } from "@openagentsinc/portable-session-contract";
-
 import type { PylonPortablePhaseOperationClient } from "./portable-phase-operation-client.js";
 import type {
   PylonPortablePhaseClaimJournal,
@@ -23,6 +25,7 @@ export type PylonPortablePhaseExecutionResult = Readonly<{
   checkpointRef: string | null;
   checkpointObjectRef: string | null;
   checkpointDigest: string | null;
+  destinationActivationReceipt: IdePortableDestinationActivationReceipt | null;
   evidenceRefs: ReadonlyArray<string>;
 }>;
 
@@ -136,6 +139,7 @@ const result = (evidenceRefs: ReadonlyArray<string>): PylonPortablePhaseExecutio
   checkpointRef: null,
   checkpointObjectRef: null,
   checkpointDigest: null,
+  destinationActivationReceipt: null,
   evidenceRefs,
 });
 
@@ -181,6 +185,7 @@ export const makePylonPortablePhaseExecutor = (
             checkpointRef: bundle.checkpoint.checkpointRef,
             checkpointObjectRef: resolved.call.checkpointObjectRef,
             checkpointDigest: bundle.checkpoint.digest,
+            destinationActivationReceipt: null,
             evidenceRefs: bundle.checkpoint.receiptRefs,
           };
         }
@@ -188,8 +193,16 @@ export const makePylonPortablePhaseExecutor = (
           return result((await resolved.target.cleanupSource(resolved.call.input)).evidenceRefs);
         case "checkpoint-stage":
           return result((await resolved.target.stageCheckpoint(resolved.call.input)).evidenceRefs);
-        case "destination-activate":
-          return result((await resolved.target.activate(resolved.call.input)).evidenceRefs);
+        case "destination-activate": {
+          const receipt = await resolved.target.activate(resolved.call.input);
+          return {
+            checkpointRef: null,
+            checkpointObjectRef: null,
+            checkpointDigest: null,
+            destinationActivationReceipt: receipt,
+            evidenceRefs: receipt.evidenceRefs,
+          };
+        }
         case "staged-abort":
           return result((await resolved.target.abortStaged(resolved.call.input)).evidenceRefs);
       }
@@ -254,6 +267,7 @@ const abortableDelay = (milliseconds: number, signal: AbortSignal): Promise<"ren
 const validateResult = (
   request: PortablePhaseOperationRequest,
   execution: PylonPortablePhaseExecutionResult,
+  now: Date,
 ): void => {
   if (
     execution.evidenceRefs.length > 256 ||
@@ -267,6 +281,24 @@ const validateResult = (
     execution.checkpointObjectRef !== null &&
     execution.checkpointDigest !== null;
   if ((request.kind === "checkpoint-create") !== hasCheckpoint) {
+    throw new PylonPortablePhaseExecutionError("error.pylon.portable-phase.invalid-result");
+  }
+  if (request.kind === "destination-activate") {
+    if (request.checkpointRef === null || execution.destinationActivationReceipt === null) {
+      throw new PylonPortablePhaseExecutionError("error.pylon.portable-phase.invalid-result");
+    }
+    const receipt = execution.destinationActivationReceipt;
+    validateIdePortableDestinationActivationReceipt(receipt, {
+      operationRef: request.operationRef,
+      sessionRef: request.sessionRef,
+      checkpointRef: request.checkpointRef,
+      destinationTargetRef: request.targetRef,
+      destinationAttachmentRef: request.attachmentRef,
+      destinationGeneration: request.attachmentGeneration,
+      authenticationPolicyRef: receipt.authentication.policyRef,
+      now,
+    });
+  } else if (execution.destinationActivationReceipt !== null) {
     throw new PylonPortablePhaseExecutionError("error.pylon.portable-phase.invalid-result");
   }
   if (
@@ -491,6 +523,8 @@ export class PylonPortablePhaseWorker {
       response.operation.resultCheckpointRef !== completion.checkpointRef ||
       response.operation.resultCheckpointObjectRef !== completion.checkpointObjectRef ||
       response.operation.resultCheckpointDigest !== completion.checkpointDigest ||
+      canonicalJson(response.operation.resultDestinationActivationReceipt) !==
+        canonicalJson(completion.destinationActivationReceipt) ||
       response.operation.errorRef !== completion.errorRef ||
       response.operation.completedAt !== completion.completedAt ||
       response.operation.resultEvidenceRefs.length !== completion.evidenceRefs.length ||
@@ -543,7 +577,7 @@ export class PylonPortablePhaseWorker {
     let errorRef: string | null;
     if (settled._tag === "success") {
       try {
-        validateResult(request, settled.value);
+        validateResult(request, settled.value, this.now());
         status = "completed";
         output = settled.value;
         errorRef = null;
@@ -585,6 +619,7 @@ export class PylonPortablePhaseWorker {
       checkpointRef: output.checkpointRef,
       checkpointObjectRef: output.checkpointObjectRef,
       checkpointDigest: output.checkpointDigest,
+      destinationActivationReceipt: output.destinationActivationReceipt,
       evidenceRefs: output.evidenceRefs,
       errorRef,
       completedAt,

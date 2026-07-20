@@ -6,6 +6,7 @@ import {
   PortablePhaseOperationRenewRequestSchema,
   PortablePhaseOperationRequestSchema,
   PortablePhaseOperationResultRequestSchema,
+  validateIdePortableDestinationActivationReceipt,
   type PortablePhaseOperationRecord,
   type PortablePhaseOperationRequest,
 } from "@openagentsinc/portable-session-contract";
@@ -55,6 +56,7 @@ type Row = {
   result_checkpoint_ref: string | null;
   result_checkpoint_object_ref: string | null;
   result_checkpoint_digest: string | null;
+  result_destination_activation_receipt_json: unknown;
   result_evidence_refs_json: unknown;
   error_ref: string | null;
   completed_at: Date | string | null;
@@ -206,6 +208,7 @@ const rowToRecord = (row: Row): PortablePhaseOperationRecord => {
     resultCheckpointRef: row.result_checkpoint_ref,
     resultCheckpointObjectRef: row.result_checkpoint_object_ref,
     resultCheckpointDigest: row.result_checkpoint_digest,
+    resultDestinationActivationReceipt: parseJson(row.result_destination_activation_receipt_json),
     resultEvidenceRefs: parseJson(row.result_evidence_refs_json),
     errorRef: row.error_ref,
     completedAt: row.completed_at === null ? null : iso(row.completed_at),
@@ -546,7 +549,20 @@ export class PostgresPortablePhaseOperationStore {
           "portable phase claim does not exist",
         );
       this.assertMutationBinding(row, request);
-      this.assertResultShape(row.kind, request);
+      const targetRows: Array<{ target_class: string }> = await tx`
+        SELECT target_class
+        FROM khala_sync_portable_targets
+        WHERE target_ref = ${row.target_ref}
+        FOR SHARE
+      `;
+      const targetClass = targetRows[0]?.target_class;
+      if (targetClass === undefined) {
+        throw new PortablePhaseOperationStoreError(
+          "conflict",
+          "portable phase target authority does not exist",
+        );
+      }
+      this.assertResultShape(row, request, targetClass);
       const revision = requiredPositive(row.lease_revision, "lease revision");
       const sameResult =
         (row.state === "completed" || row.state === "failed") &&
@@ -591,6 +607,11 @@ export class PostgresPortablePhaseOperationStore {
             result_checkpoint_ref = ${request.checkpointRef},
             result_checkpoint_object_ref = ${request.checkpointObjectRef},
             result_checkpoint_digest = ${request.checkpointDigest},
+            result_destination_activation_receipt_json = ${
+              request.destinationActivationReceipt === null
+                ? null
+                : JSON.stringify(request.destinationActivationReceipt)
+            }::jsonb,
             result_evidence_refs_json = ${JSON.stringify(request.evidenceRefs)}::jsonb,
             error_ref = ${request.errorRef}, completed_at = ${request.completedAt},
             updated_at = ${request.completedAt}
@@ -758,7 +779,11 @@ export class PostgresPortablePhaseOperationStore {
     }
   }
 
-  private assertResultShape(kind: string, request: ReturnType<typeof decodeResultRequest>): void {
+  private assertResultShape(
+    row: Row,
+    request: ReturnType<typeof decodeResultRequest>,
+    targetClass: string,
+  ): void {
     const hasCompleteCheckpoint =
       request.checkpointRef !== null &&
       request.checkpointObjectRef !== null &&
@@ -769,8 +794,8 @@ export class PostgresPortablePhaseOperationStore {
       request.checkpointDigest !== null;
     if (
       request.resultStatus === "completed" &&
-      ((kind === "checkpoint-create" && !hasCompleteCheckpoint) ||
-        (kind !== "checkpoint-create" && hasAnyCheckpoint) ||
+      ((row.kind === "checkpoint-create" && !hasCompleteCheckpoint) ||
+        (row.kind !== "checkpoint-create" && hasAnyCheckpoint) ||
         request.errorRef !== null)
     ) {
       throw new PortablePhaseOperationStoreError(
@@ -782,6 +807,43 @@ export class PostgresPortablePhaseOperationStore {
       throw new PortablePhaseOperationStoreError(
         "invalid",
         "portable phase failed result shape is invalid",
+      );
+    }
+    const receipt = request.destinationActivationReceipt;
+    if (request.resultStatus === "completed" && row.kind === "destination-activate") {
+      if (receipt === null || row.checkpoint_ref === null) {
+        throw new PortablePhaseOperationStoreError(
+          "invalid",
+          "portable destination activation result is incomplete",
+        );
+      }
+      try {
+        if (canonical(receipt.evidenceRefs) !== canonical(request.evidenceRefs)) {
+          throw new Error("destination activation evidence differs");
+        }
+        validateIdePortableDestinationActivationReceipt(receipt, {
+          operationRef: row.operation_ref,
+          sessionRef: row.session_ref,
+          checkpointRef: row.checkpoint_ref,
+          destinationTargetRef: row.target_ref,
+          destinationAttachmentRef: row.attachment_ref,
+          destinationGeneration: requiredPositive(
+            row.attachment_generation,
+            "attachment generation",
+          ),
+          authenticationPolicyRef: `policy.portable.destination.${targetClass}.v1`,
+          now: new Date(request.completedAt),
+        });
+      } catch {
+        throw new PortablePhaseOperationStoreError(
+          "invalid",
+          "portable destination activation receipt is invalid",
+        );
+      }
+    } else if (receipt !== null) {
+      throw new PortablePhaseOperationStoreError(
+        "invalid",
+        "portable phase result has an unexpected destination activation receipt",
       );
     }
   }

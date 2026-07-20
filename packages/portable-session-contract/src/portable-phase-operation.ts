@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { IdePortableDestinationActivationReceiptSchema } from "./ide13-contract.js";
+
 export const PORTABLE_PHASE_OPERATION_SCHEMA_VERSION =
   "openagents.portable_phase_operation.v1" as const;
 
@@ -86,6 +88,7 @@ export const PortablePhaseOperationRecordSchema = Schema.Struct({
   resultCheckpointRef: Schema.NullOr(PortableRef),
   resultCheckpointObjectRef: Schema.NullOr(PortableRef),
   resultCheckpointDigest: Schema.NullOr(Sha256Digest),
+  resultDestinationActivationReceipt: Schema.NullOr(IdePortableDestinationActivationReceiptSchema),
   resultEvidenceRefs: PublicSafeRefs,
   errorRef: Schema.NullOr(PortableRef),
   completedAt: Schema.NullOr(PortableTimestamp),
@@ -125,6 +128,7 @@ export const PortablePhaseOperationResultRequestSchema = Schema.Struct({
   checkpointRef: Schema.NullOr(PortableRef),
   checkpointObjectRef: Schema.NullOr(PortableRef),
   checkpointDigest: Schema.NullOr(Sha256Digest),
+  destinationActivationReceipt: Schema.NullOr(IdePortableDestinationActivationReceiptSchema),
   evidenceRefs: PublicSafeRefs,
   errorRef: Schema.NullOr(PortableRef),
   completedAt: PortableTimestamp,

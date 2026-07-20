@@ -20,6 +20,7 @@ import {
   PylonPortablePhaseWorker,
   type PylonPortablePhaseExecutor,
 } from "./portable-phase-operation-worker.js";
+import type { PylonOwnerLocalExecutionTarget } from "./portable-session-target.js";
 
 const pylonRef = "pylon.ide13.fixture";
 const targetRef = "target.ide13.fixture";
@@ -62,6 +63,7 @@ const record = (
   resultCheckpointRef: null,
   resultCheckpointObjectRef: null,
   resultCheckpointDigest: null,
+  resultDestinationActivationReceipt: null,
   resultEvidenceRefs: [],
   errorRef: null,
   completedAt: null,
@@ -155,6 +157,7 @@ const fakeClient = (source: PortablePhaseOperationRecord) => {
         resultCheckpointRef: request.checkpointRef,
         resultCheckpointObjectRef: request.checkpointObjectRef,
         resultCheckpointDigest: request.checkpointDigest,
+        resultDestinationActivationReceipt: request.destinationActivationReceipt,
         resultEvidenceRefs: request.evidenceRefs,
         errorRef: request.errorRef,
         completedAt: request.completedAt,
@@ -234,6 +237,106 @@ describe("Pylon portable phase HTTP client", () => {
 });
 
 describe("Pylon portable phase worker", () => {
+  test("carries the exact destination readiness receipt from the target", async () => {
+    const request = {
+      ...record("destination-activate").request,
+      operationRef: "operation.ide13.destination.activate",
+      attachmentRef: "attachment.ide13.destination",
+      attachmentGeneration: 2,
+      checkpointRef: "checkpoint.ide13.destination",
+      checkpointObjectRef: "object.ide13.destination",
+      checkpointDigest: `sha256:${"a".repeat(64)}`,
+    };
+    const receipt = {
+      schema: "openagents.ide_portable_destination_activation.v1" as const,
+      receiptRef: "receipt.ide13.destination.activation",
+      operationRef: request.operationRef,
+      sessionRef: request.sessionRef,
+      checkpointRef: request.checkpointRef,
+      destinationTargetRef: targetRef,
+      destinationAttachmentRef: request.attachmentRef,
+      destinationGeneration: request.attachmentGeneration,
+      authentication: {
+        state: "reauthenticated" as const,
+        policyRef: "policy.portable.destination.owner_local.v1",
+        evidenceRef: "evidence.ide13.destination.authentication",
+        observedAt: now.toISOString(),
+        expiresAt: "2026-07-20T12:05:00.000Z",
+      },
+      helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map((kind) => ({
+        kind,
+        readiness: "unsupported" as const,
+        instanceRef: null,
+        versionRef: null,
+        omissionRef: `omission.ide13.destination.${kind}`,
+        evidenceRefs: [],
+      })),
+      activatedAgentRefs: ["agent.ide13.destination.root"],
+      acceptedWorkRefs: [],
+      evidenceRefs: ["evidence.ide13.destination.activation"],
+    };
+    const unsupported = async (): Promise<never> => {
+      throw new Error("unexpected target call");
+    };
+    const target: PylonOwnerLocalExecutionTarget = {
+      targetRef,
+      targetClass: "owner_local",
+      quiesceGraph: unsupported,
+      createCheckpoint: unsupported,
+      cleanupSource: unsupported,
+      stageCheckpoint: unsupported,
+      activate: async () => receipt,
+      abortStaged: unsupported,
+    };
+    const executor = makePylonPortablePhaseExecutor({
+      resolve: async () => ({
+        target,
+        call: {
+          kind: "destination-activate",
+          input: {
+            operationRef: request.operationRef,
+            checkpointRef: request.checkpointRef,
+            sessionRef: request.sessionRef,
+            executionBinding: {
+              schema: "openagents.portable_session_execution_binding.v1",
+              sessionRef: request.sessionRef,
+              ownerRef: request.ownerRef,
+              runRef: "run.ide13.destination",
+              repositoryRef: "repository.ide13.destination",
+              pinnedBaseRef: "commit.ide13.destination",
+            },
+            destinationAttachmentRef: request.attachmentRef,
+            destinationGeneration: request.attachmentGeneration,
+            capabilityLeaseRefs: [],
+          },
+        },
+        operationRefSemantics: "operation_ref_idempotent",
+      }),
+    });
+    await expect(executor.execute(request, new AbortController().signal)).resolves.toEqual({
+      checkpointRef: null,
+      checkpointObjectRef: null,
+      checkpointDigest: null,
+      destinationActivationReceipt: receipt,
+      evidenceRefs: receipt.evidenceRefs,
+    });
+    const { calls, client } = fakeClient({
+      ...record("destination-activate"),
+      request,
+    });
+    const worker = new PylonPortablePhaseWorker({
+      client,
+      executor,
+      journal: memoryJournal(),
+      pylonRef,
+      targetRef,
+      workerInstanceRef,
+      now: () => now,
+    });
+    expect(await worker.runPass()).toBe(1);
+    expect(calls.completions[0]?.destinationActivationReceipt).toEqual(receipt);
+  });
+
   test("claims, renews with CAS, and completes an exact refs-only result", async () => {
     const source = record();
     const { calls, client } = fakeClient(source);
@@ -250,6 +353,7 @@ describe("Pylon portable phase worker", () => {
           checkpointRef: null,
           checkpointObjectRef: null,
           checkpointDigest: null,
+          destinationActivationReceipt: null,
           evidenceRefs: ["evidence.ide13.quiesce"],
         };
       },
@@ -358,6 +462,7 @@ describe("Pylon portable phase worker", () => {
           checkpointRef: null,
           checkpointObjectRef: null,
           checkpointDigest: null,
+          destinationActivationReceipt: null,
           evidenceRefs: [],
         };
       },
@@ -432,6 +537,7 @@ describe("Pylon portable phase worker", () => {
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            destinationActivationReceipt: null,
             evidenceRefs: [],
           };
         },
@@ -507,6 +613,7 @@ describe("Pylon portable phase worker", () => {
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            destinationActivationReceipt: null,
             evidenceRefs: [],
           };
         },
@@ -551,6 +658,7 @@ describe("Pylon portable phase worker", () => {
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            destinationActivationReceipt: null,
             evidenceRefs: [],
           };
         },
@@ -572,6 +680,7 @@ describe("Pylon portable phase worker", () => {
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            destinationActivationReceipt: null,
             evidenceRefs: [],
           };
         },

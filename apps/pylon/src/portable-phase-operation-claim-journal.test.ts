@@ -50,6 +50,7 @@ const pendingEntry = (): PylonPortablePhaseClaimJournalEntry => ({
     resultCheckpointRef: null,
     resultCheckpointObjectRef: null,
     resultCheckpointDigest: null,
+    resultDestinationActivationReceipt: null,
     resultEvidenceRefs: [],
     errorRef: null,
     completedAt: null,

@@ -72,6 +72,7 @@ type OperationRow = Readonly<{
   result_checkpoint_ref: string | null;
   result_checkpoint_object_ref: string | null;
   result_checkpoint_digest: string | null;
+  result_destination_activation_receipt_json: unknown;
   result_evidence_refs_json: unknown;
   error_ref: string | null;
   completed_at: Date | string | null;
@@ -175,6 +176,7 @@ const recordFromRow = (row: OperationRow): PortablePhaseOperationRecord =>
     resultCheckpointRef: row.result_checkpoint_ref,
     resultCheckpointObjectRef: row.result_checkpoint_object_ref,
     resultCheckpointDigest: row.result_checkpoint_digest,
+    resultDestinationActivationReceipt: parseJson(row.result_destination_activation_receipt_json),
     resultEvidenceRefs: parseJson(row.result_evidence_refs_json),
     errorRef: row.error_ref,
     completedAt: iso(row.completed_at),
@@ -339,34 +341,14 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
       ...artifact,
     });
     const authenticationPolicyRef = `policy.portable.destination.${this.targetClass}.v1`;
-    return validateIdePortableDestinationActivationReceipt(publicSafe({
-      schema: "openagents.ide_portable_destination_activation.v1",
-      receiptRef: result.resultRef,
-      operationRef: input.operationRef,
-      sessionRef: input.sessionRef,
-      checkpointRef: input.checkpointRef,
-      destinationTargetRef: this.targetRef,
-      destinationAttachmentRef: input.destinationAttachmentRef,
-      destinationGeneration: input.destinationGeneration,
-      authentication: {
-        state: "reauthenticated",
-        policyRef: authenticationPolicyRef,
-        evidenceRef: this.claim.claimRef,
-        observedAt: result.completedAt,
-        expiresAt: null,
-      },
-      helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map((kind) => ({
-        kind,
-        readiness: "unsupported",
-        instanceRef: null,
-        versionRef: null,
-        omissionRef: `omission.portable.phase.${kind}.unsupported`,
-        evidenceRefs: [],
-      })),
-      activatedAgentRefs: bundle.graph.nodes.map((node) => node.agentRef),
-      acceptedWorkRefs: [],
-      evidenceRefs: result.resultEvidenceRefs,
-    }), {
+    const receipt = result.resultDestinationActivationReceipt;
+    if (receipt === null || result.completedAt === null) {
+      throw new PortablePhaseTargetError(
+        "invalid",
+        "portable destination activation receipt is missing",
+      );
+    }
+    return validateIdePortableDestinationActivationReceipt(publicSafe(receipt), {
       operationRef: input.operationRef,
       sessionRef: input.sessionRef,
       checkpointRef: input.checkpointRef,
@@ -374,6 +356,7 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
       destinationAttachmentRef: input.destinationAttachmentRef,
       destinationGeneration: input.destinationGeneration,
       authenticationPolicyRef,
+      now: new Date(result.completedAt),
     });
   }
 
@@ -519,7 +502,8 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
              worker_instance_ref, claim_generation, lease_revision, claimed_at,
              lease_expires_at, result_ref, result_fingerprint, result_status,
              result_checkpoint_ref, result_checkpoint_object_ref,
-             result_checkpoint_digest, result_evidence_refs_json, error_ref,
+             result_checkpoint_digest, result_destination_activation_receipt_json,
+             result_evidence_refs_json, error_ref,
              completed_at, updated_at
       FROM khala_sync_portable_phase_operations
       WHERE operation_ref = ${operationRef}
@@ -536,7 +520,8 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
              worker_instance_ref, claim_generation, lease_revision, claimed_at,
              lease_expires_at, result_ref, result_fingerprint, result_status,
              result_checkpoint_ref, result_checkpoint_object_ref,
-             result_checkpoint_digest, result_evidence_refs_json, error_ref,
+             result_checkpoint_digest, result_destination_activation_receipt_json,
+             result_evidence_refs_json, error_ref,
              completed_at, updated_at
       FROM khala_sync_portable_phase_operations
       WHERE command_execution_claim_ref = ${this.claim.claimRef}

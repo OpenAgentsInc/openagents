@@ -55,6 +55,7 @@ const pendingRecord = (): PortablePhaseOperationRecord => ({
   resultCheckpointRef: null,
   resultCheckpointObjectRef: null,
   resultCheckpointDigest: null,
+  resultDestinationActivationReceipt: null,
   resultEvidenceRefs: [],
   errorRef: null,
   completedAt: null,
@@ -135,9 +136,7 @@ describe("Pylon portable phase production composition", () => {
     await expect(
       assertPortablePhasePendingSupported([pendingRecord()], privateContexts.resolver),
     ).rejects.toEqual(
-      new PylonPortablePhaseProductionError(
-        "error.pylon.portable-phase.unsupported-exact-context",
-      ),
+      new PylonPortablePhaseProductionError("error.pylon.portable-phase.unsupported-exact-context"),
     );
   });
 
@@ -194,6 +193,7 @@ describe("Pylon portable phase production composition", () => {
             resultCheckpointRef: request.checkpointRef,
             resultCheckpointObjectRef: request.checkpointObjectRef,
             resultCheckpointDigest: request.checkpointDigest,
+            resultDestinationActivationReceipt: request.destinationActivationReceipt,
             resultEvidenceRefs: request.evidenceRefs,
             errorRef: request.errorRef,
             completedAt: request.completedAt,

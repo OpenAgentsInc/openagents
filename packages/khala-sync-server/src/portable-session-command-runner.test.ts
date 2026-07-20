@@ -403,6 +403,7 @@ describe("portable session command production resolver", () => {
               result_checkpoint_ref: command.checkpointRef,
               result_checkpoint_object_ref: "artifact.ide13.checkpoint",
               result_checkpoint_digest: bundle.checkpoint.digest,
+              result_destination_activation_receipt_json: null,
               result_evidence_refs_json: ["evidence.ide13.checkpoint"],
               error_ref: null,
               completed_at: now,
