@@ -211,6 +211,43 @@ The cleanup receipt records those sets as zero.
 If any observed set is not zero, the runtime reports `recovery_required`.
 It does not report `deleted`.
 
+### Owner-gated reconciliation
+
+The Worker repository includes a default-off reconciliation command for a
+known sandbox whose client process was lost after a command was reserved:
+
+```text
+scripts/cloud/managed-sandbox-reconcile-live.ts
+```
+
+It requires `--apply`, the live-cost owner gate, and one or more exact
+`--sandbox-ref` values. It never discovers or selects an owner resource by
+prefix, timestamp, prompt text, or provider inventory. For each exact ref it
+serially replays an active Create, Stop, Resume, or Delete reservation, settles
+an Interrupt that arrived after a terminal agent result as an explicit failed
+operation, then stops and deletes the resource. A provider Delete may be
+settled from `deleting` only after the independent GCE inventory reports zero
+managed-sandbox instances, firewall rules, and disks. It emits only sandbox-ref
+digests and aggregate inventory counts in its evidence file.
+
+Example shape (secret values stay process-local):
+
+```bash
+OA_MANAGED_SANDBOX_OWNER_GATE=I_ACCEPT_LIVE_GCP_COST \
+pnpm exec tsx scripts/cloud/managed-sandbox-reconcile-live.ts \
+  --apply \
+  --sandbox-ref "$EXACT_SANDBOX_REF" \
+  --evidence /tmp/managed-sandbox-reconcile.json
+```
+
+The command also requires the database URL, owner user ID, control URL and
+token, broker signing key, image and profile digests, GCP project, and zone in
+the corresponding `OA_MANAGED_SANDBOX_*` environment variables. Never paste
+those values into the shell history, evidence, an issue comment, or a tracked
+file. A failed reconciliation remains failed even if an operator subsequently
+proves zero provider residue. Preserve the failed receipt and run a new exact
+reconciliation so the durable lifecycle record also reaches `deleted`.
+
 ## Deployment inputs
 
 The service is default-off.

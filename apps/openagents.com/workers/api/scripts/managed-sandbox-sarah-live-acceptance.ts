@@ -128,8 +128,13 @@ const globalResidue = (): Residue => {
 };
 
 const toolResultResource = (result: SarahAgentToolResult) => {
-  const body = JSON.parse(result.content) as { resource?: unknown };
+  const body = JSON.parse(result.content) as { reason?: unknown; resource?: unknown };
   if (body.resource === undefined) {
+    if (result.authorityAllowed === false) {
+      throw new Error(
+        `Sarah managed-sandbox authority refused: ${typeof body.reason === "string" ? body.reason : "reason unavailable"}`,
+      );
+    }
     throw new Error("Sarah tool result omitted the managed-sandbox resource");
   }
   return S.decodeUnknownSync(ManagedSandboxResourceSchema)(body.resource, {
