@@ -96,6 +96,7 @@ describe("portable destination helper lifecycle", () => {
       disposeReservation: vi.fn(async () => undefined),
       disposeSession: vi.fn(async () => undefined),
       disposeAll,
+      disposalFailures: vi.fn(() => []),
     }
     try {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {

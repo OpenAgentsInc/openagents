@@ -19,6 +19,7 @@ export class PylonPortableDestinationHelperSupervisorError extends Schema.Tagged
       "authentication_failed",
       "conflicting_replay",
       "helper_not_live",
+      "helper_disposal_failed",
       "helper_start_failed",
       "invalid_configuration",
       "invalid_scope",
@@ -89,6 +90,7 @@ export type PylonPortableDestinationHelperSupervisor = Readonly<{
   disposeReservation: (reservationRef: string) => Promise<void>;
   disposeSession: (sessionRef: string) => Promise<void>;
   disposeAll: () => Promise<void>;
+  disposalFailures: () => ReadonlyArray<PylonPortableDestinationHelperSupervisorError>;
 }>;
 
 type ActiveInstance = {
@@ -173,9 +175,21 @@ const exactHandle = async (handle: PylonPortableDestinationHelperLiveHandle): Pr
 
 const disposeHandles = async (
   handles: ReadonlyArray<PylonPortableDestinationHelperLiveHandle>,
+  scopeRef: string,
 ): Promise<void> => {
+  const failedInstanceRefs: string[] = [];
   for (const handle of [...handles].reverse()) {
-    await Promise.resolve(handle.dispose()).catch(() => undefined);
+    try {
+      await Promise.resolve(handle.dispose());
+    } catch {
+      failedInstanceRefs.push(handle.instanceRef);
+    }
+  }
+  if (failedInstanceRefs.length > 0) {
+    throw failure(
+      "helper_disposal_failed",
+      canonical({ failedInstanceRefs: failedInstanceRefs.sort(), scopeRef }),
+    );
   }
 };
 
@@ -217,6 +231,29 @@ export const makePylonPortableDestinationHelperSupervisor = (
 
   const instances = new Map<string, ActiveInstance>();
   const pending = new Map<string, PendingInstance>();
+  const recordedDisposalFailures: PylonPortableDestinationHelperSupervisorError[] = [];
+
+  const recordDisposalFailure = (
+    error: PylonPortableDestinationHelperSupervisorError,
+  ): void => {
+    if (recordedDisposalFailures.some((prior) => prior.failureRef === error.failureRef)) return;
+    recordedDisposalFailures.push(error);
+  };
+
+  const disposeExactHandles = async (
+    handles: ReadonlyArray<PylonPortableDestinationHelperLiveHandle>,
+    scopeRef: string,
+  ): Promise<void> => {
+    try {
+      await disposeHandles(handles, scopeRef);
+    } catch (error) {
+      const typedError = error instanceof PylonPortableDestinationHelperSupervisorError
+        ? error
+        : failure("helper_disposal_failed", scopeRef);
+      recordDisposalFailure(typedError);
+      throw typedError;
+    }
+  };
 
   const disposeActiveReservation = async (reservationRef: string): Promise<void> => {
     const instance = instances.get(reservationRef);
@@ -224,14 +261,35 @@ export const makePylonPortableDestinationHelperSupervisor = (
     instances.delete(reservationRef);
     instance.removeCallerAbort();
     instance.controller.abort(failure("invalid_scope", reservationRef));
-    await disposeHandles(instance.handles);
+    try {
+      await disposeExactHandles(instance.handles, reservationRef);
+    } catch (error) {
+      if (!instances.has(reservationRef)) instances.set(reservationRef, instance);
+      throw error;
+    }
   };
 
   const disposeActiveSession = async (sessionRef: string): Promise<void> => {
     const reservations = [...instances.entries()]
       .filter(([, instance]) => instance.input.sessionRef === sessionRef)
       .map(([reservationRef]) => reservationRef);
-    for (const reservationRef of reservations) await disposeActiveReservation(reservationRef);
+    const failures: PylonPortableDestinationHelperSupervisorError[] = [];
+    for (const reservationRef of reservations) {
+      try {
+        await disposeActiveReservation(reservationRef);
+      } catch (error) {
+        if (error instanceof PylonPortableDestinationHelperSupervisorError) failures.push(error);
+        else failures.push(failure("helper_disposal_failed", reservationRef));
+      }
+    }
+    if (failures.length > 0) {
+      const combined = failure(
+        "helper_disposal_failed",
+        canonical({ failureRefs: failures.map((item) => item.failureRef).sort(), sessionRef }),
+      );
+      recordDisposalFailure(combined);
+      throw combined;
+    }
   };
 
   const disposeReservation = async (reservationRef: string): Promise<void> => {
@@ -239,7 +297,14 @@ export const makePylonPortableDestinationHelperSupervisor = (
     const inFlight = pending.get(reservationRef);
     inFlight?.controller.abort(failure("invalid_scope", reservationRef));
     await disposeActiveReservation(reservationRef);
-    await inFlight?.promise.catch(() => undefined);
+    await inFlight?.promise.catch((error: unknown) => {
+      if (
+        error instanceof PylonPortableDestinationHelperSupervisorError &&
+        error.reason === "helper_disposal_failed"
+      ) {
+        throw error;
+      }
+    });
     await disposeActiveReservation(reservationRef);
   };
 
@@ -255,12 +320,42 @@ export const makePylonPortableDestinationHelperSupervisor = (
           .map(([reservationRef]) => reservationRef),
       ]),
     ];
-    for (const reservationRef of reservations) await disposeReservation(reservationRef);
+    const failures: PylonPortableDestinationHelperSupervisorError[] = [];
+    for (const reservationRef of reservations) {
+      try {
+        await disposeReservation(reservationRef);
+      } catch (error) {
+        if (error instanceof PylonPortableDestinationHelperSupervisorError) failures.push(error);
+        else failures.push(failure("helper_disposal_failed", reservationRef));
+      }
+    }
+    if (failures.length > 0) {
+      const combined = failure(
+        "helper_disposal_failed",
+        canonical({ failureRefs: failures.map((item) => item.failureRef).sort(), sessionRef }),
+      );
+      recordDisposalFailure(combined);
+      throw combined;
+    }
   };
 
   const disposeAll = async (): Promise<void> => {
+    const failures: PylonPortableDestinationHelperSupervisorError[] = [];
     for (const reservationRef of new Set([...instances.keys(), ...pending.keys()])) {
-      await disposeReservation(reservationRef);
+      try {
+        await disposeReservation(reservationRef);
+      } catch (error) {
+        if (error instanceof PylonPortableDestinationHelperSupervisorError) failures.push(error);
+        else failures.push(failure("helper_disposal_failed", reservationRef));
+      }
+    }
+    if (failures.length > 0) {
+      const combined = failure(
+        "helper_disposal_failed",
+        canonical({ failureRefs: failures.map((item) => item.failureRef).sort(), scopeRef: "all" }),
+      );
+      recordDisposalFailure(combined);
+      throw combined;
     }
   };
 
@@ -348,7 +443,7 @@ export const makePylonPortableDestinationHelperSupervisor = (
             throw failure("helper_start_failed", input.destinationRunnerSessionReservationRef);
           const handle = await adapter.start({ ...input, authentication, signal });
           if (!(await exactHandle(handle))) {
-            await Promise.resolve(handle.dispose()).catch(() => undefined);
+            await disposeExactHandles([handle], input.destinationRunnerSessionReservationRef);
             throw failure("helper_not_live", input.destinationRunnerSessionReservationRef);
           }
           handles.push(handle);
@@ -363,12 +458,12 @@ export const makePylonPortableDestinationHelperSupervisor = (
         }
       } catch (error) {
         controller.abort(error);
-        await disposeHandles(handles);
+        await disposeExactHandles(handles, input.destinationRunnerSessionReservationRef);
         if (error instanceof PylonPortableDestinationHelperSupervisorError) throw error;
         throw failure("helper_start_failed", input.destinationRunnerSessionReservationRef);
       }
       if (signal.aborted) {
-        await disposeHandles(handles);
+        await disposeExactHandles(handles, input.destinationRunnerSessionReservationRef);
         throw failure("helper_start_failed", input.destinationRunnerSessionReservationRef);
       }
 
@@ -389,7 +484,11 @@ export const makePylonPortableDestinationHelperSupervisor = (
       const removeCallerAbort = (() => {
         if (input.signal === undefined) return () => undefined;
         const onAbort = () => {
-          void disposeReservation(input.destinationRunnerSessionReservationRef);
+          void disposeReservation(input.destinationRunnerSessionReservationRef).catch((error) => {
+            if (error instanceof PylonPortableDestinationHelperSupervisorError) {
+              recordDisposalFailure(error);
+            }
+          });
         };
         input.signal.addEventListener("abort", onAbort, { once: true });
         return () => input.signal?.removeEventListener("abort", onAbort);
@@ -423,5 +522,7 @@ export const makePylonPortableDestinationHelperSupervisor = (
     return promise;
   };
 
-  return { activate, disposeReservation, disposeSession, disposeAll };
+  const disposalFailures = () => [...recordedDisposalFailures];
+
+  return { activate, disposeReservation, disposeSession, disposeAll, disposalFailures };
 };

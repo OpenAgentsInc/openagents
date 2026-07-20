@@ -6,7 +6,9 @@ import type {
   KhalaProcessService,
   KhalaProcessSessionResult,
   KhalaProcessSessionStartInput,
+  KhalaProcessSessionTerminationInput,
 } from "@openagentsinc/khala-tools";
+import { KhalaToolRuntimeError } from "@openagentsinc/khala-tools";
 import { Effect } from "effect";
 import { describe, expect, test, vi } from "vite-plus/test";
 
@@ -61,6 +63,7 @@ const sessionResult = (sessionId: string, live: boolean): KhalaProcessSessionRes
 const makeProcessService = () => {
   let live = true;
   const starts: KhalaProcessSessionStartInput[] = [];
+  const terminations: KhalaProcessSessionTerminationInput[] = [];
   const processService: KhalaProcessService = {
     execCommand: () => Effect.die("not used"),
     marker: "khala.process_service",
@@ -69,12 +72,22 @@ const makeProcessService = () => {
       live = true;
       return Effect.succeed(sessionResult(`khala-session-${starts.length}`, true));
     },
+    terminateSession: (value) => {
+      terminations.push(value);
+      live = false;
+      return Effect.succeed({
+        ...sessionResult(value.sessionId, false),
+        exitObserved: true,
+        khalaSessionId: value.khalaSessionId,
+        termination: "graceful_interrupt",
+      });
+    },
     writeStdin: (value) => {
       if (value.chars === "\u0003") live = false;
       return Effect.succeed(sessionResult(value.sessionId, live));
     },
   };
-  return { processService, starts };
+  return { processService, starts, terminations };
 };
 
 const adapterFor = (
@@ -89,7 +102,7 @@ const adapterFor = (
 describe("portable destination production helper adapters", () => {
   test("starts the exact Khala PTY argv and proves liveness before readiness", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-production-pty-"));
-    const { processService, starts } = makeProcessService();
+    const { processService, starts, terminations } = makeProcessService();
     let nonce = 0;
     try {
       const helpers = makePylonPortableDestinationProductionHelpers({
@@ -108,11 +121,16 @@ describe("portable destination production helper adapters", () => {
       });
       expect(await first.isLive()).toBe(true);
       await first.dispose();
+      expect(terminations).toEqual([{
+        khalaSessionId: expect.stringMatching(/^session\.pylon\.portable\.pty\./u),
+        sessionId: "khala-session-1",
+      }]);
       expect(await first.isLive()).toBe(false);
 
       const restarted = await adapter.start(input(root));
       expect(restarted.instanceRef).not.toBe(first.instanceRef);
       await restarted.dispose();
+      expect(terminations[1]).toMatchObject({ sessionId: "khala-session-2" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -141,6 +159,32 @@ describe("portable destination production helper adapters", () => {
       await replacement.dispose();
       expect(await first.isLive()).toBe(false);
       expect(await replacement.isLive()).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps an unconfirmed PTY teardown visible and retryable", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-production-pty-failed-teardown-"));
+    const { processService } = makeProcessService();
+    const terminateSession = vi.fn(() => Effect.fail(new KhalaToolRuntimeError({
+      code: "process_session_termination_unconfirmed",
+      reason: "test termination was not observed",
+    })));
+    try {
+      const helpers = makePylonPortableDestinationProductionHelpers({
+        exactExecutableIsAvailable: () => true,
+        processService: { ...processService, terminateSession },
+      });
+      const handle = await adapterFor(helpers, "pty").start(input(root));
+
+      await expect(handle.dispose()).rejects.toMatchObject({
+        code: "process_session_termination_unconfirmed",
+      });
+      await expect(handle.dispose()).rejects.toMatchObject({
+        code: "process_session_termination_unconfirmed",
+      });
+      expect(terminateSession).toHaveBeenCalledTimes(2);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

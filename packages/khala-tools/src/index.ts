@@ -347,6 +347,11 @@ export type KhalaProcessStdinInput = Readonly<{
   yieldTimeMs: number
 }>
 
+export type KhalaProcessSessionTerminationInput = Readonly<{
+  khalaSessionId: string
+  sessionId: string
+}>
+
 export type KhalaProcessExecResult = Readonly<{
   cancelled: boolean
   durationMs: number
@@ -369,9 +374,16 @@ export type KhalaProcessSessionResult = KhalaProcessExecResult & Readonly<{
   sessionId: string
 }>
 
+export type KhalaProcessSessionTerminationResult = KhalaProcessSessionResult & Readonly<{
+  exitObserved: true
+  khalaSessionId: string
+  termination: "already_exited" | "graceful_interrupt" | "hard_kill"
+}>
+
 export interface KhalaProcessService {
   readonly execCommand: (input: KhalaProcessExecInput) => Effect.Effect<KhalaProcessExecResult, KhalaToolRuntimeError>
   readonly startSession: (input: KhalaProcessSessionStartInput) => Effect.Effect<KhalaProcessSessionResult, KhalaToolRuntimeError>
+  readonly terminateSession: (input: KhalaProcessSessionTerminationInput) => Effect.Effect<KhalaProcessSessionTerminationResult, KhalaToolRuntimeError>
   readonly writeStdin: (input: KhalaProcessStdinInput) => Effect.Effect<KhalaProcessSessionResult, KhalaToolRuntimeError>
   readonly marker: "khala.process_service"
 }
@@ -1289,12 +1301,15 @@ export function createUnsandboxedKhalaProcessService(
       let cancelled = false
       const proc = spawnProcessGroup(input, "pty")
       const sessionId = yield* runtime.eventId("khala.proc")
+      const exit = waitForChildExit(proc)
       const session: DefaultKhalaProcessSession = {
         cancelled: false,
         command: input.command,
         createdAtMs: started,
         events: [],
+        exit,
         exitCode: null,
+        exited: false,
         khalaSessionId: input.khalaSessionId,
         maxCaptureBytes: input.maxCaptureBytes,
         pgid: proc.pid,
@@ -1310,14 +1325,16 @@ export function createUnsandboxedKhalaProcessService(
       defaultProcessSessions.set(sessionId, session)
       const stdoutPump = pumpSessionStream(session, proc.stdout, "stdout", runtime)
       const stderrPump = pumpSessionStream(session, proc.stderr, "stderr", runtime)
-      void waitForChildExit(proc).then(async exit => {
-        await Promise.all([stdoutPump, stderrPump])
-        session.exitCode = exit.exitCode
-        session.signal = exit.signal
+      session.exit = exit.then(result => {
+        session.exitCode = result.exitCode
+        session.signal = result.signal
+        session.exited = true
+        return result
       })
+      void session.exit.then(() => Promise.all([stdoutPump, stderrPump]))
       yield* Effect.forkDetach(runtime.sleep(input.timeoutMs).pipe(
         Effect.tap(() => Effect.sync(() => {
-          if (session.exitCode === null) {
+          if (!session.exited) {
             timedOut = true
             session.timedOut = true
             killProcessGroup(proc)
@@ -1329,6 +1346,48 @@ export function createUnsandboxedKhalaProcessService(
       cancelled = session.cancelled
       return sessionSnapshot(session, (yield* runtime.currentTimeMillis) - started, timedOut, cancelled)
       }),
+    terminateSession: input =>
+      Effect.gen(function* () {
+      const session = defaultProcessSessions.get(input.sessionId)
+      if (session === undefined) {
+        return yield* processSessionFailure("process_session_unknown", `unknown process session: ${input.sessionId}`)
+      }
+      if (session.khalaSessionId !== input.khalaSessionId) {
+        return yield* processSessionFailure(
+          "process_session_mismatch",
+          "process session does not belong to the active Khala session",
+        )
+      }
+      let termination: KhalaProcessSessionTerminationResult["termination"] = "already_exited"
+      if (!session.exited) {
+        session.cancelled = true
+        termination = "graceful_interrupt"
+        killProcessGroup(session.proc, "SIGINT")
+        if (!(yield* processExitObservedWithin(session.exit, PROCESS_SESSION_INTERRUPT_GRACE_MS, runtime))) {
+          termination = "hard_kill"
+          killProcessGroup(session.proc, "SIGKILL")
+          if (!(yield* processExitObservedWithin(session.exit, PROCESS_SESSION_HARD_KILL_WAIT_MS, runtime))) {
+            return yield* processSessionFailure(
+              "process_session_termination_unconfirmed",
+              `process session exit was not observed: ${input.sessionId}`,
+            )
+          }
+        }
+      }
+      yield* Effect.promise(() => session.exit)
+      const result: KhalaProcessSessionTerminationResult = {
+        ...sessionSnapshot(
+          session,
+          (yield* runtime.currentTimeMillis) - session.createdAtMs,
+          session.timedOut,
+          session.cancelled,
+        ),
+        exitObserved: true,
+        khalaSessionId: session.khalaSessionId,
+        termination,
+      }
+      return result
+      }),
     writeStdin: input =>
       Effect.gen(function* () {
       const session = defaultProcessSessions.get(input.sessionId)
@@ -1337,7 +1396,7 @@ export function createUnsandboxedKhalaProcessService(
         throw new Error("process session does not belong to the active Khala session")
       }
       if (input.chars !== undefined && input.chars.length > 0) {
-        if (session.exitCode !== null) throw new Error(`process session is closed: ${input.sessionId}`)
+        if (session.exited) throw new Error(`process session is closed: ${input.sessionId}`)
         if (input.chars === "\u0003") {
           session.cancelled = true
           killProcessGroup(session.proc, "SIGINT")
@@ -1376,7 +1435,9 @@ type DefaultKhalaProcessSession = {
   command: string
   createdAtMs: number
   events: KhalaProcessEvent[]
+  exit: Promise<ChildExitResult>
   exitCode: number | null
+  exited: boolean
   khalaSessionId: string
   maxCaptureBytes: number
   pgid: number | undefined
@@ -1391,6 +1452,27 @@ type DefaultKhalaProcessSession = {
 }
 
 const defaultProcessSessions = new Map<string, DefaultKhalaProcessSession>()
+
+const PROCESS_SESSION_INTERRUPT_GRACE_MS = 250
+const PROCESS_SESSION_HARD_KILL_WAIT_MS = 2_000
+
+function processSessionFailure(
+  code: string,
+  reason: string,
+): Effect.Effect<never, KhalaToolRuntimeError> {
+  return Effect.fail(new KhalaToolRuntimeError({ code, reason }))
+}
+
+function processExitObservedWithin(
+  exit: Promise<ChildExitResult>,
+  waitMs: number,
+  runtime: KhalaToolRuntimeServiceShape,
+): Effect.Effect<boolean, never> {
+  return Effect.promise(() => Promise.race([
+    exit.then(() => true),
+    Effect.runPromise(runtime.sleep(waitMs)).then(() => false),
+  ]))
+}
 
 async function pumpSessionStream(
   session: DefaultKhalaProcessSession,

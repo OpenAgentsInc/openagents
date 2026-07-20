@@ -81,6 +81,11 @@ const makePtyAdapter = (options: Readonly<{
         sessionId,
         yieldTimeMs: 0,
       }));
+    const terminate = (sessionId: string) =>
+      Effect.runPromise(options.processService.terminateSession({
+        khalaSessionId,
+        sessionId,
+      }));
     const started = await Effect.runPromise(options.processService.startSession({
       argv: [SHELL_EXECUTABLE],
       command: SHELL_EXECUTABLE,
@@ -96,16 +101,17 @@ const makePtyAdapter = (options: Readonly<{
         throw new Error("the PTY session did not remain live after its start probe");
       }
     } catch (error) {
-      await poll(started.sessionId, "\u0003").catch(() => undefined);
+      await terminate(started.sessionId);
       throw error;
     }
     let disposed = false;
+    let disposal: Promise<void> | undefined;
     return {
       instanceRef: stableRef(
         "instance.pylon.portable.pty",
         `${binding}\n${started.sessionId}\n${options.instanceNonce()}`,
       ),
-      versionRef: "version.pylon.portable.pty.khala-tools-python-pty-fork.v1",
+      versionRef: "version.pylon.portable.pty.khala-tools-python-pty-fork.v2",
       evidenceRefs: [stableRef("evidence.pylon.portable.pty.live", binding)],
       isLive: async () => {
         if (disposed) return false;
@@ -113,8 +119,22 @@ const makePtyAdapter = (options: Readonly<{
       },
       dispose: async () => {
         if (disposed) return;
-        disposed = true;
-        await poll(started.sessionId, "\u0003").catch(() => undefined);
+        disposal ??= terminate(started.sessionId).then((result) => {
+          if (
+            result.sessionId !== started.sessionId ||
+            result.khalaSessionId !== khalaSessionId ||
+            result.exitObserved !== true
+          ) {
+            throw new Error("the PTY session termination receipt did not match the active session");
+          }
+          disposed = true;
+        });
+        try {
+          await disposal;
+        } catch (error) {
+          disposal = undefined;
+          throw error;
+        }
       },
     };
   },

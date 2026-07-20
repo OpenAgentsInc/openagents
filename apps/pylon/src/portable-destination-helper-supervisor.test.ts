@@ -323,4 +323,49 @@ describe("portable destination helper supervisor", () => {
     );
     expect(dispose).toHaveBeenCalledTimes(1);
   });
+
+  test("disposes every helper and records a typed public-safe teardown failure", async () => {
+    const watcherDispose = vi.fn();
+    const ptyDispose = vi.fn(() => {
+      throw new Error("private process failure detail");
+    });
+    const supervisor = makePylonPortableDestinationHelperSupervisor({
+      authenticator: authenticator(),
+      adapters: [
+        {
+          kind: "pty",
+          start: async () => ({
+            instanceRef: "instance.ide13.helpers.pty-failure",
+            versionRef: "version.ide13.helpers.pty-failure.1",
+            evidenceRefs: ["evidence.ide13.helpers.pty-failure.live"],
+            isLive: () => true,
+            dispose: ptyDispose,
+          }),
+        },
+        {
+          kind: "watcher",
+          start: async () => ({
+            instanceRef: "instance.ide13.helpers.watcher-cleanup",
+            versionRef: "version.ide13.helpers.watcher-cleanup.1",
+            evidenceRefs: ["evidence.ide13.helpers.watcher-cleanup.live"],
+            isLive: () => true,
+            dispose: watcherDispose,
+          }),
+        },
+      ],
+      now,
+    });
+    await supervisor.activate(input());
+
+    await expect(supervisor.disposeAll()).rejects.toMatchObject({
+      reason: "helper_disposal_failed",
+      failureRef: expect.stringMatching(/^failure\.pylon\.portable-destination-helper\.helper_disposal_failed\./u),
+    });
+    expect(watcherDispose).toHaveBeenCalledOnce();
+    expect(ptyDispose).toHaveBeenCalledOnce();
+    expect(supervisor.disposalFailures()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ reason: "helper_disposal_failed" }),
+    ]));
+    expect(JSON.stringify(supervisor.disposalFailures())).not.toContain("private process failure detail");
+  });
 });
