@@ -663,9 +663,9 @@ export const ReactComposer = ({
               ? activeSubmitMode === "steer"
                 ? "Steer the current turn…"
                 : "Queue a follow-up…"
-              : `Message ${capabilities?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")}…`
+              : "Message OpenAgents…"
           }
-          ariaLabel={state.pending ? `${submitLabel} a ${capabilities?.displayName ?? "provider"} message` : `Message ${capabilities?.displayName ?? "provider"}`}
+          ariaLabel={state.pending ? `${submitLabel} an OpenAgents message` : "Message OpenAgents"}
           disabled={false}
           onChange={(value) => dispatch(report, "DesktopInputChanged", value)}
           onSubmit={submit}

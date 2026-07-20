@@ -268,7 +268,10 @@ const availableHarnessLanes = {
   fable: { available: true, reason: null },
   codex: { available: true, reason: null },
 } as const
-const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), harnessLanes: availableHarnessLanes, threads: [testThread], activeThreadId: testThread.id }
+// `openAgentsStandby: false` keeps these fixtures on the preserved Codex/Claude
+// provider-send path so the provider-behavior assertions below stay meaningful.
+// The default (undefined === on) OpenAgents "Stand by." reply has its own test.
+const baseState: DesktopShellState = { ...initialDesktopShellState("electron/darwin", "18:04"), harnessLanes: availableHarnessLanes, threads: [testThread], activeThreadId: testThread.id, openAgentsStandby: false }
 
 test("provider target selection is exact and stable per conversation", () => {
   const fleet = {
@@ -944,6 +947,27 @@ describe("desktopShellView (state -> component tree)", () => {
     const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, voiceHost)))
     await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Status?")))))
     expect(commands).toContainEqual({ id: "voice.speak", protocolVersion: 1, turnRef: "turn.1", speechRef: "speech.assistant.1", messageRef: "assistant.1", text: "The deployment is healthy." })
+  })
+
+  test("OpenAgents authority (owner directive 2026-07-19): a submitted message commits and replies 'Stand by.' with no provider turn", async () => {
+    const calls: Array<unknown> = []
+    const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({ ...baseState, openAgentsStandby: undefined, notes: [] }))
+    const chatHost = {
+      listThreads: async () => [testThread],
+      newThread: async () => null,
+      openThread: async () => testThread,
+      sendMessage: async (input: unknown) => { calls.push(input); return { ok: true as const, thread: testThread } },
+    }
+    const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, makeDesktopShellHandlers(state, fixedNow, undefined, chatHost)))
+    await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopNoteSubmitted", StaticPayload("Are you there?")))))
+    const final = await Effect.runPromise(SubscriptionRef.get(state))
+    // OpenAgents does not start a provider turn yet: no sendMessage, no pending.
+    expect(calls).toHaveLength(0)
+    expect(final.pending).toBe(false)
+    expect(final.notes.map((note) => ({ role: note.role, text: note.text }))).toEqual([
+      { role: "user", text: "Are you there?" },
+      { role: "assistant", text: "Stand by." },
+    ])
   })
 
   test("Full Auto (#8853): a flagged turn sends fullAuto:true exactly once -- main, not the renderer, decides whether to continue", async () => {

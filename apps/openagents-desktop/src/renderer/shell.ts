@@ -449,6 +449,13 @@ export type DesktopShellState = Readonly<{
   /** Explicit local-preview annotation for the next turn only. */
   composerPreviewContext: ComposerPreviewContext | null
   notes: ReadonlyArray<DesktopNoteEntry>
+  /**
+   * Owner directive 2026-07-19: new turns route to the "OpenAgents" authority,
+   * which for now acknowledges with a fixed "Stand by." reply and starts no
+   * provider turn. Defaults on (undefined === on). Set explicitly to `false`
+   * to exercise the preserved Codex/Claude provider send path.
+   */
+  openAgentsStandby?: boolean
   /** Which coding harness new turns target; "codex" preserves prior behavior. */
   selectedHarness: DesktopHarnessName
   /**
@@ -2966,6 +2973,31 @@ export const makeDesktopShellHandlers = (
       if (sentinelFullAuto === true) {
         yield* Effect.promise(() => fullAutoHost.set({ threadRef: thread.id, enabled: true }))
       }
+    }
+    // OpenAgents authority (owner directive 2026-07-19): new turns route to
+    // "OpenAgents", which for now commits the user's message and replies with a
+    // fixed "Stand by." acknowledgement. No Codex/Claude provider turn is
+    // started yet. The preserved provider-send path below runs only when a
+    // caller explicitly opts out via `openAgentsStandby: false`.
+    if (current.openAgentsStandby !== false) {
+      const withUser = withNote(current, message, now())
+      yield* SubscriptionRef.set(state, {
+        ...withUser,
+        pending: false,
+        ...(withUser.activeThreadId === null ? {} : {
+          pendingByThread: { ...withUser.pendingByThread, [withUser.activeThreadId]: false },
+        }),
+        notes: [
+          ...withUser.notes,
+          {
+            key: `openagents-standby-${withUser.notes.length}`,
+            role: "assistant" as const,
+            text: "Stand by.",
+            timestamp: now(),
+          },
+        ],
+      })
+      return
     }
     // Capture the pending attachments BEFORE withNote clears them.
     const pendingImages = current.composerImages
