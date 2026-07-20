@@ -319,6 +319,33 @@ Box facade, a Codex or Claude turn, Desktop, Sarah, mobile, or web.
 SBX-09 owns the later independent end-to-end live acceptance and public
 rollout decision.
 
+### Desktop live acceptance
+
+The Desktop acceptance command is also default-off:
+
+```text
+apps/openagents-desktop/scripts/managed-sandbox-live-acceptance.ts
+```
+
+Use the package command without an additional separator:
+
+```bash
+pnpm --dir apps/openagents-desktop run accept:managed-sandbox-live \
+  --apply \
+  --evidence /tmp/managed-sandbox-desktop-live.json
+```
+
+The command requires the same live-cost gate, database, owner, control,
+profile, image, revision, GCP project, and zone inputs as the Sarah live
+acceptance. It opens the real Desktop workspace service, attaches the source
+through the IDE agent-code host, and sends each placement command through the
+Desktop managed-sandbox host and authenticated Worker routes. It verifies the
+source attachment, exact target, owner denial, identity continuity, structural
+turn progress, quiet nonterminal state, interrupt, terminal receipt, stop,
+resume, delete, credential redaction, and the independent GCP residue result.
+The script is a live Desktop-host proof. A signed or packaged UI candidate has
+its own release receipt and does not become true because this command passes.
+
 ## Deterministic verification
 
 Run:

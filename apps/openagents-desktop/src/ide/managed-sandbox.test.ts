@@ -3,33 +3,33 @@ import {
   type ManagedSandboxCommand,
   type ManagedSandboxResource,
   type ManagedSandboxTurn,
-} from "@openagentsinc/managed-sandbox-contract"
-import { Effect, Ref } from "effect"
-import { describe, expect, test } from "vite-plus/test"
+} from "@openagentsinc/managed-sandbox-contract";
+import { Effect, Ref } from "effect";
+import { describe, expect, test } from "vite-plus/test";
 
 import {
   IdeAgentCodeSnapshotSchema,
   emptyIdeAgentCodeSnapshot,
   type IdeAgentCodeSnapshot,
-} from "./agent-code-contract.ts"
-import { ideAgentFixtureAttachment, ideAgentFixtureDigest } from "./agent-code-fixture.ts"
-import { IdeAttachmentGenerationSchema } from "./project-contract.ts"
+} from "./agent-code-contract.ts";
+import { ideAgentFixtureAttachment, ideAgentFixtureDigest } from "./agent-code-fixture.ts";
+import { IdeAttachmentGenerationSchema } from "./project-contract.ts";
 import {
   IdeManagedSandboxCommandSchema,
   IdeManagedSandboxGatewayResultSchema,
   type IdeManagedSandboxAdmission,
   type IdeManagedSandboxGatewayResult,
-} from "./managed-sandbox-contract.ts"
+} from "./managed-sandbox-contract.ts";
 import {
   IdeManagedSandboxService,
   makeIdeManagedSandboxLayer,
   type IdeManagedSandboxGateway,
-} from "./managed-sandbox-service.ts"
-import { openIdeManagedSandboxHost } from "./managed-sandbox-host.ts"
-import type { IdeAgentCodeHost } from "./agent-code-host.ts"
+} from "./managed-sandbox-service.ts";
+import { openIdeManagedSandboxHost } from "./managed-sandbox-host.ts";
+import type { IdeAgentCodeHost } from "./agent-code-host.ts";
 
-const now = "2026-07-19T20:00:00.000Z"
-const later = "2026-07-19T20:30:00.000Z"
+const now = "2026-07-19T20:00:00.000Z";
+const later = "2026-07-19T20:30:00.000Z";
 const target = {
   targetRef: "target.gcp.desktop",
   targetClass: "openagents_managed" as const,
@@ -38,7 +38,7 @@ const target = {
   region: "us-central1",
   isolation: "gce_vm" as const,
   dataPosture: "openagents_managed_region" as const,
-}
+};
 
 const admission: IdeManagedSandboxAdmission = {
   _tag: "Available",
@@ -73,7 +73,7 @@ const admission: IdeManagedSandboxAdmission = {
   custody: "openagents_managed_region",
   retentionRef: "retention.desktop.fixture",
   checkedAt: now,
-}
+};
 
 const agentSnapshot = (attachment = ideAgentFixtureAttachment()): IdeAgentCodeSnapshot =>
   IdeAgentCodeSnapshotSchema.make({
@@ -81,12 +81,13 @@ const agentSnapshot = (attachment = ideAgentFixtureAttachment()): IdeAgentCodeSn
     lifecycle: "attached",
     attachment,
     revision: 1,
-  })
+  });
 
 const factsFor = (lifecycle: ManagedSandboxResource["facts"]["lifecycle"]) => ({
   lifecycle,
   leaseState: lifecycle === "deleted" ? ("released" as const) : ("active" as const),
-  guestState: lifecycle === "stopped" || lifecycle === "deleted" ? ("absent" as const) : ("present" as const),
+  guestState:
+    lifecycle === "stopped" || lifecycle === "deleted" ? ("absent" as const) : ("present" as const),
   filesystemState:
     lifecycle === "stopped"
       ? ("durable" as const)
@@ -102,15 +103,15 @@ const factsFor = (lifecycle: ManagedSandboxResource["facts"]["lifecycle"]) => ({
   runtimeState: lifecycle === "running" ? ("running" as const) : ("none" as const),
   acceptingWork: ["ready", "idle", "running"].includes(lifecycle),
   cleanupComplete: lifecycle === "deleted",
-})
+});
 
 const makeResource = (
   input: Readonly<{
-    version: number
-    generation: number
-    lifecycle: ManagedSandboxResource["facts"]["lifecycle"]
-    attachmentGeneration?: number
-    targetRef?: string
+    version: number;
+    generation: number;
+    lifecycle: ManagedSandboxResource["facts"]["lifecycle"];
+    attachmentGeneration?: number;
+    targetRef?: string;
   }>,
 ): ManagedSandboxResource =>
   ManagedSandboxResourceSchema.make({
@@ -154,40 +155,47 @@ const makeResource = (
     facts: factsFor(input.lifecycle),
     createdAt: now,
     updatedAt: now,
-  })
+  });
 
 const fakeGateway = (
   options: Readonly<{
-    targetRef?: string
-    attachmentGeneration?: number
+    targetRef?: string;
+    attachmentGeneration?: number;
+    inspectAdvancesResource?: boolean;
   }> = {},
 ): Readonly<{
-  gateway: IdeManagedSandboxGateway
-  commands: ReadonlyArray<ManagedSandboxCommand>
-  executions: ReadonlyArray<Readonly<{ prompt?: string; attachmentGeneration?: number }>>
+  gateway: IdeManagedSandboxGateway;
+  commands: ReadonlyArray<ManagedSandboxCommand>;
+  executions: ReadonlyArray<Readonly<{ prompt?: string; attachmentGeneration?: number }>>;
 }> => {
-  const commands: Array<ManagedSandboxCommand> = []
-  const executions: Array<Readonly<{ prompt?: string; attachmentGeneration?: number }>> = []
-  let version = 0
-  let generation = 0
-  let lifecycle: ManagedSandboxResource["facts"]["lifecycle"] = "ready"
-  let turn: ManagedSandboxTurn | null = null
+  const commands: Array<ManagedSandboxCommand> = [];
+  const executions: Array<Readonly<{ prompt?: string; attachmentGeneration?: number }>> = [];
+  let version = 0;
+  let generation = 0;
+  let lifecycle: ManagedSandboxResource["facts"]["lifecycle"] = "ready";
+  let turn: ManagedSandboxTurn | null = null;
   const execute = (
     command: ManagedSandboxCommand,
     executionOptions: Readonly<{ prompt?: string; attachmentGeneration?: number }> = {},
   ): IdeManagedSandboxGatewayResult => {
-    commands.push(command)
-    executions.push(executionOptions)
+    commands.push(command);
+    executions.push(executionOptions);
+    let receiptVersion: number | undefined;
     switch (command._tag) {
       case "Create":
-        version = 1
-        lifecycle = "ready"
-        break
+        version = 1;
+        lifecycle = "ready";
+        break;
       case "Inspect":
-        break
+        if (options.inspectAdvancesResource) {
+          receiptVersion = version;
+          version += 1;
+          if (turn !== null) turn = { ...turn, lastEventSequence: version };
+        }
+        break;
       case "Dispatch":
-        version += 1
-        lifecycle = "running"
+        version += 1;
+        lifecycle = "running";
         turn = {
           schema: "openagents.managed_sandbox_turn.v1",
           turnRef: command.turnRef,
@@ -207,40 +215,39 @@ const fakeGateway = (
           status: "running",
           createdAt: now,
           startedAt: now,
-        }
-        break
+        };
+        break;
       case "Interrupt":
-        version += 1
-        lifecycle = "idle"
-        if (turn !== null) turn = { ...turn, status: "interrupted", settledAt: now }
-        break
+        version += 1;
+        lifecycle = "idle";
+        if (turn !== null) turn = { ...turn, status: "interrupted", settledAt: now };
+        break;
       case "Stop":
-        version += 1
-        lifecycle = "stopped"
-        turn = null
-        break
+        version += 1;
+        lifecycle = "stopped";
+        turn = null;
+        break;
       case "Resume":
-        version += 1
-        generation += 1
-        lifecycle = "ready"
-        break
+        version += 1;
+        generation += 1;
+        lifecycle = "ready";
+        break;
       case "Delete":
-        version += 1
-        lifecycle = "deleted"
-        turn = null
-        break
+        version += 1;
+        lifecycle = "deleted";
+        turn = null;
+        break;
       case "Update":
-        version += 1
-        break
+        version += 1;
+        break;
     }
     const resource = makeResource({
       version,
       generation,
       lifecycle,
       targetRef: options.targetRef,
-      attachmentGeneration:
-        options.attachmentGeneration ?? executionOptions.attachmentGeneration,
-    })
+      attachmentGeneration: options.attachmentGeneration ?? executionOptions.attachmentGeneration,
+    });
     return IdeManagedSandboxGatewayResultSchema.make({
       command,
       resource,
@@ -252,7 +259,7 @@ const fakeGateway = (
         ownerRef: resource.ownerRef,
         tenantRef: resource.tenantRef,
         resourceGeneration: resource.resourceGeneration,
-        version: resource.version,
+        version: receiptVersion ?? resource.version,
         outcome: "succeeded",
         lifecycle: resource.facts.lifecycle,
         eventRefs: [],
@@ -261,34 +268,49 @@ const fakeGateway = (
       },
       turn,
       turnReceipt: null,
-      events: [],
-    })
-  }
+      events:
+        receiptVersion === undefined
+          ? []
+          : [
+              {
+                schema: "openagents.managed_sandbox_event.v1",
+                _tag: "RuntimeTextDelta",
+                eventRef: `event.desktop.inspect.${resource.version}`,
+                sandboxRef: resource.sandboxRef,
+                resourceGeneration: resource.resourceGeneration,
+                sequence: resource.lastEventSequence,
+                observedAt: now,
+                turnRef: turn?.turnRef ?? "turn.desktop.fixture",
+                turnEventSequence: 2,
+                content: "still running",
+              },
+            ],
+    });
+  };
   return {
     commands,
     executions,
     gateway: {
       admission: () => Effect.succeed(admission),
-      execute: (command, executionOptions) =>
-        Effect.sync(() => execute(command, executionOptions)),
+      execute: (command, executionOptions) => Effect.sync(() => execute(command, executionOptions)),
     },
-  }
-}
+  };
+};
 
 const request = (sequence: number, attachment = ideAgentFixtureAttachment()) => ({
   requestRef: `command.desktop.${sequence}`,
   idempotencyRef: `idempotency.desktop.${sequence}`,
   requestedAt: now,
   expectedAttachment: attachment,
-})
+});
 
 describe("IDE managed sandbox", () => {
   test("keeps one project and agent identity across create, turn, interrupt, stop, resume, and delete", async () => {
-    const fixture = fakeGateway()
-    const attachment = ideAgentFixtureAttachment()
+    const fixture = fakeGateway();
+    const attachment = ideAgentFixtureAttachment();
     const result = await Effect.runPromise(
       Effect.gen(function* () {
-        const service = yield* IdeManagedSandboxService
+        const service = yield* IdeManagedSandboxService;
         yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "RefreshAdmission",
@@ -296,14 +318,14 @@ describe("IDE managed sandbox", () => {
             idempotencyRef: "idempotency.desktop.admission",
             requestedAt: now,
           }),
-        )
+        );
         const created = yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "Create",
             ...request(1, attachment),
             workUnitRef: "work-unit.desktop.fixture",
           }),
-        )
+        );
         const dispatched = yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "Dispatch",
@@ -319,7 +341,7 @@ describe("IDE managed sandbox", () => {
               harnessRef: "harness.codex",
             },
           }),
-        )
+        );
         const interrupted = yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "Interrupt",
@@ -328,7 +350,7 @@ describe("IDE managed sandbox", () => {
             turnRef: "turn.desktop.fixture",
             reasonRef: "reason.owner.interrupt",
           }),
-        )
+        );
         const stopped = yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "Stop",
@@ -336,14 +358,14 @@ describe("IDE managed sandbox", () => {
             sandboxRef: "sandbox.desktop.fixture",
             reasonRef: "reason.owner.stop",
           }),
-        )
+        );
         const resumed = yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "Resume",
             ...request(5, attachment),
             sandboxRef: "sandbox.desktop.fixture",
           }),
-        )
+        );
         yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "Stop",
@@ -351,7 +373,7 @@ describe("IDE managed sandbox", () => {
             sandboxRef: "sandbox.desktop.fixture",
             reasonRef: "reason.owner.stop-again",
           }),
-        )
+        );
         const deleted = yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "Delete",
@@ -359,8 +381,8 @@ describe("IDE managed sandbox", () => {
             sandboxRef: "sandbox.desktop.fixture",
             reasonRef: "reason.owner.delete",
           }),
-        )
-        return { created, dispatched, interrupted, stopped, resumed, deleted }
+        );
+        return { created, dispatched, interrupted, stopped, resumed, deleted };
       }).pipe(
         Effect.provide(
           makeIdeManagedSandboxLayer({
@@ -374,19 +396,21 @@ describe("IDE managed sandbox", () => {
           }),
         ),
       ),
-    )
+    );
 
-    const bindings = Object.values(result).map((snapshot) => snapshot.binding)
-    expect(bindings.every((binding) => binding?.projectRef === attachment.projectRef)).toBe(true)
-    expect(bindings.every((binding) => binding?.worktreeRef === attachment.worktreeRef)).toBe(true)
-    expect(bindings.every((binding) => binding?.sessionRef === attachment.sessionRef)).toBe(true)
-    expect(bindings.every((binding) => binding?.agentAttachmentRef === attachment.agentAttachmentRef)).toBe(true)
-    expect(result.dispatched.turn?.status).toBe("running")
-    expect(result.interrupted.turn?.status).toBe("interrupted")
-    expect(result.stopped.projectCapability?.state._tag).toBe("Stopped")
-    expect(result.resumed.resource?.resourceGeneration).toBe(1)
-    expect(result.deleted.resource?.facts.cleanupComplete).toBe(true)
-    expect(result.deleted.projectCapability?.state._tag).toBe("Stopped")
+    const bindings = Object.values(result).map((snapshot) => snapshot.binding);
+    expect(bindings.every((binding) => binding?.projectRef === attachment.projectRef)).toBe(true);
+    expect(bindings.every((binding) => binding?.worktreeRef === attachment.worktreeRef)).toBe(true);
+    expect(bindings.every((binding) => binding?.sessionRef === attachment.sessionRef)).toBe(true);
+    expect(
+      bindings.every((binding) => binding?.agentAttachmentRef === attachment.agentAttachmentRef),
+    ).toBe(true);
+    expect(result.dispatched.turn?.status).toBe("running");
+    expect(result.interrupted.turn?.status).toBe("interrupted");
+    expect(result.stopped.projectCapability?.state._tag).toBe("Stopped");
+    expect(result.resumed.resource?.resourceGeneration).toBe(1);
+    expect(result.deleted.resource?.facts.cleanupComplete).toBe(true);
+    expect(result.deleted.projectCapability?.state._tag).toBe("Stopped");
     expect(fixture.commands.map((command) => command._tag)).toEqual([
       "Create",
       "Dispatch",
@@ -395,16 +419,80 @@ describe("IDE managed sandbox", () => {
       "Resume",
       "Stop",
       "Delete",
-    ])
-    expect(fixture.executions[0]).toEqual({ attachmentGeneration: 1 })
+    ]);
+    expect(fixture.executions[0]).toEqual({ attachmentGeneration: 1 });
     expect(fixture.executions[1]).toEqual({
       prompt: "Inspect the attached project and report the next bounded change.",
-    })
-  })
+    });
+  });
+
+  test("accepts an inspect receipt that precedes one evidenced runtime projection", async () => {
+    const fixture = fakeGateway({ inspectAdvancesResource: true });
+    const attachment = ideAgentFixtureAttachment();
+    const inspected = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* IdeManagedSandboxService;
+        yield* service.command(
+          IdeManagedSandboxCommandSchema.make({
+            _tag: "RefreshAdmission",
+            requestRef: "command.desktop.admission-inspect",
+            idempotencyRef: "idempotency.desktop.admission-inspect",
+            requestedAt: now,
+          }),
+        );
+        const created = yield* service.command(
+          IdeManagedSandboxCommandSchema.make({
+            _tag: "Create",
+            ...request(10, attachment),
+            workUnitRef: "work-unit.desktop.fixture",
+          }),
+        );
+        yield* service.command(
+          IdeManagedSandboxCommandSchema.make({
+            _tag: "Dispatch",
+            ...request(11, attachment),
+            sandboxRef: created.resource!.sandboxRef,
+            turnRef: "turn.desktop.inspect",
+            capabilityRef: "capability.desktop.agent-turn",
+            prompt: "Keep the runtime active for inspection.",
+            promptDigest: ideAgentFixtureDigest("d"),
+            runtime: {
+              provider: "codex",
+              modelRef: "model.gpt-5",
+              harnessRef: "harness.codex",
+            },
+          }),
+        );
+        return yield* service.command(
+          IdeManagedSandboxCommandSchema.make({
+            _tag: "Inspect",
+            ...request(12, attachment),
+            sandboxRef: created.resource!.sandboxRef,
+          }),
+        );
+      }).pipe(
+        Effect.provide(
+          makeIdeManagedSandboxLayer({
+            principal: {
+              ownerRef: "owner.desktop.fixture",
+              tenantRef: "tenant.desktop.fixture",
+              requestedByRef: "principal.desktop.fixture",
+            },
+            gateway: fixture.gateway,
+            currentAgentSnapshot: () => Effect.succeed(agentSnapshot(attachment)),
+          }),
+        ),
+      ),
+    );
+
+    expect(inspected.resource?.version).toBe(3);
+    expect(inspected.receipts.at(-1)?.version).toBe(2);
+    expect(inspected.events.at(-1)?.sequence).toBe(inspected.resource?.lastEventSequence);
+  });
 
   test("rejects an attachment generation fork before sending a mutation", async () => {
-    const fixture = fakeGateway()
-    const original = ideAgentFixtureAttachment()
+    const fixture = fakeGateway();
+    const original = ideAgentFixtureAttachment();
     const current = IdeAgentCodeSnapshotSchema.make({
       ...agentSnapshot(original),
       attachment: {
@@ -412,10 +500,10 @@ describe("IDE managed sandbox", () => {
         attachmentGeneration: IdeAttachmentGenerationSchema.make(2),
       },
       revision: 2,
-    })
+    });
     const failure = await Effect.runPromise(
       Effect.gen(function* () {
-        const service = yield* IdeManagedSandboxService
+        const service = yield* IdeManagedSandboxService;
         yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "RefreshAdmission",
@@ -423,7 +511,7 @@ describe("IDE managed sandbox", () => {
             idempotencyRef: "idempotency.desktop.admission-stale",
             requestedAt: now,
           }),
-        )
+        );
         return yield* service
           .command(
             IdeManagedSandboxCommandSchema.make({
@@ -432,7 +520,7 @@ describe("IDE managed sandbox", () => {
               workUnitRef: "work-unit.desktop.fixture",
             }),
           )
-          .pipe(Effect.flip)
+          .pipe(Effect.flip);
       }).pipe(
         Effect.provide(
           makeIdeManagedSandboxLayer({
@@ -446,19 +534,19 @@ describe("IDE managed sandbox", () => {
           }),
         ),
       ),
-    )
+    );
 
-    expect(failure.reason).toBe("stale_attachment")
-    expect(fixture.commands).toHaveLength(0)
-  })
+    expect(failure.reason).toBe("stale_attachment");
+    expect(fixture.commands).toHaveLength(0);
+  });
 
   test("rejects managed-target substitution and private renderer material", async () => {
-    const fixture = fakeGateway({ targetRef: "target.gcp.substituted" })
-    const attachmentRef = yieldAgentRef()
-    const stateRef = await Effect.runPromise(Ref.make(agentSnapshot(attachmentRef)))
+    const fixture = fakeGateway({ targetRef: "target.gcp.substituted" });
+    const attachmentRef = yieldAgentRef();
+    const stateRef = await Effect.runPromise(Ref.make(agentSnapshot(attachmentRef)));
     const failure = await Effect.runPromise(
       Effect.gen(function* () {
-        const service = yield* IdeManagedSandboxService
+        const service = yield* IdeManagedSandboxService;
         yield* service.command(
           IdeManagedSandboxCommandSchema.make({
             _tag: "RefreshAdmission",
@@ -466,7 +554,7 @@ describe("IDE managed sandbox", () => {
             idempotencyRef: "idempotency.desktop.admission-substitution",
             requestedAt: now,
           }),
-        )
+        );
         return yield* service
           .command(
             IdeManagedSandboxCommandSchema.make({
@@ -475,7 +563,7 @@ describe("IDE managed sandbox", () => {
               workUnitRef: "work-unit.desktop.fixture",
             }),
           )
-          .pipe(Effect.flip)
+          .pipe(Effect.flip);
       }).pipe(
         Effect.provide(
           makeIdeManagedSandboxLayer({
@@ -489,26 +577,26 @@ describe("IDE managed sandbox", () => {
           }),
         ),
       ),
-    )
+    );
 
-    expect(failure.reason).toBe("invalid_response")
-    const publicBytes = JSON.stringify(await Effect.runPromise(Ref.get(stateRef)))
-    expect(publicBytes).not.toMatch(/bearer|accessToken|refreshToken|\/Users\//u)
-  })
+    expect(failure.reason).toBe("invalid_response");
+    const publicBytes = JSON.stringify(await Effect.runPromise(Ref.get(stateRef)));
+    expect(publicBytes).not.toMatch(/bearer|accessToken|refreshToken|\/Users\//u);
+  });
 
   test("keeps the Desktop bearer in the main-owned HTTP header", async () => {
-    const calls: Array<Readonly<{ authorization: string | null; body: string }>> = []
+    const calls: Array<Readonly<{ authorization: string | null; body: string }>> = [];
     const fetchImpl: typeof fetch = async (_input, init) => {
-      const headers = new Headers(init?.headers)
+      const headers = new Headers(init?.headers);
       calls.push({
         authorization: headers.get("authorization"),
         body: typeof init?.body === "string" ? init.body : "",
-      })
+      });
       return new Response(JSON.stringify({ admission }), {
         status: 200,
         headers: { "content-type": "application/json" },
-      })
-    }
+      });
+    };
     const agentCodeHost: IdeAgentCodeHost = {
       workspaceGrantRef: "grant.desktop.fixture",
       snapshot: async () => agentSnapshot(),
@@ -519,7 +607,7 @@ describe("IDE managed sandbox", () => {
         snapshot: agentSnapshot(),
       }),
       dispose: async () => undefined,
-    }
+    };
     const host = await openIdeManagedSandboxHost({
       enabled: true,
       credential: () => ({
@@ -531,7 +619,7 @@ describe("IDE managed sandbox", () => {
       agentCodeHost,
       fetchImpl,
       now: () => new Date(now),
-    })
+    });
     const result = await host.command(
       IdeManagedSandboxCommandSchema.make({
         _tag: "RefreshAdmission",
@@ -539,18 +627,18 @@ describe("IDE managed sandbox", () => {
         idempotencyRef: "idempotency.desktop.http-admission",
         requestedAt: now,
       }),
-    )
-    await host.dispose()
+    );
+    await host.dispose();
 
-    expect(result._tag).toBe("Succeeded")
-    expect(calls).toHaveLength(1)
-    expect(calls[0]?.authorization).toBe("Bearer desktop-access-secret")
-    expect(calls[0]?.body).not.toMatch(/desktop-access-secret|desktop-refresh-secret/u)
-    expect(JSON.stringify(result)).not.toMatch(/desktop-access-secret|desktop-refresh-secret/u)
-  })
+    expect(result._tag).toBe("Succeeded");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.authorization).toBe("Bearer desktop-access-secret");
+    expect(calls[0]?.body).not.toMatch(/desktop-access-secret|desktop-refresh-secret/u);
+    expect(JSON.stringify(result)).not.toMatch(/desktop-access-secret|desktop-refresh-secret/u);
+  });
 
   test("is default-off without opening a network path", async () => {
-    let calls = 0
+    let calls = 0;
     const host = await openIdeManagedSandboxHost({
       enabled: false,
       credential: () => null,
@@ -567,11 +655,11 @@ describe("IDE managed sandbox", () => {
         dispose: async () => undefined,
       },
       fetchImpl: async () => {
-        calls += 1
-        return new Response("{}", { status: 500 })
+        calls += 1;
+        return new Response("{}", { status: 500 });
       },
       now: () => new Date(now),
-    })
+    });
     const result = await host.command(
       IdeManagedSandboxCommandSchema.make({
         _tag: "RefreshAdmission",
@@ -579,11 +667,11 @@ describe("IDE managed sandbox", () => {
         idempotencyRef: "idempotency.desktop.default-off",
         requestedAt: now,
       }),
-    )
+    );
 
-    expect(result).toMatchObject({ _tag: "Refused", reason: "not_configured" })
-    expect(calls).toBe(0)
-  })
-})
+    expect(result).toMatchObject({ _tag: "Refused", reason: "not_configured" });
+    expect(calls).toBe(0);
+  });
+});
 
-const yieldAgentRef = () => ideAgentFixtureAttachment()
+const yieldAgentRef = () => ideAgentFixtureAttachment();

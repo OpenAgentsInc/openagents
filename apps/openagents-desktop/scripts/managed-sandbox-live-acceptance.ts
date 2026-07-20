@@ -162,7 +162,7 @@ const attachment = IdeAgentAttachmentSchema.make({
 
 const snapshotFrom = (result: IdeManagedSandboxCommandResult): IdeManagedSandboxSnapshot => {
   if (result._tag !== "Succeeded") {
-    throw new Error(`Desktop managed-sandbox command refused: ${result.reason}`);
+    throw new Error(`Desktop managed-sandbox command refused: ${result.reason}: ${result.message}`);
   }
   return result.snapshot;
 };

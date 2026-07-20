@@ -601,7 +601,7 @@ try {
 const after = globalResidue();
 if (Object.values(after).some((value) => value !== 0)) {
   passed = false;
-  failure ??= "independent GCP residue oracle found Sarah-owned resources";
+  failure ??= "independent GCP residue oracle found managed-sandbox resources";
 }
 if (!Object.values(proof).every(Boolean)) {
   passed = false;

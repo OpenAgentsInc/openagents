@@ -125,6 +125,68 @@ const command = (
   } as ManagedSandboxCommand;
 };
 
+const inspectCommand = (resource: ManagedSandboxResource): ManagedSandboxCommand => {
+  const digest = sha256(`${resource.sandboxRef}\nInspect\n${Date.now()}\n${process.pid}`);
+  return {
+    schema: "openagents.managed_sandbox_command.v1",
+    _tag: "Inspect",
+    commandRef: `command.owner.reconcile.inspect.${digest.slice(0, 32)}`,
+    idempotencyRef: `idempotency.owner.reconcile.inspect.${digest.slice(0, 32)}`,
+    requestedByRef: principal.actorRef,
+    ownerRef: ownerUserId,
+    tenantRef: ownerUserId,
+    requestedAt: new Date().toISOString(),
+    sandboxRef: resource.sandboxRef,
+  } as ManagedSandboxCommand;
+};
+
+const interruptCommand = (
+  resource: ManagedSandboxResource,
+  turnRef: string,
+): ManagedSandboxCommand => {
+  const digest = sha256(`${resource.sandboxRef}\nInterrupt\n${Date.now()}\n${process.pid}`);
+  return {
+    schema: "openagents.managed_sandbox_command.v1",
+    _tag: "Interrupt",
+    commandRef: `command.owner.reconcile.interrupt.${digest.slice(0, 32)}`,
+    idempotencyRef: `idempotency.owner.reconcile.interrupt.${digest.slice(0, 32)}`,
+    requestedByRef: principal.actorRef,
+    ownerRef: ownerUserId,
+    tenantRef: ownerUserId,
+    requestedAt: new Date().toISOString(),
+    expectedVersion: resource.version,
+    sandboxRef: resource.sandboxRef,
+    turnRef,
+    reasonRef: "reason.owner.reconcile.interrupt",
+  } as ManagedSandboxCommand;
+};
+
+const settleRunningTurn = async (
+  initial: ManagedSandboxResource,
+): Promise<ManagedSandboxResource> => {
+  let resource = initial;
+  const turns = await Effect.runPromise(
+    store.turns({ ownerRef: ownerUserId, tenantRef: ownerUserId, sandboxRef: resource.sandboxRef }),
+  );
+  const latest = turns.at(-1);
+  if (latest === undefined) {
+    throw new Error("running reconcile requires an exact latest turn");
+  }
+  if (["pending", "running"].includes(latest.status)) {
+    await Effect.runPromise(broker.execute(interruptCommand(resource, latest.turnRef)));
+    resource = await inspect(resource.sandboxRef);
+  }
+  for (let attempt = 0; attempt < 45 && resource.facts.lifecycle === "running"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    await Effect.runPromise(broker.execute(inspectCommand(resource)));
+    resource = await inspect(resource.sandboxRef);
+  }
+  if (resource.facts.lifecycle === "running") {
+    throw new Error("running reconcile did not observe a terminal turn within 90 seconds");
+  }
+  return resource;
+};
+
 const settleObservedCleanup = async (
   resource: ManagedSandboxResource,
   commandRef: string,
@@ -239,7 +301,10 @@ try {
         resource = await inspect(sandboxRef);
       }
     }
-    if (["ready", "idle", "running"].includes(resource.facts.lifecycle)) {
+    if (resource.facts.lifecycle === "running") {
+      resource = await settleRunningTurn(resource);
+    }
+    if (["ready", "idle"].includes(resource.facts.lifecycle)) {
       await Effect.runPromise(broker.execute(command(resource, "Stop")));
       resource = await inspect(sandboxRef);
     }

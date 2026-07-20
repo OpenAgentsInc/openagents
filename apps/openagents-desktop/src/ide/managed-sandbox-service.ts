@@ -2,10 +2,10 @@ import {
   ManagedSandboxCommandSchema,
   type ManagedSandboxCommand,
   type ManagedSandboxResource,
-} from "@openagentsinc/managed-sandbox-contract"
-import { Context, Effect, Layer, Ref, Schema } from "effect"
+} from "@openagentsinc/managed-sandbox-contract";
+import { Context, Effect, Layer, Ref, Schema } from "effect";
 
-import type { IdeAgentAttachment, IdeAgentCodeSnapshot } from "./agent-code-contract.ts"
+import type { IdeAgentAttachment, IdeAgentCodeSnapshot } from "./agent-code-contract.ts";
 import {
   IdeManagedSandboxAdmissionSchema,
   IdeManagedSandboxCommandSchema,
@@ -20,36 +20,35 @@ import {
   type IdeManagedSandboxResourceProjection,
   type IdeManagedSandboxSnapshot,
   type IdeManagedSandboxTurnProjection,
-} from "./managed-sandbox-contract.ts"
+} from "./managed-sandbox-contract.ts";
 import {
   IdeCapabilityRefSchema,
   IdePlacementRefSchema,
   IdeServiceGenerationSchema,
   type IdeCapabilitySnapshot,
-} from "./project-contract.ts"
+} from "./project-contract.ts";
 
 export type IdeManagedSandboxPrincipal = Readonly<{
-  ownerRef: string
-  tenantRef: string
-  requestedByRef: string
-}>
+  ownerRef: string;
+  tenantRef: string;
+  requestedByRef: string;
+}>;
 
 export type IdeManagedSandboxGateway = Readonly<{
   admission: (
     input: Readonly<{
-      principal: IdeManagedSandboxPrincipal
-      attachment: IdeAgentAttachment
+      principal: IdeManagedSandboxPrincipal;
+      attachment: IdeAgentAttachment;
     }>,
-  ) => Effect.Effect<IdeManagedSandboxAdmission, Error>
+  ) => Effect.Effect<IdeManagedSandboxAdmission, Error>;
   execute: (
     command: ManagedSandboxCommand,
     options?: Readonly<{
-      prompt?: string | undefined
-      attachmentGeneration?: number | undefined
+      prompt?: string | undefined;
+      attachmentGeneration?: number | undefined;
     }>,
-  ) =>
-    Effect.Effect<IdeManagedSandboxGatewayResult, Error>
-}>
+  ) => Effect.Effect<IdeManagedSandboxGatewayResult, Error>;
+}>;
 
 export class IdeManagedSandboxRefused extends Schema.TaggedErrorClass<IdeManagedSandboxRefused>()(
   "IdeManagedSandbox.Refused",
@@ -71,22 +70,24 @@ export class IdeManagedSandboxRefused extends Schema.TaggedErrorClass<IdeManaged
   },
 ) {}
 
-export type IdeManagedSandboxServiceError = IdeManagedSandboxRefused
+export type IdeManagedSandboxServiceError = IdeManagedSandboxRefused;
 
 export type IdeManagedSandboxServiceShape = Readonly<{
-  snapshot: () => Effect.Effect<IdeManagedSandboxSnapshot>
+  snapshot: () => Effect.Effect<IdeManagedSandboxSnapshot>;
   command: (
     command: IdeManagedSandboxCommand,
-  ) => Effect.Effect<IdeManagedSandboxSnapshot, IdeManagedSandboxServiceError>
-}>
+  ) => Effect.Effect<IdeManagedSandboxSnapshot, IdeManagedSandboxServiceError>;
+}>;
 
 export class IdeManagedSandboxService extends Context.Service<
   IdeManagedSandboxService,
   IdeManagedSandboxServiceShape
 >()("@openagentsinc/openagents-desktop/IdeManagedSandboxService") {}
 
-const refusal = (reason: IdeManagedSandboxRefused["reason"], message: string): IdeManagedSandboxRefused =>
-  new IdeManagedSandboxRefused({ reason, message })
+const refusal = (
+  reason: IdeManagedSandboxRefused["reason"],
+  message: string,
+): IdeManagedSandboxRefused => new IdeManagedSandboxRefused({ reason, message });
 
 const decode = <S extends Schema.ConstraintDecoder<unknown, never>>(
   schema: S,
@@ -94,7 +95,7 @@ const decode = <S extends Schema.ConstraintDecoder<unknown, never>>(
   reason: IdeManagedSandboxRefused["reason"],
   message: string,
 ): Effect.Effect<S["Type"], IdeManagedSandboxRefused> =>
-  Schema.decodeUnknownEffect(schema)(value).pipe(Effect.mapError(() => refusal(reason, message)))
+  Schema.decodeUnknownEffect(schema)(value).pipe(Effect.mapError(() => refusal(reason, message)));
 
 const sameAttachment = (left: IdeAgentAttachment, right: IdeAgentAttachment): boolean =>
   left.projectRef === right.projectRef &&
@@ -104,29 +105,35 @@ const sameAttachment = (left: IdeAgentAttachment, right: IdeAgentAttachment): bo
   left.agentAttachmentRef === right.agentAttachmentRef &&
   left.attachmentGeneration === right.attachmentGeneration &&
   left.placementGeneration === right.placementGeneration &&
-  left.grantRef === right.grantRef
+  left.grantRef === right.grantRef;
 
-const safeSuffix = (value: string): string => value.replaceAll(/[^A-Za-z0-9._-]/gu, "-").slice(0, 120)
+const safeSuffix = (value: string): string =>
+  value.replaceAll(/[^A-Za-z0-9._-]/gu, "-").slice(0, 120);
 
 const placementRefFor = (sandboxRef: string) =>
-  IdePlacementRefSchema.make(`ide.placement.openagents-managed.${safeSuffix(sandboxRef)}`)
+  IdePlacementRefSchema.make(`ide.placement.openagents-managed.${safeSuffix(sandboxRef)}`);
 
-const capabilityFor = (binding: IdeManagedSandboxBinding, resource: ManagedSandboxResource): IdeCapabilitySnapshot => {
-  const capabilityRef = IdeCapabilityRefSchema.make(`ide.capability.managed-sandbox.${safeSuffix(resource.sandboxRef)}`)
-  const serviceGeneration = IdeServiceGenerationSchema.make(Math.max(1, resource.version + 1))
+const capabilityFor = (
+  binding: IdeManagedSandboxBinding,
+  resource: ManagedSandboxResource,
+): IdeCapabilitySnapshot => {
+  const capabilityRef = IdeCapabilityRefSchema.make(
+    `ide.capability.managed-sandbox.${safeSuffix(resource.sandboxRef)}`,
+  );
+  const serviceGeneration = IdeServiceGenerationSchema.make(Math.max(1, resource.version + 1));
   const base = {
     capabilityRef,
     kind: "agent" as const,
     attachmentGeneration: binding.attachmentGeneration,
     placementGeneration: binding.placementGeneration,
-  }
+  };
   switch (resource.facts.lifecycle) {
     case "provisioning":
     case "resuming":
       return {
         ...base,
         state: { _tag: "Starting", since: resource.updatedAt, serviceGeneration },
-      }
+      };
     case "ready":
     case "idle":
     case "running":
@@ -139,7 +146,7 @@ const capabilityFor = (binding: IdeManagedSandboxBinding, resource: ManagedSandb
           evidenceTier: "managed",
           observedAt: resource.updatedAt,
         },
-      }
+      };
     case "stopping":
     case "deleting":
       return {
@@ -152,7 +159,7 @@ const capabilityFor = (binding: IdeManagedSandboxBinding, resource: ManagedSandb
           reason: `${resource.facts.lifecycle} is in progress`,
           observedAt: resource.updatedAt,
         },
-      }
+      };
     case "stopped":
     case "deleted":
       return {
@@ -162,7 +169,7 @@ const capabilityFor = (binding: IdeManagedSandboxBinding, resource: ManagedSandb
           reason: resource.facts.lifecycle,
           stoppedAt: resource.updatedAt,
         },
-      }
+      };
     case "failed":
     case "recovery_required":
       return {
@@ -174,11 +181,13 @@ const capabilityFor = (binding: IdeManagedSandboxBinding, resource: ManagedSandb
           retry: "manual",
           observedAt: resource.updatedAt,
         },
-      }
+      };
   }
-}
+};
 
-const projectResource = (resource: ManagedSandboxResource): IdeManagedSandboxResourceProjection => ({
+const projectResource = (
+  resource: ManagedSandboxResource,
+): IdeManagedSandboxResourceProjection => ({
   sandboxRef: resource.sandboxRef,
   workUnitRef: resource.workUnitRef,
   attachmentRef: resource.attachmentRef,
@@ -195,9 +204,11 @@ const projectResource = (resource: ManagedSandboxResource): IdeManagedSandboxRes
   facts: resource.facts,
   createdAt: resource.createdAt,
   updatedAt: resource.updatedAt,
-})
+});
 
-const projectReceipt = (result: IdeManagedSandboxGatewayResult): IdeManagedSandboxReceiptProjection => ({
+const projectReceipt = (
+  result: IdeManagedSandboxGatewayResult,
+): IdeManagedSandboxReceiptProjection => ({
   receiptRef: result.receipt.receiptRef,
   commandRef: result.receipt.commandRef,
   sandboxRef: result.receipt.sandboxRef,
@@ -209,9 +220,11 @@ const projectReceipt = (result: IdeManagedSandboxGatewayResult): IdeManagedSandb
   artifactRefs: result.receipt.artifactRefs,
   errorCode: result.receipt.errorCode ?? null,
   observedAt: result.receipt.observedAt,
-})
+});
 
-const projectTurn = (result: IdeManagedSandboxGatewayResult): IdeManagedSandboxTurnProjection | null =>
+const projectTurn = (
+  result: IdeManagedSandboxGatewayResult,
+): IdeManagedSandboxTurnProjection | null =>
   result.turn === null
     ? null
     : {
@@ -226,7 +239,7 @@ const projectTurn = (result: IdeManagedSandboxGatewayResult): IdeManagedSandboxT
         createdAt: result.turn.createdAt,
         startedAt: result.turn.startedAt ?? null,
         settledAt: result.turn.settledAt ?? null,
-      }
+      };
 
 const exactAdmissionResource = (
   admission: Extract<IdeManagedSandboxAdmission, { readonly _tag: "Available" }>,
@@ -239,7 +252,7 @@ const exactAdmissionResource = (
   resource.target.region === admission.target.region &&
   resource.target.isolation === admission.target.isolation &&
   resource.imageDigest === admission.imageDigest &&
-  resource.profileRef === admission.profileRef
+  resource.profileRef === admission.profileRef;
 
 const validateResult = (
   result: IdeManagedSandboxGatewayResult,
@@ -249,22 +262,33 @@ const validateResult = (
   admission: IdeManagedSandboxAdmission,
   expectedWorkUnitRef: string,
 ): Effect.Effect<IdeManagedSandboxGatewayResult, IdeManagedSandboxRefused> => {
-  const resource = result.resource
+  const resource = result.resource;
+  const inspectAdvancedResource =
+    command._tag === "Inspect" &&
+    result.receipt.version + 1 === resource.version &&
+    result.events.length > 0 &&
+    result.events.at(-1)?.sequence === resource.lastEventSequence;
   if (result.command.commandRef !== command.commandRef || result.command._tag !== command._tag) {
-    return Effect.fail(refusal("invalid_response", "The gateway changed the command identity."))
+    return Effect.fail(refusal("invalid_response", "The gateway changed the command identity."));
   }
   if (resource.ownerRef !== principal.ownerRef || resource.tenantRef !== principal.tenantRef) {
-    return Effect.fail(refusal("invalid_response", "The gateway returned another owner or tenant scope."))
+    return Effect.fail(
+      refusal("invalid_response", "The gateway returned another owner or tenant scope."),
+    );
   }
   if (
     resource.workUnitRef !== expectedWorkUnitRef ||
     resource.attachmentRef !== attachment.agentAttachmentRef ||
     resource.attachmentGeneration !== attachment.attachmentGeneration
   ) {
-    return Effect.fail(refusal("stale_attachment", "The gateway changed the project attachment scope."))
+    return Effect.fail(
+      refusal("stale_attachment", "The gateway changed the project attachment scope."),
+    );
   }
   if (admission._tag !== "Available" || !exactAdmissionResource(admission, resource)) {
-    return Effect.fail(refusal("invalid_response", "The gateway substituted the admitted managed target."))
+    return Effect.fail(
+      refusal("invalid_response", "The gateway substituted the admitted managed target."),
+    );
   }
   if (
     result.receipt.commandRef !== command.commandRef ||
@@ -272,10 +296,12 @@ const validateResult = (
     result.receipt.ownerRef !== principal.ownerRef ||
     result.receipt.tenantRef !== principal.tenantRef ||
     result.receipt.resourceGeneration !== resource.resourceGeneration ||
-    result.receipt.version !== resource.version ||
+    (result.receipt.version !== resource.version && !inspectAdvancedResource) ||
     result.receipt.lifecycle !== resource.facts.lifecycle
   ) {
-    return Effect.fail(refusal("invalid_response", "The gateway receipt does not bind the exact resource."))
+    return Effect.fail(
+      refusal("invalid_response", "The gateway receipt does not bind the exact resource."),
+    );
   }
   if (
     result.turn !== null &&
@@ -287,23 +313,30 @@ const validateResult = (
       result.turn.attachmentGeneration !== resource.attachmentGeneration ||
       result.turn.resourceGeneration !== resource.resourceGeneration)
   ) {
-    return Effect.fail(refusal("invalid_response", "The gateway turn does not bind the exact IDE attachment."))
+    return Effect.fail(
+      refusal("invalid_response", "The gateway turn does not bind the exact IDE attachment."),
+    );
   }
-  let priorEventSequence = 0
+  let priorEventSequence = 0;
   for (const event of result.events) {
     if (
       event.sandboxRef !== resource.sandboxRef ||
       event.resourceGeneration !== resource.resourceGeneration ||
       event.sequence <= priorEventSequence
     ) {
-      return Effect.fail(refusal("invalid_response", "The gateway mixed or reordered sandbox events."))
+      return Effect.fail(
+        refusal("invalid_response", "The gateway mixed or reordered sandbox events."),
+      );
     }
-    priorEventSequence = event.sequence
+    priorEventSequence = event.sequence;
   }
-  return Effect.succeed(result)
-}
+  return Effect.succeed(result);
+};
 
-const bindingFrom = (attachment: IdeAgentAttachment, resource: ManagedSandboxResource): IdeManagedSandboxBinding => ({
+const bindingFrom = (
+  attachment: IdeAgentAttachment,
+  resource: ManagedSandboxResource,
+): IdeManagedSandboxBinding => ({
   projectRef: attachment.projectRef,
   rootRef: attachment.rootRef,
   worktreeRef: attachment.worktreeRef,
@@ -314,19 +347,19 @@ const bindingFrom = (attachment: IdeAgentAttachment, resource: ManagedSandboxRes
   placementRef: placementRefFor(resource.sandboxRef),
   workUnitRef: resource.workUnitRef,
   sandboxRef: resource.sandboxRef,
-})
+});
 
 const nextSnapshot = (
   current: IdeManagedSandboxSnapshot,
   attachment: IdeAgentAttachment,
   result: IdeManagedSandboxGatewayResult,
 ): IdeManagedSandboxSnapshot => {
-  const binding = current.binding ?? bindingFrom(attachment, result.resource)
-  const receipt = projectReceipt(result)
+  const binding = current.binding ?? bindingFrom(attachment, result.resource);
+  const receipt = projectReceipt(result);
   const receipts = [
     ...current.receipts.filter((candidate) => candidate.receiptRef !== receipt.receiptRef),
     receipt,
-  ].slice(-64)
+  ].slice(-64);
   return IdeManagedSandboxSnapshotSchema.make({
     ...current,
     revision: current.revision + 1,
@@ -337,10 +370,11 @@ const nextSnapshot = (
     events: result.events.slice(-256),
     receipts,
     freshness: "live",
-    latencyClass: result.resource.facts.runtimeState === "running" ? "remote_interactive" : "remote_background",
+    latencyClass:
+      result.resource.facts.runtimeState === "running" ? "remote_interactive" : "remote_background",
     lastError: null,
-  })
-}
+  });
+};
 
 const currentAttachment = (
   currentAgentSnapshot: () => Effect.Effect<IdeAgentCodeSnapshot, Error>,
@@ -350,12 +384,16 @@ const currentAttachment = (
     Effect.mapError(() => refusal("unattached", "The canonical agent graph is unavailable.")),
     Effect.flatMap((snapshot) =>
       snapshot.attachment === null
-        ? Effect.fail(refusal("unattached", "Attach the project to the canonical agent graph first."))
+        ? Effect.fail(
+            refusal("unattached", "Attach the project to the canonical agent graph first."),
+          )
         : expected !== undefined && !sameAttachment(snapshot.attachment, expected)
-          ? Effect.fail(refusal("stale_attachment", "The project or agent attachment generation changed."))
+          ? Effect.fail(
+              refusal("stale_attachment", "The project or agent attachment generation changed."),
+            )
           : Effect.succeed(snapshot.attachment),
     ),
-  )
+  );
 
 const canonicalCommand = (
   command: Exclude<IdeManagedSandboxCommand, { readonly _tag: "RefreshAdmission" }>,
@@ -371,7 +409,7 @@ const canonicalCommand = (
     tenantRef: principal.tenantRef,
     idempotencyRef: command.idempotencyRef,
     requestedAt: command.requestedAt,
-  }
+  };
   switch (command._tag) {
     case "Create":
       return decode(
@@ -390,7 +428,7 @@ const canonicalCommand = (
         },
         "invalid_input",
         "The create command is invalid.",
-      )
+      );
     case "Inspect":
       return decode(
         ManagedSandboxCommandSchema,
@@ -401,9 +439,10 @@ const canonicalCommand = (
         },
         "invalid_input",
         "The inspect command is invalid.",
-      )
+      );
     case "Dispatch":
-      if (resource === null) return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."))
+      if (resource === null)
+        return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."));
       return decode(
         ManagedSandboxCommandSchema,
         {
@@ -418,9 +457,10 @@ const canonicalCommand = (
         },
         "invalid_input",
         "The dispatch command is invalid.",
-      )
+      );
     case "Interrupt":
-      if (resource === null) return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."))
+      if (resource === null)
+        return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."));
       return decode(
         ManagedSandboxCommandSchema,
         {
@@ -433,9 +473,10 @@ const canonicalCommand = (
         },
         "invalid_input",
         "The interrupt command is invalid.",
-      )
+      );
     case "Stop":
-      if (resource === null) return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."))
+      if (resource === null)
+        return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."));
       return decode(
         ManagedSandboxCommandSchema,
         {
@@ -447,9 +488,10 @@ const canonicalCommand = (
         },
         "invalid_input",
         "The stop command is invalid.",
-      )
+      );
     case "Resume":
-      if (resource === null) return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."))
+      if (resource === null)
+        return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."));
       return decode(
         ManagedSandboxCommandSchema,
         {
@@ -460,9 +502,10 @@ const canonicalCommand = (
         },
         "invalid_input",
         "The resume command is invalid.",
-      )
+      );
     case "Delete":
-      if (resource === null) return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."))
+      if (resource === null)
+        return Effect.fail(refusal("wrong_sandbox", "No managed sandbox is attached."));
       return decode(
         ManagedSandboxCommandSchema,
         {
@@ -474,22 +517,22 @@ const canonicalCommand = (
         },
         "invalid_input",
         "The delete command is invalid.",
-      )
+      );
   }
-}
+};
 
 export const makeIdeManagedSandboxLayer = (
   input: Readonly<{
-    principal: IdeManagedSandboxPrincipal
-    gateway: IdeManagedSandboxGateway
-    currentAgentSnapshot: () => Effect.Effect<IdeAgentCodeSnapshot, Error>
-    initialSnapshot?: IdeManagedSandboxSnapshot
+    principal: IdeManagedSandboxPrincipal;
+    gateway: IdeManagedSandboxGateway;
+    currentAgentSnapshot: () => Effect.Effect<IdeAgentCodeSnapshot, Error>;
+    initialSnapshot?: IdeManagedSandboxSnapshot;
   }>,
 ): Layer.Layer<IdeManagedSandboxService> =>
   Layer.effect(
     IdeManagedSandboxService,
     Effect.gen(function* () {
-      const state = yield* Ref.make(input.initialSnapshot ?? emptyIdeManagedSandboxSnapshot())
+      const state = yield* Ref.make(input.initialSnapshot ?? emptyIdeManagedSandboxSnapshot());
       yield* Effect.addFinalizer(() =>
         Ref.update(state, (current) =>
           IdeManagedSandboxSnapshotSchema.make({
@@ -498,21 +541,23 @@ export const makeIdeManagedSandboxLayer = (
             lastError: "The Desktop managed-sandbox service stopped.",
           }),
         ),
-      )
+      );
 
       const snapshot = Effect.fn("IdeManagedSandboxService.snapshot")(function* () {
-        return yield* Ref.get(state)
-      })
+        return yield* Ref.get(state);
+      });
 
-      const command = Effect.fn("IdeManagedSandboxService.command")(function* (value: IdeManagedSandboxCommand) {
+      const command = Effect.fn("IdeManagedSandboxService.command")(function* (
+        value: IdeManagedSandboxCommand,
+      ) {
         const decoded = yield* decode(
           IdeManagedSandboxCommandSchema,
           value,
           "invalid_input",
           "The managed-sandbox command is invalid.",
-        )
+        );
         if (decoded._tag === "RefreshAdmission") {
-          const attachment = yield* currentAttachment(input.currentAgentSnapshot)
+          const attachment = yield* currentAttachment(input.currentAgentSnapshot);
           const admission = yield* input.gateway
             .admission({
               principal: input.principal,
@@ -520,7 +565,10 @@ export const makeIdeManagedSandboxLayer = (
             })
             .pipe(
               Effect.mapError(() =>
-                refusal("gateway_unavailable", "The managed-sandbox admission service is unavailable."),
+                refusal(
+                  "gateway_unavailable",
+                  "The managed-sandbox admission service is unavailable.",
+                ),
               ),
               Effect.flatMap((result) =>
                 decode(
@@ -530,7 +578,7 @@ export const makeIdeManagedSandboxLayer = (
                   "The managed-sandbox admission response is invalid.",
                 ),
               ),
-            )
+            );
           yield* Ref.update(state, (current) =>
             IdeManagedSandboxSnapshotSchema.make({
               ...current,
@@ -540,17 +588,23 @@ export const makeIdeManagedSandboxLayer = (
               latencyClass: admission._tag === "Available" ? "remote_background" : "unavailable",
               lastError: admission._tag === "Available" ? null : admission.reason,
             }),
-          )
-          return yield* Ref.get(state)
+          );
+          return yield* Ref.get(state);
         }
 
-        const current = yield* Ref.get(state)
+        const current = yield* Ref.get(state);
         if (current.admission._tag !== "Available") {
           return yield* Effect.fail(
-            refusal("not_configured", "Refresh and admit the OpenAgents-managed target before mutation."),
-          )
+            refusal(
+              "not_configured",
+              "Refresh and admit the OpenAgents-managed target before mutation.",
+            ),
+          );
         }
-        const attachment = yield* currentAttachment(input.currentAgentSnapshot, decoded.expectedAttachment)
+        const attachment = yield* currentAttachment(
+          input.currentAgentSnapshot,
+          decoded.expectedAttachment,
+        );
         if (current.binding !== null) {
           if (
             decoded._tag === "Create" ||
@@ -564,10 +618,15 @@ export const makeIdeManagedSandboxLayer = (
                 "wrong_sandbox",
                 "The command does not target the exact attached sandbox and project generation.",
               ),
-            )
+            );
           }
         }
-        const native = yield* canonicalCommand(decoded, input.principal, current.admission, current.resource)
+        const native = yield* canonicalCommand(
+          decoded,
+          input.principal,
+          current.admission,
+          current.resource,
+        );
         const rawResult = yield* input.gateway
           .execute(native, {
             ...(decoded._tag === "Dispatch" ? { prompt: decoded.prompt } : {}),
@@ -579,17 +638,17 @@ export const makeIdeManagedSandboxLayer = (
             Effect.mapError(() =>
               refusal("gateway_unavailable", "The managed-sandbox command service is unavailable."),
             ),
-          )
+          );
         const result = yield* decode(
           IdeManagedSandboxGatewayResultSchema,
           rawResult,
           "invalid_response",
           "The managed-sandbox command response is invalid.",
-        )
+        );
         const expectedWorkUnitRef =
           decoded._tag === "Create"
             ? decoded.workUnitRef
-            : (current.binding?.workUnitRef ?? result.resource.workUnitRef)
+            : (current.binding?.workUnitRef ?? result.resource.workUnitRef);
         const validated = yield* validateResult(
           result,
           native,
@@ -597,7 +656,7 @@ export const makeIdeManagedSandboxLayer = (
           attachment,
           current.admission,
           expectedWorkUnitRef,
-        )
+        );
         if (
           decoded._tag !== "Create" &&
           current.resource !== null &&
@@ -605,14 +664,17 @@ export const makeIdeManagedSandboxLayer = (
             validated.resource.version < current.resource.version)
         ) {
           return yield* Effect.fail(
-            refusal("stale_resource", "The gateway returned a stale or substituted sandbox resource."),
-          )
+            refusal(
+              "stale_resource",
+              "The gateway returned a stale or substituted sandbox resource.",
+            ),
+          );
         }
-        const next = nextSnapshot(current, attachment, validated)
-        yield* Ref.set(state, next)
-        return next
-      })
+        const next = nextSnapshot(current, attachment, validated);
+        yield* Ref.set(state, next);
+        return next;
+      });
 
-      return IdeManagedSandboxService.of({ snapshot, command })
+      return IdeManagedSandboxService.of({ snapshot, command });
     }),
-  )
+  );
