@@ -88,6 +88,7 @@ describe("IDE-12 real Git adapter", () => {
     await withService(root, async (service) => {
       let current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: ideSourceControlFixtureSnapshot().binding }))).snapshot;
       expect(current.paths.map((entry) => entry.path)).toContain("a.txt");
+      expect(current.delivery.find((fact) => fact.phase === "committed")?.proven).toBe(false);
 
       const stage: IdeSourceControlCommand = { _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: ["a.txt"] } };
       current = (await Effect.runPromise(service.execute(stage))).snapshot;
@@ -99,6 +100,7 @@ describe("IDE-12 real Git adapter", () => {
       current = committed.snapshot;
       expect(git(root, "log", "-1", "--format=%s")).toBe("change a");
       expect(committed.receipt?.postVersion.headOid).toBe(git(root, "rev-parse", "HEAD"));
+      expect(current.delivery.find((fact) => fact.phase === "committed")?.proven).toBe(true);
 
       writeFileSync(path.join(root, "a.txt"), "discard me\n");
       current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
@@ -398,8 +400,9 @@ describe("IDE-12 real Git adapter", () => {
     const bin = mkdtempSync(path.join(tmpdir(), "openagents-ide12-gh-"));
     roots.push(bin);
     const gh = path.join(bin, "gh");
+    const providerHead = git(root, "rev-parse", "HEAD");
     writeFileSync(gh, `#!/bin/sh
-printf '%s' '{"number":42,"url":"https://example.test/pr/42","state":"OPEN","headRefName":"feature","baseRefName":"main","headRefOid":"1111111111111111111111111111111111111111","mergeable":"MERGEABLE","mergedAt":"","updatedAt":"2026-07-20T20:00:00Z","commits":[{"oid":"1111111111111111111111111111111111111111"}],"reviews":[{"state":"APPROVED"}],"statusCheckRollup":[{"conclusion":"SUCCESS"}]}'
+printf '%s' '{"number":42,"url":"https://example.test/pr/42","state":"OPEN","headRefName":"feature","baseRefName":"main","headRefOid":"${providerHead}","mergeable":"MERGEABLE","mergedAt":"","updatedAt":"2026-07-20T20:00:00Z","commits":[{"oid":"${providerHead}"}],"reviews":[{"state":"APPROVED"}],"statusCheckRollup":[{"conclusion":"SUCCESS"}]}'
 `);
     chmodSync(gh, 0o755);
     const priorPath = process.env.PATH;
@@ -414,12 +417,17 @@ printf '%s' '{"number":42,"url":"https://example.test/pr/42","state":"OPEN","hea
         if (result.receipt?.observation?._tag === "Provider") {
           expect(result.receipt.observation.freshness).toBe("current");
           expect(result.receipt.observation.facts).toEqual(expect.arrayContaining([
-            { key: "headRefOid", value: "1111111111111111111111111111111111111111" },
+            { key: "headRefOid", value: providerHead },
             { key: "mergeable", value: "MERGEABLE" },
           ]));
           expect(result.receipt.observation.facts.find((fact) => fact.key === "reviews")?.value).toContain("APPROVED");
           expect(result.receipt.observation.facts.find((fact) => fact.key === "checks")?.value).toContain("SUCCESS");
         }
+        expect(result.snapshot.delivery.find((fact) => fact.phase === "pull_request_open")?.proven).toBe(true);
+        expect(result.snapshot.delivery.find((fact) => fact.phase === "review_approved")?.proven).toBe(true);
+        expect(result.snapshot.delivery.find((fact) => fact.phase === "merged")?.proven).toBe(false);
+        expect(result.snapshot.delivery.find((fact) => fact.phase === "owner_accepted")?.proven).toBe(false);
+        expect(result.snapshot.delivery.find((fact) => fact.phase === "released")?.proven).toBe(false);
       });
     } finally {
       process.env.PATH = priorPath;

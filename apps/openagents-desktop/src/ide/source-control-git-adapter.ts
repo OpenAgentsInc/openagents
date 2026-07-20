@@ -156,6 +156,8 @@ export const makeIdeSourceControlGitAdapter = (
   let generation = Number(options.seed.version.repositoryGeneration);
   let stopped = false;
   let verifiedPush: Readonly<{ headOid: string; upstream: string }> | null = null;
+  let verifiedCommit: Readonly<{ headOid: string; receiptRef: string }> | null = null;
+  let providerDelivery: Readonly<{ headOid: string; number: string; state: string; reviews: string; checks: string; mergedAt: string }> | null = null;
   const managedWorktrees = new Map<string, Readonly<{ worktreeRef: WorktreeRef; ownerRef: string; creationHead: string | null }>>();
   const recoveryRoot = options.recoveryRoot === undefined ? null : path.resolve(options.recoveryRoot);
   if (recoveryRoot !== null) mkdirSync(recoveryRoot, { recursive: true, mode: 0o700 });
@@ -297,10 +299,24 @@ export const makeIdeSourceControlGitAdapter = (
       : existsSync(path.join(metadataRoot, "CHERRY_PICK_HEAD")) ? { _tag: "CherryPick" as const, commitOid: null }
       : existsSync(path.join(metadataRoot, "REVERT_HEAD")) ? { _tag: "Revert" as const, commitOid: null }
       : { _tag: "Idle" as const };
+    const currentCommit = verifiedCommit !== null && verifiedCommit.headOid === headOid ? verifiedCommit : null;
+    const currentPush = verifiedPush !== null && verifiedPush.headOid === headOid && verifiedPush.upstream === upstream ? verifiedPush : null;
+    const currentProvider = providerDelivery !== null && providerDelivery.headOid === headOid ? providerDelivery : null;
+    const checks = currentProvider?.checks ?? "";
+    const reviews = currentProvider?.reviews ?? "";
     const delivery = [
       { phase: "changed" as const, proven: paths.length > 0, evidenceRefs: [statusRef], observedAt: now(), freshness: "current" as const },
-      { phase: "committed" as const, proven: headOid !== null, evidenceRefs: headOid === null ? [] : [headOid], observedAt: now(), freshness: "current" as const },
-      { phase: "pushed" as const, proven: verifiedPush?.headOid === headOid && verifiedPush.upstream === upstream, evidenceRefs: verifiedPush === null ? [] : [verifiedPush.headOid, verifiedPush.upstream], observedAt: now(), freshness: verifiedPush === null ? "unknown" as const : "current" as const },
+      { phase: "reviewed" as const, proven: reviews.includes("APPROVED"), evidenceRefs: currentProvider === null ? [] : [reviews], observedAt: now(), freshness: currentProvider === null ? "unknown" as const : "current" as const },
+      { phase: "committed" as const, proven: currentCommit !== null, evidenceRefs: currentCommit === null ? [] : [currentCommit.headOid, currentCommit.receiptRef], observedAt: now(), freshness: currentCommit === null ? "unknown" as const : "current" as const },
+      { phase: "pushed" as const, proven: currentPush !== null, evidenceRefs: currentPush === null ? [] : [currentPush.headOid, currentPush.upstream], observedAt: now(), freshness: currentPush === null ? "unknown" as const : "current" as const },
+      { phase: "pull_request_open" as const, proven: currentProvider?.state.toUpperCase() === "OPEN", evidenceRefs: currentProvider === null ? [] : [currentProvider.number], observedAt: now(), freshness: currentProvider === null ? "unknown" as const : "current" as const },
+      { phase: "checks_pending" as const, proven: currentProvider !== null && checks !== "" && !checks.includes("SUCCESS"), evidenceRefs: currentProvider === null ? [] : [checks], observedAt: now(), freshness: currentProvider === null ? "unknown" as const : "current" as const },
+      { phase: "checks_failed" as const, proven: currentProvider !== null && /FAILURE|ERROR|CANCELLED/u.test(checks), evidenceRefs: currentProvider === null ? [] : [checks], observedAt: now(), freshness: currentProvider === null ? "unknown" as const : "current" as const },
+      { phase: "review_requested" as const, proven: currentProvider !== null && reviews !== "[]", evidenceRefs: currentProvider === null ? [] : [reviews], observedAt: now(), freshness: currentProvider === null ? "unknown" as const : "current" as const },
+      { phase: "review_approved" as const, proven: currentProvider !== null && reviews.includes("APPROVED"), evidenceRefs: currentProvider === null ? [] : [reviews], observedAt: now(), freshness: currentProvider === null ? "unknown" as const : "current" as const },
+      { phase: "merged" as const, proven: currentProvider !== null && currentProvider.mergedAt !== "", evidenceRefs: currentProvider === null || currentProvider.mergedAt === "" ? [] : [currentProvider.mergedAt], observedAt: now(), freshness: currentProvider === null ? "unknown" as const : "current" as const },
+      { phase: "owner_accepted" as const, proven: false, evidenceRefs: [], observedAt: now(), freshness: "unknown" as const },
+      { phase: "released" as const, proven: false, evidenceRefs: [], observedAt: now(), freshness: "unknown" as const },
     ];
     return IdeSourceControlSnapshotSchema.make({
       ...options.seed,
@@ -403,6 +419,8 @@ export const makeIdeSourceControlGitAdapter = (
         const preCommit = path.resolve(root, hooksRoot, "pre-commit");
         if (!result.ok && command.runHooks && existsSync(preCommit)) throw failure("hook_failed", "A disclosed commit hook refused the commit.", current, op);
         assertGit(result, "The commit could not be created.", current, op);
+        const committedHead = assertGit(runGit(root, ["rev-parse", "--verify", "HEAD"]), "The committed ref could not be verified.", current, op).trim();
+        verifiedCommit = { headOid: committedHead, receiptRef: op };
         break;
       }
       case "BranchCreate": run([command.checkout ? "switch" : "branch", ...(command.checkout ? ["-c"] : []), safeArgument(command.name, "Branch name")], "The branch could not be created."); break;
@@ -498,6 +516,10 @@ export const makeIdeSourceControlGitAdapter = (
             { key: "reviews", value: listFact("reviews") },
             { key: "checks", value: listFact("statusCheckRollup") },
           ]),
+        };
+        providerDelivery = {
+          headOid: textFact("headRefOid"), number: textFact("number"), state: textFact("state"),
+          reviews: listFact("reviews"), checks: listFact("statusCheckRollup"), mergedAt: textFact("mergedAt"),
         };
         break;
       }
