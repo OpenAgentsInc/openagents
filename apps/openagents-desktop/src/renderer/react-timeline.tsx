@@ -1104,7 +1104,6 @@ const MeasuredTimelineRow = ({ row, index, virtualized, onMeasure, children }: {
   return <MessageScrollerItem
     ref={measureRef}
     messageId={row.id}
-    scrollAnchor={row.kind === "record" && isUserRecord(row.record)}
     data-virtual-index={virtualized ? index : undefined}
   >{children}</MessageScrollerItem>
 }
@@ -1282,7 +1281,7 @@ const TimelineScroller = (props: TimelineProps): ReactElement => {
 }
 
 export const ReactTimeline = (props: TimelineProps): ReactElement =>
-  <MessageScrollerProvider key={props.sessionKey} autoScroll defaultScrollPosition="end" scrollPreviousItemPeek={64}>
+  <MessageScrollerProvider key={props.sessionKey} autoScroll defaultScrollPosition="end">
     <TimelineScroller {...props} />
   </MessageScrollerProvider>
 

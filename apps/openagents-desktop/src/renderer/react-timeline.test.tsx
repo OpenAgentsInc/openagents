@@ -409,7 +409,7 @@ describe("React typed timeline projection", () => {
     root.unmount()
   })
 
-  test("composes the shadcn scroller accessibility and stable turn-anchor contract", async () => {
+  test("composes the shadcn scroller accessibility and sticks to the bottom with no per-message anchor", async () => {
     const { container } = installDom()
     const root = createRoot(container)
     const user = { ...record("prompt", 0), kind: "user_message" as const, label: "You" }
@@ -426,7 +426,10 @@ describe("React typed timeline projection", () => {
     expect(content?.getAttribute("aria-busy")).toBe("true")
     expect(content?.classList.contains("w-full")).toBe(true)
     expect(content?.classList.contains("min-w-0")).toBe(true)
-    expect(prompt?.getAttribute("data-scroll-anchor")).toBe("true")
+    // Owner directive 2026-07-19: stick-to-bottom, no per-message scroll
+    // anchoring — a newly-sent user turn is never made the scroll target, so it
+    // cannot yank the view to the top.
+    expect(prompt?.getAttribute("data-scroll-anchor")).not.toBe("true")
     expect(prompt?.classList.contains("w-full")).toBe(true)
     expect(prompt?.classList.contains("min-w-0")).toBe(true)
     expect(container.querySelector('[data-icon-name="ArrowDown"]')).not.toBeNull()
