@@ -2725,27 +2725,19 @@ ipcMain.handle(DesktopIdeManagedSandboxCommandChannel, async (event, value: unkn
 })
 ipcMain.handle(DesktopIdePortableSnapshotChannel, async (event) => {
   if (!isTrustedRuntimeGatewaySender(event)) return emptyIdePortableClientSnapshot()
-  const portable = hostLifecycle.sync()?.portableSessions() ?? null
-  if (portable === null) return emptyIdePortableClientSnapshot()
-  try {
-    return await Effect.runPromise(portable.snapshot())
-  } catch {
-    return emptyIdePortableClientSnapshot()
-  }
+  return hostLifecycle.sync()?.portableSnapshot() ?? emptyIdePortableClientSnapshot()
 })
 ipcMain.handle(DesktopIdePortableCommandChannel, async (event, value: unknown) => {
   const command = decodeIdePortableClientCommand(value)
   if (!isTrustedRuntimeGatewaySender(event) || command === null) {
     return { _tag: "Refused", reason: "invalid_input" } as const
   }
-  const portable = hostLifecycle.sync()?.portableSessions() ?? null
-  if (portable === null) return { _tag: "Refused", reason: "unavailable" } as const
-  try {
-    const mutationRef = await Effect.runPromise(portable.request(command))
-    return { _tag: "Requested", mutationRef: String(mutationRef) } as const
-  } catch {
-    return { _tag: "Refused", reason: "request_failed" } as const
-  }
+  const sync = hostLifecycle.sync()
+  if (sync === null) return { _tag: "Refused", reason: "unavailable" } as const
+  const mutationRef = sync.requestPortableCommand(command)
+  return mutationRef === null
+    ? { _tag: "Refused", reason: "request_failed" } as const
+    : { _tag: "Requested", mutationRef } as const
 })
 ipcMain.handle(DesktopWorkspaceLanguageRequestChannel, async (event, value: unknown) => {
   const request = decodeIdeLanguageRequest(value)

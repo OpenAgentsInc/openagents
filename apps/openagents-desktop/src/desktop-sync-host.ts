@@ -32,6 +32,7 @@ import {
   type KhalaSyncAgentTimeline,
   type KhalaSyncLiveAgentGraph,
   type KhalaSyncPortableSessions,
+  type ConfirmedPortableSessionSnapshot,
   type KhalaSyncCodingComposerDrafts,
   type KhalaSyncRuntimeInteractions,
   type KhalaSyncRuntimeCommands,
@@ -39,6 +40,7 @@ import {
   type KhalaSyncTransport,
   type ScopeSyncState,
 } from "@openagentsinc/khala-sync-client"
+import type { PortableSessionCommand } from "@openagentsinc/portable-session-contract"
 import { Effect } from "effect"
 import { openDesktopSyncStore, type DesktopSyncStore } from "./desktop-sync-store.ts"
 import {
@@ -64,6 +66,8 @@ export type DesktopSyncHost = Readonly<{
   timeline: () => KhalaSyncAgentTimeline | null
   agentGraph: () => KhalaSyncLiveAgentGraph | null
   portableSessions: () => KhalaSyncPortableSessions | null
+  portableSnapshot: () => ConfirmedPortableSessionSnapshot | null
+  requestPortableCommand: (command: PortableSessionCommand) => string | null
   runtime: () => KhalaSyncRuntimeCommands | null
   interactions: () => KhalaSyncRuntimeInteractions | null
   drafts: () => KhalaSyncCodingComposerDrafts | null
@@ -208,6 +212,28 @@ export const openDesktopSyncHost = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? portableSessions
         : null,
+    portableSnapshot: () => {
+      const portable = session !== null && scope !== null && session.state(scope).phase === "live"
+        ? portableSessions
+        : null
+      if (portable === null) return null
+      try {
+        return Effect.runSync(portable.snapshot())
+      } catch {
+        return null
+      }
+    },
+    requestPortableCommand: command => {
+      const portable = session !== null && scope !== null && session.state(scope).phase === "live"
+        ? portableSessions
+        : null
+      if (portable === null) return null
+      try {
+        return String(Effect.runSync(portable.request(command)))
+      } catch {
+        return null
+      }
+    },
     runtime: () =>
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? runtime

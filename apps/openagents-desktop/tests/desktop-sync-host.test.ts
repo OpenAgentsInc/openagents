@@ -253,7 +253,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       expect(host.timeline()).not.toBeNull()
       expect(host.interactions()).not.toBeNull()
       expect(host.portableSessions()).not.toBeNull()
-      expect(Effect.runSync(host.portableSessions()!.snapshot())).toMatchObject({
+      expect(host.portableSnapshot()).toMatchObject({
         status: { phase: "live", pendingCommandCount: 0 },
         sessions: [],
         attachments: [],
@@ -271,7 +271,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
         destinationTargetRef: "target.managed.desktop.1",
         expiresAt: "2026-07-20T08:00:00.000Z",
       } as const
-      Effect.runSync(host.portableSessions()!.request(portableCommand))
+      expect(host.requestPortableCommand(portableCommand)).not.toBeNull()
       await waitFor(() => pushes.flatMap(request => request.mutations)
         .some(mutation => String(mutation.name) === PORTABLE_REQUEST_COMMAND_MUTATOR_NAME))
       const portableMutation = pushes.flatMap(request => request.mutations)
