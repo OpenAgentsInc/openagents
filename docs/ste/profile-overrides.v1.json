@@ -44,6 +44,14 @@
       "ste_reviewer": "codex/forensic-review-20260719",
       "ste_reviewed_at": "2026-07-19T17:54:47Z"
     },
+    "docs/apple-fm/2026-07-19-apple-fm-swift-bridge-full-audit-and-openagents-desktop-plan.md": {
+      "ste_status": "checked",
+      "ste_reviewer": "codex/asd-ste100-agent-compact-review-20260719",
+      "ste_reviewed_at": "2026-07-19T22:35:00Z",
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": ["STE-2.4", "STE-3.6", "STE-5.1", "STE-8.1", "STE-8.2"]
+    },
     "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-migration-20260719-r2",

@@ -412,7 +412,7 @@ try {
     { boxId, updateBoxRequest: { ttlSeconds: 840 } },
     retryHeaders('update'),
   )
-  if (updated.box.updatedAt !== updateReplay.box.updatedAt) {
+  if (updated.box.updatedAt?.getTime() !== updateReplay.box.updatedAt?.getTime()) {
     throw new Error('update replay diverged')
   }
   proof.updateReplay = true
