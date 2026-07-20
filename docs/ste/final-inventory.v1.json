@@ -15056,6 +15056,18 @@
       }
     },
     {
+      "path": "docs/apple-fm/2026-07-20-afs-06-connect-advisory-results-to-ide-action-services.md",
+      "sha256": "2b5e886cc1ea469fb1a3d97ef7c864be970e5868566403ae1ace762b7549731c",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-07-20-apple-fm-analyzer-boot-sequence-audit.md",
       "sha256": "4f3e438380996a38e3b7ee454f550951d9e77c1f547a9c822c6f8dbd3a897e25",
       "reason": "Immutable historical or evidence source data",

@@ -7,7 +7,6 @@ import {
   WorkContextEnvelope,
 } from "@openagentsinc/agent-runtime-schema"
 import {
-  ActionBroker,
   ArtifactResolver,
   ContextSource,
   TurnPolicy,
@@ -128,10 +127,4 @@ export const desktopTurnPolicyLayer: Layer.Layer<TurnPolicy> = Layer.succeed(
 export const desktopArtifactResolverLayer: Layer.Layer<ArtifactResolver> = Layer.succeed(
   ArtifactResolver,
   ArtifactResolver.of({ resolve: () => Effect.succeed(null) }),
-)
-
-/** Advisory-only broker: it performs no host action in AFS-01. */
-export const desktopActionBrokerLayer: Layer.Layer<ActionBroker> = Layer.succeed(
-  ActionBroker,
-  ActionBroker.of({ deliver: () => Effect.void }),
 )

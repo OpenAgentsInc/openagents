@@ -253,8 +253,18 @@ export const layer = Layer.effect(
                     .appendAssistant(input.threadRef, { role: "assistant", text: candidate.text })
                     .pipe(Effect.catch(() => Effect.void));
                 }
-                // Advisory delivery only. The broker never performs a host action here.
-                yield* broker.deliver(candidate).pipe(Effect.catch(() => Effect.void));
+                // Advisory delivery only. The broker converts the delivery into a
+                // typed action REQUEST for the owning IDE service and records the
+                // backlink; it never performs a host action here. It is fail-soft:
+                // an action-routing failure must never break the advisory turn.
+                yield* broker
+                  .deliver({
+                    candidate,
+                    intent: input.intent,
+                    threadRef: input.threadRef,
+                    requestRef: input.requestRef,
+                  })
+                  .pipe(Effect.catch(() => Effect.void));
               }
             }),
           Refused: ({ reason }) => applyAt(generation, TurnTransition.Refused({ reason })),

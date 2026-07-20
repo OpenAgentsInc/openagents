@@ -189,14 +189,31 @@ export class ArtifactResolver extends Context.Service<ArtifactResolver, Artifact
 ) {}
 
 /**
- * `ActionBroker` receives an advisory terminal candidate. Inference output is
+ * The bounded delivery the kernel hands the action broker at the terminal
+ * `completed` step. It carries the advisory terminal candidate PLUS the
+ * host-owned originating intent and turn identity. The broker needs the intent
+ * because the typed action refs (a run ref, a debug ref, or a source-control
+ * ref) live on the intent, not on an advisory answer candidate. The candidate
+ * supplies only advisory text and, for a proposal, the host-minted proposal ref.
+ */
+export interface ActionBrokerDelivery {
+  readonly candidate: TurnCandidate;
+  readonly intent: TurnIntent;
+  readonly threadRef: TurnThreadRef;
+  readonly requestRef: TurnRequestRef;
+}
+
+/**
+ * `ActionBroker` receives the advisory terminal delivery. Inference output is
  * advisory: a real file mutation, task run, debug step, source-control action, or
  * provider delegation must go through the existing IDE-08/10/11/12 and provider
- * dispatch services. The default broker performs no action; later packets wire
- * the real brokers.
+ * dispatch services (AFS-06). The broker converts a delivery into a typed action
+ * REQUEST for the owning host service, records the backlink, and performs no
+ * effect itself. Model text never becomes a command argument. The default broker
+ * performs no action; the Desktop host composes the real routing broker.
  */
 export interface ActionBrokerInterface {
-  readonly deliver: (candidate: TurnCandidate) => Effect.Effect<void>;
+  readonly deliver: (delivery: ActionBrokerDelivery) => Effect.Effect<void>;
 }
 export class ActionBroker extends Context.Service<ActionBroker, ActionBrokerInterface>()(
   "agent-turn-runtime.ActionBroker",

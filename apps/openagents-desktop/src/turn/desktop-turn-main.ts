@@ -41,11 +41,11 @@ import {
 } from "./desktop-turn-ipc.ts"
 import { ProviderRegistry } from "./desktop-provider-lane.ts"
 import {
-  desktopActionBrokerLayer,
   desktopArtifactResolverLayer,
   desktopContextSourceLayer,
   desktopTurnPolicyLayer,
 } from "./desktop-turn-policy.ts"
+import { desktopActionBrokerLayer } from "./turn-action-broker.ts"
 import { desktopThreadRepositoryLayer } from "./desktop-thread-repository.ts"
 import { desktopTurnJournalLayer } from "./desktop-turn-journal.ts"
 

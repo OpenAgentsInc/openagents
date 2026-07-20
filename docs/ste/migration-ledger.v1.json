@@ -14572,6 +14572,19 @@
       "replacement": null
     },
     {
+      "path": "docs/apple-fm/2026-07-20-afs-06-connect-advisory-results-to-ide-action-services.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/apple-fm/2026-07-20-apple-fm-analyzer-boot-sequence-audit.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
