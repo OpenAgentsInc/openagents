@@ -802,6 +802,30 @@ and deterministic Effect tests. Do not skip it merely because
   clean. The required final evidence is:
   `git status --porcelain` empty in both checkouts and
   `git rev-parse HEAD` equal to `git rev-parse origin/main` in each.
+- **Fresh worktree per task (owner mandate, 2026-07-20).** EVERY time you start
+  a unit of work, create a NEW worktree off current `origin/main` and do the
+  implementation and verification there — never edit directly in the canonical
+  checkout, which is frequently dirty with another agent's live work. The exact
+  flow is: `git fetch origin main`, then
+  `git worktree add --detach <path> origin/main`, work in `<path>`, and when the
+  change is landed merge it to `main` by pushing to `origin/main`. Clean up the
+  worktree when done (`git worktree remove <path>`) so no stray worktrees
+  accumulate. This complements — it does not replace — the primary-`main`
+  reconciliation gate above: after pushing, still bring the canonical checkout
+  at `/Users/christopherdavid/work/openagents` onto `main` fast-forwarded to
+  `origin/main`, unless unrelated live work makes that unsafe, in which case
+  report the reconciliation gate as blocked per the multi-agent hygiene rule.
+- **Docs-only changes push with `--no-verify` (owner mandate, 2026-07-20).**
+  When a change touches ONLY documentation (Markdown and other docs, with no
+  code, config, schema, or generated surface), commit and push to `main` with
+  `git push --no-verify` so the pre-commit/pre-push `check:fast` code gate does
+  not run on an unrelated code surface. This is a deliberate skip of the code
+  checks ONLY — you must still run the documentation-relevant checks by hand
+  first: above all the neutral-language guard and the STE inspection, plus the
+  doc-coverage / AGENTS.md-drift and link/ref checks, and leave them green.
+  `--no-verify` is for docs-only changes (and for pushing a worktree commit that
+  already ran `pnpm run check` green, where the hook would only re-run the same
+  gate) — it is NEVER a shortcut to land unverified code.
 - **The owner dev launcher is repository-owned.** Its canonical source is
   `apps/openagents-desktop/scripts/oa-dev-launch`, keep the installed
   `~/.local/bin/oa-dev-launch` copy aligned with it. Dependency synchronization
