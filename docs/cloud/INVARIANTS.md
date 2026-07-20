@@ -162,6 +162,10 @@ design context only.
 - Each provider stream emits at most one terminal event. Records observed after
   that terminal event cannot append more native events. Recoverable SDK
   reconnect notifications cannot fail or settle the native turn.
+- Claude Agent SDK requests cross the provider broker through an exact Vertex
+  adapter. The adapter removes only the unsupported SDK
+  `context_management` beta input; it does not rewrite prompt, message, tool,
+  limit, model, owner, or capability scope.
 - Guest I/O admits only file read, file write, command, and artifact read. Each
   private request binds the exact owner, tenant, work unit, sandbox generation,
   active capability, retry identity, time, and resource limits.
@@ -219,8 +223,7 @@ design context only.
   All five rules are generation-owned and cleanup-observed. Readiness checks
   each exact destination, port, priority, and target tag.
 - The persistent control firewall admits broker traffic from the shared
-  managed-guest tag at priority 900. It denies every other source at priority
-  1000. The control VM has no external IP. No public or provider endpoint is
+  managed-guest tag at priority 900. It denies every other source at priority 1000. The control VM has no external IP. No public or provider endpoint is
   reachable from the guest. Only run-scoped capability refs pass admission.
 - The dedicated Cloud Run bridge uses Direct VPC egress and a source tag. Its
   control-port firewall does not admit the enclosing subnet.

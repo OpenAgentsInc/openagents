@@ -94,6 +94,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   a work-accepting resource may be `ready`, `idle`, or `running` while its turn
   is pending or running. Quiescing, terminal, non-accepting, expired, revoked,
   or cleanup-complete resources refuse before any provider effect.
+- The Claude Agent SDK remains the guest harness, but the broker is the Vertex
+  transport adapter. It removes the SDK-only `context_management` beta input
+  that Vertex Claude rejects, while preserving the exact owner-scoped prompt,
+  messages, tools, limits, model pin, and broker-only credential boundary.
 
 ## Preserved Transcript Archive
 

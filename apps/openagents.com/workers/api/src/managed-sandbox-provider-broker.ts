@@ -401,6 +401,11 @@ export const makeManagedSandboxProviderBrokerRoutes = (
         accessToken = minted.value
       }
       delete body['model']
+      // Claude Agent SDK 0.3.172 negotiates a direct-Anthropic context
+      // management beta on retry. Vertex Sonnet 4.6 rejects that SDK-only
+      // transport hint as an extra input, so the Vertex adapter removes only
+      // the hint while preserving the prompt, messages, tools, and limits.
+      delete body['context_management']
       body['anthropic_version'] = 'vertex-2023-10-16'
       const location =
         env.OA_MANAGED_SANDBOX_CLAUDE_LOCATION?.trim() ||

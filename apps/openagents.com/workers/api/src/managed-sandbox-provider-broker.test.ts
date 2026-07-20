@@ -337,6 +337,9 @@ describe('managed-sandbox provider capability broker', () => {
           headers: { authorization: `Bearer ${capability}` },
           body: JSON.stringify({
             model: 'caller-cannot-change-model',
+            context_management: {
+              edits: [{ type: 'clear_tool_uses_20250919' }],
+            },
             max_tokens: 64,
             messages: [{ role: 'user', content: 'Return READY.' }],
           }),
@@ -351,6 +354,7 @@ describe('managed-sandbox provider capability broker', () => {
         'claude-sonnet-4-6:rawPredict',
     )
     expect(upstreamBody?.['model']).toBeUndefined()
+    expect(upstreamBody?.['context_management']).toBeUndefined()
     expect(upstreamBody?.['anthropic_version']).toBe('vertex-2023-10-16')
     expect(upstreamAuthorization).toBe(
       'Bearer vertex-access-token-never-returned',
