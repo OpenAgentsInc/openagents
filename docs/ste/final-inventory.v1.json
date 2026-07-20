@@ -15136,8 +15136,8 @@
           "STE-2.4"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "afs-ambient-context-review-20260720",
-        "ste_reviewed_at": "2026-07-20T00:00:00Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -16486,7 +16486,7 @@
     },
     {
       "path": "docs/assure-repo/README.md",
-      "sha256": "f35bafd0154b5671765099cec987342b713e8f89a32ca6d12cdc2e88054a43d3",
+      "sha256": "9e5db224607b1e6b7f89b36008e8c09168f3a68dded6c489158a8a7623d3ea26",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

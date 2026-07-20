@@ -6,7 +6,16 @@
     "app:@openagentsinc/ai-sdk-harness-poc": "reference-only",
     "app:@openagentsinc/electron-ai-sdk-test": "reference-only"
   },
-  "governedDocuments": ["AGENTS.md", "CLAUDE.md", "INVARIANTS.md", "docs/sol/MASTER_ROADMAP.md"],
+  "governedDocuments": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "INVARIANTS.md",
+    "docs/sol/MASTER_ROADMAP.md",
+    "docs/ide/ROADMAP.md",
+    "docs/fable/2026-07-19-verifiable-software.md",
+    "docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md",
+    "docs/fable/2026-07-20-full-auto-first-verifiable-mode.md"
+  ],
   "outOfScope": {
     "app:@openagentsinc/openagents-audio-edge": "Cloud Run entrypoint (src/cloudrun.ts) with no exports; loading it throws or binds a server, and all logic lives in closures passed to Runtime.serve. Not unit-testable without a source refactor to extract the identity-token/handler/websocket functions. Integration-tested via deployment. Tracked in #9067."
   },

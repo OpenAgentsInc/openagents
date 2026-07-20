@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, normalize } from "node:path";
 
 import { compareStrings } from "./schema.ts";
 
@@ -15,7 +15,7 @@ import { compareStrings } from "./schema.ts";
  * ever executed; no live production is probed.
  */
 
-export type DriftClaimKind = "path" | "command";
+export type DriftClaimKind = "path" | "command" | "link";
 export type DriftVerdict = "ok" | "broken" | "unverifiable";
 
 export type DriftFinding = {
@@ -34,6 +34,26 @@ const lineOf = (text: string, index: number): number => text.slice(0, index).spl
 const PATH_SPAN = /`([A-Za-z0-9._@-]+(?:\/[A-Za-z0-9._@-]+)+)`/g;
 const HAS_EXTENSION = /\.[A-Za-z0-9]+$/;
 const PNPM_RUN = /`?\bpnpm run ([a-z0-9:_-]+)`?/g;
+// An inline markdown link `[text](target)`. The target is captured; reference
+// definitions (`[ref]: …`) and reference links (`[text][ref]`) are not matched.
+const MARKDOWN_LINK = /\[[^\]]*\]\(([^)\s]+)\)/g;
+
+/**
+ * Resolve a markdown-link target that points inside the repository, relative to
+ * the linking file's own directory (root-anchored when it starts with `/`).
+ * Returns the repo-relative resolved path, or null when the target is external
+ * or not a repo-relative file reference (protocol URLs, mail, pure anchors, or
+ * bare words with neither a slash nor an extension).
+ */
+const resolveLinkTarget = (file: string, rawTarget: string): string | null => {
+  if (/^(?:[a-z][a-z0-9+.-]*:|#|\/\/)/i.test(rawTarget)) return null;
+  const target = rawTarget.split("#")[0]!.split("?")[0]!;
+  if (!target) return null;
+  if (!target.includes("/") && !HAS_EXTENSION.test(target)) return null;
+  return target.startsWith("/")
+    ? normalize(target.slice(1))
+    : normalize(join(dirname(file), target));
+};
 
 /**
  * Whether a path is gitignored. A gitignored path (e.g. a `.secrets/*.env`
@@ -69,6 +89,25 @@ const rootScripts = (root: string): ReadonlyArray<string> => {
 // npm package specifier: `@scope/name` or `name@1.2.3`, not a repo path.
 const NPM_SPECIFIER = /^@|@\d/;
 
+// GitHub organizations these docs reference as `owner/repo` slugs. There is no
+// such top-level directory in the repository, so a span like `OpenAgentsInc/cloud`
+// is unambiguously a GitHub reference, not a context-relative repo path.
+const GITHUB_ORG_SLUGS = new Set(["OpenAgentsInc", "AtlantisPleb"]);
+
+/**
+ * A backtick span that is a well-known non-path reference rather than a
+ * repo-relative file path: a git ref (`origin/main`, `upstream/foo`, `HEAD/…`)
+ * or a GitHub `owner/repo` slug for a known organization. These are excluded
+ * from path drift entirely rather than recorded as context-relative
+ * unverifiables, which is a false classification for them.
+ */
+const isNonPathReference = (claim: string): boolean => {
+  const first = claim.split("/")[0]!;
+  if (first === "origin" || first === "upstream" || first === "HEAD") return true;
+  const segments = claim.split("/");
+  return segments.length === 2 && GITHUB_ORG_SLUGS.has(first);
+};
+
 export const checkDocumentClaims = (
   root: string,
   file: string,
@@ -81,6 +120,7 @@ export const checkDocumentClaims = (
   for (const match of source.matchAll(PATH_SPAN)) {
     const claim = match[1]!;
     if (claim.startsWith("http") || claim.includes("*") || NPM_SPECIFIER.test(claim)) continue;
+    if (isNonPathReference(claim)) continue;
     const line = lineOf(source, match.index);
     if (existsSync(join(root, claim))) continue;
     const firstSegment = claim.split("/")[0]!;
@@ -140,6 +180,33 @@ export const checkDocumentClaims = (
       verdict: "broken",
       detail: "root package.json has no such script",
     });
+  }
+
+  for (const match of source.matchAll(MARKDOWN_LINK)) {
+    const rawTarget = match[1]!;
+    const resolved = resolveLinkTarget(file, rawTarget);
+    if (resolved === null) continue;
+    const line = lineOf(source, match.index);
+    if (existsSync(join(root, resolved))) continue;
+    if (HAS_EXTENSION.test(resolved)) {
+      findings.push({
+        file,
+        line,
+        kind: "link",
+        claim: rawTarget,
+        verdict: "broken",
+        detail: `linked file does not exist (resolves to ${resolved})`,
+      });
+    } else {
+      findings.push({
+        file,
+        line,
+        kind: "link",
+        claim: rawTarget,
+        verdict: "unverifiable",
+        detail: `directory-shaped link target not found (resolves to ${resolved}); may be conceptual`,
+      });
+    }
   }
 
   return findings.sort((a, b) =>

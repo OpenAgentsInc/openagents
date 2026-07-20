@@ -118,6 +118,86 @@ describe("checkDocumentClaims — gitignored paths are environment-specific", ()
   });
 });
 
+describe("checkDocumentClaims — markdown-link oracle", () => {
+  test("passes a relative link that resolves to an existing file", () => {
+    const root = fixture();
+    // Linking file is at packages/x/DOC.md; `./index.ts` resolves to the sibling.
+    const findings = checkDocumentClaims(
+      root,
+      "packages/x/DOC.md",
+      "See [the module](./index.ts).",
+      ["check"],
+      topLevel(root),
+    );
+    expect(findings.filter((f) => f.kind === "link")).toEqual([]);
+  });
+
+  test("flags a relative link to a missing file as broken", () => {
+    const root = fixture();
+    const findings = checkDocumentClaims(
+      root,
+      "packages/x/DOC.md",
+      "See [gone](./gone.ts).",
+      ["check"],
+      topLevel(root),
+    );
+    const link = findings.find((f) => f.kind === "link");
+    expect(link?.verdict).toBe("broken");
+    expect(link?.claim).toBe("./gone.ts");
+  });
+
+  test("resolves a parent-relative link against the linking file's directory", () => {
+    const root = fixture();
+    const findings = checkDocumentClaims(
+      root,
+      "packages/x/DOC.md",
+      "See [pkg json](../../package.json).",
+      ["check"],
+      topLevel(root),
+    );
+    expect(findings.filter((f) => f.kind === "link")).toEqual([]);
+  });
+
+  test("treats a directory-shaped missing link target as unverifiable, not broken", () => {
+    const root = fixture();
+    const findings = checkDocumentClaims(
+      root,
+      "packages/x/DOC.md",
+      "See [the area](../y).",
+      ["check"],
+      topLevel(root),
+    );
+    const link = findings.find((f) => f.kind === "link");
+    expect(link?.verdict).toBe("unverifiable");
+  });
+
+  test("ignores external, mail, and pure-anchor links", () => {
+    const root = fixture();
+    const findings = checkDocumentClaims(
+      root,
+      "packages/x/DOC.md",
+      "[web](https://x/y) [mail](mailto:a@b.c) [top](#heading) [word](nothingish)",
+      ["check"],
+      topLevel(root),
+    );
+    expect(findings.filter((f) => f.kind === "link")).toEqual([]);
+  });
+});
+
+describe("checkDocumentClaims — non-path references are excluded", () => {
+  test("git refs and known GitHub org slugs are not path findings", () => {
+    const root = fixture();
+    const findings = checkDocumentClaims(
+      root,
+      "DOC.md",
+      "Reset to `origin/main`; the repo is `OpenAgentsInc/openagents`.",
+      ["check"],
+      topLevel(root),
+    );
+    expect(findings).toEqual([]);
+  });
+});
+
 describe("runDriftOracles dispositions", () => {
   test("a dispositioned broken finding is not counted as open", () => {
     const root = fixture();
