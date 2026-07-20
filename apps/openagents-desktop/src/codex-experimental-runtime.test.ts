@@ -3,8 +3,8 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test } from "vite-plus/test"
 
-import type { CodexAppServerLease, CodexAppServerNotification } from "./codex-app-server-supervisor.ts"
-import { CODEX_EXPERIMENTAL_METHODS, codexExperimentalManifestGate, makeCodexExperimentalRuntime } from "./codex-experimental-runtime.ts"
+import type { CodexAppServerLease, CodexAppServerNotification, CodexAppServerPoolTarget, CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
+import { CODEX_EXPERIMENTAL_METHODS, codexExperimentalManifestGate, makeCodexExperimentalRuntime, makeCodexExperimentalRuntimeRegistry } from "./codex-experimental-runtime.ts"
 import type { IdePortableMutationAuthority, IdePortableMutationPermit } from "./ide/portable-mutation-authority.ts"
 
 const roots: string[] = []
@@ -19,8 +19,9 @@ type RequestOverride = (
 const fixture = (earlyProcessExit = false, requestOverride?: RequestOverride) => {
   const root = mkdtempSync(join(tmpdir(), "oa-experimental-")); roots.push(root)
   const requests: Array<{ method: string; params: unknown }> = []; const listeners = new Set<(value: CodexAppServerNotification) => void>(); let generation = 1
+  let releases = 0
   const lease = {
-    state: () => ({ status: "ready" as const, generation }), release: () => undefined,
+    state: () => ({ status: "ready" as const, generation }), release: () => { releases += 1 },
     subscribe: (listener: (value: CodexAppServerNotification) => void) => { listeners.add(listener); return () => listeners.delete(listener) },
     request: async (method: string, params: unknown, options?: Readonly<{ signal?: AbortSignal }>) => {
       requests.push({ method, params })
@@ -38,8 +39,10 @@ const fixture = (earlyProcessExit = false, requestOverride?: RequestOverride) =>
       return {}
     },
   } as unknown as CodexAppServerLease
-  return { root, requests, lease, notify: (method: string, params: unknown, next = generation) => { generation = next; for (const listener of listeners) listener({ generation, message: { method, params } }) } }
+  return { root, requests, lease, releases: () => releases, notify: (method: string, params: unknown, next = generation) => { generation = next; for (const listener of listeners) listener({ generation, message: { method, params } }) } }
 }
+
+const target: CodexAppServerPoolTarget = { binary: "/test/codex", binarySha256: "test", env: {}, cwd: "/tmp", accountRef: null, hostTarget: "local" }
 
 const portableAuthority = () => {
   let current = true
@@ -242,5 +245,32 @@ describe("Codex experimental runtime", () => {
     await expect(runtime.quiesce()).rejects.toMatchObject({ reason: "cleanup_failed" })
     expect(runtime.snapshot().processes[0]?.state).toBe("disconnected")
     await expect(runtime.dispose()).rejects.toMatchObject({ reason: "cleanup_failed" })
+  })
+})
+
+describe("Codex experimental runtime registry quiescence", () => {
+  test("awaits blocked cleanup, suppresses late events, and stays closed", async () => {
+    let releaseKill!: () => void; const kill = new Promise<void>(resolve => { releaseKill = resolve })
+    const h = fixture(false, method => method === "process/kill" ? kill : undefined); const supervisor = { acquire: async () => h.lease } as unknown as CodexAppServerSupervisor
+    const registry = makeCodexExperimentalRuntimeRegistry({ supervisor, spoolRoot: join(h.root, "registry-spool"), receiptRoot: join(h.root, "registry-receipts"), quiesceTimeoutMs: 1_000 })
+    const runtime = await registry.forTarget(target); const input = { command: ["quiet"], cwd: h.root }
+    await runtime.spawnProcess(input, runtime.authorize("process_spawn", input, runtime.snapshot().revision))
+    const handle = (h.requests.find(value => value.method === "process/spawn")?.params as { processHandle: string }).processHandle
+    let completed = false; const first = registry.quiesce().then(result => { completed = true; return result })
+    for (let index = 0; index < 20 && !h.requests.some(value => value.method === "process/kill"); index += 1) await Promise.resolve()
+    expect(completed).toBe(false); const directory = join(h.root, "registry-spool", readdirSync(join(h.root, "registry-spool"))[0]!); const spoolBefore = readdirSync(directory)
+    h.notify("process/outputDelta", { processHandle: handle, stream: "stdout", deltaBase64: Buffer.from("late").toString("base64") }); expect(readdirSync(directory)).toEqual(spoolBefore)
+    releaseKill(); await expect(first).resolves.toEqual({ state: "quiesced" }); await expect(registry.quiesce()).resolves.toEqual({ state: "quiesced" })
+    await expect(registry.forTarget(target)).rejects.toMatchObject({ reason: "closed" }); expect(h.releases()).toBe(1)
+  })
+
+  test("reports a blocked acquisition as timed out and disposes the late runtime", async () => {
+    const h = fixture(); let resolveAcquire!: (lease: CodexAppServerLease) => void
+    const pending = new Promise<CodexAppServerLease>(resolve => { resolveAcquire = resolve }); const supervisor = { acquire: () => pending } as unknown as CodexAppServerSupervisor
+    const registry = makeCodexExperimentalRuntimeRegistry({ supervisor, spoolRoot: join(h.root, "registry-spool"), receiptRoot: join(h.root, "registry-receipts"), quiesceTimeoutMs: 10 })
+    const late = registry.forTarget(target); await expect(registry.quiesce()).resolves.toEqual({ state: "timed_out", detailRef: "desktop.codex-experimental.registry-cleanup-timeout" })
+    resolveAcquire(h.lease); const runtime = await late
+    for (let index = 0; index < 20 && h.releases() === 0; index += 1) await Promise.resolve()
+    expect(h.releases()).toBe(1); await expect(runtime.listVoices()).rejects.toMatchObject({ reason: "quiesced" })
   })
 })

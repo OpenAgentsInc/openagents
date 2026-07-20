@@ -80,8 +80,10 @@ const makeSpyBackend = () => {
     spawn: (spawnInput) => {
       let dataListener: ((chunk: string) => void) | null = null
       let exitListener: ((code: number | null, signal: string | null) => void) | null = null
+      let settle!: () => void; const settled = new Promise<void>(resolve => { settle = resolve })
       const proc: SpyProcess = {
         pid: 4242,
+        settled,
         writes: [],
         interrupts: 0,
         kills: 0,
@@ -93,7 +95,7 @@ const makeSpyBackend = () => {
         onData: (listener) => { dataListener = listener },
         onExit: (listener) => { exitListener = listener },
         emitData: (chunk) => dataListener?.(chunk),
-        emitExit: (code, signal) => exitListener?.(code, signal),
+        emitExit: (code, signal) => { exitListener?.(code, signal); settle() },
       }
       spawned.push(proc)
       return proc
@@ -286,6 +288,28 @@ describe("adversarial: duplicate start", () => {
     expect(second.ok).toBe(false)
     if (!second.ok) expect(second.reason).toBe("at_capacity")
     host.dispose()
+  })
+})
+
+describe("source safe-point quiescence", () => {
+  test("waits for every owned process tree and permanently refuses new work", async () => {
+    const { backend, spawned } = makeSpyBackend(); const sink = collector()
+    const host = makeTerminalHost({ backend, workspace: grant("g1", "/tmp/ws"), emit: sink.emit, env: () => ({ PATH: "/usr/bin" }), quiesceTimeoutMs: 1_000 })
+    expect(host.create({ sessionRef: "terminal.quiesce01" }).ok).toBe(true)
+    const lateEventsAtStart = sink.events.length; let completed = false
+    const first = host.quiesce().then(result => { completed = true; return result })
+    expect(spawned[0]?.kills).toBe(1); await Promise.resolve(); expect(completed).toBe(false)
+    spawned[0]?.emitData("late output"); expect(sink.events).toHaveLength(lateEventsAtStart + 1)
+    spawned[0]?.emitExit(null, "SIGTERM")
+    await expect(first).resolves.toEqual({ state: "quiesced" }); await expect(host.quiesce()).resolves.toEqual({ state: "quiesced" })
+    expect(host.create({ sessionRef: "terminal.quiesce02" })).toMatchObject({ ok: false })
+  })
+
+  test("reports a blocked process tree as timed out", async () => {
+    const { backend } = makeSpyBackend()
+    const host = makeTerminalHost({ backend, workspace: grant("g1", "/tmp/ws"), emit: () => undefined, env: () => ({ PATH: "/usr/bin" }), quiesceTimeoutMs: 10 })
+    host.create({ sessionRef: "terminal.quiesce03" })
+    await expect(host.quiesce()).resolves.toEqual({ state: "timed_out", detailRef: "desktop.terminal.process-tree-settlement-timeout" })
   })
 })
 

@@ -84,6 +84,16 @@ describe("Desktop source safe point", () => {
       make: async () => ({ state: "unsupported", detailRef: "desktop.helper.no-safe-point" } as const),
       state: "unsupported",
     },
+    {
+      name: "reported cleanup timeout",
+      make: async () => ({ state: "timed_out", detailRef: "desktop.helper.cleanup-timeout" } as const),
+      state: "timed_out",
+    },
+    {
+      name: "reported cleanup failure",
+      make: async () => ({ state: "failed", detailRef: "desktop.helper.cleanup-failed" } as const),
+      state: "failed",
+    },
   ] as const) {
     test(`records ${testCase.name} as failed safe-point evidence`, async () => {
       const service = makeDesktopSourceSafePoint({

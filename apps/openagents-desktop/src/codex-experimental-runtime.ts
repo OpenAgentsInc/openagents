@@ -342,9 +342,30 @@ export type CodexExperimentalRuntimeRegistry = Readonly<{
     target: CodexAppServerPoolTarget,
     portable?: Readonly<{ mutationAuthority: IdePortableMutationAuthority; grantRef: string }>,
   ) => Promise<CodexExperimentalRuntime>
+  quiesce: () => Promise<CodexExperimentalRegistryQuiescence>
   close: () => void
 }>
-export const makeCodexExperimentalRuntimeRegistry = (options: Readonly<{ supervisor: CodexAppServerSupervisor; spoolRoot: string; receiptRoot: string }>): CodexExperimentalRuntimeRegistry => {
+export type CodexExperimentalRegistryQuiescence =
+  | Readonly<{ state: "quiesced" }>
+  | Readonly<{ state: "timed_out" | "failed"; detailRef: string }>
+export const makeCodexExperimentalRuntimeRegistry = (options: Readonly<{ supervisor: CodexAppServerSupervisor; spoolRoot: string; receiptRoot: string; quiesceTimeoutMs?: number }>): CodexExperimentalRuntimeRegistry => {
   const entries = new Map<string, Promise<CodexExperimentalRuntime>>(); let closed = false
-  return { forTarget: (target, portable) => { if (closed) return Promise.reject(new CodexExperimentalError("closed", "Experimental registry is closed")); if (!codexExperimentalManifestGate.enabled) return Promise.reject(new CodexExperimentalError("manifest_incomplete", "Experimental manifest is incomplete")); const experimentalTarget = { ...target, experimentalApi: true }; const key = `${codexAppServerPoolKey(experimentalTarget)}\0${portable?.grantRef ?? "unbound"}`; const existing = entries.get(key); if (existing !== undefined) return existing; const created = options.supervisor.acquire(experimentalTarget).then(lease => makeCodexExperimentalRuntime({ lease, spoolRoot: resolve(options.spoolRoot, hash(key)), receiptPath: resolve(options.receiptRoot, `${hash(key)}.json`), ...(portable ?? {}) }), error => { entries.delete(key); throw error }); entries.set(key, created); return created }, close: () => { if (closed) return; closed = true; for (const entry of entries.values()) void entry.then(value => value.close(), () => undefined); entries.clear() } }
+  let quiescePromise: Promise<CodexExperimentalRegistryQuiescence> | null = null
+  const quiesce = (): Promise<CodexExperimentalRegistryQuiescence> => {
+    if (quiescePromise !== null) return quiescePromise
+    closed = true
+    const settlement = Promise.allSettled([...entries.values()]).then(async acquired => {
+      if (acquired.some(result => result.status === "rejected")) return { state: "failed" as const, detailRef: "desktop.codex-experimental.registry-acquisition-failed" }
+      const runtimes = acquired.flatMap(result => result.status === "fulfilled" ? [result.value] : [])
+      const disposed = await Promise.allSettled(runtimes.map(runtime => runtime.dispose()))
+      return disposed.some(result => result.status === "rejected")
+        ? { state: "failed" as const, detailRef: "desktop.codex-experimental.registry-cleanup-failed" }
+        : { state: "quiesced" as const }
+    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<CodexExperimentalRegistryQuiescence>(resolve => { timer = setTimeout(() => resolve({ state: "timed_out", detailRef: "desktop.codex-experimental.registry-cleanup-timeout" }), Math.max(1, options.quiesceTimeoutMs ?? 5_000)); timer.unref?.() })
+    quiescePromise = Promise.race([settlement, deadline]).finally(() => { if (timer !== undefined) clearTimeout(timer) })
+    return quiescePromise
+  }
+  return { forTarget: (target, portable) => { if (closed) return Promise.reject(new CodexExperimentalError("closed", "Experimental registry is closed")); if (!codexExperimentalManifestGate.enabled) return Promise.reject(new CodexExperimentalError("manifest_incomplete", "Experimental manifest is incomplete")); const experimentalTarget = { ...target, experimentalApi: true }; const key = `${codexAppServerPoolKey(experimentalTarget)}\0${portable?.grantRef ?? "unbound"}`; const existing = entries.get(key); if (existing !== undefined) return existing; const created = options.supervisor.acquire(experimentalTarget).then(lease => makeCodexExperimentalRuntime({ lease, spoolRoot: resolve(options.spoolRoot, hash(key)), receiptPath: resolve(options.receiptRoot, `${hash(key)}.json`), ...(portable ?? {}) }), error => { entries.delete(key); throw error }); entries.set(key, created); return created }, quiesce, close: () => { void quiesce() } }
 }

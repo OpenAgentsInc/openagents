@@ -83,8 +83,13 @@ export type CodexHostServiceRegistry = Readonly<{
       mutationAuthority: IdePortableMutationAuthority
     }>,
   ) => Promise<CodexHostServices>
+  quiesce: () => Promise<CodexHostRegistryQuiescence>
   close: () => void
 }>
+
+export type CodexHostRegistryQuiescence =
+  | Readonly<{ state: "quiesced" }>
+  | Readonly<{ state: "timed_out" | "failed"; detailRef: string }>
 
 const policies = (platform: NodeJS.Platform): Readonly<Record<string, CodexHostPolicy>> => Object.fromEntries(CODEX_HOST_METHODS.map(member => [
   member.method,
@@ -308,9 +313,27 @@ export const makeCodexHostServiceRegistry = (options: Readonly<{
   supervisor: CodexAppServerSupervisor
   spoolRoot: string
   receiptRoot: string
+  quiesceTimeoutMs?: number
 }>): CodexHostServiceRegistry => {
   const entries = new Map<string, Promise<CodexHostServices>>()
   let closed = false
+  let quiescePromise: Promise<CodexHostRegistryQuiescence> | null = null
+  const quiesce = (): Promise<CodexHostRegistryQuiescence> => {
+    if (quiescePromise !== null) return quiescePromise
+    closed = true
+    const settlement = Promise.allSettled([...entries.values()]).then(async acquired => {
+      if (acquired.some(result => result.status === "rejected")) return { state: "failed" as const, detailRef: "desktop.codex-host-services.registry-acquisition-failed" }
+      const services = acquired.flatMap(result => result.status === "fulfilled" ? [result.value] : [])
+      const disposed = await Promise.allSettled(services.map(service => service.dispose()))
+      return disposed.some(result => result.status === "rejected")
+        ? { state: "failed" as const, detailRef: "desktop.codex-host-services.registry-cleanup-failed" }
+        : { state: "quiesced" as const }
+    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<CodexHostRegistryQuiescence>(resolve => { timer = setTimeout(() => resolve({ state: "timed_out", detailRef: "desktop.codex-host-services.registry-cleanup-timeout" }), Math.max(1, options.quiesceTimeoutMs ?? 5_000)); timer.unref?.() })
+    quiescePromise = Promise.race([settlement, deadline]).finally(() => { if (timer !== undefined) clearTimeout(timer) })
+    return quiescePromise
+  }
   return {
     forTarget: (target, workspaceRoot, portable) => {
       if (closed) return Promise.reject(new CodexHostServiceError("closed", "Codex host service registry is closed"))
@@ -327,6 +350,7 @@ export const makeCodexHostServiceRegistry = (options: Readonly<{
       entries.set(identity, created)
       return created
     },
-    close: () => { if (closed) return; closed = true; for (const entry of entries.values()) void entry.then(service => service.close(), () => undefined); entries.clear() },
+    quiesce,
+    close: () => { void quiesce() },
   }
 }

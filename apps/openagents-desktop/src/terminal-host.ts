@@ -47,6 +47,8 @@ export type TerminalBackendProcess = Readonly<{
   interrupt: () => void
   /** Terminate the owned process TREE. Idempotent at the backend layer. */
   kill: () => void
+  /** Settle only after the owned process tree and its resources are gone. */
+  settled?: Promise<void>
   onData: (listener: (chunk: string) => void) => void
   onExit: (listener: (exitCode: number | null, signal: string | null) => void) => void
 }>
@@ -80,6 +82,7 @@ export const childProcessTerminalBackend = (
       stdio: ["pipe", "pipe", "pipe"],
     })
     const pgid = typeof child.pid === "number" ? child.pid : null
+    let childClosed = false
     let killTimer: ReturnType<typeof setTimeout> | null = null
     const signalGroup = (signal: NodeJS.Signals): void => {
       if (pgid === null) return
@@ -95,8 +98,22 @@ export const childProcessTerminalBackend = (
     }
     child.stdout?.on("data", (buffer: Buffer) => emitData(buffer.toString("utf8")))
     child.stderr?.on("data", (buffer: Buffer) => emitData(buffer.toString("utf8")))
+    const groupAlive = (): boolean => {
+      if (pgid === null) return !childClosed
+      try { process.kill(-pgid, 0); return true } catch { return false }
+    }
+    const settled = new Promise<void>((resolve) => {
+      const check = (): void => {
+        if (childClosed && !groupAlive()) { resolve(); return }
+        const timer = setTimeout(check, 10); timer.unref?.()
+      }
+      child.once("close", () => { childClosed = true; check() })
+      child.once("error", () => { childClosed = true; check() })
+    })
+    void settled.then(() => { if (killTimer !== null) { clearTimeout(killTimer); killTimer = null } })
     return {
       pid: pgid,
+      settled,
       write: (data) => {
         try {
           // xterm emits Enter as CR because a real PTY's line discipline
@@ -130,10 +147,6 @@ export const childProcessTerminalBackend = (
       onData: (listener) => { dataListeners.add(listener) },
       onExit: (listener) => {
         child.on("exit", (code, signal) => {
-          if (killTimer !== null) {
-            clearTimeout(killTimer)
-            killTimer = null
-          }
           listener(code, signal)
         })
         child.on("error", () => listener(null, null))
@@ -262,7 +275,12 @@ export type TerminalHostOptions = Readonly<{
   tailBytes?: number
   /** Preview open: confirm + external-open. Returns true iff opened. */
   openPreview?: (url: string, authorize: () => boolean) => Promise<boolean> | boolean
+  quiesceTimeoutMs?: number
 }>
+
+export type TerminalHostQuiescence =
+  | Readonly<{ state: "quiesced" }>
+  | Readonly<{ state: "timed_out" | "failed"; detailRef: string }>
 
 type Session = {
   sessionRef: string
@@ -299,6 +317,8 @@ export type TerminalHost = Readonly<{
   revokeWorkspace: (grantRef: string) => void
   snapshot: () => TerminalSnapshot
   liveSessionCount: () => number
+  /** Permanently refuse new work, terminate all trees, and await settlement. */
+  quiesce: () => Promise<TerminalHostQuiescence>
   dispose: () => void
 }>
 
@@ -354,6 +374,7 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
   // from the live map before persist runs).
   const retained: TerminalSessionView[] = []
   let disposed = false
+  let quiescePromise: Promise<TerminalHostQuiescence> | null = null
 
   const persist = (): void => {
     if (options.persistencePath === undefined) return
@@ -546,6 +567,21 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
     for (const session of [...sessions.values()]) authorizeSession(session)
   }
 
+  const quiesce = (): Promise<TerminalHostQuiescence> => {
+    if (quiescePromise !== null) return quiescePromise
+    disposed = true
+    const owned = [...sessions.values()]
+    for (const session of owned) disposeSession(session, "app_quit")
+    const settlement = Promise.allSettled(owned.map(session => session.process.settled ?? Promise.reject(new Error("The terminal backend does not provide process-tree settlement.")))).then(results =>
+      results.some(result => result.status === "rejected")
+        ? { state: "failed" as const, detailRef: "desktop.terminal.process-tree-settlement-failed" }
+        : { state: "quiesced" as const })
+    const timeoutMs = Math.max(1, options.quiesceTimeoutMs ?? 5_000); let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<TerminalHostQuiescence>(resolve => { timer = setTimeout(() => resolve({ state: "timed_out", detailRef: "desktop.terminal.process-tree-settlement-timeout" }), timeoutMs); timer.unref?.() })
+    quiescePromise = Promise.race([settlement, deadline]).finally(() => { if (timer !== undefined) clearTimeout(timer) })
+    return quiescePromise
+  }
+
   return {
     create: (input) => {
       if (disposed) return { ok: false, reason: "no_workspace", message: "The terminal host is disposed." }
@@ -682,10 +718,9 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
       revokeStaleSessions()
       return [...sessions.values()].filter((session) => session.status === "running").length
     },
+    quiesce,
     dispose: () => {
-      if (disposed) return
-      disposed = true
-      for (const session of [...sessions.values()]) disposeSession(session, "app_quit")
+      void quiesce()
     },
   }
 }

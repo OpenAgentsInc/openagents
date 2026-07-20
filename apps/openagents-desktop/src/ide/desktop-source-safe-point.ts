@@ -9,6 +9,7 @@ export type DesktopSourceBinding = Readonly<{
 
 export type DesktopSourceSubsystemResult =
   | Readonly<{ state: "quiesced" }>
+  | Readonly<{ state: "timed_out" | "failed"; detailRef: string }>
   | Readonly<{ state: "unsupported"; detailRef: string }>
 
 export type DesktopSourceSubsystem = Readonly<{
@@ -124,7 +125,7 @@ export const makeDesktopSourceSafePoint = (
         : finish(outcome(
             binding,
             subsystem.subsystem,
-            "unsupported",
+            result.state,
             boundedRef(result.detailRef),
           )),
       () => finish(outcome(

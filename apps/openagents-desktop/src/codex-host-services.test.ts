@@ -3,8 +3,8 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { afterEach, describe, expect, test } from "vite-plus/test"
 
-import type { CodexAppServerLease, CodexAppServerNotification } from "./codex-app-server-supervisor.ts"
-import { CODEX_HOST_METHODS, CodexHostServiceError, makeCodexHostServices } from "./codex-host-services.ts"
+import type { CodexAppServerLease, CodexAppServerNotification, CodexAppServerPoolTarget, CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
+import { CODEX_HOST_METHODS, CodexHostServiceError, makeCodexHostServiceRegistry, makeCodexHostServices } from "./codex-host-services.ts"
 import type { IdePortableMutationAuthority, IdePortableMutationPermit } from "./ide/portable-mutation-authority.ts"
 
 const roots: string[] = []
@@ -21,6 +21,7 @@ const fixture = () => {
   const requests: Array<{ method: string; params: unknown }> = []
   const notifications = new Set<(value: CodexAppServerNotification) => void>()
   let generation = 1
+  let releases = 0
   const commandResolvers = new Map<string, (value: unknown) => void>()
   const blockers = new Map<string, { ignoreAbort: boolean; started: () => void; aborted: () => void; complete: (value: unknown) => void; fail: (error: unknown) => void }>()
   const lease = {
@@ -48,10 +49,10 @@ const fixture = () => {
       return {}
     },
     subscribe: (listener: (value: CodexAppServerNotification) => void) => { notifications.add(listener); return () => notifications.delete(listener) },
-    release: () => undefined,
+    release: () => { releases += 1 },
   } as unknown as CodexAppServerLease
   return {
-    root, outside, spoolRoot, receiptPath, lease, requests, commandResolvers,
+    root, outside, spoolRoot, receiptPath, lease, requests, commandResolvers, releases: () => releases,
     block: (method: string, ignoreAbort = false) => {
       let started!: () => void; let aborted!: () => void
       const didStart = new Promise<void>(resolveStarted => { started = resolveStarted })
@@ -63,6 +64,8 @@ const fixture = () => {
     notify: (method: string, params: unknown, nextGeneration = generation) => { generation = nextGeneration; for (const listener of notifications) listener({ generation, message: { method, params } }) },
   }
 }
+
+const target: CodexAppServerPoolTarget = { binary: "/test/codex", binarySha256: "test", env: {}, cwd: "/tmp", accountRef: null, hostTarget: "local" }
 
 const portableAuthority = () => {
   let live = true
@@ -210,5 +213,28 @@ describe("Codex bounded host services", () => {
     await expect(read).rejects.toMatchObject({ reason: "grant_revoked" })
     expect(service.receipts().some(receipt => receipt.method === "fs/readDirectory")).toBe(false)
     await service.dispose()
+  })
+})
+
+describe("Codex host service registry quiescence", () => {
+  test("awaits a blocked child, suppresses its late result, and stays closed", async () => {
+    const h = fixture(); const supervisor = { acquire: async () => h.lease } as unknown as CodexAppServerSupervisor
+    const registry = makeCodexHostServiceRegistry({ supervisor, spoolRoot: join(h.root, "registry-spool"), receiptRoot: join(h.root, "registry-receipts"), quiesceTimeoutMs: 1_000 })
+    const service = await registry.forTarget(target, h.root); const blocked = h.block("fs/readDirectory", true); const read = service.readDirectory("."); await blocked.started
+    let completed = false; const first = registry.quiesce().then(result => { completed = true; return result }); await blocked.aborted; expect(completed).toBe(false)
+    blocked.complete({ entries: ["late"] }); await expect(read).rejects.toMatchObject({ reason: "grant_revoked" })
+    await expect(first).resolves.toEqual({ state: "quiesced" }); await expect(registry.quiesce()).resolves.toEqual({ state: "quiesced" })
+    await expect(registry.forTarget(target, h.root)).rejects.toMatchObject({ reason: "closed" }); expect(h.releases()).toBe(1)
+  })
+
+  test("reports a blocked acquisition as timed out and disposes a late instance", async () => {
+    const h = fixture(); let resolveAcquire!: (lease: CodexAppServerLease) => void
+    const pending = new Promise<CodexAppServerLease>(resolve => { resolveAcquire = resolve }); const supervisor = { acquire: () => pending } as unknown as CodexAppServerSupervisor
+    const registry = makeCodexHostServiceRegistry({ supervisor, spoolRoot: join(h.root, "registry-spool"), receiptRoot: join(h.root, "registry-receipts"), quiesceTimeoutMs: 10 })
+    const late = registry.forTarget(target, h.root)
+    await expect(registry.quiesce()).resolves.toEqual({ state: "timed_out", detailRef: "desktop.codex-host-services.registry-cleanup-timeout" })
+    resolveAcquire(h.lease); const service = await late
+    for (let index = 0; index < 20 && h.releases() === 0; index += 1) await Promise.resolve()
+    expect(h.releases()).toBe(1); await expect(service.readDirectory(".")).rejects.toMatchObject({ reason: "closed" })
   })
 })

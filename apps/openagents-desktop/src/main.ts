@@ -4371,6 +4371,8 @@ const sourceUnsupported = (detailRef: string): DesktopSourceSubsystemResult => (
   state: "unsupported",
   detailRef,
 })
+const sourceSettlement = (result: Readonly<{ state: "quiesced" }> | Readonly<{ state: "timed_out" | "failed"; detailRef: string }>): DesktopSourceSubsystemResult =>
+  result.state === "quiesced" ? sourceQuiesced() : { state: result.state, detailRef: result.detailRef }
 desktopSourceSafePoint = makeDesktopSourceSafePoint({
   currentBinding: currentDesktopSourceBinding,
   timeoutMs: 5_000,
@@ -4393,10 +4395,7 @@ desktopSourceSafePoint = makeDesktopSourceSafePoint({
     },
     {
       subsystem: "terminal",
-      quiesce: async () => {
-        terminalHost.dispose()
-        return sourceUnsupported("desktop.terminal.no-settled-process-proof")
-      },
+      quiesce: async () => sourceSettlement(await terminalHost.quiesce()),
     },
     {
       subsystem: "task-test",
@@ -4446,11 +4445,11 @@ desktopSourceSafePoint = makeDesktopSourceSafePoint({
     },
     {
       subsystem: "codex-host-services",
-      quiesce: async () => sourceUnsupported("desktop.codex-host-services.registry-has-no-awaited-quiesce"),
+      quiesce: async () => sourceSettlement(await codexHostServices.quiesce()),
     },
     {
       subsystem: "codex-experimental-runtime",
-      quiesce: async () => sourceUnsupported("desktop.codex-experimental.registry-has-no-awaited-quiesce"),
+      quiesce: async () => sourceSettlement(await codexExperimentalRuntimes.quiesce()),
     },
   ],
 })
