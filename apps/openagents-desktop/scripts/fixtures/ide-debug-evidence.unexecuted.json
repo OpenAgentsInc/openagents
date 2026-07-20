@@ -1,0 +1,7 @@
+{
+  "_tag": "Unexecuted",
+  "schemaVersion": "openagents.desktop.ide-debug-evidence-input.v1",
+  "issue": "IDE-11",
+  "reason": "The IDE-11 production debugger and packaged evidence runner are not present on this source base. This file is a fail-closed placeholder, not an acceptance result.",
+  "requiredRunner": "A current packaged IDE-11 runner must capture the schema-defined observation on the exact candidate commit."
+}
