@@ -38,7 +38,9 @@
 
 .oa-react-workbench button,
 .oa-react-workbench input,
-.oa-react-workbench textarea { font: inherit; }
+.oa-react-workbench textarea {
+  font: inherit;
+}
 
 .oa-react-icon-button {
   display: inline-flex;
@@ -54,9 +56,18 @@
   color: var(--en-color-textMuted);
   cursor: pointer;
 }
-.oa-react-icon-button:hover:not(:disabled) { background: var(--en-color-stateHover); color: var(--en-color-textPrimary); }
-.oa-react-icon-button:disabled { opacity: .35; cursor: default; }
-.oa-react-icon-button svg { width: 15px; height: 15px; }
+.oa-react-icon-button:hover:not(:disabled) {
+  background: var(--en-color-stateHover);
+  color: var(--en-color-textPrimary);
+}
+.oa-react-icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.oa-react-icon-button svg {
+  width: 15px;
+  height: 15px;
+}
 
 .oa-react-codex-update-notice {
   position: fixed;
@@ -69,11 +80,13 @@
   backdrop-filter: blur(18px);
 }
 
-.oa-react-codex-update-notice [data-slot="alert-description"] { padding-right: 1.5rem; }
+.oa-react-codex-update-notice [data-slot="alert-description"] {
+  padding-right: 1.5rem;
+}
 .oa-react-codex-update-dismiss {
   position: absolute;
-  top: .65rem;
-  right: .65rem;
+  top: 0.65rem;
+  right: 0.65rem;
   display: grid;
   width: 1.75rem;
   height: 1.75rem;
@@ -83,24 +96,96 @@
   color: var(--muted-foreground);
   background: transparent;
 }
-.oa-react-codex-update-dismiss:hover { color: var(--foreground); background: var(--accent); }
-.oa-react-codex-update-dismiss svg { width: .9rem; height: .9rem; }
-.oa-react-codex-update-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: .9rem; }
-.oa-react-codex-update-actions svg { width: .9rem; height: .9rem; }
+.oa-react-codex-update-dismiss:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+.oa-react-codex-update-dismiss svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+.oa-react-codex-update-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+.oa-react-codex-update-actions svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
 
-.oa-react-codex-update-dialog { width: min(46rem, calc(100vw - 2rem)); max-width: 46rem; max-height: min(48rem, calc(100vh - 2rem)); }
-.oa-react-codex-update-state { display: flex; align-items: flex-start; gap: .75rem; padding: .8rem; border: 1px solid var(--border); border-radius: var(--en-radius-none); background: var(--muted); }
-.oa-react-codex-update-state > svg { flex: 0 0 auto; width: 1rem; height: 1rem; margin-top: .15rem; }
-.oa-react-codex-update-state p { margin: .2rem 0 0; color: var(--muted-foreground); font-size: .8rem; line-height: 1.45; }
-.oa-react-codex-update-spinner { animation: oa-codex-update-spin .8s linear infinite; }
-.oa-react-session-loading svg { animation: oa-codex-update-spin .8s linear infinite; }
-@keyframes oa-codex-update-spin { to { transform: rotate(360deg); } }
-.oa-react-codex-release-notes { min-height: 12rem; overflow: hidden; border: 1px solid var(--border); border-radius: var(--en-radius-none); }
-.oa-react-codex-release-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border-bottom: 1px solid var(--border); }
-.oa-react-codex-release-heading h3 { margin: 0; font-size: .9rem; }
-.oa-react-codex-release-heading time { color: var(--muted-foreground); font-size: .72rem; }
-.oa-react-codex-release-body { max-height: 22rem; overflow: auto; padding: 1rem; }
-.oa-react-codex-release-fallback { margin: 0; padding: 1rem; color: var(--muted-foreground); font-size: .82rem; line-height: 1.5; }
+.oa-react-codex-update-dialog {
+  width: min(46rem, calc(100vw - 2rem));
+  max-width: 46rem;
+  max-height: min(48rem, calc(100vh - 2rem));
+}
+.oa-react-codex-update-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--en-radius-none);
+  background: var(--muted);
+}
+.oa-react-codex-update-state > svg {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.15rem;
+}
+.oa-react-codex-update-state p {
+  margin: 0.2rem 0 0;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.oa-react-codex-update-spinner {
+  animation: oa-codex-update-spin 0.8s linear infinite;
+}
+.oa-react-session-loading svg {
+  animation: oa-codex-update-spin 0.8s linear infinite;
+}
+@keyframes oa-codex-update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.oa-react-codex-release-notes {
+  min-height: 12rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--en-radius-none);
+}
+.oa-react-codex-release-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.oa-react-codex-release-heading h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.oa-react-codex-release-heading time {
+  color: var(--muted-foreground);
+  font-size: 0.72rem;
+}
+.oa-react-codex-release-body {
+  max-height: 22rem;
+  overflow: auto;
+  padding: 1rem;
+}
+.oa-react-codex-release-fallback {
+  margin: 0;
+  padding: 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
 
 .oa-react-sensitive-text {
   min-width: 0;
@@ -113,22 +198,43 @@
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
-  transition: color 120ms ease, filter 120ms ease;
+  transition:
+    color 120ms ease,
+    filter 120ms ease;
 }
 .oa-react-sensitive-text:hover,
-.oa-react-sensitive-text:focus-visible { color: var(--en-color-textPrimary); }
-.oa-react-sensitive-text:focus-visible { outline: 2px solid var(--en-color-focusRing); outline-offset: 2px; }
+.oa-react-sensitive-text:focus-visible {
+  color: var(--en-color-textPrimary);
+}
+.oa-react-sensitive-text:focus-visible {
+  outline: 2px solid var(--en-color-focusRing);
+  outline-offset: 2px;
+}
 .oa-react-sensitive-text[data-revealed="false"] {
   filter: blur(2px);
   user-select: none;
 }
-.oa-react-sensitive-text[data-revealed="true"] { filter: none; }
-.oa-react-provider-email { display: inline-flex; min-width: 0; align-items: center; gap: .4rem; color: var(--en-color-textMuted); }
+.oa-react-sensitive-text[data-revealed="true"] {
+  filter: none;
+}
+.oa-react-provider-email {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--en-color-textMuted);
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .oa-react-codex-update-spinner { animation: none; }
-  .oa-react-session-loading svg { animation: none; }
-  .oa-react-sensitive-text { transition: none; }
+  .oa-react-codex-update-spinner {
+    animation: none;
+  }
+  .oa-react-session-loading svg {
+    animation: none;
+  }
+  .oa-react-sensitive-text {
+    transition: none;
+  }
 }
 
 .oa-react-session-rail {
@@ -198,7 +304,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 8px;
   font-weight: 500;
   line-height: 1;
-  letter-spacing: .18em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -223,7 +329,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 14px;
   font-weight: 550;
   line-height: 1.25;
-  letter-spacing: -.01em;
+  letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -273,10 +379,18 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-weight: 450;
 }
 
-.oa-react-primary-destination svg { width: 15px; height: 15px; }
+.oa-react-primary-destination svg {
+  width: 15px;
+  height: 15px;
+}
 
-.oa-react-primary-destination:hover:not([data-selected="true"]) { background: transparent; color: var(--en-color-textSecondary); }
-.oa-react-primary-destination[data-selected="true"] { background: var(--en-color-stateSelected); }
+.oa-react-primary-destination:hover:not([data-selected="true"]) {
+  background: transparent;
+  color: var(--en-color-textSecondary);
+}
+.oa-react-primary-destination[data-selected="true"] {
+  background: var(--en-color-stateSelected);
+}
 
 .oa-react-primary-nav {
   display: grid;
@@ -319,7 +433,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-family: var(--oa-font-mono);
   font-size: 10px;
   font-weight: 500;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -491,9 +605,15 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: var(--en-color-textFaint);
 }
 
-.oa-react-project-group[data-project-status="active"] .oa-react-project-status-dot { background: var(--en-color-accent); }
-.oa-react-project-group[data-project-status="recovery"] .oa-react-project-status-dot { background: var(--en-color-warning); }
-.oa-react-project-group[data-project-status="archived"] .oa-react-project-status-dot { background: var(--en-color-textMuted); }
+.oa-react-project-group[data-project-status="active"] .oa-react-project-status-dot {
+  background: var(--en-color-accent);
+}
+.oa-react-project-group[data-project-status="recovery"] .oa-react-project-status-dot {
+  background: var(--en-color-warning);
+}
+.oa-react-project-group[data-project-status="archived"] .oa-react-project-status-dot {
+  background: var(--en-color-textMuted);
+}
 
 .oa-react-worktree-list {
   display: grid;
@@ -593,8 +713,16 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   overflow: visible;
 }
 
-.oa-react-session-scroll { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
-.oa-react-session-scroll [data-slot="scroll-area-viewport"] { height: 100%; overscroll-behavior: contain; }
+.oa-react-session-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.oa-react-session-scroll [data-slot="scroll-area-viewport"] {
+  height: 100%;
+  overscroll-behavior: contain;
+}
 
 .oa-react-rail-mode-content {
   display: flex;
@@ -659,14 +787,36 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 .oa-react-workspace-surface h1,
 .oa-react-workspace-surface h2,
-.oa-react-workspace-surface p { margin-top: 0; }
+.oa-react-workspace-surface p {
+  margin-top: 0;
+}
 .oa-react-workspace-surface header p,
 .oa-react-workspace-surface small,
-.oa-react-workspace-surface article span { color: var(--en-color-textMuted); }
-.oa-react-workspace-surface section { display: grid; gap: var(--en-spacing-2); margin-top: var(--en-spacing-5); }
-.oa-react-workspace-surface section > button { display: grid; height: auto; justify-items: start; padding: var(--en-spacing-3); text-align: left; }
-.oa-react-workspace-surface article { padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); }
-.oa-react-workspace-surface article > div { align-items: flex-start; flex-direction: column; gap: 2px; }
+.oa-react-workspace-surface article span {
+  color: var(--en-color-textMuted);
+}
+.oa-react-workspace-surface section {
+  display: grid;
+  gap: var(--en-spacing-2);
+  margin-top: var(--en-spacing-5);
+}
+.oa-react-workspace-surface section > button {
+  display: grid;
+  height: auto;
+  justify-items: start;
+  padding: var(--en-spacing-3);
+  text-align: left;
+}
+.oa-react-workspace-surface article {
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+}
+.oa-react-workspace-surface article > div {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
 
 .oa-react-project-home-khala {
   position: relative;
@@ -822,7 +972,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textMuted);
   font-family: var(--oa-font-sans);
   font-size: 10px;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -830,7 +980,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textMuted);
   font-family: var(--oa-font-mono);
   font-size: 10px;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -857,9 +1007,16 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   flex: 1 1 auto;
 }
 
-.oa-react-chat-column > .oa-react-conversation { min-width: 0; min-height: 0; }
-.oa-react-surface-layout[data-maximized="true"] .oa-react-chat-column { display: none; }
-.oa-react-surface-layout:has(.oa-react-surface-panel) .oa-react-conversation-actions > span { display: none; }
+.oa-react-chat-column > .oa-react-conversation {
+  min-width: 0;
+  min-height: 0;
+}
+.oa-react-surface-layout[data-maximized="true"] .oa-react-chat-column {
+  display: none;
+}
+.oa-react-surface-layout:has(.oa-react-surface-panel) .oa-react-conversation-actions > span {
+  display: none;
+}
 .oa-react-surface-layout:has(.oa-react-surface-panel) .oa-react-conversation-actions button {
   width: var(--en-control-sm-height);
   padding: 0;
@@ -905,8 +1062,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-surface-resize:hover::after,
-.oa-react-surface-resize:focus-visible::after { background: var(--en-color-accent); }
-.oa-react-surface-layout[data-maximized="true"] .oa-react-surface-resize { display: none; }
+.oa-react-surface-resize:focus-visible::after {
+  background: var(--en-color-accent);
+}
+.oa-react-surface-layout[data-maximized="true"] .oa-react-surface-resize {
+  display: none;
+}
 
 .oa-react-surface-tabs {
   position: relative;
@@ -944,10 +1105,21 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   content: "";
 }
 
-.oa-react-surface-tabs [role="tab"][aria-selected="true"] { background: var(--en-color-background); }
-.oa-react-surface-tabs [role="tab"][aria-selected="true"]::after { background: var(--en-color-accent); }
-.oa-react-surface-tabs [role="tab"] > button:first-child { flex: 1 1 auto; justify-content: flex-start; overflow: hidden; }
-.oa-react-surface-tabs [role="tab"] > button:last-child { width: 26px; flex: 0 0 26px; }
+.oa-react-surface-tabs [role="tab"][aria-selected="true"] {
+  background: var(--en-color-background);
+}
+.oa-react-surface-tabs [role="tab"][aria-selected="true"]::after {
+  background: var(--en-color-accent);
+}
+.oa-react-surface-tabs [role="tab"] > button:first-child {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+.oa-react-surface-tabs [role="tab"] > button:last-child {
+  width: 26px;
+  flex: 0 0 26px;
+}
 .oa-react-surface-tabs button {
   display: inline-flex;
   min-width: 0;
@@ -962,13 +1134,33 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 11px;
   cursor: pointer;
 }
-.oa-react-surface-tabs button:hover { color: var(--en-color-textPrimary); background: var(--en-color-stateHover); }
-.oa-react-surface-tabs button:disabled { opacity: .35; cursor: default; }
-.oa-react-surface-tabs button svg { width: 13px; height: 13px; flex: 0 0 auto; }
-.oa-react-surface-tabs button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-surface-tabs button:hover {
+  color: var(--en-color-textPrimary);
+  background: var(--en-color-stateHover);
+}
+.oa-react-surface-tabs button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.oa-react-surface-tabs button svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+.oa-react-surface-tabs button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.oa-react-surface-tab-actions { display: flex; flex: 0 0 auto; }
-.oa-react-surface-tab-actions > button { width: 32px; padding: 0; }
+.oa-react-surface-tab-actions {
+  display: flex;
+  flex: 0 0 auto;
+}
+.oa-react-surface-tab-actions > button {
+  width: 32px;
+  padding: 0;
+}
 
 .oa-react-surface-add {
   position: absolute;
@@ -981,7 +1173,10 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   border: 1px solid var(--en-color-borderSubtle);
   background: var(--en-color-surfaceOverlay);
 }
-.oa-react-surface-add > button { height: 32px; justify-content: flex-start; }
+.oa-react-surface-add > button {
+  height: 32px;
+  justify-content: flex-start;
+}
 
 .oa-react-surface-empty {
   display: flex;
@@ -993,9 +1188,21 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   padding: var(--en-spacing-6);
   text-align: center;
 }
-.oa-react-surface-empty > svg { width: 22px; height: 22px; color: var(--en-color-textMuted); }
-.oa-react-surface-empty h2 { margin: var(--en-spacing-3) 0 var(--en-spacing-1); font-size: 14px; }
-.oa-react-surface-empty p { max-width: 28rem; margin: 0; color: var(--en-color-textMuted); font-size: 12px; }
+.oa-react-surface-empty > svg {
+  width: 22px;
+  height: 22px;
+  color: var(--en-color-textMuted);
+}
+.oa-react-surface-empty h2 {
+  margin: var(--en-spacing-3) 0 var(--en-spacing-1);
+  font-size: 14px;
+}
+.oa-react-surface-empty p {
+  max-width: 28rem;
+  margin: 0;
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+}
 
 .oa-react-review-workbench {
   display: grid;
@@ -1049,10 +1256,25 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   border: 1px solid var(--en-color-borderSubtle);
   background: var(--en-color-surfaceRaised);
 }
-.oa-react-files-mode-search > svg { width: 13px; height: 13px; flex: 0 0 auto; color: var(--en-color-textMuted); }
-.oa-react-files-mode-search input { min-width: 0; height: 26px; padding: 0; border: 0; outline: 0; background: transparent; }
+.oa-react-files-mode-search > svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: var(--en-color-textMuted);
+}
+.oa-react-files-mode-search input {
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
 
-.oa-react-files-mode-search-kinds { display: flex; gap: 2px; }
+.oa-react-files-mode-search-kinds {
+  display: flex;
+  gap: 2px;
+}
 .oa-react-files-mode-search-kinds button {
   height: 22px;
   padding: 0 6px;
@@ -1062,8 +1284,13 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 10px;
   cursor: pointer;
 }
-.oa-react-files-mode-search-kinds button[aria-pressed="true"] { color: var(--en-color-textPrimary); background: var(--en-color-stateSelected); }
-.oa-react-files-mode-actions > button { flex: 0 0 auto; }
+.oa-react-files-mode-search-kinds button[aria-pressed="true"] {
+  color: var(--en-color-textPrimary);
+  background: var(--en-color-stateSelected);
+}
+.oa-react-files-mode-actions > button {
+  flex: 0 0 auto;
+}
 
 .oa-react-files-tree-toolbar {
   display: flex;
@@ -1086,8 +1313,16 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   white-space: nowrap;
 }
 
-.oa-react-files-tree-scroll { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 4px; }
-.oa-react-files-tree-scroll--pierre { overflow: hidden; padding: 0; }
+.oa-react-files-tree-scroll {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 4px;
+}
+.oa-react-files-tree-scroll--pierre {
+  overflow: hidden;
+  padding: 0;
+}
 .oa-react-pierre-tree {
   display: block;
   width: 100%;
@@ -1112,7 +1347,10 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   --trees-level-gap-override: 12px;
   --trees-file-icon-color-default: var(--en-color-textMuted);
 }
-.oa-react-pierre-tree:focus-visible { outline: 2px solid var(--en-color-focus); outline-offset: -2px; }
+.oa-react-pierre-tree:focus-visible {
+  outline: 2px solid var(--en-color-focus);
+  outline-offset: -2px;
+}
 .oa-react-pierre-context-menu {
   display: grid;
   min-width: 12rem;
@@ -1131,9 +1369,16 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textPrimary);
   text-align: left;
 }
-.oa-react-pierre-context-menu button:is(:hover, :focus-visible) { outline: none; background: var(--en-color-surfaceRaised); }
+.oa-react-pierre-context-menu button:is(:hover, :focus-visible) {
+  outline: none;
+  background: var(--en-color-surfaceRaised);
+}
 .oa-react-files-tree-scroll > p,
-.oa-react-changed-files > p { margin: var(--en-spacing-3); color: var(--en-color-textMuted); font-size: 11px; }
+.oa-react-changed-files > p {
+  margin: var(--en-spacing-3);
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+}
 .oa-react-file-search-result,
 .oa-react-changed-files > button {
   display: flex;
@@ -1151,26 +1396,93 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   cursor: pointer;
 }
 .oa-react-file-search-result:hover,
-.oa-react-changed-files > button:hover { color: var(--en-color-textPrimary); background: var(--en-color-stateHover); }
+.oa-react-changed-files > button:hover {
+  color: var(--en-color-textPrimary);
+  background: var(--en-color-stateHover);
+}
 .oa-react-file-search-result strong,
-.oa-react-changed-files strong { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-changed-files strong {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .oa-react-file-search-result small,
-.oa-react-changed-files small { color: var(--en-color-textMuted); font-size: 9px; }
-.oa-react-file-search-result > svg { width: 13px; height: 13px; flex: 0 0 auto; }
-.oa-react-file-search-result > span { display: grid; min-width: 0; }
+.oa-react-changed-files small {
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
+.oa-react-file-search-result > svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+.oa-react-file-search-result > span {
+  display: grid;
+  min-width: 0;
+}
 
 .oa-react-file-editor,
-.oa-react-rich-diff { display: grid; min-width: 0; min-height: 0; background: var(--en-color-background); }
-.oa-react-file-editor { grid-template-rows: auto auto minmax(0, 1fr); }
-.oa-react-file-editor:has(> .oa-react-editor-save-as) { grid-template-rows: auto auto auto minmax(0, 1fr); }
-.oa-react-rich-diff { display: flex; flex-direction: column; }
-.oa-react-file-tabs { display: flex; min-width: 0; min-height: 34px; overflow-x: auto; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceRaised); }
-.oa-react-file-tabs [role="tab"] { display: flex; min-width: 110px; max-width: 180px; border-right: 1px solid var(--en-color-borderSubtle); }
-.oa-react-file-tabs [role="tab"][aria-selected="true"] { box-shadow: inset 0 -2px var(--en-color-accent); background: var(--en-color-background); }
-.oa-react-file-tabs button { display: inline-flex; min-width: 0; align-items: center; gap: 5px; padding: 0 7px; border: 0; color: var(--en-color-textMuted); background: transparent; font-size: 10px; cursor: pointer; }
-.oa-react-file-tabs button:first-child { flex: 1 1 auto; overflow: hidden; }
-.oa-react-file-tabs button:last-child { width: 26px; flex: 0 0 26px; }
-.oa-react-file-tabs svg { width: 12px; height: 12px; flex: 0 0 auto; }
+.oa-react-rich-diff {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  background: var(--en-color-background);
+}
+.oa-react-file-editor {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+.oa-react-file-editor:has(> .oa-react-editor-save-as) {
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+.oa-react-rich-diff {
+  display: flex;
+  flex-direction: column;
+}
+.oa-react-file-tabs {
+  display: flex;
+  min-width: 0;
+  min-height: 34px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceRaised);
+}
+.oa-react-file-tabs [role="tab"] {
+  display: flex;
+  min-width: 110px;
+  max-width: 180px;
+  border-right: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-file-tabs [role="tab"][aria-selected="true"] {
+  box-shadow: inset 0 -2px var(--en-color-accent);
+  background: var(--en-color-background);
+}
+.oa-react-file-tabs button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 0;
+  color: var(--en-color-textMuted);
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+}
+.oa-react-file-tabs button:first-child {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.oa-react-file-tabs button:last-child {
+  width: 26px;
+  flex: 0 0 26px;
+}
+.oa-react-file-tabs svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+}
 
 .oa-react-editor-toolbar,
 .oa-react-rich-diff > header,
@@ -1184,193 +1496,1045 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   padding: 4px 8px;
   border-bottom: 1px solid var(--en-color-borderSubtle);
 }
-.oa-react-editor-toolbar > span { min-width: 0; overflow: hidden; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 10px; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-editor-toolbar > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .oa-react-editor-toolbar > div,
-.oa-react-rich-diff > header > div { display: flex; min-width: 0; align-items: center; gap: 2px; }
+.oa-react-rich-diff > header > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
 .oa-react-editor-toolbar button,
-.oa-react-rich-diff > header button { height: 26px; font-size: 10px; }
-.oa-react-code-editor { width: 100%; min-width: 0; min-height: 0; resize: none; padding: 12px; border: 0; outline: 0; color: var(--en-color-textPrimary); background: var(--en-color-codeBackground); font-family: var(--oa-font-mono); font-size: 11px; line-height: 1.55; tab-size: 2; }
-.oa-react-editor-save-as { display: flex; flex: 0 0 auto; gap: var(--en-spacing-2); align-items: center; padding: 0 var(--en-spacing-2) var(--en-spacing-2); border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-editor-save-as input { min-width: 0; flex: 1 1 auto; }
-.oa-react-monaco-splits { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; flex: 1 1 auto; overflow: hidden; background: var(--en-color-codeBackground); }
-.oa-react-monaco-splits[data-split="true"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.oa-react-monaco-pane { position: relative; display: flex; min-width: 0; min-height: 0; flex-direction: column; overflow: hidden; border-right: 1px solid var(--en-color-borderSubtle); background: var(--en-color-codeBackground); }
-.oa-react-monaco-pane:last-child { border-right: 0; }
-.oa-react-monaco-host { min-width: 0; min-height: 0; flex: 1 1 auto; }
-.oa-react-monaco-status { display: flex; min-height: 24px; flex: 0 0 auto; gap: var(--en-spacing-3); align-items: center; justify-content: flex-end; overflow: hidden; padding: 2px var(--en-spacing-2); border-top: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textFaint); background: var(--en-color-surface); font-family: var(--oa-font-mono); font-size: 10px; white-space: nowrap; }
-.oa-react-monaco-status > span:first-child { margin-right: auto; }
-.oa-react-monaco-status strong { color: var(--en-color-accent); font-weight: 600; text-transform: uppercase; }
-.oa-react-monaco-unavailable { position: absolute; inset: 0; display: grid; place-content: center; gap: var(--en-spacing-2); padding: var(--en-spacing-6); border: 2px solid var(--en-color-danger); color: var(--en-color-textPrimary); background: var(--en-color-codeBackground); text-align: center; }
-.oa-react-monaco-unavailable strong::before { content: "! "; color: var(--en-color-danger); }
-@media (max-width: 880px) { .oa-react-monaco-splits[data-split="true"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); } .oa-react-monaco-pane { border-right: 0; border-bottom: 1px solid var(--en-color-borderSubtle); } }
-.oa-react-editor-empty { display: flex; min-width: 0; min-height: 0; grid-row: 1 / -1; flex-direction: column; align-items: center; justify-content: center; padding: var(--en-spacing-5); color: var(--en-color-textMuted); text-align: center; }
-.oa-react-editor-empty svg { width: 20px; height: 20px; }
-.oa-react-editor-empty h3 { margin: var(--en-spacing-2) 0 0; color: var(--en-color-textPrimary); font-size: 12px; }
-.oa-react-editor-empty p { margin: var(--en-spacing-1) 0 0; font-size: 10px; }
-.oa-react-editor-conflict { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--en-color-warning); color: var(--en-color-warning); background: color-mix(in srgb, var(--en-color-warning) 8%, transparent); font-size: 10px; }
-.oa-react-editor-conflict > span { flex: 1 1 auto; }
+.oa-react-rich-diff > header button {
+  height: 26px;
+  font-size: 10px;
+}
+.oa-react-code-editor {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  resize: none;
+  padding: 12px;
+  border: 0;
+  outline: 0;
+  color: var(--en-color-textPrimary);
+  background: var(--en-color-codeBackground);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+.oa-react-editor-save-as {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--en-spacing-2);
+  align-items: center;
+  padding: 0 var(--en-spacing-2) var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-editor-save-as input {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.oa-react-monaco-splits {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  background: var(--en-color-codeBackground);
+}
+.oa-react-monaco-splits[data-split="true"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.oa-react-monaco-pane {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-codeBackground);
+}
+.oa-react-monaco-pane:last-child {
+  border-right: 0;
+}
+.oa-react-monaco-host {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.oa-react-monaco-status {
+  display: flex;
+  min-height: 24px;
+  flex: 0 0 auto;
+  gap: var(--en-spacing-3);
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+  padding: 2px var(--en-spacing-2);
+  border-top: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textFaint);
+  background: var(--en-color-surface);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.oa-react-monaco-status > span:first-child {
+  margin-right: auto;
+}
+.oa-react-monaco-status strong {
+  color: var(--en-color-accent);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.oa-react-monaco-unavailable {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-6);
+  border: 2px solid var(--en-color-danger);
+  color: var(--en-color-textPrimary);
+  background: var(--en-color-codeBackground);
+  text-align: center;
+}
+.oa-react-monaco-unavailable strong::before {
+  content: "! ";
+  color: var(--en-color-danger);
+}
+@media (max-width: 880px) {
+  .oa-react-monaco-splits[data-split="true"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+  .oa-react-monaco-pane {
+    border-right: 0;
+    border-bottom: 1px solid var(--en-color-borderSubtle);
+  }
+}
+.oa-react-editor-empty {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  grid-row: 1 / -1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--en-spacing-5);
+  color: var(--en-color-textMuted);
+  text-align: center;
+}
+.oa-react-editor-empty svg {
+  width: 20px;
+  height: 20px;
+}
+.oa-react-editor-empty h3 {
+  margin: var(--en-spacing-2) 0 0;
+  color: var(--en-color-textPrimary);
+  font-size: 12px;
+}
+.oa-react-editor-empty p {
+  margin: var(--en-spacing-1) 0 0;
+  font-size: 10px;
+}
+.oa-react-editor-conflict {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--en-color-warning);
+  color: var(--en-color-warning);
+  background: color-mix(in srgb, var(--en-color-warning) 8%, transparent);
+  font-size: 10px;
+}
+.oa-react-editor-conflict > span {
+  flex: 1 1 auto;
+}
 
-.oa-react-changed-files > header div { display: grid; min-width: 0; }
-.oa-react-changed-files > header strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-changed-files > header small { color: var(--en-color-textMuted); font-size: 9px; text-transform: uppercase; }
-.oa-react-changed-files > button:disabled { opacity: .55; cursor: default; }
-.oa-react-changed-files > button > span { display: inline-flex; width: 17px; height: 17px; flex: 0 0 auto; align-items: center; justify-content: center; color: var(--en-color-warning); border: 1px solid currentColor; font-family: var(--oa-font-mono); font-size: 9px; line-height: 1; }
-.oa-react-changed-files > button > span[data-file-status="added"] { color: var(--en-color-success); }
-.oa-react-changed-files > button > span[data-file-status="deleted"] { color: var(--en-color-danger); }
+.oa-react-changed-files > header div {
+  display: grid;
+  min-width: 0;
+}
+.oa-react-changed-files > header strong {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-changed-files > header small {
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.oa-react-changed-files > button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.oa-react-changed-files > button > span {
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--en-color-warning);
+  border: 1px solid currentColor;
+  font-family: var(--oa-font-mono);
+  font-size: 9px;
+  line-height: 1;
+}
+.oa-react-changed-files > button > span[data-file-status="added"] {
+  color: var(--en-color-success);
+}
+.oa-react-changed-files > button > span[data-file-status="deleted"] {
+  color: var(--en-color-danger);
+}
 
-.oa-react-rich-diff > header > div:first-child { display: grid; }
-.oa-react-rich-diff > header strong { min-width: 0; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-rich-diff > header small { color: var(--en-color-textMuted); font-size: 9px; }
-.oa-react-diff-scroll { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: auto; padding: 8px; background: var(--en-color-surfaceSunken); }
+.oa-react-rich-diff > header > div:first-child {
+  display: grid;
+}
+.oa-react-rich-diff > header strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-rich-diff > header small {
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
+.oa-react-diff-scroll {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 8px;
+  background: var(--en-color-surfaceSunken);
+}
 .oa-react-diff-scroll [data-oa-pierre-review],
-.oa-react-exact-diff [data-oa-pierre-review] { min-width: 0; border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); overflow: hidden; }
-.oa-react-diff-annotation-form { display: flex; gap: 4px; margin: 4px 8px 6px 56px; }
-.oa-react-diff-annotation-form input { width: 320px; height: 27px; }
-.oa-react-diff-annotation-form button { height: 27px; font-size: 10px; }
-.oa-react-review-source-label { display: flex; min-width: 0; align-items: center; gap: var(--en-spacing-2); margin: 0; padding: 5px 8px; border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textSecondary); background: var(--en-color-surfaceRaised); font-size: 10px; }
-.oa-react-review-source-label strong { color: var(--en-color-textPrimary); }
-.oa-react-review-source-label small { margin-left: auto; color: var(--en-color-textMuted); text-transform: uppercase; }
-.oa-react-review-toolbar { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 3px; padding: 4px 8px; border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textMuted); background: var(--en-color-background); font-size: 9px; }
-.oa-react-review-toolbar button { height: 25px; font-size: 9px; }
-.oa-react-review-selection-hint { margin: 0; padding: 4px 8px; color: var(--en-color-textMuted); font-size: 9px; }
+.oa-react-exact-diff [data-oa-pierre-review] {
+  min-width: 0;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  overflow: hidden;
+}
+.oa-react-diff-annotation-form {
+  display: flex;
+  gap: 4px;
+  margin: 4px 8px 6px 56px;
+}
+.oa-react-diff-annotation-form input {
+  width: 320px;
+  height: 27px;
+}
+.oa-react-diff-annotation-form button {
+  height: 27px;
+  font-size: 10px;
+}
+.oa-react-review-source-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  margin: 0;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textSecondary);
+  background: var(--en-color-surfaceRaised);
+  font-size: 10px;
+}
+.oa-react-review-source-label strong {
+  color: var(--en-color-textPrimary);
+}
+.oa-react-review-source-label small {
+  margin-left: auto;
+  color: var(--en-color-textMuted);
+  text-transform: uppercase;
+}
+.oa-react-review-toolbar {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textMuted);
+  background: var(--en-color-background);
+  font-size: 9px;
+}
+.oa-react-review-toolbar button {
+  height: 25px;
+  font-size: 9px;
+}
+.oa-react-review-selection-hint {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
 
-.oa-react-terminal-workbench { display: flex; min-width: 0; min-height: 0; flex-direction: column; background: var(--en-color-surfaceSunken); }
-.oa-react-terminal-tabs { display: flex; min-width: 0; min-height: 34px; align-items: stretch; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceRaised); }
-.oa-react-terminal-tabs > [role="tablist"] { display: flex; min-width: 0; flex: 1 1 auto; overflow-x: auto; }
-.oa-react-terminal-tabs [role="tab"] { display: flex; min-width: 118px; max-width: 190px; border-right: 1px solid var(--en-color-borderSubtle); }
-.oa-react-terminal-tabs [role="tab"][aria-selected="true"] { box-shadow: inset 0 -2px var(--en-color-accent); background: var(--en-color-background); }
-.oa-react-terminal-tabs [role="tab"] button { display: inline-flex; min-width: 0; align-items: center; gap: 5px; padding: 0 7px; border: 0; color: var(--en-color-textMuted); background: transparent; font-size: 10px; cursor: pointer; }
-.oa-react-terminal-tabs [role="tab"] button:first-child { flex: 1 1 auto; }
-.oa-react-terminal-tabs [role="tab"] button:last-child { width: 26px; flex: 0 0 26px; }
-.oa-react-terminal-tabs [role="tab"] svg { width: 12px; height: 12px; }
-.oa-react-terminal-tabs [role="tab"] span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-terminal-tabs [role="tab"] small { font-size: 8px; text-transform: uppercase; }
-.oa-react-terminal-tabs [role="tab"] small[data-status="running"] { color: var(--en-color-success); }
-.oa-react-terminal-tabs [role="tab"] small[data-status="exited"] { color: var(--en-color-warning); }
+.oa-react-terminal-workbench {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--en-color-surfaceSunken);
+}
+.oa-react-terminal-tabs {
+  display: flex;
+  min-width: 0;
+  min-height: 34px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceRaised);
+}
+.oa-react-terminal-tabs > [role="tablist"] {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-x: auto;
+}
+.oa-react-terminal-tabs [role="tab"] {
+  display: flex;
+  min-width: 118px;
+  max-width: 190px;
+  border-right: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-terminal-tabs [role="tab"][aria-selected="true"] {
+  box-shadow: inset 0 -2px var(--en-color-accent);
+  background: var(--en-color-background);
+}
+.oa-react-terminal-tabs [role="tab"] button {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 0;
+  color: var(--en-color-textMuted);
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+}
+.oa-react-terminal-tabs [role="tab"] button:first-child {
+  flex: 1 1 auto;
+}
+.oa-react-terminal-tabs [role="tab"] button:last-child {
+  width: 26px;
+  flex: 0 0 26px;
+}
+.oa-react-terminal-tabs [role="tab"] svg {
+  width: 12px;
+  height: 12px;
+}
+.oa-react-terminal-tabs [role="tab"] span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-terminal-tabs [role="tab"] small {
+  font-size: 8px;
+  text-transform: uppercase;
+}
+.oa-react-terminal-tabs [role="tab"] small[data-status="running"] {
+  color: var(--en-color-success);
+}
+.oa-react-terminal-tabs [role="tab"] small[data-status="exited"] {
+  color: var(--en-color-warning);
+}
 
-.oa-react-terminal-notice { margin: 0; padding: 5px 8px; border-bottom: 1px solid var(--en-color-warning); color: var(--en-color-warning); font-size: 10px; }
-.oa-react-terminal-toolbar { display: flex; min-width: 0; min-height: 38px; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-background); }
-.oa-react-terminal-toolbar > div { display: flex; min-width: 0; align-items: center; gap: 3px; }
-.oa-react-terminal-toolbar > div:first-child { display: grid; }
-.oa-react-terminal-toolbar strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-terminal-toolbar small { color: var(--en-color-textMuted); font-size: 8px; }
-.oa-react-terminal-toolbar button { height: 26px; font-size: 9px; }
-.oa-react-terminal-toolbar svg { width: 12px; height: 12px; }
-.oa-react-terminal-output { min-width: 0; min-height: 0; flex: 1 1 auto; margin: 0; overflow: auto; padding: 10px; color: var(--en-color-textPrimary); background: var(--en-color-surfaceSunken); font-family: var(--oa-font-mono); font-size: 10px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.oa-react-terminal-previews { display: flex; gap: 4px; overflow-x: auto; padding: 4px 8px; border-top: 1px solid var(--en-color-borderSubtle); background: var(--en-color-background); }
-.oa-react-terminal-previews button { min-height: 24px; padding: 0 7px; border: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textSecondary); background: transparent; font-size: 9px; cursor: pointer; }
-.oa-react-terminal-input { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--en-color-borderSubtle); background: var(--en-color-background); }
-.oa-react-terminal-input > span { color: var(--en-color-accentText); font-family: var(--oa-font-mono); }
-.oa-react-terminal-input input { min-width: 0; height: 28px; flex: 1 1 auto; border: 0; background: transparent; font-family: var(--oa-font-mono); font-size: 10px; }
-.oa-react-terminal-input button { height: 28px; }
+.oa-react-terminal-notice {
+  margin: 0;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--en-color-warning);
+  color: var(--en-color-warning);
+  font-size: 10px;
+}
+.oa-react-terminal-toolbar {
+  display: flex;
+  min-width: 0;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-background);
+}
+.oa-react-terminal-toolbar > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+}
+.oa-react-terminal-toolbar > div:first-child {
+  display: grid;
+}
+.oa-react-terminal-toolbar strong {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-terminal-toolbar small {
+  color: var(--en-color-textMuted);
+  font-size: 8px;
+}
+.oa-react-terminal-toolbar button {
+  height: 26px;
+  font-size: 9px;
+}
+.oa-react-terminal-toolbar svg {
+  width: 12px;
+  height: 12px;
+}
+.oa-react-terminal-output {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  color: var(--en-color-textPrimary);
+  background: var(--en-color-surfaceSunken);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.oa-react-terminal-previews {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px 8px;
+  border-top: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-background);
+}
+.oa-react-terminal-previews button {
+  min-height: 24px;
+  padding: 0 7px;
+  border: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textSecondary);
+  background: transparent;
+  font-size: 9px;
+  cursor: pointer;
+}
+.oa-react-terminal-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-background);
+}
+.oa-react-terminal-input > span {
+  color: var(--en-color-accentText);
+  font-family: var(--oa-font-mono);
+}
+.oa-react-terminal-input input {
+  min-width: 0;
+  height: 28px;
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+}
+.oa-react-terminal-input button {
+  height: 28px;
+}
 
-.oa-react-browser-preview { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; background: var(--en-color-background); }
-.oa-react-browser-chrome { display: flex; align-items: center; gap: 4px; min-height: 38px; padding: 4px 6px; border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-browser-chrome > div[role="group"] { display: flex; }
-.oa-react-browser-chrome button { width: 27px; height: 27px; }
-.oa-react-browser-chrome svg { width: 13px; height: 13px; }
-.oa-react-browser-address { display: flex; min-width: 0; flex: 1; align-items: center; gap: 6px; height: 27px; padding: 0 9px; overflow: hidden; border: 1px solid var(--en-color-borderSubtle); border-radius: 6px; background: var(--en-color-surfaceRaised); color: var(--en-color-textSecondary); font-size: 10px; }
-.oa-react-browser-address span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-browser-address svg { flex: 0 0 auto; }
-.oa-react-browser-toolbar { display: flex; align-items: center; gap: 8px; min-height: 35px; padding: 4px 8px; border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textMuted); font-size: 9px; }
-.oa-react-browser-toolbar [role="tablist"] { display: flex; gap: 2px; }
-.oa-react-browser-toolbar [role="tab"], .oa-react-browser-toolbar [role="group"] button { display: inline-flex; align-items: center; justify-content: center; height: 24px; padding: 0 7px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; }
-.oa-react-browser-toolbar [role="tab"][aria-selected="true"], .oa-react-browser-toolbar [role="group"] button[aria-pressed="true"] { background: var(--en-color-surfaceRaised); color: var(--en-color-textPrimary); }
-.oa-react-browser-toolbar label { display: flex; min-width: 0; flex: 1; align-items: center; gap: 5px; }
-.oa-react-browser-toolbar select { min-width: 0; flex: 1; height: 24px; border: 1px solid var(--en-color-borderSubtle); border-radius: 4px; background: var(--en-color-surfaceRaised); color: var(--en-color-textSecondary); font-size: 9px; }
-.oa-react-browser-toolbar [role="group"] { display: flex; }
-.oa-react-browser-toolbar [role="group"] button { width: 25px; padding: 0; }
-.oa-react-browser-toolbar svg { width: 12px; height: 12px; }
-.oa-react-browser-annotation { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceRaised); }
-.oa-react-browser-annotation input { min-width: 0; flex: 1; height: 28px; font-size: 10px; }
-.oa-react-browser-annotation button { height: 28px; font-size: 9px; }
-.oa-react-browser-stage { display: grid; min-height: 0; flex: 1; place-items: start center; overflow: auto; padding: 12px; background: color-mix(in srgb, var(--en-color-surfaceRaised) 70%, black); }
-.oa-react-browser-frame { width: 100%; min-height: 100%; overflow: hidden; border: 1px solid var(--en-color-borderSubtle); border-radius: 6px; background: var(--en-color-background); box-shadow: 0 8px 28px rgb(0 0 0 / 20%); }
-.oa-react-browser-frame pre { min-height: 100%; margin: 0; padding: 14px; overflow: auto; color: var(--en-color-textSecondary); font-family: var(--oa-font-mono); font-size: 10px; line-height: 1.55; white-space: pre-wrap; }
-.oa-react-browser-empty { display: flex; min-height: 300px; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--en-color-textMuted); }
-.oa-react-browser-empty > svg { width: 28px; height: 28px; margin-bottom: 10px; color: var(--en-color-accent); }
-.oa-react-browser-empty h3 { margin: 0 0 6px; color: var(--en-color-textPrimary); font-size: 13px; }
-.oa-react-browser-empty p { max-width: 330px; margin: 0 0 14px; font-size: 10px; line-height: 1.5; }
-.oa-react-browser-status { display: flex; gap: 12px; min-height: 27px; align-items: center; padding: 0 8px; overflow-x: auto; border-top: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textMuted); font-size: 8px; white-space: nowrap; }
-.oa-react-browser-status span { display: inline-flex; align-items: center; gap: 4px; }
-.oa-react-browser-status span > span { width: 5px; height: 5px; border-radius: 50%; background: var(--en-color-warning); }
-.oa-react-browser-status span > span[data-status="ready"] { background: var(--en-color-success); }
-.oa-react-browser-status svg { width: 10px; height: 10px; }
+.oa-react-browser-preview {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--en-color-background);
+}
+.oa-react-browser-chrome {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 38px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-browser-chrome > div[role="group"] {
+  display: flex;
+}
+.oa-react-browser-chrome button {
+  width: 27px;
+  height: 27px;
+}
+.oa-react-browser-chrome svg {
+  width: 13px;
+  height: 13px;
+}
+.oa-react-browser-address {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  height: 27px;
+  padding: 0 9px;
+  overflow: hidden;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 6px;
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textSecondary);
+  font-size: 10px;
+}
+.oa-react-browser-address span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-browser-address svg {
+  flex: 0 0 auto;
+}
+.oa-react-browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 35px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
+.oa-react-browser-toolbar [role="tablist"] {
+  display: flex;
+  gap: 2px;
+}
+.oa-react-browser-toolbar [role="tab"],
+.oa-react-browser-toolbar [role="group"] button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.oa-react-browser-toolbar [role="tab"][aria-selected="true"],
+.oa-react-browser-toolbar [role="group"] button[aria-pressed="true"] {
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+}
+.oa-react-browser-toolbar label {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 5px;
+}
+.oa-react-browser-toolbar select {
+  min-width: 0;
+  flex: 1;
+  height: 24px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 4px;
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textSecondary);
+  font-size: 9px;
+}
+.oa-react-browser-toolbar [role="group"] {
+  display: flex;
+}
+.oa-react-browser-toolbar [role="group"] button {
+  width: 25px;
+  padding: 0;
+}
+.oa-react-browser-toolbar svg {
+  width: 12px;
+  height: 12px;
+}
+.oa-react-browser-annotation {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceRaised);
+}
+.oa-react-browser-annotation input {
+  min-width: 0;
+  flex: 1;
+  height: 28px;
+  font-size: 10px;
+}
+.oa-react-browser-annotation button {
+  height: 28px;
+  font-size: 9px;
+}
+.oa-react-browser-stage {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  place-items: start center;
+  overflow: auto;
+  padding: 12px;
+  background: color-mix(in srgb, var(--en-color-surfaceRaised) 70%, black);
+}
+.oa-react-browser-frame {
+  width: 100%;
+  min-height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 6px;
+  background: var(--en-color-background);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 20%);
+}
+.oa-react-browser-frame pre {
+  min-height: 100%;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  color: var(--en-color-textSecondary);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.oa-react-browser-empty {
+  display: flex;
+  min-height: 300px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--en-color-textMuted);
+}
+.oa-react-browser-empty > svg {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 10px;
+  color: var(--en-color-accent);
+}
+.oa-react-browser-empty h3 {
+  margin: 0 0 6px;
+  color: var(--en-color-textPrimary);
+  font-size: 13px;
+}
+.oa-react-browser-empty p {
+  max-width: 330px;
+  margin: 0 0 14px;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.oa-react-browser-status {
+  display: flex;
+  gap: 12px;
+  min-height: 27px;
+  align-items: center;
+  padding: 0 8px;
+  overflow-x: auto;
+  border-top: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textMuted);
+  font-size: 8px;
+  white-space: nowrap;
+}
+.oa-react-browser-status span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.oa-react-browser-status span > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--en-color-warning);
+}
+.oa-react-browser-status span > span[data-status="ready"] {
+  background: var(--en-color-success);
+}
+.oa-react-browser-status svg {
+  width: 10px;
+  height: 10px;
+}
 
-.oa-react-settings-card { width: min(860px, 100%); margin: 0 auto; padding: 16px; border: 1px solid var(--en-color-borderSubtle); border-radius: 8px; background: var(--en-color-surfaceRaised); }
-.oa-react-settings-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-settings-card > header p { margin: 0 0 2px; color: var(--en-color-textMuted); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
-.oa-react-settings-card > header h2 { margin: 0; color: var(--en-color-textPrimary); font-size: 17px; }
-.oa-react-settings-table { display: grid; margin-top: 12px; border: 1px solid var(--en-color-borderSubtle); border-radius: 6px; overflow: hidden; }
-.oa-react-settings-table [role="row"] { display: grid; grid-template-columns: minmax(120px, .45fr) minmax(0, 1fr); gap: 12px; padding: 9px 11px; border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textSecondary); font-size: 11px; }
-.oa-react-settings-table button[role="row"] { width: 100%; appearance: none; background: transparent; text-align: left; cursor: pointer; }
-.oa-react-settings-table button[role="row"]:hover { background: var(--en-color-surfaceMuted); }
-.oa-react-settings-table [role="row"][data-conflict="true"] { color: var(--en-color-warning); }
-.oa-react-settings-table [role="row"]:last-child { border-bottom: 0; }
-.oa-react-settings-table [role="columnheader"] { color: var(--en-color-textMuted); }
-.oa-react-settings-boundary { display: flex; align-items: center; gap: 6px; margin: 12px 0 0; color: var(--en-color-textMuted); font-size: 10px; }
-.oa-react-settings-boundary svg { width: 13px; height: 13px; color: var(--en-color-success); }
-.oa-react-settings-skeleton { display: grid; gap: 8px; padding-top: 14px; }
-.oa-react-settings-skeleton span { display: block; height: 34px; border-radius: 5px; background: linear-gradient(90deg, var(--en-color-surfaceMuted), var(--en-color-surfaceRaised), var(--en-color-surfaceMuted)); background-size: 200% 100%; animation: oa-settings-shimmer 1.4s linear infinite; }
-@keyframes oa-settings-shimmer { to { background-position: -200% 0; } }
-.oa-react-settings-empty { display: flex; min-height: 220px; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--en-color-textMuted); }
-.oa-react-settings-empty svg { width: 24px; height: 24px; margin-bottom: 8px; }
-.oa-react-settings-empty h3 { margin: 0 0 5px; color: var(--en-color-textPrimary); font-size: 13px; }
-.oa-react-settings-empty p { max-width: 380px; margin: 0; font-size: 10px; }
-.oa-react-settings-rows { display: grid; gap: 6px; padding-top: 12px; }
-.oa-react-settings-rows article { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(180px, 1fr); align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--en-color-borderSubtle); border-radius: 6px; }
-.oa-react-settings-rows article > div { display: grid; gap: 2px; }
-.oa-react-settings-rows article > div:last-child { display: flex; justify-content: flex-end; gap: 5px; }
-.oa-react-settings-rows article strong { color: var(--en-color-textPrimary); font-size: 11px; text-transform: capitalize; }
-.oa-react-settings-rows article small, .oa-react-settings-rows article > span { color: var(--en-color-textMuted); font-size: 9px; }
-.oa-react-settings-inline-editor { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px; margin-top: 10px; }
-.oa-react-connect-stack { display: grid; width: min(860px, 100%); margin: 0 auto; gap: 12px; }
-.oa-react-connect-stack .oa-react-settings-card { width: 100%; }
-.oa-react-connect-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 0; }
-.oa-react-connect-summary > div { display: flex; align-items: center; gap: 9px; }
-.oa-react-connect-summary strong, .oa-react-connect-pairing strong, .oa-react-connect-unavailable strong { color: var(--en-color-textPrimary); font-size: 11px; }
-.oa-react-connect-summary small, .oa-react-connect-pairing span { display: block; margin-top: 2px; color: var(--en-color-textMuted); font-size: 9px; }
-.oa-react-connect-state { width: 8px; height: 8px; border-radius: 50%; background: var(--en-color-textMuted); box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-color-textMuted) 14%, transparent); }
-.oa-react-connect-state[data-state="connected"] { background: var(--en-color-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-color-success) 16%, transparent); }
-.oa-react-connect-state[data-state="connecting"] { background: var(--en-color-warning); }
-.oa-react-connect-state[data-state="errored"] { background: var(--en-color-danger); }
-.oa-react-connect-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.oa-react-connect-grid article { display: grid; grid-template-columns: auto minmax(0, 1fr); align-content: start; gap: 8px; min-height: 130px; padding: 12px; border: 1px solid var(--en-color-borderSubtle); border-radius: 7px; background: var(--en-color-surfaceMuted); }
-.oa-react-connect-grid article > svg { width: 16px; height: 16px; color: var(--en-color-accent); }
-.oa-react-connect-grid article strong { color: var(--en-color-textPrimary); font-size: 11px; }
-.oa-react-connect-grid article p { margin: 4px 0 10px; color: var(--en-color-textMuted); font-size: 9px; line-height: 1.5; }
-.oa-react-connect-grid article > button, .oa-react-connect-grid article > [data-slot="badge"] { grid-column: 2; justify-self: start; }
-.oa-react-connect-pairing { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; padding: 10px; border: 1px solid var(--en-color-accentMuted); border-radius: 6px; }
-.oa-react-connect-form { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(220px, 1.3fr) auto; align-items: end; gap: 8px; margin-top: 12px; }
-.oa-react-connect-form label { display: grid; gap: 4px; color: var(--en-color-textMuted); font-size: 9px; }
-.oa-react-connect-unavailable { display: flex; gap: 9px; margin-top: 12px; padding: 10px; border: 1px dashed var(--en-color-borderSubtle); border-radius: 6px; color: var(--en-color-textMuted); }
-.oa-react-connect-unavailable svg { flex: 0 0 auto; width: 15px; height: 15px; }
-.oa-react-connect-unavailable p { margin: 3px 0 0; font-size: 9px; line-height: 1.45; }
-.oa-react-connect-notice { position: sticky; bottom: 12px; margin: 0 12px; padding: 9px 12px; border: 1px solid var(--en-color-borderSubtle); border-radius: 6px; background: var(--en-color-surfaceOverlay); color: var(--en-color-textSecondary); font-size: 10px; box-shadow: var(--en-shadow-overlay); }
+.oa-react-settings-card {
+  width: min(860px, 100%);
+  margin: 0 auto;
+  padding: 16px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 8px;
+  background: var(--en-color-surfaceRaised);
+}
+.oa-react-settings-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-settings-card > header p {
+  margin: 0 0 2px;
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.oa-react-settings-card > header h2 {
+  margin: 0;
+  color: var(--en-color-textPrimary);
+  font-size: 17px;
+}
+.oa-react-settings-table {
+  display: grid;
+  margin-top: 12px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.oa-react-settings-table [role="row"] {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textSecondary);
+  font-size: 11px;
+}
+.oa-react-settings-table button[role="row"] {
+  width: 100%;
+  appearance: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.oa-react-settings-table button[role="row"]:hover {
+  background: var(--en-color-surfaceMuted);
+}
+.oa-react-settings-table [role="row"][data-conflict="true"] {
+  color: var(--en-color-warning);
+}
+.oa-react-settings-table [role="row"]:last-child {
+  border-bottom: 0;
+}
+.oa-react-settings-table [role="columnheader"] {
+  color: var(--en-color-textMuted);
+}
+.oa-react-settings-boundary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 0;
+  color: var(--en-color-textMuted);
+  font-size: 10px;
+}
+.oa-react-settings-boundary svg {
+  width: 13px;
+  height: 13px;
+  color: var(--en-color-success);
+}
+.oa-react-settings-skeleton {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+}
+.oa-react-settings-skeleton span {
+  display: block;
+  height: 34px;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--en-color-surfaceMuted),
+    var(--en-color-surfaceRaised),
+    var(--en-color-surfaceMuted)
+  );
+  background-size: 200% 100%;
+  animation: oa-settings-shimmer 1.4s linear infinite;
+}
+@keyframes oa-settings-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.oa-react-settings-empty {
+  display: flex;
+  min-height: 220px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--en-color-textMuted);
+}
+.oa-react-settings-empty svg {
+  width: 24px;
+  height: 24px;
+  margin-bottom: 8px;
+}
+.oa-react-settings-empty h3 {
+  margin: 0 0 5px;
+  color: var(--en-color-textPrimary);
+  font-size: 13px;
+}
+.oa-react-settings-empty p {
+  max-width: 380px;
+  margin: 0;
+  font-size: 10px;
+}
+.oa-react-settings-rows {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+}
+.oa-react-settings-rows article {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto minmax(180px, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 6px;
+}
+.oa-react-settings-rows article > div {
+  display: grid;
+  gap: 2px;
+}
+.oa-react-settings-rows article > div:last-child {
+  display: flex;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.oa-react-settings-rows article strong {
+  color: var(--en-color-textPrimary);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+.oa-react-settings-rows article small,
+.oa-react-settings-rows article > span {
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
+.oa-react-settings-inline-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.oa-react-connect-stack {
+  display: grid;
+  width: min(860px, 100%);
+  margin: 0 auto;
+  gap: 12px;
+}
+.oa-react-connect-stack .oa-react-settings-card {
+  width: 100%;
+}
+.oa-react-connect-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0;
+}
+.oa-react-connect-summary > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.oa-react-connect-summary strong,
+.oa-react-connect-pairing strong,
+.oa-react-connect-unavailable strong {
+  color: var(--en-color-textPrimary);
+  font-size: 11px;
+}
+.oa-react-connect-summary small,
+.oa-react-connect-pairing span {
+  display: block;
+  margin-top: 2px;
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
+.oa-react-connect-state {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--en-color-textMuted);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-color-textMuted) 14%, transparent);
+}
+.oa-react-connect-state[data-state="connected"] {
+  background: var(--en-color-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--en-color-success) 16%, transparent);
+}
+.oa-react-connect-state[data-state="connecting"] {
+  background: var(--en-color-warning);
+}
+.oa-react-connect-state[data-state="errored"] {
+  background: var(--en-color-danger);
+}
+.oa-react-connect-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.oa-react-connect-grid article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  gap: 8px;
+  min-height: 130px;
+  padding: 12px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 7px;
+  background: var(--en-color-surfaceMuted);
+}
+.oa-react-connect-grid article > svg {
+  width: 16px;
+  height: 16px;
+  color: var(--en-color-accent);
+}
+.oa-react-connect-grid article strong {
+  color: var(--en-color-textPrimary);
+  font-size: 11px;
+}
+.oa-react-connect-grid article p {
+  margin: 4px 0 10px;
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+.oa-react-connect-grid article > button,
+.oa-react-connect-grid article > [data-slot="badge"] {
+  grid-column: 2;
+  justify-self: start;
+}
+.oa-react-connect-pairing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--en-color-accentMuted);
+  border-radius: 6px;
+}
+.oa-react-connect-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(220px, 1.3fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.oa-react-connect-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
+.oa-react-connect-unavailable {
+  display: flex;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px dashed var(--en-color-borderSubtle);
+  border-radius: 6px;
+  color: var(--en-color-textMuted);
+}
+.oa-react-connect-unavailable svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+.oa-react-connect-unavailable p {
+  margin: 3px 0 0;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.oa-react-connect-notice {
+  position: sticky;
+  bottom: 12px;
+  margin: 0 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: 6px;
+  background: var(--en-color-surfaceOverlay);
+  color: var(--en-color-textSecondary);
+  font-size: 10px;
+  box-shadow: var(--en-shadow-overlay);
+}
 
 @media (max-width: 980px) {
-  .oa-react-surface-panel { position: absolute; z-index: 5; inset: 0 0 0 auto; width: min(560px, 100%) !important; box-shadow: -18px 0 48px rgb(0 0 0 / 28%); }
-  .oa-react-surface-resize { display: none; }
+  .oa-react-surface-panel {
+    position: absolute;
+    z-index: 5;
+    inset: 0 0 0 auto;
+    width: min(560px, 100%) !important;
+    box-shadow: -18px 0 48px rgb(0 0 0 / 28%);
+  }
+  .oa-react-surface-resize {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {
-  .oa-react-settings-card > header { align-items: flex-start; }
-  .oa-react-settings-rows article { grid-template-columns: minmax(0, 1fr) auto; }
-  .oa-react-settings-rows article > div:last-child { grid-column: 1 / -1; justify-content: flex-start; }
-  .oa-react-settings-inline-editor { grid-template-columns: minmax(0, 1fr) auto; }
-  .oa-react-settings-inline-editor > :last-child { grid-column: 1 / -1; }
-  .oa-react-connect-grid { grid-template-columns: 1fr; }
-  .oa-react-connect-form { grid-template-columns: 1fr; }
+  .oa-react-settings-card > header {
+    align-items: flex-start;
+  }
+  .oa-react-settings-rows article {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .oa-react-settings-rows article > div:last-child {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+  .oa-react-settings-inline-editor {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .oa-react-settings-inline-editor > :last-child {
+    grid-column: 1 / -1;
+  }
+  .oa-react-connect-grid {
+    grid-template-columns: 1fr;
+  }
+  .oa-react-connect-form {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .oa-react-settings-skeleton span { animation: none; }
+  .oa-react-settings-skeleton span {
+    animation: none;
+  }
 }
 
 @media (max-width: 620px) {
-  .oa-react-review-workbench { grid-template-columns: minmax(132px, 38%) minmax(0, 1fr); }
-  .oa-react-files-mode-search { width: min(36vw, 180px); }
-  .oa-react-files-mode-search-kinds { display: none; }
+  .oa-react-review-workbench {
+    grid-template-columns: minmax(132px, 38%) minmax(0, 1fr);
+  }
+  .oa-react-files-mode-search {
+    width: min(36vw, 180px);
+  }
+  .oa-react-files-mode-search-kinds {
+    display: none;
+  }
 }
 
 .oa-react-conversation-header {
@@ -1618,7 +2782,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 14px;
   font-weight: 550;
   line-height: 1.25;
-  letter-spacing: -.01em;
+  letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1707,7 +2871,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: var(--en-color-borderStrong);
   transform: scaleX(0.625);
   transform-origin: right center;
-  transition: transform var(--en-motion-fast) var(--en-ease-basic), background var(--en-motion-fast) var(--en-ease-basic);
+  transition:
+    transform var(--en-motion-fast) var(--en-ease-basic),
+    background var(--en-motion-fast) var(--en-ease-basic);
 }
 
 .oa-react-timeline-minimap button:hover > span,
@@ -1902,7 +3068,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 
 @media (hover: none), (pointer: coarse) {
   .oa-react-user-message-actions,
-  .oa-react-assistant-message-actions { opacity: 1; }
+  .oa-react-assistant-message-actions {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1912,12 +3080,44 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   }
 }
 
-.oa-react-work-entry, .oa-react-work-group, .oa-react-plan, .oa-react-notice { width: min(720px, 100%); margin: 0 auto var(--en-spacing-2); }
-.oa-react-work-entry > summary { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; gap: var(--en-spacing-2); min-height: 28px; padding: 0 var(--en-spacing-2); border-radius: var(--en-radius-md); color: var(--en-color-textMuted); cursor: pointer; font-size: 12px; list-style: none; }
-.oa-react-work-entry > summary::-webkit-details-marker { display: none; }
-.oa-react-work-entry > summary:hover { background: var(--en-color-stateHover); }
-.oa-react-work-label { color: var(--en-color-textPrimary); font-family: var(--oa-font-mono); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.oa-react-work-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-work-entry,
+.oa-react-work-group,
+.oa-react-plan,
+.oa-react-notice {
+  width: min(720px, 100%);
+  margin: 0 auto var(--en-spacing-2);
+}
+.oa-react-work-entry > summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  min-height: 28px;
+  padding: 0 var(--en-spacing-2);
+  border-radius: var(--en-radius-md);
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+  font-size: 12px;
+  list-style: none;
+}
+.oa-react-work-entry > summary::-webkit-details-marker {
+  display: none;
+}
+.oa-react-work-entry > summary:hover {
+  background: var(--en-color-stateHover);
+}
+.oa-react-work-label {
+  color: var(--en-color-textPrimary);
+  font-family: var(--oa-font-mono);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.oa-react-work-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Badge formula (design spec §2.4): [TAG] convention, mono, uppercase,
    letterspaced, square, tight padding, ~20-25% fill / ~80% text. */
 .oa-react-work-status {
@@ -1927,99 +3127,306 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: color-mix(in srgb, var(--en-color-textFaint) 15%, transparent);
   font-family: var(--oa-font-mono);
   font-size: 10px;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.oa-react-work-status::before { content: "["; }
-.oa-react-work-status::after { content: "]"; }
+.oa-react-work-status::before {
+  content: "[";
+}
+.oa-react-work-status::after {
+  content: "]";
+}
 .oa-react-work-status[data-status="running"] {
   color: var(--en-color-accent);
   background: color-mix(in srgb, var(--en-color-accent) 20%, transparent);
 }
-.oa-react-work-status[data-status="failed"], .oa-react-work-status[data-status="errored"] {
+.oa-react-work-status[data-status="failed"],
+.oa-react-work-status[data-status="errored"] {
   color: var(--en-color-danger);
   background: color-mix(in srgb, var(--en-color-danger) 25%, transparent);
 }
-.oa-react-work-group-summary { display: flex; width: 100%; align-items: center; gap: var(--en-spacing-2); min-height: 28px; padding: 0 var(--en-spacing-2); border: 0; border-radius: var(--en-radius-md); background: transparent; color: var(--en-color-textMuted); cursor: pointer; font-size: 12px; text-align: left; }
-.oa-react-work-group-summary:hover { background: var(--en-color-stateHover); color: var(--en-color-textPrimary); }
-.oa-react-work-group-summary svg { width: 13px; height: 13px; flex: none; transition: transform var(--en-motion-fast) var(--en-ease-basic); }
-.oa-react-work-group-summary svg[data-expanded="true"] { transform: rotate(90deg); }
-.oa-react-work-group-summary span { color: var(--en-color-textFaint); }
-.oa-react-work-group > [role="list"] { margin-bottom: var(--en-spacing-2); }
-.oa-react-work-detail { display: grid; gap: var(--en-spacing-2); margin: var(--en-spacing-1) var(--en-spacing-2) var(--en-spacing-3); padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); background: var(--en-color-surface); }
-.oa-react-work-detail pre { max-height: 280px; margin: 0; overflow: auto; color: var(--en-color-textMuted); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
-.oa-react-plan { display: grid; gap: var(--en-spacing-2); padding: var(--en-spacing-3); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-md); background: var(--en-color-surface); }
-.oa-react-plan > header { display: flex; justify-content: space-between; align-items: center; color: var(--en-color-textMuted); font-size: 12px; }
-.oa-react-plan > ol { display: grid; gap: var(--en-spacing-1); margin: 0; padding-left: var(--en-spacing-5); }
-.oa-react-plan > ol li { display: flex; justify-content: space-between; gap: var(--en-spacing-2); }
-.oa-react-plan small { color: var(--en-color-textFaint); }
-.oa-react-event-title { display: inline-flex; align-items: center; gap: var(--en-spacing-2); color: var(--en-color-textPrimary); }
-.oa-react-event-title > svg { width: 14px; height: 14px; color: var(--en-color-accent); }
-.oa-react-event-title > strong { font-family: var(--oa-font-mono); letter-spacing: .06em; text-transform: uppercase; }
-.oa-react-plan-card { gap: var(--en-spacing-3); padding: var(--en-spacing-3) var(--en-spacing-4); }
+.oa-react-work-group-summary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  min-height: 28px;
+  padding: 0 var(--en-spacing-2);
+  border: 0;
+  border-radius: var(--en-radius-md);
+  background: transparent;
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+.oa-react-work-group-summary:hover {
+  background: var(--en-color-stateHover);
+  color: var(--en-color-textPrimary);
+}
+.oa-react-work-group-summary svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  transition: transform var(--en-motion-fast) var(--en-ease-basic);
+}
+.oa-react-work-group-summary svg[data-expanded="true"] {
+  transform: rotate(90deg);
+}
+.oa-react-work-group-summary span {
+  color: var(--en-color-textFaint);
+}
+.oa-react-work-group > [role="list"] {
+  margin-bottom: var(--en-spacing-2);
+}
+.oa-react-work-detail {
+  display: grid;
+  gap: var(--en-spacing-2);
+  margin: var(--en-spacing-1) var(--en-spacing-2) var(--en-spacing-3);
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surface);
+}
+.oa-react-work-detail pre {
+  max-height: 280px;
+  margin: 0;
+  overflow: auto;
+  color: var(--en-color-textMuted);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.oa-react-plan {
+  display: grid;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surface);
+}
+.oa-react-plan > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+}
+.oa-react-plan > ol {
+  display: grid;
+  gap: var(--en-spacing-1);
+  margin: 0;
+  padding-left: var(--en-spacing-5);
+}
+.oa-react-plan > ol li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+}
+.oa-react-plan small {
+  color: var(--en-color-textFaint);
+}
+.oa-react-event-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  color: var(--en-color-textPrimary);
+}
+.oa-react-event-title > svg {
+  width: 14px;
+  height: 14px;
+  color: var(--en-color-accent);
+}
+.oa-react-event-title > strong {
+  font-family: var(--oa-font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.oa-react-plan-card {
+  gap: var(--en-spacing-3);
+  padding: var(--en-spacing-3) var(--en-spacing-4);
+}
 /* Free-form plan narrative (plan-card unification): the `plan` ThreadItem's
    prose write-up, shown above the checklist (or alone with no structured
    entries). */
-.oa-react-plan-prose { margin: 0; color: var(--en-color-textMuted); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
-.oa-react-plan-summary { display: inline-flex; align-items: center; gap: var(--en-spacing-2); }
+.oa-react-plan-prose {
+  margin: 0;
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.oa-react-plan-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
 /* Quantized block-progress strip (plan-card unification) — the SAME
    discrete-rectangle, sharp-corner, accent-fill-vs-muted motif as the
    "Working" indicator (`.oa-react-working` below), but a STATIC
    completed/total ratio rather than a busy-pulse animation (design spec
    §5.2/§7: progress is always quantized blocks, never a smooth/eased fill). */
-.oa-react-plan-progress { display: inline-flex; align-items: center; gap: 2px; }
-.oa-react-plan-progress i { width: 4px; height: 12px; border-radius: var(--en-radius-none); background: var(--en-color-borderStrong); }
-.oa-react-plan-progress i[data-filled="true"] { background: var(--en-color-accent); }
-.oa-react-plan-list { gap: var(--en-spacing-2) !important; padding: 0 !important; list-style: none; }
-.oa-react-plan-list li { display: grid !important; grid-template-columns: 16px minmax(0, 1fr) max-content; align-items: center; min-height: 20px; color: var(--en-color-textPrimary); font-size: 12px; }
+.oa-react-plan-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.oa-react-plan-progress i {
+  width: 4px;
+  height: 12px;
+  border-radius: var(--en-radius-none);
+  background: var(--en-color-borderStrong);
+}
+.oa-react-plan-progress i[data-filled="true"] {
+  background: var(--en-color-accent);
+}
+.oa-react-plan-list {
+  gap: var(--en-spacing-2) !important;
+  padding: 0 !important;
+  list-style: none;
+}
+.oa-react-plan-list li {
+  display: grid !important;
+  grid-template-columns: 16px minmax(0, 1fr) max-content;
+  align-items: center;
+  min-height: 20px;
+  color: var(--en-color-textPrimary);
+  font-size: 12px;
+}
 /* Luminance ladder (design spec: hierarchy by grey-stepping, never bold/hue).
    in_progress (the active row) stays at the base full-bright color; completed
    steps down to the muted step; pending steps down further to the faint
    step — the active row reads as "one step brighter", nothing else changes. */
-.oa-react-plan-list li[data-status="completed"] > span:nth-child(2) { color: var(--en-color-textMuted); }
-.oa-react-plan-list li[data-status="pending"] > span:nth-child(2) { color: var(--en-color-textFaint); }
+.oa-react-plan-list li[data-status="completed"] > span:nth-child(2) {
+  color: var(--en-color-textMuted);
+}
+.oa-react-plan-list li[data-status="pending"] > span:nth-child(2) {
+  color: var(--en-color-textFaint);
+}
 /* Right-aligned [STATUS] tag, machine-voice mono (design spec §8 rule 7),
    same [TAG] bracket convention as the badge formula (§2.4). */
 .oa-react-plan-list li > small {
   color: var(--en-color-textFaint);
   font-family: var(--oa-font-mono);
   font-size: 10px;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   text-align: right;
   text-transform: uppercase;
 }
-.oa-react-plan-list li > small::before { content: "["; }
-.oa-react-plan-list li > small::after { content: "]"; }
-.oa-react-plan-list li[data-status="completed"] > small { color: var(--en-color-success); }
-.oa-react-plan-list li[data-status="in_progress"] > small { color: var(--en-color-accent); }
-.oa-react-plan-glyph { display: grid; color: var(--en-color-textFaint); place-items: center; }
-.oa-react-plan-glyph > svg { width: 13px; height: 13px; }
-.oa-react-plan-list li[data-status="completed"] .oa-react-plan-glyph { color: var(--en-color-success); }
-.oa-react-plan-list li[data-status="in_progress"] .oa-react-plan-glyph { color: var(--en-color-accent); }
+.oa-react-plan-list li > small::before {
+  content: "[";
+}
+.oa-react-plan-list li > small::after {
+  content: "]";
+}
+.oa-react-plan-list li[data-status="completed"] > small {
+  color: var(--en-color-success);
+}
+.oa-react-plan-list li[data-status="in_progress"] > small {
+  color: var(--en-color-accent);
+}
+.oa-react-plan-glyph {
+  display: grid;
+  color: var(--en-color-textFaint);
+  place-items: center;
+}
+.oa-react-plan-glyph > svg {
+  width: 13px;
+  height: 13px;
+}
+.oa-react-plan-list li[data-status="completed"] .oa-react-plan-glyph {
+  color: var(--en-color-success);
+}
+.oa-react-plan-list li[data-status="in_progress"] .oa-react-plan-glyph {
+  color: var(--en-color-accent);
+}
 
 /* Long-tail honest rows (issue 8869, T12 epic 8857 wave 2): quiet, single-line
    mono ledger rows for ThreadItem variants with no tool-call/status shape of
    their own (compaction, sleep, review-mode, hook prompt). These are
    deliberately NOT the disclosure/work-entry shell — there is nothing to
    expand, a bounded caption/fragment line is the complete presentation. */
-.oa-react-compaction-row, .oa-react-sleep-row, .oa-react-review-row, .oa-react-hook-row {
+.oa-react-compaction-row,
+.oa-react-sleep-row,
+.oa-react-review-row,
+.oa-react-hook-row {
   width: min(720px, 100%);
   margin: 0 auto var(--en-spacing-2);
 }
 /* CONTEXT COMPACTED — a thin full-width rule + centered mono caption. */
-.oa-react-compaction-row { display: flex; align-items: center; gap: var(--en-spacing-2); padding: var(--en-spacing-1) var(--en-spacing-2); }
-.oa-react-compaction-row::before, .oa-react-compaction-row::after { flex: 1 1 auto; height: 1px; background: var(--en-color-borderSubtle); content: ""; }
-.oa-react-compaction-caption { flex: none; color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+.oa-react-compaction-row {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-1) var(--en-spacing-2);
+}
+.oa-react-compaction-row::before,
+.oa-react-compaction-row::after {
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--en-color-borderSubtle);
+  content: "";
+}
+.oa-react-compaction-caption {
+  flex: none;
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 /* WAITING · Ns — a single quiet mono line, no card chrome. */
-.oa-react-sleep-row { padding: var(--en-spacing-1) var(--en-spacing-2); color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.oa-react-sleep-row {
+  padding: var(--en-spacing-1) var(--en-spacing-2);
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 /* REVIEW MODE [ENTERED]/[EXITED] — accent-ticked, the review text below. */
-.oa-react-review-row { display: grid; gap: 2px; padding: var(--en-spacing-2); border-left: 2px solid var(--en-color-accent); background: var(--en-color-surfaceRaised); }
-.oa-react-review-row > strong { color: var(--en-color-accent); font-family: var(--oa-font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
-.oa-react-review-row > span { color: var(--en-color-textMuted); font-size: 12px; }
+.oa-react-review-row {
+  display: grid;
+  gap: 2px;
+  padding: var(--en-spacing-2);
+  border-left: 2px solid var(--en-color-accent);
+  background: var(--en-color-surfaceRaised);
+}
+.oa-react-review-row > strong {
+  color: var(--en-color-accent);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.oa-react-review-row > span {
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+}
 /* HOOK PROMPT — a bounded fragment row, faint label over the fragment text. */
-.oa-react-hook-row { display: grid; gap: 2px; padding: var(--en-spacing-2); border-left: 2px solid var(--en-color-borderStrong); background: var(--en-color-surfaceRaised); }
-.oa-react-hook-row > strong { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
-.oa-react-hook-row > span { overflow: hidden; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-hook-row {
+  display: grid;
+  gap: 2px;
+  padding: var(--en-spacing-2);
+  border-left: 2px solid var(--en-color-borderStrong);
+  background: var(--en-color-surfaceRaised);
+}
+.oa-react-hook-row > strong {
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.oa-react-hook-row > span {
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .oa-react-protocol-card,
 .oa-react-agent-group,
@@ -2042,9 +3449,13 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   list-style: none;
 }
 .oa-react-protocol-card > summary::-webkit-details-marker,
-.oa-react-agent-card > summary::-webkit-details-marker { display: none; }
+.oa-react-agent-card > summary::-webkit-details-marker {
+  display: none;
+}
 .oa-react-protocol-card > summary:hover,
-.oa-react-agent-card > summary:hover { background: var(--en-color-stateHover); }
+.oa-react-agent-card > summary:hover {
+  background: var(--en-color-stateHover);
+}
 .oa-react-event-icon {
   display: grid;
   width: 24px;
@@ -2053,12 +3464,44 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-accent);
   place-items: center;
 }
-.oa-react-event-icon > svg { width: 13px; height: 13px; }
-.oa-react-event-heading { display: flex; min-width: 0; align-items: baseline; gap: var(--en-spacing-2); }
-.oa-react-event-heading > strong { flex: none; color: var(--en-color-textPrimary); font-family: var(--oa-font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
-.oa-react-event-heading > span { min-width: 0; overflow: hidden; color: var(--en-color-textMuted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-event-heading code { color: inherit; font: inherit; }
-.oa-react-protocol-card > summary > small { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-align: right; white-space: nowrap; }
+.oa-react-event-icon > svg {
+  width: 13px;
+  height: 13px;
+}
+.oa-react-event-heading {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--en-spacing-2);
+}
+.oa-react-event-heading > strong {
+  flex: none;
+  color: var(--en-color-textPrimary);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.oa-react-event-heading > span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-event-heading code {
+  color: inherit;
+  font: inherit;
+}
+.oa-react-protocol-card > summary > small {
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-align: right;
+  white-space: nowrap;
+}
 .oa-react-event-status {
   display: inline-flex;
   align-items: center;
@@ -2070,10 +3513,13 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-family: var(--oa-font-mono);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.oa-react-event-status > svg { width: 11px; height: 11px; }
+.oa-react-event-status > svg {
+  width: 11px;
+  height: 11px;
+}
 .oa-react-event-status[data-status="completed"] {
   color: var(--en-color-success);
   background: color-mix(in srgb, var(--en-color-success) 20%, transparent);
@@ -2086,16 +3532,64 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-accent);
   background: color-mix(in srgb, var(--en-color-accent) 20%, transparent);
 }
-.oa-react-protocol-detail { display: grid; gap: var(--en-spacing-2); padding: var(--en-spacing-3); border-top: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textMuted); font-size: 11px; }
-.oa-react-protocol-detail > pre { max-height: 220px; margin: 0; overflow: auto; color: var(--en-color-textMuted); font: inherit; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.oa-react-protocol-detail {
+  display: grid;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-3);
+  border-top: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+}
+.oa-react-protocol-detail > pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  color: var(--en-color-textMuted);
+  font: inherit;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* KEY: VALUE convention (design spec §3.2/§8 rule 7). */
-.oa-react-command-meta { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--en-spacing-2); color: var(--en-color-textFaint); }
-.oa-react-command-meta span { font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
-.oa-react-command-meta span::after { content: ":"; }
-.oa-react-command-meta code { overflow: hidden; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-command-output { min-height: 44px; border-left: 1px solid var(--en-color-borderSubtle); padding-left: var(--en-spacing-2); background: color-mix(in srgb, var(--en-color-background) 72%, transparent); font-family: var(--oa-font-mono); }
-.oa-react-command-output[data-output-capped="true"] { border-left-color: var(--en-color-warning); }
-.oa-react-command-cap { color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.oa-react-command-meta {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--en-spacing-2);
+  color: var(--en-color-textFaint);
+}
+.oa-react-command-meta span {
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.oa-react-command-meta span::after {
+  content: ":";
+}
+.oa-react-command-meta code {
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-command-output {
+  min-height: 44px;
+  border-left: 1px solid var(--en-color-borderSubtle);
+  padding-left: var(--en-spacing-2);
+  background: color-mix(in srgb, var(--en-color-background) 72%, transparent);
+  font-family: var(--oa-font-mono);
+}
+.oa-react-command-output[data-output-capped="true"] {
+  border-left-color: var(--en-color-warning);
+}
+.oa-react-command-cap {
+  color: var(--en-color-warning);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
 /* Reasoning body (T6, issue 8863): the Autopilot ghost-text luminance step
    below the ordinary work-entry grammar — this is intentionally dimmer
@@ -2115,9 +3609,20 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 12px;
   line-height: 1.5;
 }
-.oa-react-file-list { display: grid; gap: var(--en-spacing-1); margin: 0; padding: 0; list-style: none; }
-.oa-react-file-list li { min-width: 0; border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-file-list li:last-child { border-bottom: 0; }
+.oa-react-file-list {
+  display: grid;
+  gap: var(--en-spacing-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.oa-react-file-list li {
+  min-width: 0;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-file-list li:last-child {
+  border-bottom: 0;
+}
 .oa-react-file-change > summary {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) max-content;
@@ -2127,15 +3632,44 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   cursor: pointer;
   list-style: none;
 }
-.oa-react-file-change > summary::-webkit-details-marker { display: none; }
-.oa-react-file-change > summary:hover { background: var(--en-color-stateHover); }
-.oa-react-file-change > summary > span { color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; font-weight: 700; }
-.oa-react-file-list li[data-change-kind="add"] .oa-react-file-change > summary > span { color: var(--en-color-success); }
-.oa-react-file-list li[data-change-kind="delete"] .oa-react-file-change > summary > span { color: var(--en-color-danger); }
-.oa-react-file-change > summary > code { overflow: hidden; color: var(--en-color-textPrimary); font-family: var(--oa-font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-file-change > summary > small { display: inline-flex; gap: var(--en-spacing-2); font-family: var(--oa-font-mono); }
-.oa-react-file-change i { color: var(--en-color-success); font-style: normal; }
-.oa-react-file-change b { color: var(--en-color-danger); font-weight: 400; }
+.oa-react-file-change > summary::-webkit-details-marker {
+  display: none;
+}
+.oa-react-file-change > summary:hover {
+  background: var(--en-color-stateHover);
+}
+.oa-react-file-change > summary > span {
+  color: var(--en-color-warning);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+}
+.oa-react-file-list li[data-change-kind="add"] .oa-react-file-change > summary > span {
+  color: var(--en-color-success);
+}
+.oa-react-file-list li[data-change-kind="delete"] .oa-react-file-change > summary > span {
+  color: var(--en-color-danger);
+}
+.oa-react-file-change > summary > code {
+  overflow: hidden;
+  color: var(--en-color-textPrimary);
+  font-family: var(--oa-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-file-change > summary > small {
+  display: inline-flex;
+  gap: var(--en-spacing-2);
+  font-family: var(--oa-font-mono);
+}
+.oa-react-file-change i {
+  color: var(--en-color-success);
+  font-style: normal;
+}
+.oa-react-file-change b {
+  color: var(--en-color-danger);
+  font-weight: 400;
+}
 .oa-react-file-change > pre {
   max-height: 320px;
   margin: var(--en-spacing-1) 0 var(--en-spacing-2);
@@ -2148,32 +3682,128 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   line-height: 1.55;
   white-space: pre;
 }
-.oa-react-file-change > pre code > span { display: block; min-width: max-content; padding: 0 var(--en-spacing-2); }
-.oa-react-file-change > pre code > span[data-diff-line="add"] { color: var(--en-color-success); background: color-mix(in srgb, var(--en-color-success) 9%, transparent); }
-.oa-react-file-change > pre code > span[data-diff-line="remove"] { color: var(--en-color-danger); background: color-mix(in srgb, var(--en-color-danger) 9%, transparent); }
-.oa-react-file-change > pre code > span[data-diff-line="meta"] { color: var(--en-color-accent); }
-.oa-react-file-change > p { margin: var(--en-spacing-1) 0 var(--en-spacing-2); color: var(--en-color-textFaint); }
-.oa-react-diff-cap { display: block; margin-bottom: var(--en-spacing-2); color: var(--en-color-warning); font-family: var(--oa-font-mono); font-size: 10px; text-transform: uppercase; }
+.oa-react-file-change > pre code > span {
+  display: block;
+  min-width: max-content;
+  padding: 0 var(--en-spacing-2);
+}
+.oa-react-file-change > pre code > span[data-diff-line="add"] {
+  color: var(--en-color-success);
+  background: color-mix(in srgb, var(--en-color-success) 9%, transparent);
+}
+.oa-react-file-change > pre code > span[data-diff-line="remove"] {
+  color: var(--en-color-danger);
+  background: color-mix(in srgb, var(--en-color-danger) 9%, transparent);
+}
+.oa-react-file-change > pre code > span[data-diff-line="meta"] {
+  color: var(--en-color-accent);
+}
+.oa-react-file-change > p {
+  margin: var(--en-spacing-1) 0 var(--en-spacing-2);
+  color: var(--en-color-textFaint);
+}
+.oa-react-diff-cap {
+  display: block;
+  margin-bottom: var(--en-spacing-2);
+  color: var(--en-color-warning);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
 
 /* Tool-call cards (mcp/dynamic/web/image, epic 8857 T7). KEY: VALUE args
    table follows the same convention as `.oa-react-command-meta` but allows
    values to wrap instead of truncating — bounded upstream, never silently
    cut here. */
-.oa-react-tool-args { display: grid; gap: var(--en-spacing-1); }
-.oa-react-tool-arg-row { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--en-spacing-2); color: var(--en-color-textFaint); }
-.oa-react-tool-arg-row span { font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
-.oa-react-tool-arg-row span::after { content: ":"; }
-.oa-react-tool-arg-row code { overflow-wrap: anywhere; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); }
-.oa-react-tool-result { max-height: 220px; margin: 0; overflow: auto; border-left: 1px solid var(--en-color-borderSubtle); padding-left: var(--en-spacing-2); color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.oa-react-tool-args {
+  display: grid;
+  gap: var(--en-spacing-1);
+}
+.oa-react-tool-arg-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--en-spacing-2);
+  color: var(--en-color-textFaint);
+}
+.oa-react-tool-arg-row span {
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.oa-react-tool-arg-row span::after {
+  content: ":";
+}
+.oa-react-tool-arg-row code {
+  overflow-wrap: anywhere;
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+}
+.oa-react-tool-result {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  border-left: 1px solid var(--en-color-borderSubtle);
+  padding-left: var(--en-spacing-2);
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 /* Muted-red failure (design spec §2.3: red stays muted, never a shout). */
-.oa-react-tool-error { margin: 0; color: var(--en-color-danger); font-size: 11px; }
-.oa-react-tool-progress { margin: 0; color: var(--en-color-accent); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-.oa-react-tool-empty { margin: 0; color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
+.oa-react-tool-error {
+  margin: 0;
+  color: var(--en-color-danger);
+  font-size: 11px;
+}
+.oa-react-tool-progress {
+  margin: 0;
+  color: var(--en-color-accent);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.oa-react-tool-empty {
+  margin: 0;
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 /* Badge formula (design spec §2.4): accent at ~20% fill, ~80% text, square, mono, uppercase. */
-.oa-react-tool-badge { display: inline-flex; align-items: center; width: fit-content; padding: 1px 6px; border-radius: var(--en-radius-none); color: var(--en-color-accent); background: color-mix(in srgb, var(--en-color-accent) 20%, transparent); font-family: var(--oa-font-mono); font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.oa-react-tool-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 1px 6px;
+  border-radius: var(--en-radius-none);
+  color: var(--en-color-accent);
+  background: color-mix(in srgb, var(--en-color-accent) 20%, transparent);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
-.oa-react-agent-group { overflow: hidden; }
-.oa-react-agent-group > header { display: flex; min-height: 38px; align-items: center; justify-content: space-between; gap: var(--en-spacing-2); padding: var(--en-spacing-2) var(--en-spacing-3); border-bottom: 1px solid var(--en-color-borderSubtle); color: var(--en-color-textFaint); font-size: 11px; }
+.oa-react-agent-group {
+  overflow: hidden;
+}
+.oa-react-agent-group > header {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+  color: var(--en-color-textFaint);
+  font-size: 11px;
+}
 /* Operation tag (design spec §2.4 badge formula): [SPAWN]/[SEND]/[WAIT]/[CLOSE]/[RESUME] for collabAgentToolCall.tool. */
 .oa-react-agent-operation {
   padding: 1px 5px;
@@ -2183,11 +3813,15 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-family: var(--oa-font-mono);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.oa-react-agent-operation::before { content: "["; }
-.oa-react-agent-operation::after { content: "]"; }
+.oa-react-agent-operation::before {
+  content: "[";
+}
+.oa-react-agent-operation::after {
+  content: "]";
+}
 /* Bounded operation prompt line (collabAgentToolCall.prompt), one KEY: VALUE row for the whole group. */
 .oa-react-agent-prompt {
   display: grid;
@@ -2202,22 +3836,100 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.oa-react-agent-prompt > span { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
-.oa-react-agent-prompt > span::after { content: ":"; }
-.oa-react-agent-list { display: grid; }
-.oa-react-agent-card { border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-agent-card:last-child { border-bottom: 0; }
-.oa-react-agent-card[data-depth="1"] { margin-left: var(--en-spacing-5); border-left: 1px solid var(--en-color-borderStrong); }
-.oa-react-agent-card[data-depth="2"] { margin-left: calc(var(--en-spacing-5) * 2); border-left: 1px solid var(--en-color-borderStrong); }
-.oa-react-agent-card > summary { display: grid; grid-template-columns: 24px minmax(96px, .45fr) minmax(0, 1fr) max-content max-content; align-items: center; gap: var(--en-spacing-2); min-height: 46px; padding: var(--en-spacing-2) var(--en-spacing-3); cursor: pointer; list-style: none; }
-.oa-react-agent-avatar { display: grid; width: 24px; height: 24px; border: 1px solid var(--en-color-borderStrong); color: var(--en-color-accent); place-items: center; }
-.oa-react-agent-avatar > svg { width: 13px; height: 13px; }
-.oa-react-agent-heading { display: grid; min-width: 0; }
-.oa-react-agent-heading strong { overflow: hidden; color: var(--en-color-textPrimary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-agent-heading small { overflow: hidden; color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.oa-react-agent-prompt > span {
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.oa-react-agent-prompt > span::after {
+  content: ":";
+}
+.oa-react-agent-list {
+  display: grid;
+}
+.oa-react-agent-card {
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-agent-card:last-child {
+  border-bottom: 0;
+}
+.oa-react-agent-card[data-depth="1"] {
+  margin-left: var(--en-spacing-5);
+  border-left: 1px solid var(--en-color-borderStrong);
+}
+.oa-react-agent-card[data-depth="2"] {
+  margin-left: calc(var(--en-spacing-5) * 2);
+  border-left: 1px solid var(--en-color-borderStrong);
+}
+/* An inspectable delegate card opens its message chain in the right pane on
+   click; keep the affordance explicit and mark the selected one with a subtle
+   fill (no thick accent border — the design hook flags loud accents). */
+.oa-react-agent-card[data-inspectable="true"] > summary {
+  cursor: pointer;
+}
+.oa-react-agent-card[data-selected="true"] {
+  background: var(--en-color-stateSelected);
+}
+.oa-react-agent-card > summary {
+  display: grid;
+  grid-template-columns: 24px minmax(96px, 0.45fr) minmax(0, 1fr) max-content max-content;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  min-height: 46px;
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  cursor: pointer;
+  list-style: none;
+}
+.oa-react-agent-avatar {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--en-color-borderStrong);
+  color: var(--en-color-accent);
+  place-items: center;
+}
+.oa-react-agent-avatar > svg {
+  width: 13px;
+  height: 13px;
+}
+.oa-react-agent-heading {
+  display: grid;
+  min-width: 0;
+}
+.oa-react-agent-heading strong {
+  overflow: hidden;
+  color: var(--en-color-textPrimary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-agent-heading small {
+  overflow: hidden;
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 /* Nickname/path line (subAgentActivity.agentPath or any caller-resolved friendly label). */
-.oa-react-agent-heading small.oa-react-agent-path { color: var(--en-color-textMuted); text-transform: none; }
-.oa-react-agent-task { display: flex; align-items: center; gap: var(--en-spacing-2); overflow: hidden; color: var(--en-color-textMuted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.oa-react-agent-heading small.oa-react-agent-path {
+  color: var(--en-color-textMuted);
+  text-transform: none;
+}
+.oa-react-agent-task {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Activity-kind row (subAgentActivity.kind): started/interacted/interrupted, distinct from lifecycle status. */
 .oa-react-agent-activity-tag {
   flex: none;
@@ -2227,11 +3939,15 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: color-mix(in srgb, var(--en-color-textFaint) 15%, transparent);
   font-family: var(--oa-font-mono);
   font-size: 10px;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.oa-react-agent-activity-tag::before { content: "["; }
-.oa-react-agent-activity-tag::after { content: "]"; }
+.oa-react-agent-activity-tag::before {
+  content: "[";
+}
+.oa-react-agent-activity-tag::after {
+  content: "]";
+}
 .oa-react-agent-activity-tag[data-activity="interrupted"] {
   color: var(--en-color-danger);
   background: color-mix(in srgb, var(--en-color-danger) 25%, transparent);
@@ -2245,25 +3961,95 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-danger);
   font-family: var(--oa-font-mono);
   font-size: 10px;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
 }
-.oa-react-agent-interrupt:hover { background: color-mix(in srgb, var(--en-color-danger) 15%, transparent); }
-.oa-react-agent-transcript { display: grid; gap: var(--en-spacing-2); padding: 0 var(--en-spacing-3) var(--en-spacing-3) calc(24px + var(--en-spacing-5)); }
-.oa-react-agent-transcript p { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: var(--en-spacing-2); margin: 0; color: var(--en-color-textMuted); font-size: 11px; line-height: 1.5; }
-.oa-react-agent-transcript strong { color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .04em; text-transform: uppercase; }
-.oa-react-agent-parent { display: flex !important; grid-template-columns: none !important; align-items: center; color: var(--en-color-textFaint) !important; }
-.oa-react-agent-parent > svg { width: 11px; height: 11px; }
+.oa-react-agent-interrupt:hover {
+  background: color-mix(in srgb, var(--en-color-danger) 15%, transparent);
+}
+.oa-react-agent-transcript {
+  display: grid;
+  gap: var(--en-spacing-2);
+  padding: 0 var(--en-spacing-3) var(--en-spacing-3) calc(24px + var(--en-spacing-5));
+}
+.oa-react-agent-transcript p {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: var(--en-spacing-2);
+  margin: 0;
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.oa-react-agent-transcript strong {
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.oa-react-agent-parent {
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  color: var(--en-color-textFaint) !important;
+}
+.oa-react-agent-parent > svg {
+  width: 11px;
+  height: 11px;
+}
 
-.oa-react-approval-card { display: grid; grid-template-columns: 24px minmax(0, 1fr) max-content; align-items: center; gap: var(--en-spacing-3); padding: var(--en-spacing-3); border-color: var(--en-color-borderStrong); }
-.oa-react-approval-card > div > strong { color: var(--en-color-textPrimary); font-size: 12px; }
-.oa-react-approval-card > div > p { margin: 3px 0; color: var(--en-color-textMuted); font-size: 11px; }
-.oa-react-approval-card > div > code { display: block; max-width: 100%; overflow: hidden; color: var(--en-color-textFaint); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-approval-actions { display: flex; gap: var(--en-spacing-1); }
-.oa-react-approval-actions button { min-height: 24px; padding: 0 var(--en-spacing-2); border: 1px solid var(--en-color-borderSubtle); border-radius: var(--en-radius-sm); background: transparent; color: var(--en-color-textMuted); cursor: pointer; font: inherit; font-size: 11px; }
-.oa-react-approval-actions button:hover { border-color: var(--en-color-borderStrong); color: var(--en-color-textPrimary); }
-.oa-react-approval-actions button[data-primary="true"] { border-color: var(--en-color-accent); background: var(--en-color-stateSelected); color: var(--en-color-textPrimary); }
+.oa-react-approval-card {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--en-spacing-3);
+  padding: var(--en-spacing-3);
+  border-color: var(--en-color-borderStrong);
+}
+.oa-react-approval-card > div > strong {
+  color: var(--en-color-textPrimary);
+  font-size: 12px;
+}
+.oa-react-approval-card > div > p {
+  margin: 3px 0;
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+}
+.oa-react-approval-card > div > code {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--en-color-textFaint);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-approval-actions {
+  display: flex;
+  gap: var(--en-spacing-1);
+}
+.oa-react-approval-actions button {
+  min-height: 24px;
+  padding: 0 var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+.oa-react-approval-actions button:hover {
+  border-color: var(--en-color-borderStrong);
+  color: var(--en-color-textPrimary);
+}
+.oa-react-approval-actions button[data-primary="true"] {
+  border-color: var(--en-color-accent);
+  background: var(--en-color-stateSelected);
+  color: var(--en-color-textPrimary);
+}
 .oa-react-approval-decision {
   display: inline-flex;
   align-items: center;
@@ -2274,7 +4060,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: color-mix(in srgb, var(--en-color-success) 20%, transparent);
   font-family: var(--oa-font-mono);
   font-size: 10px;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 .oa-react-approval-decision[data-decision="denied"] {
@@ -2288,27 +4074,84 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textFaint);
   background: color-mix(in srgb, var(--en-color-textFaint) 15%, transparent);
 }
-.oa-react-approval-decision > svg { width: 12px; height: 12px; }
-.oa-react-queue-card { display: grid; grid-template-columns: 14px max-content minmax(0, 1fr) max-content; align-items: center; gap: var(--en-spacing-2); padding: var(--en-spacing-2) var(--en-spacing-3); color: var(--en-color-textMuted); font-size: 11px; }
-.oa-react-queue-card > svg { width: 12px; height: 12px; color: var(--en-color-accent); }
-.oa-react-queue-card > strong { color: var(--en-color-textPrimary); font-size: 11px; }
-.oa-react-queue-card > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-queue-card > small { color: var(--en-color-textFaint); font-size: 10px; }
+.oa-react-approval-decision > svg {
+  width: 12px;
+  height: 12px;
+}
+.oa-react-queue-card {
+  display: grid;
+  grid-template-columns: 14px max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+}
+.oa-react-queue-card > svg {
+  width: 12px;
+  height: 12px;
+  color: var(--en-color-accent);
+}
+.oa-react-queue-card > strong {
+  color: var(--en-color-textPrimary);
+  font-size: 11px;
+}
+.oa-react-queue-card > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-queue-card > small {
+  color: var(--en-color-textFaint);
+  font-size: 10px;
+}
 /* Notice grammar (issue 8869, T12 epic 8857 wave 2): a quiet system-log row, not
    a chat bubble or an alarm wall. Severity climbs the grey luminance ladder
    (design spec §2.3: "no yellow/orange/amber anywhere" — warning stays grey,
    only ERROR gets the muted-brick-red text discipline). The tick is the one
    place a saturated mark is allowed (design spec §5.7, tiny solid rectangle,
    same convention as the sidebar's "current" tick). */
-.oa-react-notice { display: flex; align-items: baseline; gap: var(--en-spacing-2); padding: var(--en-spacing-2); color: var(--en-color-textMuted); font-size: 12px; }
-.oa-react-notice-tick { align-self: center; width: 6px; height: 10px; flex: none; border-radius: var(--en-radius-none); background: var(--en-color-textFaint); }
-.oa-react-notice-tick[data-severity="warning"] { background: color-mix(in srgb, var(--en-color-textPrimary) 70%, var(--en-color-textMuted) 30%); }
-.oa-react-notice-tick[data-severity="error"] { background: var(--en-color-danger); }
-.oa-react-notice-tag { flex: none; color: var(--en-color-textFaint); font-family: var(--oa-font-mono); font-size: 10px; letter-spacing: .06em; }
-.oa-react-notice[data-severity="warning"] { color: color-mix(in srgb, var(--en-color-textPrimary) 70%, var(--en-color-textMuted) 30%); }
-.oa-react-notice[data-severity="warning"] .oa-react-notice-tag { color: inherit; }
-.oa-react-notice[data-danger="true"] { color: var(--en-color-danger); }
-.oa-react-notice[data-danger="true"] .oa-react-notice-tag { color: inherit; }
+.oa-react-notice {
+  display: flex;
+  align-items: baseline;
+  gap: var(--en-spacing-2);
+  padding: var(--en-spacing-2);
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+}
+.oa-react-notice-tick {
+  align-self: center;
+  width: 6px;
+  height: 10px;
+  flex: none;
+  border-radius: var(--en-radius-none);
+  background: var(--en-color-textFaint);
+}
+.oa-react-notice-tick[data-severity="warning"] {
+  background: color-mix(in srgb, var(--en-color-textPrimary) 70%, var(--en-color-textMuted) 30%);
+}
+.oa-react-notice-tick[data-severity="error"] {
+  background: var(--en-color-danger);
+}
+.oa-react-notice-tag {
+  flex: none;
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.oa-react-notice[data-severity="warning"] {
+  color: color-mix(in srgb, var(--en-color-textPrimary) 70%, var(--en-color-textMuted) 30%);
+}
+.oa-react-notice[data-severity="warning"] .oa-react-notice-tag {
+  color: inherit;
+}
+.oa-react-notice[data-danger="true"] {
+  color: var(--en-color-danger);
+}
+.oa-react-notice[data-danger="true"] .oa-react-notice-tag {
+  color: inherit;
+}
 /* Quantized block progress (design spec §5.2/§7): discrete rectangles
    stepping active/inactive, never a smooth/eased fade. Echoes the corner
    pager — quantized-block progress is a system-wide motif. */
@@ -2323,7 +4166,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textFaint);
   font-family: var(--oa-font-mono);
   font-size: 11px;
-  letter-spacing: .08em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .oa-react-waiting {
@@ -2337,7 +4180,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-accent);
   font-family: var(--oa-font-mono);
   font-size: 11px;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
 }
 .oa-react-waiting::before {
   width: 6px;
@@ -2346,9 +4189,15 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: var(--en-color-accent);
   content: "";
 }
-.oa-react-working span { margin-right: 6px; }
-.oa-react-working span::before { content: "["; }
-.oa-react-working span::after { content: "]"; }
+.oa-react-working span {
+  margin-right: 6px;
+}
+.oa-react-working span::before {
+  content: "[";
+}
+.oa-react-working span::after {
+  content: "]";
+}
 .oa-react-working i {
   width: 4px;
   height: 12px;
@@ -2361,9 +4210,22 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
      one-step motion while remaining a valid timing function. */
   animation: oa-react-working-step 1.2s steps(1, jump-end) infinite;
 }
-.oa-react-working i:nth-of-type(2) { animation-delay: 150ms; }
-.oa-react-working i:nth-of-type(3) { animation-delay: 300ms; }
-@keyframes oa-react-working-step { 0%, 60%, 100% { background: var(--en-color-borderStrong); } 30% { background: var(--en-color-accent); } }
+.oa-react-working i:nth-of-type(2) {
+  animation-delay: 150ms;
+}
+.oa-react-working i:nth-of-type(3) {
+  animation-delay: 300ms;
+}
+@keyframes oa-react-working-step {
+  0%,
+  60%,
+  100% {
+    background: var(--en-color-borderStrong);
+  }
+  30% {
+    background: var(--en-color-accent);
+  }
+}
 
 /* This override must follow the base animation declaration. Keeping it in the
    earlier global reduced-motion block allowed the later shorthand to win the
@@ -2371,22 +4233,41 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 @media (prefers-reduced-motion: reduce) {
   .oa-react-working i {
     animation: none;
-    opacity: .65;
+    opacity: 0.65;
   }
 }
 
 @media (max-width: 700px) {
-  .oa-react-protocol-card > summary { grid-template-columns: 24px minmax(0, 1fr) max-content; }
-  .oa-react-protocol-card > summary > small { display: none; }
-  .oa-react-agent-card > summary { grid-template-columns: 24px minmax(0, 1fr) max-content; }
-  .oa-react-agent-task { display: none; }
-  .oa-react-agent-card[data-depth="2"] { margin-left: var(--en-spacing-5); }
-  .oa-react-approval-card { grid-template-columns: 24px minmax(0, 1fr); }
+  .oa-react-protocol-card > summary {
+    grid-template-columns: 24px minmax(0, 1fr) max-content;
+  }
+  .oa-react-protocol-card > summary > small {
+    display: none;
+  }
+  .oa-react-agent-card > summary {
+    grid-template-columns: 24px minmax(0, 1fr) max-content;
+  }
+  .oa-react-agent-task {
+    display: none;
+  }
+  .oa-react-agent-card[data-depth="2"] {
+    margin-left: var(--en-spacing-5);
+  }
+  .oa-react-approval-card {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
   .oa-react-approval-actions,
-  .oa-react-approval-decision { grid-column: 2; justify-self: start; }
-  .oa-react-queue-card { grid-template-columns: 14px minmax(0, 1fr); }
+  .oa-react-approval-decision {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .oa-react-queue-card {
+    grid-template-columns: 14px minmax(0, 1fr);
+  }
   .oa-react-queue-card > span,
-  .oa-react-queue-card > small { grid-column: 2; }
+  .oa-react-queue-card > small {
+    grid-column: 2;
+  }
 }
 
 .oa-react-timeline-item > p,
@@ -2416,8 +4297,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   padding-left: var(--en-spacing-5);
 }
 
-.oa-react-markdown ul { list-style: disc outside; }
-.oa-react-markdown ol { list-style: decimal outside; }
+.oa-react-markdown ul {
+  list-style: disc outside;
+}
+.oa-react-markdown ol {
+  list-style: decimal outside;
+}
 
 .oa-react-markdown blockquote {
   margin: 0;
@@ -2598,7 +4483,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   border-radius: var(--en-radius-none);
   background: var(--en-color-surfaceRaised);
   box-shadow: var(--en-elevation-raised-shadow);
-  transition: border-color var(--en-motion-fast) var(--en-ease-basic),
+  transition:
+    border-color var(--en-motion-fast) var(--en-ease-basic),
     background-color var(--en-motion-fast) var(--en-ease-basic),
     box-shadow var(--en-motion-fast) var(--en-ease-basic);
 }
@@ -2916,8 +4802,12 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 @media (max-width: 520px) {
-  .oa-react-composer-queue li { grid-template-columns: 24px minmax(64px, 1fr) auto; }
-  .oa-react-composer-queue li button { grid-row: 2; }
+  .oa-react-composer-queue li {
+    grid-template-columns: 24px minmax(64px, 1fr) auto;
+  }
+  .oa-react-composer-queue li button {
+    grid-row: 2;
+  }
 }
 
 .oa-react-composer-bar {
@@ -2954,7 +4844,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   background: transparent;
   color: var(--en-color-textMuted);
   cursor: pointer;
-  transition: background-color var(--en-motion-fast) var(--en-ease-basic),
+  transition:
+    background-color var(--en-motion-fast) var(--en-ease-basic),
     color var(--en-motion-fast) var(--en-ease-basic),
     opacity var(--en-motion-fast) var(--en-ease-basic);
 }
@@ -2970,7 +4861,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-composer-button:disabled {
-  opacity: .35;
+  opacity: 0.35;
   cursor: default;
 }
 
@@ -3020,7 +4911,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 .oa-react-composer-select:disabled {
-  opacity: .35;
+  opacity: 0.35;
   cursor: default;
 }
 
@@ -3113,17 +5004,21 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
     box-shadow: var(--en-elevation-overlay-shadow);
   }
 
-  .oa-react-composer-secondary-controls[data-open="true"] .oa-react-composer-secondary-controls-content {
+  .oa-react-composer-secondary-controls[data-open="true"]
+    .oa-react-composer-secondary-controls-content {
     display: grid;
     gap: var(--en-spacing-1);
   }
 
-  .oa-react-composer-secondary-controls-content :is(.oa-react-composer-button, .oa-react-composer-select) {
+  .oa-react-composer-secondary-controls-content
+    :is(.oa-react-composer-button, .oa-react-composer-select) {
     width: 100% !important;
     max-width: none !important;
   }
 
-  .oa-react-composer-secondary-controls-content .oa-react-composer-button { justify-content: flex-start; }
+  .oa-react-composer-secondary-controls-content .oa-react-composer-button {
+    justify-content: flex-start;
+  }
 }
 
 .oa-react-composer-status {
@@ -3152,8 +5047,13 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 @keyframes oa-react-codex-checking {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3247,7 +5147,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-family: var(--oa-font-mono);
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -3317,7 +5217,7 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textMuted);
   font-size: 11px;
   font-weight: 500;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
@@ -3419,7 +5319,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
     background: transparent;
   }
 
-  html[data-desktop-platform="darwin"] .oa-react-workbench[data-rail-collapsed="true"] .oa-react-sidebar-expand {
+  html[data-desktop-platform="darwin"]
+    .oa-react-workbench[data-rail-collapsed="true"]
+    .oa-react-sidebar-expand {
     left: 92px;
   }
 
@@ -3427,7 +5329,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
     padding-left: 48px;
   }
 
-  html[data-desktop-platform="darwin"] .oa-react-workbench[data-rail-collapsed="true"] .oa-react-conversation-header {
+  html[data-desktop-platform="darwin"]
+    .oa-react-workbench[data-rail-collapsed="true"]
+    .oa-react-conversation-header {
     padding-left: 128px;
   }
 }
@@ -3472,27 +5376,82 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 
 @media (max-width: 560px) {
-  .oa-react-workbench { min-height: 420px; }
-  .oa-react-files-mode { grid-template-rows: 46px minmax(0, 1fr); }
-  .oa-react-conversation-header { height: 46px; min-height: 46px; padding-right: var(--en-spacing-2); padding-left: 72px; }
-  .oa-react-conversation-heading > h1 { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .oa-react-surface-panel { inset: 0; width: 100% !important; min-width: 0; }
-  .oa-react-surface-add { right: 32px; max-width: calc(100vw - 40px); }
-  .oa-react-surface-tabs [role="tab"] { min-width: 88px; }
-  .oa-react-terminal-toolbar, .oa-react-browser-toolbar { flex-wrap: wrap; height: auto; min-height: 38px; }
-  .oa-react-terminal-toolbar > div:last-child { max-width: 100%; overflow-x: auto; }
-  .oa-react-browser-address { order: 3; flex-basis: 100%; }
-  .oa-react-workspace-surface { padding: 48px var(--en-spacing-3) var(--en-spacing-5); }
-  .oa-react-settings-card { padding: 12px; }
-  .oa-react-settings-card > header, .oa-react-connect-summary, .oa-react-connect-pairing { align-items: stretch; flex-direction: column; }
-  .oa-react-settings-table [role="row"] { grid-template-columns: 1fr; gap: 3px; }
-  .oa-react-connect-notice { margin: 0; }
+  .oa-react-workbench {
+    min-height: 420px;
+  }
+  .oa-react-files-mode {
+    grid-template-rows: 46px minmax(0, 1fr);
+  }
+  .oa-react-conversation-header {
+    height: 46px;
+    min-height: 46px;
+    padding-right: var(--en-spacing-2);
+    padding-left: 72px;
+  }
+  .oa-react-conversation-heading > h1 {
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .oa-react-surface-panel {
+    inset: 0;
+    width: 100% !important;
+    min-width: 0;
+  }
+  .oa-react-surface-add {
+    right: 32px;
+    max-width: calc(100vw - 40px);
+  }
+  .oa-react-surface-tabs [role="tab"] {
+    min-width: 88px;
+  }
+  .oa-react-terminal-toolbar,
+  .oa-react-browser-toolbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 38px;
+  }
+  .oa-react-terminal-toolbar > div:last-child {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .oa-react-browser-address {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .oa-react-workspace-surface {
+    padding: 48px var(--en-spacing-3) var(--en-spacing-5);
+  }
+  .oa-react-settings-card {
+    padding: 12px;
+  }
+  .oa-react-settings-card > header,
+  .oa-react-connect-summary,
+  .oa-react-connect-pairing {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .oa-react-settings-table [role="row"] {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+  .oa-react-connect-notice {
+    margin: 0;
+  }
 }
 
 @media (forced-colors: active) {
   .oa-react-workbench button:focus-visible,
-  .oa-react-workbench [role="separator"]:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
-  .oa-react-connect-state { forced-color-adjust: none; background: CanvasText; box-shadow: none; }
+  .oa-react-workbench [role="separator"]:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .oa-react-connect-state {
+    forced-color-adjust: none;
+    background: CanvasText;
+    box-shadow: none;
+  }
 }
 
 /* -----------------------------------------------------------------------
@@ -3512,13 +5471,28 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-textMuted);
   font-family: var(--oa-font-mono);
   font-size: 10px;
-  letter-spacing: .06em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.oa-react-meter-empty { flex-direction: row; align-items: center; justify-content: space-between; color: var(--en-color-textFaint); }
-.oa-react-meter-row { display: flex; align-items: center; gap: 6px; }
-.oa-react-meter-label { flex: 0 0 auto; min-width: 56px; color: var(--en-color-textFaint); }
-.oa-react-meter-empty-state { color: var(--en-color-textFaint); }
+.oa-react-meter-empty {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--en-color-textFaint);
+}
+.oa-react-meter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.oa-react-meter-label {
+  flex: 0 0 auto;
+  min-width: 56px;
+  color: var(--en-color-textFaint);
+}
+.oa-react-meter-empty-state {
+  color: var(--en-color-textFaint);
+}
 .oa-react-meter-blocks {
   display: inline-flex;
   flex: 1 1 auto;
@@ -3533,12 +5507,26 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   border-radius: var(--en-radius-none);
   background: var(--en-color-borderStrong);
 }
-.oa-react-meter-blocks i[data-tone="dim"] { background: color-mix(in srgb, var(--en-color-accent) 25%, var(--en-color-borderStrong)); }
-.oa-react-meter-blocks i[data-tone="medium"] { background: color-mix(in srgb, var(--en-color-accent) 60%, var(--en-color-borderStrong)); }
-.oa-react-meter-blocks i[data-tone="bright"] { background: var(--en-color-accent); }
-.oa-react-meter-blocks i[data-danger="true"] { background: var(--en-color-danger); }
-.oa-react-meter-total { flex: 0 0 auto; color: var(--en-color-textMuted); white-space: nowrap; }
-.oa-react-meter-total[data-near-limit="true"] { color: var(--en-color-danger); }
+.oa-react-meter-blocks i[data-tone="dim"] {
+  background: color-mix(in srgb, var(--en-color-accent) 25%, var(--en-color-borderStrong));
+}
+.oa-react-meter-blocks i[data-tone="medium"] {
+  background: color-mix(in srgb, var(--en-color-accent) 60%, var(--en-color-borderStrong));
+}
+.oa-react-meter-blocks i[data-tone="bright"] {
+  background: var(--en-color-accent);
+}
+.oa-react-meter-blocks i[data-danger="true"] {
+  background: var(--en-color-danger);
+}
+.oa-react-meter-total {
+  flex: 0 0 auto;
+  color: var(--en-color-textMuted);
+  white-space: nowrap;
+}
+.oa-react-meter-total[data-near-limit="true"] {
+  color: var(--en-color-danger);
+}
 .oa-react-meter-breakdown {
   display: flex;
   flex-wrap: wrap;
@@ -3546,10 +5534,21 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   padding-left: 62px;
   color: var(--en-color-textFaint);
 }
-.oa-react-meter-breakdown span { display: inline-flex; align-items: baseline; gap: 4px; }
-.oa-react-meter-breakdown small { color: var(--en-color-textFaint); letter-spacing: .08em; }
-.oa-react-meter[data-historical="true"] { opacity: .82; }
-.oa-react-meter-row[data-rate-limited="true"] .oa-react-meter-label { color: var(--en-color-danger); }
+.oa-react-meter-breakdown span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.oa-react-meter-breakdown small {
+  color: var(--en-color-textFaint);
+  letter-spacing: 0.08em;
+}
+.oa-react-meter[data-historical="true"] {
+  opacity: 0.82;
+}
+.oa-react-meter-row[data-rate-limited="true"] .oa-react-meter-label {
+  color: var(--en-color-danger);
+}
 
 .oa-react-sidebar-meter .oa-react-meter {
   width: 100%;
@@ -3774,43 +5773,155 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 }
 /* IDE-04 daily-workbench chrome. Monaco owns text pixels; this shared React
    recipe layer owns typed navigation, tab/group state, and bounded overlays. */
-.oa-react-file-editor { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.oa-react-file-editor {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 .oa-react-file-tab-actions,
 .oa-react-files-create,
 .oa-react-editor-breadcrumbs,
 .oa-react-editor-settings,
-.oa-react-editor-outline { display: flex; align-items: center; gap: var(--en-spacing-2); }
-.oa-react-file-tab-actions { justify-content: flex-end; padding: var(--en-spacing-1) var(--en-spacing-2); border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-file-tabs { display: flex; min-width: 0; overflow-x: auto; border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-file-tabs > [role="tab"] { display: flex; align-items: stretch; flex: 0 0 auto; border-right: 1px solid var(--en-color-borderSubtle); }
-.oa-react-file-tabs > [role="tab"][aria-selected="true"] { background: var(--en-color-surfaceElevated); }
-.oa-react-file-tabs button { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 5px; color: inherit; background: transparent; border: 0; }
-.oa-react-file-tabs button:first-child { padding-inline: var(--en-spacing-2); }
-.oa-react-file-tabs button:first-child[data-tab-mode="preview"] { font-style: italic; opacity: .78; }
-.oa-react-file-tabs svg { width: 13px; height: 13px; }
-.oa-react-editor-breadcrumbs { min-height: 28px; padding-inline: var(--en-spacing-3); overflow: hidden; color: var(--en-color-textMuted); white-space: nowrap; }
-.oa-react-editor-breadcrumbs span { display: inline-flex; align-items: center; gap: 3px; }
-.oa-react-editor-breadcrumbs svg { width: 12px; }
-.oa-react-quick-open { position: absolute; z-index: 40; top: 52px; left: 50%; width: min(680px, calc(100% - 32px)); max-height: min(520px, 70vh); overflow: auto; transform: translateX(-50%); background: var(--en-color-surfaceOverlay); border: 1px solid var(--en-color-borderStrong); border-radius: var(--en-radius-lg); box-shadow: var(--en-elevation-overlay-shadow); }
+.oa-react-editor-outline {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+.oa-react-file-tab-actions {
+  justify-content: flex-end;
+  padding: var(--en-spacing-1) var(--en-spacing-2);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-file-tabs {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-file-tabs > [role="tab"] {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  border-right: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-file-tabs > [role="tab"][aria-selected="true"] {
+  background: var(--en-color-surfaceElevated);
+}
+.oa-react-file-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 5px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+}
+.oa-react-file-tabs button:first-child {
+  padding-inline: var(--en-spacing-2);
+}
+.oa-react-file-tabs button:first-child[data-tab-mode="preview"] {
+  font-style: italic;
+  opacity: 0.78;
+}
+.oa-react-file-tabs svg {
+  width: 13px;
+  height: 13px;
+}
+.oa-react-editor-breadcrumbs {
+  min-height: 28px;
+  padding-inline: var(--en-spacing-3);
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  white-space: nowrap;
+}
+.oa-react-editor-breadcrumbs span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.oa-react-editor-breadcrumbs svg {
+  width: 12px;
+}
+.oa-react-quick-open {
+  position: absolute;
+  z-index: 40;
+  top: 52px;
+  left: 50%;
+  width: min(680px, calc(100% - 32px));
+  max-height: min(520px, 70vh);
+  overflow: auto;
+  transform: translateX(-50%);
+  background: var(--en-color-surfaceOverlay);
+  border: 1px solid var(--en-color-borderStrong);
+  border-radius: var(--en-radius-lg);
+  box-shadow: var(--en-elevation-overlay-shadow);
+}
 .oa-react-quick-open > div,
-.oa-react-quick-open button { display: flex; align-items: center; gap: var(--en-spacing-2); width: 100%; }
-.oa-react-quick-open > div { padding: var(--en-spacing-2); }
-.oa-react-quick-open ol { margin: 0; padding: 0; list-style: none; }
-.oa-react-quick-open li button { justify-content: flex-start; padding: var(--en-spacing-2) var(--en-spacing-3); color: inherit; background: transparent; border: 0; text-align: left; }
+.oa-react-quick-open button {
+  display: flex;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  width: 100%;
+}
+.oa-react-quick-open > div {
+  padding: var(--en-spacing-2);
+}
+.oa-react-quick-open ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.oa-react-quick-open li button {
+  justify-content: flex-start;
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
 .oa-react-quick-open li button:hover,
-.oa-react-quick-open li button[aria-current="true"] { background: var(--en-color-surfaceHover); }
-.oa-react-quick-open li span { flex: 1; }
-.oa-react-quick-open li small { color: var(--en-color-textMuted); }
-.oa-react-editor-settings { flex-wrap: wrap; padding: var(--en-spacing-2) var(--en-spacing-3); border-block: 1px solid var(--en-color-borderSubtle); background: var(--en-color-surfaceSubtle); }
-.oa-react-editor-settings label { display: inline-flex; align-items: center; gap: var(--en-spacing-1); }
-.oa-react-editor-outline { min-height: 28px; padding-inline: var(--en-spacing-3); color: var(--en-color-textMuted); border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-editor-outline strong { color: var(--en-color-text); }
-.oa-react-files-create { padding: var(--en-spacing-2); }
+.oa-react-quick-open li button[aria-current="true"] {
+  background: var(--en-color-surfaceHover);
+}
+.oa-react-quick-open li span {
+  flex: 1;
+}
+.oa-react-quick-open li small {
+  color: var(--en-color-textMuted);
+}
+.oa-react-editor-settings {
+  flex-wrap: wrap;
+  padding: var(--en-spacing-2) var(--en-spacing-3);
+  border-block: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-surfaceSubtle);
+}
+.oa-react-editor-settings label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--en-spacing-1);
+}
+.oa-react-editor-outline {
+  min-height: 28px;
+  padding-inline: var(--en-spacing-3);
+  color: var(--en-color-textMuted);
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-editor-outline strong {
+  color: var(--en-color-text);
+}
+.oa-react-files-create {
+  padding: var(--en-spacing-2);
+}
 
 /* IDE-06: project-language evidence is dense workbench chrome, not a second
    editor. Exact-generation results share Outline, Problems, breadcrumbs, and
    Monaco while document-local worker truth stays visible in the status bar. */
-.oa-react-file-editor { display: flex; flex-direction: column; }
+.oa-react-file-editor {
+  display: flex;
+  flex-direction: column;
+}
 .oa-react-file-tab-actions,
 .oa-react-file-tabs,
 .oa-react-editor-breadcrumbs,
@@ -3818,54 +5929,251 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-editor-settings,
 .oa-react-editor-save-as,
 .oa-react-editor-conflict,
-.oa-react-language-panel { flex: 0 0 auto; }
-.oa-react-editor-toolbar > div { overflow-x: auto; }
-.oa-react-language-status { max-width: 190px; overflow: hidden; padding-inline: 6px; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-language-status[data-language-service="ready"] { color: var(--en-color-success); }
-.oa-react-language-status:is([data-language-service="degraded"], [data-language-service="failed"]) { color: var(--en-color-warning); }
-.oa-react-editor-work-area { display: grid; grid-template-columns: 190px minmax(0, 1fr); min-width: 0; min-height: 140px; flex: 1 1 auto; overflow: hidden; }
-.oa-react-editor-outline { display: flex; min-width: 0; min-height: 0; flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; border-right: 1px solid var(--en-color-borderSubtle); border-bottom: 0; background: var(--en-color-surfaceSubtle); }
-.oa-react-editor-outline > header { display: grid; gap: 4px; padding: 6px; border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-editor-outline input { height: 24px; font-size: 10px; }
-.oa-react-editor-outline > p { margin: 8px; color: var(--en-color-textMuted); font-size: 10px; line-height: 1.4; }
+.oa-react-language-panel {
+  flex: 0 0 auto;
+}
+.oa-react-editor-toolbar > div {
+  overflow-x: auto;
+}
+.oa-react-language-status {
+  max-width: 190px;
+  overflow: hidden;
+  padding-inline: 6px;
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-language-status[data-language-service="ready"] {
+  color: var(--en-color-success);
+}
+.oa-react-language-status:is([data-language-service="degraded"], [data-language-service="failed"]) {
+  color: var(--en-color-warning);
+}
+.oa-react-editor-work-area {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 140px;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.oa-react-editor-outline {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--en-color-borderSubtle);
+  border-bottom: 0;
+  background: var(--en-color-surfaceSubtle);
+}
+.oa-react-editor-outline > header {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-editor-outline input {
+  height: 24px;
+  font-size: 10px;
+}
+.oa-react-editor-outline > p {
+  margin: 8px;
+  color: var(--en-color-textMuted);
+  font-size: 10px;
+  line-height: 1.4;
+}
 .oa-react-editor-outline ol,
-.oa-react-problems-list ol { min-height: 0; margin: 0; padding: 0; overflow: auto; list-style: none; }
-.oa-react-editor-outline ol { flex: 1 1 auto; }
+.oa-react-problems-list ol {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.oa-react-editor-outline ol {
+  flex: 1 1 auto;
+}
 .oa-react-editor-outline li button,
-.oa-react-problems-list li button { display: flex; width: 100%; min-width: 0; align-items: center; gap: 6px; border: 0; color: var(--en-color-textSecondary); background: transparent; font-size: 10px; text-align: left; }
-.oa-react-editor-outline li button { min-height: 24px; padding-block: 2px; padding-right: 6px; }
+.oa-react-problems-list li button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  color: var(--en-color-textSecondary);
+  background: transparent;
+  font-size: 10px;
+  text-align: left;
+}
+.oa-react-editor-outline li button {
+  min-height: 24px;
+  padding-block: 2px;
+  padding-right: 6px;
+}
 .oa-react-editor-outline li button:is(:hover, :focus-visible),
 .oa-react-editor-outline li button[aria-current="true"],
 .oa-react-problems-list li button:is(:hover, :focus-visible),
-.oa-react-problems-list li button[aria-current="true"] { color: var(--en-color-textPrimary); outline: 1px solid var(--en-color-focusRing); outline-offset: -1px; background: var(--en-color-stateHover); }
-.oa-react-editor-outline li span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-editor-outline li small { color: var(--en-color-textMuted); font-size: 9px; }
-.oa-react-language-panel { min-height: 112px; max-height: min(220px, 30vh); overflow: hidden; border-top: 1px solid var(--en-color-borderStrong); background: var(--en-color-surface); }
-.oa-react-language-panel > header { display: flex; min-height: 27px; align-items: center; gap: 4px; padding-inline: 7px; border-bottom: 1px solid var(--en-color-borderSubtle); }
-.oa-react-language-panel > header strong { margin-right: 4px; font-size: 10px; }
-.oa-react-language-panel > header button { min-height: 20px; padding: 1px 6px; border: 0; color: var(--en-color-textMuted); background: transparent; font-size: 9px; }
-.oa-react-language-panel > header button[aria-pressed="true"] { color: var(--en-color-textPrimary); background: var(--en-color-stateSelected); }
-.oa-react-language-panel > header span { margin-left: auto; color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 9px; }
-.oa-react-language-panel-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 34%); min-height: 0; height: calc(100% - 27px); }
-.oa-react-problems-list { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid var(--en-color-borderSubtle); }
-.oa-react-problems-list > p { margin: 8px; color: var(--en-color-textMuted); font-size: 10px; }
-.oa-react-problems-list li button { min-height: 25px; padding: 3px 7px; }
-.oa-react-problems-list li b { width: 15px; flex: 0 0 auto; color: var(--en-color-danger); font-family: var(--oa-font-mono); font-size: 9px; }
-.oa-react-problems-list li span { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-problems-list li small { color: var(--en-color-textMuted); font-family: var(--oa-font-mono); font-size: 9px; }
-.oa-react-language-actions { min-width: 0; min-height: 0; padding: 5px; overflow: auto; color: var(--en-color-textMuted); font-size: 9px; }
+.oa-react-problems-list li button[aria-current="true"] {
+  color: var(--en-color-textPrimary);
+  outline: 1px solid var(--en-color-focusRing);
+  outline-offset: -1px;
+  background: var(--en-color-stateHover);
+}
+.oa-react-editor-outline li span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-editor-outline li small {
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
+.oa-react-language-panel {
+  min-height: 112px;
+  max-height: min(220px, 30vh);
+  overflow: hidden;
+  border-top: 1px solid var(--en-color-borderStrong);
+  background: var(--en-color-surface);
+}
+.oa-react-language-panel > header {
+  display: flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 7px;
+  border-bottom: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-language-panel > header strong {
+  margin-right: 4px;
+  font-size: 10px;
+}
+.oa-react-language-panel > header button {
+  min-height: 20px;
+  padding: 1px 6px;
+  border: 0;
+  color: var(--en-color-textMuted);
+  background: transparent;
+  font-size: 9px;
+}
+.oa-react-language-panel > header button[aria-pressed="true"] {
+  color: var(--en-color-textPrimary);
+  background: var(--en-color-stateSelected);
+}
+.oa-react-language-panel > header span {
+  margin-left: auto;
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 9px;
+}
+.oa-react-language-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 34%);
+  min-height: 0;
+  height: calc(100% - 27px);
+}
+.oa-react-problems-list {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-problems-list > p {
+  margin: 8px;
+  color: var(--en-color-textMuted);
+  font-size: 10px;
+}
+.oa-react-problems-list li button {
+  min-height: 25px;
+  padding: 3px 7px;
+}
+.oa-react-problems-list li b {
+  width: 15px;
+  flex: 0 0 auto;
+  color: var(--en-color-danger);
+  font-family: var(--oa-font-mono);
+  font-size: 9px;
+}
+.oa-react-problems-list li span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-problems-list li small {
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 9px;
+}
+.oa-react-language-actions {
+  min-width: 0;
+  min-height: 0;
+  padding: 5px;
+  overflow: auto;
+  color: var(--en-color-textMuted);
+  font-size: 9px;
+}
 .oa-react-language-actions form,
-.oa-react-language-edit-preview { display: flex; align-items: center; gap: 4px; }
-.oa-react-language-actions input { min-width: 80px; height: 24px; flex: 1 1 auto; font-size: 10px; }
-.oa-react-language-edit-preview { justify-content: space-between; padding-block: 4px; }
-.oa-react-language-actions > div:not(.oa-react-language-edit-preview) { display: grid; gap: 2px; padding-top: 4px; border-top: 1px solid var(--en-color-borderSubtle); }
-.oa-react-language-actions > div > button { overflow: hidden; padding: 2px 4px; border: 0; color: var(--en-color-textSecondary); background: transparent; font-family: var(--oa-font-mono); font-size: 9px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.oa-react-language-actions > div > button:is(:hover, :focus-visible) { color: var(--en-color-textPrimary); outline: 1px solid var(--en-color-focusRing); background: var(--en-color-stateHover); }
+.oa-react-language-edit-preview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.oa-react-language-actions input {
+  min-width: 80px;
+  height: 24px;
+  flex: 1 1 auto;
+  font-size: 10px;
+}
+.oa-react-language-edit-preview {
+  justify-content: space-between;
+  padding-block: 4px;
+}
+.oa-react-language-actions > div:not(.oa-react-language-edit-preview) {
+  display: grid;
+  gap: 2px;
+  padding-top: 4px;
+  border-top: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-language-actions > div > button {
+  overflow: hidden;
+  padding: 2px 4px;
+  border: 0;
+  color: var(--en-color-textSecondary);
+  background: transparent;
+  font-family: var(--oa-font-mono);
+  font-size: 9px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-language-actions > div > button:is(:hover, :focus-visible) {
+  color: var(--en-color-textPrimary);
+  outline: 1px solid var(--en-color-focusRing);
+  background: var(--en-color-stateHover);
+}
 @media (max-width: 880px) {
-  .oa-react-editor-work-area { grid-template-columns: minmax(0, 1fr); }
-  .oa-react-editor-outline { display: none; }
-  .oa-react-language-panel-grid { grid-template-columns: minmax(0, 1fr); }
-  .oa-react-language-actions { display: none; }
+  .oa-react-editor-work-area {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .oa-react-editor-outline {
+    display: none;
+  }
+  .oa-react-language-panel-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .oa-react-language-actions {
+    display: none;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -3905,7 +6213,9 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 /* The command PREVIEW in a card heading is a shell command — keep it mono
  * (the base rule uses the inherited font, which would fall back to the sans
  * heading face). */
-.oa-react-event-heading code { font-family: var(--oa-font-mono); }
+.oa-react-event-heading code {
+  font-family: var(--oa-font-mono);
+}
 
 /* Code BLOCKS stay mono regardless of the surrounding UI font. These `<pre>`
  * regions (command output, tool-result body, and any protocol-detail pre) use
