@@ -21,6 +21,7 @@ const MAX_OPERATION_RECORDS: usize = 128;
 const MAX_CAPABILITY_REFS: usize = 32;
 const MAX_TTL_MS: u64 = 24 * 60 * 60 * 1_000;
 const GCE_METADATA_SERVER_CIDR: &str = "169.254.169.254/32";
+const GUEST_IO_EXECUTABLE: &str = "/opt/openagents-managed-sandbox/managed-sandbox-guest-io.py";
 const LIVE_ACTIVE_SANDBOX_FILTER: &str =
     "labels.openagents-managed=managed-sandbox AND status!=TERMINATED";
 
@@ -1016,6 +1017,28 @@ struct LiveGceManagedSandboxProvider {
     config: LiveGceManagedSandboxConfig,
 }
 
+fn guest_io_probe_args(project_id: &str, zone: &str, resource_name: &str) -> Vec<String> {
+    vec![
+        "compute".to_string(),
+        "ssh".to_string(),
+        format!("openagents@{resource_name}"),
+        "--project".to_string(),
+        project_id.to_string(),
+        "--zone".to_string(),
+        zone.to_string(),
+        "--internal-ip".to_string(),
+        "--quiet".to_string(),
+        "--ssh-key-expiration=10m".to_string(),
+        "--ssh-flag=-oBatchMode=yes".to_string(),
+        "--ssh-flag=-oConnectTimeout=5".to_string(),
+        "--ssh-flag=-oConnectionAttempts=1".to_string(),
+        "--ssh-flag=-oStrictHostKeyChecking=no".to_string(),
+        "--ssh-flag=-oUserKnownHostsFile=/dev/null".to_string(),
+        "--command".to_string(),
+        format!("test -x {GUEST_IO_EXECUTABLE} && test -d /workspace"),
+    ]
+}
+
 fn egress_tcp_allow_is_scoped(
     firewall: &Value,
     destination_cidr: &str,
@@ -1198,8 +1221,17 @@ impl LiveGceManagedSandboxProvider {
             ownership.resource_ref, ownership.disk_ref, generation
         ));
         format!(
-            "#!/bin/sh\nset -eu\numask 077\n/usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT\nprintf 'OA_MSB_READY:{marker}:{generation}\\n' >/dev/ttyS0\nprintf 'OA_MSB_PROBE:{marker}:{generation}\\n' >/dev/ttyS0\n"
+            "#!/bin/sh\nset -eu\numask 077\nfor _ in $(seq 1 60); do\n  if /bin/systemctl is-active --quiet ssh.service && test -x {GUEST_IO_EXECUTABLE}; then break; fi\n  sleep 1\ndone\n/bin/systemctl is-active --quiet ssh.service\ntest -x {GUEST_IO_EXECUTABLE}\n/usr/sbin/iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT\nprintf 'OA_MSB_READY:{marker}:{generation}\\n' >/dev/ttyS0\nprintf 'OA_MSB_PROBE:{marker}:{generation}\\n' >/dev/ttyS0\n"
         )
+    }
+
+    fn guest_io_ready_once(&self, ownership: &ProviderOwnership) -> bool {
+        self.gcloud(&guest_io_probe_args(
+            &self.config.project_id,
+            &self.config.zone,
+            &ownership.resource_name,
+        ))
+        .is_ok()
     }
 
     fn marker(ownership: &ProviderOwnership, generation: u64, kind: &str) -> String {
@@ -1375,12 +1407,15 @@ impl LiveGceManagedSandboxProvider {
             if self
                 .serial_contains_marker(ownership, generation, "READY")
                 .unwrap_or(false)
+                && self.guest_io_ready_once(ownership)
             {
                 return self.observe(ownership, generation, "READY");
             }
             thread::sleep(Duration::from_secs(2));
         }
-        self.observe(ownership, generation, "READY")
+        let mut observation = self.observe(ownership, generation, "READY")?;
+        observation.guest_marker_observed &= self.guest_io_ready_once(ownership);
+        Ok(observation)
     }
 
     fn count_named(
@@ -2117,6 +2152,24 @@ mod tests {
     }
 
     #[test]
+    fn live_readiness_probes_the_exact_guest_io_path_over_internal_ssh() {
+        let args = guest_io_probe_args("project-1", "us-central1-a", "oa-msb-generation");
+        assert_eq!(
+            &args[..3],
+            ["compute", "ssh", "openagents@oa-msb-generation"]
+        );
+        assert!(args.contains(&"--internal-ip".to_string()));
+        assert!(args.contains(&"--ssh-flag=-oBatchMode=yes".to_string()));
+        assert!(args.contains(&"--ssh-flag=-oConnectTimeout=5".to_string()));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some(
+                "test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py && test -d /workspace"
+            )
+        );
+    }
+
+    #[test]
     fn metadata_egress_requires_exact_link_local_v1_path() {
         let metadata = json!({
             "direction": "EGRESS",
@@ -2156,6 +2209,9 @@ mod tests {
         assert!(startup.contains(
             "iptables -C OUTPUT -d 169.254.169.254/32 -m owner --uid-owner openagents -j REJECT"
         ));
+        assert!(startup.contains("systemctl is-active --quiet ssh.service"));
+        assert!(startup.contains(GUEST_IO_EXECUTABLE));
+        assert!(startup.find("ssh.service").unwrap() < startup.find("OA_MSB_READY").unwrap());
         assert!(startup.find("iptables -C").unwrap() < startup.find("OA_MSB_READY").unwrap());
     }
 
