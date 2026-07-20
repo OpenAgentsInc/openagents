@@ -3960,3 +3960,8 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
 .oa-react-boot-line[data-kind="summary"] {
   margin-top: var(--en-spacing-1);
 }
+
+.oa-react-boot-line[data-kind="test-inference"] {
+  padding-left: calc(1ch + 8px);
+  color: var(--en-color-textFaint);
+}

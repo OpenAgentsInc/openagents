@@ -362,6 +362,17 @@ export type HarnessLanes = Readonly<{
   codex: HarnessLaneAvailability
 }>
 
+/**
+ * Boot Sequence Apple FM discovery result (owner directive 2026-07-20).
+ * `status` mirrors the scan states; `testInference` is the bounded reply text
+ * from the one on-open test turn when Apple FM is discovered ready.
+ */
+export type AppleFmBootState = Readonly<{
+  status: "checking" | "available" | "unavailable"
+  detail: string | null
+  testInference: string | null
+}>
+
 export type ComposerReviewContext = Readonly<{
   repositoryRef: string
   statusRef: string
@@ -514,6 +525,13 @@ export type DesktopShellState = Readonly<{
   harnessLanes: HarnessLanes
   /** Main-owned, policy-intersected L2 capability truth for each lane. */
   providerLaneCapabilities: ReadonlyArray<ProviderLaneComposerProjection>
+  /**
+   * Apple FM discovery for the Boot Sequence (owner directive 2026-07-20). The
+   * renderer boot orchestrator probes the native Apple FM bridge on startup and,
+   * when it reports ready, runs one bounded test inference. `undefined` means
+   * "not yet probed" (the scan shows "checking"); the projection reads it.
+   */
+  appleFmBoot?: AppleFmBootState
   threads: ReadonlyArray<DesktopThread>
   activeThreadId: string | null
   /**

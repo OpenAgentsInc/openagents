@@ -233,11 +233,13 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "When the app opens, show a neutral terminal-style scan (monospace, small, faded) that checks which agents are available — Codex, Claude Code, Grok, Apple FM — and keep track of the discovered harnesses so the system knows it can use them.",
         authorityBoundary:
-          "The Boot Sequence is a pure PROJECTION over the discovery state the shell already owns: harnessLanes for the built-in codex/fable transports and providerLaneCapabilities for admitted ACP peers. It invents no discovery authority — an agent is 'available' only when its lane reports it can run a turn, 'checking' while verifying, otherwise 'unavailable'. Apple FM is listed as a known target the desktop does not yet detect (mobile-only bridge today). The surface renders in the empty conversation, reflects live state as lanes resolve, and communicates results without granting any run, spend, or admission authority of its own.",
+          "The Boot Sequence is a PROJECTION over the discovery state the shell owns: harnessLanes for the built-in codex/fable transports, providerLaneCapabilities for admitted ACP peers, and appleFmBoot for the native Apple FM bridge. It invents no discovery authority — an agent is 'available' only when its lane/bridge reports it can run a turn, 'checking' while probing, otherwise 'unavailable'. On open the renderer boot orchestrator probes the Apple FM native bridge (AFM-6) and, only when it reports ready, runs ONE bounded test inference and shows the bounded reply — proving the on-device model actually answers. The surface renders in the empty conversation, reflects live state as lanes and the Apple FM probe resolve, and communicates results without granting any run, spend, or admission authority of its own.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/boot-sequence.ts",
           "apps/openagents-desktop/src/renderer/react-boot-sequence.tsx",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "apps/openagents-desktop/src/renderer/boot.ts",
+          "apps/openagents-desktop/src/apple-fm-contract.ts",
           "apps/openagents-desktop/src/renderer/boot-sequence.test.ts",
           "packages/ui/src/desktop-workbench.css",
         ],
@@ -248,7 +250,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/boot-sequence.test.ts",
             description:
-              "Proves the scan projects the curated Codex/Claude Code/Grok/Apple FM order, maps a verifying lane to 'checking', a ready lane to 'available' with its model, an admitted Grok ACP lane to 'available', a quarantined lane and Apple FM to 'unavailable', and derives ready-count/scanning from those lines.",
+              "Proves the scan projects the curated Codex/Claude Code/Grok/Apple FM order, maps a verifying lane to 'checking', a ready lane to 'available' with its model, an admitted Grok ACP lane to 'available', a quarantined lane to 'unavailable', reflects Apple FM live discovery (unprobed → 'checking', ready → 'available' with its bounded test inference, else 'unavailable'), and derives ready-count/scanning from those lines.",
           },
           {
             id: "boot_sequence.renders_in_empty_conversation",

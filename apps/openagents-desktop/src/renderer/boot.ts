@@ -114,7 +114,8 @@ import {
   makeLocalHarnessChatHost,
   type FableLocalRendererBridge,
 } from "./local-harness.ts"
-import { withHarnessLanes, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
+import { withHarnessLanes, type AppleFmBootState, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
+import type { AppleFmStartTurnRequest, AppleFmStatus, AppleFmStopResult, AppleFmTurnResult } from "../apple-fm-contract.ts"
 import { unavailableFullAutoRunOutcome, type FullAutoRunRendererHost } from "../full-auto-run-ipc-contract.ts"
 import { decodeProviderLaneComposerProjections } from "../provider-lane-capabilities.ts"
 import {
@@ -190,6 +191,13 @@ type DesktopBridge = Readonly<{
   platform: string
   smokeProviderTurns?: boolean
   launchContext?: unknown
+  /** Apple FM native bridge (AFM-6 #9075). Optional across dev preload rolls. */
+  appleFm?: Readonly<{
+    status?: () => Promise<AppleFmStatus>
+    refresh?: () => Promise<AppleFmStatus>
+    startTurn?: (request: AppleFmStartTurnRequest) => Promise<AppleFmTurnResult>
+    stop?: () => Promise<AppleFmStopResult>
+  }>
   runtimeRequest?: (value: unknown) => Promise<DesktopRuntimeGatewayResponse>
   runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
   controlOutcomes?: Readonly<{
@@ -1268,6 +1276,31 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       ...current,
       questionAnswerHostAvailable: questionHost.answer !== null,
     }))
+    // Apple FM discovery for the Boot Sequence (owner directive 2026-07-20):
+    // probe the native bridge and, when it reports ready, run one bounded test
+    // inference so the scan proves Apple FM actually answers. Non-blocking — the
+    // shell mounts immediately and the scan updates when evidence lands.
+    void (async () => {
+      const setBoot = (boot: AppleFmBootState): Promise<unknown> =>
+        Effect.runPromise(SubscriptionRef.update(state, current => ({ ...current, appleFmBoot: boot })))
+      const appleFm = readBridge()?.appleFm
+      if (appleFm?.status === undefined) {
+        await setBoot({ status: "unavailable", detail: "bridge unavailable", testInference: null })
+        return
+      }
+      const status = await appleFm.status().catch(() => null)
+      if (status === null || !status.ready) {
+        await setBoot({ status: "unavailable", detail: status?.unavailableReason ?? "not detected", testInference: null })
+        return
+      }
+      const detail = status.model ?? status.mode
+      await setBoot({ status: "available", detail, testInference: null })
+      const turn = await appleFm.startTurn?.({ prompt: "Reply in one short sentence to confirm you are online." })
+        .catch(() => null)
+      if (turn != null && turn.outcome === "completed" && turn.text !== null) {
+        await setBoot({ status: "available", detail, testInference: turn.text.trim().slice(0, 200) })
+      }
+    })().catch(() => {})
     let historyRequestSequence = 0
     const restoreHistory = (): { selectedThreadRef:string;offset:number;selectedItemRef:string|null;railCollapsed:boolean;expandedThreadRefs:ReadonlyArray<string> } | null => { try { const value=JSON.parse(localStorage.getItem("openagents.desktop.history.v1")??"null");return value&&typeof value.selectedThreadRef==="string"&&Number.isInteger(value.offset)&&value.offset>=0&&value.offset<=1_000_000&&typeof value.railCollapsed==="boolean"&&(value.selectedItemRef===null||typeof value.selectedItemRef==="string")&&Array.isArray(value.expandedThreadRefs)&&value.expandedThreadRefs.every((ref:unknown)=>typeof ref==="string")?value:null } catch{return null} }
     const historyHost = {

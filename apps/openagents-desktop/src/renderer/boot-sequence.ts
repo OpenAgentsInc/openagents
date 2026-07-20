@@ -21,6 +21,8 @@ export type BootSequenceAgentLine = Readonly<{
   status: BootSequenceStatus
   /** Model id, provider label, or the reason it is unavailable. */
   detail: string | null
+  /** Bounded reply from the on-open test inference (Apple FM only, when ready). */
+  testInference?: string | null
 }>
 
 const laneStatus = (lane: HarnessLaneAvailability): BootSequenceStatus =>
@@ -83,8 +85,12 @@ export const projectBootSequenceAgents = (
     {
       id: "apple-fm",
       label: "Apple FM",
-      status: "unavailable",
-      detail: "not available on desktop",
+      status: state.appleFmBoot?.status ?? "checking",
+      detail:
+        state.appleFmBoot === undefined
+          ? "checking on-device model…"
+          : state.appleFmBoot.detail,
+      testInference: state.appleFmBoot?.testInference ?? null,
     },
   ]
 }

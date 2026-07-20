@@ -62,7 +62,7 @@ describe("boot sequence agent scan", () => {
     expect(codex?.detail).toBe("gpt-5.6-sol")
   })
 
-  test("an admitted Grok ACP lane is available; Apple FM is always unavailable on desktop", () => {
+  test("an admitted Grok ACP lane is available", () => {
     const agents = projectBootSequenceAgents(
       withState({
         providerLaneCapabilities: [
@@ -71,8 +71,24 @@ describe("boot sequence agent scan", () => {
       }),
     )
     expect(agents.find((agent) => agent.id === "grok")?.status).toBe("available")
-    expect(agents.find((agent) => agent.id === "apple-fm")?.status).toBe("unavailable")
-    expect(agents.find((agent) => agent.id === "apple-fm")?.detail).toBe("not available on desktop")
+  })
+
+  test("Apple FM reflects live discovery: unprobed → checking, ready → available with its test inference", () => {
+    const unprobed = projectBootSequenceAgents(base).find((agent) => agent.id === "apple-fm")
+    expect(unprobed?.status).toBe("checking")
+
+    const unavailable = projectBootSequenceAgents(
+      withState({ appleFmBoot: { status: "unavailable", detail: "unsupported_hardware", testInference: null } }),
+    ).find((agent) => agent.id === "apple-fm")
+    expect(unavailable?.status).toBe("unavailable")
+    expect(unavailable?.detail).toBe("unsupported_hardware")
+
+    const ready = projectBootSequenceAgents(
+      withState({ appleFmBoot: { status: "available", detail: "apple-fm-3b", testInference: "I am online." } }),
+    ).find((agent) => agent.id === "apple-fm")
+    expect(ready?.status).toBe("available")
+    expect(ready?.detail).toBe("apple-fm-3b")
+    expect(ready?.testInference).toBe("I am online.")
   })
 
   test("a quarantined Grok lane is not counted as available", () => {
