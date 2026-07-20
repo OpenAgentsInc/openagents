@@ -1,4 +1,4 @@
-import { Fragment, type ReactElement } from "react"
+import { type ReactElement } from "react"
 
 import {
   bootSequenceReadyCount,
@@ -29,22 +29,14 @@ export const ReactBootSequence = ({
         <li className="oa-react-boot-line" data-kind="banner">Initializing OpenAgents</li>
         <li className="oa-react-boot-line" data-kind="scan">scanning for available agents</li>
         {agents.map((agent) => (
-          <Fragment key={agent.id}>
-            <li className="oa-react-boot-line" data-kind="agent" data-status={agent.status}>
-              <span aria-hidden="true" className="oa-react-boot-glyph">{statusGlyph(agent.status)}</span>
-              <span className="oa-react-boot-label">{agent.label}</span>
-              {agent.detail === null ? null : <span className="oa-react-boot-detail">{agent.detail}</span>}
-              <span className="sr-only">
-                {agent.status === "available" ? "available" : agent.status === "checking" ? "checking" : "unavailable"}
-              </span>
-            </li>
-            {agent.testInference === null || agent.testInference === undefined ? null : (
-              <li className="oa-react-boot-line" data-kind="test-inference">
-                <span aria-hidden="true" className="oa-react-boot-glyph">↳</span>
-                <span className="oa-react-boot-detail">Inference test: {agent.testInference}</span>
-              </li>
-            )}
-          </Fragment>
+          <li key={agent.id} className="oa-react-boot-line" data-kind="agent" data-status={agent.status}>
+            <span aria-hidden="true" className="oa-react-boot-glyph">{statusGlyph(agent.status)}</span>
+            <span className="oa-react-boot-label">{agent.label}</span>
+            {agent.detail === null ? null : <span className="oa-react-boot-detail">{agent.detail}</span>}
+            <span className="sr-only">
+              {agent.status === "available" ? "available" : agent.status === "checking" ? "checking" : "unavailable"}
+            </span>
+          </li>
         ))}
         <li aria-live="polite" className="oa-react-boot-line" data-kind="summary" role="status">
           {scanning ? "scanning…" : `${ready} ${ready === 1 ? "agent" : "agents"} ready`}
