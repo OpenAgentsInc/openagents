@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "89957ce7ccb62cdb3a774d0db913291320bc4e85fa022e57075fe88797329149",
+      "sha256": "bbc49e69f2d2c0416ea7ee40918c863c8dab524bb30848d4f7c7a8948cfd4005",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -924,7 +924,7 @@
     },
     {
       "path": "apps/openagents-desktop/docs/design-ports.md",
-      "sha256": "4c89fa45d6f7df9fad3ddc49d22aab9c14bf9613285f5d256a343c1a1572e355",
+      "sha256": "ca19e6ba9f75061196bb8237922b8f85b5666447b0bac56eacc331770a214112",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -751,18 +751,27 @@ More specific invariant ledgers apply inside imported apps and packages.
   `linux-{arm64,x64}`. Stable and RC are separate application identities and
   state roots. Exactly one version/source revision must converge across all
   required target/format cells before atomic promotion, a declared maker,
-  runner, candidate, or download is not a support claim. The intended
+  runner, candidate, or download is not a support claim. Owner amendment
+  2026-07-20 (#8920) makes `win32-x64` an OPTIONAL experimental cell that is not
+  required for convergence or atomic promotion. The required cells are
+  `darwin-{arm64,x64}` and `linux-{arm64,x64}`, and Windows x64 ships only as an
+  unsigned experimental portable excluded from the signed ReleaseSet. The intended
   automated boundaries are the ReleaseSet schema/canonicalization/signature
   tests, channel/state identity model, target staging/component-ledger gates,
   coordinator convergence model, and download resolver contract. The release
   boundary is the signed ReleaseSet plus native per-target install/update/
   rollback-or-explicit-no-rollback receipts and one promotion receipt.
-- (DIST-01, #8914) Desktop production signing has no unsigned fallback on any
-  platform. macOS retains its app+nested-code+DMG Developer ID, notarization,
-  staple, and Gatekeeper gates, Windows requires `Valid` Authenticode from
-  exactly `OpenAgents, Inc.` for the installer and executable payload before
-  publication and install, Linux packages remain gated by the signed
-  ReleaseSet digest/length and native package/payload oracles. Credential-
+- (DIST-01, #8914) Desktop production signing has no unsigned fallback on macOS or
+  Linux. macOS retains its app+nested-code+DMG Developer ID, notarization,
+  staple, and Gatekeeper gates, Linux packages remain gated by the signed
+  ReleaseSet digest/length and native package/payload oracles. Owner amendment
+  2026-07-20 (#8920) removes the Windows Authenticode and Azure Trusted Signing
+  requirement. Windows x64 ships only as an unsigned experimental portable that
+  is excluded from the signed ReleaseSet, promotion, and auto-update and makes
+  no support claim. A future signed Windows path needs its own issue and would
+  restore a `Valid` Authenticode from exactly `OpenAgents, Inc.` gate before
+  publication and install. Making `win32-x64` optional in the ReleaseSet schema
+  and coordinator required-cells is a tracked code follow-up. Credential-
   absence, unsigned-marker, wrong-publisher, foreign-architecture, and
   unledgered-component tests are the intended automated boundary, native
   downloaded-artifact receipts are the release boundary.
