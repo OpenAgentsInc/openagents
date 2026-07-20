@@ -46284,6 +46284,24 @@
       }
     },
     {
+      "path": "packages/apple-fm-runtime/native/foundation-bridge/README.md",
+      "sha256": "600a60b430d52cce1b668b6a8c9f1a02aa70244d36818a01a80c63c5c84f7818",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "packages/arbiter-effect/README.md",
       "sha256": "d5201e6a43b0679f570cf5d1389bb6929fcf6f5352a6ddd15af9922649c8e566",
       "reason": "Final review of a converted document",
@@ -47141,6 +47159,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/dse/README.md",
+      "sha256": "554009a3c39d6c587f4c27a5c3a49432c467d303b26ad18f12a230168e23e89d",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {

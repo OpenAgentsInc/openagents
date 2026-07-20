@@ -1858,6 +1858,19 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/dse:
+    dependencies:
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../agent-runtime-schema
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/durable-stream:
     dependencies:
       '@openagentsinc/runtime-platform':

@@ -99,6 +99,7 @@ const AFS_PACKAGES = [
   "agent-turn-store",
   "apple-fm-runtime",
   "agent-surface",
+  "dse",
 ] as const;
 
 const AFS_PACKAGE_NAMES: Readonly<Record<(typeof AFS_PACKAGES)[number], string>> = {
@@ -107,7 +108,18 @@ const AFS_PACKAGE_NAMES: Readonly<Record<(typeof AFS_PACKAGES)[number], string>>
   "agent-turn-store": "@openagentsinc/agent-turn-store",
   "apple-fm-runtime": "@openagentsinc/apple-fm-runtime",
   "agent-surface": "@openagentsinc/agent-surface",
+  dse: "@openagentsinc/dse",
 };
+
+/**
+ * The DSE compile package (AFS-08) has two extra boundaries. It must import no
+ * Apple FM implementation (its compiled artifacts target the frozen contracts,
+ * not the provider adapter). And its offline compiler is quarantined from the
+ * serving runtime: `./runtime` and the root `./index` must never import
+ * `./optimizer`, so a runtime app cannot link the compiler, evaluator, search,
+ * or promotion authority.
+ */
+const DSE_FORBIDDEN_IMPORT_NEEDLES = ["@openagentsinc/apple-fm-runtime"] as const;
 
 const nodeImportAllowed = (pkg: string, file: string): boolean =>
   pkg === "apple-fm-runtime" && /(?:^|[/\\])node\.ts$/u.test(file);
@@ -209,6 +221,46 @@ export const inspectAfsBoundaries = (): ReadonlyArray<BoundaryViolation> => {
         rule: "turn-kernel-store-free",
         detail: "agent-turn-runtime must not import @openagentsinc/agent-turn-store; the store depends on the kernel, not the reverse.",
       });
+    }
+  }
+
+  // DSE (AFS-08): no Apple FM import anywhere in the package.
+  const dseSrc = path.join(packagesRoot, "dse", "src");
+  for (const file of sourceFiles(dseSrc)) {
+    const specifiers = importSpecifiers(readFileSync(file, "utf8"));
+    for (const specifier of specifiers) {
+      for (const needle of DSE_FORBIDDEN_IMPORT_NEEDLES) {
+        if (specifier === needle || specifier.startsWith(`${needle}/`)) {
+          violations.push({
+            file: relative(file),
+            rule: "dse-no-apple-fm-import",
+            detail: `The DSE package must import no Apple FM implementation (${specifier}); it targets the frozen contracts instead.`,
+          });
+        }
+      }
+    }
+  }
+
+  // DSE (AFS-08): the serving runtime and the root export must not import the
+  // offline optimizer. A runtime app resolves a released artifact; it never
+  // links the compiler, evaluator, search, or promotion authority.
+  const dseRuntimeGuarded = [
+    ...sourceFiles(path.join(dseSrc, "runtime")),
+    path.join(dseSrc, "index.ts"),
+  ].filter((file) => existsSync(file));
+  for (const file of dseRuntimeGuarded) {
+    for (const specifier of importSpecifiers(readFileSync(file, "utf8"))) {
+      const importsOptimizer =
+        /(?:^|[./])optimizer(?:[./]|$)/u.test(specifier) ||
+        specifier === "@openagentsinc/dse/optimizer" ||
+        specifier.startsWith("@openagentsinc/dse/optimizer");
+      if (importsOptimizer) {
+        violations.push({
+          file: relative(file),
+          rule: "dse-runtime-optimizer-free",
+          detail: `${relative(file)} must not import the DSE optimizer (${specifier}); the offline compiler is quarantined from the serving runtime.`,
+        });
+      }
     }
   }
 
