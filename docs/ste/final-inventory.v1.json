@@ -49669,6 +49669,28 @@
       }
     },
     {
+      "path": "specs/openagents/done-condition-verification.product-spec.md",
+      "sha256": "05d2f28da006dbe3fdda0eb91799bce50da343bee59f21ce6a55fcc44d566654",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "specs/openagents/fast-follow.product-spec.md",
       "sha256": "8bfd79d0e779887adde3048f16e109fa5e56d7a119148a26b4e18406841e6b78",
       "reason": "Final review of a converted document",

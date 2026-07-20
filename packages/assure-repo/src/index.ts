@@ -6,6 +6,7 @@ export * from "./false-green.ts";
 export * from "./mutation-runner.ts";
 export * from "./audit.ts";
 export * from "./drift.ts";
+export * from "./done-condition.ts";
 export * from "./sweep.ts";
 export * from "./readiness.ts";
 export * from "./inventory.ts";
