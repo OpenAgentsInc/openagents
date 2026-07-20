@@ -6,6 +6,8 @@ usage() {
 Usage:
   scripts/cloud/provision-managed-sandbox-runtime.sh \
     --project PROJECT --region REGION --zone ZONE \
+    --environment staging|production \
+    --provider-broker-url HTTPS_URL \
     --guest-image-name IMMUTABLE_NAME --image-tag SOURCE_TAG [--apply]
 
 Creates the dedicated secrets, static internal control address, immutable guest
@@ -18,6 +20,8 @@ USAGE
 project=""
 region="us-central1"
 zone="us-central1-a"
+environment=""
+provider_broker_url=""
 guest_image_name=""
 image_tag=""
 apply="false"
@@ -26,6 +30,8 @@ while [[ $# -gt 0 ]]; do
     --project) project="${2:-}"; shift 2 ;;
     --region) region="${2:-}"; shift 2 ;;
     --zone) zone="${2:-}"; shift 2 ;;
+    --environment) environment="${2:-}"; shift 2 ;;
+    --provider-broker-url) provider_broker_url="${2:-}"; shift 2 ;;
     --guest-image-name) guest_image_name="${2:-}"; shift 2 ;;
     --image-tag) image_tag="${2:-}"; shift 2 ;;
     --apply) apply="true"; shift ;;
@@ -34,19 +40,33 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if [[ -z "$project" || -z "$region" || -z "$zone" || \
+      -z "$environment" || -z "$provider_broker_url" || \
       -z "$guest_image_name" || -z "$image_tag" ]]; then
   usage >&2
   exit 2
 fi
+if [[ "$environment" != "staging" && "$environment" != "production" ]]; then
+  echo "environment must be staging or production" >&2
+  exit 2
+fi
+if [[ ! "$provider_broker_url" =~ ^https:// ]]; then
+  echo "provider-broker-url must be HTTPS" >&2
+  exit 2
+fi
 
-control_instance="oa-managed-sandbox-control-1"
-control_address="oa-managed-sandbox-control-ip"
-control_tag="oa-managed-sandbox-control"
-control_firewall="oa-managed-sandbox-control-port"
-guest_broker_firewall="oa-managed-sandbox-guest-to-broker"
-guest_broker_deny_firewall="oa-managed-sandbox-broker-deny"
-control_token_secret="oa-managed-sandbox-control-token"
-broker_signing_secret="oa-managed-sandbox-broker-signing-key"
+suffix=""
+if [[ "$environment" == "staging" ]]; then suffix="-staging"; fi
+control_instance="oa-managed-sandbox-control${suffix}-1"
+control_address="oa-managed-sandbox-control${suffix}-ip"
+control_tag="oa-managed-sandbox-control${suffix}"
+control_firewall="oa-managed-sandbox-control${suffix}-port"
+guest_broker_firewall="oa-managed-sandbox-guest-to-broker${suffix}"
+guest_broker_deny_firewall="oa-managed-sandbox-broker-deny${suffix}"
+bridge_service="oa-managed-sandbox-bridge${suffix}"
+bridge_firewall="oa-managed-sandbox-bridge-to-control${suffix}"
+bridge_tag="oa-managed-sandbox-bridge${suffix}"
+control_token_secret="oa-managed-sandbox-control-token${suffix}"
+broker_signing_secret="oa-managed-sandbox-broker-signing-key${suffix}"
 control_sa="oa-codex-control@${project}.iam.gserviceaccount.com"
 project_number="$(gcloud projects describe "$project" --format='value(projectNumber)')"
 runtime_sa="${project_number}-compute@developer.gserviceaccount.com"
@@ -124,13 +144,37 @@ fi
 image_digest="sha256:$(printf '%s' "${project}|${guest_image_name}|${image_id}" | \
   shasum -a 256 | awk '{print $1}')"
 profile_digest="sha256:$(printf '%s' \
-  "gce-e2-small-v1|${image_digest}|${region}|e2-small|gce_vm|broker-only-v1|900|1000|8790|900000|2|40000" | \
+  "profile.sbx.gce.e2-small.v1|${image_digest}|${region}|e2-small|gce_vm|broker-only-v1|${control_ip}|900|1000|8790|900000|2|40000" | \
   shasum -a 256 | awk '{print $1}')"
 
-run gcloud builds submit . \
-  --project "$project" --region "$region" \
-  --config docker/cloud/cloudbuild-oa-codex-control.yaml \
-  --substitutions "_IMAGE=${region}-docker.pkg.dev/${project}/oa-cloud/oa-codex-control:${image_tag},_REVISION=${revision}"
+control_image="${region}-docker.pkg.dev/${project}/oa-cloud/oa-codex-control:${image_tag}"
+if [[ "$apply" == "true" ]]; then
+  control_build_id="$(gcloud builds submit . \
+    --project "$project" --region "$region" --async --format='value(id)' \
+    --config docker/cloud/cloudbuild-oa-codex-control.yaml \
+    --substitutions "_IMAGE=${control_image},_REVISION=${revision}")"
+  for _ in $(seq 1 240); do
+    control_build_status="$(gcloud builds describe "$control_build_id" \
+      --project "$project" --region "$region" --format='value(status)')"
+    case "$control_build_status" in
+      SUCCESS) break ;;
+      FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+        echo "control image build failed: $control_build_id ($control_build_status)" >&2
+        exit 1
+        ;;
+    esac
+    sleep 5
+  done
+  if [[ "${control_build_status:-}" != "SUCCESS" ]]; then
+    echo "control image build did not reach SUCCESS: $control_build_id" >&2
+    exit 1
+  fi
+else
+  run gcloud builds submit . \
+    --project "$project" --region "$region" --async --format='value(id)' \
+    --config docker/cloud/cloudbuild-oa-codex-control.yaml \
+    --substitutions "_IMAGE=${control_image},_REVISION=${revision}"
+fi
 
 control_args=(
   --project "$project"
@@ -147,7 +191,7 @@ control_args=(
   --managed-sandbox-image-digest "$image_digest"
   --managed-sandbox-profile-digest "$profile_digest"
   --managed-sandbox-control-internal-ip "$control_ip"
-  --managed-sandbox-provider-broker-url https://openagents.com
+  --managed-sandbox-provider-broker-url "$provider_broker_url"
   --managed-sandbox-provider-broker-port 8790
   --managed-sandbox-turn-driver /usr/local/bin/managed-sandbox-turn-driver.mjs
   --managed-sandbox-io-driver /usr/local/bin/managed-sandbox-io-driver.mjs
@@ -184,19 +228,23 @@ bridge_args=(
   --control-token-secret "$control_token_secret"
   --image-tag "$image_tag"
   --control-tag "$control_tag"
+  --service "$bridge_service"
+  --firewall "$bridge_firewall"
+  --bridge-tag "$bridge_tag"
   --service-account "$runtime_sa"
 )
 if [[ "$apply" == "true" ]]; then bridge_args+=(--apply); fi
 scripts/cloud/deploy-managed-sandbox-bridge.sh "${bridge_args[@]}"
 
 if [[ "$apply" == "true" ]]; then
-  bridge_url="$(gcloud run services describe oa-managed-sandbox-bridge \
+  bridge_url="$(gcloud run services describe "$bridge_service" \
     --project "$project" --region "$region" --format='value(status.url)')"
 else
   bridge_url="https://oa-managed-sandbox-bridge.example.invalid"
 fi
 cat <<SUMMARY
 Managed-sandbox runtime binding
+  environment: $environment
   sourceRevision: $revision
   controlInstance: $control_instance
   controlIp: $control_ip

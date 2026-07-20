@@ -71,6 +71,11 @@ agent turns. SBX-09 builds a dedicated Debian guest image with
 image ID, image digest, profile digest, source revision, and provisioner
 revision in the acceptance evidence.
 
+The operational native and Box-compatible authorities use the single profile
+ref `profile.sbx.gce.e2-small.v1`. That ref is part of the operational profile
+digest. The older `profile-ref://…` spelling in the historical component table
+above is not admitted for SBX-09 placement.
+
 The operational profile uses
 `network-policy-ref://openagents/managed-sandbox/broker-only-v1`. Each
 sandbox generation owns four firewall rules:
@@ -89,9 +94,23 @@ guest can present that capability only through the private control broker.
 The control bearer token and broker signing key live in Secret Manager and do
 not appear in VM metadata. The dedicated control VM also has no external IP.
 Persistent priority-900 rules admit only the managed-sandbox guest tag to TCP
-8790 and the Cloud Run connector or IAP to TCP 8787. Priority-1000 rules deny
-every other source on those ports, including traffic otherwise admitted by a
-default-VPC internal rule.
+8790, the dedicated Direct VPC Cloud Run bridge tag to TCP 8787, and IAP to
+TCP 8787. Priority-1000 rules deny every other source on those ports,
+including traffic otherwise admitted by a default-VPC internal rule.
+
+Staging and production use distinct control nodes, private addresses, network
+tags, firewall rules, Cloud Run bridge services, control-token secrets, broker
+signing-key secrets, and native database authority. The deployment scripts
+never reuse a staging secret for production or a production secret for
+staging. The Cloud Run service has its platform invoker check disabled because
+the public Worker-to-bridge hop is authenticated by the dedicated application
+secret. The Worker presents that secret only as
+`x-openagents-managed-sandbox-token` on the managed-sandbox runtime paths.
+The bridge accepts that header on no generic control-plane path, compares it in
+constant time, removes it, and synthesizes the private control
+`Authorization` header. This prevents Cloud Run IAM from consuming the
+application credential and keeps the control bearer out of request bodies,
+URLs, metadata, and evidence.
 
 ## Isolation controls
 
@@ -175,6 +194,13 @@ Do not put a control token or a credential in a tracked file.
 Do not set `GOOGLE_APPLICATION_CREDENTIALS` in the control container.
 The control VM service account needs only the GCE operations for the admitted
 resource and network policy.
+
+Use `scripts/cloud/provision-managed-sandbox-runtime.sh --environment staging`
+for the independent gate and `--environment production` only after staging
+acceptance. Cloud Build submissions are asynchronous and the scripts poll the
+authoritative build status. They do not depend on permission to stream the
+default logs bucket. Re-running the immutable guest image build verifies and
+reuses an exact `READY` image only when its recorded source revision matches.
 
 ## Owner-gated live component acceptance
 

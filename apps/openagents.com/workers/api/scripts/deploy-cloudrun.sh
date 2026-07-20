@@ -164,8 +164,6 @@ SET_SECRETS=(
   # SBX-09 dedicated managed-sandbox control and generation-scoped provider
   # broker authority. These secrets are inert unless the exact managed-
   # sandbox flags, image/profile digests, and dedicated control URL all bind.
-  "OA_MANAGED_SANDBOX_CONTROL_TOKEN=oa-managed-sandbox-control-token:latest"
-  "OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY=oa-managed-sandbox-broker-signing-key:latest"
   # CFG-8 GCS artifacts.
   "ARTIFACTS_GCS_HMAC_ACCESS_KEY_ID=oa-artifacts-gcs-hmac-access-key-id:latest"
   "ARTIFACTS_GCS_HMAC_SECRET=oa-artifacts-gcs-hmac-secret:latest"
@@ -188,6 +186,10 @@ SET_SECRETS=(
 )
 
 if [[ "$TARGET" == "production" ]]; then
+  SET_SECRETS+=(
+    "OA_MANAGED_SANDBOX_CONTROL_TOKEN=oa-managed-sandbox-control-token:latest"
+    "OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY=oa-managed-sandbox-broker-signing-key:latest"
+  )
   SET_SECRETS+=(
     # OPENROUTER_API_KEY was dropped here (owner decision 2026-07-09) — OpenRouter
     # is no longer a platform Khala lane on prod OR staging. See the common block
@@ -222,6 +224,8 @@ if [[ "$TARGET" == "production" ]]; then
 else
   # Staging-only secrets.
   SET_SECRETS+=(
+    "OA_MANAGED_SANDBOX_CONTROL_TOKEN=oa-managed-sandbox-control-token-staging:latest"
+    "OA_MANAGED_SANDBOX_BROKER_SIGNING_KEY=oa-managed-sandbox-broker-signing-key-staging:latest"
     # AC-1 (#8503): the org-cloud runtime no-meter shared secret. A request
     # carrying x-openagents-org-cloud-runtime-no-meter matching this value
     # bypasses metering + the customer balance(402)/spend-cap gates so the

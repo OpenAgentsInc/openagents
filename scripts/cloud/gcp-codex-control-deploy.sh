@@ -234,7 +234,7 @@ if [[ "$enable_managed_sandbox" == "true" ]]; then
         - name: OA_MANAGED_SANDBOX_NETWORK
           value: "default"
         - name: OA_MANAGED_SANDBOX_PROFILE_REF
-          value: "profile-ref://openagents/managed-sandbox/gce-e2-small-v1"
+          value: "profile.sbx.gce.e2-small.v1"
         - name: OA_MANAGED_SANDBOX_PROFILE_DIGEST
           value: "${managed_sandbox_profile_digest}"
         - name: OA_MANAGED_SANDBOX_PROVISIONER_REF

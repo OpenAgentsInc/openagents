@@ -160,6 +160,19 @@ Linux `openat2` beneath the guest workspace. Box commands run inside a second
 Bubblewrap network namespace, so the SDK-only provider broker path is not
 available to arbitrary guest commands.
 
+The staging and production data planes are separate: each has its own private
+control address, Cloud Run bridge, firewall and network tags, control token,
+broker signing key, and native database authority. The Worker calls only the
+dedicated bridge service for its environment. On managed-sandbox runtime
+paths it carries the application secret in
+`x-openagents-managed-sandbox-token`. The bridge rejects that header on every
+generic control route. It replaces it with the private control
+`Authorization` header only after constant-time verification. Cloud Run's
+platform invoker check is disabled for this service so it cannot intercept the
+application authorization exchange. The bridge remains fail-closed and
+path-restricted, and the control node is reachable only through the bridge's
+Direct VPC source tag or IAP.
+
 The facade is lossy compatibility only:
 native Effect Schema contracts, authorization, event cursors, private
 evidence, usage, cost, artifact, and cleanup receipts remain authoritative.
