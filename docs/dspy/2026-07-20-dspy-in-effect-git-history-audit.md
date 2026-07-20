@@ -4,8 +4,10 @@
 - Status: Historical evidence report
 - Audience: Human
 - Canonical branch: origin/main
-- Repository cutoff: 573c905410f9ce742450719f38890d001960a933
-- Evidence scope: All Git objects that are reachable from local refs at the cutoff
+- DSE history cutoff: 573c905410f9ce742450719f38890d001960a933
+- Blueprint extension cutoff: 6122ad6feac24daaa1b24dc164a3c316e42dc023
+- External research access date: 2026-07-20
+- Evidence scope: All Git objects that are reachable from local refs at each cutoff
 
 ## Executive finding
 
@@ -37,8 +39,22 @@ A June 2026 audit reached a different long-term design.
 It recommended upstream Python DSPy and GEPA for offline candidate compilation.
 It kept Effect as the online authority for selection, evidence, admission, and release gates.
 That audit later received a historical banner.
-The current repository still has Effect-based Blueprint contracts and GEPA-related evidence projections.
+The current repository still has Effect-based Blueprint contracts, mounted routes, and GEPA-related evidence projections.
+Current design analysis treats the Blueprint kernel as deprecated prior art for new product work.
 It does not have an active DSE package or a real in-process GEPA optimizer.
+
+Blueprint does not replace DSE as an optimizer.
+The February Blueprint was persistent agent profile, policy, and memory state.
+DSE selected and optimized the typed tools that changed that state.
+The current Blueprint is a separate Effect program kernel.
+It controls program contracts, evidence, action proposals, and release decisions.
+Its optimizer records describe candidate lineage, but they do not execute an optimizer.
+
+Palantir Ontology is a useful comparison, but it is not an equivalent system.
+Palantir documents a complete operational layer with objects, links, actions, functions, a transactional engine, dynamic security, generated SDKs, and cross-application branching.
+Current Blueprint deliberately deferred the full business-object graph and object-set engine.
+It is primarily a governance and provenance spine for agent programs.
+Current OpenAgents terminology calls this system Blueprint, not “our ontology.”
 
 ## Direct answer
 
@@ -850,38 +866,356 @@ The most important naming rule follows from this table.
 The old package was a DSPy-inspired Effect system.
 It was not an Effect port of all DSPy algorithms.
 
-## Later lineage
+## Blueprint lineage and relation to DSE
 
-### Blueprint rebuild
+### One name for different systems
 
-The repository returned to an Effect workspace in June.
-Key commits were:
+The Git history uses the name Blueprint for different systems.
+These systems share some ideas, but they are not one continuous implementation.
 
-- f5919c766930d5913d67484660ff670dd92776fd: rebuilt the workspace with Effect
-- df60c772b40fc7715366452584c80531015a4bb1: staged the package structure
-- 059ba3f621abfd01870d06b54a343b3ca033380a: renamed packages
-- d1d539583d96812cab5c7254fec93af2c237108b: added the chat program runtime
+| Period | Blueprint meaning | Direct source status | Relation to DSE |
+| --- | --- | --- | --- |
+| 2026-02-05 to 2026-02-17 | Typed Autopilot identity, user, policy, tools, heartbeat, and memory state | Reachable source | DSE selected and optimized its update tools |
+| Before 2026-06-09 | Standalone Rust business and program system | Not present in reachable source | Later documents claim that it included DSPy, GEPA, and RLM concepts |
+| From 2026-06-09 | Effect Program kernel for contracts, evidence, action proposals, and release gates | Current source | It can govern optimizer candidates, but it does not run a DSE optimizer |
+| 2026-07-09 to 2026-07-10 | Sarah Blueprint fact map and short-lived company-brain UI | Deleted product surface | It modeled facts and provenance, not prompt optimization |
+| Current strategy | Retained kernel code and adapters, but deprecated as a target for new product work | Current roadmap, design analysis, and source | New optimizer work needs separate product authority |
 
-The current Blueprint system preserves several DSE ideas:
+This distinction is necessary.
+The February system was mainly durable context.
+The current system is mainly program governance.
+The missing Rust system is the claimed design bridge.
+The repository does not contain its source.
 
-- Versioned signatures and module versions
-- Effect Schema contracts
-- Program runs and action submissions
-- Evidence and receipt requirements
-- Risk classes
-- Tool scope
-- Strategy references
-- Candidate and release gates
-- No direct mutation
-- No self-promotion
+### February Blueprint: durable agent state
 
-The current chat program runtime is real.
-It selects signatures and tools.
+Commit 239c79f8d6badccd0df5e31a25c89ed86fb594bb first gave the name Blueprint to the Autopilot single-file export.
+The change renamed a typed bootstrap export.
+It did not add an optimizer or a business ontology.
+
+Commit 5654ee59632ba5b5d112501d0207a40089fe0e7e made that design executable.
+It added an Effect Schema model with the format value openagents.autopilot.blueprint and version 1.
+The model contained:
+
+- Agent rules
+- A bootstrap ritual
+- Agent identity
+- User details
+- Agent character and boundaries
+- Tool notes
+- A heartbeat checklist
+- Daily and long-term memory
+- Bootstrap state
+- Optional audit data
+
+The Worker stored the state in Durable Object SQLite.
+It decoded imports with Effect Schema.
+It exported portable JSON.
+It rendered a bounded form of the state into the model system prompt.
+It also supplied typed tools for identity, user, character, tools, heartbeat, memory, bootstrap, and export changes.
+
+Later commits added the visible product surface:
+
+- e42ff1def8afc14406b3608678c143772eec81bf added the live Blueprint sidebar.
+- e267ad6efc1b9dd677b9de43b6340f7dacd68c19 added the sidebar editor.
+- fd1ffd7ac708a61682290e1f7195fcc76c19913f added form and raw views.
+- 8a9e3e0daa35cc0fe53fe737548426e9982f5e35 stopped an incorrect polling loop.
+
+This first Blueprint was a typed and portable agent profile.
+It also acted as a context source for chat.
+It did not contain Program Types, Optimizer Runs, Action Submissions, or a business object graph.
+
+### DSE operated on the first Blueprint
+
+DSE and Blueprint were directly connected in the February application.
+They were not synonyms.
+
+Commit 544aafa4b79dd6bc409146ab01ca2201305cbed3 added the DSE package.
+Commit f54c4fe7031695444c0bff35a501c199e994e586 added the Autopilot DSE catalog.
+Commit e2b9e13affd4388ae61492b7a8339fd5dbc5742b put the Blueprint tools behind the DSE router.
+
+The catalog defined the signature:
+
+    @openagents/autopilot/blueprint/SelectTool.v1
+
+The signature classified one user message.
+Its output selected no action or exactly one Blueprint tool.
+The allowed tools covered identity, user, character, memory, tools, heartbeat, bootstrap completion, and export.
+
+The catalog also defined:
+
+- A BootstrapFlow module that extracted bootstrap data and then used Blueprint tools
+- A BlueprintUpdate module that routed a message to one update tool
+- Train and holdout examples for Blueprint tool selection
+- A structured JSON output contract
+- A default compiled artifact for the Blueprint selector
+
+The live Worker used DSE Predict for the selection.
+It forced the selected tool call when the DSE result was valid.
+It used a fallback when selection failed.
+The application tests proved that the selected tool changed durable Blueprint state.
+The canary and promotion loop used this selector as its narrow production target.
+
+The relation was:
+
+| Layer | February owner | Function |
+| --- | --- | --- |
+| Durable context and policy | Blueprint | Stored identity, user, behavior, memory, and tool state |
+| Typed decision contract | DSE Signature | Defined the input and output for tool selection |
+| Runtime decision | DSE Predict | Selected one allowed Blueprint tool |
+| Candidate improvement | DSE compiler | Searched prompt and example variants |
+| Admission | DSE evaluation and promotion gate | Compared a candidate and changed the active artifact |
+| External state change | Blueprint tool implementation | Validated and stored the selected change |
+
+This is the strongest historical answer to how DSE relates to Blueprint.
+DSE was the typed behavior and optimization layer.
+Blueprint was the state and tool domain on which that behavior acted.
+
+### February retirement
+
+Commit db57c8176d4c12651ee94fe9d6de9bd8f205cfd2 migrated Convex Blueprint profile and personality data into Laravel Autopilot profile and policy rows.
+This migration changed the storage and application boundary.
+
+Commit 388473626c439a804568a461cbbbd21078f99492 then removed apps/web and apps/autopilot-worker.
+That change deleted the live Blueprint and DSE integration.
+Commit 5afa49cdbc1520e753cfce5260328078a9098068 later deleted the DSE package during the Rust-only pivot.
+
+The first Blueprint did not evolve in place into the current kernel.
+The application that owned it was removed.
+
+### The missing standalone Rust Blueprint
+
+Current documents describe a later standalone Rust Blueprint system.
+They list:
+
+- Business Object Types and Business Objects
+- Object Sets and Views
+- Source Authority
+- Context Packs
+- Access Explanation
+- Program Types and Program Signatures
+- Module Versions and Program Runs
+- Optimizer Runs
+- Eval suites and Release Gates
+- Action Types and Action Submissions
+- Trust and Failure Receipts
+- Simulation Branches and Scenario Forks
+- A manager, API, worker, and generated SDK
+
+The current June inventory cites source paths under autopilot4-deprecated/blueprint.
+The July Palantir analysis also cites docs/palantir-ontology-gap-analysis.md.
+
+Those paths do not exist in any commit that is reachable from the local refs.
+An object-name search also found no object for those paths.
+The audit therefore cannot inspect the claimed Rust implementation or the claimed formal Palantir mapping.
+
+This missing evidence changes the confidence grade:
+
+- The existence and contents of the February Blueprint are source facts.
+- The existence and contents of the current Effect kernel are source facts.
+- The detailed Rust Blueprint design is a later committed description.
+- The statement that Rust Blueprint was derived from Palantir Ontology is a retrospective claim.
+- The claimed formal gap analysis is not independently recoverable from this repository history.
+
+The missing source does not prove that the standalone project did not exist.
+It means that this report must not present its detailed behavior as inspected code.
+
+### Reachable Rust program bridge
+
+The reachable history has a separate Rust program substrate outside the missing Blueprint archive.
+This source provides a partial design bridge from DSE to the current kernel.
+It does not prove the contents of the absent standalone Blueprint system.
+
+- d120c687941f54c9e3459ac97ca3ad762402a4b4 added typed compiled-agent signatures, modules, graphs, evaluation, manifests, and promotion.
+- b72d6b6cdfdec46d71f8ea5b91936587611fc0d6 added candidate and promoted hubs, shadow authority, confidence fallback, and traces.
+- 5238387587dfd265d455bc1735a07277d0a5c61b added promoted artifact IDs, digests, rollback, and a desktop slice.
+- ff9521f226eae98c5e73c945a9407f04cd5ed2e6 documented private Autopilot ownership of durable Program, Action, and Source Authority records.
+- f5919c766930d5913d67484660ff670dd92776fd removed the Rust compiled-agent crate when it imported the Effect Blueprint kernel.
+
+This Rust work kept the typed signature, artifact, evaluation, and promotion pattern.
+It supports a conceptual DSE-to-Blueprint lineage.
+It was not the February DSE package, and this report does not equate it with the absent standalone Blueprint tree.
+
+### June Effect kernel import
+
+Commit f5919c766930d5913d67484660ff670dd92776fd rebuilt the repository as an Effect workspace.
+That commit imported 146 Blueprint-named files across the kernel, routes, documents, Pylon, and Probe.
+The imported documents have dates from June 5 through June 7.
+The Git graph first contains them on June 9.
+
+The inventory made an explicit ownership decision.
+The OpenAgents product surface owned the new Effect kernel.
+The deprecated Rust system was reference material only.
+Rust consumers were to use exported contracts and receipts.
+They were not to own the customer-facing authority.
+
+The inventory kept these concepts:
+
+- Source Authority and Context Pack
+- Program Type and Program Signature
+- Module Version
+- Program Run
+- Optimizer Run
+- Release Gate and eval fixtures
+- Action Submission
+- Trust and Failure Receipt kinds
+- Simulation Branch and Scenario Fork
+
+It deferred or discarded these concepts:
+
+- A full Business Object graph
+- Object Sets and Views
+- A reusable Action Type registry
+- A Blueprint Manager
+- A separate Blueprint API and Worker service
+- The old generated SDK
+- The old Postgres migration shape
+
+The inventory gave one reason for this scope.
+It said to avoid a full ontology rebuild before Program Runs and Action Submissions.
+It also said not to vendor DSPy.
+The target was typed optimizer lineage and release gates, not a new DSPy implementation.
+
+Commit df60c772b40fc7715366452584c80531015a4bb1 renamed the imported Omega inventory and package-boundary documents to OpenAgents.
+Commit 059ba3f621abfd01870d06b54a343b3ca033380a applied the current package names.
+
+### June and July kernel expansion
+
+The main kernel then gained focused integrations:
+
+| Commit | Change |
+| --- | --- |
+| df696eb281cedb606cd7bad7df1d30c6f81ef40a | Added a vertical Context Pack |
+| 93b44472a8292e8823953d3d0e0254e4aec0a9c8 | Added delivery-pipeline Programs |
+| cc60bff88e19ad86ee6e1675a0c6c14a6dabb333 | Registered delivery Programs |
+| 68a8a53cfcabc511fa5723eb289f75f43661b2f3 | Added StudyBench contribution gates |
+| 698abde52d2151a2b370d7fa869335e4ae20f2e1 | Added Tassadar module-step bindings |
+| 5af4784f67a84b052a366e29094be29f72a31ed5 | Added the Tassadar module registry |
+| d1d539583d96812cab5c7254fec93af2c237108b | Added the Blueprint chat Program runtime |
+| 0a5d06784c2059526b70e4b0f0f18499415c65bc | Added a proof replay module signature |
+| c3274648a647ffdb1eb0b0cfb8fd2f7d84bcb3e0 | Added the narrow shared contract and safety package |
+| 8ded7efea744897e901fd67ee6a0bc38fddaca20 | Added Khala candidate wiring |
+| 461e0a74a8f53e26648376ac065aa9d95a7ffb99 | Added evidence-only negative GEPA feedback |
+| 7cffb9cdd4221e36bc6ecdec9f31d0ef7328c996 | Enforced operator grounding and command gates |
+| ed8995301334d4b96d5a4b8d113b2456b8855793 | Enforced five Blueprint action signatures |
+| e1fbd1c1858cd8a0ef9d86a18c72ced5ffdb6b4d | Pruned retired Tassadar and Psionic surfaces |
+| dbf6ebea5a2f6bbe6df815c3c3bf68f4775323f7 | Updated the Pylon adapter for bounded workspace tools |
+
+The July prune did not delete the Blueprint kernel.
+Commit bbccd6ad47338fe919871e8848906438caa7d55c deleted an Autopilot Desktop consumer.
+The contracts, routes, safety gates, and Pylon and Probe adapter trees remain.
+
+July also used the name Blueprint for a separate Sarah knowledge surface.
+Commit 84dd4f59560245378b00711aab4c7d4edf6fa19e added typed persona and knowledge facts with revision and provenance data.
+Commit 9ee02315f53ad904c99f112e7af89faf1031c5ed added a Blueprint map graph.
+Commit 13bc1e7443962d72765431d547a93290dd122b50 removed the Sarah surface at owner direction.
+The Sarah fact graph is not evidence that the core Program kernel implements a Palantir-like object graph.
+
+### Current implementation surface
+
+At the Blueprint extension cutoff, the active tree contains:
+
+- 75 files and 15,365 lines under apps/openagents.com/workers/api/src/blueprint
+- 9 files and 1,061 lines under packages/blueprint-contracts
+- 9 Pylon adapter files and 2,567 lines
+- 9 Probe adapter files and 2,816 lines
+- 26 focused Blueprint records under apps/openagents.com/docs/blueprint
+- Six mounted API route families
+
+The six route families are:
+
+- /api/blueprint/program-registry
+- /api/blueprint/program-runs
+- /api/blueprint/action-submissions
+- /api/blueprint/contributions
+- /api/blueprint/contracts
+- /api/blueprint/tassadar-modules
+
+The shared package is intentionally narrow.
+It owns the cross-consumer contract-export security predicate and selected operator gates.
+It does not own the complete Blueprint data model.
+The Pylon and Probe adapter trees contain broader local contract models.
+The two adapter trees now differ, and the Pylon tree received a change on July 19.
+
+This creates a status contradiction that the report must preserve:
+
+- Current design analysis calls the Blueprint kernel deprecated and tells new memory work not to target it.
+- The old standalone Blueprint service and broad plugin-ecology direction are historical.
+- The Effect kernel and API routes remain mounted source.
+- The shared safety package remains used source.
+- The Pylon and Probe adapters remain used source.
+- The Pylon tree received a current-line change on July 19.
+- A broad Blueprint product or company-brain program is not active roadmap work.
+
+“Deprecated” therefore describes product direction and new-work authority.
+It does not mean that every Blueprint route, contract, gate, or adapter has been deleted.
+
+### Implemented and contract-only parts
+
+The current Blueprint system is not only documentation.
+It also does not implement every named concept as a complete runtime.
+
+| Capability | Current evidence | Status |
+| --- | --- | --- |
+| Program Type and Signature schemas | Effect Schema source and tests | Implemented contract |
+| Module Version lifecycle | Schema, predicates, tests, and fixtures | Implemented contract |
+| Program Run evidence boundary | Schema, repository, API, denial service, and tests | Implemented evidence path |
+| Action Submission | Schema, proposal repository, API, and approval predicates | Implemented proposal boundary, not a general action engine |
+| Source Authority and Context Pack | Schemas, projections, and vertical pack use | Implemented contract and bounded use |
+| Release Gate | Schema, predicates, fixtures, and continuation-specific service | Implemented gate logic |
+| Program Registry | Fixtures, safe projections, and API | Implemented bounded registry |
+| Chat Program runtime | Signature selection, tool menu, Codex and Claude adapters, Program Run output, and tests | Implemented runtime |
+| Contract export | Authenticated export route, safety predicate, and tests | Implemented seed export, not a generated OSDK equivalent |
+| Optimizer Run | Schema, candidate lineage predicates, and tests | Evidence model only |
+| GEPA feedback | Negative candidate feedback service and QA integration | Signal production only |
+| Simulation Branch | Schema, isolation predicates, and tests | Contract and fixture layer |
+| Full business object graph | Explicitly deferred | Not implemented |
+| Object-set query engine | Explicitly deferred | Not implemented |
+| General Blueprint Manager | Explicitly discarded for now | Not implemented |
+| DSE Prompt IR compiler | No current source | Not implemented |
+| GEPA or MIPRO search engine | No current source | Not implemented |
+
+The chat Program runtime is the closest current equivalent to a DSE online runtime.
+It selects registered Program Signatures and bounded tools.
 It starts Codex or Claude session adapters.
-It returns evidence-only results.
+It records a Program Run with an evidence-only authority boundary.
+It denies direct deploy, email, spend, and source-mutation authority.
 
-The current optimizer records are not a GEPA implementation.
-BlueprintOptimizerRun models:
+The current registry is a static seed.
+Its fixture entries include draft and release-candidate states.
+The selector permits draft and active Program Types for bounded dogfood.
+There is no general Module Version activation API.
+The chat runtime takes an injected session runtime and does not own provider prompt compilation.
+
+The Khala adapter is implemented and tested, but this audit found no non-test production caller.
+The Pylon Apple Foundation Models path is a real local tool loop, but it loads a static fixture.
+The Pylon HTTP registry client exists, but this audit found no current non-test call path that loads the HTTP registry and posts the Program Run.
+
+The Action Submission model is a separate proposal path.
+It requires an approval state, approval evidence, optional dry-run evidence, and no direct Program Run execution.
+The current API records proposals.
+This does not make Blueprint a general external-action engine.
+
+### Current Blueprint compared with DSE
+
+The current kernel reuses several DSE design ideas.
+It changes their purpose and their authority boundary.
+
+| DSE concept | Current Blueprint relation | Important difference |
+| --- | --- | --- |
+| Signature | BlueprintProgramSignature | Blueprint adds evidence, receipt, tool, risk, and family policy |
+| Module | BlueprintProgramType and BlueprintModuleVersion | Blueprint separates behavior contract from implementation artifact |
+| Prompt artifact | ModuleVersion artifactRefs and implementationRef | No current structured Prompt IR or complete artifact hash contract |
+| Predict runtime | Chat Program runtime | Current runtime governs an injected session adapter and evidence, not a generic typed predictor package |
+| Trace and receipt | ProgramRun evidenceRefs and receiptRefs | Program Run is explicitly evidence-only |
+| Dataset and metric | Eval fixtures and scorecards | No general current DSE dataset or metric engine |
+| Compiler | BlueprintOptimizerRun | Blueprint records candidates but does not search for them |
+| Active pointer | Module release state and Release Gate | Promotion needs explicit review, policy, rollback, scorecard, receipts, and decision |
+| RLM-lite | Bounded tools and session adapters | No current DSE action interpreter or arbitrary RLM runtime |
+| Tool execution | Action Submission boundary | Program output cannot execute a direct effect |
+| Canary and rollback | Release Gate and rollback posture | Gate semantics exist, but there is no current DSE compile-to-canary loop |
+
+The current optimizer record accepts these kind values:
 
 - ablation
 - gepa_style_reflection
@@ -889,14 +1223,208 @@ BlueprintOptimizerRun models:
 - retained_failure_replay
 - scorecard_search
 
-The failure-feedback path emits public-safe negative candidate evidence.
-An optimizer may consume that evidence.
-The path does not build or promote a candidate.
+These names describe provenance.
+They do not prove that an algorithm ran.
+The record stores candidate Module Version refs, failures, scorecards, release gate refs, and evidence.
+Its predicate only verifies that candidate output cannot self-promote.
+
+The chat-program-failure-gepa service has the same limit.
+It emits a public-safe negative candidate signal.
+It does not assemble a candidate.
+It does not evaluate a candidate.
+It does not promote a candidate.
 
 The Probe GEPA standing loop is a projection and gate over evidence references.
 It is not an optimizer algorithm.
 The Mutalisk bridge models delegation, progress, and admission.
-Its tests make sure the Worker does not import Python DSPy or GEPA.
+Its tests deny a Worker dependency on Python DSPy or GEPA.
+
+The correct architectural statement is:
+
+> Current Blueprint is a governance, provenance, evidence, and release spine around DSPy-like programs. It is not a successor implementation of the DSE optimizer.
+
+### A possible composition, not a current product claim
+
+Historical DSE evidence and current Blueprint contracts support one possible composition:
+
+1. A bounded offline optimizer produces a candidate artifact.
+2. The system records the artifact as an unpromoted Module Version.
+3. Program Runs and eval fixtures produce evidence and scorecards.
+4. A Release Gate checks fixtures, review, policy, rollback, receipts, and an explicit decision.
+5. An authorized operator promotes the Module Version.
+6. The online Effect runtime selects the released version.
+7. A Program Run can propose an external effect only through an Action Submission.
+
+This composition can use Python DSPy, a future Effect optimizer, MemoHarness, or another bounded worker.
+Blueprint does not decide the optimizer implementation.
+The current product specifications describe MemoHarness proof as planned.
+They do not claim an implemented experience bank, optimizer, storage migration, or released policy bundle.
+
+This composition is an architectural interpretation.
+It is not implementation authority.
+
+## Palantir Ontology comparison
+
+### Official Palantir model
+
+Palantir describes Ontology as an operational layer for enterprise decisions.
+Its current architecture has three parts:
+
+1. The Ontology Language defines objects, properties, links, actions, functions, and interfaces.
+2. The Ontology Engine supplies queries, subscriptions, transactional writes, and change-data capture.
+3. The Ontology Toolchain supplies development, deployment, generated SDK, and operational tools.
+
+Palantir also documents:
+
+- Objects and bidirectional links that represent real-world entities and relations
+- Actions and Functions that change Ontology-backed state
+- Dynamic security that applies to users and agents
+- Generated TypeScript, Python, Java, and OpenAPI SDKs
+- Agent templates that select allowed objects, actions, and queries
+- Ontology MCP resources that become agent tools
+- Scoped credentials that retain user permission limits
+- Global Branching for coordinated cross-application changes, review, and merge
+
+These are current product capabilities in Palantir documentation.
+They are not claims about OpenAgents implementation.
+
+Palantir AIP Evals is a closer external comparison for the DSE evaluation and candidate-search layer.
+Palantir documents eval suites, metrics, comparisons, and experiments across prompt and model configurations.
+It also documents simulated Ontology-edit evaluation so that a test does not change real objects.
+This evaluation system is adjacent to Ontology.
+It is not the Ontology core model itself.
+
+### Three-system comparison
+
+| Dimension | Historical DSE | Current Blueprint | Palantir Ontology |
+| --- | --- | --- | --- |
+| Primary purpose | Run and improve typed LLM programs | Govern typed agent programs and their evidence, actions, and release | Represent and operate an enterprise digital twin |
+| Main modeled unit | Signature, prompt artifact, example, metric, trace | Program Type, Signature, Module Version, Program Run, gate, submission | Object, property, link, action, function, interface |
+| Runtime | Effect Predict and bounded RLM-lite | Effect chat Program runtime and bounded adapters | Ontology Engine and application runtimes |
+| Search or optimization | Deterministic candidate search | Candidate record only | Not a DSPy prompt optimizer |
+| Durable business graph | No | Explicitly deferred | Core capability |
+| Query engine | Dataset and application adapters | Bounded repositories and projections | Scalable object and link queries and subscriptions |
+| Write model | Application tools outside the DSE core | Approval-gated Action Submission proposal boundary | Ontology Actions, Functions, and transactional edits |
+| Promotion | Evaluation, canary, active artifact, rollback | Release Gate, review, policy, receipts, rollback posture, explicit decision | Deployment and branch workflows for Ontology resources and applications |
+| Branching | Candidate and policy versions | SimulationBranch and ScenarioFork contracts | Cross-application Global Branching |
+| Security | Budgets, trust labels, tool limits, receipts | Evidence-only runs, scoped tools, source and context policy, projections, approval gates | Mandatory and discretionary controls, row and column controls, markings, lineage, and scoped agent access |
+| Developer interface | TypeScript package and application adapters | Effect schemas, HTTP routes, export seed, Pylon and Probe adapters | Generated OSDKs, OpenAPI, Ontology MCP, and platform tools |
+| Current maturity in this repository | Removed historical implementation | Active bounded kernel with important contract-only areas | External commercial platform |
+
+The similar names are not one-to-one mappings:
+
+- BlueprintProgramType is a behavior policy.
+  It is not a Palantir Object Type.
+- BlueprintActionSubmission is an approval-gated proposal record.
+  It is not a complete Palantir Action Type and transactional execution engine.
+- BlueprintSimulationBranch is an isolation contract.
+  It is not a complete Global Branching implementation.
+- Blueprint contract export is a safe seed.
+  It is not a generated OSDK or Ontology MCP system.
+- SourceAuthority and ContextPack record source and access evidence.
+  They are not a complete dynamic security and object-permission system.
+- DSE is a prompt-program runtime.
+  It is not an operational digital twin.
+
+Palantir and Blueprint do share an important architectural idea.
+Humans and agents should act through typed business or program semantics instead of raw model text.
+Both systems also treat security and access as part of the operational model.
+
+Current Blueprint adds a specific OpenAgents rule to its own program layer.
+Model or optimizer output is evidence, not authority.
+It cannot self-promote.
+It cannot directly deploy, send email, spend, or mutate source-backed facts.
+External effects remain behind a separate proposal and approval boundary.
+
+This report does not claim that Palantir lacks comparable controls.
+It only records the rules that current Blueprint source directly enforces.
+
+### Internal Palantir claims audit
+
+Commit 2d920c77c51586bf1556406eb9146209aa53b950 added the July 7 Palantir institutional-sovereignty analysis.
+That document is an owner-directed historical strategy record.
+It says that the standalone Blueprint was explicitly derived from Palantir Ontology.
+It also says that a formal gap analysis mapped:
+
+- Object Types
+- Links
+- Actions
+- Object Sets
+- Functions
+- Interfaces
+- OSDK
+- Application scopes
+- Ontology MCP
+- Global Branching
+
+The cited gap-analysis file is not in reachable Git history.
+The cited standalone Blueprint tree is also absent.
+The current June inventory supports part of the concept list, but it does not prove the complete derivation claim.
+
+The July record gives one terminology rule that current product text still uses:
+
+- Ontology is Palantir vocabulary.
+- OpenAgents uses Blueprint, company brain, or typed business schema.
+- OpenAgents does not call Blueprint “our ontology.”
+
+The same July strategy proposed a small Blueprint company brain with typed objects, properties, links, provenance, and Action Submissions.
+That was a recommendation.
+It was not proof of a current object graph.
+
+Palantir is not a declared source in the current FASTFOLLOW.md.
+This comparison is user-directed external research evidence.
+It is not a formal Fast Follow StudyPacket.
+It does not grant adoption, implementation, product, release, or public-claim authority.
+
+### Current roadmap boundary
+
+The current master roadmap closes broad Blueprint-as-company-brain maturation unless a new bounded owner decision reopens it.
+It also closes named-assistant standing responsibilities and broad role and template growth.
+The July 20 MemoHarness analysis also calls the kernel deprecated and says not to use it as the new memory home.
+It keeps the evidence-only and release-gate pattern as prior art.
+
+The current boundary is therefore:
+
+- Do not use the retained Blueprint kernel as a target for new product work without a bounded owner decision.
+- Preserve or repair retained safety contracts only when an admitted product, compatibility, or security slice requires it.
+- Use current Program, evidence, action-proposal, and release-gate paths where an admitted product slice requires them.
+- Do not infer authority to build a full object graph, Ontology-like engine, manager, generated SDK, or company-brain product.
+- Do not infer authority to restore DSE or to add GEPA from the existence of optimizer schemas.
+- Treat historical Fable strategy as evidence, not current sequence or product authority.
+
+### Official external sources
+
+The Palantir comparison used current official product documentation.
+The access date for each source was 2026-07-20.
+
+- [Ontology overview](https://www.palantir.com/docs/foundry/ontology/overview)
+- [Ontology system architecture](https://www.palantir.com/docs/foundry/architecture-center/ontology-system)
+- [Why create an Ontology](https://www.palantir.com/docs/foundry/ontology/why-ontology)
+- [Ontology SDK overview](https://www.palantir.com/docs/foundry/ontology-sdk/overview)
+- [Object and link types](https://www.palantir.com/docs/foundry/object-link-types/link-types-overview)
+- [Agents overview](https://www.palantir.com/docs/foundry/agents/overview)
+- [Agent templates](https://www.palantir.com/docs/foundry/agents/agent-templates)
+- [Global Branching overview](https://www.palantir.com/docs/foundry/global-branching/overview)
+- [Branching Action Types](https://www.palantir.com/docs/foundry/action-types/branching-action-types)
+- [Functions and Ontology edits](https://www.palantir.com/docs/foundry/functions/use-functions)
+- [Object edits overview](https://www.palantir.com/docs/foundry/object-edits/overview)
+- [Security overview](https://www.palantir.com/docs/foundry/security/overview)
+- [AIP Evals overview](https://www.palantir.com/docs/foundry/aip-evals/overview)
+- [AIP Evals experiments](https://www.palantir.com/docs/foundry/aip-evals/experiments)
+- [Ontology edit evals](https://www.palantir.com/docs/foundry/aip-evals/ontology-edits)
+
+### Blueprint reproduction commands
+
+    git log origin/main --reverse --regexp-ignore-case --grep=blueprint
+    git log origin/main --reverse -- apps/autopilot-worker/src/blueprint.ts
+    git log origin/main --reverse -- apps/autopilot-worker/src/dseCatalog.ts
+    git grep -n -i blueprint 8da5c649552419402c1e65cc6ee910815aa0abbf -- apps/autopilot-worker packages/dse
+    git log origin/main --reverse -- apps/openagents.com/workers/api/src/blueprint
+    git log --all -SBlueprintProgramType
+    git rev-list --objects --all | rg -i 'palantir.*ontology|ontology.*palantir|autopilot4-deprecated/blueprint'
+    find apps/openagents.com/workers/api/src/blueprint -type f
+    rg -n 'api/blueprint' apps/openagents.com/workers/api/src
+    rg -n 'Blueprint|ontology|Palantir' docs FASTFOLLOW.md
 
 ### June hybrid audit
 
@@ -925,7 +1453,7 @@ The architectural principle still matches current code:
 - Model output cannot self-promote.
 - Current code does not claim that a projection is GEPA execution.
 
-### Current state at the cutoff
+### Current state at the Blueprint extension cutoff
 
 The current tree has:
 
@@ -936,6 +1464,9 @@ The current tree has:
 - No real MIPROv2 algorithm in an Effect runtime
 - Effect v4 Blueprint contracts and runtime control
 - GEPA-related candidate feedback and gate projections
+- Six mounted Blueprint API route families
+- Active Pylon and Probe Blueprint adapters
+- A narrow shared Blueprint contract-security package
 - Historical reports and transcripts
 
 The repository also uses a different supported toolchain:
@@ -1147,6 +1678,17 @@ It did not prove broad agent-quality improvement.
 The project removed DSE because the product host and language mandate changed.
 The repository then removed the replacement Rust stack too.
 This history is a warning against coupling optimizer architecture to a short-lived application or repository language mandate.
+
+The first Blueprint and DSE did have a direct production relation.
+Blueprint stored typed agent context and exposed mutation tools.
+DSE selected, evaluated, compiled, canaried, and promoted the policy that chose those tools.
+The current Blueprint kernel is a different system.
+It retains typed Program, evidence, action-proposal, and release concepts, but it does not retain the DSE compiler or optimizer runtime.
+
+Current Blueprint is also not a Palantir Ontology equivalent.
+It deliberately deferred the business object graph, object-set query engine, generated domain SDK, and operational write engine.
+Its main retained value is program governance and evidence discipline.
+Current design analysis treats it as deprecated prior art for new product work even though mounted routes, safety gates, and adapters remain in source.
 
 The old source should remain historical evidence.
 A future implementation should preserve the contract and governance ideas.

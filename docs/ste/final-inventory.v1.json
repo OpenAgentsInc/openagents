@@ -21424,7 +21424,7 @@
     },
     {
       "path": "docs/dspy/2026-07-20-dspy-in-effect-git-history-audit.md",
-      "sha256": "313fd25d8d4ec9469b72b368cf36f0ea2e24a7a4a3c75695d26e90b0c4868c41",
+      "sha256": "369be687fb33d4c79362bc1d07075cc4ec580b35d2b50a82f221d63a76e94e8e",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
