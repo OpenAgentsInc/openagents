@@ -440,6 +440,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
                   (specifier === ownedPierreAdapterImport || specifier === "../ide/workbench-contract.ts" ||
                     specifier === "../ide/language-workbench-contract.ts" ||
                     specifier === "./ide/react-cursor.tsx" ||
+                    specifier === "./ide/react-debug.tsx" ||
                     specifier === "./ide/react-run.tsx" ||
                     specifier === "./ide/react-xterm.tsx")))),
           `${name} imports disallowed renderer dependency ${specifier}`,

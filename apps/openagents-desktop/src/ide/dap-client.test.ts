@@ -201,7 +201,16 @@ describe("IDE-11 DAP child client", () => {
       killGraceMs: 500,
     });
     try {
-      await initialize(fixtureClient.client);
+      const initialization = await initialize(fixtureClient.client).then(
+        () => ({ _tag: "Succeeded" as const }),
+        (error: unknown) => ({ _tag: "Failed" as const, error }),
+      );
+      if (initialization._tag === "Failed") {
+        expect(initialization.error).toMatchObject({
+          _tag: "DapTransportFailure",
+          phase: "teardown",
+        });
+      }
       const exit = await fixtureClient.exit;
       expect(exit.signal === "SIGTERM" || exit.code !== 0).toBe(true);
       expect(fixtureClient.client.isExited()).toBe(true);

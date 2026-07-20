@@ -7,8 +7,10 @@ const MAX_BODY_BYTES = 4 * 1024 * 1024
 const HEADER_SEPARATOR = Buffer.from("\r\n\r\n", "ascii")
 const flags = new Set(process.argv.slice(2))
 const FIXTURE_SOURCE = {
-  name: "fixture.ts",
-  path: "/workspace/src/fixture.ts",
+  name: flags.has("--alternate-source") ? "alternate.ts" : "fixture.ts",
+  path: flags.has("--alternate-source")
+    ? "/workspace/src/alternate.ts"
+    : "/workspace/src/fixture.ts",
   sourceReference: 1,
 }
 
@@ -17,6 +19,7 @@ let nextSequence = 1
 let nextBreakpointId = 1
 let closing = false
 let reverseRequestSequence = null
+let delayedStartRequest = null
 
 const state = {
   initialized: false,
@@ -167,6 +170,10 @@ const handleStart = (request, mode) => {
   state.mode = mode
   state.configured = false
   state.counter = 7
+  if (flags.has("--delay-start-response")) {
+    delayedStartRequest = request
+    return [event("initialized")]
+  }
   return [
     response(request),
     event("output", {
@@ -185,6 +192,9 @@ const handleSetBreakpoints = (request) => {
   const requested = Array.isArray(argumentsOf(request).breakpoints)
     ? argumentsOf(request).breakpoints
     : []
+  if (flags.has("--reject-empty-breakpoint-clear") && requested.length === 0) {
+    return [failedResponse(request, "The fixture rejected a stale source clear.")]
+  }
   state.breakpoints = requested.map((candidate) => {
     const line = candidate !== null
       && typeof candidate === "object"
@@ -204,7 +214,15 @@ const handleSetBreakpoints = (request) => {
 }
 
 const handleVariables = (request) => {
-  if (argumentsOf(request).variablesReference !== 200) {
+  const variablesReference = argumentsOf(request).variablesReference
+  if (variablesReference === 201 && flags.has("--nested-variables")) {
+    return [response(request, {
+      variables: [
+        { name: "nested-value", value: "49", type: "number", variablesReference: 0 },
+      ],
+    })]
+  }
+  if (variablesReference !== 200) {
     return [response(request, { variables: [] })]
   }
   return [response(request, {
@@ -212,6 +230,9 @@ const handleVariables = (request) => {
       { name: "counter", value: String(state.counter), type: "number", variablesReference: 0 },
       { name: "label", value: JSON.stringify(state.label), type: "string", variablesReference: 0 },
       { name: "mode", value: JSON.stringify(state.mode), type: "string", variablesReference: 0 },
+      ...(flags.has("--nested-variables")
+        ? [{ name: "nested", value: "Object", type: "object", variablesReference: 201 }]
+        : []),
     ],
   })]
 }
@@ -285,7 +306,12 @@ const handleRequest = (request) => {
         messages = rejected
       } else {
         state.configured = true
-        messages = [response(request), stoppedEvent("entry", "Fixture target stopped at entry.")]
+        messages = [
+          response(request),
+          ...(delayedStartRequest === null ? [] : [response(delayedStartRequest)]),
+          stoppedEvent("entry", "Fixture target stopped at entry."),
+        ]
+        delayedStartRequest = null
       }
       break
     }
@@ -390,7 +416,12 @@ const handleRequest = (request) => {
     case "disconnect":
     case "terminate":
       closing = true
-      messages = [response(request), event("terminated", { restart: false })]
+      messages = [
+        flags.has("--reject-disconnect") && request.command === "disconnect"
+          ? failedResponse(request, "The fixture adapter refused detach.")
+          : response(request),
+        event("terminated", { restart: false }),
+      ]
       exitAfterWrite = true
       break
     default:

@@ -2,7 +2,7 @@
 
 Date: 2026-07-20
 Issue: [#9039](https://github.com/OpenAgentsInc/openagents/issues/9039)
-State: evidence contract implemented. Product and packaged evidence not executed
+State: product integration implemented. Packaged evidence not executed
 Next packet: IDE-12 Git delivery
 
 ## Purpose
@@ -13,10 +13,9 @@ cleanup. A debug adapter supplies protocol mechanics. The renderer supplies a
 decoded view. An adapter, renderer, Electron process, or native helper does not
 own project or debug authority.
 
-This document defines the evidence gate for that result. This document does
-not report a successful IDE-11 product run. The source base at the time of this
-evidence-lane change does not contain the completed product integration or a
-packaged debugger evidence run.
+This document defines the product graph and its evidence gate. The product
+integration is present. This document does not yet report a successful packaged
+debugger run.
 
 ## Authority model
 
@@ -33,6 +32,25 @@ packaged debugger evidence run.
 Launch and attach are different paths. Each path must identify the exact
 target, placement, transport, data source, environment reference, and policy.
 The evidence gate does not accept a shared implicit path.
+
+## Project configuration
+
+The main process reads `.openagents/debug.json`. The renderer cannot supply an
+adapter command, an environment value, an admission result, or a target
+argument. The manifest identifies each launch or attach configuration. It also
+identifies the adapter version, working directory, selected environment keys,
+source roots, placement, target, authentication reference, and task references.
+
+The host accepts a PATH command or a project-relative adapter path. It refuses
+an absolute adapter path and a working directory outside the project. An attach
+configuration is not admitted without an authentication reference. The public
+configuration contains environment key names and a digest. It does not contain
+environment values.
+
+The Debug tab uses the same command schema as an agent. Each mutation has an
+operation reference. A cancel command can stop one pending protocol request.
+The host drops a late response for that request without damage to other
+requests.
 
 ## Evidence input
 
@@ -213,6 +231,8 @@ The direct commands are:
 node --expose-gc --import tsx apps/openagents-desktop/scripts/ide-debug-benchmark.ts \
   --input <captured-evidence.json>
 
+node --import tsx apps/openagents-desktop/scripts/ide-debug-capture.ts
+
 node --import tsx apps/openagents-desktop/scripts/ide-debug-packaged-journey.ts \
   --input <captured-evidence.json>
 
@@ -251,10 +271,10 @@ Rust, review, owner, and rollback facts.
 
 ## Current evidence state
 
-No captured IDE-11 product evidence is committed by this evidence-lane change.
-The `Unexecuted` fixture is the current truthful state. The production
-integration must run the complete fake and real corpus before it can produce a
-green benchmark, packaged, or acceptance receipt.
+No captured IDE-11 product evidence is committed at this implementation
+boundary. The `Unexecuted` fixture is the current truthful state. The capture
+runner must run the complete fake and real corpus before the benchmark,
+packaged, and acceptance receipts can become green.
 
 IDE-11 does not add Git mutation or delivery authority. That work stays in
 IDE-12. Windows and Linux packaged claims also stay absent until exact target

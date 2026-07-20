@@ -481,7 +481,11 @@ import {
   IdeCursorAuthorityFailure,
   type IdeCursorProposalAuthorityShape,
 } from "./ide/cursor-service.ts"
-import { makeIdeCursorWorkspaceAuthority } from "./ide/cursor-workspace-authority.ts"
+import {
+  ideCursorWorkspaceDocumentRef,
+  ideCursorWorkspaceFileRef,
+  makeIdeCursorWorkspaceAuthority,
+} from "./ide/cursor-workspace-authority.ts"
 import {
   DesktopIdeManagedSandboxCommandChannel,
   DesktopIdeManagedSandboxSnapshotChannel,
@@ -499,6 +503,16 @@ import {
 } from "./ide/run-contract.ts"
 import { openIdeRunHost } from "./ide/run-host.ts"
 import {
+  IdeDebugCommandChannel,
+  IdeDebugEventChannel,
+  IdeDebugSnapshotChannel,
+  IdeDebugSourceRefSchema,
+  type IdeDebugEvent,
+  type IdeDebugSource,
+} from "./ide/debug-contract.ts"
+import { discoverIdeDebugManifest } from "./ide/debug-discovery.ts"
+import { openIdeDapHost, type IdeDapSourceResolverInput } from "./ide/dap-host.ts"
+import {
   DesktopWorkspaceLanguageCancelChannel,
   DesktopWorkspaceLanguageRequestChannel,
   DesktopWorkspaceLanguageStopChannel,
@@ -510,7 +524,7 @@ import {
   decodeIdeLanguageRequest,
   decodeIdeLanguageStopRequest,
 } from "./ide/language-contract.ts"
-import { IdeLanguageServiceRefSchema } from "./ide/project-contract.ts"
+import { IdeDocumentGenerationSchema, IdeLanguageServiceRefSchema } from "./ide/project-contract.ts"
 import {
   ProductSpecCreateChannel,
   ProductSpecEditConfirmChannel,
@@ -2889,8 +2903,78 @@ const ideRunHost = openIdeRunHost({
   emit: broadcastIdeRunEvent,
   exportRoot: path.join(app.getPath("userData"), "ide-run", "exports"),
 })
+const resolveIdeDebugSource = (input: IdeDapSourceResolverInput): IdeDebugSource | null => {
+  const sourcePath = input.source.path
+  if (sourcePath === undefined) return null
+  const absolute = path.isAbsolute(sourcePath)
+    ? path.resolve(sourcePath)
+    : path.resolve(input.root, sourcePath)
+  const relative = path.relative(input.root, absolute)
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null
+  const workspace = hostLifecycle.workspace()
+  if (workspace === null) return null
+  let opened: ReturnType<typeof workspace.openDocument>
+  try {
+    if (path.resolve(workspace.summary().root) !== path.resolve(input.root)) return null
+    opened = workspace.openDocument({
+      grantRef: workspace.grantRef,
+      pathRef: relative.split(path.sep).join("/"),
+    })
+  } catch {
+    return null
+  }
+  if (opened.state === "unavailable") return null
+  const document = opened.state === "conflict" ? opened.current : opened.document
+  return {
+    sourceRef: IdeDebugSourceRefSchema.make(
+      `ide.debug-source.project-${createHash("sha256").update(document.pathRef).digest("hex").slice(0, 32)}`,
+    ),
+    fileRef: ideCursorWorkspaceFileRef(document.pathRef),
+    documentRef: ideCursorWorkspaceDocumentRef(document.pathRef),
+    documentGeneration: IdeDocumentGenerationSchema.make(1),
+    pathRef: document.pathRef,
+    label: path.basename(document.pathRef) || document.pathRef,
+    origin: "project",
+    availability: "available",
+    sourceMapRef: null,
+  }
+}
+const broadcastIdeDebugEvent = (event: IdeDebugEvent): void => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send(IdeDebugEventChannel, event)
+  }
+}
+const runIdeDebugTask = async (
+  taskRef: string,
+  actor: Parameters<NonNullable<Parameters<typeof openIdeDapHost>[0]["runTask"]>>[1],
+): Promise<boolean> => {
+  const host = await ideRunHost
+  await host.command({ _tag: "Discover" })
+  const started = await host.command({ _tag: "StartTask", definitionRef: taskRef, actor })
+  if (started === null || started._tag !== "Succeeded") return false
+  const run = started.snapshot.taskRuns.filter((candidate) => candidate.definitionRef === taskRef).at(-1)
+  if (run === undefined) return false
+  const deadline = Date.now() + 120_000
+  while (Date.now() < deadline) {
+    const snapshot = await host.snapshot()
+    const current = snapshot?.taskRuns.find((candidate) => candidate.runRef === run.runRef)
+    if (current?.outcome._tag === "Succeeded" || current?.outcome._tag === "Ready") return true
+    if (current !== undefined && ["Failed", "Cancelled", "TimedOut", "Refused"].includes(current.outcome._tag)) return false
+    await new Promise(resolve => setTimeout(resolve, 25))
+  }
+  return false
+}
+const ideDebugHost = openIdeDapHost({
+  workspace: terminalWorkspaceBinding,
+  discoverConfigurations: ({ root, binding }) => discoverIdeDebugManifest({ root, binding }),
+  resolveSource: resolveIdeDebugSource,
+  runTask: runIdeDebugTask,
+  emit: broadcastIdeDebugEvent,
+  persistenceRoot: path.join(app.getPath("userData"), "ide-debug"),
+})
 const disposeIdeRunHost = (): void => {
   void ideRunHost.then((host) => host.dispose())
+  void ideDebugHost.then((host) => host.dispose())
 }
 const broadcastTerminalEvent = (event: TerminalEvent): void => {
   for (const window of BrowserWindow.getAllWindows()) {
@@ -2960,6 +3044,9 @@ ipcMain.handle(TerminalPreviewOpenChannel, (_event, value: unknown) => {
 ipcMain.handle(IdeRunSnapshotChannel, () => ideRunHost.then((host) => host.snapshot()))
 ipcMain.handle(IdeRunCommandChannel, (_event, value: unknown) =>
   ideRunHost.then((host) => host.command(value)))
+ipcMain.handle(IdeDebugSnapshotChannel, () => ideDebugHost.then((host) => host.snapshot()))
+ipcMain.handle(IdeDebugCommandChannel, (_event, value: unknown) =>
+  ideDebugHost.then((host) => host.command(value)))
 
 // List is intentionally metadata-only: a large local history must not
 // serialize every transcript into the renderer merely to draw the sidebar.

@@ -60,6 +60,7 @@ export interface DapClient {
     options?: DapRequestOptions,
   ) => Promise<DapResponse>;
   readonly dispose: (reason: string) => Promise<void>;
+  readonly drainEvents: () => Promise<void>;
   readonly pendingRequestCount: () => number;
   readonly isExited: () => boolean;
 }
@@ -336,6 +337,7 @@ export const openDapClient = (options: DapClientOptions): DapClient => {
       })();
       return disposePromise;
     },
+    drainEvents: () => eventTail,
     pendingRequestCount: broker.pendingCount,
     isExited: () => exited,
   };

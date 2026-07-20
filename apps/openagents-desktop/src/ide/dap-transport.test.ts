@@ -65,6 +65,34 @@ describe("IDE-11 DAP transport", () => {
     expect(() => decoder.finish()).not.toThrow();
   });
 
+  test("accepts the zero response sequence emitted by Xcode lldb-dap", () => {
+    const body = Buffer.from(
+      JSON.stringify({
+        seq: 0,
+        type: "response",
+        request_seq: 1,
+        success: true,
+        command: "initialize",
+        body: { supportsConfigurationDoneRequest: true },
+      }),
+      "utf8",
+    );
+    const frame = Buffer.concat([
+      Buffer.from(`Content-Length: ${body.byteLength}\r\n\r\n`, "ascii"),
+      body,
+    ]);
+    expect(makeDapMessageDecoder().push(frame)).toEqual([
+      {
+        seq: 0,
+        type: "response",
+        request_seq: 1,
+        success: true,
+        command: "initialize",
+        body: { supportsConfigurationDoneRequest: true },
+      },
+    ]);
+  });
+
   test("rejects ambiguous and hostile Content-Length headers", () => {
     expect(() =>
       makeDapMessageDecoder().push(Buffer.from("Content-Length: 2\r\nContent-Length: 2\r\n\r\n{}")),

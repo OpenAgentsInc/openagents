@@ -219,6 +219,16 @@ import {
   type IdeRunEvent,
 } from "./ide/run-contract.ts"
 import {
+  IdeDebugCommandChannel,
+  IdeDebugEventChannel,
+  IdeDebugSnapshotChannel,
+  decodeIdeDebugCommand,
+  decodeIdeDebugCommandResult,
+  decodeIdeDebugEvent,
+  decodeIdeDebugSnapshot,
+  type IdeDebugEvent,
+} from "./ide/debug-contract.ts"
+import {
   DesktopRuntimeGatewayEventChannel,
   DesktopRuntimeGatewayInvokeChannel,
   decodeDesktopRuntimeGatewayEvent,
@@ -941,6 +951,23 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       }
       ipcRenderer.on(IdeRunEventChannel, handler)
       return () => ipcRenderer.removeListener(IdeRunEventChannel, handler)
+    },
+  },
+  /** IDE-11 canonical Effect DAP graph. */
+  ideDebug: {
+    snapshot: async () => decodeIdeDebugSnapshot(await ipcRenderer.invoke(IdeDebugSnapshotChannel)),
+    command: async (value: unknown) => {
+      const command = decodeIdeDebugCommand(value)
+      if (command === null) return null
+      return decodeIdeDebugCommandResult(await ipcRenderer.invoke(IdeDebugCommandChannel, command))
+    },
+    onEvent: (listener: (event: IdeDebugEvent) => void) => {
+      const handler = (_event: unknown, value: unknown): void => {
+        const decoded = decodeIdeDebugEvent(value)
+        if (decoded !== null) listener(decoded)
+      }
+      ipcRenderer.on(IdeDebugEventChannel, handler)
+      return () => ipcRenderer.removeListener(IdeDebugEventChannel, handler)
     },
   },
   codexAccounts: () => ipcRenderer.invoke(CodexAccountsChannel),

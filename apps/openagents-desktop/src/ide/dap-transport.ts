@@ -7,7 +7,7 @@ const DAP_DEFAULT_PENDING_REQUESTS = 256;
 
 const DapSequenceSchema = Schema.Number.check(
   Schema.isInt(),
-  Schema.isBetween({ minimum: 1, maximum: DAP_MAX_SEQUENCE }),
+  Schema.isBetween({ minimum: 0, maximum: DAP_MAX_SEQUENCE }),
 );
 const DapNameSchema = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256));
 
