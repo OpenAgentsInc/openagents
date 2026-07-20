@@ -1,9 +1,9 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-evidence.v3",
   "issue": "IDE-13",
-  "candidateCommitSha": "65405152bb2076dc81d160f2c7e0cd96487456cc",
-  "baseCommitSha": "c2471ad13930c1002970a33568a383410e2cc058",
-  "generatedAt": "2026-07-20T18:29:03.024Z",
+  "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
+  "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
+  "generatedAt": "2026-07-20T18:34:03.939Z",
   "producerRef": "openagents:ide-13-implementation",
   "acceptanceRefs": {
     "candidateRef": null,
@@ -143,6 +143,12 @@
       "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json"
     },
     {
+      "checkRef": "owner-local-real-fault-matrix",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json"
+    },
+    {
       "checkRef": "workspace-search-revocation",
       "evidenceClass": "regression",
       "result": "passed",
@@ -164,7 +170,7 @@
       "journeys": {
         "mainJourneyReceiptRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
         "failbackJourneyReceiptRef": "receipt.pylon.portable.destination_activation.f2a6ffbcadb2d1f8fbcefdb57e03fcc8",
-        "faultMatrixReceiptRef": null
+        "faultMatrixReceiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json"
       },
       "operatingSystem": "darwin",
       "architecture": "arm64",
@@ -176,12 +182,12 @@
       },
       "targetRef": "target.ide13.owner-local.cohort.a",
       "artifact": {
-        "ref": "artifact.portable-checkpoint.830f88dc795c0269ce13394194aeebd5",
-        "sha256": "660bf0d2a320622003fd350de4680f6d90a8b90adc80274a7bc9d24ed8eea9b8",
+        "ref": "artifact.portable-checkpoint.4f4eea5d479195b4d7dfff0994cddf2a",
+        "sha256": "fdb61e7065303fbec258658773dc33b7ae6aba18a62f5dc72182c813b6b9d60c",
         "bytes": 1380
       },
-      "candidateCommitSha": "65405152bb2076dc81d160f2c7e0cd96487456cc",
-      "baseCommitSha": "c2471ad13930c1002970a33568a383410e2cc058",
+      "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
+      "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
       "capabilityState": "degraded",
       "custody": "owner_device",
       "networkDestinations": [],
@@ -210,7 +216,7 @@
         {
           "phase": "upload",
           "evidenceClass": "real_local",
-          "receiptRef": "receipt.ide13.owner-local.upload.d8fa4056b1cdc596728d35fb7f5a1e0e",
+          "receiptRef": "receipt.ide13.owner-local.upload.b1067d4b2542e4619be4c2239171db75",
           "operationRef": "operation.ide13.owner-local.move.custody.upload",
           "attachmentGeneration": 1,
           "result": "passed"
@@ -218,7 +224,7 @@
         {
           "phase": "redeem",
           "evidenceClass": "real_local",
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.c769b13789df9d13ff7639797de3b186",
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.285601543a9fa1d91204be39bf329a00",
           "operationRef": "operation.ide13.owner-local.move.destination.stage",
           "attachmentGeneration": 2,
           "result": "passed"
@@ -263,13 +269,13 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 0.5368329999996604,
-          "p95": 0.6404999999995198,
-          "p99": 0.6404999999995198,
+          "p50": 0.7287919999998849,
+          "p95": 0.7902079999994385,
+          "p99": 0.7902079999994385,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.4db7064b5b701da38737f1ee464122fa"
+          "receiptRef": "receipt.ide13.owner-local.performance.6de079eff023fbd7d33c20bc41d37199"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.checkpoint",
@@ -277,13 +283,13 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 54.77258299999994,
-          "p95": 60.984166999999616,
-          "p99": 60.984166999999616,
+          "p50": 74.15124999999989,
+          "p95": 89.53924999999981,
+          "p99": 89.53924999999981,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.b264cece8b7426d4c2f1096855e2e29c"
+          "receiptRef": "receipt.ide13.owner-local.performance.80db585afd6302b6daec56bce26d3458"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.upload",
@@ -291,13 +297,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 57.179999999999836,
-          "p95": 74.45375000000058,
-          "p99": 74.45375000000058,
+          "p50": 82.11162500000046,
+          "p95": 97.7932499999988,
+          "p99": 97.7932499999988,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.0e15779bf466bbd3dba30215a348b6b3"
+          "receiptRef": "receipt.ide13.owner-local.performance.1ae1b2d6a46295944b2a6cabfc63ed63"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -305,13 +311,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 111.07979200000045,
-          "p95": 136.6401249999999,
-          "p99": 136.6401249999999,
+          "p50": 173.60883300000023,
+          "p95": 202.90350000000035,
+          "p99": 202.90350000000035,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.54521e109711fb17e2041525118d8f8b"
+          "receiptRef": "receipt.ide13.owner-local.performance.593d062452fdd51c87f15eb406d66850"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -319,13 +325,13 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 59.2288750000007,
-          "p95": 63.203459000000294,
-          "p99": 63.203459000000294,
+          "p50": 71.85824999999932,
+          "p95": 76.3539580000006,
+          "p99": 76.3539580000006,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.7b00ebc3a955eaebf857890a5f169d8a"
+          "receiptRef": "receipt.ide13.owner-local.performance.248cdf94bb1a6e3676605e8c61b253a0"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.helper_readiness",
@@ -333,13 +339,13 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 0.003291999999419204,
-          "p95": 0.0049579999999878055,
-          "p99": 0.0049579999999878055,
+          "p50": 0.006499999999505235,
+          "p95": 0.008625000002211891,
+          "p99": 0.008625000002211891,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.573384f1f464b7c3b7bba59072cf0e25"
+          "receiptRef": "receipt.ide13.owner-local.performance.44bf9dc7ba8b9cdeee285dc812bdd671"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.failback",
@@ -347,13 +353,13 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 533.2533749999993,
-          "p95": 569.0157920000001,
-          "p99": 569.0157920000001,
+          "p50": 698.0392499999998,
+          "p95": 746.9196670000001,
+          "p99": 746.9196670000001,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.872fc742a56bb4b7667cf5136bfd49d4"
+          "receiptRef": "receipt.ide13.owner-local.performance.b76f3211e0355400cce67677d7b4aac7"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.teardown",
@@ -361,13 +367,13 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 311.4450829999996,
-          "p95": 319.09166600000026,
-          "p99": 319.09166600000026,
+          "p50": 336.4722920000004,
+          "p95": 367.71508300000096,
+          "p99": 367.71508300000096,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.037f08ac95d84e42b3df8a16e77bf500"
+          "receiptRef": "receipt.ide13.owner-local.performance.59a3919994e518d7611313b53ca6e60e"
         },
         {
           "metricRef": "metric.ide13.owner-local.checkpoint_size",
@@ -375,13 +381,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 10,
-          "p50": 1379,
-          "p95": 1380,
-          "p99": 1380,
+          "p50": 1377,
+          "p95": 1381,
+          "p99": 1381,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.df678058fe16751ecacf0893d7f2f177"
+          "receiptRef": "receipt.ide13.owner-local.performance.d22d59fb319925d290853ebc578ea3ab"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -389,13 +395,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 10,
-          "p50": 11.508117561543537,
-          "p95": 12.595535661519076,
-          "p99": 12.595535661519076,
+          "p50": 11.365042548351937,
+          "p95": 12.341584085764572,
+          "p99": 12.341584085764572,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.2365e0749f040dcb5d756820b6592c04"
+          "receiptRef": "receipt.ide13.owner-local.performance.4f0ec8919223bec811606ec47912e6ad"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -403,13 +409,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 10,
-          "p50": 306348032,
-          "p95": 307494912,
-          "p99": 307494912,
+          "p50": 294092800,
+          "p95": 296157184,
+          "p99": 296157184,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.d24e144c6d21fe55a199c4c995788168"
+          "receiptRef": "receipt.ide13.owner-local.performance.68b3373b5d1a9b6cf3e0e56c141e8fe5"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -423,7 +429,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.fd57f0552e0734feda274b8f64ddd0ce"
+          "receiptRef": "receipt.ide13.owner-local.performance.55f01b3e1d8347501d2fd950828db645"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -437,7 +443,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.ac83ec0ab7e3bbf115bcc713c20e8ae0"
+          "receiptRef": "receipt.ide13.owner-local.performance.50302afc661f3be4578fea3e699d612f"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -451,7 +457,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.7848eaae4485bd0d174433c680a17bde"
+          "receiptRef": "receipt.ide13.owner-local.performance.28f3a82b68d81a2d8b007ef950d8d794"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -465,7 +471,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.2e870278f37d9969ff8a5f8f9af177ce"
+          "receiptRef": "receipt.ide13.owner-local.performance.7dec7bf16791789384c729ed890db593"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -473,16 +479,16 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 311.4450829999996,
-          "p95": 319.09166600000026,
-          "p99": 319.09166600000026,
+          "p50": 336.4722920000004,
+          "p95": 367.71508300000096,
+          "p99": 367.71508300000096,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.e8793985129941fe9bb07e2e882e1eef"
+          "receiptRef": "receipt.ide13.owner-local.performance.8a0b4bef962421a121c46e8d758e8a46"
         }
       ],
-      "result": "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The destination started a signature-verified TypeScript LSP. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. DAP and native stayed unsupported because no signed executable profile is admitted for them. The phase and resource distributions use 10 complete real owner-local runs under receipt.ide13.owner-local.performance.1835ce8621966d213a49d030592047eb."
+      "result": "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The destination started a signature-verified TypeScript LSP. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. DAP and native stayed unsupported because no signed executable profile is admitted for them. The phase and resource distributions use 10 complete real owner-local runs under receipt.ide13.owner-local.performance.a329f4c8b7591c8b5560290c689e2cb3. The required fault inventory records 8 passed injected transition-partition rows and 19 explicit not-run rows."
     },
     {
       "cohortRef": "cohort:owner-managed:simulator",
@@ -508,8 +514,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "65405152bb2076dc81d160f2c7e0cd96487456cc",
-      "baseCommitSha": "c2471ad13930c1002970a33568a383410e2cc058",
+      "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
+      "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
       "capabilityState": "unverified",
       "custody": "owner_managed",
       "networkDestinations": [],
@@ -609,8 +615,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "65405152bb2076dc81d160f2c7e0cd96487456cc",
-      "baseCommitSha": "c2471ad13930c1002970a33568a383410e2cc058",
+      "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
+      "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
       "capabilityState": "unverified",
       "custody": "openagents_managed",
       "networkDestinations": [],
@@ -710,8 +716,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "65405152bb2076dc81d160f2c7e0cd96487456cc",
-      "baseCommitSha": "c2471ad13930c1002970a33568a383410e2cc058",
+      "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
+      "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
       "capabilityState": "unsupported",
       "custody": "unverified",
       "networkDestinations": [],
@@ -827,7 +833,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "owner-local-generation-2-attachment",
-      "receiptRef": "receipt.ide13.owner-local.replay.3d0f4a19a45d1cd665b47f623fecbeee"
+      "receiptRef": "receipt.ide13.owner-local.replay.cfd1f09f1258bbfc39be8cfce95f586b"
     },
     {
       "recoveryRef": "recovery:pylon-restart",
@@ -852,15 +858,301 @@
   ],
   "faultFacts": [
     {
-      "faultRef": "fault:owner-local-old-generation-command",
+      "faultRef": "fault.ide13.owner-local.transition-partition.quiesce",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "transition_partition",
+      "phase": "quiesce",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.agent_quiesced.4c76e00686868261446d94d0",
+      "receiptRef": "receipt.ide13.owner-local.fault.d0819c36d844df435e829245330deea7"
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.checkpoint",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "transition_partition",
+      "phase": "checkpoint",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.checkpoint.f89cd37b0e524045087fc9af",
+      "receiptRef": "receipt.ide13.owner-local.fault.0412d79f6c0aef784a3ec6275c8f2d51"
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.upload",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "transition_partition",
+      "phase": "upload",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.ide13.owner-local.upload.c0f199e50429489fada11b8968acc98d",
+      "receiptRef": "receipt.ide13.owner-local.fault.18026e9ddcf56ab6e5e8cc03740ad86c"
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.redeem",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "transition_partition",
+      "phase": "redeem",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.artifact_materialized.3f0c51672158809fa4a64bfe86f4c4c1",
+      "receiptRef": "receipt.ide13.owner-local.fault.9094c60ff750efe4d29e2e6dc768f886"
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.attach",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "transition_partition",
+      "phase": "attach",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
+      "receiptRef": "receipt.ide13.owner-local.fault.087a8642d2d4ebd000b6412b4e778bba"
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.helper_readiness",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "transition_partition",
+      "phase": "helper_readiness",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.ide13.owner-local.helpers.1cbc836f75cac0a97936a027bdcbcf27",
+      "receiptRef": "receipt.ide13.owner-local.fault.a9f91c642cf8bd4e44653013536ce8ea"
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.failback",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "transition_partition",
+      "phase": "failback",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.destination_activation.f2a6ffbcadb2d1f8fbcefdb57e03fcc8",
+      "receiptRef": "receipt.ide13.owner-local.fault.5649883dbfb4288f651a445de7e710e4"
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.teardown",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "transition_partition",
+      "phase": "teardown",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "recoveryPointRef": "receipt.pylon.portable.source_cleanup.fadb8dcbee3ab1ce8ee60e2b",
+      "receiptRef": "receipt.ide13.owner-local.fault.89af2dea1877498bffa255113a4c8d1a"
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.coordinator_crash",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "coordinator_crash",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.checkpoint_store_crash",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "checkpoint_store_crash",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.provider_crash",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "provider_crash",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.duplicate_event",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "duplicate_event",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.reordered_event",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "reordered_event",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.old_generation_command",
       "cohortRef": "cohort.ide13.owner-local.real.1",
       "targetClass": "owner_local",
       "scenario": "old_generation_command",
       "phase": null,
-      "evidenceClass": "real_local",
-      "outcome": "passed",
-      "recoveryPointRef": "owner-local-generation-2-attachment",
-      "receiptRef": "receipt.ide13.owner-local.stale-generation-refused.c2b7ec5970f3ec1c28050dbc5f63df07"
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.lease_expiry_clock_skew",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "lease_expiry_clock_skew",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.corrupt_checkpoint",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "corrupt_checkpoint",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.truncated_checkpoint",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "truncated_checkpoint",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.wrong_schema_checkpoint",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "wrong_schema_checkpoint",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.missing_artifact",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "missing_artifact",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.auth_expiry_revocation",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "auth_expiry_revocation",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.provider_capability_drift",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "provider_capability_drift",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.destination_boot_failure",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "destination_boot_failure",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.source_revocation_failure",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "source_revocation_failure",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.dual_attachment_claim",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "dual_attachment_claim",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.target_offline_or_evicted",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "target_offline_or_evicted",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.cancellation_and_app_restart",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "cancellation_and_app_restart",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.failback_to_older_recovery_point",
+      "cohortRef": "cohort.ide13.owner-local.real.1",
+      "targetClass": "owner_local",
+      "scenario": "failback_to_older_recovery_point",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
     }
   ],
   "security": {
@@ -884,7 +1176,7 @@
     "DAP and native helper profiles have no admitted signed installed artifacts.",
     "The owner-managed enrollment and checkpoint-key custody design requires the recorded owner decision.",
     "The managed root filesystem needs a Linux x64 rebuild before the live Firecracker proof can run.",
-    "The real transition fault, restart, teardown, and older-recovery-point matrix did not run.",
+    "Eight real local transition-partition rows passed. The other 19 required fault, restart, teardown, and older-recovery-point rows did not run.",
     "The packaged authenticated move journeys did not run on each required target.",
     "The complete phase and resource metric matrices are absent for the owner-managed, OpenAgents-managed, and admitted provider cohorts.",
     "The independent reviewer and owner dispositions are absent."

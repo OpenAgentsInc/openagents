@@ -1,0 +1,512 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-owner-local-fault-matrix.v1",
+  "evidenceContractVersion": "openagents.desktop.ide-portable-evidence.v3",
+  "generatedAt": "2026-07-20T18:33:16.925Z",
+  "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
+  "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
+  "cohortRef": "cohort.ide13.owner-local.real.1",
+  "targetClass": "owner_local",
+  "adapterRef": "adapter.pylon.owner-local.control-session.v1",
+  "cases": [
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.quiesce",
+      "scenario": "transition_partition",
+      "phase": "quiesce",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.quiesce.dispatch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.transition-partition.quiesce",
+      "recoveryPointRef": "receipt.pylon.portable.agent_quiesced.4c76e00686868261446d94d0",
+      "receiptRef": "receipt.ide13.owner-local.fault.d0819c36d844df435e829245330deea7",
+      "elapsedMilliseconds": 2025.3678750000004,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The source-controlled harness injected one transient disconnect at the production owner-local phase dispatch boundary, retried the exact operation, completed the real local composition, and then verified cleanup. This was an injected fault, not an external outage."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.checkpoint",
+      "scenario": "transition_partition",
+      "phase": "checkpoint",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.checkpoint.dispatch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.transition-partition.checkpoint",
+      "recoveryPointRef": "receipt.pylon.portable.checkpoint.f89cd37b0e524045087fc9af",
+      "receiptRef": "receipt.ide13.owner-local.fault.0412d79f6c0aef784a3ec6275c8f2d51",
+      "elapsedMilliseconds": 1861.284792,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The source-controlled harness injected one transient disconnect at the production owner-local phase dispatch boundary, retried the exact operation, completed the real local composition, and then verified cleanup. This was an injected fault, not an external outage."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.upload",
+      "scenario": "transition_partition",
+      "phase": "upload",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.upload.dispatch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.transition-partition.upload",
+      "recoveryPointRef": "receipt.ide13.owner-local.upload.c0f199e50429489fada11b8968acc98d",
+      "receiptRef": "receipt.ide13.owner-local.fault.18026e9ddcf56ab6e5e8cc03740ad86c",
+      "elapsedMilliseconds": 2041.5791670000003,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The source-controlled harness injected one transient disconnect at the production owner-local phase dispatch boundary, retried the exact operation, completed the real local composition, and then verified cleanup. This was an injected fault, not an external outage."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.redeem",
+      "scenario": "transition_partition",
+      "phase": "redeem",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.redeem.dispatch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.transition-partition.redeem",
+      "recoveryPointRef": "receipt.pylon.portable.artifact_materialized.3f0c51672158809fa4a64bfe86f4c4c1",
+      "receiptRef": "receipt.ide13.owner-local.fault.9094c60ff750efe4d29e2e6dc768f886",
+      "elapsedMilliseconds": 2041.0030000000002,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The source-controlled harness injected one transient disconnect at the production owner-local phase dispatch boundary, retried the exact operation, completed the real local composition, and then verified cleanup. This was an injected fault, not an external outage."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.attach",
+      "scenario": "transition_partition",
+      "phase": "attach",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.attach.dispatch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.transition-partition.attach",
+      "recoveryPointRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
+      "receiptRef": "receipt.ide13.owner-local.fault.087a8642d2d4ebd000b6412b4e778bba",
+      "elapsedMilliseconds": 1994.9150829999999,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The source-controlled harness injected one transient disconnect at the production owner-local phase dispatch boundary, retried the exact operation, completed the real local composition, and then verified cleanup. This was an injected fault, not an external outage."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.helper_readiness",
+      "scenario": "transition_partition",
+      "phase": "helper_readiness",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.helper_readiness.dispatch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.transition-partition.helper_readiness",
+      "recoveryPointRef": "receipt.ide13.owner-local.helpers.1cbc836f75cac0a97936a027bdcbcf27",
+      "receiptRef": "receipt.ide13.owner-local.fault.a9f91c642cf8bd4e44653013536ce8ea",
+      "elapsedMilliseconds": 2034.478709,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The source-controlled harness injected one transient disconnect at the production owner-local phase dispatch boundary, retried the exact operation, completed the real local composition, and then verified cleanup. This was an injected fault, not an external outage."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.failback",
+      "scenario": "transition_partition",
+      "phase": "failback",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.failback.dispatch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.transition-partition.failback",
+      "recoveryPointRef": "receipt.pylon.portable.destination_activation.f2a6ffbcadb2d1f8fbcefdb57e03fcc8",
+      "receiptRef": "receipt.ide13.owner-local.fault.5649883dbfb4288f651a445de7e710e4",
+      "elapsedMilliseconds": 1940.830167,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The source-controlled harness injected one transient disconnect at the production owner-local phase dispatch boundary, retried the exact operation, completed the real local composition, and then verified cleanup. This was an injected fault, not an external outage."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.transition-partition.teardown",
+      "scenario": "transition_partition",
+      "phase": "teardown",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.teardown.dispatch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.transition-partition.teardown",
+      "recoveryPointRef": "receipt.pylon.portable.source_cleanup.fadb8dcbee3ab1ce8ee60e2b",
+      "receiptRef": "receipt.ide13.owner-local.fault.89af2dea1877498bffa255113a4c8d1a",
+      "elapsedMilliseconds": 1958.419833,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The source-controlled harness injected one transient disconnect at the production owner-local phase dispatch boundary, retried the exact operation, completed the real local composition, and then verified cleanup. This was an injected fault, not an external outage."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.coordinator_crash",
+      "scenario": "coordinator_crash",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled coordinator_crash injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.checkpoint_store_crash",
+      "scenario": "checkpoint_store_crash",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled checkpoint_store_crash injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.provider_crash",
+      "scenario": "provider_crash",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled provider_crash injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.duplicate_event",
+      "scenario": "duplicate_event",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled duplicate_event injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.reordered_event",
+      "scenario": "reordered_event",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled reordered_event injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.old_generation_command",
+      "scenario": "old_generation_command",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled old_generation_command injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.lease_expiry_clock_skew",
+      "scenario": "lease_expiry_clock_skew",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled lease_expiry_clock_skew injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.corrupt_checkpoint",
+      "scenario": "corrupt_checkpoint",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled corrupt_checkpoint injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.truncated_checkpoint",
+      "scenario": "truncated_checkpoint",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled truncated_checkpoint injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.wrong_schema_checkpoint",
+      "scenario": "wrong_schema_checkpoint",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled wrong_schema_checkpoint injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.missing_artifact",
+      "scenario": "missing_artifact",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled missing_artifact injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.auth_expiry_revocation",
+      "scenario": "auth_expiry_revocation",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled auth_expiry_revocation injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.provider_capability_drift",
+      "scenario": "provider_capability_drift",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled provider_capability_drift injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.destination_boot_failure",
+      "scenario": "destination_boot_failure",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled destination_boot_failure injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.source_revocation_failure",
+      "scenario": "source_revocation_failure",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled source_revocation_failure injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.dual_attachment_claim",
+      "scenario": "dual_attachment_claim",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled dual_attachment_claim injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.target_offline_or_evicted",
+      "scenario": "target_offline_or_evicted",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled target_offline_or_evicted injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.cancellation_and_app_restart",
+      "scenario": "cancellation_and_app_restart",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled cancellation_and_app_restart injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "faultRef": "fault.ide13.owner-local.failback_to_older_recovery_point",
+      "scenario": "failback_to_older_recovery_point",
+      "phase": null,
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "productionBoundaryRef": null,
+      "injectedFaultRef": null,
+      "recoveryPointRef": null,
+      "receiptRef": null,
+      "elapsedMilliseconds": 0,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production owner-local composition does not have a source-controlled failback_to_older_recovery_point injection seam. This case did not run and does not contribute acceptance evidence."
+    }
+  ],
+  "summary": {
+    "requiredCaseCount": 27,
+    "passedRealLocalCount": 8,
+    "notRunCount": 19,
+    "acceptanceReady": false
+  },
+  "safety": {
+    "secondWriterObserved": false,
+    "staleMutationAccepted": false,
+    "forbiddenMaterialProjected": false,
+    "orphanPtyCount": 0,
+    "orphanLspCount": 0,
+    "orphanWatcherCount": 0,
+    "custodyObjectResidueCount": 0,
+    "capabilityLeaseResidueCount": 0,
+    "queueRowResidueCount": 0,
+    "sqliteResidueCount": 0,
+    "sessionResidueCount": 0,
+    "proofReceiptRefs": [
+      "receipt.ide13.owner-local.stale-generation-refused.c2b7ec5970f3ec1c28050dbc5f63df07",
+      "receipt.portable-checkpoint-deletion.2af84106aa33c6026af86a37e98edbbb",
+      "receipt.portable-checkpoint-deletion.9b0cf9b58942396afa774cb146da9f44",
+      "receipt.pylon.portable.source_cleanup.fadb8dcbee3ab1ce8ee60e2b"
+    ]
+  },
+  "omissions": [
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.coordinator_crash",
+      "scenario": "coordinator_crash",
+      "reason": "The production owner-local composition does not have a source-controlled coordinator_crash injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.checkpoint_store_crash",
+      "scenario": "checkpoint_store_crash",
+      "reason": "The production owner-local composition does not have a source-controlled checkpoint_store_crash injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.provider_crash",
+      "scenario": "provider_crash",
+      "reason": "The production owner-local composition does not have a source-controlled provider_crash injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.duplicate_event",
+      "scenario": "duplicate_event",
+      "reason": "The production owner-local composition does not have a source-controlled duplicate_event injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.reordered_event",
+      "scenario": "reordered_event",
+      "reason": "The production owner-local composition does not have a source-controlled reordered_event injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.old_generation_command",
+      "scenario": "old_generation_command",
+      "reason": "The production owner-local composition does not have a source-controlled old_generation_command injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.lease_expiry_clock_skew",
+      "scenario": "lease_expiry_clock_skew",
+      "reason": "The production owner-local composition does not have a source-controlled lease_expiry_clock_skew injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.corrupt_checkpoint",
+      "scenario": "corrupt_checkpoint",
+      "reason": "The production owner-local composition does not have a source-controlled corrupt_checkpoint injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.truncated_checkpoint",
+      "scenario": "truncated_checkpoint",
+      "reason": "The production owner-local composition does not have a source-controlled truncated_checkpoint injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.wrong_schema_checkpoint",
+      "scenario": "wrong_schema_checkpoint",
+      "reason": "The production owner-local composition does not have a source-controlled wrong_schema_checkpoint injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.missing_artifact",
+      "scenario": "missing_artifact",
+      "reason": "The production owner-local composition does not have a source-controlled missing_artifact injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.auth_expiry_revocation",
+      "scenario": "auth_expiry_revocation",
+      "reason": "The production owner-local composition does not have a source-controlled auth_expiry_revocation injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.provider_capability_drift",
+      "scenario": "provider_capability_drift",
+      "reason": "The production owner-local composition does not have a source-controlled provider_capability_drift injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.destination_boot_failure",
+      "scenario": "destination_boot_failure",
+      "reason": "The production owner-local composition does not have a source-controlled destination_boot_failure injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.source_revocation_failure",
+      "scenario": "source_revocation_failure",
+      "reason": "The production owner-local composition does not have a source-controlled source_revocation_failure injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.dual_attachment_claim",
+      "scenario": "dual_attachment_claim",
+      "reason": "The production owner-local composition does not have a source-controlled dual_attachment_claim injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.target_offline_or_evicted",
+      "scenario": "target_offline_or_evicted",
+      "reason": "The production owner-local composition does not have a source-controlled target_offline_or_evicted injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.cancellation_and_app_restart",
+      "scenario": "cancellation_and_app_restart",
+      "reason": "The production owner-local composition does not have a source-controlled cancellation_and_app_restart injection seam. This case did not run and does not contribute acceptance evidence."
+    },
+    {
+      "omissionRef": "omission.ide13.owner-local.fault.failback_to_older_recovery_point",
+      "scenario": "failback_to_older_recovery_point",
+      "reason": "The production owner-local composition does not have a source-controlled failback_to_older_recovery_point injection seam. This case did not run and does not contribute acceptance evidence."
+    }
+  ]
+}
