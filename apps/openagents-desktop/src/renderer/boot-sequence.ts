@@ -50,8 +50,19 @@ export const projectBootSequenceAgents = (
 
   const codexStatus = laneStatus(codexLane)
   const claudeStatus = laneStatus(claudeLane)
+  const appleFmStatus: BootSequenceStatus = state.appleFmBoot?.status ?? "checking"
+  // Owner directive 2026-07-20: while the slower discovery probes are still
+  // running (codex/claude account verification, the Apple FM on-device probe),
+  // an ACP peer whose capability has not arrived yet must read as CHECKING — its
+  // lane capability lands on the same background refresh, so "not seen yet,
+  // still scanning" is "checking", NOT a premature "not connected". Only a
+  // settled scan with no admitted lane is honestly "not connected".
+  const discoveryOngoing =
+    codexStatus === "checking" || claudeStatus === "checking" || appleFmStatus === "checking"
   const grokStatus: BootSequenceStatus =
-    grokCap === undefined ? "unavailable" : grokCap.admission === "admitted" ? "available" : "unavailable"
+    grokCap !== undefined
+      ? grokCap.admission === "admitted" ? "available" : "unavailable"
+      : discoveryOngoing ? "checking" : "unavailable"
 
   return [
     {
@@ -80,7 +91,12 @@ export const projectBootSequenceAgents = (
       id: "grok",
       label: "Grok",
       status: grokStatus,
-      detail: grokStatus === "available" ? (grokCap?.models[0] ?? grokCap?.displayName ?? "ready") : "not connected",
+      detail:
+        grokStatus === "available"
+          ? (grokCap?.models[0] ?? grokCap?.displayName ?? "ready")
+          : grokStatus === "checking"
+            ? "checking…"
+            : "not connected",
     },
     {
       id: "apple-fm",

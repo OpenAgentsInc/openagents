@@ -91,6 +91,24 @@ describe("boot sequence agent scan", () => {
     expect(ready?.testInference).toBe("I am online.")
   })
 
+  test("Grok reads 'checking' while discovery is still scanning, not a premature 'not connected'", () => {
+    // Codex still verifying → the scan is active → an ACP peer not yet seen must
+    // read as checking (its lane cap arrives on the same background refresh).
+    const scanning = projectBootSequenceAgents(
+      withState({ harnessLanes: { ...base.harnessLanes, codex: { available: false, reason: CODEX_CHIP_REASON_VERIFYING } } }),
+    ).find((agent) => agent.id === "grok")
+    expect(scanning?.status).toBe("checking")
+    expect(scanning?.detail).toBe("checking…")
+
+    // Scan settled (Apple FM resolved, codex/claude not verifying) and still no
+    // Grok lane → honest "not connected".
+    const settled = projectBootSequenceAgents(
+      withState({ appleFmBoot: { status: "available", detail: "apple-fm-3b", testInference: null } }),
+    ).find((agent) => agent.id === "grok")
+    expect(settled?.status).toBe("unavailable")
+    expect(settled?.detail).toBe("not connected")
+  })
+
   test("a quarantined Grok lane is not counted as available", () => {
     const agents = projectBootSequenceAgents(
       withState({ providerLaneCapabilities: [lane({ laneRef: "acp:grok-cli", provider: "grok", admission: "quarantined" })] }),
