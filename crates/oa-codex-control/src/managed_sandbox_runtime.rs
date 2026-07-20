@@ -1001,7 +1001,6 @@ struct LiveGceManagedSandboxConfig {
     network_policy_ref: String,
     control_identity_ref: String,
     control_internal_ip: String,
-    control_service_account: String,
     broker_port: u16,
     gcloud_bin: String,
 }
@@ -1009,6 +1008,61 @@ struct LiveGceManagedSandboxConfig {
 #[derive(Clone, Debug)]
 struct LiveGceManagedSandboxProvider {
     config: LiveGceManagedSandboxConfig,
+}
+
+fn control_ingress_is_scoped(
+    ingress_allow: &Value,
+    ingress_deny: &Value,
+    control_internal_ip: &str,
+    target_tag: &str,
+) -> bool {
+    let control_cidr = format!("{control_internal_ip}/32");
+    let exact_target = |firewall: &Value| {
+        firewall
+            .get("targetTags")
+            .and_then(Value::as_array)
+            .is_some_and(|tags| tags.len() == 1 && tags[0].as_str() == Some(target_tag))
+    };
+    ingress_allow.get("direction").and_then(Value::as_str) == Some("INGRESS")
+        && ingress_allow.get("priority").and_then(Value::as_u64) == Some(900)
+        && ingress_allow.get("disabled").and_then(Value::as_bool) != Some(true)
+        && ingress_allow
+            .get("sourceRanges")
+            .and_then(Value::as_array)
+            .is_some_and(|ranges| {
+                ranges.len() == 1 && ranges[0].as_str() == Some(control_cidr.as_str())
+            })
+        && ingress_allow
+            .get("allowed")
+            .and_then(Value::as_array)
+            .is_some_and(|rules| {
+                rules.iter().any(|rule| {
+                    rule.get("IPProtocol").and_then(Value::as_str) == Some("tcp")
+                        && rule
+                            .get("ports")
+                            .and_then(Value::as_array)
+                            .is_some_and(|ports| {
+                                ports.len() == 1 && ports[0].as_str() == Some("22")
+                            })
+                })
+            })
+        && exact_target(ingress_allow)
+        && ingress_deny.get("direction").and_then(Value::as_str) == Some("INGRESS")
+        && ingress_deny.get("priority").and_then(Value::as_u64) == Some(1000)
+        && ingress_deny.get("disabled").and_then(Value::as_bool) != Some(true)
+        && ingress_deny
+            .get("sourceRanges")
+            .and_then(Value::as_array)
+            .is_some_and(|ranges| ranges.len() == 1 && ranges[0].as_str() == Some("0.0.0.0/0"))
+        && exact_target(ingress_deny)
+        && ingress_deny
+            .get("denied")
+            .and_then(Value::as_array)
+            .is_some_and(|rules| {
+                rules
+                    .iter()
+                    .any(|rule| rule.get("IPProtocol").and_then(Value::as_str) == Some("all"))
+            })
 }
 
 impl LiveGceManagedSandboxProvider {
@@ -1055,7 +1109,6 @@ impl LiveGceManagedSandboxProvider {
                 network_policy_ref: required("OA_MANAGED_SANDBOX_NETWORK_POLICY_REF")?,
                 control_identity_ref: required("OA_MANAGED_SANDBOX_CONTROL_IDENTITY_REF")?,
                 control_internal_ip: required("OA_MANAGED_SANDBOX_CONTROL_INTERNAL_IP")?,
-                control_service_account: required("OA_MANAGED_SANDBOX_CONTROL_SERVICE_ACCOUNT")?,
                 broker_port: required("OA_MANAGED_SANDBOX_PROVIDER_BROKER_PORT")?
                     .parse::<u16>()
                     .map_err(|_| {
@@ -1237,31 +1290,12 @@ impl LiveGceManagedSandboxProvider {
                 });
         let ingress_allow = observe_firewall(&ownership.control_ingress_firewall_name)?;
         let ingress_deny = observe_firewall(&ownership.ingress_deny_firewall_name)?;
-        let control_ingress_only = ingress_allow.get("direction").and_then(Value::as_str)
-            == Some("INGRESS")
-            && ingress_allow.get("priority").and_then(Value::as_u64) == Some(900)
-            && ingress_allow
-                .get("sourceServiceAccounts")
-                .and_then(Value::as_array)
-                .is_some_and(|accounts| {
-                    accounts.len() == 1
-                        && accounts[0].as_str()
-                            == Some(self.config.control_service_account.as_str())
-                })
-            && ingress_deny.get("direction").and_then(Value::as_str) == Some("INGRESS")
-            && ingress_deny.get("priority").and_then(Value::as_u64) == Some(1000)
-            && ingress_deny
-                .get("sourceRanges")
-                .and_then(Value::as_array)
-                .is_some_and(|ranges| ranges.len() == 1 && ranges[0].as_str() == Some("0.0.0.0/0"))
-            && ingress_deny
-                .get("denied")
-                .and_then(Value::as_array)
-                .is_some_and(|rules| {
-                    rules
-                        .iter()
-                        .any(|rule| rule.get("IPProtocol").and_then(Value::as_str) == Some("all"))
-                });
+        let control_ingress_only = control_ingress_is_scoped(
+            &ingress_allow,
+            &ingress_deny,
+            &self.config.control_internal_ip,
+            &ownership.resource_name,
+        );
 
         let serial = self.gcloud(&[
             "compute".to_string(),
@@ -1541,8 +1575,8 @@ impl ManagedSandboxProvider for LiveGceManagedSandboxProvider {
             "tcp:22".to_string(),
             "--priority".to_string(),
             "900".to_string(),
-            "--source-service-accounts".to_string(),
-            self.config.control_service_account.clone(),
+            "--source-ranges".to_string(),
+            format!("{}/32", self.config.control_internal_ip),
             "--target-tags".to_string(),
             ownership.resource_name.clone(),
         ])?;
@@ -2009,6 +2043,61 @@ mod tests {
             "labels.openagents-managed=managed-sandbox AND status!=TERMINATED"
         );
         assert!(!LIVE_ACTIVE_SANDBOX_FILTER.contains("!=("));
+    }
+
+    #[test]
+    fn control_ingress_requires_exact_reserved_ip_and_generation_target() {
+        let allow = json!({
+            "direction": "INGRESS",
+            "priority": 900,
+            "allowed": [{ "IPProtocol": "tcp", "ports": ["22"] }],
+            "sourceRanges": ["10.128.15.196/32"],
+            "targetTags": ["oa-msb-generation"],
+            "disabled": false
+        });
+        let deny = json!({
+            "direction": "INGRESS",
+            "priority": 1000,
+            "denied": [{ "IPProtocol": "all" }],
+            "sourceRanges": ["0.0.0.0/0"],
+            "targetTags": ["oa-msb-generation"],
+            "disabled": false
+        });
+        assert!(control_ingress_is_scoped(
+            &allow,
+            &deny,
+            "10.128.15.196",
+            "oa-msb-generation"
+        ));
+
+        let mut service_account_source = allow.clone();
+        service_account_source["sourceRanges"] = Value::Null;
+        service_account_source["sourceServiceAccounts"] =
+            json!(["oa-codex-control@example.iam.gserviceaccount.com"]);
+        assert!(!control_ingress_is_scoped(
+            &service_account_source,
+            &deny,
+            "10.128.15.196",
+            "oa-msb-generation"
+        ));
+
+        let mut broad_source = allow.clone();
+        broad_source["sourceRanges"] = json!(["10.128.0.0/20"]);
+        assert!(!control_ingress_is_scoped(
+            &broad_source,
+            &deny,
+            "10.128.15.196",
+            "oa-msb-generation"
+        ));
+
+        let mut wrong_target = allow;
+        wrong_target["targetTags"] = json!(["oa-msb-other-generation"]);
+        assert!(!control_ingress_is_scoped(
+            &wrong_target,
+            &deny,
+            "10.128.15.196",
+            "oa-msb-generation"
+        ));
     }
 
     #[test]

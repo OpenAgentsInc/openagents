@@ -82,8 +82,8 @@ sandbox generation owns four firewall rules:
 
 - allow egress only to the private control broker on TCP 8790 at priority 900.
 - deny all other egress at priority 1000.
-- allow ingress only from the control service account on TCP 22 at priority
-  900. And
+- allow ingress only from the profile-bound reserved control IP `/32` on TCP
+  22 at priority 900. And
 - deny all other ingress at priority 1000.
 
 The VM still has no external address, service account, OAuth scope, provider
@@ -93,10 +93,14 @@ tenant, sandbox, generation, turn, provider, model, and capability ref. The
 guest can present that capability only through the private control broker.
 The control bearer token and broker signing key live in Secret Manager and do
 not appear in VM metadata. The dedicated control VM also has no external IP.
-Persistent priority-900 rules admit only the managed-sandbox guest tag to TCP
-8790, the dedicated Direct VPC Cloud Run bridge tag to TCP 8787, and IAP to
-TCP 8787. Priority-1000 rules deny every other source on those ports,
-including traffic otherwise admitted by a default-VPC internal rule.
+The per-generation control-ingress rule pairs that exact source `/32` with the
+generation-owned guest target tag. GCP does not permit a source service
+account and a target tag in the same firewall rule, so the runtime refuses
+that invalid shape instead of treating it as identity evidence. Persistent
+priority-900 rules admit only the managed-sandbox guest tag to TCP 8790, the
+dedicated Direct VPC Cloud Run bridge tag to TCP 8787, and IAP to TCP 8787.
+Priority-1000 rules deny every other source on those ports, including traffic
+otherwise admitted by a default-VPC internal rule.
 
 Staging and production use distinct control nodes, private addresses, network
 tags, firewall rules, Cloud Run bridge services, control-token secrets, broker

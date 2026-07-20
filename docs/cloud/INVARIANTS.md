@@ -199,15 +199,17 @@ design context only.
 - A GCE managed-sandbox workload has no external IP, guest service account,
   OAuth scope, ambient provider home, or host path. Network policy is
   default-deny in both directions.
-- The only admitted ingress is control-identity SSH on port 22, and the only
-  admitted egress is the exact private
-  control-broker IP and port. Higher-priority per-sandbox allow rules sit above
-  explicit deny-all rules, all four rules are generation-owned and cleanup-
-  observed. The persistent control firewall admits broker traffic from the
-  shared managed-guest tag at priority 900 and denies every other source at
-  priority 1000. The control VM has no external IP. No public/provider
-  endpoint is reachable from the guest. Only run-scoped capability refs pass
-  admission.
+- The only admitted ingress is SSH on port 22 from the reserved control IP
+  `/32`. The profile digest binds that control IP. The allow rule pairs the
+  exact source with the generation-owned guest target tag. A source service
+  account plus target tag is not a substitute because GCP rejects that rule.
+- The only admitted egress is the exact private control-broker IP and port.
+  Higher-priority per-sandbox allow rules sit above explicit deny-all rules.
+  All four rules are generation-owned and cleanup-observed.
+- The persistent control firewall admits broker traffic from the shared
+  managed-guest tag at priority 900. It denies every other source at priority
+  1000. The control VM has no external IP. No public or provider endpoint is
+  reachable from the guest. Only run-scoped capability refs pass admission.
 - The dedicated Cloud Run bridge uses Direct VPC egress and a source tag. Its
   control-port firewall does not admit the enclosing subnet.
 - Staging and production have distinct control nodes, private addresses,
