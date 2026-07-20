@@ -8,6 +8,7 @@ export * from "./backends/apple-fm/program-run-evidence.js";
 export * from "./backends/apple-fm/receipts.js";
 export * from "./backends/apple-fm/tools.js";
 export * from "./backends/apple-fm/wire.js";
+export * from "./backends/apple-fm/workspace-tools.js";
 export * from "./backends/backend-profile.js";
 export * from "./backends/gemini/auth.js";
 export * from "./backends/gemini/client.js";

@@ -153,6 +153,7 @@ function normalizeAppleFmInputSchema(
 function appleFmToolNameFromProbe(toolName: ProbeToolName): AppleFmToolName | undefined {
   switch (toolName) {
     case "read_file":
+    case "list_files":
     case "code_search":
     case "propose_action_submission":
       return toolName;

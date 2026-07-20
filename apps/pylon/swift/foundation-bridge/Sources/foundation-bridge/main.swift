@@ -3,7 +3,7 @@ import Foundation
 import FoundationModels
 import Network
 
-private let bridgeVersion = "0.1.1"
+private let bridgeVersion = "0.1.2"
 private let defaultPort: UInt16 = 11435
 private let modelId = "apple-foundation-model"
 private let maxRequestBytes = 1_048_576
@@ -90,7 +90,7 @@ actor AppleFmHandler {
 
     func streamSession(id: String, request: SessionStreamRequest) async throws -> ChatCompletionResponse {
         let session = sessions[id]
-        let toolOutcome = await performReadFileCallbackIfRequested(session: session, prompt: request.prompt)
+        let toolOutcome = await performToolCallbackIfRequested(session: session, prompt: request.prompt)
         let prompt = buildSessionPrompt(prompt: request.prompt, toolOutcome: toolOutcome)
 
         return try await complete(
@@ -169,34 +169,40 @@ actor AppleFmHandler {
         return parts.joined(separator: "\n\n")
     }
 
-    private func performReadFileCallbackIfRequested(session: AppleFmBridgeSession?, prompt: String) async -> ToolCallbackOutcome? {
+    /// Decide which of the projected read-only tools (read_file, list_files,
+    /// code_search) the prompt is asking for, parse a bounded argument from the
+    /// prompt, and invoke the controller's loopback tool callback. Honors the
+    /// tool set the controller actually projected for this session; the real
+    /// bounded execution + safety (workspace confinement, caps) lives on the
+    /// controller side. Native model-driven tool-argument generation is a future
+    /// enhancement; this bridge selects the tool + argument heuristically from
+    /// the prompt.
+    private func performToolCallbackIfRequested(session: AppleFmBridgeSession?, prompt: String) async -> ToolCallbackOutcome? {
         guard let session, let toolCallback = session.toolCallback else {
             return nil
         }
-
-        guard session.tools.contains(where: { $0.name == "read_file" }) else {
+        let available = Set(session.tools.compactMap { $0.name })
+        guard !available.isEmpty else {
             return nil
         }
 
-        let lowered = prompt.lowercased()
-        guard lowered.contains("read_file") || lowered.contains("read file") || lowered.contains("readme") else {
+        guard let selection = selectToolInvocation(prompt: prompt, available: available) else {
             return nil
         }
 
         guard let callbackUrl = toolCallback.url, let sessionToken = toolCallback.sessionToken else {
-            return ToolCallbackOutcome(toolName: "read_file", status: "tool_failed", output: nil, message: "Missing local tool callback endpoint.")
+            return ToolCallbackOutcome(toolName: selection.toolName, status: "tool_failed", output: nil, message: "Missing local tool callback endpoint.")
         }
-
         guard let url = URL(string: callbackUrl) else {
-            return ToolCallbackOutcome(toolName: "read_file", status: "tool_failed", output: nil, message: "Invalid local tool callback endpoint.")
+            return ToolCallbackOutcome(toolName: selection.toolName, status: "tool_failed", output: nil, message: "Invalid local tool callback endpoint.")
         }
 
         let payload = ToolCallbackPayload(
             sessionToken: sessionToken,
-            toolName: "read_file",
+            toolName: selection.toolName,
             arguments: ToolCallbackArguments(
-                generationId: "foundation-bridge-read-file-\(UUID().uuidString.lowercased())",
-                content: ["path": inferReadFilePath(prompt: prompt)],
+                generationId: "foundation-bridge-\(selection.toolName)-\(UUID().uuidString.lowercased())",
+                content: selection.arguments,
                 isComplete: true
             )
         )
@@ -212,26 +218,92 @@ actor AppleFmHandler {
             let decoded = try? JSONDecoder().decode(ToolCallbackResult.self, from: data)
 
             if (200..<300).contains(statusCode) {
-                return ToolCallbackOutcome(toolName: "read_file", status: "success", output: decoded?.output, message: nil)
+                return ToolCallbackOutcome(toolName: selection.toolName, status: "success", output: decoded?.output, message: nil)
             }
-
             return ToolCallbackOutcome(
-                toolName: "read_file",
+                toolName: selection.toolName,
                 status: "refused",
                 output: nil,
                 message: decoded?.underlyingError ?? "Local tool callback returned HTTP \(statusCode)."
             )
         } catch {
-            return ToolCallbackOutcome(toolName: "read_file", status: "tool_failed", output: nil, message: error.localizedDescription)
+            return ToolCallbackOutcome(toolName: selection.toolName, status: "tool_failed", output: nil, message: error.localizedDescription)
         }
     }
 
-    private func inferReadFilePath(prompt: String) -> String {
-        if prompt.contains("README.md") || prompt.lowercased().contains("readme") {
-            return "README.md"
+    private func selectToolInvocation(prompt: String, available: Set<String>) -> (toolName: String, arguments: [String: String])? {
+        let lowered = prompt.lowercased()
+
+        if available.contains("list_files"),
+           lowered.contains("list") || lowered.contains("directory") || lowered.contains("folder") || lowered.contains(" ls ") {
+            return ("list_files", ["path": inferPathArgument(prompt: prompt) ?? "."])
         }
 
-        return "README.md"
+        if available.contains("code_search"),
+           lowered.contains("search") || lowered.contains("grep") || lowered.contains("find ") || lowered.contains("where ") {
+            if let query = inferQueryArgument(prompt: prompt) {
+                return ("code_search", ["query": query])
+            }
+        }
+
+        if available.contains("read_file"),
+           lowered.contains("read_file") || lowered.contains("read file") || lowered.contains("read the") || lowered.contains("readme") || lowered.contains("open ") {
+            return ("read_file", ["path": inferPathArgument(prompt: prompt) ?? "README.md"])
+        }
+
+        return nil
+    }
+
+    /// Extract a bounded path/filename token from the prompt (a quoted string, or
+    /// a bare token containing a dot or slash). The controller confines it to the
+    /// workspace and refuses any escape.
+    private func inferPathArgument(prompt: String) -> String? {
+        if let quoted = firstQuotedSubstring(prompt) {
+            return quoted
+        }
+        for rawToken in prompt.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }) {
+            let token = rawToken.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?()[]{}\"'`"))
+            if token.isEmpty { continue }
+            if token.contains(".") || token.contains("/") {
+                return String(token)
+            }
+        }
+        return nil
+    }
+
+    private func inferQueryArgument(prompt: String) -> String? {
+        if let quoted = firstQuotedSubstring(prompt) {
+            return quoted
+        }
+        let lowered = prompt.lowercased()
+        for marker in ["search for ", "grep for ", "grep ", "find ", "where is ", "search "] {
+            if let range = lowered.range(of: marker) {
+                let tail = prompt[range.upperBound...]
+                let word = tail.split(whereSeparator: { $0 == " " || $0 == "\n" }).first.map(String.init)
+                if let word, !word.isEmpty {
+                    return word.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?()[]{}\"'`"))
+                }
+            }
+        }
+        return nil
+    }
+
+    private func firstQuotedSubstring(_ text: String) -> String? {
+        var inside = false
+        var buffer = ""
+        for character in text {
+            if character == "\"" || character == "'" || character == "`" {
+                if inside {
+                    return buffer.isEmpty ? nil : buffer
+                }
+                inside = true
+                continue
+            }
+            if inside {
+                buffer.append(character)
+            }
+        }
+        return nil
     }
 
     private func estimateUsage(prompt: String, completion: String) -> UsageMeasurement {

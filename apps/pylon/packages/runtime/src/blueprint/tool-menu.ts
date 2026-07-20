@@ -10,6 +10,7 @@ import { BlueprintSignatureLookupSelection } from "./signature-lookup.js";
 
 export const ProbeToolName = S.Literals([
   "read_file",
+  "list_files",
   "code_search",
   "record_evidence",
   "propose_action_submission",
@@ -118,6 +119,20 @@ const TOOL_CATALOG: Readonly<Record<string, ToolCatalogEntry>> = {
     inputSchemaRef: "schema.probe.tool.code_search.input.v1",
     name: "code_search",
     outputSchemaRef: "schema.probe.tool.code_search.output.v1",
+  },
+  "tool.probe.list_files": {
+    description: "List the immediate entries of an allowed repository directory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+      },
+      required: ["path"],
+      additionalProperties: false,
+    },
+    inputSchemaRef: "schema.probe.tool.list_files.input.v1",
+    name: "list_files",
+    outputSchemaRef: "schema.probe.tool.list_files.output.v1",
   },
   "tool.probe.propose_action_submission": {
     description: "Propose an external write-side effect for Blueprint review.",

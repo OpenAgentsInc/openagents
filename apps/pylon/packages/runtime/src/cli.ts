@@ -30,6 +30,11 @@ import {
 import { makeAppleFmToolStreamProgramRunEvidence } from "./backends/apple-fm/program-run-evidence.js";
 import { makeAppleFmToolCallbackSession } from "./backends/apple-fm/tools.js";
 import { launchAppleFmBridge } from "./backends/apple-fm/bridge-process.js";
+import {
+  APPLE_FM_WORKSPACE_TOOL_REFS,
+  makeAppleFmWorkspaceReadOnlyExecutors,
+} from "./backends/apple-fm/workspace-tools.js";
+import type { AppleFmToolExecutor } from "./backends/apple-fm/blueprint-tools.js";
 import { GeminiClientError, makeGeminiClient, type GeminiClient, type GeminiCompleteResult } from "./backends/gemini/client.js";
 import { GEMINI_API_PROFILE_ID, GEMINI_DEFAULT_MODEL_ID } from "./backends/gemini/contract.js";
 import {
@@ -443,9 +448,21 @@ interface AppleFmToolStreamComputation {
   readonly programRunEvidence: { readonly programRunRef: string; readonly inputSnapshotHash: string };
 }
 
+interface AppleFmToolStreamConfig {
+  readonly supportedToolRefs: ReadonlyArray<string>;
+  readonly maxToolCount: number;
+  readonly executors: Readonly<Record<string, AppleFmToolExecutor>>;
+  readonly enumHints?: Readonly<Record<string, Readonly<Record<string, ReadonlyArray<string>>>>>;
+  readonly instructions: string;
+  readonly prompt: string;
+  readonly scopeRef: string;
+  readonly maxModelRoundTrips?: number;
+}
+
 function runAppleFmToolStream(
   options: Record<string, string | true>,
   deps: ProbeCliDeps,
+  cfg: AppleFmToolStreamConfig,
 ): Effect.Effect<AppleFmToolStreamComputation, ProbeCliError> {
   return Effect.gen(function* () {
     const client = yield* makeAppleFmClient({
@@ -458,65 +475,52 @@ function runAppleFmToolStream(
     yield* client.requireReady().pipe(
       Effect.mapError((error) => new ProbeCliError({ message: `${error.failureClass}: ${error.reason}` })),
     );
-    const requestedPath = stringOption(options, "path") ?? "README.md";
-    const prompt =
-      stringOption(options, "prompt") ??
-      `Use the read_file tool to read ${requestedPath}, then stream one concise sentence naming the file and its first heading.`;
     const registryView = yield* loadBlueprintSignatureRegistry({ sourceKind: "staticFixture" }).pipe(
       Effect.mapError((error) => new ProbeCliError({ message: error.reason })),
     );
     const lookup = yield* lookupBlueprintSignatures({
       backendCapabilityRefs: [PROBE_APPLE_FM_BACKEND_CAPABILITY, "probe.blueprint.tool_menu"],
-      lookupId: "blueprint_signature_lookup.apple_fm.tool_stream_demo",
+      lookupId: `blueprint_signature_lookup.apple_fm.${cfg.scopeRef}`,
       registryView,
       request: {
         actorRef: "actor.probe.cli",
         allowedSurfaces: ["agent_api"],
         backendKind: "apple_fm_bridge",
-        contextPackRef: `context_pack.probe.cli.${requestedPath}`,
+        contextPackRef: `context_pack.probe.cli.${cfg.scopeRef}`,
         programSignatureIds: ["program_signature.probe.tool_menu.project.v1"],
         riskCeiling: "medium",
       },
     }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
     const menu = yield* planProbeToolMenu({
       backendKind: "apple_fm_bridge",
-      contextPackRefs: [lookup.contextPackRef ?? `context_pack.probe.cli.${requestedPath}`],
+      contextPackRefs: [lookup.contextPackRef ?? `context_pack.probe.cli.${cfg.scopeRef}`],
       deniedToolRefs: [],
       lookup,
-      maxToolCount: 1,
-      menuId: "probe_tool_menu.apple_fm.tool_stream_demo",
-      sourceAuthorityRefs: [`source_authority.probe.workspace.${requestedPath}`],
-      supportedToolRefs: ["tool.probe.read_file"],
+      maxToolCount: cfg.maxToolCount,
+      menuId: `probe_tool_menu.apple_fm.${cfg.scopeRef}`,
+      sourceAuthorityRefs: [`source_authority.probe.workspace.${cfg.scopeRef}`],
+      supportedToolRefs: cfg.supportedToolRefs,
     }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
     const projectedMenu = yield* projectProbeToolMenuToAppleFm({
-      enumHints: {
-        "tool.probe.read_file": {
-          path: [requestedPath],
-        },
-      },
-      executors: {
-        "tool.probe.read_file": (input) => readWorkspaceFile(
-          input,
-          requestedPath,
-          stringOption(options, "root"),
-        ),
-      },
+      ...(cfg.enumHints === undefined ? {} : { enumHints: cfg.enumHints }),
+      executors: cfg.executors,
       menu,
     }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
     const toolSession = makeAppleFmToolCallbackSession({
       tools: projectedMenu.toolDefinitions,
       now: deps.now,
+      ...(cfg.maxModelRoundTrips === undefined ? {} : { maxModelRoundTrips: cfg.maxModelRoundTrips }),
     });
     const result = yield* client.streamSessionWithTools({
-      prompt,
-      instructions: "Use available tools when the user asks to inspect a local file. Keep the final answer concise.",
+      prompt: cfg.prompt,
+      instructions: cfg.instructions,
       toolSession,
     }).pipe(Effect.mapError((error) => new ProbeCliError({ message: `${error.failureClass}: ${error.reason}` })));
     const programRunEvidence = yield* makeAppleFmToolStreamProgramRunEvidence({
       actorRef: "actor.probe.cli",
       menu,
       observedAt: (deps.now ?? new Date()).toISOString(),
-      promptSummaryRef: `prompt_summary.probe.cli.${requestedPath}`,
+      promptSummaryRef: `prompt_summary.probe.cli.${cfg.scopeRef}`,
       projection: projectedMenu.projection,
       result,
     }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
@@ -530,7 +534,20 @@ function appleFmToolStreamDemo(
   deps: ProbeCliDeps,
 ): Effect.Effect<ProbeCliResult, ProbeCliError> {
   return Effect.gen(function* () {
-    const { result, projection, programRunEvidence } = yield* runAppleFmToolStream(options, deps);
+    const requestedPath = stringOption(options, "path") ?? "README.md";
+    const { result, projection, programRunEvidence } = yield* runAppleFmToolStream(options, deps, {
+      supportedToolRefs: ["tool.probe.read_file"],
+      maxToolCount: 1,
+      scopeRef: "tool_stream_demo",
+      enumHints: { "tool.probe.read_file": { path: [requestedPath] } },
+      executors: {
+        "tool.probe.read_file": (input) => readWorkspaceFile(input, requestedPath, stringOption(options, "root")),
+      },
+      instructions: "Use available tools when the user asks to inspect a local file. Keep the final answer concise.",
+      prompt:
+        stringOption(options, "prompt") ??
+        `Use the read_file tool to read ${requestedPath}, then stream one concise sentence naming the file and its first heading.`,
+    });
     return {
       exitCode: 0,
       stdout: formatAppleFmToolStreamDemo(result, projection, programRunEvidence),
@@ -540,23 +557,36 @@ function appleFmToolStreamDemo(
 }
 
 /**
- * `apple-fm tool` — the runnable bounded read-only tool-use turn. Accepts a
- * friendlier `--workspace` (aliased onto the tool-stream `--root`) and adds a
- * public-safe `--json` projection over the same Blueprint-selected read-only
- * tool loop the demo uses. AFM-4 broadens the selected tool set beyond
- * `read_file`.
+ * `apple-fm tool` — the runnable bounded read-only tool-use turn over a real
+ * workspace. Offers the model `read_file`, `list_files`, and `code_search`
+ * (Blueprint-selected before session creation), each backed by a
+ * workspace-confined executor with symlink/escape refusal and byte/entry/match
+ * caps (AFM-4). `--workspace DIR` bounds the tools; `--json` emits a public-safe
+ * projection.
  */
 function appleFmTool(
   options: Record<string, string | true>,
   deps: ProbeCliDeps,
 ): Effect.Effect<ProbeCliResult, ProbeCliError> {
   return Effect.gen(function* () {
-    const workspace = stringOption(options, "workspace");
-    const opts =
-      workspace !== undefined && stringOption(options, "root") === undefined
-        ? { ...options, root: workspace }
-        : options;
-    const { result, projection, programRunEvidence } = yield* runAppleFmToolStream(opts, deps);
+    const workspace = stringOption(options, "workspace") ?? stringOption(options, "root") ?? ".";
+    const executors = makeAppleFmWorkspaceReadOnlyExecutors(resolve(workspace));
+    const { result, projection, programRunEvidence } = yield* runAppleFmToolStream(options, deps, {
+      supportedToolRefs: [
+        APPLE_FM_WORKSPACE_TOOL_REFS.readFile,
+        APPLE_FM_WORKSPACE_TOOL_REFS.listFiles,
+        APPLE_FM_WORKSPACE_TOOL_REFS.codeSearch,
+      ],
+      maxToolCount: 3,
+      scopeRef: "workspace_tool",
+      executors,
+      instructions:
+        "You have read-only workspace tools: read_file, list_files, and code_search. Use them to inspect the local workspace, then answer concisely.",
+      prompt:
+        stringOption(options, "prompt") ??
+        "Use the read-only tools to inspect this workspace, then name what it is in one concise sentence.",
+      maxModelRoundTrips: numberOption(options, "max-round-trips") ?? 8,
+    });
 
     if (options.json === true) {
       const out = {

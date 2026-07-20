@@ -64,6 +64,12 @@ const probeReadTools: ReadonlyArray<BlueprintProgramToolScope> = [
     toolRef: "tool.probe.read_file",
   },
   {
+    access: "read",
+    allowedSurfaces: ["agent_api", "omni_workroom", "operator_dashboard", "pylon_desktop"],
+    requiresApproval: false,
+    toolRef: "tool.probe.list_files",
+  },
+  {
     access: "evidence",
     allowedSurfaces: ["agent_api", "omni_workroom", "operator_dashboard"],
     requiresApproval: false,

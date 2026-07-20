@@ -46,10 +46,14 @@ apps/pylon/bin/foundation-bridge 11436
 
 The session endpoints are intentionally minimal for the first local Autopilot
 MVP: session creation returns a local session id, and response streaming emits a
-snapshot and completed SSE event for a bounded single-prompt turn. When Pylon
-projects a `read_file` tool and the prompt asks for local file inspection, the
-bridge calls Pylon's loopback tool callback with the session token and then
-keeps the callback URL/token out of logs and public evidence.
+snapshot and completed SSE event for a bounded single-prompt turn. When the
+controller projects the bounded read-only tools (`read_file`, `list_files`,
+`code_search`) and the prompt asks to inspect the local workspace, the bridge
+selects one tool plus a parsed argument and calls the controller's loopback tool
+callback with the session token, then keeps the callback URL/token out of logs
+and public evidence. The controller confines every tool to the workspace and
+refuses escapes; native model-driven tool-argument generation is a future
+enhancement.
 
 ## Frozen wire schema
 
