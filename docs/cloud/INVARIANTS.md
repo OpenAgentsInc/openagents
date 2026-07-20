@@ -257,6 +257,10 @@ design context only.
   identity, metadata, and network facts. Cleanup requires observed zero
   compute, firewall, disk, ingress, and grant residue. Uncertainty reports
   `recovery_required` and reconciles the same ownership.
+- The provider lifecycle journal admits delete directly from ready as well as
+  stopped, failed, recovery-required, or already-deleting state. A caller does
+  not need to invent a stop receipt before requesting observed zero-residue
+  cleanup.
 - The operational image builder must preserve an empty `/etc/machine-id` file,
   then boot the sealed image once as a private no-identity VM. Image admission
   requires observed DHCP, metadata startup, regenerated SSH host keys, active

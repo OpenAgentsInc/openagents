@@ -668,7 +668,8 @@ fn execute_existing(
         RuntimeAction::Delete => {
             if !matches!(
                 journal.phase,
-                RuntimePhase::Stopped
+                RuntimePhase::Ready
+                    | RuntimePhase::Stopped
                     | RuntimePhase::Failed
                     | RuntimePhase::RecoveryRequired
                     | RuntimePhase::Deleting
@@ -2332,6 +2333,32 @@ mod tests {
         let json = serde_json::to_string(&delete).unwrap().to_ascii_lowercase();
         assert!(!json.contains("private-"));
         assert!(!json.contains("serviceaccount.com"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ready_resource_can_be_deleted_without_a_prior_stop() {
+        let root = temporary_root("delete-ready");
+        let provider = TestProvider::new();
+        let create = execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(create.phase, RuntimePhase::Ready);
+
+        let delete = execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Delete, "delete-ready", 1),
+            2_000,
+        )
+        .unwrap();
+        assert_eq!(delete.phase, RuntimePhase::Deleted);
+        assert!(delete.cleanup_observed);
+        assert_eq!(provider.state.lock().unwrap().cleanup_calls, 1);
         let _ = fs::remove_dir_all(root);
     }
 
