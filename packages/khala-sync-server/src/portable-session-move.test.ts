@@ -327,6 +327,7 @@ const makeTarget = (
       }
       const existing = activations.get(input.operationRef)
       if (existing) return existing
+      const observedAt = NOW.toISOString()
       const receipt = {
         schema: "openagents.ide_portable_destination_activation.v1" as const,
         receiptRef: `receipt.${input.operationRef}`,
@@ -335,14 +336,17 @@ const makeTarget = (
         checkpointRef: input.checkpointRef,
         destinationTargetRef: targetRef,
         destinationAttachmentRef: input.destinationAttachmentRef,
+        destinationRunnerSessionReservationRef:
+          `runner-session-reservation.${targetRef}`,
         destinationGeneration: input.destinationGeneration,
         authentication: {
           state: "reauthenticated" as const,
           policyRef: `policy.portable.destination.${targetClass}.v1`,
           evidenceRef: `evidence.authentication.${input.operationRef}`,
-          observedAt: "2026-07-13T06:00:00.000Z",
+          observedAt,
           expiresAt: null,
         },
+        helpersObservedAt: observedAt,
         helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
           kind, readiness: "unsupported" as const, instanceRef: null, versionRef: null,
           omissionRef: `omission.${targetClass}.${kind}`, evidenceRefs: [],
@@ -468,6 +472,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
         return result
       },
       broker,
+      now: () => NOW,
     })
     return { broker, brokerConfig: brokerHarness.config, coordinator, local, log, managed }
   }
@@ -724,6 +729,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
       sql: restarted as unknown as SyncSql,
       transaction: run => withSyncTransaction(restarted as unknown as SyncSql, run),
       broker: restoredBroker,
+      now: () => NOW,
     })
     const result = await resumed.move(input)
     await restarted.end()

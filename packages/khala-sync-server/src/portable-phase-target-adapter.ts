@@ -374,6 +374,8 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
       checkpointRef: input.checkpointRef,
       destinationTargetRef: this.targetRef,
       destinationAttachmentRef: input.destinationAttachmentRef,
+      destinationRunnerSessionReservationRef:
+        receipt.destinationRunnerSessionReservationRef,
       destinationGeneration: input.destinationGeneration,
       authenticationPolicyRef,
       now: new Date(result.completedAt),

@@ -358,6 +358,7 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
       checkpointRef: operation.checkpointRef,
       destinationTargetRef: input.targetRef,
       destinationAttachmentRef: operation.destinationAttachmentRef,
+      destinationRunnerSessionReservationRef,
       destinationGeneration: operation.destinationGeneration,
       authenticationPolicyRef: "policy.portable.destination.owner_local.v1",
     })

@@ -849,6 +849,8 @@ export class PostgresPortablePhaseOperationStore {
           checkpointRef: row.checkpoint_ref,
           destinationTargetRef: row.target_ref,
           destinationAttachmentRef: row.attachment_ref,
+          destinationRunnerSessionReservationRef:
+            receipt.destinationRunnerSessionReservationRef,
           destinationGeneration: requiredPositive(
             row.attachment_generation,
             "attachment generation",

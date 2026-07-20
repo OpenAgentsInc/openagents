@@ -150,6 +150,7 @@ export type PostgresManagedAgentComputerTargetConfig = Readonly<{
   ownerRef: string
   targetRef: string
   provisioner: ManagedAgentComputerPortableProvisioner
+  now?: () => Date
 }>
 
 const digest = (value: unknown): string =>
@@ -288,6 +289,7 @@ export class PostgresManagedAgentComputerTarget implements PortableSessionExecut
         input.destinationAttachmentRef,
         input.destinationGeneration,
       )
+      const stageReceipt = parseJson<ManagedAgentComputerStageReceipt>(row.stage_receipt_json)
       const receipt = validateIdePortableDestinationActivationReceipt(publicSafe(await this.config.provisioner.activate({
         operationRef: input.operationRef,
         ownerRef: this.config.ownerRef,
@@ -306,8 +308,11 @@ export class PostgresManagedAgentComputerTarget implements PortableSessionExecut
         checkpointRef: input.checkpointRef,
         destinationTargetRef: this.targetRef,
         destinationAttachmentRef: input.destinationAttachmentRef,
+        destinationRunnerSessionReservationRef:
+          stageReceipt.destinationRunnerSessionReservationRef,
         destinationGeneration: input.destinationGeneration,
         authenticationPolicyRef: `policy.portable.destination.${this.targetClass}.v1`,
+        ...(this.config.now === undefined ? {} : { now: this.config.now() }),
       })
       const bundle = parseJson<PortableCheckpointBundle>(row.bundle_json)
       const expectedAgents = bundle.graph.nodes.map(node => node.agentRef).sort()

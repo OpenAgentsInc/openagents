@@ -392,8 +392,11 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
           checkpointRef: operation.stage.checkpointRef,
           destinationTargetRef: input.targetRef,
           destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationRunnerSessionReservationRef:
+            operation.destinationRunnerSessionReservationRef,
           destinationGeneration: operation.stage.destinationGeneration,
           authentication: activation.authentication,
+          helpersObservedAt: activation.helpersObservedAt,
           helpers: activation.helpers,
           activatedAgentRefs: operation.stage.stagedAgentRefs,
           acceptedWorkRefs: [],
@@ -404,6 +407,8 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
           checkpointRef: operation.stage.checkpointRef,
           destinationTargetRef: input.targetRef,
           destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationRunnerSessionReservationRef:
+            operation.destinationRunnerSessionReservationRef,
           destinationGeneration: operation.stage.destinationGeneration,
           authenticationPolicyRef,
         })

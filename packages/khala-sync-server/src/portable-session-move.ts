@@ -186,6 +186,7 @@ export type PortableSessionMoveCoordinatorConfig = Readonly<{
   sql: SyncSql
   transaction: <A>(run: (writer: SyncTransactionWriter) => Promise<A>) => Promise<A>
   broker: PortableCapabilityBroker
+  now?: () => Date
 }>
 
 export class PortableSessionMoveError extends Error {
@@ -492,9 +493,13 @@ const validateActivation = (
     destinationAttachmentRef: string
     destinationGeneration: number
     authenticationPolicyRef: string
+    now?: Date
   }>,
 ): void => {
-  validateIdePortableDestinationActivationReceipt(receipt, expected)
+  validateIdePortableDestinationActivationReceipt(receipt, {
+    ...expected,
+    destinationRunnerSessionReservationRef: receipt.destinationRunnerSessionReservationRef,
+  })
   if (!same([...receipt.activatedAgentRefs].sort(), graph.nodes.map(node => node.agentRef).sort())) {
     throw new PortableSessionMoveError("destination_rejected", "destination activation does not cover the complete graph")
   }
@@ -742,6 +747,7 @@ export class PortableSessionMoveCoordinator {
           destinationAttachmentRef: input.destinationAttachmentRef,
           destinationGeneration: view.sourceGeneration + 1,
           authenticationPolicyRef: `policy.portable.destination.${input.destination.targetClass}.v1`,
+          ...(this.config.now === undefined ? {} : { now: this.config.now() }),
         })
         return {
           schema: PORTABLE_SESSION_MOVE_VERSION,
@@ -881,6 +887,7 @@ export class PortableSessionMoveCoordinator {
         destinationAttachmentRef: String(destination.attachment_ref),
         destinationGeneration: Number(destination.generation),
         authenticationPolicyRef: `policy.portable.destination.${input.destination.targetClass}.v1`,
+        ...(this.config.now === undefined ? {} : { now: this.config.now() }),
       })
       return {
         schema: PORTABLE_SESSION_MOVE_VERSION,

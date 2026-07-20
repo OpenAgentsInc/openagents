@@ -331,6 +331,7 @@ export type PylonPortableControlSessionLifecycle = Readonly<{
     capabilityLeaseRefs: ReadonlyArray<string>
   }>) => Promise<Readonly<{
     authentication: IdePortableDestinationAuthentication
+    helpersObservedAt: string
     helpers: ReadonlyArray<IdePortableDestinationHelperReadiness>
     evidenceRefs: ReadonlyArray<string>
   }>>
@@ -1965,6 +1966,7 @@ export function createControlSessionActions(options: {
           observedAt,
           expiresAt: null,
         },
+        helpersObservedAt: observedAt,
         helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
           kind,
           readiness: "unsupported",

@@ -468,6 +468,8 @@ describe("Pylon portable phase worker", () => {
       checkpointRef: request.checkpointRef,
       destinationTargetRef: targetRef,
       destinationAttachmentRef: request.attachmentRef,
+      destinationRunnerSessionReservationRef:
+        "runner-session-reservation.ide13.destination",
       destinationGeneration: request.attachmentGeneration,
       authentication: {
         state: "reauthenticated" as const,
@@ -476,6 +478,7 @@ describe("Pylon portable phase worker", () => {
         observedAt: now.toISOString(),
         expiresAt: "2026-07-20T12:05:00.000Z",
       },
+      helpersObservedAt: now.toISOString(),
       helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map((kind) => ({
         kind,
         readiness: "unsupported" as const,

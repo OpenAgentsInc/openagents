@@ -431,6 +431,8 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
       checkpointRef: operation.operation.request.checkpointRef,
       destinationTargetRef,
       destinationAttachmentRef: operation.operation.request.attachmentRef,
+      destinationRunnerSessionReservationRef:
+        `runner-session-reservation.${fixture.suffix}`,
       destinationGeneration: 2,
       authentication: {
         state: "reauthenticated" as const,
@@ -439,6 +441,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
         observedAt: now,
         expiresAt: "2026-07-20T12:15:00.000Z",
       },
+      helpersObservedAt: now,
       helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map((kind) => ({
         kind,
         readiness: "unsupported" as const,

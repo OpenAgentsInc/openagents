@@ -69,6 +69,7 @@ test("concrete rehydrator restores private repository bytes and activates the re
           observedAt: "2026-07-20T08:00:00.000Z",
           expiresAt: null,
         },
+        helpersObservedAt: new Date().toISOString(),
         helpers: unsupportedHelpers(),
         evidenceRefs: ["receipt.port03.concrete.activated"],
       }
@@ -156,6 +157,7 @@ test("concrete rehydrator cleans a partial destination when helper readiness is 
         observedAt: "2026-07-20T08:00:00.000Z",
         expiresAt: null,
       },
+      helpersObservedAt: new Date().toISOString(),
       helpers: unsupportedHelpers().slice(1),
       evidenceRefs: ["receipt.destination.partial_start"],
     }),
@@ -366,6 +368,8 @@ const createRehydrator = (input: Readonly<{
         checkpointRef: operation.stage.checkpointRef,
         destinationTargetRef: "target.port03.owner.local",
         destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+        destinationRunnerSessionReservationRef:
+          operation.destinationRunnerSessionReservationRef,
         destinationGeneration: operation.stage.destinationGeneration,
         authentication: {
           state: "reauthenticated" as const,
@@ -374,6 +378,7 @@ const createRehydrator = (input: Readonly<{
           observedAt: "2026-07-20T08:00:00.000Z",
           expiresAt: null,
         },
+        helpersObservedAt: new Date().toISOString(),
         helpers: unsupportedHelpers(),
         activatedAgentRefs: operation.stage.stagedAgentRefs,
         acceptedWorkRefs: [],

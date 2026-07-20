@@ -405,6 +405,8 @@ const validateResult = (
       checkpointRef: request.checkpointRef,
       destinationTargetRef: request.targetRef,
       destinationAttachmentRef: request.attachmentRef,
+      destinationRunnerSessionReservationRef:
+        receipt.destinationRunnerSessionReservationRef,
       destinationGeneration: request.attachmentGeneration,
       authenticationPolicyRef: receipt.authentication.policyRef,
       now,

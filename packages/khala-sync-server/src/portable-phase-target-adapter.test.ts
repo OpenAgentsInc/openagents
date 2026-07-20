@@ -283,6 +283,8 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
               checkpointRef: fixture.bundle.checkpoint.checkpointRef,
               destinationTargetRef: request.targetRef,
               destinationAttachmentRef: request.attachmentRef,
+              destinationRunnerSessionReservationRef:
+                `runner-session-reservation.${fixture.suffix}`,
               destinationGeneration: request.attachmentGeneration,
               authentication: {
                 state: "reauthenticated" as const,
@@ -291,6 +293,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
                 observedAt: now,
                 expiresAt: "2026-07-20T12:15:00.000Z",
               },
+              helpersObservedAt: now,
               helpers: [
                 {
                   kind: "pty" as const,

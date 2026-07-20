@@ -14,6 +14,7 @@ import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test
 const ownerRef = "owner.port03.managed"
 const targetRef = "target.port03.managed.agent-computer"
 const sourceTargetRef = "target.port03.managed.local"
+const NOW = new Date("2026-07-13T06:00:30.000Z")
 
 const binding = (sessionRef: string) => ({
   schema: "openagents.portable_session_execution_binding.v1" as const,
@@ -123,6 +124,7 @@ const fakeProvisioner = (counts: Counts): ManagedAgentComputerPortableProvisione
   activate: async input => {
     counts.activate += 1
     const nodes = graph(input.generation).nodes
+    const observedAt = "2026-07-13T06:00:00.000Z"
     return {
       schema: "openagents.ide_portable_destination_activation.v1",
       receiptRef: `receipt.${input.operationRef}`,
@@ -131,14 +133,17 @@ const fakeProvisioner = (counts: Counts): ManagedAgentComputerPortableProvisione
       checkpointRef: input.checkpointRef,
       destinationTargetRef: input.targetRef,
       destinationAttachmentRef: input.attachmentRef,
+      destinationRunnerSessionReservationRef:
+        `runner-session-reservation.${input.sessionRef}`,
       destinationGeneration: input.generation,
       authentication: {
         state: "reauthenticated",
         policyRef: "policy.portable.destination.openagents_managed.v1",
         evidenceRef: input.authorityEvidenceRef,
-        observedAt: "2026-07-13T06:00:00.000Z",
+        observedAt,
         expiresAt: null,
       },
+      helpersObservedAt: observedAt,
       helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
         kind, readiness: "unsupported" as const, instanceRef: null, versionRef: null,
         omissionRef: `omission.managed.${kind}`, evidenceRefs: [],
@@ -277,6 +282,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 managed Agent Computer target", ()
       ownerRef,
       targetRef,
       provisioner,
+      now: () => NOW,
     })
     const sourceBundle = bundle(
       fixture.sessionRef,
@@ -321,6 +327,7 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 managed Agent Computer target", ()
       ownerRef,
       targetRef,
       provisioner,
+      now: () => NOW,
     })
     expect(await restarted.stageCheckpoint(stageInput)).toEqual(await target.stageCheckpoint(stageInput))
     expect(await restarted.activate(activateInput)).toEqual(activated)
