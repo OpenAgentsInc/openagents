@@ -77,9 +77,9 @@ projection issues and are not used as authority.
 
 The current evidence receipt is
 `apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json`.
-Candidate commit `2a966237bfb1bd86bb84776506eb387a8ae5066f` produced the
+Candidate commit `5abcf1351055ebfba7e033b747e23c3f64c609d4` produced the
 current real owner-local receipt on macOS arm64 with Node 24.13.1. Evidence
-commit `28e9829167` records the aggregate non-acceptance receipt.
+commit `fd39274a68` records the aggregate non-acceptance receipt.
 
 The real owner-local cohort completed one move from generation 1 to generation
 2 and one failback to generation 3. It also completed activation replay, stale
@@ -87,11 +87,17 @@ generation refusal, abort cleanup, encrypted artifact deletion, and final
 helper cleanup. The destination started a real PTY, the signed TypeScript LSP,
 and a filesystem watcher. DAP and native helpers stayed unsupported.
 
-The performance cohort completed 10 full runs. The p95 values were 0.75 ms for
-quiesce, 62.35 ms for checkpoint, 77.75 ms for upload, 140.27 ms for redeem,
-67.18 ms for attach, and 0.01 ms for helper readiness. Failback p95 was 636.40
-ms. Teardown p95 was 326.08 ms. All 16 phase and resource metric rows passed.
+The performance cohort completed 10 full runs. The p95 values were 0.79 ms for
+quiesce, 89.54 ms for checkpoint, 97.79 ms for upload, 202.90 ms for redeem,
+76.35 ms for attach, and 0.01 ms for helper readiness. Failback p95 was 746.92
+ms. Teardown p95 was 367.72 ms. All 16 phase and resource metric rows passed.
 The checked-in receipt records the raw values and p50, p95, and p99 values.
+
+The fault inventory contains all 27 required rows. A source-controlled probe
+injected a transient partition at each of the eight production phase dispatch
+boundaries. All eight real local runs passed and left no recorded residue. The
+other 19 rows are `not_run` because an exact production injection seam does
+not exist. These omissions keep acceptance false.
 
 Focused verification passed the real cohort, packaged owner-local LSP,
 managed LSP, executable-profile, authority, Google Cloud, Pylon typecheck, and
@@ -119,7 +125,7 @@ Issue `#9041` stays open. These items are not complete:
   capabilities.
 - the owner-managed enrollment and checkpoint-key custody decision in
   `NEEDS_OWNER.md`.
-- a real transition fault matrix for partitions, crash, event reorder, lease
+- the 19 fault rows that did not run, including crash, event reorder, lease
   expiry, auth revoke, provider loss, and older recovery points.
 - packaged move journeys on each claimed target.
 - end-to-end quiesce, checkpoint, upload, redeem, attach, helper readiness,
