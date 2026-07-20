@@ -33,3 +33,4 @@ export type IdeRuntimeProjectRef = ProjectRef;
 export type IdeRuntimeWorktreeRef = WorktreeRef;
 
 export * from "./ide-review-projection.js";
+export * from "./ide-review-projector.js";

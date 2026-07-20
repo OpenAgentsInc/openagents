@@ -10,21 +10,50 @@ export const MAX_IDE_REVIEW_LABEL_CHARS = 160 as const;
 export const MAX_IDE_REVIEW_DETAIL_CHARS = 1_024 as const;
 
 const forbiddenMaterial = [
-  /(?:^|[\s"'(=])\/(?:Users|home|root|private|var|etc|opt|tmp)\//i,
+  /(?:^|[\s"'(=])\/(?:Users|home|root|private|var|etc|opt|tmp|workspace|mnt|srv|data|run)\//i,
   /(?:^|[\s"'(=])[a-z]:\\/i,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i,
   /\bAKIA[0-9A-Z]{16}\b/,
-  /\b(?:ghp|github_pat|sk)-[A-Za-z0-9_-]{16,}\b/i,
+  /\b(?:ghp_|github_pat_|sk-)[A-Za-z0-9_-]{16,}\b/i,
   /\b(?:api[_-]?key|password|passwd|secret|token)\s*[:=]\s*\S+/i,
 ] as const;
 
-const containsForbiddenMaterial = (value: string): boolean =>
+const containsForbiddenText = (value: string): boolean =>
   forbiddenMaterial.some((pattern) => pattern.test(value));
+
+const forbiddenFieldName =
+  /^(?:root|rootPath|hostPath|absolutePath|environment|env|credential|credentials|password|secret|token|bearerToken|rawTerminal|terminal|processId|nativeHandle)$/i;
+
+/** Find forbidden host or credential material without returning the material. */
+export const hasForbiddenIdeProjectionMaterial = (value: unknown): boolean => {
+  const seen = new WeakSet<object>();
+
+  const visit = (candidate: unknown): boolean => {
+    if (typeof candidate === "string") {
+      return containsForbiddenText(candidate);
+    }
+    if (typeof candidate !== "object" || candidate === null) {
+      return false;
+    }
+    if (seen.has(candidate)) {
+      return false;
+    }
+    seen.add(candidate);
+    if (Array.isArray(candidate)) {
+      return candidate.some(visit);
+    }
+    return Object.entries(candidate).some(
+      ([key, field]) => forbiddenFieldName.test(key) || visit(field),
+    );
+  };
+
+  return visit(value);
+};
 
 const boundedSafeText = (maximum: number) =>
   S.String.check(
     S.isMaxLength(maximum),
-    S.makeFilter((value) => !containsForbiddenMaterial(value), {
+    S.makeFilter((value) => !containsForbiddenText(value), {
       message: "text must not contain a host path or credential material",
     }),
   );
@@ -34,7 +63,7 @@ export const IdeProjectionRef = S.String.check(
   S.isMinLength(3),
   S.isMaxLength(256),
   S.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
-  S.makeFilter((value) => !containsForbiddenMaterial(value), {
+  S.makeFilter((value) => !containsForbiddenText(value), {
     message: "reference must not contain credential material",
   }),
 ).pipe(S.brand("IdeProjectionRef"));
@@ -228,6 +257,7 @@ export const IdeReviewProjection = S.Struct({
   schema: S.Literal(IDE_REVIEW_PROJECTION_SCHEMA_LITERAL),
   projectionRef: IdeProjectionRef,
   audience: IdeReviewAudience,
+  audienceScopeRef: S.optionalKey(IdeProjectionRef),
   source: IdeReviewSource,
   freshness: IdeReviewFreshness,
   availability: IdeReviewAvailability,
