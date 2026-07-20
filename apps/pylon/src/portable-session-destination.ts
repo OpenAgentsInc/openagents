@@ -227,6 +227,35 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
     assertBundle(operation.bundle, operation.destinationGeneration)
     assertRefs(operation.capabilityLeaseRefs, "capability leases")
     const checkpoint = operation.bundle.checkpoint
+    const prior = await runLedger(input.ledger.readOperation(operation.operationRef))
+    if (prior?.state === "completed") {
+      const stage = await input.rehydrator.readStage(operation.operationRef)
+      assertStage(stage, operation)
+      const reservationRef = prior.outcome?.destinationRunnerSessionReservationRef
+      if (prior.kind !== "stage" || prior.sessionRef !== checkpoint.sessionRef ||
+          prior.attachmentRef !== operation.destinationAttachmentRef ||
+          prior.generation !== operation.destinationGeneration ||
+          reservationRef === undefined ||
+          prior.outcome?.checkpointRef !== checkpoint.checkpointRef ||
+          prior.outcome.repositoryPostImageDigest !== checkpoint.repositoryPostImageDigest ||
+          prior.outcome.diffDigest !== checkpoint.diffDigest ||
+          prior.outcome.graphDigest !== checkpoint.graphDigest) {
+        throw new PylonPortableDestinationError(
+          "conflicting_replay",
+          "completed destination stage differs from the requested checkpoint",
+        )
+      }
+      return {
+        destinationRunnerSessionReservationRef: reservationRef,
+        checkpointDigest: checkpoint.digest,
+        repositoryPostImageDigest: checkpoint.repositoryPostImageDigest,
+        diffDigest: checkpoint.diffDigest,
+        graphDigest: checkpoint.graphDigest,
+        threadCursors: stage.threadCursors,
+        acceptingWork: false,
+        evidenceRefs: prior.outcome.evidenceRefs,
+      }
+    }
     const authority = await input.authority.readCurrentAttachment(checkpoint.sessionRef)
     assertRefs([authority.authorityEvidenceRef], "source authority evidence")
     if (authority.sessionRef !== checkpoint.sessionRef || authority.state !== "active" ||
@@ -246,6 +275,9 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
       kind: "stage",
       exactInput,
     }))
+    const destinationRunnerSessionReservationRef = await runLedger(
+      input.ledger.reserveDestinationRunnerSession(operation.operationRef),
+    )
     const stage = await input.rehydrator.stage(operation)
     assertStage(stage, operation)
     await runLedger(input.ledger.completeOperation({
@@ -256,9 +288,11 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
         repositoryPostImageDigest: checkpoint.repositoryPostImageDigest,
         diffDigest: checkpoint.diffDigest,
         graphDigest: checkpoint.graphDigest,
+        destinationRunnerSessionReservationRef,
       },
     }))
     return {
+      destinationRunnerSessionReservationRef,
       checkpointDigest: checkpoint.digest,
       repositoryPostImageDigest: checkpoint.repositoryPostImageDigest,
       diffDigest: checkpoint.diffDigest,

@@ -132,6 +132,8 @@ export type PortableCommandBrokerFactory = Readonly<{
       claim: PortableCommandExecutionClaim;
       source: PortableTargetDescriptor;
       destination: PortableTargetDescriptor;
+      destinationAttachmentRef: string;
+      destinationGeneration: number;
       grantBindings: ReadonlyArray<PortableCommandGrantAuthorityBinding>;
       capabilityTransfers: ReadonlyArray<PortableCapabilityTransfer>;
     }>,
@@ -391,6 +393,8 @@ export class PostgresPortableSessionCommandResolver implements PortableSessionCo
       claim,
       source,
       destination,
+      destinationAttachmentRef,
+      destinationGeneration: claim.sourceGeneration + 1,
       grantBindings: grantResolution.bindings,
       capabilityTransfers,
     });

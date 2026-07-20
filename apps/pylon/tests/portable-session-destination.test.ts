@@ -417,6 +417,9 @@ describe("owner-local portable destination rehydration", () => {
     }
     const staged = await lifecycle.stageCheckpoint(stageInput)
     expect(staged).toMatchObject({
+      destinationRunnerSessionReservationRef: expect.stringMatching(
+        /^runner-session-reservation\.[A-Za-z0-9-]+$/u,
+      ),
       checkpointDigest: bundle.checkpoint.digest,
       repositoryPostImageDigest: bundle.checkpoint.repositoryPostImageDigest,
       diffDigest: bundle.checkpoint.diffDigest,
@@ -465,6 +468,8 @@ describe("owner-local portable destination rehydration", () => {
       authority: { readCurrentAttachment: async () => authority },
       rehydrator: runtime.rehydrator,
     })
+    expect(await restarted.stageCheckpoint(stageInput)).toEqual(staged)
+    expect(runtime.counters().stageEffects).toBe(1)
     expect(await restarted.activate(activationInput)).toEqual(activated)
     expect(runtime.counters()).toEqual({ stageEffects: 1, activationEffects: 1, abortEffects: 0 })
     reopened.close()

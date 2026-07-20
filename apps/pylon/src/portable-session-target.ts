@@ -38,6 +38,7 @@ export type PylonPortableSourceCleanupReceipt = Readonly<{
 }>
 
 export type PylonPortableTargetStageReceipt = Readonly<{
+  destinationRunnerSessionReservationRef: string
   checkpointDigest: string
   repositoryPostImageDigest: string
   diffDigest: string

@@ -57,6 +57,7 @@ type Row = {
   result_checkpoint_object_ref: string | null;
   result_checkpoint_digest: string | null;
   result_checkpoint_manifest_digest: string | null;
+  result_destination_runner_session_reservation_ref: string | null;
   result_destination_activation_receipt_json: unknown;
   result_evidence_refs_json: unknown;
   error_ref: string | null;
@@ -210,6 +211,8 @@ const rowToRecord = (row: Row): PortablePhaseOperationRecord => {
     resultCheckpointObjectRef: row.result_checkpoint_object_ref,
     resultCheckpointDigest: row.result_checkpoint_digest,
     resultCheckpointManifestDigest: row.result_checkpoint_manifest_digest,
+    resultDestinationRunnerSessionReservationRef:
+      row.result_destination_runner_session_reservation_ref,
     resultDestinationActivationReceipt: parseJson(row.result_destination_activation_receipt_json),
     resultEvidenceRefs: parseJson(row.result_evidence_refs_json),
     errorRef: row.error_ref,
@@ -610,6 +613,9 @@ export class PostgresPortablePhaseOperationStore {
             result_checkpoint_object_ref = ${request.checkpointObjectRef},
             result_checkpoint_digest = ${request.checkpointDigest},
             result_checkpoint_manifest_digest = ${request.checkpointManifestDigest},
+            result_destination_runner_session_reservation_ref = ${
+              request.destinationRunnerSessionReservationRef ?? null
+            },
             result_destination_activation_receipt_json = ${
               request.destinationActivationReceipt === null
                 ? null
@@ -796,11 +802,16 @@ export class PostgresPortablePhaseOperationStore {
       request.checkpointObjectRef !== null ||
       request.checkpointDigest !== null;
     const hasCheckpointManifest = request.checkpointManifestDigest !== null;
+    const hasRunnerSessionReservation =
+      typeof request.destinationRunnerSessionReservationRef === "string";
     if (
       request.resultStatus === "completed" &&
       ((row.kind === "checkpoint-create" && !hasCompleteCheckpoint) ||
         (row.kind !== "checkpoint-create" && hasAnyCheckpoint) ||
         (row.kind !== "checkpoint-create" && hasCheckpointManifest) ||
+        (row.kind === "checkpoint-stage"
+          ? !hasRunnerSessionReservation
+          : hasRunnerSessionReservation) ||
         request.errorRef !== null)
     ) {
       throw new PortablePhaseOperationStoreError(
@@ -810,7 +821,10 @@ export class PostgresPortablePhaseOperationStore {
     }
     if (
       request.resultStatus === "failed" &&
-      (request.errorRef === null || hasAnyCheckpoint || hasCheckpointManifest)
+      (request.errorRef === null ||
+        hasAnyCheckpoint ||
+        hasCheckpointManifest ||
+        hasRunnerSessionReservation)
     ) {
       throw new PortablePhaseOperationStoreError(
         "invalid",

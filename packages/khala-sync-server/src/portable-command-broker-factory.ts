@@ -20,6 +20,7 @@ import type {
   PortableCommandGrantAuthorityBinding,
 } from "./portable-session-command-runner.js";
 import type { PortableCapabilityTransfer } from "./portable-session-move.js";
+import type { SyncSql } from "./sql.js";
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u;
 const bindingFields = new Set([
@@ -39,6 +40,8 @@ const transferFields = new Set([
 const runnerSessionResolutionFields = new Set([
   "commandExecutionClaimRef",
   "destinationTargetRef",
+  "destinationAttachmentRef",
+  "destinationGeneration",
   "sourceGrantRef",
   "sourceLeaseRef",
   "destinationSourceGrantRef",
@@ -95,6 +98,8 @@ export type PortableCommandTargetInstallationPortResolver = Readonly<{
 export type PortableCommandDestinationRunnerSessionResolution = Readonly<{
   commandExecutionClaimRef: string;
   destinationTargetRef: string;
+  destinationAttachmentRef: string;
+  destinationGeneration: number;
   sourceGrantRef: string;
   sourceLeaseRef: string;
   destinationSourceGrantRef: string;
@@ -109,6 +114,8 @@ export type PortableCommandDestinationRunnerSessionResolver = Readonly<{
       ownerRef: string;
       sessionRef: string;
       destination: PortableTargetDescriptor;
+      destinationAttachmentRef: string;
+      destinationGeneration: number;
       sourceBinding: PortableCommandGrantAuthorityBinding;
       capabilityTransfers: ReadonlyArray<PortableCapabilityTransfer>;
     }>,
@@ -128,8 +135,7 @@ class CommandScopedMovingCapabilityVault implements CapabilitySecretVault {
     string,
     Readonly<{
       transfer: PortableCapabilityTransfer;
-      sourceGrantRef?: string;
-      destinationRunnerSessionId?: string;
+      sourceBinding: PortableCommandGrantAuthorityBinding;
     }>
   >;
 
@@ -137,14 +143,18 @@ class CommandScopedMovingCapabilityVault implements CapabilitySecretVault {
     private readonly authority: HttpPortableCapabilityGrantVault,
     transfers: ReadonlyArray<PortableCapabilityTransfer>,
     grantBindings: ReadonlyArray<PortableCommandGrantAuthorityBinding>,
-    runnerSessions: ReadonlyArray<PortableCommandDestinationRunnerSessionResolution>,
+    private readonly runnerSessions: PortableCommandDestinationRunnerSessionResolver | undefined,
+    private readonly scope: Readonly<{
+      commandExecutionClaimRef: string;
+      ownerRef: string;
+      sessionRef: string;
+      destination: PortableTargetDescriptor;
+      destinationAttachmentRef: string;
+      destinationGeneration: number;
+    }>,
   ) {
-    const sessions = new Map(
-      runnerSessions.map((resolution) => [resolution.sourceLeaseRef, resolution]),
-    );
     this.transfers = new Map(
       transfers.map((transfer) => {
-        const session = sessions.get(transfer.sourceLeaseRef);
         const grant = grantBindings.find(
           (binding) => binding.sourceLeaseRef === transfer.sourceLeaseRef,
         )!;
@@ -152,12 +162,7 @@ class CommandScopedMovingCapabilityVault implements CapabilitySecretVault {
           transfer.sourceLeaseRef,
           {
             transfer,
-            sourceGrantRef: grant.grantRef,
-            ...(session === undefined
-              ? {}
-              : {
-                  destinationRunnerSessionId: session.destinationRunnerSessionId,
-                }),
+            sourceBinding: grant,
           },
         ];
       }),
@@ -169,21 +174,58 @@ class CommandScopedMovingCapabilityVault implements CapabilitySecretVault {
 
   revokeSourceGrant: CapabilitySecretVault["revokeSourceGrant"] = async (input) => {
     const binding = this.transfers.get(input.leaseRef);
-    if (
-      binding === undefined ||
-      (binding.sourceGrantRef !== undefined && binding.sourceGrantRef !== input.sourceGrantRef)
-    ) {
+    if (binding === undefined || binding.sourceBinding.grantRef !== input.sourceGrantRef) {
       throw new PortableCommandBrokerFactoryError({
         code: "capability_mismatch",
         failureRef: stableFailureRef("capability_mismatch", input.leaseRef),
       });
     }
+    let destinationRunnerSessionId: string | undefined;
+    if (binding.sourceBinding.runnerSessionId !== undefined) {
+      if (this.runnerSessions === undefined) {
+        throw new PortableCommandBrokerFactoryError({
+          code: "runner_session_unavailable",
+          failureRef: stableFailureRef("runner_session_unavailable", input.sourceGrantRef),
+        });
+      }
+      const resolution = await this.runnerSessions
+        .resolve({
+          ...this.scope,
+          sourceBinding: binding.sourceBinding,
+          capabilityTransfers: [...this.transfers.values()].map((value) => value.transfer),
+        })
+        .catch(() => {
+          throw new PortableCommandBrokerFactoryError({
+            code: "runner_session_unavailable",
+            failureRef: stableFailureRef("runner_session_unavailable", input.sourceGrantRef),
+          });
+        });
+      if (
+        resolution === null ||
+        !exactFields(resolution, runnerSessionResolutionFields) ||
+        resolution.commandExecutionClaimRef !== this.scope.commandExecutionClaimRef ||
+        resolution.destinationTargetRef !== this.scope.destination.targetRef ||
+        resolution.destinationAttachmentRef !== this.scope.destinationAttachmentRef ||
+        resolution.destinationGeneration !== this.scope.destinationGeneration ||
+        resolution.sourceGrantRef !== binding.sourceBinding.grantRef ||
+        resolution.sourceLeaseRef !== binding.sourceBinding.sourceLeaseRef ||
+        resolution.destinationSourceGrantRef !== binding.transfer.destinationSourceGrantRef ||
+        !SAFE_REF.test(resolution.destinationRunnerSessionId) ||
+        resolution.destinationRunnerSessionId === binding.sourceBinding.runnerSessionId
+      ) {
+        throw new PortableCommandBrokerFactoryError({
+          code: "capability_mismatch",
+          failureRef: stableFailureRef("capability_mismatch", input.sourceGrantRef),
+        });
+      }
+      destinationRunnerSessionId = resolution.destinationRunnerSessionId;
+    }
     await this.authority.reissue({
       sourceGrantRef: input.sourceGrantRef,
       destinationGrantRef: binding.transfer.destinationSourceGrantRef,
-      ...(binding.destinationRunnerSessionId === undefined
+      ...(destinationRunnerSessionId === undefined
         ? {}
-        : { runnerSessionId: binding.destinationRunnerSessionId }),
+        : { runnerSessionId: destinationRunnerSessionId }),
       requestedAction: "portable_session_resume",
     });
     await this.authority.revokeSourceGrant(input);
@@ -218,6 +260,7 @@ export const createProductionPortableCommandBrokerFactory = (
       Effect.tryPromise({
         try: async () => {
           const { claim, source, destination, grantBindings, capabilityTransfers } = input;
+          const { destinationAttachmentRef, destinationGeneration } = input;
           if (
             ![
               claim.claimRef,
@@ -229,6 +272,7 @@ export const createProductionPortableCommandBrokerFactory = (
               source.adapterRef,
               destination.targetRef,
               destination.adapterRef,
+              destinationAttachmentRef,
             ].every((ref) => SAFE_REF.test(ref)) ||
             source.ownerRef !== claim.ownerRef ||
             destination.ownerRef !== claim.ownerRef ||
@@ -237,7 +281,8 @@ export const createProductionPortableCommandBrokerFactory = (
             source.targetRef === destination.targetRef ||
             source.adapterRef === destination.adapterRef ||
             source.health !== "ready" ||
-            destination.health !== "ready"
+            destination.health !== "ready" ||
+            destinationGeneration !== claim.sourceGeneration + 1
           ) {
             throw failure("invalid_scope", claim.claimRef);
           }
@@ -292,51 +337,10 @@ export const createProductionPortableCommandBrokerFactory = (
             throw failure("capability_mismatch", claim.claimRef);
           }
 
-          const runnerBindings = grantBindings.filter(
-            (binding) => binding.runnerSessionId !== undefined,
-          );
-          if (runnerBindings.length > 0 && config.destinationRunnerSessions === undefined) {
-            throw failure("capability_mismatch", claim.claimRef);
-          }
-          const runnerSessions = await Promise.all(
-            runnerBindings.map(async (sourceBinding) => {
-              const resolution = await config
-                .destinationRunnerSessions!.resolve({
-                  commandExecutionClaimRef: claim.claimRef,
-                  ownerRef: claim.ownerRef,
-                  sessionRef: claim.sessionRef,
-                  destination,
-                  sourceBinding,
-                  capabilityTransfers,
-                })
-                .catch(() => {
-                  throw failure("runner_session_unavailable", sourceBinding.grantRef);
-                });
-              if (
-                resolution === null ||
-                !exactFields(resolution, runnerSessionResolutionFields) ||
-                resolution.commandExecutionClaimRef !== claim.claimRef ||
-                resolution.destinationTargetRef !== destination.targetRef ||
-                resolution.sourceGrantRef !== sourceBinding.grantRef ||
-                resolution.sourceLeaseRef !== sourceBinding.sourceLeaseRef ||
-                !SAFE_REF.test(resolution.destinationRunnerSessionId) ||
-                resolution.destinationRunnerSessionId === sourceBinding.runnerSessionId
-              ) {
-                throw failure("capability_mismatch", sourceBinding.grantRef);
-              }
-              const transfer = capabilityTransfers.find(
-                (candidate) => candidate.sourceLeaseRef === resolution.sourceLeaseRef,
-              );
-              if (
-                transfer === undefined ||
-                transfer.destinationSourceGrantRef !== resolution.destinationSourceGrantRef
-              ) {
-                throw failure("capability_mismatch", sourceBinding.grantRef);
-              }
-              return resolution;
-            }),
-          );
-          if (!unique(runnerSessions.map((resolution) => resolution.sourceLeaseRef))) {
+          if (
+            grantBindings.some((binding) => binding.runnerSessionId !== undefined) &&
+            config.destinationRunnerSessions === undefined
+          ) {
             throw failure("capability_mismatch", claim.claimRef);
           }
 
@@ -379,7 +383,15 @@ export const createProductionPortableCommandBrokerFactory = (
               authority,
               capabilityTransfers,
               grantBindings,
-              runnerSessions,
+              config.destinationRunnerSessions,
+              {
+                commandExecutionClaimRef: claim.claimRef,
+                ownerRef: claim.ownerRef,
+                sessionRef: claim.sessionRef,
+                destination,
+                destinationAttachmentRef,
+                destinationGeneration,
+              },
             ),
             targets: [source, destination].map((target) => ({
               targetRef: target.targetRef,
@@ -401,3 +413,57 @@ export const createProductionPortableCommandBrokerFactory = (
 
   return { create: (input) => Effect.runPromise(createEffect(input)) };
 };
+
+/** Resolve only the reservation committed by the exact completed destination stage. */
+export const createPostgresPortableCommandDestinationRunnerSessionResolver = (
+  sql: SyncSql,
+  now: () => string = () => new Date().toISOString(),
+): PortableCommandDestinationRunnerSessionResolver => ({
+  resolve: async (input) => {
+    const rows: Array<{
+      result_destination_runner_session_reservation_ref: string | null;
+    }> = await sql`
+      SELECT phase.result_destination_runner_session_reservation_ref
+      FROM khala_sync_portable_phase_operations AS phase
+      JOIN khala_sync_portable_command_executions AS execution
+        ON execution.claim_ref = phase.command_execution_claim_ref
+      WHERE phase.command_execution_claim_ref = ${input.commandExecutionClaimRef}
+        AND phase.owner_user_id = ${input.ownerRef}
+        AND phase.session_ref = ${input.sessionRef}
+        AND phase.target_ref = ${input.destination.targetRef}
+        AND phase.attachment_ref = ${input.destinationAttachmentRef}
+        AND phase.attachment_generation = ${input.destinationGeneration}
+        AND phase.kind = 'checkpoint-stage'
+        AND phase.state = 'completed'
+        AND phase.result_status = 'completed'
+        AND execution.owner_user_id = ${input.ownerRef}
+        AND execution.session_ref = ${input.sessionRef}
+        AND execution.destination_target_ref = ${input.destination.targetRef}
+        AND execution.state IN ('claimed', 'pending_reconcile')
+        AND execution.lease_expires_at > ${now()}
+    `;
+    if (rows.length !== 1) return null;
+    const destinationRunnerSessionId = rows[0]?.result_destination_runner_session_reservation_ref;
+    const transfer = input.capabilityTransfers.find(
+      (candidate) => candidate.sourceLeaseRef === input.sourceBinding.sourceLeaseRef,
+    );
+    if (
+      destinationRunnerSessionId === null ||
+      destinationRunnerSessionId === undefined ||
+      !SAFE_REF.test(destinationRunnerSessionId) ||
+      transfer === undefined
+    ) {
+      return null;
+    }
+    return {
+      commandExecutionClaimRef: input.commandExecutionClaimRef,
+      destinationTargetRef: input.destination.targetRef,
+      destinationAttachmentRef: input.destinationAttachmentRef,
+      destinationGeneration: input.destinationGeneration,
+      sourceGrantRef: input.sourceBinding.grantRef,
+      sourceLeaseRef: input.sourceBinding.sourceLeaseRef,
+      destinationSourceGrantRef: transfer.destinationSourceGrantRef,
+      destinationRunnerSessionId,
+    };
+  },
+});

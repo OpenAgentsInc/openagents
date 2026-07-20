@@ -30,6 +30,7 @@ import {
   type PortableSessionExecutionTarget,
   type PortableSessionMoveInput,
   type PortableTargetActivationReceipt,
+  type PortableTargetStageReceipt,
 } from "./portable-session-move.js"
 import type { SyncSql } from "./sql.js"
 import { hasLocalPostgres, startLocalPostgres, type LocalPostgres } from "./test/local-postgres.js"
@@ -212,6 +213,7 @@ const makeBroker = async (
 
 type TargetFaults = {
   rejectStage?: boolean
+  missingStageReservation?: boolean
   failCleanup?: boolean
   failActivationOnce?: boolean
   tamperCheckpoint?: "digest" | "graph" | "cursor" | "binding" | "secret_extra"
@@ -300,7 +302,8 @@ const makeTarget = (
       log.targetOperations.push(input.operationRef)
       log.sequence.push(`stage:${targetRef}:${input.operationRef}`)
       if (faults.rejectStage) throw new Error("destination rejected checkpoint")
-      return {
+      const receipt: PortableTargetStageReceipt = {
+        destinationRunnerSessionReservationRef: `runner-session-reservation.${targetRef}`,
         checkpointDigest: input.bundle.checkpoint.digest,
         repositoryPostImageDigest: input.bundle.checkpoint.repositoryPostImageDigest,
         diffDigest: input.bundle.checkpoint.diffDigest,
@@ -309,6 +312,11 @@ const makeTarget = (
         acceptingWork: false,
         evidenceRefs: [`evidence.${input.operationRef}`],
       }
+      if (faults.missingStageReservation) {
+        const { destinationRunnerSessionReservationRef: _reservation, ...missing } = receipt
+        return missing as unknown as PortableTargetStageReceipt
+      }
+      return receipt
     },
     activate: async input => {
       log.targetOperations.push(input.operationRef)
@@ -573,6 +581,19 @@ describe.skipIf(!hasLocalPostgres())("PORT-03 graph-wide portable move coordinat
     expect(log.revoked).toEqual([])
     expect(log.installed.filter(item => item.targetRef === managedTargetRef)).toEqual([])
     expect(log.targetOperations).toContain("operation.command.port03.move.1.destination.abort")
+  })
+
+  test("a destination stage without a runner-session reservation fails before broker transfer", async () => {
+    const { broker, coordinator, local, log, managed } = await setup({
+      managed: { missingStageReservation: true },
+    })
+    const result = await coordinator.move(firstMove(local, managed))
+    expect(result).toMatchObject({
+      status: "failed",
+      reasonRef: "reason.portable_move.destination_rejected",
+    })
+    expect(log.revoked).toEqual([])
+    expect(broker.snapshot().leases.filter(row => row.lease.targetRef === managedTargetRef)).toEqual([])
   })
 
   test.each(["digest", "graph", "cursor", "binding", "secret_extra"] as const)("rejects a tampered %s checkpoint before broker transfer or destination stage", async tamperCheckpoint => {

@@ -336,13 +336,13 @@ describe("Pylon portable phase worker", () => {
       targetRef,
       targetClass: "owner_local",
       checkpointArtifacts: {
-        exportCustodyObject: async input => {
+        exportCustodyObject: async (input) => {
           expect(input.sourcePylonRef).toBe(pylonRef);
           expect(input.commandClaim.executorEnvironmentRef).toBe(targetRef);
           events.push("export");
           return { manifest, bytes: Uint8Array.from(objectBytes) };
         },
-        importCustodyObject: async input => {
+        importCustodyObject: async (input) => {
           events.push("import");
           expect(input).toEqual({ manifest, bytes: objectBytes });
           imported = true;
@@ -359,6 +359,7 @@ describe("Pylon portable phase worker", () => {
         expect(imported).toBe(true);
         events.push("stage");
         return {
+          destinationRunnerSessionReservationRef: "runner-session-reservation.worker-test",
           checkpointDigest: bundle.checkpoint.digest,
           repositoryPostImageDigest: bundle.checkpoint.repositoryPostImageDigest,
           diffDigest: bundle.checkpoint.diffDigest,
@@ -530,6 +531,7 @@ describe("Pylon portable phase worker", () => {
       checkpointObjectRef: null,
       checkpointDigest: null,
       checkpointManifestDigest: null,
+      destinationRunnerSessionReservationRef: null,
       destinationActivationReceipt: receipt,
       evidenceRefs: receipt.evidenceRefs,
     });

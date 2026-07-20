@@ -108,6 +108,8 @@ const fakeProvisioner = (counts: Counts): ManagedAgentComputerPortableProvisione
   stage: async input => {
     counts.stage += 1
     return {
+      destinationRunnerSessionReservationRef:
+        `runner-session-reservation.${input.bundle.checkpoint.sessionRef}`,
       resourceRef: `resource.agent-computer.${input.bundle.checkpoint.sessionRef}`,
       checkpointDigest: input.bundle.checkpoint.digest,
       repositoryPostImageDigest: input.bundle.checkpoint.repositoryPostImageDigest,

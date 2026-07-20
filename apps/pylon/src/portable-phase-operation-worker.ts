@@ -29,6 +29,7 @@ export type PylonPortablePhaseExecutionResult = Readonly<{
   checkpointObjectRef: string | null;
   checkpointDigest: string | null;
   checkpointManifestDigest: string | null;
+  destinationRunnerSessionReservationRef?: string | null;
   destinationActivationReceipt: IdePortableDestinationActivationReceipt | null;
   evidenceRefs: ReadonlyArray<string>;
 }>;
@@ -62,8 +63,8 @@ type TargetCall =
       input: Parameters<PylonOwnerLocalExecutionTarget["createCheckpoint"]>[0];
       checkpointObjectRef: string;
       artifactTransport?: Readonly<{
-        commandClaim: PortableCommandExecutionClaim
-        byteLimit: number
+        commandClaim: PortableCommandExecutionClaim;
+        byteLimit: number;
       }>;
     }>
   | Readonly<{
@@ -74,8 +75,8 @@ type TargetCall =
       kind: "checkpoint-stage";
       input: Parameters<PylonOwnerLocalExecutionTarget["stageCheckpoint"]>[0];
       artifactTransport?: Readonly<{
-        commandClaim: PortableCommandExecutionClaim
-        manifestDigest: string
+        commandClaim: PortableCommandExecutionClaim;
+        manifestDigest: string;
       }>;
     }>
   | Readonly<{
@@ -152,6 +153,7 @@ const result = (evidenceRefs: ReadonlyArray<string>): PylonPortablePhaseExecutio
   checkpointObjectRef: null,
   checkpointDigest: null,
   checkpointManifestDigest: null,
+  destinationRunnerSessionReservationRef: null,
   destinationActivationReceipt: null,
   evidenceRefs,
 });
@@ -288,7 +290,11 @@ export const makePylonPortablePhaseExecutor = (
               redeemed.bytes.fill(0);
             }
           }
-          return result((await resolved.target.stageCheckpoint(resolved.call.input)).evidenceRefs);
+          const stage = await resolved.target.stageCheckpoint(resolved.call.input);
+          return {
+            ...result(stage.evidenceRefs),
+            destinationRunnerSessionReservationRef: stage.destinationRunnerSessionReservationRef,
+          };
         }
         case "destination-activate": {
           const receipt = await resolved.target.activate(resolved.call.input);
@@ -297,6 +303,7 @@ export const makePylonPortablePhaseExecutor = (
             checkpointObjectRef: null,
             checkpointDigest: null,
             checkpointManifestDigest: null,
+            destinationRunnerSessionReservationRef: null,
             destinationActivationReceipt: receipt,
             evidenceRefs: receipt.evidenceRefs,
           };
@@ -725,6 +732,7 @@ export class PylonPortablePhaseWorker {
       checkpointObjectRef: output.checkpointObjectRef,
       checkpointDigest: output.checkpointDigest,
       checkpointManifestDigest: output.checkpointManifestDigest,
+      destinationRunnerSessionReservationRef: output.destinationRunnerSessionReservationRef ?? null,
       destinationActivationReceipt: output.destinationActivationReceipt,
       evidenceRefs: output.evidenceRefs,
       errorRef,

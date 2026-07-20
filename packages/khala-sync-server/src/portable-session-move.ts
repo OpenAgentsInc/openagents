@@ -67,6 +67,7 @@ export type PortableCheckpointBundle = Readonly<{
 }>
 
 export type PortableTargetStageReceipt = Readonly<{
+  destinationRunnerSessionReservationRef: string
   checkpointDigest: string
   repositoryPostImageDigest: string
   diffDigest: string
@@ -460,6 +461,8 @@ const validateBundle = (view: AuthorityView, command: PortableSessionCommand, bu
 
 const validateStage = (bundle: PortableCheckpointBundle, receipt: PortableTargetStageReceipt): void => {
   if (receipt.acceptingWork !== false ||
+      typeof receipt.destinationRunnerSessionReservationRef !== "string" ||
+      !SAFE_REF.test(receipt.destinationRunnerSessionReservationRef) ||
       receipt.checkpointDigest !== bundle.checkpoint.digest ||
       receipt.repositoryPostImageDigest !== bundle.checkpoint.repositoryPostImageDigest ||
       receipt.diffDigest !== bundle.checkpoint.diffDigest ||

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import type { LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import { Effect, Schema } from "effect"
 import { PylonPortableCheckpointBundleSchema } from "@openagentsinc/portable-session-contract"
@@ -33,6 +33,7 @@ export type PylonPortableOperationOutcome = Readonly<{
   diffDigest?: string
   graphDigest?: string
   cleanupReceiptRef?: string
+  destinationRunnerSessionReservationRef?: string
 }>
 
 const PylonPortableOperationOutcomeSchema = Schema.Struct({
@@ -42,6 +43,7 @@ const PylonPortableOperationOutcomeSchema = Schema.Struct({
   diffDigest: Schema.optionalKey(Schema.String),
   graphDigest: Schema.optionalKey(Schema.String),
   cleanupReceiptRef: Schema.optionalKey(Schema.String),
+  destinationRunnerSessionReservationRef: Schema.optionalKey(Schema.String),
 })
 
 export type PylonPortableSessionFence = Readonly<{
@@ -200,6 +202,7 @@ const decodeOutcome = (value: string): PylonPortableOperationOutcome => {
     outcome.diffDigest,
     outcome.graphDigest,
     outcome.cleanupReceiptRef,
+    outcome.destinationRunnerSessionReservationRef,
   ].filter((item): item is string => item !== undefined)
   if (FORBIDDEN_PRIVATE_MATERIAL.test(serialized) ||
       refs.some(ref => !SAFE_REF.test(ref)) ||
@@ -506,6 +509,48 @@ export class PylonPortableSessionOperationLedger {
       assertRef(sessionRef, "sessionRef")
       return sessionFence(this.requireSession(sessionRef))
     })
+  }
+
+  readOperation(operationRef: string): Effect.Effect<PylonPortableOperationRecord | null, PylonPortableOperationLedgerError> {
+    return this.effect(() => {
+      assertRef(operationRef, "operationRef")
+      const row = this.readOperationRow(operationRef)
+      return row === null ? null : operationRecord(row)
+    })
+  }
+
+  reserveDestinationRunnerSession(operationRef: string): Effect.Effect<string, PylonPortableOperationLedgerError> {
+    return this.effect(() => this.database.transaction(() => {
+      assertRef(operationRef, "operationRef")
+      const row = this.requireOperation(operationRef)
+      if (row.kind !== "stage") {
+        throw new PylonPortableOperationLedgerError(
+          "invalid_scope",
+          "runner-session reservation requires a destination stage",
+        )
+      }
+      const existing = row.outcome_json === null
+        ? undefined
+        : decodeOutcome(row.outcome_json).destinationRunnerSessionReservationRef
+      if (existing !== undefined) return existing
+      if (row.state !== "admitted") {
+        throw new PylonPortableOperationLedgerError(
+          "conflicting_replay",
+          "completed destination stage has no runner-session reservation",
+        )
+      }
+      const reservationRef = `runner-session-reservation.${randomUUID()}`
+      const outcome = decodeOutcome(JSON.stringify({
+        evidenceRefs: [],
+        destinationRunnerSessionReservationRef: reservationRef,
+      }))
+      this.database.query(`
+        UPDATE pylon_portable_session_operations
+        SET outcome_json = ?
+        WHERE operation_ref = ? AND state = 'admitted'
+      `).run(JSON.stringify(outcome), operationRef)
+      return reservationRef
+    }).immediate())
   }
 
   /**

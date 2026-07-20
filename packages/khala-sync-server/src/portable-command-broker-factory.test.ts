@@ -7,6 +7,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
   createProductionPortableCommandBrokerFactory,
+  createPostgresPortableCommandDestinationRunnerSessionResolver,
   PortableCommandBrokerFactoryError,
   type PortableCommandDestinationRunnerSessionResolution,
   type PortableCommandDestinationRunnerSessionResolver,
@@ -15,6 +16,7 @@ import {
 } from "./portable-command-broker-factory.js";
 import type { PortableCommandGrantAuthorityBinding } from "./portable-session-command-runner.js";
 import type { PortableCapabilityTransfer } from "./portable-session-move.js";
+import type { SyncSql } from "./sql.js";
 
 const ownerRef = "owner.ide13.command-broker";
 const sessionRef = "session.ide13.command-broker";
@@ -42,6 +44,10 @@ const managed = descriptor(
   "openagents_managed",
   "adapter.ide13.command-broker.managed",
 );
+const destinationScope = {
+  destinationAttachmentRef: "attachment.ide13.command-broker.destination",
+  destinationGeneration: 2,
+} as const;
 
 const claim = (
   source: PortableTargetDescriptor = local,
@@ -156,12 +162,16 @@ const destinationRunnerSessions = (): PortableCommandDestinationRunnerSessionRes
     destination,
     sourceBinding,
     capabilityTransfers,
+    destinationAttachmentRef,
+    destinationGeneration,
   }) => {
     const matched = capabilityTransfers[0];
     if (matched === undefined) return null;
     return {
       commandExecutionClaimRef,
       destinationTargetRef: destination.targetRef,
+      destinationAttachmentRef,
+      destinationGeneration,
       sourceGrantRef: sourceBinding.grantRef,
       sourceLeaseRef: matched.sourceLeaseRef,
       destinationSourceGrantRef: matched.destinationSourceGrantRef,
@@ -170,12 +180,20 @@ const destinationRunnerSessions = (): PortableCommandDestinationRunnerSessionRes
   },
 });
 
+const scopedFactory = (
+  brokerFactory: ReturnType<typeof createProductionPortableCommandBrokerFactory>,
+) => ({
+  create: (
+    input: Omit<Parameters<typeof brokerFactory.create>[0], keyof typeof destinationScope>,
+  ) => brokerFactory.create({ ...input, ...destinationScope }),
+});
+
 const factory = (
   installationPorts: PortableCommandTargetInstallationPortResolver,
   fetch = authorityFetch(),
   runnerSessions = destinationRunnerSessions(),
 ) =>
-  createProductionPortableCommandBrokerFactory({
+  scopedFactory(createProductionPortableCommandBrokerFactory({
     grantAuthority: {
       baseUrl: "https://openagents.example",
       serviceBearer: "service-fixture-command-broker",
@@ -183,9 +201,87 @@ const factory = (
     },
     installationPorts,
     destinationRunnerSessions: runnerSessions,
-  });
+  }));
 
 describe("production portable command broker factory", () => {
+  test("rejects broker creation without explicit destination attachment authority", async () => {
+    const brokerFactory = createProductionPortableCommandBrokerFactory({
+      grantAuthority: {
+        baseUrl: "https://openagents.example",
+        serviceBearer: "service-fixture-command-broker",
+        fetch: authorityFetch(),
+      },
+      installationPorts: exactResolver().resolver,
+      destinationRunnerSessions: destinationRunnerSessions(),
+    });
+    const missingDestinationScope = {
+      claim: claim(),
+      source: local,
+      destination: managed,
+      grantBindings: [binding],
+      capabilityTransfers: [transfer],
+    } as unknown as Parameters<typeof brokerFactory.create>[0];
+    await expect(brokerFactory.create(missingDestinationScope)).rejects.toMatchObject({
+      code: "invalid_scope",
+    });
+  });
+
+  test("resolves a destination runner reservation only when source reissue starts", async () => {
+    const delegate = destinationRunnerSessions();
+    const resolve = vi.fn(delegate.resolve);
+    const broker = await factory(exactResolver().resolver, authorityFetch(), { resolve }).create({
+      claim: claim(),
+      source: local,
+      destination: managed,
+      grantBindings: [binding],
+      capabilityTransfers: [transfer],
+    });
+    expect(resolve).not.toHaveBeenCalled();
+    await broker.vault.revokeSourceGrant({
+      sourceGrantRef: binding.grantRef,
+      leaseRef: binding.sourceLeaseRef,
+    });
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+
+  test("Postgres resolver rejects a swapped claim and returns the exact stage reservation", async () => {
+    const expectedClaimRef = claim().claimRef;
+    const sql = (async (_strings: TemplateStringsArray, ...values: unknown[]) =>
+      values.includes(expectedClaimRef)
+        ? [
+            {
+              result_destination_runner_session_reservation_ref:
+                "runner-session-reservation.postgres-test",
+            },
+          ]
+        : []) as unknown as SyncSql;
+    const resolver = createPostgresPortableCommandDestinationRunnerSessionResolver(
+      sql,
+      () => "2026-07-20T12:01:00.000Z",
+    );
+    const request = {
+      commandExecutionClaimRef: expectedClaimRef,
+      ownerRef,
+      sessionRef,
+      destination: managed,
+      destinationAttachmentRef: "attachment.ide13.command-broker.destination",
+      destinationGeneration: 2,
+      sourceBinding: binding,
+      capabilityTransfers: [transfer],
+    };
+    await expect(resolver.resolve(request)).resolves.toMatchObject({
+      commandExecutionClaimRef: expectedClaimRef,
+      destinationRunnerSessionId: "runner-session-reservation.postgres-test",
+      destinationSourceGrantRef: transfer.destinationSourceGrantRef,
+    });
+    await expect(
+      resolver.resolve({
+        ...request,
+        commandExecutionClaimRef: "claim.ide13.command-broker.swapped",
+      }),
+    ).resolves.toBeNull();
+  });
+
   test("creates only the exact local and managed adapters in both directions", async () => {
     const resolution = exactResolver();
     const brokerFactory = factory(resolution.resolver);
@@ -346,14 +442,14 @@ describe("production portable command broker factory", () => {
 
   test("fails closed before authority use when a runner resolver is absent", async () => {
     const fetch = authorityFetch();
-    const brokerFactory = createProductionPortableCommandBrokerFactory({
+    const brokerFactory = scopedFactory(createProductionPortableCommandBrokerFactory({
       grantAuthority: {
         baseUrl: "https://openagents.example",
         serviceBearer: "service-fixture-command-broker",
         fetch,
       },
       installationPorts: exactResolver().resolver,
-    });
+    }));
     await expect(
       brokerFactory.create({
         claim: claim(),
@@ -375,12 +471,16 @@ describe("production portable command broker factory", () => {
       resolve: async ({
         commandExecutionClaimRef,
         destination,
+        destinationAttachmentRef,
+        destinationGeneration,
         sourceBinding,
         capabilityTransfers,
       }) =>
         ({
           commandExecutionClaimRef,
           destinationTargetRef: destination.targetRef,
+          destinationAttachmentRef,
+          destinationGeneration,
           sourceGrantRef: sourceBinding.grantRef,
           sourceLeaseRef: capabilityTransfers[0]!.sourceLeaseRef,
           destinationSourceGrantRef: capabilityTransfers[0]!.destinationSourceGrantRef,
@@ -389,13 +489,17 @@ describe("production portable command broker factory", () => {
         }) as PortableCommandDestinationRunnerSessionResolution,
     };
     const fetch = authorityFetch();
+    const broker = await factory(exactResolver().resolver, fetch, resolver).create({
+      claim: claim(),
+      source: local,
+      destination: managed,
+      grantBindings: [binding],
+      capabilityTransfers: [transfer],
+    });
     await expect(
-      factory(exactResolver().resolver, fetch, resolver).create({
-        claim: claim(),
-        source: local,
-        destination: managed,
-        grantBindings: [binding],
-        capabilityTransfers: [transfer],
+      broker.vault.revokeSourceGrant({
+        sourceGrantRef: binding.grantRef,
+        leaseRef: binding.sourceLeaseRef,
       }),
     ).rejects.toMatchObject({ code: "capability_mismatch" });
     expect(fetch).not.toHaveBeenCalled();
@@ -408,13 +512,17 @@ describe("production portable command broker factory", () => {
       },
     };
     const fetch = authorityFetch();
+    const broker = await factory(exactResolver().resolver, fetch, resolver).create({
+      claim: claim(),
+      source: local,
+      destination: managed,
+      grantBindings: [binding],
+      capabilityTransfers: [transfer],
+    });
     await expect(
-      factory(exactResolver().resolver, fetch, resolver).create({
-        claim: claim(),
-        source: local,
-        destination: managed,
-        grantBindings: [binding],
-        capabilityTransfers: [transfer],
+      broker.vault.revokeSourceGrant({
+        sourceGrantRef: binding.grantRef,
+        leaseRef: binding.sourceLeaseRef,
       }),
     ).rejects.toMatchObject({ code: "runner_session_unavailable" });
     expect(fetch).not.toHaveBeenCalled();
@@ -441,13 +549,21 @@ describe("production portable command broker factory", () => {
       ],
     ]);
     const destinationResolver: PortableCommandDestinationRunnerSessionResolver = {
-      resolve: async ({ commandExecutionClaimRef, destination, sourceBinding }) => {
+      resolve: async ({
+        commandExecutionClaimRef,
+        destination,
+        destinationAttachmentRef,
+        destinationGeneration,
+        sourceBinding,
+      }) => {
         const matched = byGrant.get(sourceBinding.grantRef);
         return matched === undefined
           ? null
           : {
               commandExecutionClaimRef,
               destinationTargetRef: destination.targetRef,
+              destinationAttachmentRef,
+              destinationGeneration,
               sourceGrantRef: sourceBinding.grantRef,
               sourceLeaseRef: matched.transfer.sourceLeaseRef,
               destinationSourceGrantRef: matched.transfer.destinationSourceGrantRef,
@@ -457,7 +573,7 @@ describe("production portable command broker factory", () => {
     };
     const requests: Array<Readonly<{ path: string; body: Record<string, unknown> }>> = [];
     const fetch = authorityFetch([], requests);
-    const brokerFactory = createProductionPortableCommandBrokerFactory({
+    const brokerFactory = scopedFactory(createProductionPortableCommandBrokerFactory({
       grantAuthority: {
         baseUrl: "https://openagents.example",
         serviceBearer: "service-fixture-command-broker",
@@ -465,7 +581,7 @@ describe("production portable command broker factory", () => {
       },
       installationPorts: exactResolver().resolver,
       destinationRunnerSessions: destinationResolver,
-    });
+    }));
     const broker = await brokerFactory.create({
       claim: claim(),
       source: local,

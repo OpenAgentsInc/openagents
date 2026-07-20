@@ -73,6 +73,7 @@ type OperationRow = Readonly<{
   result_checkpoint_object_ref: string | null;
   result_checkpoint_digest: string | null;
   result_checkpoint_manifest_digest: string | null;
+  result_destination_runner_session_reservation_ref: string | null;
   result_destination_activation_receipt_json: unknown;
   result_evidence_refs_json: unknown;
   error_ref: string | null;
@@ -185,6 +186,8 @@ const recordFromRow = (row: OperationRow): PortablePhaseOperationRecord =>
     resultCheckpointObjectRef: row.result_checkpoint_object_ref,
     resultCheckpointDigest: row.result_checkpoint_digest,
     resultCheckpointManifestDigest: row.result_checkpoint_manifest_digest,
+    resultDestinationRunnerSessionReservationRef:
+      row.result_destination_runner_session_reservation_ref,
     resultDestinationActivationReceipt: parseJson(row.result_destination_activation_receipt_json),
     resultEvidenceRefs: parseJson(row.result_evidence_refs_json),
     errorRef: row.error_ref,
@@ -320,7 +323,15 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
       attachmentGeneration: input.destinationGeneration,
       ...artifact,
     });
+    if (typeof result.resultDestinationRunnerSessionReservationRef !== "string") {
+      throw new PortablePhaseTargetError(
+        "invalid",
+        "portable destination stage reservation is missing",
+      );
+    }
     return publicSafe({
+      destinationRunnerSessionReservationRef:
+        result.resultDestinationRunnerSessionReservationRef,
       checkpointDigest: bundle.checkpoint.digest,
       repositoryPostImageDigest: bundle.checkpoint.repositoryPostImageDigest,
       diffDigest: bundle.checkpoint.diffDigest,
@@ -425,8 +436,9 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
       await this.config.onEnqueued?.({
         ...enqueued,
         artifactTransport:
-          kind === "checkpoint-stage" && input.checkpointManifestDigest !== null &&
-            input.checkpointManifestDigest !== undefined
+          kind === "checkpoint-stage" &&
+          input.checkpointManifestDigest !== null &&
+          input.checkpointManifestDigest !== undefined
             ? {
                 commandClaim: this.claim,
                 manifestDigest: input.checkpointManifestDigest,
@@ -523,6 +535,7 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
              lease_expires_at, result_ref, result_fingerprint, result_status,
              result_checkpoint_ref, result_checkpoint_object_ref,
              result_checkpoint_digest, result_checkpoint_manifest_digest,
+             result_destination_runner_session_reservation_ref,
              result_destination_activation_receipt_json,
              result_evidence_refs_json, error_ref,
              completed_at, updated_at
@@ -542,6 +555,7 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
              lease_expires_at, result_ref, result_fingerprint, result_status,
              result_checkpoint_ref, result_checkpoint_object_ref,
              result_checkpoint_digest, result_checkpoint_manifest_digest,
+             result_destination_runner_session_reservation_ref,
              result_destination_activation_receipt_json,
              result_evidence_refs_json, error_ref,
              completed_at, updated_at

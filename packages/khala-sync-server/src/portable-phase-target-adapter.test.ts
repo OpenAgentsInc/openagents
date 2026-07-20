@@ -250,6 +250,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
         commandClaim: PortableCommandExecutionClaim;
         manifestDigest: string;
       }> | null>,
+      omitStageReservation = false,
     ): NonNullable<PostgresPortablePhaseTargetConfig["onEnqueued"]> =>
     async (enqueued) => {
       observed.push(enqueued.operation.request.kind);
@@ -339,8 +340,12 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
             ? fixture.bundle.checkpoint.digest
             : null,
         checkpointManifestDigest:
-          request.kind === "checkpoint-create" && resultStatus === "completed"
-            ? digestC
+          request.kind === "checkpoint-create" && resultStatus === "completed" ? digestC : null,
+        destinationRunnerSessionReservationRef:
+          request.kind === "checkpoint-stage" &&
+          resultStatus === "completed" &&
+          !omitStageReservation
+            ? `runner-session-reservation.${fixture.suffix}`
             : null,
         destinationActivationReceipt,
         evidenceRefs: destinationActivationReceipt?.evidenceRefs ?? [
@@ -582,6 +587,22 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
         capabilityLeaseRefs: [],
       }),
     ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  test("rejects a completed destination stage with no runner-session reservation", async () => {
+    const fixture = await seed();
+    const hook = completingHook(fixture, [], "completed", undefined, true);
+    const source = target(fixture, sourceTargetRef, hook);
+    const destination = target(fixture, destinationTargetRef, hook);
+    await source.quiesceGraph(quiesceInput(fixture));
+    const bundle = await source.createCheckpoint(checkpointInput(fixture));
+    await expect(destination.stageCheckpoint({
+      operationRef: `operation.${fixture.commandRef}.destination.stage`,
+      bundle,
+      destinationAttachmentRef: fixture.destinationAttachmentRef,
+      destinationGeneration: 2,
+      capabilityLeaseRefs: [],
+    })).rejects.toMatchObject({ code: "invalid" });
   });
 
   test("surfaces failed, expired, canceled, and timed-out terminal waits", async () => {
