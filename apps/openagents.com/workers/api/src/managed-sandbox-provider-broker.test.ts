@@ -269,6 +269,47 @@ describe('managed-sandbox provider capability broker', () => {
     expect(await response.json()).toEqual({ error: 'capability_revoked' })
   })
 
+  test('audits only a coarse denial reason while keeping the public refusal opaque', async () => {
+    const warnings: string[] = []
+    const originalWarn = console.warn
+    console.warn = (message?: unknown) => warnings.push(String(message))
+    try {
+      const routes = makeManagedSandboxProviderBrokerRoutes({
+        store: () => store(() => resource('active', 'stopping')),
+        nowMs: () => nowMs + 1,
+        fetchImpl: async () => {
+          throw new Error('quiescing resources must not reach the provider')
+        },
+      })
+      const response = await Effect.runPromise(
+        routes.route(
+          new Request(
+            `https://openagents.test${managedSandboxProviderBrokerPaths.openai}`,
+            {
+              method: 'POST',
+              headers: { authorization: `Bearer ${await token()}` },
+              body: JSON.stringify({ input: 'forbidden' }),
+            },
+          ),
+          env,
+        )!,
+      )
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual({ error: 'capability_revoked' })
+      expect(warnings).toHaveLength(1)
+      expect(JSON.parse(warnings[0]!)).toEqual({
+        event: 'managed_sandbox_provider_capability_denied',
+        provider: 'codex',
+        denial: 'resource_not_accepting_work',
+      })
+      expect(warnings[0]).not.toContain(ownerRef)
+      expect(warnings[0]).not.toContain(sandboxRef)
+    } finally {
+      console.warn = originalWarn
+    }
+  })
+
   test('maps a Claude Agent SDK request to the exact Vertex Anthropic model', async () => {
     let upstreamUrl = ''
     let upstreamBody: Record<string, unknown> | undefined

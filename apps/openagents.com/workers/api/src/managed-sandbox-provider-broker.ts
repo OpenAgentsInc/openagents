@@ -205,28 +205,46 @@ const json = (body: unknown, status: number): Response =>
     headers: { 'cache-control': 'no-store' },
   })
 
-const resourceAdmits = (
+type ProviderCapabilityDenial =
+  | 'owner_scope_mismatch'
+  | 'tenant_scope_mismatch'
+  | 'sandbox_scope_mismatch'
+  | 'resource_generation_mismatch'
+  | 'resource_not_accepting_work'
+  | 'resource_lifecycle_denied'
+  | 'resource_cleanup_complete'
+  | 'resource_lease_inactive'
+  | 'resource_lease_expired'
+  | 'capability_missing'
+  | 'capability_kind_denied'
+  | 'capability_inactive'
+  | 'capability_expired'
+
+const resourceAdmissionDenial = (
   resource: ManagedSandboxResource,
   claims: ManagedSandboxProviderCapabilityClaims,
   nowMs: number,
-): boolean => {
+): ProviderCapabilityDenial | undefined => {
   const capability = resource.capabilities.find(
     candidate => candidate.capabilityRef === claims.capabilityRef,
   )
-  return (
-    resource.ownerRef === claims.ownerRef &&
-    resource.tenantRef === claims.tenantRef &&
-    resource.sandboxRef === claims.sandboxRef &&
-    resource.resourceGeneration === claims.resourceGeneration &&
-    resource.facts.acceptingWork &&
-    ['ready', 'idle', 'running'].includes(resource.facts.lifecycle) &&
-    !resource.facts.cleanupComplete &&
-    resource.lease.state === 'active' &&
-    Date.parse(resource.lease.expiresAt) > nowMs &&
-    capability?.kind === 'agent_turn' &&
-    capability.state === 'active' &&
-    Date.parse(capability.expiresAt) > nowMs
-  )
+  if (resource.ownerRef !== claims.ownerRef) return 'owner_scope_mismatch'
+  if (resource.tenantRef !== claims.tenantRef) return 'tenant_scope_mismatch'
+  if (resource.sandboxRef !== claims.sandboxRef) return 'sandbox_scope_mismatch'
+  if (resource.resourceGeneration !== claims.resourceGeneration)
+    return 'resource_generation_mismatch'
+  if (!resource.facts.acceptingWork) return 'resource_not_accepting_work'
+  if (!['ready', 'idle', 'running'].includes(resource.facts.lifecycle))
+    return 'resource_lifecycle_denied'
+  if (resource.facts.cleanupComplete) return 'resource_cleanup_complete'
+  if (resource.lease.state !== 'active') return 'resource_lease_inactive'
+  if (Date.parse(resource.lease.expiresAt) <= nowMs)
+    return 'resource_lease_expired'
+  if (capability === undefined) return 'capability_missing'
+  if (capability.kind !== 'agent_turn') return 'capability_kind_denied'
+  if (capability.state !== 'active') return 'capability_inactive'
+  if (Date.parse(capability.expiresAt) <= nowMs) return 'capability_expired'
+  return undefined
 }
 
 const upstreamResponse = (response: Response): Response => {
@@ -298,10 +316,18 @@ export const makeManagedSandboxProviderBrokerRoutes = (
           sandboxRef: claims.sandboxRef,
         })
         .pipe(Effect.option)
-      if (
-        resource._tag !== 'Some' ||
-        !resourceAdmits(resource.value, claims, nowMs)
-      ) {
+      const denial =
+        resource._tag === 'Some'
+          ? resourceAdmissionDenial(resource.value, claims, nowMs)
+          : 'resource_missing'
+      if (denial !== undefined) {
+        console.warn(
+          JSON.stringify({
+            event: 'managed_sandbox_provider_capability_denied',
+            provider,
+            denial,
+          }),
+        )
         return json({ error: 'capability_revoked' }, 403)
       }
       const turn = yield* store
