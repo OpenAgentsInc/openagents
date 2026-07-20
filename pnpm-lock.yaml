@@ -1263,6 +1263,9 @@ importers:
       '@openagentsinc/oa-infra':
         specifier: workspace:*
         version: link:../../../../packages/oa-infra
+      '@openagentsinc/portable-session-contract':
+        specifier: workspace:*
+        version: link:../../../../packages/portable-session-contract
       '@openagentsinc/provider-account-schema':
         specifier: workspace:*
         version: link:../../../../packages/provider-account-schema

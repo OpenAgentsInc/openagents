@@ -1092,6 +1092,11 @@ import {
 import { type PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
 import {
+  makePortableCheckpointArtifactRoutes,
+  portableCheckpointArtifactBucketForEnv,
+  readPortableCheckpointArtifactAuthority,
+} from './portable-checkpoint-artifact-routes'
+import {
   makePortablePhaseOperationRoutes,
   resolvePortablePhaseTarget,
 } from './portable-phase-operation-routes'
@@ -9625,6 +9630,59 @@ const portablePhaseOperationRoutes =
     },
   })
 
+const portableCheckpointArtifactRoutes =
+  makePortableCheckpointArtifactRoutes<WorkerBindings>({
+    authenticate: async (request, env) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        agentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    readPylonOwnerAgentUserId: async (env, pylonRef) =>
+      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
+        ?.ownerAgentUserId,
+    resolveExactTarget: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint target storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await resolvePortablePhaseTarget(client.sql, input)
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    bucket: env => portableCheckpointArtifactBucketForEnv(env),
+    readAuthority: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint authority storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await readPortableCheckpointArtifactAuthority(
+          client.sql,
+          new PostgresPortablePhaseOperationStore(client.sql),
+          input,
+        )
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+  })
+
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
@@ -9726,6 +9784,8 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   requireBrowserSession,
   routePortablePhaseOperationRequest:
     portablePhaseOperationRoutes.routePortablePhaseOperationRequest,
+  routePortableCheckpointArtifactRequest:
+    portableCheckpointArtifactRoutes.routePortableCheckpointArtifactRequest,
 })
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({

@@ -237,6 +237,10 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
     request: Request,
     env: Bindings,
   ) => Promise<HttpResponse> | undefined
+  routePortableCheckpointArtifactRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
 }>
 
 type PylonApiRouteEnv = Readonly<Record<string, unknown>>
@@ -3470,6 +3474,12 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       dependencies.routePortablePhaseOperationRequest?.(request, env)
     if (portablePhaseRoute !== undefined) {
       return Effect.promise(() => portablePhaseRoute)
+    }
+
+    const portableCheckpointArtifactRoute =
+      dependencies.routePortableCheckpointArtifactRequest?.(request, env)
+    if (portableCheckpointArtifactRoute !== undefined) {
+      return Effect.promise(() => portableCheckpointArtifactRoute)
     }
 
     if (url.pathname === '/api/account/pylons') {

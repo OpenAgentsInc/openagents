@@ -91,6 +91,8 @@ export interface GcsHmacPutOptions {
    * back lowercased (HTTP header semantics) — do not rely on key casing.
    */
   readonly customMetadata?: Readonly<Record<string, string>>
+  /** Create-only write. A present object returns `created: false`. */
+  readonly ifAbsent?: boolean
 }
 
 /** Header-derived metadata of a stored object (HEAD/GET responses). */
@@ -245,7 +247,7 @@ export class GcsHmacClient {
     key: string,
     body: Uint8Array | string,
     options: GcsHmacPutOptions = {},
-  ): Promise<{ readonly etag: string; readonly size: number }> {
+  ): Promise<{ readonly created: boolean; readonly etag: string; readonly size: number }> {
     const headers: Record<string, string> = {}
     if (options.contentType !== undefined) headers["content-type"] = options.contentType
     if (options.cacheControl !== undefined) headers["cache-control"] = options.cacheControl
@@ -261,6 +263,7 @@ export class GcsHmacClient {
     for (const [metaKey, metaValue] of Object.entries(options.customMetadata ?? {})) {
       headers[`${CUSTOM_METADATA_HEADER_PREFIX}${metaKey.toLowerCase()}`] = metaValue
     }
+    if (options.ifAbsent === true) headers["if-none-match"] = "*"
     const payload = typeof body === "string" ? new TextEncoder().encode(body) : body
     const response = await this.signedFetch(this.objectUrl(key), {
       // Pass an ArrayBuffer-backed copy so BodyInit typing is exact across
@@ -269,9 +272,14 @@ export class GcsHmacClient {
       headers,
       method: "PUT",
     })
+    if (options.ifAbsent === true && response.status === 412) {
+      await response.body?.cancel()
+      return { created: false, etag: "", size: payload.byteLength }
+    }
     if (!response.ok) return this.failFrom("put", response, key)
     await response.body?.cancel()
     return {
+      created: true,
       etag: unquoteEtag(response.headers.get("etag") ?? ""),
       size: payload.byteLength,
     }
