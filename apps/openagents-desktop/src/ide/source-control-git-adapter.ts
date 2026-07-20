@@ -223,6 +223,8 @@ export interface IdeSourceControlGitAdapterOptions {
   readonly recoveryRoot?: string;
   readonly mutationAuthority?: IdePortableMutationAuthority;
   readonly mutationPermit?: () => IdePortableMutationPermit | undefined;
+  readonly beforeMutationSpawn?: () => void;
+  readonly afterMutationProcess?: () => void;
 }
 
 export const makeIdeSourceControlGitAdapter = (
@@ -503,7 +505,11 @@ export const makeIdeSourceControlGitAdapter = (
       }
     };
     const guardedGit = async (args: ReadonlyArray<string>, input?: string): Promise<GitResult> => {
-      if (!readOnly) requireCurrentPermit("before");
+      if (!readOnly) {
+        requireCurrentPermit("before");
+        options.beforeMutationSpawn?.();
+        requireCurrentPermit("before");
+      }
       const result = await runSupervisedGit(
         root,
         args,
@@ -514,7 +520,10 @@ export const makeIdeSourceControlGitAdapter = (
         },
         input,
       );
-      if (!readOnly) requireCurrentPermit("after");
+      if (!readOnly) {
+        options.afterMutationProcess?.();
+        requireCurrentPermit("after");
+      }
       return result;
     };
     const run = async (args: ReadonlyArray<string>, message: string, input?: string): Promise<string> =>

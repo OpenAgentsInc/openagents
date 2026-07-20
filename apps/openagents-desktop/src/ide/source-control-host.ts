@@ -48,6 +48,8 @@ export type IdeSourceControlHost = Readonly<{
 export type IdeSourceControlHostOptions = Readonly<{
   workspace: () => IdeSourceControlWorkspaceBinding | null;
   mutationAuthority?: IdePortableMutationAuthority;
+  beforeMutationSpawn?: () => void;
+  afterMutationProcess?: () => void;
   now?: () => string;
   recoveryRoot?: string;
 }>;
@@ -181,6 +183,8 @@ export const openIdeSourceControlHost = async (
       root, seed, now, recoveryRoot: options.recoveryRoot,
       mutationAuthority,
       mutationPermit: () => permitStorage.getStore(),
+      beforeMutationSpawn: options.beforeMutationSpawn,
+      afterMutationProcess: options.afterMutationProcess,
     });
     const context = await Effect.runPromise(Layer.buildWithScope(
       makeIdeSourceControlServiceLayer(seed, adapter, { now }),

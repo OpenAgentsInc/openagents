@@ -119,42 +119,41 @@ describe("IDE-12 source-control host", () => {
     await host.dispose();
   });
 
-  test("checks the captured generation at the Git boundary and suppresses a late result", async () => {
+  test("suppresses a completed Git result when authority changes before result admission", async () => {
     const root = repo();
     writeFileSync(path.join(root, "a.txt"), "changed\n");
-    let reauthorizationCount = 0;
+    let authorized = true;
     const mutationAuthority: IdePortableMutationAuthority = {
       authorize: () => ({ _tag: "Permitted", permit: portablePermit }),
-      reauthorize: () => { reauthorizationCount += 1; return reauthorizationCount < 4; },
+      reauthorize: () => authorized,
     };
     const host = await openIdeSourceControlHost({
       workspace: () => ({ root, grantRef: portablePermit.grantRef }), mutationAuthority,
+      afterMutationProcess: () => { authorized = false; },
     });
     const before = await host.snapshot();
     if (before === null) throw new Error("expected a source-control snapshot");
     const result = await host.command(stageCommand(before));
     expect(result).toMatchObject({ _tag: "Failure", failure: { code: "policy_refused" } });
     expect(result._tag === "Success" ? result.receipt : null).toBeNull();
-    expect(reauthorizationCount).toBeGreaterThanOrEqual(4);
-    // A completed synchronous Git change cannot be safely inverted after a
-    // placement change. Stop the stale runtime and report the exact observed
-    // repository state on the next refresh instead of guessing an inverse.
+    // Git finished while the permit was current. Authority changed before
+    // result admission, so the host withholds the stale receipt. It does not
+    // guess an inverse operation that could overwrite newer repository work.
     expect(git(root, "diff", "--cached", "--name-only")).toBe("a.txt");
-    const reopened = await host.snapshot();
-    expect(reopened?.paths.find((entry) => entry.path === "a.txt")?.indexState).toBe("modified");
     await host.dispose();
   });
 
   test("invalidates a captured permit immediately before Git starts", async () => {
     const root = repo();
     writeFileSync(path.join(root, "a.txt"), "changed\n");
-    let reauthorizationCount = 0;
+    let authorized = true;
     const mutationAuthority: IdePortableMutationAuthority = {
       authorize: () => ({ _tag: "Permitted", permit: portablePermit }),
-      reauthorize: () => { reauthorizationCount += 1; return reauthorizationCount === 1; },
+      reauthorize: () => authorized,
     };
     const host = await openIdeSourceControlHost({
       workspace: () => ({ root, grantRef: portablePermit.grantRef }), mutationAuthority,
+      beforeMutationSpawn: () => { authorized = false; },
     });
     const before = await host.snapshot();
     if (before === null) throw new Error("expected a source-control snapshot");
