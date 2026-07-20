@@ -456,6 +456,7 @@ export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopS
       </section>
       {state.git.actionError === null ? null : <p role="alert">{state.git.actionError}</p>}
       {state.git.receipt === null ? null : <p role="status"><strong>{state.git.receipt.headline}</strong> {state.git.receipt.detail}</p>}
+      {state.git.recoveryRef === null ? null : <Button size="sm" variant="outline" onClick={() => dispatch(report, "GitPanelRecoveryRequested")}>Recover discarded change</Button>}
     </aside>
     <section className="oa-react-rich-diff" aria-label="Versioned review">
       {state.agentReviewProposalRef !== null ? <AgentProposalReviewPanel state={state} report={report} />

@@ -23,6 +23,7 @@ export const gitGithubOps = [
   "status",
   "diff",
   "discard",
+  "recover",
   "stage",
   "unstage",
   "commit",
@@ -93,6 +94,12 @@ const DiscardRequestSchema = Schema.Struct({
   statusRef: GitReviewIdentitySchema,
   path: GitReviewPathSchema,
 })
+const RecoverRequestSchema = Schema.Struct({
+  op: Schema.Literal("recover"),
+  repositoryRef: GitReviewIdentitySchema,
+  statusRef: GitReviewIdentitySchema,
+  recoveryRef: GitReviewIdentitySchema,
+})
 const expectedStatus = { repositoryRef: GitReviewIdentitySchema, statusRef: GitReviewIdentitySchema }
 const StageRequestSchema = Schema.Struct({ op: Schema.Literal("stage"), ...expectedStatus, paths: Schema.Array(Schema.String) })
 const UnstageRequestSchema = Schema.Struct({ op: Schema.Literal("unstage"), ...expectedStatus, paths: Schema.Array(Schema.String) })
@@ -133,6 +140,7 @@ export const GitGithubRequestSchema = Schema.Union([
   StatusRequestSchema,
   DiffRequestSchema,
   DiscardRequestSchema,
+  RecoverRequestSchema,
   StageRequestSchema,
   UnstageRequestSchema,
   CommitRequestSchema,
@@ -227,6 +235,15 @@ const DiscardResultSchema = Schema.Struct({
   repositoryRef: GitReviewIdentitySchema,
   path: GitReviewPathSchema,
   statusRef: GitReviewIdentitySchema,
+  recoveryRef: GitReviewIdentitySchema.pipe(Schema.optionalKey),
+})
+
+const RecoverResultSchema = Schema.Struct({
+  ok: Schema.Literal(true),
+  op: Schema.Literal("recover"),
+  repositoryRef: GitReviewIdentitySchema,
+  statusRef: GitReviewIdentitySchema,
+  recoveryRef: GitReviewIdentitySchema,
 })
 
 const PathsResultSchema = Schema.Struct({
@@ -365,6 +382,7 @@ export const GitGithubResultSchema = Schema.Union([
   GitStatusResultSchema,
   GitDiffResultSchema,
   DiscardResultSchema,
+  RecoverResultSchema,
   PathsResultSchema,
   CommitResultSchema,
   PushResultSchema,

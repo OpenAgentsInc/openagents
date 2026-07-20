@@ -454,6 +454,9 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
       return { ok: true, op: "discard", repositoryRef: next.repositoryRef, path: relative, statusRef: next.statusRef }
     }
 
+    case "recover":
+      return gitGithubError("recover", "unsafe_state", "Recovery is available only through the canonical source-control authority.")
+
     case "stage":
     case "unstage": {
       const status = currentSnapshot(root, request.repositoryRef, request.statusRef)

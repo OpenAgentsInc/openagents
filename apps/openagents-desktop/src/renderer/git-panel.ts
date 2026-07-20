@@ -57,7 +57,7 @@ import { IdeReviewSelectionSchema, type IdeReviewSelection } from "../ide/review
 export type GitPanelCreateKind = "none" | "issue" | "pr"
 
 export type GitPanelReceipt = Readonly<{
-  kind: "commit" | "push" | "issue" | "pr"
+  kind: "commit" | "push" | "discard" | "recovery" | "issue" | "pr"
   headline: string
   detail: string
 }>
@@ -93,6 +93,7 @@ export type GitPanelState = Readonly<{
   /** Typed refusal for the last exact review request; never raw stderr. */
   reviewFailure: GitGithubErrorCode | null
   discardConfirmPath: string | null
+  recoveryRef: string | null
   /** Exact user-selected timeline item that caused this review, or explicit null. */
   causalItemRef: string | null
 }>
@@ -123,6 +124,7 @@ export const emptyGitPanelState = (): GitPanelState => ({
   diffLoading: false,
   reviewFailure: null,
   discardConfirmPath: null,
+  recoveryRef: null,
   causalItemRef: null,
 })
 
@@ -212,6 +214,7 @@ export const GitPanelDiffClosed = defineIntent("GitPanelDiffClosed", Schema.Null
 export const GitPanelDiscardRequested = defineIntent("GitPanelDiscardRequested", Schema.String)
 export const GitPanelDiscardConfirmed = defineIntent("GitPanelDiscardConfirmed", Schema.Null)
 export const GitPanelDiscardCancelled = defineIntent("GitPanelDiscardCancelled", Schema.Null)
+export const GitPanelRecoveryRequested = defineIntent("GitPanelRecoveryRequested", Schema.Null)
 export const GitPanelContextAttached = defineIntent(
   "GitPanelContextAttached",
   Schema.NullOr(IdeReviewSelectionSchema),
@@ -237,6 +240,7 @@ export const gitPanelIntents = [
   GitPanelDiscardRequested,
   GitPanelDiscardConfirmed,
   GitPanelDiscardCancelled,
+  GitPanelRecoveryRequested,
   GitPanelContextAttached,
 ] as const
 
@@ -326,10 +330,9 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
     GitPanelPushRequested: () =>
       Effect.gen(function* () {
         const current = yield* SubscriptionRef.get(state)
-        if (current.git.pushing) return
-        yield* setGit((git) => ({ ...git, pushing: true, actionError: null }))
         const status = current.git.status
-        if (status === null) return
+        if (current.git.pushing || status === null) return
+        yield* setGit((git) => ({ ...git, pushing: true, actionError: null }))
         const result = yield* Effect.promise(() => runOp(bridge, {
           op: "push",
           repositoryRef: status.repositoryRef,
@@ -504,8 +507,28 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
       if (!result.ok) {
         yield* setGit(git => ({ ...git, discardConfirmPath: null, actionError: result.message }))
       } else {
-        yield* setGit(git => ({ ...git, discardConfirmPath: null, diff: null, actionError: null }))
+        yield* setGit(git => ({
+          ...git, discardConfirmPath: null, diff: null, actionError: null,
+          recoveryRef: result.op === "discard" ? result.recoveryRef ?? null : null,
+          receipt: result.op === "discard" ? { kind: "discard", headline: "Discarded one exact change", detail: result.recoveryRef === undefined ? "No recovery record was returned." : "Recovery is available until it is used." } : git.receipt,
+        }))
       }
+      yield* refreshGitPanel(state, bridge)
+    }),
+
+    GitPanelRecoveryRequested: () => Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(state)
+      const status = current.git.status
+      const recoveryRef = current.git.recoveryRef
+      if (status === null || recoveryRef === null) return
+      const result = yield* Effect.promise(() => runOp(bridge, {
+        op: "recover", repositoryRef: status.repositoryRef, statusRef: status.statusRef, recoveryRef,
+      }))
+      if (!result.ok) {
+        yield* setGit(git => ({ ...git, actionError: result.message }))
+        return
+      }
+      yield* setGit(git => ({ ...git, recoveryRef: null, actionError: null, receipt: { kind: "recovery", headline: "Recovered discarded change", detail: recoveryRef } }))
       yield* refreshGitPanel(state, bridge)
     }),
 
@@ -669,7 +692,7 @@ const mutationSection = (git: GitPanelState): ReadonlyArray<View> => [
     TextField({ key: "git-commit-message", label: "Commit message", value: git.commitMessage, multiline: true, autoResize: true, onChange: IntentRef("GitPanelCommitMessageChanged") }),
     Stack({ key: "git-delivery-actions", direction: "row", gap: "2" }, [
       Button({ key: "git-commit", label: git.committing ? "Committing…" : "Commit staged", variant: "primary", disabled: git.committing || git.commitMessage.trim() === "" || (git.status?.staged.length ?? 0) === 0, onPress: IntentRef("GitPanelCommitRequested") }),
-      Button({ key: "git-push", label: git.pushing ? "Pushing…" : "Push exact HEAD", variant: "secondary", disabled: git.pushing || git.status?.upstream === null, onPress: IntentRef("GitPanelPushRequested") }),
+      Button({ key: "git-push", label: git.pushing ? "Pushing…" : "Push exact HEAD", variant: "secondary", disabled: git.pushing || git.status === null || git.status.upstream === null, onPress: IntentRef("GitPanelPushRequested") }),
     ]),
     TextField({ key: "git-new-branch", label: "New branch", value: git.newBranchName, onChange: IntentRef("GitPanelNewBranchNameChanged"), onSubmit: IntentRef("GitPanelBranchCreateRequested") }),
     Button({ key: "git-branch-create", label: "Create and switch", variant: "secondary", disabled: git.newBranchName.trim() === "", onPress: IntentRef("GitPanelBranchCreateRequested") }),
@@ -677,6 +700,7 @@ const mutationSection = (git: GitPanelState): ReadonlyArray<View> => [
       Text({ key: "git-receipt-headline", content: git.receipt.headline, variant: "label", color: "success" }),
       Text({ key: "git-receipt-detail", content: git.receipt.detail, variant: "caption", color: "textMuted" }),
     ])]),
+    ...(git.recoveryRef === null ? [] : [Button({ key: "git-recover", label: "Recover discarded change", variant: "secondary", onPress: IntentRef("GitPanelRecoveryRequested") })]),
     ...(git.actionError === null ? [] : [Text({ key: "git-action-error", content: git.actionError, variant: "body", color: "danger" })]),
   ]),
 ]

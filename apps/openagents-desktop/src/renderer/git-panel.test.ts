@@ -382,7 +382,8 @@ describe("git panel intent loop", () => {
   test("discard requires inline confirmation and sends the exact fenced request", async () => {
     await Effect.runPromise(Effect.gen(function* () {
       const { bridge, calls } = makeFakeBridge({
-        discard: () => ({ ok: true, op: "discard", repositoryRef: "workspace.repository.test", path: "b.txt", statusRef: "workspace.git-status.next" }),
+        discard: () => ({ ok: true, op: "discard", repositoryRef: "workspace.repository.test", path: "b.txt", statusRef: "workspace.git-status.next", recoveryRef: "ide.scm-recovery.fixture" }),
+        recover: () => ({ ok: true, op: "recover", repositoryRef: "workspace.repository.test", statusRef: "workspace.git-status.recovered", recoveryRef: "ide.scm-recovery.fixture" }),
         status: () => readyStatus({ unstaged: [] }),
         branchList: () => ({ ok: true, op: "branchList", current: "main", branches: [], truncated: false }),
       })
@@ -399,6 +400,17 @@ describe("git panel intent loop", () => {
         path: "b.txt",
       })
       expect((yield* SubscriptionRef.get(state)).git.discardConfirmPath).toBeNull()
+      expect((yield* SubscriptionRef.get(state)).git.recoveryRef).toBe("ide.scm-recovery.fixture")
+      expect(nodeByKey(gitPanelView((yield* SubscriptionRef.get(state)).git), "git-recover")).toBeDefined()
+      const callsBeforeRecovery = calls.length
+      yield* registry.dispatch(directIntent("GitPanelRecoveryRequested"))
+      expect(calls[callsBeforeRecovery]).toEqual({
+        op: "recover",
+        repositoryRef: "workspace.repository.test",
+        statusRef: "workspace.git-status.test",
+        recoveryRef: "ide.scm-recovery.fixture",
+      })
+      expect((yield* SubscriptionRef.get(state)).git.recoveryRef).toBeNull()
     }))
   })
 })

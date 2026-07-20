@@ -2861,7 +2861,7 @@ const ideSourceControlHost = openIdeSourceControlHost({
   },
   recoveryRoot: path.join(app.getPath("userData"), "ide-source-control", "recovery"),
 })
-const legacyGitMutationOps = new Set(["discard", "stage", "unstage", "commit", "push", "branchCreate", "checkout"])
+const legacyGitMutationOps = new Set(["discard", "recover", "stage", "unstage", "commit", "push", "branchCreate", "checkout"])
 ipcMain.handle(GitGithubChannel, (_event, value: unknown) => {
   const op = typeof value === "object" && value !== null && "op" in value ? String(value.op) : "status"
   return legacyGitMutationOps.has(op)

@@ -259,6 +259,7 @@ const ReviewBody = ({ state, report }: { readonly state: DesktopShellState; read
     </Alert>}
     {git.actionError === null ? null : <Alert variant="destructive"><AlertTitle>Source-control operation refused</AlertTitle><AlertDescription>{git.actionError}</AlertDescription></Alert>}
     {git.receipt === null ? null : <Alert><AlertTitle>{git.receipt.headline}</AlertTitle><AlertDescription>{git.receipt.detail}</AlertDescription></Alert>}
+    {git.recoveryRef === null ? null : <Button type="button" variant="outline" onClick={() => dispatch(report, "GitPanelRecoveryRequested")}>Recover discarded change</Button>}
     <section className="oa-react-review-files" aria-label="Commit and delivery">
       <label htmlFor="git-commit-message">Commit message</label>
       <textarea id="git-commit-message" value={git.commitMessage} maxLength={20_000}

@@ -722,6 +722,7 @@ const gitGithubBridge: GitGithubBridge = {
     const command = request.op === "stage" ? { _tag: "Stage" as const, ...mutation, selection: { _tag: "Paths" as const, paths: request.paths } }
       : request.op === "unstage" ? { _tag: "Unstage" as const, ...mutation, selection: { _tag: "Paths" as const, paths: request.paths } }
       : request.op === "discard" ? { _tag: "Discard" as const, ...mutation, selection: { _tag: "Paths" as const, paths: [request.path] }, recoveryRequired: true as const }
+      : request.op === "recover" ? { _tag: "Recover" as const, ...mutation, recoveryRef: request.recoveryRef as never }
       : request.op === "commit" ? { _tag: "Commit" as const, ...mutation, message: request.message, amend: false, sign: false, runHooks: true }
       : request.op === "branchCreate" ? { _tag: "BranchCreate" as const, ...mutation, name: request.name, checkout: request.checkout }
       : request.op === "checkout" ? { _tag: "Switch" as const, ...mutation, refName: request.name, detach: false }
@@ -739,7 +740,8 @@ const gitGithubBridge: GitGithubBridge = {
     const result = decodeIdeSourceControlCommandResult(rawResult)
     if (result?._tag !== "Success") return sourceControlError(request.op, rawResult)
     if (request.op === "stage" || request.op === "unstage") return { ok: true, op: request.op, paths: request.paths }
-    if (request.op === "discard") return { ok: true, op: "discard", repositoryRef: snapshot.binding.repositoryRef, path: request.path, statusRef: result.snapshot.version.statusRef }
+    if (request.op === "discard") return { ok: true, op: "discard", repositoryRef: snapshot.binding.repositoryRef, path: request.path, statusRef: result.snapshot.version.statusRef, recoveryRef: result.receipt?.recoveryRef ?? undefined }
+    if (request.op === "recover") return { ok: true, op: "recover", repositoryRef: snapshot.binding.repositoryRef, statusRef: result.snapshot.version.statusRef, recoveryRef: request.recoveryRef }
     if (request.op === "commit") {
       const sha = result.snapshot.version.headOid ?? ""
       return { ok: true, op: "commit", sha, shortSha: sha.slice(0, 7), summary: request.message.split("\n", 1)[0] ?? "Commit" }
