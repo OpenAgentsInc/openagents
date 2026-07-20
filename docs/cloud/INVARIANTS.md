@@ -247,6 +247,11 @@ design context only.
   identity, metadata, and network facts. Cleanup requires observed zero
   compute, firewall, disk, ingress, and grant residue. Uncertainty reports
   `recovery_required` and reconciles the same ownership.
+- The operational image builder must preserve an empty `/etc/machine-id` file,
+  then boot the sealed image once as a private no-identity VM. Image admission
+  requires observed DHCP, metadata startup, regenerated SSH host keys, active
+  SSH, and the workload metadata guard. A failed newly-created image remains
+  unadmitted and is deleted with its exact builder/smoke resources.
 - Readiness polling must finish within the bridge timeout. A transport timeout
   cannot erase cleanup ownership. The live harness attempts reconciliation.
   If authority is unavailable, it deletes only its deterministic resource

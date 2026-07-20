@@ -5338,7 +5338,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "b8ad8d64edd0177e34bc8bf795567f2fec075b4d3331122fa9ef6caed0a2c286",
+      "sourceSha256": "e9bc3228db5e4e97bb3e92329a55feeb6578a0eeb81d4e3da09f0393cfe5a57e",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -5346,6 +5346,7 @@
         "*_RAW_PER_VM_SEC_NANOUSD",
         "/32",
         "/dev/kvm",
+        "/etc/machine-id",
         "/opt/agent/portable-session-control",
         "/v1",
         "0067",

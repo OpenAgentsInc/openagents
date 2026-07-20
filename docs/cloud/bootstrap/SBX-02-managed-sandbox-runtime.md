@@ -69,7 +69,13 @@ evidence-bound SBX-02 component baseline. They are not accepted for owner
 agent turns. SBX-09 builds a dedicated Debian guest image with
 `scripts/cloud/build-managed-sandbox-guest-image.sh` and records its immutable
 image ID, image digest, profile digest, source revision, and provisioner
-revision in the acceptance evidence.
+revision in the acceptance evidence. Image sealing preserves an empty
+`/etc/machine-id` path so systemd can generate a fresh clone identity and DHCP
+client ID. Before admission, the builder boots the sealed image as a private,
+no-identity smoke VM and requires observed DHCP, metadata startup, per-guest
+SSH host keys, the workload metadata guard, and SSH service readiness. Only a
+passing image receives `openagents-boot-smoke=passed`. A failed newly-created
+image and its smoke VM are deleted by the builder cleanup path.
 
 The operational native and Box-compatible authorities use the single profile
 ref `profile.sbx.gce.e2-small.v1`. That ref is part of the operational profile

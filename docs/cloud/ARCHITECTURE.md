@@ -162,6 +162,13 @@ Linux `openat2` beneath the guest workspace. Box commands run inside a second
 Bubblewrap network namespace, so the SDK-only provider broker path is not
 available to arbitrary guest commands.
 
+The guest-image pipeline does not treat a successful disk snapshot as runtime
+admission. It preserves an empty machine-id file for clone boot, starts the
+sealed image once without an external address or guest identity, and admits
+the image only after DHCP, metadata startup, regenerated SSH host keys, active
+SSH, and the workload metadata guard are observed. Failed image candidates are
+removed with their exact smoke resources.
+
 The staging and production data planes are separate: each has its own private
 control address, Cloud Run bridge, firewall and network tags, control token,
 broker signing key, and native database authority. The Worker calls only the
