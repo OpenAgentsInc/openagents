@@ -411,5 +411,6 @@ export type PortableCommandProjection = typeof PortableCommandProjectionSchema.T
 export * from "./journeys.js"
 export * from "./model.js"
 export * from "./capability-broker.js"
+export * from "./portable-command-execution.js"
 export * from "./ide13-contract.js"
 export * from "./ide13-model.js"

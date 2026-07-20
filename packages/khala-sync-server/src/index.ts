@@ -157,6 +157,7 @@ export interface KhalaSyncScopeAuth {
 
 export * from "./hub.js"
 export * from "./portable-session-authority.js"
+export * from "./portable-session-command-queue.js"
 export * from "./portable-capability-broker-store.js"
 export * from "./portable-session-move.js"
 export * from "./portable-session-move-runtime.js"
