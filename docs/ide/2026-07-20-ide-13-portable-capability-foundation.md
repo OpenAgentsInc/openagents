@@ -77,9 +77,9 @@ projection issues and are not used as authority.
 
 The current evidence receipt is
 `apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json`.
-Candidate commit `0ee3e4491319b68615b3261d4855f93930dcdf4a` produced the
+Candidate commit `7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6` produced the
 current real owner-local receipt on macOS arm64 with Node 24.13.1. Evidence
-commit `cde6afda74` records the aggregate non-acceptance receipt.
+commit `a14004645a` records the aggregate non-acceptance receipt.
 
 The real owner-local cohort completed one move from generation 1 to generation
 2 and one failback to generation 3. It also completed activation replay, stale
@@ -87,22 +87,32 @@ generation refusal, abort cleanup, encrypted artifact deletion, and final
 helper cleanup. The destination started a real PTY, the signed TypeScript LSP,
 and a filesystem watcher. DAP and native helpers stayed unsupported.
 
-The performance cohort completed 10 full runs. The p95 values were 0.55 ms for
-quiesce, 46.35 ms for checkpoint, 50.04 ms for upload, 93.81 ms for redeem,
-56.39 ms for attach, and 0.01 ms for helper readiness. Failback p95 was 541.37
-ms. Teardown p95 was 308.85 ms. All 16 phase and resource metric rows passed.
+The performance cohort completed 10 full runs. The p95 values were 0.47 ms for
+quiesce, 43.97 ms for checkpoint, 51.27 ms for upload, 93.20 ms for redeem,
+57.48 ms for attach, and 0.02 ms for helper readiness. Failback p95 was 537.58
+ms. Teardown p95 was 305.11 ms. All 16 phase and resource metric rows passed.
 The checked-in receipt records the raw values and p50, p95, and p99 values.
 
 The fault inventory contains all 27 required rows. A source-controlled probe
 injected a transient partition at each of the eight production phase dispatch
-boundaries. All eight real local runs passed and left no recorded residue. The
-other 19 rows are `not_run` because an exact production injection seam does
-not exist. These omissions keep acceptance false.
+boundaries. All eight real local runs passed and left no recorded residue. A
+real local checkpoint-store crash also passed. Nine rows passed only with
+production components and simulator fixtures. Nine rows did not run. These
+limits keep acceptance false.
 
-Focused verification passed the real cohort, packaged owner-local LSP,
-managed LSP, executable-profile, authority, Google Cloud, Pylon typecheck, and
-Desktop evidence-contract checks. This result is regression and local cohort
-evidence. It is not IDE-13 acceptance.
+A separate real local proof moved one refs-only accepted work item. A bounded
+registered handler ran one time at generation 2. Replay did not run it again,
+and generation 3 refused the stale request. No live process state moved.
+
+The packaged macOS arm64 application stayed live during a same-host move and
+failback. It used isolated signed-out local proof. It did not authenticate
+Sync or initiate the move. The package and owner-local target left no recorded
+process or temporary-root residue.
+
+Focused verification passed 29 tests in eight files, both typechecks, the
+package and ASAR gates, and the real receipt generators. This result is
+regression, simulator, packaged fail-closed, and real local evidence. It is
+not IDE-13 acceptance.
 
 ## Placement truth
 
@@ -110,7 +120,7 @@ The current placement evidence is not the IDE-13 acceptance matrix.
 
 | Target class | Evidence | Current result |
 | --- | --- | --- |
-| owner local | real local production composition on macOS arm64 | Ten same-device target moves and failbacks passed with real PTY, signed TypeScript LSP, watcher, encrypted custody, replay, stale-generation refusal, cleanup, and complete phase and resource distributions. No cross-host claim is made. |
+| owner local | real local production composition on macOS arm64 | Ten same-device target moves and failbacks passed with real PTY, signed TypeScript LSP, watcher, encrypted custody, replay, stale-generation refusal, cleanup, and complete phase and resource distributions. One bounded accepted work item also resumed and settled. A signed-out packaged shell stayed live during one separate journey. No cross-host or package-initiated claim is made. |
 | owner managed | deterministic simulator | No real owner-managed host cohort ran. |
 | OpenAgents managed | deterministic simulator and source-wired signed TypeScript LSP | The Linux x64 root filesystem was not rebuilt. No live Firecracker cohort ran. |
 | managed provider | not run | No audited provider is admitted or claimed. |
@@ -125,9 +135,11 @@ Issue `#9041` stays open. These items are not complete:
   capabilities.
 - the owner-managed enrollment and checkpoint-key custody decision in
   `NEEDS_OWNER.md`.
-- the 19 fault rows that did not run, including crash, event reorder, lease
-  expiry, auth revoke, provider loss, and older recovery points.
-- packaged move journeys on each claimed target.
+- real local evidence for nine simulator-only fault rows and the nine fault
+  rows that did not run.
+- package-initiated authenticated move journeys on each claimed target.
+- arbitrary provider executor resume and crash recovery after handler
+  completion but before durable settlement.
 - end-to-end quiesce, checkpoint, upload, redeem, attach, helper readiness,
   failback, size, CPU, memory, network, lease, and teardown distributions on
   each other claimed target.
