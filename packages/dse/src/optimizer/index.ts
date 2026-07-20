@@ -10,3 +10,4 @@ export * from "./search.js";
 export * from "./evaluate.js";
 export * from "./compile.js";
 export * from "./promote.js";
+export * from "./uncertainty.js";

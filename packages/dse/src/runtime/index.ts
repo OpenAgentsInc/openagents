@@ -9,3 +9,4 @@
 export * from "./model.js";
 export * from "./predict.js";
 export * from "./resolver.js";
+export * from "./activation.js";

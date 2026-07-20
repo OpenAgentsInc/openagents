@@ -16,4 +16,5 @@ export * from "./budget.js";
 export * from "./evaluation.js";
 export * from "./artifact.js";
 export * from "./promotion.js";
+export * from "./activation.js";
 export * from "./catalog.js";

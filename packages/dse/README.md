@@ -9,9 +9,12 @@ Pylon, no Blueprint, no provider SDK, no cloud client, and no Node host. Its
 output is a checked-in compiled artifact and a release record. A runtime
 resolves that artifact offline from its bytes.
 
-This package is the compile side only. It does not dispatch a provider, open a
-network connection, or activate an artifact at runtime. The live Apple FM path
-is a later packet (AFS-09).
+This package is the compile and portable-runtime side only. It does not dispatch
+a provider or open a network connection. It also carries the portable
+gated-activation state (shadow, canary, active, rolled-back) that a runtime host
+enacts. AFS-09 wires the live Apple FM path in the Desktop app: the app compiles
+the checked-in artifacts, resolves them offline, and serves the compiled prompt
+only after an explicit promotion.
 
 ## Subpath exports
 
@@ -57,6 +60,17 @@ is a later packet (AFS-09).
 - Rollback. `rollback` restores a prior released artifact and records a receipt.
 - Resolution. `resolveReleasedArtifact` verifies a released artifact offline. A
   missing, altered, unreviewed, or incompatible artifact fails closed.
+- Activation. `resolveActivation` decides whether a request serves the
+  hand-written baseline or the released artifact. `beginShadow`, `beginCanary`,
+  `promoteActivation`, `abortCanary`, and `rollbackActivation` move a
+  `ReleaseChannel` between shadow, canary, active, and rolled-back and emit an
+  activation receipt. Shadow serves the baseline, so a compiled artifact changes
+  no live behavior until an explicit promotion.
+- Uncertainty. `computeUncertainty` records the holdout delta with a normal-
+  approximation confidence interval, or an explicit small-sample note when the
+  holdout is too small for a meaningful interval.
+- Signatures. The admitted Apple FM signatures are `AppleFm/HonestChatReply.v1`
+  (the honest answer) and `AppleFm/TurnRoute.v1` (the route recommendation).
 
 ## Generated signature catalog
 

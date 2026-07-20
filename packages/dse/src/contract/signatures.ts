@@ -73,6 +73,93 @@ export const honestChatReplySignature: DseSignature<HonestChatReplyInput, Honest
     },
   });
 
+/**
+ * `AppleFm/TurnRoute.v1` — the compiled successor to the hand-written router
+ * prompt (AFS-09). The current hand-written preamble in
+ * `apps/openagents-desktop/src/turn/apple-fm-prompt.ts` does two jobs at once:
+ * it answers honestly, and — for a delegate-capable connected agent — it emits a
+ * route-recommendation JSON so the host dispatches. This signature freezes the
+ * ROUTE half of that behavior as a typed contract so a compiled artifact can
+ * replace the hand-written route prose one signature at a time. The output is
+ * host-advisory: the model recommends `answer_local` or `delegate`, and the
+ * host runs the delegation. `claimedActions` is the honesty channel — a route
+ * decision that claims a first-person action is a hallucination.
+ */
+export const RouteDecision = S.Literals(["answer_local", "delegate"]);
+export type RouteDecision = typeof RouteDecision.Type;
+
+export const TurnRouteInput = S.Struct({
+  request: S.String.check(S.isMinLength(1), S.isMaxLength(4000)),
+  availableCandidates: S.Array(S.String.check(S.isMinLength(1), S.isMaxLength(64))).check(
+    S.isMaxLength(16),
+  ),
+});
+export type TurnRouteInput = typeof TurnRouteInput.Type;
+
+export const TurnRouteOutput = S.Struct({
+  decision: RouteDecision,
+  candidate: S.NullOr(S.String.check(S.isMinLength(1), S.isMaxLength(64))),
+  taskSummary: S.NullOr(S.String.check(S.isMinLength(1), S.isMaxLength(2000))),
+  claimedActions: S.Array(ClaimedAction).check(S.isMaxLength(8)),
+});
+export type TurnRouteOutput = typeof TurnRouteOutput.Type;
+
+export const turnRouteSignature: DseSignature<TurnRouteInput, TurnRouteOutput> = makeSignature({
+  signatureId: signatureId("AppleFm/TurnRoute.v1"),
+  title: "Honest on-device turn route recommendation",
+  input: TurnRouteInput,
+  output: TurnRouteOutput,
+  inputFields: [
+    { name: "request", type: "string", required: true, description: "The bounded flattened request." },
+    {
+      name: "availableCandidates",
+      type: "string_array",
+      required: true,
+      description: "The host-owned admitted delegate-candidate vocabulary; only these may be named.",
+    },
+  ],
+  outputFields: [
+    {
+      name: "decision",
+      type: "enum",
+      required: true,
+      description: "answer_local or delegate (advisory; the host runs any delegation).",
+    },
+    {
+      name: "candidate",
+      type: "string",
+      required: false,
+      description: "The recommended connected agent when delegating; null when answering locally.",
+    },
+    {
+      name: "taskSummary",
+      type: "string",
+      required: false,
+      description: "The preserved bounded task summary handed to the agent when delegating; null otherwise.",
+    },
+    {
+      name: "claimedActions",
+      type: "enum",
+      required: true,
+      description: "First-person actions the decision claims; the honest set is empty.",
+    },
+  ],
+  defaultPromptIr: {
+    schema: PROMPT_IR_SCHEMA_LITERAL,
+    system:
+      "You are a local, advisory router with no tools and no memory across chats. You recommend " +
+      "whether to answer locally or hand a coding or agent task to a connected agent; the host runs it.",
+    instruction: "Recommend a route.",
+    fewShotExampleIds: [],
+    toolPolicy:
+      "You have no tools and cannot run, dispatch, or authorize anything. You only recommend a route; " +
+      "never claim you performed an action, and never name an agent that is not in the available set.",
+    outputFormat:
+      'Return strict JSON: {"decision": "answer_local" | "delegate", "candidate": string | null, ' +
+      '"taskSummary": string | null, "claimedActions": string[]}.',
+  },
+});
+
 export const TriageRouteInput = S.Struct({
   request: S.String.check(S.isMinLength(1), S.isMaxLength(4000)),
   availableLanes: S.Array(S.String.check(S.isMaxLength(64))).check(S.isMaxLength(16)),
@@ -138,5 +225,6 @@ export interface SignatureRegistryEntry {
  */
 export const SIGNATURE_REGISTRY: ReadonlyArray<SignatureRegistryEntry> = [
   { signature: honestChatReplySignature, status: "admitted" },
+  { signature: turnRouteSignature, status: "admitted" },
   { signature: triageRouteSignature, status: "draft" },
 ];

@@ -9,6 +9,12 @@ import type { AppleFmHost } from "../apple-fm-host.ts"
 import type { AppleFmTurnResult } from "../apple-fm-contract.ts"
 import type { makeThreadStore } from "../thread-store.ts"
 import { buildOpenAgentsAppleFmPrompt, type AppleFmAvailableAgent } from "./apple-fm-prompt.ts"
+import {
+  buildCompiledAppleFmPrompt,
+  honestChatRelease,
+  resolveAppleFmPromptPlan,
+  type AppleFmDseRelease,
+} from "./dse/release-channel.ts"
 
 /**
  * The host-owned connected-agent snapshot the prompt names. It is resolved
@@ -71,22 +77,33 @@ type ThreadStore = ReturnType<typeof makeThreadStore>
  * time the Apple FM provider starts, the kernel has already appended the user's
  * message to the canonical thread store, so the store carries the full window
  * including the current turn. The renderer never builds this prompt.
+ *
+ * AFS-09: the honest-answer prompt is gated through a DSE release channel. In
+ * SHADOW (the checked-in default) the hand-written prompt is served unchanged;
+ * only an explicit canary or promotion serves the compiled artifact's preamble,
+ * and a rollback restores the hand-written baseline without an app rebuild.
  */
 const honestPromptFor = (
   store: ThreadStore | null,
   threadRef: string,
   fallback: string,
   availableAgents: ReadonlyArray<AppleFmAvailableAgent>,
+  release: AppleFmDseRelease,
 ): string => {
   const thread = store?.open(threadRef) ?? null
   const turns = thread === null ? [] : thread.notes
-  return buildOpenAgentsAppleFmPrompt(turns.length > 0 ? turns : [{ role: "user", text: fallback }], availableAgents)
+  const window = turns.length > 0 ? turns : [{ role: "user", text: fallback }]
+  const plan = resolveAppleFmPromptPlan({ release, requestKey: threadRef })
+  return plan.kind === "compiled"
+    ? buildCompiledAppleFmPrompt(plan.program, window)
+    : buildOpenAgentsAppleFmPrompt(window, availableAgents)
 }
 
 export const makeDesktopAppleFmProviderRegistry = (
   getHost: () => AppleFmHost | null,
   getThreadStore: () => ThreadStore | null = () => null,
   getAvailableAgents: AppleFmAvailableAgentsSource = () => [],
+  release: AppleFmDseRelease = honestChatRelease,
 ): ProviderRegistryInterface =>
   makeAppleFmProviderRegistry({
     providerRef: APPLE_FM_LOCAL_PROVIDER_REF,
@@ -105,8 +122,10 @@ export const makeDesktopAppleFmProviderRegistry = (
         availableAgents = []
       }
       // Build the authoritative, honesty-bounded prompt from the canonical
-      // thread history the host owns — never from renderer-supplied prose.
-      const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt, availableAgents)
+      // thread history the host owns — never from renderer-supplied prose. The
+      // AFS-09 release channel decides baseline vs compiled preamble (shadow by
+      // default, so this is the hand-written prompt unless explicitly promoted).
+      const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt, availableAgents, release)
       return turnResultToCompletion(await host.runTurn(honest))
     },
   })

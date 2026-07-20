@@ -15068,6 +15068,28 @@
       }
     },
     {
+      "path": "docs/apple-fm/2026-07-20-afs-09-release-compiled-artifacts.md",
+      "sha256": "ea79169e32375efd67795ee970558c947b6a534592074a4ca62fb96b806ee968",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-07-20-afs-11-release-evidence.md",
       "sha256": "ace0a24c6d5aa749b5543fc538eb2d6997d7eca55323b8b418258db50ea7c672",
       "reason": "Immutable historical or evidence source data",
@@ -47203,7 +47225,7 @@
     },
     {
       "path": "packages/dse/README.md",
-      "sha256": "554009a3c39d6c587f4c27a5c3a49432c467d303b26ad18f12a230168e23e89d",
+      "sha256": "cc761fb998b48fdc23f1f272130dbe131f6db6f8e2805dea84c42c55e3417995",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

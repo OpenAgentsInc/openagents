@@ -109,6 +109,7 @@
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/codex-app-server-protocol": "workspace:*",
     "@openagentsinc/cursor-agent-runtime": "workspace:*",
+    "@openagentsinc/dse": "workspace:*",
     "@openagentsinc/environment-auth": "workspace:*",
     "@openagentsinc/grok-harness": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",

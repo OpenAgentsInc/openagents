@@ -518,6 +518,9 @@ importers:
       '@openagentsinc/cursor-agent-runtime':
         specifier: workspace:*
         version: link:../../packages/cursor-agent-runtime
+      '@openagentsinc/dse':
+        specifier: workspace:*
+        version: link:../../packages/dse
       '@openagentsinc/environment-auth':
         specifier: workspace:*
         version: link:../../packages/environment-auth
