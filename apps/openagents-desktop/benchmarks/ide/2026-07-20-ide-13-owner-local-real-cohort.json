@@ -1,7 +1,7 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-owner-local-cohort.v1",
   "evidenceContractVersion": "openagents.desktop.ide-portable-evidence.v3",
-  "generatedAt": "2026-07-20T18:26:14.906Z",
+  "generatedAt": "2026-07-20T18:28:47.611Z",
   "cohort": {
     "cohortRef": "cohort.ide13.owner-local.real.1",
     "targetClass": "owner_local",
@@ -22,12 +22,12 @@
     },
     "targetRef": "target.ide13.owner-local.cohort.a",
     "artifact": {
-      "ref": "artifact.portable-checkpoint.e1b714e9228cdfd7bd2cb84bb0e714bd",
-      "sha256": "6a2553be9d6affa7fd745ad0f2a758d6d06673ce7be209f95ab8b9ad73045c7a",
-      "bytes": 1377
+      "ref": "artifact.portable-checkpoint.830f88dc795c0269ce13394194aeebd5",
+      "sha256": "660bf0d2a320622003fd350de4680f6d90a8b90adc80274a7bc9d24ed8eea9b8",
+      "bytes": 1380
     },
-    "candidateCommitSha": "2a966237bfb1bd86bb84776506eb387a8ae5066f",
-    "baseCommitSha": "d9882cde361de8da89def2f2ac266fd6d8800cc7",
+    "candidateCommitSha": "65405152bb2076dc81d160f2c7e0cd96487456cc",
+    "baseCommitSha": "c2471ad13930c1002970a33568a383410e2cc058",
     "capabilityState": "degraded",
     "custody": "owner_device",
     "networkDestinations": [],
@@ -56,7 +56,7 @@
       {
         "phase": "upload",
         "evidenceClass": "real_local",
-        "receiptRef": "receipt.ide13.owner-local.upload.313e9991b015b7a52267aafaf70d6f06",
+        "receiptRef": "receipt.ide13.owner-local.upload.d8fa4056b1cdc596728d35fb7f5a1e0e",
         "operationRef": "operation.ide13.owner-local.move.custody.upload",
         "attachmentGeneration": 1,
         "result": "passed"
@@ -64,7 +64,7 @@
       {
         "phase": "redeem",
         "evidenceClass": "real_local",
-        "receiptRef": "receipt.pylon.portable.artifact_materialized.63acd308b5638f72c8d20767b3af0338",
+        "receiptRef": "receipt.pylon.portable.artifact_materialized.c769b13789df9d13ff7639797de3b186",
         "operationRef": "operation.ide13.owner-local.move.destination.stage",
         "attachmentGeneration": 2,
         "result": "passed"
@@ -109,9 +109,9 @@
         "phase": "quiesce",
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 12.731667000000016,
-        "p95": 12.731667000000016,
-        "p99": 12.731667000000016,
+        "p50": 5.786500000000046,
+        "p95": 5.786500000000046,
+        "p99": 5.786500000000046,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
@@ -123,9 +123,9 @@
         "phase": "checkpoint",
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 137.5345000000002,
-        "p95": 137.5345000000002,
-        "p99": 137.5345000000002,
+        "p50": 44.865249999999946,
+        "p95": 44.865249999999946,
+        "p99": 44.865249999999946,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
@@ -137,13 +137,13 @@
         "phase": "upload",
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 159.18737499999997,
-        "p95": 159.18737499999997,
-        "p99": 159.18737499999997,
+        "p50": 48.3404579999999,
+        "p95": 48.3404579999999,
+        "p99": 48.3404579999999,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.upload.313e9991b015b7a52267aafaf70d6f06"
+        "receiptRef": "receipt.ide13.owner-local.upload.d8fa4056b1cdc596728d35fb7f5a1e0e"
       },
       {
         "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -151,13 +151,13 @@
         "phase": "redeem",
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 358.516083,
-        "p95": 358.516083,
-        "p99": 358.516083,
+        "p50": 103.90770799999996,
+        "p95": 103.90770799999996,
+        "p99": 103.90770799999996,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
-        "receiptRef": "receipt.pylon.portable.artifact_materialized.63acd308b5638f72c8d20767b3af0338"
+        "receiptRef": "receipt.pylon.portable.artifact_materialized.c769b13789df9d13ff7639797de3b186"
       },
       {
         "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -165,9 +165,9 @@
         "phase": "attach",
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 105.34262499999977,
-        "p95": 105.34262499999977,
-        "p99": 105.34262499999977,
+        "p50": 60.63291700000002,
+        "p95": 60.63291700000002,
+        "p99": 60.63291700000002,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
@@ -179,9 +179,9 @@
         "phase": "helper_readiness",
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 0.06716700000015408,
-        "p95": 0.06716700000015408,
-        "p99": 0.06716700000015408,
+        "p50": 0.047584000000028936,
+        "p95": 0.047584000000028936,
+        "p99": 0.047584000000028936,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
@@ -193,9 +193,9 @@
         "phase": "failback",
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 1014.8881670000001,
-        "p95": 1014.8881670000001,
-        "p99": 1014.8881670000001,
+        "p50": 518.6860839999999,
+        "p95": 518.6860839999999,
+        "p99": 518.6860839999999,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
@@ -207,9 +207,9 @@
         "phase": "teardown",
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 433.2474169999996,
-        "p95": 433.2474169999996,
-        "p99": 433.2474169999996,
+        "p50": 304.83000000000015,
+        "p95": 304.83000000000015,
+        "p99": 304.83000000000015,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
@@ -221,13 +221,13 @@
         "phase": null,
         "unit": "bytes",
         "repetitions": 1,
-        "p50": 1377,
-        "p95": 1377,
-        "p99": 1377,
+        "p50": 1380,
+        "p95": 1380,
+        "p99": 1380,
         "thresholdP95": 67108864,
         "thresholdP99": 67108864,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.metrics.41fb4bd19f70889436ae13f09d12e3cd"
+        "receiptRef": "receipt.ide13.owner-local.metrics.6b88f74d1732fa9207161ed8dcf107c3"
       },
       {
         "metricRef": "metric.ide13.owner-local.cpu",
@@ -235,13 +235,13 @@
         "phase": null,
         "unit": "percent",
         "repetitions": 1,
-        "p50": 10.459846321947829,
-        "p95": 10.459846321947829,
-        "p99": 10.459846321947829,
+        "p50": 10.977475398702598,
+        "p95": 10.977475398702598,
+        "p99": 10.977475398702598,
         "thresholdP95": 100,
         "thresholdP99": 100,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.metrics.41fb4bd19f70889436ae13f09d12e3cd"
+        "receiptRef": "receipt.ide13.owner-local.metrics.6b88f74d1732fa9207161ed8dcf107c3"
       },
       {
         "metricRef": "metric.ide13.owner-local.memory",
@@ -249,13 +249,13 @@
         "phase": null,
         "unit": "bytes",
         "repetitions": 1,
-        "p50": 273711104,
-        "p95": 273711104,
-        "p99": 273711104,
+        "p50": 260784128,
+        "p95": 260784128,
+        "p99": 260784128,
         "thresholdP95": 2147483648,
         "thresholdP99": 2147483648,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.metrics.41fb4bd19f70889436ae13f09d12e3cd"
+        "receiptRef": "receipt.ide13.owner-local.metrics.6b88f74d1732fa9207161ed8dcf107c3"
       },
       {
         "metricRef": "metric.ide13.owner-local.network",
@@ -269,7 +269,7 @@
         "thresholdP95": 0,
         "thresholdP99": 0,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.metrics.41fb4bd19f70889436ae13f09d12e3cd"
+        "receiptRef": "receipt.ide13.owner-local.metrics.6b88f74d1732fa9207161ed8dcf107c3"
       },
       {
         "metricRef": "metric.ide13.owner-local.queue",
@@ -283,7 +283,7 @@
         "thresholdP95": 0,
         "thresholdP99": 0,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.metrics.41fb4bd19f70889436ae13f09d12e3cd"
+        "receiptRef": "receipt.ide13.owner-local.metrics.6b88f74d1732fa9207161ed8dcf107c3"
       },
       {
         "metricRef": "metric.ide13.owner-local.lease",
@@ -297,7 +297,7 @@
         "thresholdP95": 1,
         "thresholdP99": 1,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.metrics.41fb4bd19f70889436ae13f09d12e3cd"
+        "receiptRef": "receipt.ide13.owner-local.metrics.6b88f74d1732fa9207161ed8dcf107c3"
       },
       {
         "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -311,7 +311,7 @@
         "thresholdP95": 0,
         "thresholdP99": 0,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.metrics.41fb4bd19f70889436ae13f09d12e3cd"
+        "receiptRef": "receipt.ide13.owner-local.metrics.6b88f74d1732fa9207161ed8dcf107c3"
       },
       {
         "metricRef": "metric.ide13.owner-local.teardown",
@@ -319,13 +319,13 @@
         "phase": null,
         "unit": "milliseconds",
         "repetitions": 1,
-        "p50": 433.2474169999996,
-        "p95": 433.2474169999996,
-        "p99": 433.2474169999996,
+        "p50": 304.83000000000015,
+        "p95": 304.83000000000015,
+        "p99": 304.83000000000015,
         "thresholdP95": 30000,
         "thresholdP99": 30000,
         "passed": true,
-        "receiptRef": "receipt.ide13.owner-local.metrics.41fb4bd19f70889436ae13f09d12e3cd"
+        "receiptRef": "receipt.ide13.owner-local.metrics.6b88f74d1732fa9207161ed8dcf107c3"
       }
     ],
     "result": "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The destination started a signature-verified TypeScript LSP. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. DAP and native stayed unsupported because no signed executable profile is admitted for them."
@@ -334,22 +334,22 @@
     {
       "kind": "pty",
       "readiness": "ready",
-      "instanceRef": "instance.pylon.portable.pty.601d861c6719a2343a6d542af0397161379824511441d2549467987e2dbfa120",
+      "instanceRef": "instance.pylon.portable.pty.4dd1c599b5c6f48c2283ee722333400ed5f136423da7499b5def2ee3812f06e2",
       "versionRef": "version.pylon.portable.pty.khala-tools-python-pty-fork.v2",
       "omissionRef": null,
       "evidenceRefs": [
-        "evidence.pylon.portable.pty.live.1c655fee18d7d4fc87e64ec4f218c88e33b4d912f1ca840882c56e121c3f11a5"
+        "evidence.pylon.portable.pty.live.57edc9d7d038b58971254147fa4affc612ae7a50746e0c2e0d97f5c08e1e4587"
       ]
     },
     {
       "kind": "lsp",
       "readiness": "ready",
-      "instanceRef": "instance.pylon.portable.lsp.744f4369108f8872ca7659940ce62d0e4947ffcb2ebafa231dc5499bf0fa5040",
+      "instanceRef": "instance.pylon.portable.lsp.727fa8abd457601162a9a2ec976115c8ce649aaa79f0ee268ad3d9acf4910716",
       "versionRef": "version.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.2.v1",
       "omissionRef": null,
       "evidenceRefs": [
-        "evidence.pylon.portable.lsp.profile-verified.ab8710dcf215127bca402de4f12c02025a8501bdb2ce433fb2c942144864fd18",
-        "evidence.pylon.portable.lsp.initialize-complete.2fda72fb24eafe8122cbf0ef7bf05f7ef07b96b516668c7507b7940f438dab2c"
+        "evidence.pylon.portable.lsp.profile-verified.f6641dc6a096bd904718cbe50128e36949a11e60d24216d5d8b9ff4556a9872a",
+        "evidence.pylon.portable.lsp.initialize-complete.1494572b1d8a8c2135f1825fc057a8cd562a6829a8677ff9cf6bf8d7dcae2e47"
       ]
     },
     {
@@ -363,11 +363,11 @@
     {
       "kind": "watcher",
       "readiness": "ready",
-      "instanceRef": "instance.pylon.portable.watcher.6a80c9eba65dad9d8aeea4eef863f6a289836ee5772ccd8c8bd0b604c669c73d",
+      "instanceRef": "instance.pylon.portable.watcher.bf6d0d071c23a973b59e09691bdd5085368edb58dbb56aab940543eb690c7c42",
       "versionRef": "version.pylon.portable.watcher.node-fs-watch.v1",
       "omissionRef": null,
       "evidenceRefs": [
-        "evidence.pylon.portable.watcher.live.1c655fee18d7d4fc87e64ec4f218c88e33b4d912f1ca840882c56e121c3f11a5"
+        "evidence.pylon.portable.watcher.live.57edc9d7d038b58971254147fa4affc612ae7a50746e0c2e0d97f5c08e1e4587"
       ]
     },
     {
@@ -397,7 +397,7 @@
   },
   "proofs": {
     "abortReceiptRef": "receipt.ide13.owner-local.abort.8fbf3401f977f5c139b086256b9f0338",
-    "replayReceiptRef": "receipt.ide13.owner-local.replay.39e09d67821c87384dac31686230fdeb",
+    "replayReceiptRef": "receipt.ide13.owner-local.replay.3d0f4a19a45d1cd665b47f623fecbeee",
     "staleGenerationReceiptRef": "receipt.ide13.owner-local.stale-generation-refused.c2b7ec5970f3ec1c28050dbc5f63df07",
     "sourceCustodyDeletionReceiptRef": "receipt.portable-checkpoint-deletion.9b0cf9b58942396afa774cb146da9f44",
     "failbackCustodyDeletionReceiptRef": "receipt.portable-checkpoint-deletion.2af84106aa33c6026af86a37e98edbbb",
