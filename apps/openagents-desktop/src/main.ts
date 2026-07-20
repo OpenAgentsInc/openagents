@@ -322,7 +322,8 @@ import { localRuntimePersistenceOperation } from "./local-runtime-event-persiste
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { desktopAfsTurnKernelEnabled, installDesktopTurnKernel } from "./turn/desktop-turn-main.ts"
 import { makeDesktopAppleFmProviderRegistry } from "./turn/desktop-apple-fm-provider.ts"
-import type { AppleFmAvailableAgent } from "./turn/apple-fm-prompt.ts"
+import type { AppleFmAvailableAgent, AppleFmEnvironmentContext } from "./turn/apple-fm-prompt.ts"
+import { buildAppleFmEnvironmentContext } from "./turn/apple-fm-environment.ts"
 import {
   makeCodexProviderRegistry,
   makeDelegateProviderRegistry,
@@ -1473,6 +1474,32 @@ const resolveAppleFmAvailableAgents = async (): Promise<ReadonlyArray<AppleFmAva
   }
   return agents
 }
+// AFS ambient-context: the host-owned environment facts the on-device Apple FM
+// prompt may state as truth (so "what do you know about me" is answered with the
+// real working directory, OS, date, and PUBLIC identity `npub` instead of "I
+// don't have any information about you"). Resolved lazily at turn time from
+// main-owned facts, never renderer input. PUBLIC only — the sovereign `npub` is
+// carried, never the mnemonic/`nsec`/seed/private key (the prompt renderer also
+// tripwires the `npub1` shape). Each fact is fail-soft; the date comes from the
+// process clock (the pure builder itself takes an injected clock for tests).
+const resolveAppleFmEnvironmentContext = async (): Promise<AppleFmEnvironmentContext> => {
+  let identityNpub: string | null = null
+  try {
+    const status = await identityHost.status()
+    if (status.status === "available") identityNpub = status.npub
+  } catch {
+    // Fail-soft: an unresolved identity simply omits the npub line.
+  }
+  return buildAppleFmEnvironmentContext({
+    now: new Date(),
+    platform: process.platform,
+    appName: desktopApplicationName,
+    workingDirectory: resolveDesktopLocalWorkspaceRoot(),
+    identityNpub,
+    // Desktop runs on the human owner's own machine.
+    isOwnerDevice: true,
+  })
+}
 if (desktopAfsTurnKernelEnabled()) {
   installDesktopTurnKernel({
     ipcMain: {
@@ -1489,6 +1516,7 @@ if (desktopAfsTurnKernelEnabled()) {
       () => appleFmHostRef,
       () => threads(),
       resolveAppleFmAvailableAgents,
+      resolveAppleFmEnvironmentContext,
     ),
     codexProvider: makeCodexProviderRegistry({
       readiness: codexDelegationReadiness,

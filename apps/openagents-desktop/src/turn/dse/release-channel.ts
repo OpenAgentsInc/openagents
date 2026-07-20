@@ -14,7 +14,12 @@ import {
   type ReleaseChannel,
 } from "@openagentsinc/dse"
 
-import { APPLE_FM_PROMPT_MAX_CHARS, type AppleFmPromptTurn } from "../apple-fm-prompt.ts"
+import {
+  APPLE_FM_PROMPT_MAX_CHARS,
+  renderAppleFmEnvironmentContext,
+  type AppleFmEnvironmentContext,
+  type AppleFmPromptTurn,
+} from "../apple-fm-prompt.ts"
 import {
   HONEST_CHAT_BASELINE,
   HONEST_CHAT_POINTER,
@@ -136,17 +141,21 @@ export const resolveAppleFmPromptPlan = (args: {
  * preamble (system, instruction, and tool policy) plus the same bounded history
  * window the hand-written builder uses. The compiled preamble REPLACES the
  * hand-written one; the history flattening and the frozen char bound are
- * unchanged.
+ * unchanged. The host-owned ambient `environment` context (if any) is appended
+ * to the compiled preamble with the SAME renderer/tripwire as the baseline path,
+ * so a promoted compiled prompt still answers environment/identity questions.
  */
 export const buildCompiledAppleFmPrompt = (
   program: CompiledProgram,
   turns: ReadonlyArray<AppleFmPromptTurn>,
+  environment?: AppleFmEnvironmentContext,
   maxChars: number = APPLE_FM_PROMPT_MAX_CHARS,
 ): string => {
-  const preamble = [program.promptIr.system, program.promptIr.instruction, program.promptIr.toolPolicy]
-    .map((block) => block.trim())
-    .filter((block) => block.length > 0)
-    .join("\n\n")
+  const preamble =
+    [program.promptIr.system, program.promptIr.instruction, program.promptIr.toolPolicy]
+      .map((block) => block.trim())
+      .filter((block) => block.length > 0)
+      .join("\n\n") + renderAppleFmEnvironmentContext(environment)
   const lines = turns
     .map((turn) => {
       const text = turn.text.trim()

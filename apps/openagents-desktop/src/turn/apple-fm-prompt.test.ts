@@ -5,8 +5,11 @@ import { decodeAppleFmRouteOutput } from "@openagentsinc/apple-fm-runtime"
 import {
   APPLE_FM_PROMPT_MAX_CHARS,
   buildOpenAgentsAppleFmPrompt,
+  renderAppleFmEnvironmentContext,
   type AppleFmAvailableAgent,
+  type AppleFmEnvironmentContext,
 } from "./apple-fm-prompt.ts"
+import { buildAppleFmEnvironmentContext } from "./apple-fm-environment.ts"
 import { decideDelegation } from "./desktop-delegation.ts"
 
 /**
@@ -25,7 +28,7 @@ describe("buildOpenAgentsAppleFmPrompt (host-owned)", () => {
       role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
       text: `line ${i} ${"x".repeat(200)}`,
     }))
-    const prompt = buildOpenAgentsAppleFmPrompt(turns, [], 1000)
+    const prompt = buildOpenAgentsAppleFmPrompt(turns, [], undefined, 1000)
     expect(prompt.length).toBeLessThanOrEqual(1000)
     expect(prompt).toContain("line 39")
     expect(prompt).not.toContain("line 0 ")
@@ -56,6 +59,136 @@ describe("buildOpenAgentsAppleFmPrompt (host-owned)", () => {
     expect(prompt).toContain("helpful, friendly assistant")
     expect(prompt).toContain("always try to be helpful and give a real answer")
     expect(prompt).not.toContain("CANNOT take any action")
+  })
+})
+
+/**
+ * AFS ambient context: the host now seeds the prompt with the environment facts
+ * it already holds (working directory, OS, date, PUBLIC identity npub) so the
+ * local assistant answers "what do you know about me" truthfully instead of
+ * "I don't have any information about you" — while staying honest that it has no
+ * durable per-user memory and only PUBLIC identity ever reaches the prompt.
+ */
+describe("buildOpenAgentsAppleFmPrompt — ambient environment context", () => {
+  const fixtureEnvironment: AppleFmEnvironmentContext = {
+    nowIso: "2026-07-20T00:00:00.000Z",
+    humanDate: "Monday, July 20, 2026",
+    platform: "macOS",
+    appName: "OpenAgents Dev",
+    workingDirectory: "/Users/owner/work/openagents",
+    identityNpub: "npub1exampleownerpublickey00000000000000000000000000000000000",
+    isOwnerDevice: true,
+  }
+
+  test("REGRESSION GUARD: empty environment + no agents equals the plain honesty base", () => {
+    const turns = [{ role: "user" as const, text: "hi" }]
+    const withNothing = buildOpenAgentsAppleFmPrompt(turns, [])
+    const withEmptyEnv = buildOpenAgentsAppleFmPrompt(turns, [], {})
+    const withUndefinedEnv = buildOpenAgentsAppleFmPrompt(turns, [], undefined)
+    // An entirely empty (or absent) context adds NOTHING — byte-for-byte the
+    // pre-existing plain preamble, so no live behavior regresses.
+    expect(withEmptyEnv).toBe(withNothing)
+    expect(withUndefinedEnv).toBe(withNothing)
+    expect(withNothing).not.toContain("Context you can rely on")
+  })
+
+  test("includes each present fact as a stated-truth context block (deterministic)", () => {
+    const prompt = buildOpenAgentsAppleFmPrompt(
+      [{ role: "user", text: "what do you know about me" }],
+      [],
+      fixtureEnvironment,
+    )
+    expect(prompt).toContain("Context you can rely on")
+    expect(prompt).toContain("Current date: Monday, July 20, 2026")
+    expect(prompt).toContain("Operating system: macOS")
+    expect(prompt).toContain("Application: OpenAgents Dev")
+    expect(prompt).toContain("Working directory: /Users/owner/work/openagents")
+    expect(prompt).toContain("This is the owner's own device.")
+    expect(prompt).toContain(
+      "Sovereign identity (public npub): npub1exampleownerpublickey00000000000000000000000000000000000",
+    )
+    // Honesty about durable memory: real environment/identity, no invented facts.
+    expect(prompt).toContain("You do not yet remember personal facts about the user across sessions")
+    expect(prompt).toContain("Do not invent personal facts about the user")
+    // Fully deterministic (no wall-clock): the same inputs render the same prompt.
+    expect(buildOpenAgentsAppleFmPrompt(
+      [{ role: "user", text: "what do you know about me" }],
+      [],
+      fixtureEnvironment,
+    )).toBe(prompt)
+  })
+
+  test("fail-soft: a missing fact simply omits its line", () => {
+    const block = renderAppleFmEnvironmentContext({ platform: "macOS", workingDirectory: "/w" })
+    expect(block).toContain("Operating system: macOS")
+    expect(block).toContain("Working directory: /w")
+    expect(block).not.toContain("Current date:")
+    expect(block).not.toContain("public npub")
+    expect(block).not.toContain("owner's own device")
+    // A context with no usable fact renders nothing at all.
+    expect(renderAppleFmEnvironmentContext({})).toBe("")
+    expect(renderAppleFmEnvironmentContext({ appName: "   " })).toBe("")
+    expect(renderAppleFmEnvironmentContext(undefined)).toBe("")
+  })
+
+  test("TRIPWIRE: only a public npub1 identity is ever printed — never nsec/mnemonic/seed", () => {
+    const npub = "npub1exampleownerpublickey00000000000000000000000000000000000"
+    const good = renderAppleFmEnvironmentContext({ identityNpub: npub })
+    expect(good).toContain(npub)
+
+    // Anything that is not a well-formed public npub is refused outright, so a
+    // mis-wired secret can never leak into the prompt.
+    const secretShapes = [
+      "nsec1qqqqqqowner00000000000000000000000000000000000000000000000",
+      "abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd",
+      "npub", // truncated / not bech32 body
+    ]
+    for (const secret of secretShapes) {
+      const block = renderAppleFmEnvironmentContext({ identityNpub: secret })
+      expect(block).not.toContain(secret)
+      expect(block).not.toContain("public npub")
+    }
+    // Belt-and-suspenders on the full prompt: no private-key marker ever appears.
+    const prompt = buildOpenAgentsAppleFmPrompt(
+      [{ role: "user", text: "who am i" }],
+      [],
+      { ...fixtureEnvironment, identityNpub: npub },
+    )
+    expect(prompt).toContain(npub)
+    expect(prompt).not.toContain("nsec1")
+    expect(prompt.toLowerCase()).not.toContain("mnemonic")
+    expect(prompt.toLowerCase()).not.toContain("seed phrase")
+  })
+
+  test("buildAppleFmEnvironmentContext maps host inputs via an INJECTED clock", () => {
+    const context = buildAppleFmEnvironmentContext({
+      now: new Date("2026-07-20T12:34:56.000Z"),
+      platform: "darwin",
+      appName: "OpenAgents Dev",
+      workingDirectory: "/Users/owner/work/openagents",
+      identityNpub: "npub1exampleownerpublickey00000000000000000000000000000000000",
+      isOwnerDevice: true,
+    })
+    // darwin → macOS, and the date is derived purely from the injected clock.
+    expect(context.platform).toBe("macOS")
+    expect(context.humanDate).toBe("Monday, July 20, 2026")
+    expect(context.nowIso).toBe("2026-07-20T12:34:56.000Z")
+    expect(context.workingDirectory).toBe("/Users/owner/work/openagents")
+    expect(context.isOwnerDevice).toBe(true)
+    // A blank/absent host fact is dropped, never rendered as an empty line.
+    const sparse = buildAppleFmEnvironmentContext({
+      now: new Date("2026-01-01T00:00:00.000Z"),
+      platform: "linux",
+      appName: "   ",
+      workingDirectory: null,
+      identityNpub: null,
+    })
+    expect(sparse.platform).toBe("Linux")
+    expect(sparse.appName).toBeUndefined()
+    expect(sparse.workingDirectory).toBeUndefined()
+    expect(sparse.identityNpub).toBeUndefined()
+    expect(sparse.isOwnerDevice).toBeUndefined()
   })
 })
 

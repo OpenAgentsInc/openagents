@@ -52,6 +52,73 @@ export interface AppleFmAvailableAgent {
   readonly canDelegate: boolean;
 }
 
+/**
+ * Host-owned ambient/environment facts the on-device model may state as truth.
+ *
+ * Every field is optional and fail-soft: a missing or failed fact simply omits
+ * its line, and an entirely empty context renders NOTHING (so the preamble is
+ * byte-for-byte the plain honesty base — no regression when nothing is known).
+ *
+ * PUBLIC data only. `identityNpub` is the sovereign public `npub`; the mnemonic,
+ * `nsec`, raw private key, or seed must NEVER be placed here. The renderer also
+ * enforces a hard tripwire (`isPublicNpub`) so a mis-wired secret can never be
+ * printed even if one reaches this field.
+ */
+export interface AppleFmEnvironmentContext {
+  /** Machine-readable current instant (host clock), e.g. an ISO-8601 string. */
+  readonly nowIso?: string;
+  /** Human-friendly current date, e.g. "Sunday, July 20, 2026". Preferred for display. */
+  readonly humanDate?: string;
+  /** The OS label, e.g. "macOS", "Windows", "Linux". */
+  readonly platform?: string;
+  /** The running application name, e.g. "OpenAgents Desktop (Dev)". */
+  readonly appName?: string;
+  /** The active absolute working directory (the folder shown in the title bar). */
+  readonly workingDirectory?: string;
+  /** The sovereign identity PUBLIC `npub` (never an nsec/mnemonic/seed/private key). */
+  readonly identityNpub?: string;
+  /** True when this is the human owner's own device. */
+  readonly isOwnerDevice?: boolean;
+}
+
+/**
+ * Tripwire mirroring the sovereign secret-export discipline: only a well-formed
+ * bech32 `npub1…` public key is ever printed. Anything else — an `nsec1…`, a
+ * mnemonic, a raw hex key, or empty — is refused, so no private material can
+ * leak into the prompt even if it is mistakenly wired into `identityNpub`.
+ */
+const isPublicNpub = (value: string): boolean => /^npub1[0-9a-z]+$/.test(value.trim());
+
+/**
+ * Render the compact ambient-context block. Only present facts produce a line;
+ * an entirely empty context returns "" so the caller appends nothing. The block
+ * closes with an honest note that durable per-user memory does not exist yet, so
+ * "what do you know about me" is answered with the real environment/identity AND
+ * without inventing personal facts.
+ */
+export const renderAppleFmEnvironmentContext = (
+  environment: AppleFmEnvironmentContext | undefined,
+): string => {
+  if (environment === undefined) return "";
+  const facts: string[] = [];
+  const date = environment.humanDate?.trim() || environment.nowIso?.trim();
+  if (date) facts.push(`- Current date: ${date}`);
+  if (environment.platform?.trim()) facts.push(`- Operating system: ${environment.platform.trim()}`);
+  if (environment.appName?.trim()) facts.push(`- Application: ${environment.appName.trim()}`);
+  if (environment.workingDirectory?.trim())
+    facts.push(`- Working directory: ${environment.workingDirectory.trim()}`);
+  if (environment.isOwnerDevice === true) facts.push("- This is the owner's own device.");
+  if (environment.identityNpub !== undefined && isPublicNpub(environment.identityNpub))
+    facts.push(`- Sovereign identity (public npub): ${environment.identityNpub.trim()}`);
+  if (facts.length === 0) return "";
+  return (
+    "\n\nContext you can rely on (state these as facts if asked, do not invent beyond them):\n" +
+    `${facts.join("\n")}\n` +
+    "You do not yet remember personal facts about the user across sessions; only the context " +
+    "above. Do not invent personal facts about the user."
+  );
+};
+
 /** The route-recommendation JSON template the model copies verbatim to delegate. */
 const delegationTemplateFor = (candidate: string): string =>
   `{"candidate":"${candidate}","taskClass":"delegate","reasonCode":"explicit_provider_request","confidence":0.9}`;
@@ -63,14 +130,17 @@ const delegationTemplateFor = (candidate: string): string =>
  * answered honestly, and — when a ready delegate agent exists — the exact JSON
  * the model must emit to hand off a coding/agent task.
  */
-const buildPreamble = (availableAgents: ReadonlyArray<AppleFmAvailableAgent>): string => {
+const buildPreamble = (
+  availableAgents: ReadonlyArray<AppleFmAvailableAgent>,
+  environment?: AppleFmEnvironmentContext,
+): string => {
   const ready = availableAgents.filter((agent) => agent.ready);
   const delegates = ready.filter((agent) => agent.canDelegate);
 
   // Base identity + honesty. The model IS the on-device Apple model (Apple FM);
   // it has no tools of its own, so it must never claim to have acted or invent
   // facts. This keeps the AFS-03 honesty contract intact.
-  const base =
+  const honesty =
     "You are OpenAgents, a helpful, friendly assistant running locally on this device on Apple's " +
     "on-device model (Apple FM). Answer the user's questions and chat naturally, directly, and " +
     "concisely — always try to be helpful and give a real answer. You are text-only and have no " +
@@ -78,9 +148,15 @@ const buildPreamble = (availableAgents: ReadonlyArray<AppleFmAvailableAgent>): s
     "claim you did, are doing, or will do any such action yourself. Do not make up facts; if you " +
     "don't know something, say so.";
 
+  // Ambient context first (after the identity/honesty base): the model may state
+  // these host-owned facts as truth, so "what do you know about me" is answered
+  // with the real environment/identity instead of "I don't have any information
+  // about you". Empty context adds nothing (regression-safe).
+  const base = `${honesty}${renderAppleFmEnvironmentContext(environment)}`;
+
   if (ready.length === 0) {
-    // No host-advertised agents: keep the plain honesty preamble (the pre-AFS-04
-    // behavior), so nothing regresses when availability is unknown.
+    // No host-advertised agents: keep the plain honesty (+ context) preamble (the
+    // pre-AFS-04 behavior), so nothing regresses when availability is unknown.
     return base;
   }
 
@@ -122,13 +198,18 @@ const buildPreamble = (availableAgents: ReadonlyArray<AppleFmAvailableAgent>): s
  * `availableAgents` is the host-owned connected-agent set (never renderer
  * input). When it carries ready agents, the preamble names them and — for the
  * delegate-capable ones — instructs the model how to emit the delegation JSON.
+ *
+ * `environment` is the host-owned ambient-context set (never renderer input).
+ * When present it seeds a compact "Context you can rely on" block so the model
+ * can answer environment/identity questions truthfully; absent → no block.
  */
 export const buildOpenAgentsAppleFmPrompt = (
   turns: ReadonlyArray<AppleFmPromptTurn>,
   availableAgents: ReadonlyArray<AppleFmAvailableAgent> = [],
+  environment?: AppleFmEnvironmentContext,
   maxChars: number = APPLE_FM_PROMPT_MAX_CHARS,
 ): string => {
-  const preamble = buildPreamble(availableAgents);
+  const preamble = buildPreamble(availableAgents, environment);
   const lines = turns
     .map((turn) => {
       const text = turn.text.trim();

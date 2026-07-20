@@ -8,7 +8,11 @@ import type { ProviderRegistryInterface } from "@openagentsinc/agent-turn-runtim
 import type { AppleFmHost } from "../apple-fm-host.ts"
 import type { AppleFmTurnResult } from "../apple-fm-contract.ts"
 import type { makeThreadStore } from "../thread-store.ts"
-import { buildOpenAgentsAppleFmPrompt, type AppleFmAvailableAgent } from "./apple-fm-prompt.ts"
+import {
+  buildOpenAgentsAppleFmPrompt,
+  type AppleFmAvailableAgent,
+  type AppleFmEnvironmentContext,
+} from "./apple-fm-prompt.ts"
 import {
   buildCompiledAppleFmPrompt,
   honestChatRelease,
@@ -25,6 +29,16 @@ import {
 export type AppleFmAvailableAgentsSource = () =>
   | ReadonlyArray<AppleFmAvailableAgent>
   | Promise<ReadonlyArray<AppleFmAvailableAgent>>
+
+/**
+ * The host-owned ambient-context snapshot the prompt states as fact. Resolved
+ * lazily at turn time from main-owned host facts (working directory, platform,
+ * app name, public identity `npub`, an injected clock) — never renderer input.
+ * Absent or a throw → the prompt omits the context block (plain preamble).
+ */
+export type AppleFmEnvironmentContextSource = () =>
+  | AppleFmEnvironmentContext
+  | Promise<AppleFmEnvironmentContext>
 
 /**
  * AFS-02 (#9080): register Apple FM into the AFS-01 `InferenceProviderRegistry`
@@ -88,6 +102,7 @@ const honestPromptFor = (
   threadRef: string,
   fallback: string,
   availableAgents: ReadonlyArray<AppleFmAvailableAgent>,
+  environment: AppleFmEnvironmentContext | undefined,
   release: AppleFmDseRelease,
 ): string => {
   const thread = store?.open(threadRef) ?? null
@@ -95,14 +110,15 @@ const honestPromptFor = (
   const window = turns.length > 0 ? turns : [{ role: "user", text: fallback }]
   const plan = resolveAppleFmPromptPlan({ release, requestKey: threadRef })
   return plan.kind === "compiled"
-    ? buildCompiledAppleFmPrompt(plan.program, window)
-    : buildOpenAgentsAppleFmPrompt(window, availableAgents)
+    ? buildCompiledAppleFmPrompt(plan.program, window, environment)
+    : buildOpenAgentsAppleFmPrompt(window, availableAgents, environment)
 }
 
 export const makeDesktopAppleFmProviderRegistry = (
   getHost: () => AppleFmHost | null,
   getThreadStore: () => ThreadStore | null = () => null,
   getAvailableAgents: AppleFmAvailableAgentsSource = () => [],
+  getEnvironmentContext: AppleFmEnvironmentContextSource = () => ({}),
   release: AppleFmDseRelease = honestChatRelease,
 ): ProviderRegistryInterface =>
   makeAppleFmProviderRegistry({
@@ -121,11 +137,20 @@ export const makeDesktopAppleFmProviderRegistry = (
       } catch {
         availableAgents = []
       }
+      // Resolve the host-owned ambient context so the prompt can answer
+      // environment/identity questions with real facts. Fail-soft: if the probe
+      // throws, omit the context block rather than blocking the local turn.
+      let environment: AppleFmEnvironmentContext | undefined
+      try {
+        environment = await getEnvironmentContext()
+      } catch {
+        environment = undefined
+      }
       // Build the authoritative, honesty-bounded prompt from the canonical
       // thread history the host owns — never from renderer-supplied prose. The
       // AFS-09 release channel decides baseline vs compiled preamble (shadow by
       // default, so this is the hand-written prompt unless explicitly promoted).
-      const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt, availableAgents, release)
+      const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt, availableAgents, environment, release)
       return turnResultToCompletion(await host.runTurn(honest))
     },
   })

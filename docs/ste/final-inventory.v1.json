@@ -15124,6 +15124,23 @@
       }
     },
     {
+      "path": "docs/apple-fm/2026-07-20-afs-ambient-context-block.md",
+      "sha256": "9bec57731e12dc4ddb57f617324eb73314e77c44ab9d99bfcf84fe8bdd7e238c",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "afs-ambient-context-review-20260720",
+        "ste_reviewed_at": "2026-07-20T00:00:00Z"
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-07-20-apple-fm-analyzer-boot-sequence-audit.md",
       "sha256": "4f3e438380996a38e3b7ee454f550951d9e77c1f547a9c822c6f8dbd3a897e25",
       "reason": "Immutable historical or evidence source data",
