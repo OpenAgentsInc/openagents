@@ -29,6 +29,7 @@ import {
 } from "./backends/apple-fm/blueprint-tools.js";
 import { makeAppleFmToolStreamProgramRunEvidence } from "./backends/apple-fm/program-run-evidence.js";
 import { makeAppleFmToolCallbackSession } from "./backends/apple-fm/tools.js";
+import { launchAppleFmBridge } from "./backends/apple-fm/bridge-process.js";
 import { GeminiClientError, makeGeminiClient, type GeminiClient, type GeminiCompleteResult } from "./backends/gemini/client.js";
 import { GEMINI_API_PROFILE_ID, GEMINI_DEFAULT_MODEL_ID } from "./backends/gemini/contract.js";
 import {
@@ -139,16 +140,8 @@ function handleProbeCli(
       return yield* geminiChatOnce(parseOptions(argv.slice(1)), deps);
     }
 
-    if (namespace === "apple-fm" && command === "status") {
-      return yield* appleFmStatus(options, deps);
-    }
-
-    if (namespace === "apple-fm" && command === "smoke") {
-      return yield* appleFmSmoke(options, deps);
-    }
-
-    if (namespace === "apple-fm" && command === "tool-stream-demo") {
-      return yield* appleFmToolStreamDemo(options, deps);
+    if (namespace === "apple-fm") {
+      return yield* runAppleFmCommand(command, options, deps);
     }
 
     return {
@@ -156,6 +149,68 @@ function handleProbeCli(
       stdout: usage(),
       stderr: "",
     };
+  });
+}
+
+/**
+ * Route an `apple-fm <command>` invocation, optionally launching or adopting the
+ * local Swift bridge first when `--auto-launch` is set (AFM-1 launcher). When
+ * `--auto-launch` is absent every command behaves exactly as before, so the
+ * attach-only contract is unchanged. A bridge WE launched is stopped on exit
+ * unless `--stop-on-exit false`; an adopted (already-running) bridge is never
+ * stopped.
+ */
+function runAppleFmCommand(
+  command: string | undefined,
+  options: Record<string, string | true>,
+  deps: ProbeCliDeps,
+): Effect.Effect<ProbeCliResult, ProbeCliError> {
+  return Effect.gen(function* () {
+    const route = (opts: Record<string, string | true>): Effect.Effect<ProbeCliResult, ProbeCliError> => {
+      switch (command) {
+        case "status":
+          return appleFmStatus(opts, deps);
+        case "health":
+          return appleFmHealth(opts, deps);
+        case "smoke":
+          return appleFmSmoke(opts, deps);
+        case "infer":
+        case "chat":
+          return appleFmInfer(opts, deps);
+        case "session":
+          return appleFmSession(opts, deps);
+        case "tool":
+          return appleFmTool(opts, deps);
+        case "tool-stream-demo":
+          return appleFmToolStreamDemo(opts, deps);
+        default:
+          return Effect.succeed({ exitCode: 1, stdout: usage(), stderr: "" });
+      }
+    };
+
+    if (options["auto-launch"] !== true) {
+      return yield* route(options);
+    }
+
+    const handle = yield* launchAppleFmBridge({
+      baseUrl: stringOption(options, "base-url"),
+      env: deps.env,
+      fetch: deps.fetch,
+    }).pipe(
+      Effect.mapError((error) => new ProbeCliError({ message: `${error.failureClass}: ${error.reason}` })),
+    );
+    const effective = { ...options, "base-url": handle.baseUrl };
+    const keepAlive = options["stop-on-exit"] === "false" || handle.adopted;
+
+    return yield* route(effective).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (!keepAlive) {
+            handle.stop();
+          }
+        }),
+      ),
+    );
   });
 }
 
@@ -382,10 +437,16 @@ function geminiCompletionCommand(input: {
   });
 }
 
-function appleFmToolStreamDemo(
+interface AppleFmToolStreamComputation {
+  readonly result: AppleFmToolStreamResult;
+  readonly projection: AppleFmBlueprintToolProjection;
+  readonly programRunEvidence: { readonly programRunRef: string; readonly inputSnapshotHash: string };
+}
+
+function runAppleFmToolStream(
   options: Record<string, string | true>,
   deps: ProbeCliDeps,
-): Effect.Effect<ProbeCliResult, ProbeCliError> {
+): Effect.Effect<AppleFmToolStreamComputation, ProbeCliError> {
   return Effect.gen(function* () {
     const client = yield* makeAppleFmClient({
       profileId: stringOption(options, "profile"),
@@ -460,9 +521,213 @@ function appleFmToolStreamDemo(
       result,
     }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
 
+    return { result, projection: projectedMenu.projection, programRunEvidence };
+  });
+}
+
+function appleFmToolStreamDemo(
+  options: Record<string, string | true>,
+  deps: ProbeCliDeps,
+): Effect.Effect<ProbeCliResult, ProbeCliError> {
+  return Effect.gen(function* () {
+    const { result, projection, programRunEvidence } = yield* runAppleFmToolStream(options, deps);
     return {
       exitCode: 0,
-      stdout: formatAppleFmToolStreamDemo(result, projectedMenu.projection, programRunEvidence),
+      stdout: formatAppleFmToolStreamDemo(result, projection, programRunEvidence),
+      stderr: "",
+    };
+  });
+}
+
+/**
+ * `apple-fm tool` — the runnable bounded read-only tool-use turn. Accepts a
+ * friendlier `--workspace` (aliased onto the tool-stream `--root`) and adds a
+ * public-safe `--json` projection over the same Blueprint-selected read-only
+ * tool loop the demo uses. AFM-4 broadens the selected tool set beyond
+ * `read_file`.
+ */
+function appleFmTool(
+  options: Record<string, string | true>,
+  deps: ProbeCliDeps,
+): Effect.Effect<ProbeCliResult, ProbeCliError> {
+  return Effect.gen(function* () {
+    const workspace = stringOption(options, "workspace");
+    const opts =
+      workspace !== undefined && stringOption(options, "root") === undefined
+        ? { ...options, root: workspace }
+        : options;
+    const { result, projection, programRunEvidence } = yield* runAppleFmToolStream(opts, deps);
+
+    if (options.json === true) {
+      const out = {
+        command: "apple-fm.tool",
+        bridgeSessionId: result.bridgeSessionId,
+        tools: projection.toolRefs.map((tool) => tool.toolName),
+        toolTranscript: result.toolTranscript.map((entry) => ({ toolName: entry.toolName, status: entry.status })),
+        events: result.events.map((event) => event.kind),
+        text: result.completion.text,
+        usage: result.completion.usage,
+        programRunRef: programRunEvidence.programRunRef,
+        receipt: result.completion.receipt,
+      };
+      return { exitCode: 0, stdout: `${JSON.stringify(out, null, 2)}\n`, stderr: "" };
+    }
+
+    return {
+      exitCode: 0,
+      stdout: formatAppleFmToolStreamDemo(result, projection, programRunEvidence),
+      stderr: "",
+    };
+  });
+}
+
+/** `apple-fm health` — typed readiness, no inference, with `--json`. */
+function appleFmHealth(
+  options: Record<string, string | true>,
+  deps: ProbeCliDeps,
+): Effect.Effect<ProbeCliResult, ProbeCliError> {
+  return Effect.gen(function* () {
+    const client = yield* makeAppleFmClient({
+      profileId: stringOption(options, "profile"),
+      explicitBaseUrl: stringOption(options, "base-url"),
+      env: deps.env,
+      fetch: deps.fetch,
+      now: deps.now,
+    }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
+    const readiness = yield* client.health();
+
+    if (options.json === true) {
+      const out = {
+        command: "apple-fm.health",
+        status: readiness.status,
+        ready: readiness.ready,
+        model: readiness.health?.modelId ?? readiness.health?.model ?? readiness.profile.model,
+        unavailableReason: readiness.unavailableReason,
+        profile: { id: readiness.profile.id, kind: readiness.profile.kind, baseUrl: readiness.profile.baseUrl },
+        receipt: readiness.receipt,
+      };
+      return { exitCode: readiness.ready ? 0 : 1, stdout: `${JSON.stringify(out, null, 2)}\n`, stderr: "" };
+    }
+
+    return { exitCode: readiness.ready ? 0 : 1, stdout: formatAppleFmStatus(readiness), stderr: "" };
+  });
+}
+
+/** `apple-fm infer` (alias `chat`) — one real one-shot completion + usage truth. */
+function appleFmInfer(
+  options: Record<string, string | true>,
+  deps: ProbeCliDeps,
+): Effect.Effect<ProbeCliResult, ProbeCliError> {
+  return Effect.gen(function* () {
+    const client = yield* makeAppleFmClient({
+      profileId: stringOption(options, "profile"),
+      explicitBaseUrl: stringOption(options, "base-url"),
+      env: deps.env,
+      fetch: deps.fetch,
+      now: deps.now,
+    }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
+    const prompt = stringOption(options, "prompt") ?? "Reply with: apple fm infer ok.";
+    const result = yield* client
+      .completePlainText([{ role: "user", content: prompt }])
+      .pipe(Effect.catch((error: AppleFmBackendError) => Effect.succeed(error)));
+
+    if (result instanceof AppleFmBackendError) {
+      return {
+        exitCode: 1,
+        stdout:
+          options.json === true
+            ? `${JSON.stringify({ command: "apple-fm.infer", state: "failed", failureClass: result.failureClass, message: result.reason, receipt: result.receipt }, null, 2)}\n`
+            : formatAppleFmSmokeFailure(result),
+        stderr: "",
+      };
+    }
+
+    yield* recordCliAppleFmTokenUsage({ command: "apple-fm.infer", deps, result });
+
+    if (options.json === true) {
+      const out = {
+        command: "apple-fm.infer",
+        model: result.response.model ?? result.profile.model,
+        text: result.text,
+        usage: result.usage,
+        receipt: result.receipt,
+      };
+      return { exitCode: 0, stdout: `${JSON.stringify(out, null, 2)}\n`, stderr: "" };
+    }
+
+    return {
+      exitCode: 0,
+      stdout:
+        [
+          "Apple FM inference",
+          `model: ${result.response.model ?? result.profile.model}`,
+          `text: ${result.text}`,
+          `usage: ${formatUsage(result.usage)}`,
+          `receipt: ${JSON.stringify(result.receipt)}`,
+        ].join("\n") + "\n",
+      stderr: "",
+    };
+  });
+}
+
+/**
+ * `apple-fm session` — a bounded turn through the real session endpoints
+ * (`POST /v1/sessions` + `responses/stream`) with an empty (no-tool) session, so
+ * it exercises the SSE snapshot/completed path the bridge actually serves.
+ */
+function appleFmSession(
+  options: Record<string, string | true>,
+  deps: ProbeCliDeps,
+): Effect.Effect<ProbeCliResult, ProbeCliError> {
+  return Effect.gen(function* () {
+    const client = yield* makeAppleFmClient({
+      profileId: stringOption(options, "profile"),
+      explicitBaseUrl: stringOption(options, "base-url"),
+      env: deps.env,
+      fetch: deps.fetch,
+      now: deps.now,
+    }).pipe(Effect.mapError((error) => new ProbeCliError({ message: error.reason })));
+    const prompt = stringOption(options, "prompt") ?? "Reply with: apple fm session ok.";
+    const toolSession = makeAppleFmToolCallbackSession({ tools: [], now: deps.now });
+    const result = yield* client
+      .streamSessionWithTools({ prompt, instructions: "Answer the user concisely.", toolSession })
+      .pipe(Effect.catch((error: AppleFmBackendError) => Effect.succeed(error)));
+
+    if (result instanceof AppleFmBackendError) {
+      return {
+        exitCode: 1,
+        stdout:
+          options.json === true
+            ? `${JSON.stringify({ command: "apple-fm.session", state: "failed", failureClass: result.failureClass, message: result.reason, receipt: result.receipt }, null, 2)}\n`
+            : formatAppleFmSmokeFailure(result),
+        stderr: "",
+      };
+    }
+
+    yield* recordCliAppleFmTokenUsage({ command: "apple-fm.session", deps, result: result.completion });
+
+    if (options.json === true) {
+      const out = {
+        command: "apple-fm.session",
+        bridgeSessionId: result.bridgeSessionId,
+        events: result.events.map((event) => event.kind),
+        text: result.completion.text,
+        usage: result.completion.usage,
+        receipt: result.completion.receipt,
+      };
+      return { exitCode: 0, stdout: `${JSON.stringify(out, null, 2)}\n`, stderr: "" };
+    }
+
+    return {
+      exitCode: 0,
+      stdout:
+        [
+          "Apple FM session",
+          `bridgeSessionId: ${result.bridgeSessionId}`,
+          `events: ${result.events.map((event) => event.kind).join(" -> ")}`,
+          `text: ${result.completion.text}`,
+          `usage: ${formatUsage(result.completion.usage)}`,
+        ].join("\n") + "\n",
       stderr: "",
     };
   });
@@ -702,7 +967,17 @@ function usage(): string {
     "  probe backend gemini complete [--profile gemini-api] [--model gemini-3.5-flash] [--prompt TEXT]",
     "  probe backend psionic doctor [--profile psionic-qwen35-local] [--base-url URL] [--json]",
     "  probe backend psionic smoke [--profile psionic-qwen35-local] [--base-url URL] [--model MODEL] [--prompt TEXT] [--stream] [--json]",
+    "",
+    "  Apple FM (local Foundation Models bridge). Add --auto-launch to any",
+    "  apple-fm command to start/adopt the local Swift bridge, run, then stop it",
+    "  (a bridge we launch is stopped on exit unless --stop-on-exit false; an",
+    "  already-running bridge is adopted and never stopped). Add --json for a",
+    "  public-safe machine-readable result.",
+    "  probe apple-fm health [--base-url URL] [--profile apple-fm-local] [--json]",
     "  probe apple-fm status [--base-url URL] [--profile apple-fm-local]",
+    "  probe apple-fm infer  [--auto-launch] [--prompt TEXT] [--base-url URL] [--json]",
+    "  probe apple-fm session [--auto-launch] [--prompt TEXT] [--base-url URL] [--json]",
+    "  probe apple-fm tool   [--auto-launch] --workspace DIR [--path FILE] [--prompt TEXT] [--json]",
     "  probe apple-fm smoke [--base-url URL] [--profile apple-fm-local] [--prompt TEXT]",
     "  probe apple-fm tool-stream-demo [--base-url URL] [--path FILE] [--prompt TEXT]",
   ].join("\n") + "\n";
