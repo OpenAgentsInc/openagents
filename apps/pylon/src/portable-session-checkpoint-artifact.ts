@@ -1,6 +1,6 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto"
-import { chmod, lstat, mkdir, open, readFile, readlink, rename, rm, stat } from "node:fs/promises"
+import { chmod, lstat, mkdir, open, readFile, readdir, readlink, rename, rm, stat } from "node:fs/promises"
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
@@ -30,6 +30,23 @@ const MAX_CUSTODY_METADATA_BYTES = 4 * 1024 * 1024
 const AES_256_KEY_BYTES = 32
 const AES_GCM_NONCE_BYTES = 12
 const AES_GCM_TAG_BYTES = 16
+const DEFAULT_RETENTION_SECONDS = 7 * 24 * 60 * 60
+const DEFAULT_MAX_CUSTODY_FILES = 4_096
+const DEFAULT_ORPHAN_TEMP_MAX_AGE_MS = 60 * 60 * 1_000
+
+type CustodyLifecycleStep =
+  | "delete_intent_durable"
+  | "delete_object_removed"
+  | "rewrap_ciphertext_durable"
+  | "rewrap_replaced"
+
+type CustodyLifecycleOptions = Readonly<{
+  now?: () => Date
+  retentionSeconds?: number
+  maxCustodyFiles?: number
+  orphanTempMaxAgeMs?: number
+  faultInjector?: (step: CustodyLifecycleStep) => Promise<void> | void
+}>
 
 export type PylonPortableCheckpointCustodyKeyProvider = Readonly<{
   loadKey: (keyRef: string) => Promise<Uint8Array> | Uint8Array
@@ -42,12 +59,46 @@ export type PylonPortableCheckpointCustodyConfig =
     keyRef: string
     keyProvider: PylonPortableCheckpointCustodyKeyProvider
     maxArtifactBytes?: number
-  }>
+  }> & CustodyLifecycleOptions
   | Readonly<{
     custodyDirectory: string
     policy: "owner_device_not_required"
     maxArtifactBytes?: number
-  }>
+  }> & CustodyLifecycleOptions
+
+export type PylonPortableCheckpointDeletionReceipt = Readonly<{
+  schema: "openagents.portable_checkpoint_artifact_deletion_receipt.v1"
+  receiptRef: string
+  operationRef: string
+  ownerRef: string
+  sessionRef: string
+  checkpointRef: string
+  bundleDigest: `sha256:${string}`
+  artifactDigest: `sha256:${string}`
+  objectRef: string
+  policy: PylonPortableCheckpointCustodyConfig["policy"]
+  keyRef: string | null
+  state: "deleted"
+  verifiedAbsent: true
+  occurredAt: string
+  publicSafe: true
+}>
+
+export type PylonPortableCheckpointRewrapReceipt = Readonly<{
+  schema: "openagents.portable_checkpoint_artifact_rewrap_receipt.v1"
+  receiptRef: string
+  operationRef: string
+  checkpointRef: string
+  objectRef: string
+  policy: "owner_managed" | "openagents_managed"
+  previousKeyRef: string
+  keyRef: string
+  digest: `sha256:${string}`
+  state: "rewrapped"
+  verified: true
+  occurredAt: string
+  publicSafe: true
+}>
 
 export class PylonPortableCheckpointArtifactError extends Error {
   readonly _tag = "PylonPortableCheckpointArtifactError"
@@ -58,12 +109,15 @@ export class PylonPortableCheckpointArtifactError extends Error {
       | "artifact_too_large"
       | "custody_policy_mismatch"
       | "decrypt_failed"
+      | "deletion_failed"
       | "invalid_binding"
       | "key_ref_mismatch"
       | "key_unavailable"
       | "plaintext_downgrade"
       | "private_material"
       | "repository_mismatch"
+      | "retention_expired"
+      | "rewrap_failed"
       | "unavailable",
     message: string,
   ) {
@@ -87,6 +141,9 @@ type PostImageEntry = Readonly<{
 
 const sha256 = (value: string | Uint8Array): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`
+
+const isSha256 = (value: unknown): value is `sha256:${string}` =>
+  typeof value === "string" && /^sha256:[a-f0-9]{64}$/u.test(value)
 
 const stableRef = (prefix: string, value: string): string =>
   `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 32)}`
@@ -255,12 +312,28 @@ type RetainedArtifact = Readonly<{
   artifactRef: string
   digest: `sha256:${string}`
   bytes: Uint8Array
+  createdAt: string
+  expiresAt: string
 }>
 
 type EncryptedCustodyConfig = Extract<
   PylonPortableCheckpointCustodyConfig,
   { policy: "owner_managed" | "openagents_managed" }
 >
+
+export type PylonPortableCheckpointLifecycleBinding = Readonly<{
+  operationRef: string
+  ownerRef: string
+  sessionRef: string
+  checkpointRef: string
+  bundle: PylonPortableCheckpointBundle
+}>
+
+export type PylonPortableCheckpointRewrapInput = PylonPortableCheckpointLifecycleBinding &
+  Readonly<{
+    keyRef: string
+    keyProvider: PylonPortableCheckpointCustodyKeyProvider
+  }>
 
 const encryptedHeader = (objectRef: string, config: EncryptedCustodyConfig) => ({
   schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v2" as const,
@@ -281,6 +354,12 @@ const atomicPrivateWrite = async (path: string, bytes: Uint8Array): Promise<void
     handle = undefined
     await rename(temporary, path)
     await chmod(path, 0o600)
+    const directory = await open(dirname(path), "r")
+    try {
+      await directory.sync()
+    } finally {
+      await directory.close()
+    }
   } finally {
     await handle?.close().catch(() => undefined)
     await rm(temporary, { force: true })
@@ -290,8 +369,12 @@ const atomicPrivateWrite = async (path: string, bytes: Uint8Array): Promise<void
 export class PylonPortableCheckpointArtifactStore implements PortableCheckpointArtifactResolver {
   private readonly sources = new Map<string, Source>()
   private readonly artifacts = new Map<string, RetainedArtifact>()
-  private readonly custody?: PylonPortableCheckpointCustodyConfig
+  private custody?: PylonPortableCheckpointCustodyConfig
   private readonly maxArtifactBytes: number
+  private readonly retentionSeconds: number
+  private readonly maxCustodyFiles: number
+  private readonly orphanTempMaxAgeMs: number
+  private readonly now: () => Date
 
   constructor(custody?: PylonPortableCheckpointCustodyConfig | string) {
     if (typeof custody === "string") {
@@ -304,14 +387,24 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
       throw new PylonPortableCheckpointArtifactError("invalid_binding", "checkpoint artifact custody must be absolute")
     }
     const maxArtifactBytes = custody?.maxArtifactBytes ?? DEFAULT_MAX_ARTIFACT_BYTES
+    const retentionSeconds = custody?.retentionSeconds ?? DEFAULT_RETENTION_SECONDS
+    const maxCustodyFiles = custody?.maxCustodyFiles ?? DEFAULT_MAX_CUSTODY_FILES
+    const orphanTempMaxAgeMs = custody?.orphanTempMaxAgeMs ?? DEFAULT_ORPHAN_TEMP_MAX_AGE_MS
     if (!Number.isSafeInteger(maxArtifactBytes) || maxArtifactBytes <= 0 ||
         maxArtifactBytes > DEFAULT_MAX_ARTIFACT_BYTES ||
+        !Number.isSafeInteger(retentionSeconds) || retentionSeconds <= 0 || retentionSeconds > 31_536_000 ||
+        !Number.isSafeInteger(maxCustodyFiles) || maxCustodyFiles <= 0 || maxCustodyFiles > DEFAULT_MAX_CUSTODY_FILES ||
+        !Number.isSafeInteger(orphanTempMaxAgeMs) || orphanTempMaxAgeMs < 0 ||
         (custody !== undefined && custody.policy !== "owner_device_not_required" &&
           (!SAFE_REF.test(custody.keyRef) || typeof custody.keyProvider.loadKey !== "function"))) {
       throw new PylonPortableCheckpointArtifactError("invalid_binding", "checkpoint artifact custody configuration is invalid")
     }
     this.custody = custody
     this.maxArtifactBytes = maxArtifactBytes
+    this.retentionSeconds = retentionSeconds
+    this.maxCustodyFiles = maxCustodyFiles
+    this.orphanTempMaxAgeMs = orphanTempMaxAgeMs
+    this.now = custody?.now ?? (() => new Date())
   }
 
   private artifactPaths(checkpointRef: string): Readonly<{
@@ -319,6 +412,7 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     plaintext: string
     legacyBytes: string
     legacyMetadata: string
+    deletion: string
     objectRef: string
   }> | undefined {
     if (this.custody === undefined) return undefined
@@ -328,7 +422,143 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
       plaintext: join(this.custody.custodyDirectory, `${name}.checkpoint.json`),
       legacyBytes: join(this.custody.custodyDirectory, `${name}.tar.zst`),
       legacyMetadata: join(this.custody.custodyDirectory, `${name}.json`),
+      deletion: join(this.custody.custodyDirectory, `${name}.checkpoint.deleted.json`),
       objectRef: `checkpoint-custody:${name}`,
+    }
+  }
+
+  private nowIso(): string {
+    const now = this.now()
+    if (!(now instanceof Date) || !Number.isFinite(now.getTime())) {
+      throw new PylonPortableCheckpointArtifactError(
+        "invalid_binding",
+        "checkpoint custody clock is invalid",
+      )
+    }
+    return now.toISOString()
+  }
+
+  private async prepareCustodyDirectory(): Promise<void> {
+    const custody = this.custody
+    if (custody === undefined) return
+    await mkdir(custody.custodyDirectory, { recursive: true, mode: 0o700 })
+    await chmod(custody.custodyDirectory, 0o700)
+    const names = await readdir(custody.custodyDirectory)
+    const nowMs = this.now().getTime()
+    await Promise.all(
+      names
+        .filter((name) =>
+          /^[a-f0-9]{64}\.checkpoint\.[A-Za-z0-9.]+\.[A-Za-z0-9-]+\.tmp$/u.test(name),
+        )
+        .map(async (name) => {
+          const path = join(custody.custodyDirectory, name)
+          const info = await stat(path)
+          if (this.orphanTempMaxAgeMs === 0 || nowMs - info.mtimeMs >= this.orphanTempMaxAgeMs) {
+            await rm(path, { force: true })
+          }
+        }),
+    )
+    if ((await readdir(custody.custodyDirectory)).length > this.maxCustodyFiles) {
+      throw new PylonPortableCheckpointArtifactError(
+        "artifact_too_large",
+        "checkpoint custody exceeds its file-count bound",
+      )
+    }
+  }
+
+  private async ensureCustodyCapacity(paths: ReadonlyArray<string>): Promise<void> {
+    const custody = this.custody
+    if (custody === undefined) return
+    const names = await readdir(custody.custodyDirectory)
+    const additions = (
+      await Promise.all(
+        [...new Set(paths)].map(
+          async (path): Promise<number> => ((await this.exists(path)) ? 0 : 1),
+        ),
+      )
+    ).reduce((sum, value) => sum + value, 0)
+    if (names.length + additions > this.maxCustodyFiles) {
+      throw new PylonPortableCheckpointArtifactError(
+        "artifact_too_large",
+        "checkpoint custody exceeds its file-count bound",
+      )
+    }
+  }
+
+  private lifecycleBinding(input: PylonPortableCheckpointLifecycleBinding): Readonly<{
+    operationRef: string
+    ownerRef: string
+    sessionRef: string
+    checkpointRef: string
+    bundleDigest: `sha256:${string}`
+  }> {
+    if (
+      ![input.operationRef, input.ownerRef, input.sessionRef, input.checkpointRef].every((value) =>
+        SAFE_REF.test(value),
+      ) ||
+      input.ownerRef !== input.bundle.executionBinding.ownerRef ||
+      input.sessionRef !== input.bundle.checkpoint.sessionRef ||
+      input.checkpointRef !== input.bundle.checkpoint.checkpointRef
+    ) {
+      throw new PylonPortableCheckpointArtifactError(
+        "invalid_binding",
+        "checkpoint custody lifecycle binding is invalid",
+      )
+    }
+    return {
+      operationRef: input.operationRef,
+      ownerRef: input.ownerRef,
+      sessionRef: input.sessionRef,
+      checkpointRef: input.checkpointRef,
+      bundleDigest: sha256(canonicalJson(input.bundle)),
+    }
+  }
+
+  private async syncCustodyDirectory(): Promise<void> {
+    const custody = this.custody
+    if (custody === undefined) return
+    const directory = await open(custody.custodyDirectory, "r")
+    try {
+      await directory.sync()
+    } finally {
+      await directory.close()
+    }
+  }
+
+  private async readLifecycleRecord(path: string): Promise<Record<string, unknown> | undefined> {
+    if (!(await this.exists(path))) return undefined
+    const bytes = await this.readBounded(path, MAX_CUSTODY_METADATA_BYTES)
+    try {
+      const decoded = JSON.parse(new TextDecoder().decode(bytes)) as unknown
+      if (typeof decoded !== "object" || decoded === null || Array.isArray(decoded)) {
+        throw new PylonPortableCheckpointArtifactError(
+          "invalid_binding",
+          "checkpoint custody lifecycle record is invalid",
+        )
+      }
+      return decoded as Record<string, unknown>
+    } catch (error) {
+      if (error instanceof PylonPortableCheckpointArtifactError) throw error
+      throw new PylonPortableCheckpointArtifactError(
+        "invalid_binding",
+        "checkpoint custody lifecycle record is invalid",
+      )
+    } finally {
+      bytes.fill(0)
+    }
+  }
+
+  private assertLifecycleRecordBinding(
+    record: Record<string, unknown>,
+    expected: Readonly<Record<string, unknown>>,
+  ): void {
+    for (const [key, value] of Object.entries(expected)) {
+      if (record[key] !== value) {
+        throw new PylonPortableCheckpointArtifactError(
+          "invalid_binding",
+          "checkpoint custody lifecycle record binding does not match",
+        )
+      }
     }
   }
 
@@ -382,13 +612,27 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     } catch {
       throw new PylonPortableCheckpointArtifactError("decrypt_failed", "checkpoint custody payload is invalid")
     }
-    if (payload.schema !== "openagents.portable_checkpoint_artifact_custody_payload.v2" ||
-        payload.checkpointRef !== checkpointRef || typeof payload.artifactRef !== "string" ||
-        !SAFE_REF.test(payload.artifactRef) || typeof payload.digest !== "string" ||
-        !/^sha256:[a-f0-9]{64}$/u.test(payload.digest) || typeof payload.bundle !== "object" ||
-        payload.bundle === null || typeof payload.bytesBase64 !== "string" ||
-        !/^[A-Za-z0-9+/]+={0,2}$/u.test(payload.bytesBase64)) {
-      throw new PylonPortableCheckpointArtifactError("invalid_binding", "persisted checkpoint custody binding is invalid")
+    if (
+      payload.schema !== "openagents.portable_checkpoint_artifact_custody_payload.v3" ||
+      payload.checkpointRef !== checkpointRef ||
+      typeof payload.artifactRef !== "string" ||
+      !SAFE_REF.test(payload.artifactRef) ||
+      typeof payload.digest !== "string" ||
+      !/^sha256:[a-f0-9]{64}$/u.test(payload.digest) ||
+      typeof payload.bundle !== "object" ||
+      payload.bundle === null ||
+      typeof payload.createdAt !== "string" ||
+      typeof payload.expiresAt !== "string" ||
+      !Number.isFinite(Date.parse(payload.createdAt)) ||
+      !Number.isFinite(Date.parse(payload.expiresAt)) ||
+      Date.parse(payload.expiresAt) <= Date.parse(payload.createdAt) ||
+      typeof payload.bytesBase64 !== "string" ||
+      !/^[A-Za-z0-9+/]+={0,2}$/u.test(payload.bytesBase64)
+    ) {
+      throw new PylonPortableCheckpointArtifactError(
+        "invalid_binding",
+        "persisted checkpoint custody binding is invalid",
+      )
     }
     const decoded = Buffer.from(payload.bytesBase64, "base64")
     const bytes = Uint8Array.from(decoded)
@@ -399,16 +643,28 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
       if (bundle.checkpoint?.checkpointRef !== checkpointRef || sha256(bytes) !== payload.digest) {
         throw new PylonPortableCheckpointArtifactError("invalid_binding", "persisted checkpoint artifact digest is invalid")
       }
-      return { bundle, artifactRef: payload.artifactRef, digest: payload.digest as `sha256:${string}`, bytes }
+      return {
+        bundle,
+        artifactRef: payload.artifactRef,
+        digest: payload.digest as `sha256:${string}`,
+        bytes,
+        createdAt: payload.createdAt,
+        expiresAt: payload.expiresAt,
+      }
     } catch (error) {
       bytes.fill(0)
       throw error
     }
   }
 
-  private async loadEncrypted(checkpointRef: string, paths: NonNullable<ReturnType<typeof this.artifactPaths>>, config: EncryptedCustodyConfig): Promise<RetainedArtifact> {
-    const maximum = Math.ceil(this.maxPayloadBytes() * 4 / 3) + 4096
-    const envelopeBytes = await this.readBounded(paths.encrypted, maximum)
+  private async loadEncrypted(
+    checkpointRef: string,
+    paths: NonNullable<ReturnType<typeof this.artifactPaths>>,
+    config: EncryptedCustodyConfig,
+    objectPath = paths.encrypted,
+  ): Promise<RetainedArtifact> {
+    const maximum = Math.ceil((this.maxPayloadBytes() * 4) / 3) + 4096
+    const envelopeBytes = await this.readBounded(objectPath, maximum)
     let key: Uint8Array | undefined
     let plaintext: Uint8Array | undefined
     try {
@@ -465,16 +721,100 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     }
   }
 
-  private async loadArtifact(checkpointRef: string): Promise<RetainedArtifact | undefined> {
+  private encodePayload(checkpointRef: string, retained: RetainedArtifact): Uint8Array {
+    const payloadBytes = new TextEncoder().encode(
+      canonicalJson({
+        schema: "openagents.portable_checkpoint_artifact_custody_payload.v3",
+        checkpointRef,
+        artifactRef: retained.artifactRef,
+        digest: retained.digest,
+        bundle: retained.bundle,
+        createdAt: retained.createdAt,
+        expiresAt: retained.expiresAt,
+        bytesBase64: Buffer.from(retained.bytes).toString("base64"),
+      }),
+    )
+    if (payloadBytes.byteLength > this.maxPayloadBytes()) {
+      payloadBytes.fill(0)
+      throw new PylonPortableCheckpointArtifactError(
+        "artifact_too_large",
+        "checkpoint custody payload exceeds its size bound",
+      )
+    }
+    return payloadBytes
+  }
+
+  private async writeEncrypted(
+    path: string,
+    paths: NonNullable<ReturnType<typeof this.artifactPaths>>,
+    config: EncryptedCustodyConfig,
+    payloadBytes: Uint8Array,
+  ): Promise<void> {
+    const key = await this.loadKey(config)
+    const nonce = Uint8Array.from(randomBytes(AES_GCM_NONCE_BYTES))
+    const aad = new TextEncoder().encode(canonicalJson(encryptedHeader(paths.objectRef, config)))
+    let ciphertext: Buffer | undefined
+    let authTag: Buffer | undefined
+    let envelopeBytes: Uint8Array | undefined
+    try {
+      const cipher = createCipheriv("aes-256-gcm", key, nonce, {
+        authTagLength: AES_GCM_TAG_BYTES,
+      })
+      cipher.setAAD(aad)
+      ciphertext = Buffer.concat([cipher.update(payloadBytes), cipher.final()])
+      authTag = cipher.getAuthTag()
+      envelopeBytes = new TextEncoder().encode(
+        canonicalJson({
+          ...encryptedHeader(paths.objectRef, config),
+          nonceBase64: Buffer.from(nonce).toString("base64"),
+          authTagBase64: authTag.toString("base64"),
+          ciphertextBase64: ciphertext.toString("base64"),
+        }),
+      )
+      await atomicPrivateWrite(path, envelopeBytes)
+    } finally {
+      key.fill(0)
+      nonce.fill(0)
+      aad.fill(0)
+      ciphertext?.fill(0)
+      authTag?.fill(0)
+      envelopeBytes?.fill(0)
+    }
+  }
+
+  private assertNotExpired(retained: RetainedArtifact): void {
+    if (Date.parse(retained.expiresAt) <= this.now().getTime()) {
+      retained.bytes.fill(0)
+      throw new PylonPortableCheckpointArtifactError(
+        "retention_expired",
+        "checkpoint artifact retention expired",
+      )
+    }
+  }
+
+  private async loadArtifact(
+    checkpointRef: string,
+    allowExpired = false,
+  ): Promise<RetainedArtifact | undefined> {
     const cached = this.artifacts.get(checkpointRef)
-    if (cached !== undefined) return cached
+    if (cached !== undefined) {
+      if (!allowExpired) this.assertNotExpired(cached)
+      return cached
+    }
     const paths = this.artifactPaths(checkpointRef)
     const custody = this.custody
     if (paths === undefined || custody === undefined) return undefined
     try {
+      if (await this.exists(paths.deletion)) {
+        throw new PylonPortableCheckpointArtifactError(
+          "unavailable",
+          "checkpoint artifact was deleted",
+        )
+      }
       const encryptedExists = await this.exists(paths.encrypted)
       const plaintextExists = await this.exists(paths.plaintext)
-      const legacyExists = await this.exists(paths.legacyMetadata) || await this.exists(paths.legacyBytes)
+      const legacyExists =
+        (await this.exists(paths.legacyMetadata)) || (await this.exists(paths.legacyBytes))
       let retained: RetainedArtifact | undefined
       if (custody.policy === "owner_device_not_required") {
         if (encryptedExists) {
@@ -497,7 +837,10 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
         }
         if (encryptedExists) retained = await this.loadEncrypted(checkpointRef, paths, custody)
       }
-      if (retained !== undefined) this.artifacts.set(checkpointRef, retained)
+      if (retained !== undefined) {
+        if (!allowExpired) this.assertNotExpired(retained)
+        this.artifacts.set(checkpointRef, retained)
+      }
       return retained
     } catch (error) {
       if (error instanceof PylonPortableCheckpointArtifactError) throw error
@@ -547,61 +890,31 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     // the caller's backing store. Custody always owns a real byte-for-byte copy
     // so the caller can zero its transport buffer immediately.
     const owned = Uint8Array.from(input.artifact.bytes)
+    const createdAt = existing?.createdAt ?? this.nowIso()
+    const expiresAt =
+      existing?.expiresAt ??
+      new Date(Date.parse(createdAt) + this.retentionSeconds * 1_000).toISOString()
     const retained = {
       bundle: input.bundle,
       artifactRef: input.artifact.artifactRef,
       digest: input.artifact.digest,
       bytes: owned,
+      createdAt,
+      expiresAt,
     }
     const paths = this.artifactPaths(checkpointRef)
     const custody = this.custody
     if (paths !== undefined && custody !== undefined) {
-      const payloadBytes = new TextEncoder().encode(canonicalJson({
-        schema: "openagents.portable_checkpoint_artifact_custody_payload.v2",
-        checkpointRef,
-        artifactRef: retained.artifactRef,
-        digest: retained.digest,
-        bundle: retained.bundle,
-        bytesBase64: Buffer.from(owned).toString("base64"),
-      }))
-      if (payloadBytes.byteLength > this.maxPayloadBytes()) {
-        payloadBytes.fill(0)
-        owned.fill(0)
-        throw new PylonPortableCheckpointArtifactError("artifact_too_large", "checkpoint custody payload exceeds its size bound")
-      }
+      const payloadBytes = this.encodePayload(checkpointRef, retained)
       try {
-        await mkdir(custody.custodyDirectory, { recursive: true, mode: 0o700 })
-        await chmod(custody.custodyDirectory, 0o700)
+        await this.prepareCustodyDirectory()
+        await this.ensureCustodyCapacity([
+          custody.policy === "owner_device_not_required" ? paths.plaintext : paths.encrypted,
+        ])
         if (custody.policy === "owner_device_not_required") {
           await atomicPrivateWrite(paths.plaintext, payloadBytes)
         } else {
-          const config = custody
-          const key = await this.loadKey(config)
-          const nonce = Uint8Array.from(randomBytes(AES_GCM_NONCE_BYTES))
-          const aad = new TextEncoder().encode(canonicalJson(encryptedHeader(paths.objectRef, config)))
-          let ciphertext: Buffer | undefined
-          let authTag: Buffer | undefined
-          let envelopeBytes: Uint8Array | undefined
-          try {
-            const cipher = createCipheriv("aes-256-gcm", key, nonce, { authTagLength: AES_GCM_TAG_BYTES })
-            cipher.setAAD(aad)
-            ciphertext = Buffer.concat([cipher.update(payloadBytes), cipher.final()])
-            authTag = cipher.getAuthTag()
-            envelopeBytes = new TextEncoder().encode(canonicalJson({
-              ...encryptedHeader(paths.objectRef, config),
-              nonceBase64: Buffer.from(nonce).toString("base64"),
-              authTagBase64: authTag.toString("base64"),
-              ciphertextBase64: ciphertext.toString("base64"),
-            }))
-            await atomicPrivateWrite(paths.encrypted, envelopeBytes)
-          } finally {
-            key.fill(0)
-            nonce.fill(0)
-            aad.fill(0)
-            ciphertext?.fill(0)
-            authTag?.fill(0)
-            envelopeBytes?.fill(0)
-          }
+          await this.writeEncrypted(paths.encrypted, paths, custody, payloadBytes)
         }
       } finally {
         payloadBytes.fill(0)
@@ -611,7 +924,368 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     this.artifacts.set(checkpointRef, retained)
   }
 
+  async deleteArtifact(
+    input: PylonPortableCheckpointLifecycleBinding,
+  ): Promise<PylonPortableCheckpointDeletionReceipt> {
+    const custody = this.custody
+    const paths = this.artifactPaths(input.checkpointRef)
+    if (custody === undefined || paths === undefined) {
+      throw new PylonPortableCheckpointArtifactError(
+        "deletion_failed",
+        "checkpoint artifact custody is not configured",
+      )
+    }
+    const binding = this.lifecycleBinding(input)
+    const keyRef = custody.policy === "owner_device_not_required" ? null : custody.keyRef
+    const common = {
+      operationRef: binding.operationRef,
+      ownerRef: binding.ownerRef,
+      sessionRef: binding.sessionRef,
+      checkpointRef: binding.checkpointRef,
+      bundleDigest: binding.bundleDigest,
+      objectRef: paths.objectRef,
+      policy: custody.policy,
+      keyRef,
+    }
+    await this.prepareCustodyDirectory()
+    await this.ensureCustodyCapacity([paths.deletion])
+    let record = await this.readLifecycleRecord(paths.deletion)
+    let artifactDigest: `sha256:${string}`
+    if (record !== undefined) {
+      this.assertLifecycleRecordBinding(record, common)
+      if (!isSha256(record.artifactDigest)) {
+        throw new PylonPortableCheckpointArtifactError(
+          "invalid_binding",
+          "checkpoint custody deletion digest is invalid",
+        )
+      }
+      artifactDigest = record.artifactDigest
+      if (
+        record.schema === "openagents.portable_checkpoint_artifact_deletion_receipt.v1" &&
+        record.state === "deleted" &&
+        record.verifiedAbsent === true &&
+        record.publicSafe === true &&
+        typeof record.receiptRef === "string" &&
+        SAFE_REF.test(record.receiptRef) &&
+        typeof record.occurredAt === "string" &&
+        Number.isFinite(Date.parse(record.occurredAt))
+      ) {
+        const objectPath =
+          custody.policy === "owner_device_not_required" ? paths.plaintext : paths.encrypted
+        if (
+          (await this.exists(objectPath)) ||
+          (await this.exists(paths.plaintext)) ||
+          (await this.exists(paths.encrypted)) ||
+          (await this.exists(paths.legacyBytes)) ||
+          (await this.exists(paths.legacyMetadata))
+        ) {
+          throw new PylonPortableCheckpointArtifactError(
+            "deletion_failed",
+            "checkpoint custody deletion receipt no longer verifies object absence",
+          )
+        }
+        return {
+          schema: "openagents.portable_checkpoint_artifact_deletion_receipt.v1",
+          receiptRef: record.receiptRef,
+          ...common,
+          artifactDigest,
+          state: "deleted",
+          verifiedAbsent: true,
+          occurredAt: record.occurredAt,
+          publicSafe: true,
+        }
+      }
+      if (
+        record.schema !== "openagents.portable_checkpoint_artifact_deletion_intent.v1" ||
+        record.state !== "deleting"
+      ) {
+        throw new PylonPortableCheckpointArtifactError(
+          "invalid_binding",
+          "checkpoint custody deletion record is invalid",
+        )
+      }
+    } else {
+      const retained = await this.loadArtifact(input.checkpointRef, true)
+      if (retained === undefined || !sameBundle(retained.bundle, input.bundle)) {
+        throw new PylonPortableCheckpointArtifactError(
+          "invalid_binding",
+          "checkpoint custody deletion does not match its artifact",
+        )
+      }
+      artifactDigest = retained.digest
+      record = {
+        schema: "openagents.portable_checkpoint_artifact_deletion_intent.v1",
+        ...common,
+        artifactDigest,
+        state: "deleting",
+        publicSafe: true,
+      }
+      await atomicPrivateWrite(paths.deletion, new TextEncoder().encode(canonicalJson(record)))
+      await custody.faultInjector?.("delete_intent_durable")
+    }
+
+    const objectPath =
+      custody.policy === "owner_device_not_required" ? paths.plaintext : paths.encrypted
+    const markerPath = `${objectPath}.deleting.${createHash("sha256").update(input.operationRef).digest("hex").slice(0, 24)}.tmp`
+    if (await this.exists(objectPath)) {
+      await rename(objectPath, markerPath)
+      await this.syncCustodyDirectory()
+    }
+    await rm(markerPath, { force: true })
+    await this.syncCustodyDirectory()
+    if ((await this.exists(objectPath)) || (await this.exists(markerPath))) {
+      throw new PylonPortableCheckpointArtifactError(
+        "deletion_failed",
+        "checkpoint custody deletion could not verify object absence",
+      )
+    }
+    if (
+      (await this.exists(paths.plaintext)) ||
+      (await this.exists(paths.encrypted)) ||
+      (await this.exists(paths.legacyBytes)) ||
+      (await this.exists(paths.legacyMetadata))
+    ) {
+      throw new PylonPortableCheckpointArtifactError(
+        "deletion_failed",
+        "checkpoint custody deletion found a conflicting object representation",
+      )
+    }
+    await custody.faultInjector?.("delete_object_removed")
+    const occurredAt = this.nowIso()
+    const receipt: PylonPortableCheckpointDeletionReceipt = {
+      schema: "openagents.portable_checkpoint_artifact_deletion_receipt.v1",
+      receiptRef: stableRef(
+        "receipt.portable-checkpoint-deletion",
+        `${input.operationRef}:${paths.objectRef}`,
+      ),
+      ...common,
+      artifactDigest,
+      state: "deleted",
+      verifiedAbsent: true,
+      occurredAt,
+      publicSafe: true,
+    }
+    await atomicPrivateWrite(paths.deletion, new TextEncoder().encode(canonicalJson(receipt)))
+    const cached = this.artifacts.get(input.checkpointRef)
+    cached?.bytes.fill(0)
+    this.artifacts.delete(input.checkpointRef)
+    return receipt
+  }
+
+  async rewrapArtifact(
+    input: PylonPortableCheckpointRewrapInput,
+  ): Promise<PylonPortableCheckpointRewrapReceipt> {
+    const custody = this.custody
+    const paths = this.artifactPaths(input.checkpointRef)
+    if (
+      custody === undefined ||
+      paths === undefined ||
+      custody.policy === "owner_device_not_required"
+    ) {
+      throw new PylonPortableCheckpointArtifactError(
+        "rewrap_failed",
+        "encrypted checkpoint artifact custody is not configured",
+      )
+    }
+    const binding = this.lifecycleBinding(input)
+    if (
+      !SAFE_REF.test(input.keyRef) ||
+      input.keyRef === custody.keyRef ||
+      typeof input.keyProvider.loadKey !== "function"
+    ) {
+      throw new PylonPortableCheckpointArtifactError(
+        "invalid_binding",
+        "checkpoint custody rewrap key binding is invalid",
+      )
+    }
+    const nextConfig: EncryptedCustodyConfig = {
+      ...custody,
+      keyRef: input.keyRef,
+      keyProvider: input.keyProvider,
+    }
+    const operationHash = createHash("sha256")
+      .update(input.operationRef)
+      .digest("hex")
+      .slice(0, 24)
+    const stagedPath = `${paths.encrypted}.rewrap.${operationHash}.tmp`
+    const journalPath = `${paths.encrypted}.rewrap.${operationHash}.json`
+    const common = {
+      operationRef: binding.operationRef,
+      ownerRef: binding.ownerRef,
+      sessionRef: binding.sessionRef,
+      checkpointRef: binding.checkpointRef,
+      bundleDigest: binding.bundleDigest,
+      objectRef: paths.objectRef,
+      policy: custody.policy,
+      previousKeyRef: custody.keyRef,
+      keyRef: input.keyRef,
+    }
+    await this.prepareCustodyDirectory()
+    await this.ensureCustodyCapacity([stagedPath, journalPath])
+    const journal = await this.readLifecycleRecord(journalPath)
+    let completedReceipt: PylonPortableCheckpointRewrapReceipt | undefined
+    if (journal !== undefined) {
+      this.assertLifecycleRecordBinding(journal, common)
+      if (
+        journal.schema === "openagents.portable_checkpoint_artifact_rewrap_receipt.v1" &&
+        journal.state === "rewrapped" &&
+        journal.verified === true &&
+        journal.publicSafe === true &&
+        typeof journal.receiptRef === "string" &&
+        typeof journal.digest === "string" &&
+        isSha256(journal.digest) &&
+        typeof journal.occurredAt === "string" &&
+        Number.isFinite(Date.parse(journal.occurredAt))
+      ) {
+        completedReceipt = {
+          schema: "openagents.portable_checkpoint_artifact_rewrap_receipt.v1",
+          receiptRef: journal.receiptRef,
+          operationRef: input.operationRef,
+          checkpointRef: input.checkpointRef,
+          objectRef: paths.objectRef,
+          policy: custody.policy,
+          previousKeyRef: custody.keyRef,
+          keyRef: input.keyRef,
+          digest: journal.digest,
+          state: "rewrapped",
+          verified: true,
+          occurredAt: journal.occurredAt,
+          publicSafe: true,
+        }
+      } else if (
+        journal.schema !== "openagents.portable_checkpoint_artifact_rewrap_intent.v1" ||
+        journal.state !== "staged"
+      ) {
+        throw new PylonPortableCheckpointArtifactError(
+          "invalid_binding",
+          "checkpoint custody rewrap record is invalid",
+        )
+      }
+    }
+
+    let retained: RetainedArtifact | undefined
+    let finalUsesNextKey = false
+    try {
+      retained = await this.loadEncrypted(input.checkpointRef, paths, nextConfig)
+      finalUsesNextKey = true
+    } catch (error) {
+      if (
+        !(error instanceof PylonPortableCheckpointArtifactError) ||
+        error.code !== "key_ref_mismatch"
+      )
+        throw error
+    }
+    if (retained === undefined && (await this.exists(stagedPath))) {
+      retained = await this.loadEncrypted(input.checkpointRef, paths, nextConfig, stagedPath)
+    }
+    if (retained === undefined)
+      retained = await this.loadEncrypted(input.checkpointRef, paths, custody)
+    if (!sameBundle(retained.bundle, input.bundle)) {
+      retained.bytes.fill(0)
+      throw new PylonPortableCheckpointArtifactError(
+        "invalid_binding",
+        "checkpoint custody rewrap does not match its artifact",
+      )
+    }
+    if (completedReceipt !== undefined) {
+      if (!finalUsesNextKey || retained.digest !== completedReceipt.digest) {
+        retained.bytes.fill(0)
+        throw new PylonPortableCheckpointArtifactError(
+          "rewrap_failed",
+          "checkpoint custody rewrap receipt no longer verifies ciphertext",
+        )
+      }
+      retained.bytes.fill(0)
+      this.custody = nextConfig
+      return completedReceipt
+    }
+
+    if (!finalUsesNextKey && !(await this.exists(stagedPath))) {
+      const payload = this.encodePayload(input.checkpointRef, retained)
+      try {
+        await this.writeEncrypted(stagedPath, paths, nextConfig, payload)
+      } finally {
+        payload.fill(0)
+      }
+      const verified = await this.loadEncrypted(input.checkpointRef, paths, nextConfig, stagedPath)
+      try {
+        if (
+          verified.digest !== retained.digest ||
+          verified.artifactRef !== retained.artifactRef ||
+          !sameBundle(verified.bundle, retained.bundle)
+        ) {
+          throw new PylonPortableCheckpointArtifactError(
+            "rewrap_failed",
+            "checkpoint custody rewrap verification failed",
+          )
+        }
+      } finally {
+        verified.bytes.fill(0)
+      }
+      await atomicPrivateWrite(
+        journalPath,
+        new TextEncoder().encode(
+          canonicalJson({
+            schema: "openagents.portable_checkpoint_artifact_rewrap_intent.v1",
+            ...common,
+            digest: retained.digest,
+            state: "staged",
+            publicSafe: true,
+          }),
+        ),
+      )
+      await custody.faultInjector?.("rewrap_ciphertext_durable")
+    }
+    if (!finalUsesNextKey) {
+      await rename(stagedPath, paths.encrypted)
+      await chmod(paths.encrypted, 0o600)
+      await this.syncCustodyDirectory()
+      finalUsesNextKey = true
+    }
+    const final = await this.loadEncrypted(input.checkpointRef, paths, nextConfig)
+    try {
+      if (final.digest !== retained.digest || !sameBundle(final.bundle, retained.bundle)) {
+        throw new PylonPortableCheckpointArtifactError(
+          "rewrap_failed",
+          "checkpoint custody rewrap final verification failed",
+        )
+      }
+    } finally {
+      final.bytes.fill(0)
+    }
+    await custody.faultInjector?.("rewrap_replaced")
+    const receipt: PylonPortableCheckpointRewrapReceipt = {
+      schema: "openagents.portable_checkpoint_artifact_rewrap_receipt.v1",
+      receiptRef: stableRef(
+        "receipt.portable-checkpoint-rewrap",
+        `${input.operationRef}:${paths.objectRef}:${input.keyRef}`,
+      ),
+      operationRef: input.operationRef,
+      checkpointRef: input.checkpointRef,
+      objectRef: paths.objectRef,
+      policy: custody.policy,
+      previousKeyRef: custody.keyRef,
+      keyRef: input.keyRef,
+      digest: retained.digest,
+      state: "rewrapped",
+      verified: true,
+      occurredAt: this.nowIso(),
+      publicSafe: true,
+    }
+    await atomicPrivateWrite(
+      journalPath,
+      new TextEncoder().encode(canonicalJson({ ...common, ...receipt })),
+    )
+    const cached = this.artifacts.get(input.checkpointRef)
+    cached?.bytes.fill(0)
+    retained.bytes.fill(0)
+    this.artifacts.delete(input.checkpointRef)
+    this.custody = nextConfig
+    return receipt
+  }
+
   async resolve(input: PortableCheckpointArtifactResolverInput): Promise<PortableCheckpointArtifact> {
+    await this.prepareCustodyDirectory()
     const checkpoint = input.bundle.checkpoint
     const retained = await this.loadArtifact(input.checkpointRef)
     if (retained !== undefined) {

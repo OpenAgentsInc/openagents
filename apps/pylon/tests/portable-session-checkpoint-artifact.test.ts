@@ -158,6 +158,33 @@ const tarFiles = (bytes: Uint8Array): Map<string, Uint8Array> => {
   return files
 }
 
+const artifactFixture = async () => {
+  const source = await fixture()
+  const request = {
+    ownerRef: source.bundle.executionBinding.ownerRef,
+    targetRef: "target.portable.artifact.managed",
+    sessionRef: source.bundle.checkpoint.sessionRef,
+    attachmentRef: "attachment.portable.artifact.managed.2",
+    generation: 2,
+    checkpointRef: source.bundle.checkpoint.checkpointRef,
+    bundle: source.bundle,
+  }
+  const producer = new PylonPortableCheckpointArtifactStore()
+  producer.register({ bundle: source.bundle, workingDirectory: source.root })
+  return { ...source, request, artifact: await producer.resolve(request) }
+}
+
+const lifecycleBinding = (
+  source: Awaited<ReturnType<typeof artifactFixture>>,
+  operationRef: string,
+) => ({
+  operationRef,
+  ownerRef: source.bundle.executionBinding.ownerRef,
+  sessionRef: source.bundle.checkpoint.sessionRef,
+  checkpointRef: source.bundle.checkpoint.checkpointRef,
+  bundle: source.bundle,
+})
+
 afterEach(async () => {
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })))
 })
@@ -422,4 +449,207 @@ test("preserves bounded relative symlinks and rejects escaping links", async () 
     checkpointRef: unsafeBundle.checkpoint.checkpointRef,
     bundle: unsafeBundle,
   })).rejects.toBeInstanceOf(PylonPortableCheckpointArtifactError)
+})
+
+test("enforces the persisted retention expiry with an injected clock", async () => {
+  const source = await artifactFixture()
+  const custody = join(source.root, ".retention-custody")
+  let now = new Date("2026-07-20T12:00:00.000Z")
+  const config = {
+    ...custodyConfig(custody),
+    retentionSeconds: 10,
+    now: () => now,
+  }
+  await new PylonPortableCheckpointArtifactStore(config).registerArtifact({
+    bundle: source.bundle,
+    artifact: source.artifact,
+  })
+  expect(
+    (await new PylonPortableCheckpointArtifactStore(config).resolve(source.request)).digest,
+  ).toBe(source.artifact.digest)
+  now = new Date("2026-07-20T12:00:10.000Z")
+  await expect(
+    new PylonPortableCheckpointArtifactStore(config).resolve(source.request),
+  ).rejects.toMatchObject({ code: "retention_expired" })
+})
+
+test("deletes checkpoint custody idempotently with a verified public-safe receipt", async () => {
+  const source = await artifactFixture()
+  const custody = join(source.root, ".deletion-custody")
+  const store = new PylonPortableCheckpointArtifactStore(custodyConfig(custody))
+  await store.registerArtifact({ bundle: source.bundle, artifact: source.artifact })
+  const input = lifecycleBinding(source, "operation.checkpoint.delete.1")
+  const receipt = await store.deleteArtifact(input)
+  const replay = await new PylonPortableCheckpointArtifactStore(
+    custodyConfig(custody),
+  ).deleteArtifact(input)
+
+  expect(replay).toEqual(receipt)
+  expect(receipt).toMatchObject({ state: "deleted", verifiedAbsent: true, publicSafe: true })
+  expect(JSON.stringify(receipt)).not.toContain(Buffer.from(custodyKey).toString("base64"))
+  expect(await readdir(custody)).toHaveLength(1)
+  await expect(
+    new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).resolve(source.request),
+  ).rejects.toMatchObject({ code: "unavailable" })
+  const objectName = createHash("sha256")
+    .update(source.bundle.checkpoint.checkpointRef)
+    .digest("hex")
+  const resurrected = join(custody, `${objectName}.checkpoint.aesgcm`)
+  await writeFile(resurrected, "forged object", { mode: 0o600 })
+  await expect(
+    new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).deleteArtifact(input),
+  ).rejects.toMatchObject({ code: "deletion_failed" })
+  await rm(resurrected)
+  await expect(
+    new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).deleteArtifact({
+      ...input,
+      ownerRef: "owner.portable.artifact.other",
+    }),
+  ).rejects.toMatchObject({ code: "invalid_binding" })
+})
+
+test("recovers deletion after a crash without retaining ciphertext or plaintext", async () => {
+  const source = await artifactFixture()
+  const custody = join(source.root, ".deletion-crash-custody")
+  let injected = false
+  const crashing = new PylonPortableCheckpointArtifactStore({
+    ...custodyConfig(custody),
+    faultInjector: (step: string) => {
+      if (step === "delete_object_removed" && !injected) {
+        injected = true
+        throw new Error("simulated process crash")
+      }
+    },
+  })
+  await crashing.registerArtifact({ bundle: source.bundle, artifact: source.artifact })
+  const input = lifecycleBinding(source, "operation.checkpoint.delete.crash")
+  await expect(crashing.deleteArtifact(input)).rejects.toThrow("simulated process crash")
+  const receipt = await new PylonPortableCheckpointArtifactStore(
+    custodyConfig(custody),
+  ).deleteArtifact(input)
+  expect(receipt.verifiedAbsent).toBe(true)
+  const retainedText = (
+    await Promise.all((await readdir(custody)).map((name) => readFile(join(custody, name), "utf8")))
+  ).join("\n")
+  expect(retainedText).not.toContain("tracked.txt")
+  expect(retainedText).not.toContain("untracked\n")
+  expect(retainedText).not.toContain(Buffer.from(custodyKey).toString("base64"))
+})
+
+test("rewraps authenticated ciphertext and preserves the old object until the new object is durable", async () => {
+  const source = await artifactFixture()
+  const custody = join(source.root, ".rewrap-custody")
+  const nextKey = Uint8Array.from({ length: 32 }, (_, index) => 200 - index)
+  let injected = false
+  const crashing = new PylonPortableCheckpointArtifactStore({
+    ...custodyConfig(custody),
+    faultInjector: (step: string) => {
+      if (step === "rewrap_ciphertext_durable" && !injected) {
+        injected = true
+        throw new Error("simulated rewrap crash")
+      }
+    },
+  })
+  await crashing.registerArtifact({ bundle: source.bundle, artifact: source.artifact })
+  const input = {
+    ...lifecycleBinding(source, "operation.checkpoint.rewrap.1"),
+    keyRef: "key.portable.checkpoint.2026-08",
+    keyProvider: { loadKey: async () => Uint8Array.from(nextKey) },
+  }
+  await expect(crashing.rewrapArtifact(input)).rejects.toThrow("simulated rewrap crash")
+  expect(
+    (await new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).resolve(source.request))
+      .digest,
+  ).toBe(source.artifact.digest)
+
+  const rewrapStore = new PylonPortableCheckpointArtifactStore(custodyConfig(custody))
+  const receipt = await rewrapStore.rewrapArtifact(input)
+  expect(receipt).toMatchObject({
+    previousKeyRef: "key.portable.checkpoint.2026-07",
+    keyRef: "key.portable.checkpoint.2026-08",
+    state: "rewrapped",
+    verified: true,
+  })
+  expect(
+    await new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).rewrapArtifact(input),
+  ).toEqual(receipt)
+  expect((await rewrapStore.resolve(source.request)).digest).toBe(source.artifact.digest)
+  const nextConfig = custodyConfig(custody, nextKey, "key.portable.checkpoint.2026-08")
+  expect(
+    (await new PylonPortableCheckpointArtifactStore(nextConfig).resolve(source.request)).digest,
+  ).toBe(source.artifact.digest)
+  await expect(
+    new PylonPortableCheckpointArtifactStore(custodyConfig(custody)).resolve(source.request),
+  ).rejects.toMatchObject({ code: "key_ref_mismatch" })
+  const retainedText = (
+    await Promise.all((await readdir(custody)).map((name) => readFile(join(custody, name), "utf8")))
+  ).join("\n")
+  expect(retainedText).not.toContain("tracked.txt")
+  expect(retainedText).not.toContain("untracked\n")
+  expect(retainedText).not.toContain(Buffer.from(custodyKey).toString("base64"))
+  expect(retainedText).not.toContain(Buffer.from(nextKey).toString("base64"))
+})
+
+test("finishes rewrap after a crash that replaced the old ciphertext", async () => {
+  const source = await artifactFixture()
+  const custody = join(source.root, ".rewrap-replaced-custody")
+  const nextKey = Uint8Array.from({ length: 32 }, (_, index) => 150 - index)
+  let injected = false
+  const config = {
+    ...custodyConfig(custody),
+    faultInjector: (step: string) => {
+      if (step === "rewrap_replaced" && !injected) {
+        injected = true
+        throw new Error("simulated post-replace crash")
+      }
+    },
+  }
+  const crashing = new PylonPortableCheckpointArtifactStore(config)
+  await crashing.registerArtifact({ bundle: source.bundle, artifact: source.artifact })
+  const input = {
+    ...lifecycleBinding(source, "operation.checkpoint.rewrap.crash"),
+    keyRef: "key.portable.checkpoint.replaced",
+    keyProvider: { loadKey: async () => Uint8Array.from(nextKey) },
+  }
+  await expect(crashing.rewrapArtifact(input)).rejects.toThrow("simulated post-replace crash")
+  const receipt = await new PylonPortableCheckpointArtifactStore(
+    custodyConfig(custody),
+  ).rewrapArtifact(input)
+  expect(receipt.verified).toBe(true)
+  expect(
+    (
+      await new PylonPortableCheckpointArtifactStore(
+        custodyConfig(custody, nextKey, input.keyRef),
+      ).resolve(source.request)
+    ).digest,
+  ).toBe(source.artifact.digest)
+})
+
+test("removes bounded orphan custody temp files before resolution", async () => {
+  const source = await artifactFixture()
+  const custody = join(source.root, ".orphan-temp-custody")
+  const config = { ...custodyConfig(custody), orphanTempMaxAgeMs: 0 }
+  await new PylonPortableCheckpointArtifactStore(config).registerArtifact({
+    bundle: source.bundle,
+    artifact: source.artifact,
+  })
+  const name = createHash("sha256").update(source.bundle.checkpoint.checkpointRef).digest("hex")
+  const orphan = join(custody, `${name}.checkpoint.aesgcm.orphan.tmp`)
+  await writeFile(orphan, "not plaintext", { mode: 0o600 })
+  await new PylonPortableCheckpointArtifactStore(config).resolve(source.request)
+  await expect(stat(orphan)).rejects.toMatchObject({ code: "ENOENT" })
+})
+
+test("fails closed when checkpoint custody exceeds its file-count bound", async () => {
+  const source = await artifactFixture()
+  const custody = join(source.root, ".bounded-file-custody")
+  const config = { ...custodyConfig(custody), maxCustodyFiles: 1 }
+  await new PylonPortableCheckpointArtifactStore(config).registerArtifact({
+    bundle: source.bundle,
+    artifact: source.artifact,
+  })
+  await writeFile(join(custody, "unexpected.object"), "bounded", { mode: 0o600 })
+  await expect(
+    new PylonPortableCheckpointArtifactStore(config).resolve(source.request),
+  ).rejects.toMatchObject({ code: "artifact_too_large" })
 })
