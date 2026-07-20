@@ -3,11 +3,14 @@ import { canonicalJson } from "@openagentsinc/khala-sync";
 import {
   validateIdePortableDestinationActivationReceipt,
   type IdePortableDestinationActivationReceipt,
+  type PortableCommandExecutionClaim,
   type PortablePhaseOperationClaimRequest,
   type PortablePhaseOperationRecord,
   type PortablePhaseOperationRequest,
   type PortablePhaseOperationResultRequest,
 } from "@openagentsinc/portable-session-contract";
+import { Effect } from "effect";
+import type { PylonPortableCheckpointArtifactClient } from "./portable-checkpoint-artifact-client.js";
 import type { PylonPortablePhaseOperationClient } from "./portable-phase-operation-client.js";
 import type {
   PylonPortablePhaseClaimJournal,
@@ -57,6 +60,10 @@ type TargetCall =
       kind: "checkpoint-create";
       input: Parameters<PylonOwnerLocalExecutionTarget["createCheckpoint"]>[0];
       checkpointObjectRef: string;
+      artifactTransport?: Readonly<{
+        commandClaim: PortableCommandExecutionClaim
+        byteLimit: number
+      }>;
     }>
   | Readonly<{
       kind: "source-cleanup";
@@ -65,6 +72,10 @@ type TargetCall =
   | Readonly<{
       kind: "checkpoint-stage";
       input: Parameters<PylonOwnerLocalExecutionTarget["stageCheckpoint"]>[0];
+      artifactTransport?: Readonly<{
+        commandClaim: PortableCommandExecutionClaim
+        manifestDigest: string
+      }>;
     }>
   | Readonly<{
       kind: "destination-activate";
@@ -150,6 +161,7 @@ const result = (evidenceRefs: ReadonlyArray<string>): PylonPortablePhaseExecutio
  */
 export const makePylonPortablePhaseExecutor = (
   resolver: PylonPortablePhaseTargetResolver,
+  artifactTransport?: PylonPortableCheckpointArtifactClient,
 ): PylonPortablePhaseExecutor => {
   const resolveExact = async (request: PortablePhaseOperationRequest) => {
     const resolved = await resolver.resolve(request);
@@ -181,18 +193,97 @@ export const makePylonPortablePhaseExecutor = (
           return result((await resolved.target.quiesceGraph(resolved.call.input)).evidenceRefs);
         case "checkpoint-create": {
           const bundle = await resolved.target.createCheckpoint(resolved.call.input);
+          let transportEvidenceRefs: ReadonlyArray<string> = [];
+          if (artifactTransport !== undefined) {
+            const context = resolved.call.artifactTransport;
+            const artifacts = resolved.target.checkpointArtifacts;
+            if (context === undefined || artifacts === undefined) {
+              throw new PylonPortablePhaseExecutionError(
+                "error.pylon.portable-phase.unsupported-checkpoint-create",
+              );
+            }
+            const exported = await artifacts.exportCustodyObject({
+              checkpointRef: bundle.checkpoint.checkpointRef,
+              commandClaim: context.commandClaim,
+              byteLimit: context.byteLimit,
+            });
+            try {
+              if (
+                exported.manifest.objectRef !== resolved.call.checkpointObjectRef ||
+                exported.manifest.checkpointDigest !== bundle.checkpoint.digest
+              ) {
+                throw new PylonPortablePhaseExecutionError(
+                  "error.pylon.portable-phase.context-mismatch",
+                );
+              }
+              const published = await Effect.runPromise(
+                artifactTransport.publish({
+                  operationRef: request.operationRef,
+                  manifest: exported.manifest,
+                  bytes: exported.bytes,
+                  signal,
+                }),
+              );
+              transportEvidenceRefs = [
+                `manifest.portable-checkpoint.${published.manifestDigest.slice("sha256:".length)}`,
+              ];
+            } finally {
+              exported.bytes.fill(0);
+            }
+          }
           return {
             checkpointRef: bundle.checkpoint.checkpointRef,
             checkpointObjectRef: resolved.call.checkpointObjectRef,
             checkpointDigest: bundle.checkpoint.digest,
             destinationActivationReceipt: null,
-            evidenceRefs: bundle.checkpoint.receiptRefs,
+            evidenceRefs: [...bundle.checkpoint.receiptRefs, ...transportEvidenceRefs],
           };
         }
         case "source-cleanup":
           return result((await resolved.target.cleanupSource(resolved.call.input)).evidenceRefs);
-        case "checkpoint-stage":
+        case "checkpoint-stage": {
+          if (artifactTransport !== undefined) {
+            const context = resolved.call.artifactTransport;
+            const artifacts = resolved.target.checkpointArtifacts;
+            if (
+              context === undefined ||
+              artifacts === undefined ||
+              request.checkpointObjectRef === null ||
+              request.checkpointDigest === null
+            ) {
+              throw new PylonPortablePhaseExecutionError(
+                "error.pylon.portable-phase.unsupported-checkpoint-stage",
+              );
+            }
+            const redeemed = await Effect.runPromise(
+              artifactTransport.redeem({
+                operationRef: request.operationRef,
+                manifestDigest: context.manifestDigest,
+                checkpointObjectRef: request.checkpointObjectRef,
+                checkpointDigest: request.checkpointDigest,
+                commandClaimRef: context.commandClaim.claimRef,
+                signal,
+              }),
+            );
+            try {
+              if (
+                canonicalJson(redeemed.manifest.commandClaim) !==
+                canonicalJson(context.commandClaim)
+              ) {
+                throw new PylonPortablePhaseExecutionError(
+                  "error.pylon.portable-phase.context-mismatch",
+                );
+              }
+              await artifacts.importCustodyObject({
+                manifest: redeemed.manifest,
+                bytes: redeemed.bytes,
+              });
+            } finally {
+              redeemed.bytes.fill(0);
+            }
+          }
           return result((await resolved.target.stageCheckpoint(resolved.call.input)).evidenceRefs);
+        }
         case "destination-activate": {
           const receipt = await resolved.target.activate(resolved.call.input);
           return {

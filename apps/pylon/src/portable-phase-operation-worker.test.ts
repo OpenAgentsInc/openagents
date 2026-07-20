@@ -1,10 +1,14 @@
 import { describe, expect, test } from "vite-plus/test";
 import type {
+  PortableCheckpointCustodyObjectManifest,
+  PortableCommandExecutionClaim,
   PortablePhaseOperationClaimRequest,
   PortablePhaseOperationRecord,
   PortablePhaseOperationRenewRequest,
   PortablePhaseOperationResultRequest,
 } from "@openagentsinc/portable-session-contract";
+import { Effect } from "effect";
+import type { PylonPortableCheckpointArtifactClient } from "./portable-checkpoint-artifact-client.js";
 
 import {
   makePylonPortablePhaseOperationClient,
@@ -237,6 +241,209 @@ describe("Pylon portable phase HTTP client", () => {
 });
 
 describe("Pylon portable phase worker", () => {
+  test("publishes before checkpoint completion and imports before destination staging", async () => {
+    const commandClaim: PortableCommandExecutionClaim = {
+      schema: "openagents.portable_command_execution.v1",
+      claimRef: "claim.ide13.command",
+      commandRef: "command.ide13.fixture",
+      ownerRef: "owner.ide13.fixture",
+      sessionRef: "session.ide13.fixture",
+      commandKind: "move",
+      commandFingerprint: `sha256:${"1".repeat(64)}`,
+      claimFingerprint: `sha256:${"2".repeat(64)}`,
+      sourceAttachmentRef: "attachment.ide13.fixture",
+      sourceGeneration: 1,
+      destinationTargetRef: targetRef,
+      executorEnvironmentRef: targetRef,
+      workerInstanceRef,
+      claimGeneration: 1,
+      leaseRevision: 1,
+      state: "claimed",
+      claimedAt: now.toISOString(),
+      leaseExpiresAt: "2026-07-20T12:10:00.000Z",
+      updatedAt: now.toISOString(),
+      terminalStatus: null,
+      pendingReconcileRef: null,
+      outcomeRef: null,
+      evidenceRefs: [],
+    };
+    const bundle = {
+      checkpoint: {
+        schema: "openagents.portable_checkpoint.v1" as const,
+        checkpointRef: "checkpoint.ide13.fixture",
+        sessionRef: commandClaim.sessionRef,
+        sourceAttachmentRef: commandClaim.sourceAttachmentRef,
+        sourceGeneration: 1,
+        digest: `sha256:${"3".repeat(64)}` as const,
+        repositoryRef: "repository.ide13.fixture",
+        repositoryRevisionRef: "revision.ide13.fixture",
+        repositoryPostImageDigest: `sha256:${"4".repeat(64)}` as const,
+        diffDigest: `sha256:${"5".repeat(64)}` as const,
+        eventLogCursor: 0,
+        catalogGenerationRef: "catalog.ide13.fixture",
+        graphDigest: `sha256:${"6".repeat(64)}` as const,
+        approvalRefs: [],
+        artifactRefs: [],
+        receiptRefs: ["receipt.ide13.checkpoint"],
+        secretMaterial: "excluded" as const,
+        processState: "excluded" as const,
+      },
+      executionBinding: {
+        schema: "openagents.portable_session_execution_binding.v1" as const,
+        sessionRef: commandClaim.sessionRef,
+        ownerRef: commandClaim.ownerRef,
+        runRef: "run.ide13.fixture",
+        repositoryRef: "repository.ide13.fixture",
+        pinnedBaseRef: "revision.ide13.fixture",
+      },
+      graph: { rootAgentRef: "agent.ide13.fixture", nodes: [] },
+      threadCursors: [],
+    };
+    const objectBytes = new Uint8Array([1, 2, 3]);
+    const manifest: PortableCheckpointCustodyObjectManifest = {
+      schema: "openagents.portable_checkpoint_custody_object_manifest.v1",
+      objectRef: "checkpoint-custody.object.1",
+      objectDigest: `sha256:${"7".repeat(64)}`,
+      artifactRef: "artifact.ide13.fixture",
+      artifactDigest: `sha256:${"8".repeat(64)}`,
+      checkpointRef: bundle.checkpoint.checkpointRef,
+      checkpointDigest: bundle.checkpoint.digest,
+      bundleDigest: `sha256:${"9".repeat(64)}`,
+      ciphertextDigest: `sha256:${"a".repeat(64)}`,
+      commandClaim,
+      ownerRef: commandClaim.ownerRef,
+      sourcePylonRef: targetRef,
+      targetRef,
+      sessionRef: commandClaim.sessionRef,
+      sourceAttachmentRef: commandClaim.sourceAttachmentRef,
+      sourceGeneration: 1,
+      custodyPolicy: "openagents_managed",
+      keyRef: "key.ide13.fixture",
+      byteLimit: 1024,
+      createdAt: now.toISOString(),
+      expiresAt: "2026-07-20T12:10:00.000Z",
+      retentionSeconds: 600,
+      secretMaterial: "excluded",
+    };
+    const events: string[] = [];
+    let imported = false;
+    const unsupported = async (): Promise<never> => {
+      throw new Error("unexpected target call");
+    };
+    const target: PylonOwnerLocalExecutionTarget = {
+      targetRef,
+      targetClass: "owner_local",
+      checkpointArtifacts: {
+        exportCustodyObject: async () => {
+          events.push("export");
+          return { manifest, bytes: Uint8Array.from(objectBytes) };
+        },
+        importCustodyObject: async input => {
+          events.push("import");
+          expect(input).toEqual({ manifest, bytes: objectBytes });
+          imported = true;
+          return manifest;
+        },
+      },
+      quiesceGraph: unsupported,
+      createCheckpoint: async () => {
+        events.push("create");
+        return bundle;
+      },
+      cleanupSource: unsupported,
+      stageCheckpoint: async () => {
+        expect(imported).toBe(true);
+        events.push("stage");
+        return {
+          checkpointDigest: bundle.checkpoint.digest,
+          repositoryPostImageDigest: bundle.checkpoint.repositoryPostImageDigest,
+          diffDigest: bundle.checkpoint.diffDigest,
+          graphDigest: bundle.checkpoint.graphDigest,
+          threadCursors: [],
+          acceptingWork: false,
+          evidenceRefs: ["evidence.ide13.staged"],
+        };
+      },
+      activate: unsupported,
+      abortStaged: unsupported,
+    };
+    const artifactTransport: PylonPortableCheckpointArtifactClient = {
+      publish: () => {
+        events.push("publish");
+        return Effect.succeed({ manifestDigest: `sha256:${"b".repeat(64)}` });
+      },
+      redeem: () => {
+        events.push("redeem");
+        return Effect.succeed({ manifest, bytes: Uint8Array.from(objectBytes) });
+      },
+    };
+    const createRequest = record("checkpoint-create").request;
+    const createExecutor = makePylonPortablePhaseExecutor(
+      {
+        resolve: async () => ({
+          target,
+          call: {
+            kind: "checkpoint-create",
+            checkpointObjectRef: manifest.objectRef,
+            artifactTransport: { commandClaim, byteLimit: manifest.byteLimit },
+            input: {
+              operationRef: createRequest.operationRef,
+              checkpointRef: bundle.checkpoint.checkpointRef,
+              sessionRef: createRequest.sessionRef,
+              attachmentRef: createRequest.attachmentRef,
+              generation: createRequest.attachmentGeneration,
+              eventLogCursor: 0,
+              executionBinding: bundle.executionBinding,
+              graph: bundle.graph,
+              threadCursors: [],
+            },
+          },
+          operationRefSemantics: "operation_ref_idempotent",
+        }),
+      },
+      artifactTransport,
+    );
+    const created = await createExecutor.execute(createRequest, new AbortController().signal);
+    expect(created.checkpointObjectRef).toBe(manifest.objectRef);
+    expect(created.evidenceRefs).toContain(`manifest.portable-checkpoint.${"b".repeat(64)}`);
+    expect(events).toEqual(["create", "export", "publish"]);
+
+    const stageRequest = {
+      ...record("checkpoint-stage").request,
+      operationRef: "operation.ide13.checkpoint-stage",
+      attachmentRef: "attachment.ide13.destination",
+      attachmentGeneration: 2,
+      checkpointRef: manifest.checkpointRef,
+      checkpointObjectRef: manifest.objectRef,
+      checkpointDigest: manifest.checkpointDigest,
+    };
+    const stageExecutor = makePylonPortablePhaseExecutor(
+      {
+        resolve: async () => ({
+          target,
+          call: {
+            kind: "checkpoint-stage",
+            artifactTransport: {
+              commandClaim,
+              manifestDigest: `sha256:${"b".repeat(64)}`,
+            },
+            input: {
+              operationRef: stageRequest.operationRef,
+              bundle,
+              destinationAttachmentRef: stageRequest.attachmentRef,
+              destinationGeneration: stageRequest.attachmentGeneration,
+              capabilityLeaseRefs: [],
+            },
+          },
+          operationRefSemantics: "operation_ref_idempotent",
+        }),
+      },
+      artifactTransport,
+    );
+    await stageExecutor.execute(stageRequest, new AbortController().signal);
+    expect(events.slice(3)).toEqual(["redeem", "import", "stage"]);
+  });
+
   test("carries the exact destination readiness receipt from the target", async () => {
     const request = {
       ...record("destination-activate").request,

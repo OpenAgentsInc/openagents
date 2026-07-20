@@ -82,6 +82,7 @@ import {
   type ControlSessionProjection,
 } from './node/control-sessions.js'
 import { PylonPortableSessionOperationLedger } from './portable-session-operation-ledger.js'
+import { makePylonPortableCheckpointArtifactClient } from './portable-checkpoint-artifact-client.js'
 import {
   openPylonPortablePhaseProductionWorker,
   portablePhaseWorkerInstanceRef,
@@ -951,20 +952,31 @@ const runHeadlessNode = Effect.gen(function* () {
       target: targetRef => pylonPrivatePortablePhaseContexts.target(targetRef),
     })
     const portablePhaseWorker = yield* Effect.tryPromise({
-      try: () => openPylonPortablePhaseProductionWorker({
-        agentToken,
-        baseUrl: presenceBaseUrl,
-        pylonRef: localState.identity.pylonRef,
-        targetRef,
-        workerInstanceRef: portablePhaseWorkerInstanceRef(localState.identity.pylonRef, targetRef),
-        stateDirectory: bootstrapSummary.paths.home,
-        resolver: durablePhaseResolver,
-        onTerminalAcknowledged: operationRef => {
-          portablePhaseAdmission.store.acknowledgeTerminal(operationRef)
-          portablePhaseAdmission.store.purge()
-        },
-        onFault: (errorRef) => logToUi(`[PortablePhase] Worker stopped: ${errorRef}`, 'info'),
-      }),
+      try: () => {
+        const artifactTransport = Runtime.env.PYLON_PORTABLE_CHECKPOINT_ARTIFACT_TRANSPORT === '1'
+          ? makePylonPortableCheckpointArtifactClient({
+              agentToken,
+              baseUrl: presenceBaseUrl,
+              pylonRef: localState.identity.pylonRef,
+              targetRef,
+            })
+          : undefined
+        return openPylonPortablePhaseProductionWorker({
+          agentToken,
+          baseUrl: presenceBaseUrl,
+          pylonRef: localState.identity.pylonRef,
+          targetRef,
+          workerInstanceRef: portablePhaseWorkerInstanceRef(localState.identity.pylonRef, targetRef),
+          stateDirectory: bootstrapSummary.paths.home,
+          resolver: durablePhaseResolver,
+          ...(artifactTransport === undefined ? {} : { artifactTransport }),
+          onTerminalAcknowledged: operationRef => {
+            portablePhaseAdmission.store.acknowledgeTerminal(operationRef)
+            portablePhaseAdmission.store.purge()
+          },
+          onFault: (errorRef) => logToUi(`[PortablePhase] Worker stopped: ${errorRef}`, 'info'),
+        })
+      },
       catch: () => new Error('failed to configure portable phase worker'),
     })
     yield* Effect.addFinalizer(() => Effect.promise(() => portablePhaseWorker.close()))

@@ -4,6 +4,7 @@ import { dirname, isAbsolute } from "node:path"
 
 import {
   PortableAgentGraphSchema,
+  PortableCommandExecutionClaimSchema,
   PortablePhaseOperationRequestSchema,
   PortableSessionExecutionBindingSchema,
   PylonPortableCheckpointBundleSchema,
@@ -56,6 +57,10 @@ export const PylonPortablePhasePrivatePayloadSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("checkpoint-create"),
     checkpointObjectRef: Ref,
+    artifactTransport: Schema.optionalKey(Schema.Struct({
+      commandClaim: PortableCommandExecutionClaimSchema,
+      byteLimit: PositiveInt,
+    })),
     input: Schema.Struct({
       ...commonSource,
       checkpointRef: Ref,
@@ -71,6 +76,10 @@ export const PylonPortablePhasePrivatePayloadSchema = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("checkpoint-stage"),
+    artifactTransport: Schema.optionalKey(Schema.Struct({
+      commandClaim: PortableCommandExecutionClaimSchema,
+      manifestDigest: Schema.String.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/)),
+    })),
     input: Schema.Struct({
       operationRef: Ref,
       bundle: PylonPortableCheckpointBundleSchema,
@@ -179,7 +188,7 @@ const assertBindings = (
   if (payload.kind === "checkpoint-create") {
     if (
       payload.input.checkpointRef !== request.checkpointRef ||
-      payload.checkpointObjectRef !== request.checkpointObjectRef ||
+      request.checkpointObjectRef !== null ||
       payload.input.executionBinding.ownerRef !== request.ownerRef
     ) throw new PylonPortablePhaseContextAdmissionError("invalid_admission")
   } else if (payload.kind === "checkpoint-stage") {
@@ -192,6 +201,25 @@ const assertBindings = (
     if (
       payload.input.checkpointRef !== request.checkpointRef ||
       payload.input.executionBinding.ownerRef !== request.ownerRef
+    ) throw new PylonPortablePhaseContextAdmissionError("invalid_admission")
+  }
+  if ("artifactTransport" in payload && payload.artifactTransport !== undefined) {
+    const claim = payload.artifactTransport.commandClaim
+    if (
+      claim.claimRef !== request.commandExecutionClaimRef ||
+      claim.commandRef !== request.commandRef ||
+      claim.ownerRef !== request.ownerRef ||
+      claim.sessionRef !== request.sessionRef ||
+      claim.sourceGeneration + (payload.kind === "checkpoint-stage" ? 1 : 0) !==
+        request.attachmentGeneration ||
+      (payload.kind === "checkpoint-create" &&
+        (claim.sourceAttachmentRef !== request.attachmentRef ||
+          claim.executorEnvironmentRef !== request.targetRef)) ||
+      (payload.kind === "checkpoint-stage" && claim.destinationTargetRef !== request.targetRef) ||
+      claim.state !== "claimed" ||
+      claim.terminalStatus !== null ||
+      claim.outcomeRef !== null ||
+      claim.leaseExpiresAt < request.expiresAt
     ) throw new PylonPortablePhaseContextAdmissionError("invalid_admission")
   }
 }

@@ -6,6 +6,7 @@ import type {
   PortablePhaseOperationRecord,
   PortablePhaseOperationRequest,
 } from "@openagentsinc/portable-session-contract";
+import type { PylonPortableCheckpointArtifactClient } from "./portable-checkpoint-artifact-client.js";
 
 import {
   makePylonPortablePhaseOperationClient,
@@ -184,6 +185,7 @@ export type OpenPylonPortablePhaseProductionWorkerOptions = Readonly<{
   workerInstanceRef: string;
   stateDirectory: string;
   resolver: PylonPortablePhaseTargetResolver;
+  artifactTransport?: PylonPortableCheckpointArtifactClient;
   fetchImpl?: typeof globalThis.fetch;
   pollIntervalMs?: number;
   onFault?: (errorRef: PylonPortablePhaseProductionError["errorRef"]) => void;
@@ -239,7 +241,7 @@ export const openPylonPortablePhaseProductionWorker = async (
   });
   const worker = new PylonPortablePhaseWorker({
     client: preflightClient(client, options.resolver, options.onTerminalAcknowledged),
-    executor: makePylonPortablePhaseExecutor(options.resolver),
+    executor: makePylonPortablePhaseExecutor(options.resolver, options.artifactTransport),
     journal: makePylonPortablePhaseClaimJournal({
       directory: journalDirectory,
       pylonRef: options.pylonRef,

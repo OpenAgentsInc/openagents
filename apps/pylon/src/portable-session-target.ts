@@ -77,6 +77,10 @@ export type PylonPortableDestinationLifecycle = Readonly<{
 export type PylonOwnerLocalExecutionTarget = Readonly<{
   targetRef: string
   targetClass: PortableTargetClass
+  checkpointArtifacts?: Pick<
+    PylonPortableCheckpointArtifactStore,
+    "exportCustodyObject" | "importCustodyObject"
+  >
   quiesceGraph: (input: Readonly<{
     operationRef: string
     sessionRef: string
@@ -206,7 +210,10 @@ export const createPylonOwnerLocalExecutionTarget = async (input: Readonly<{
     agents: ReadonlyArray<Readonly<{ agentRef: string; controlSessionRef: string }>>
   }>
   destination?: PylonPortableDestinationLifecycle
-  checkpointArtifacts?: Pick<PylonPortableCheckpointArtifactStore, "register">
+  checkpointArtifacts?: Pick<
+    PylonPortableCheckpointArtifactStore,
+    "exportCustodyObject" | "importCustodyObject" | "register"
+  >
   desktopSourceSafePoint?: Readonly<{
     client: PylonDesktopSourceSafePointClient
     authority: Readonly<{
@@ -247,6 +254,9 @@ export const createPylonOwnerLocalExecutionTarget = async (input: Readonly<{
   return {
     targetRef: input.targetRef,
     targetClass: "owner_local",
+    ...(input.checkpointArtifacts === undefined
+      ? {}
+      : { checkpointArtifacts: input.checkpointArtifacts }),
     quiesceGraph: async (operation) => {
       if (operation.sessionRef !== input.binding.sessionRef) {
         throw new PylonPortableTargetError("invalid_binding", "portable session binding does not match")
