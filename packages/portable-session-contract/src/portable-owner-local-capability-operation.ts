@@ -97,6 +97,30 @@ export const PortableOwnerLocalCapabilityOperationRenewRequestSchema = Schema.St
 export type PortableOwnerLocalCapabilityOperationRenewRequest =
   typeof PortableOwnerLocalCapabilityOperationRenewRequestSchema.Type;
 
+/**
+ * Exact, refs-only authority presented by an owner-local Pylon when it needs
+ * the destination grant bytes for one claimed install operation. The material
+ * is never part of this request or any durable operation record.
+ */
+export const PortableOwnerLocalCapabilityMaterialRedemptionRequestSchema = Schema.Struct({
+  schema: Schema.Literal(PORTABLE_OWNER_LOCAL_CAPABILITY_OPERATION_SCHEMA_VERSION),
+  operationRef: PortableRef,
+  commandExecutionClaimRef: PortableRef,
+  claimRef: PortableRef,
+  pylonRef: PortableRef,
+  targetRef: PortableRef,
+  sessionRef: PortableRef,
+  attachmentRef: PortableRef,
+  attachmentGeneration: PositiveInt,
+  workerInstanceRef: PortableRef,
+  claimGeneration: PositiveInt,
+  expectedLeaseRevision: PositiveInt,
+  expectedLeaseExpiresAt: PortableTimestamp,
+  destinationGrantRef: PortableRef,
+}).annotate({ identifier: "PortableOwnerLocalCapabilityMaterialRedemptionRequest" });
+export type PortableOwnerLocalCapabilityMaterialRedemptionRequest =
+  typeof PortableOwnerLocalCapabilityMaterialRedemptionRequestSchema.Type;
+
 export const PortableOwnerLocalCapabilityOperationResultRequestSchema = Schema.Struct({
   schema: Schema.Literal(PORTABLE_OWNER_LOCAL_CAPABILITY_OPERATION_SCHEMA_VERSION),
   claimRef: PortableRef,

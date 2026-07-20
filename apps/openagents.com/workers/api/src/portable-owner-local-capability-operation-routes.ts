@@ -5,6 +5,11 @@ import {
   PortableOwnerLocalCapabilityOperationStoreError,
   type PostgresPortableOwnerLocalCapabilityOperationStore,
 } from "@openagentsinc/khala-sync-server";
+import {
+  PortableOwnerLocalCapabilityMaterialRedemptionRequestSchema,
+  type PortableOwnerLocalCapabilityKind,
+  type PortableOwnerLocalCapabilityMaterialRedemptionRequest,
+} from "@openagentsinc/portable-session-contract";
 import { Schema } from "effect";
 
 import { methodNotAllowed, noStoreJsonResponse } from "./http/responses";
@@ -27,6 +32,19 @@ type PortableOwnerLocalCapabilityExchange = Pick<
   "claim" | "complete" | "pending" | "read" | "renew"
 >;
 
+export type PortableOwnerLocalCapabilityMaterialAuthority = Readonly<
+  PortableOwnerLocalCapabilityMaterialRedemptionRequest & {
+    actorAgentUserId: string;
+    ownerRef: string;
+    capability: PortableOwnerLocalCapabilityKind;
+    permissionRefs: ReadonlyArray<string>;
+    operationExpiresAt: string;
+    sourceGrantRef: string;
+  }
+>;
+
+const MAX_CAPABILITY_MATERIAL_BYTES = 1024 * 1024;
+
 export type PortableOwnerLocalCapabilityOperationRouteDependencies<Bindings> = Readonly<{
   authenticate: (
     request: Request,
@@ -37,6 +55,16 @@ export type PortableOwnerLocalCapabilityOperationRouteDependencies<Bindings> = R
     env: Bindings,
     use: (exchange: PortableOwnerLocalCapabilityExchange) => Promise<A>,
   ) => Promise<A>;
+  /**
+   * Resolves the exact destination grant without an HTTP service bearer. The
+   * implementation must recheck the command claim, owner-local target/Pylon
+   * binding, and operation claim immediately before and after it reads bytes.
+   */
+  redeemDestinationGrantMaterial: (
+    env: Bindings,
+    authority: PortableOwnerLocalCapabilityMaterialAuthority,
+  ) => Promise<Uint8Array>;
+  now?: (() => Date) | undefined;
 }>;
 
 const response = (
@@ -74,6 +102,9 @@ const decodeRenewBody = Schema.decodeUnknownSync(
 const decodeResultBody = Schema.decodeUnknownSync(
   PortableOwnerLocalCapabilityOperationResultRequestSchema,
 );
+const decodeMaterialBody = Schema.decodeUnknownSync(
+  PortableOwnerLocalCapabilityMaterialRedemptionRequestSchema,
+);
 const decodePathRef = Schema.decodeUnknownSync(
   Schema.String.check(
     Schema.isMinLength(3),
@@ -87,6 +118,84 @@ const exactPathBinding = (
   pylonRef: string,
   targetRef: string,
 ): boolean => body.pylonRef === pylonRef && body.targetRef === targetRef;
+
+const materialResponse = (material: Uint8Array): HttpResponse => {
+  if (material.byteLength === 0 || material.byteLength > MAX_CAPABILITY_MATERIAL_BYTES) {
+    material.fill(0);
+    throw new Error("capability material size is invalid");
+  }
+  try {
+    // Response owns this copy. The authority-owned source buffer is cleared as
+    // soon as the one-shot transport body is constructed.
+    return new Response(material.slice(), {
+      status: 200,
+      headers: {
+        "cache-control": "no-store",
+        "content-type": "application/octet-stream",
+        pragma: "no-cache",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  } finally {
+    material.fill(0);
+  }
+};
+
+const exactMaterialAuthority = (
+  record: Awaited<ReturnType<PortableOwnerLocalCapabilityExchange["read"]>>,
+  body: PortableOwnerLocalCapabilityMaterialRedemptionRequest,
+  actorAgentUserId: string,
+  now: Date,
+): PortableOwnerLocalCapabilityMaterialAuthority | undefined => {
+  const request = record.request;
+  if (
+    request.action !== "install" ||
+    request.capability === null ||
+    record.state !== "claimed" ||
+    record.claimRef !== body.claimRef ||
+    record.workerInstanceRef !== body.workerInstanceRef ||
+    record.claimGeneration !== body.claimGeneration ||
+    record.leaseRevision !== body.expectedLeaseRevision ||
+    record.leaseExpiresAt !== body.expectedLeaseExpiresAt ||
+    request.operationRef !== body.operationRef ||
+    request.commandExecutionClaimRef !== body.commandExecutionClaimRef ||
+    request.pylonRef !== body.pylonRef ||
+    request.targetRef !== body.targetRef ||
+    request.sessionRef !== body.sessionRef ||
+    request.attachmentRef !== body.attachmentRef ||
+    request.attachmentGeneration !== body.attachmentGeneration ||
+    request.destinationGrantRef !== body.destinationGrantRef ||
+    Date.parse(record.leaseExpiresAt) <= now.getTime() ||
+    Date.parse(request.expiresAt) <= now.getTime()
+  ) {
+    return undefined;
+  }
+  return {
+    ...body,
+    actorAgentUserId,
+    ownerRef: request.ownerRef,
+    capability: request.capability,
+    permissionRefs: request.permissionRefs,
+    operationExpiresAt: request.expiresAt,
+    sourceGrantRef: request.sourceGrantRef,
+  };
+};
+
+export const portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord = (
+  record: Awaited<ReturnType<PortableOwnerLocalCapabilityExchange["read"]>>,
+  authority: PortableOwnerLocalCapabilityMaterialAuthority,
+  now: Date,
+): boolean => {
+  const exact = exactMaterialAuthority(record, authority, authority.actorAgentUserId, now);
+  return (
+    exact !== undefined &&
+    exact.ownerRef === authority.ownerRef &&
+    exact.capability === authority.capability &&
+    JSON.stringify(exact.permissionRefs) === JSON.stringify(authority.permissionRefs) &&
+    exact.operationExpiresAt === authority.operationExpiresAt &&
+    exact.sourceGrantRef === authority.sourceGrantRef
+  );
+};
 
 /**
  * Creates the authenticated outbound-poll route. The caller injects the
@@ -102,7 +211,7 @@ export const makePortableOwnerLocalCapabilityOperationRoutes = <Bindings>(
   ): Promise<HttpResponse> | undefined => {
     const url = new URL(request.url);
     const match =
-      /^\/api\/pylons\/([^/]+)\/portable-targets\/([^/]+)\/capability-operations(?:\/(claim|renew|complete)|\/reconcile\/([^/]+))?$/.exec(
+      /^\/api\/pylons\/([^/]+)\/portable-targets\/([^/]+)\/capability-operations(?:\/(claim|renew|complete)|\/reconcile\/([^/]+)|\/([^/]+)\/material)?$/.exec(
         url.pathname,
       );
     if (match === null) return undefined;
@@ -111,16 +220,20 @@ export const makePortableOwnerLocalCapabilityOperationRoutes = <Bindings>(
       let pylonRef: string;
       let targetRef: string;
       let reconcileOperationRef: string | undefined;
+      let materialOperationRef: string | undefined;
       try {
         pylonRef = decodePathRef(decodeURIComponent(match[1]!));
         targetRef = decodePathRef(decodeURIComponent(match[2]!));
         reconcileOperationRef =
           match[4] === undefined ? undefined : decodePathRef(decodeURIComponent(match[4]));
+        materialOperationRef =
+          match[5] === undefined ? undefined : decodePathRef(decodeURIComponent(match[5]));
       } catch {
         return response({ error: "invalid_path", retryable: false }, 400);
       }
       const operation = match[3];
-      const expectedMethod = operation === undefined ? "GET" : "POST";
+      const expectedMethod =
+        operation === undefined && materialOperationRef === undefined ? "GET" : "POST";
       if (request.method !== expectedMethod) return methodNotAllowed([expectedMethod]);
 
       let actor: PortableOwnerLocalCapabilityRouteActor | undefined;
@@ -148,6 +261,58 @@ export const makePortableOwnerLocalCapabilityOperationRoutes = <Bindings>(
       }
 
       try {
+        if (materialOperationRef !== undefined) {
+          let body: PortableOwnerLocalCapabilityMaterialRedemptionRequest;
+          try {
+            body = decodeMaterialBody(await readJsonObject(request), {
+              onExcessProperty: "error",
+            });
+          } catch {
+            return response({ error: "invalid_request", retryable: false }, 400);
+          }
+          if (
+            !exactPathBinding(body, pylonRef, targetRef) ||
+            body.operationRef !== materialOperationRef
+          ) {
+            return response({ error: "capability_scope_mismatch", retryable: false }, 409);
+          }
+          const exact = await dependencies.withExchange(env, (exchange) =>
+            exchange.read(actor.ownerUserId, pylonRef, targetRef, materialOperationRef),
+          );
+          const authority = exactMaterialAuthority(
+            exact,
+            body,
+            actor.agentUserId,
+            (dependencies.now ?? (() => new Date()))(),
+          );
+          if (authority === undefined || authority.ownerRef !== actor.ownerUserId) {
+            return response({ error: "capability_material_authority_lost", retryable: false }, 409);
+          }
+          const material = await dependencies.redeemDestinationGrantMaterial(env, authority);
+          try {
+            const finalRecord = await dependencies.withExchange(env, (exchange) =>
+              exchange.read(actor.ownerUserId, pylonRef, targetRef, materialOperationRef),
+            );
+            if (
+              !portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord(
+                finalRecord,
+                authority,
+                (dependencies.now ?? (() => new Date()))(),
+              )
+            ) {
+              material.fill(0);
+              return response(
+                { error: "capability_material_authority_lost", retryable: false },
+                409,
+              );
+            }
+            return materialResponse(material);
+          } catch (error) {
+            material.fill(0);
+            throw error;
+          }
+        }
+
         if (operation === undefined) {
           if (reconcileOperationRef !== undefined) {
             const exact = await dependencies.withExchange(env, (exchange) =>

@@ -4,6 +4,7 @@ import type {
   PortableOwnerLocalCapabilityOperationRenewRequest,
   PortableOwnerLocalCapabilityOperationResultRequest,
 } from "@openagentsinc/khala-sync-server";
+import type { PortableOwnerLocalCapabilityMaterialRedemptionRequest } from "@openagentsinc/portable-session-contract";
 import { describe, expect, test } from "vitest";
 
 import { makePortableOwnerLocalCapabilityOperationRoutes } from "./portable-owner-local-capability-operation-routes";
@@ -41,6 +42,23 @@ const renewBody: PortableOwnerLocalCapabilityOperationRenewRequest = {
   leaseExpiresAt: "2026-07-20T15:02:00.000Z",
 };
 
+const materialBody: PortableOwnerLocalCapabilityMaterialRedemptionRequest = {
+  schema,
+  operationRef: claimBody.operationRef,
+  commandExecutionClaimRef: "claim.ide13.command.1",
+  claimRef: claimBody.claimRef,
+  pylonRef,
+  targetRef,
+  sessionRef: claimBody.sessionRef,
+  attachmentRef: claimBody.attachmentRef,
+  attachmentGeneration: claimBody.attachmentGeneration,
+  workerInstanceRef: claimBody.workerInstanceRef,
+  claimGeneration: 1,
+  expectedLeaseRevision: 1,
+  expectedLeaseExpiresAt: claimBody.leaseExpiresAt,
+  destinationGrantRef: "grant.ide13.destination.1",
+};
+
 const completeBody: PortableOwnerLocalCapabilityOperationResultRequest = {
   schema,
   claimRef: claimBody.claimRef,
@@ -69,7 +87,7 @@ const record = (
     action: "install",
     capability: "provider",
     commandExecutionClaimRef: "claim.ide13.command.1",
-    ownerRef: "owner.ide13.capability.1",
+    ownerRef: "owner.ide13.capability",
     pylonRef,
     sessionRef: claimBody.sessionRef,
     attachmentRef: claimBody.attachmentRef,
@@ -119,10 +137,21 @@ type Calls = Readonly<{
   read: Array<
     Readonly<{ ownerRef: string; pylonRef: string; targetRef: string; operationRef: string }>
   >;
+  material: Array<PortableOwnerLocalCapabilityMaterialRedemptionRequest>;
 }>;
 
-const setup = (options: Readonly<{ authenticated?: boolean; registeredOwner?: string }> = {}) => {
-  const calls: Calls = { claim: [], renew: [], complete: [], pending: [], read: [] };
+const setup = (
+  options: Readonly<{
+    authenticated?: boolean;
+    registeredOwner?: string;
+    readRecord?: PortableOwnerLocalCapabilityOperationRecord;
+    readRecords?: ReadonlyArray<PortableOwnerLocalCapabilityOperationRecord>;
+    material?: Uint8Array;
+    materialFailure?: boolean;
+  }> = {},
+) => {
+  const calls: Calls = { claim: [], renew: [], complete: [], pending: [], read: [], material: [] };
+  let readIndex = 0;
   const routes = makePortableOwnerLocalCapabilityOperationRoutes({
     authenticate: async () =>
       options.authenticated === false
@@ -147,7 +176,9 @@ const setup = (options: Readonly<{ authenticated?: boolean; registeredOwner?: st
             targetRef: String(inputTargetRef),
             operationRef: String(operationRef),
           });
-          return record("claimed");
+          const sequenced = options.readRecords?.[readIndex];
+          readIndex += 1;
+          return sequenced ?? options.readRecord ?? record("claimed");
         },
         claim: async (ownerRef, input) => {
           calls.claim.push({
@@ -171,6 +202,12 @@ const setup = (options: Readonly<{ authenticated?: boolean; registeredOwner?: st
           return { status: "completed", operation: record("completed") };
         },
       }),
+    redeemDestinationGrantMaterial: async (_env, authority) => {
+      calls.material.push(authority);
+      if (options.materialFailure === true) throw new Error("private provider failure");
+      return options.material ?? new TextEncoder().encode("private-material");
+    },
+    now: () => new Date(now),
   });
   return { calls, route: routes.routePortableOwnerLocalCapabilityOperationRequest };
 };
@@ -236,6 +273,139 @@ describe("owner-local capability operation Pylon routes", () => {
     expect((await route(request(`${basePath}/complete`, completeBody), {}))?.status).toBe(200);
     expect(calls.renew).toEqual([{ ownerRef: "owner.ide13.capability", body: renewBody }]);
     expect(calls.complete).toEqual([{ ownerRef: "owner.ide13.capability", body: completeBody }]);
+  });
+
+  test("redeems destination grant bytes only for the exact live install claim", async () => {
+    const privateMaterial = new TextEncoder().encode("one-shot-private-material");
+    const { calls, route } = setup({ material: privateMaterial });
+    const response = await route(
+      request(`${basePath}/${materialBody.operationRef}/material`, materialBody),
+      {},
+    );
+
+    expect(response?.status).toBe(200);
+    expect(response?.headers.get("content-type")).toBe("application/octet-stream");
+    expect(response?.headers.get("cache-control")).toBe("no-store");
+    expect(response?.headers.get("pragma")).toBe("no-cache");
+    expect(calls.material).toHaveLength(1);
+    expect(calls.material[0]).toMatchObject({
+      ownerRef: "owner.ide13.capability",
+      operationRef: materialBody.operationRef,
+      commandExecutionClaimRef: materialBody.commandExecutionClaimRef,
+      destinationGrantRef: materialBody.destinationGrantRef,
+      capability: "provider",
+      permissionRefs: ["permission.provider.use"],
+    });
+    expect(privateMaterial.every((byte) => byte === 0)).toBe(true);
+    expect(await response?.text()).toBe("one-shot-private-material");
+  });
+
+  test("refuses wrong bindings and a lost operation claim without reading material", async () => {
+    const wrongBinding = setup();
+    const mismatch = await wrongBinding.route(
+      request(`${basePath}/${materialBody.operationRef}/material`, {
+        ...materialBody,
+        workerInstanceRef: "worker.ide13.capability.other",
+      }),
+      {},
+    );
+    expect(mismatch?.status).toBe(409);
+    expect(wrongBinding.calls.material).toHaveLength(0);
+
+    const lostClaim = setup({ readRecord: record("completed") });
+    const lost = await lostClaim.route(
+      request(`${basePath}/${materialBody.operationRef}/material`, materialBody),
+      {},
+    );
+    expect(lost?.status).toBe(409);
+    expect(await lost?.json()).toMatchObject({ error: "capability_material_authority_lost" });
+    expect(lostClaim.calls.material).toHaveLength(0);
+  });
+
+  test("never redeems material for a wipe operation or after the claim lease expires", async () => {
+    const wipeRecord: PortableOwnerLocalCapabilityOperationRecord = {
+      ...record("claimed"),
+      request: {
+        ...record("claimed").request,
+        action: "wipe",
+        capability: null,
+        installationRef: "installation.ide13.capability.1",
+        permissionRefs: [],
+      },
+    };
+    const wipe = setup({ readRecord: wipeRecord });
+    expect(
+      (
+        await wipe.route(
+          request(`${basePath}/${materialBody.operationRef}/material`, materialBody),
+          {},
+        )
+      )?.status,
+    ).toBe(409);
+    expect(wipe.calls.material).toHaveLength(0);
+
+    const expired = setup({
+      readRecord: { ...record("claimed"), leaseExpiresAt: "2026-07-20T14:59:59.000Z" },
+    });
+    expect(
+      (
+        await expired.route(
+          request(`${basePath}/${materialBody.operationRef}/material`, {
+            ...materialBody,
+            expectedLeaseExpiresAt: "2026-07-20T14:59:59.000Z",
+          }),
+          {},
+        )
+      )?.status,
+    ).toBe(409);
+    expect(expired.calls.material).toHaveLength(0);
+  });
+
+  test("returns only a public-safe unavailable error when material resolution fails", async () => {
+    const { route } = setup({ materialFailure: true });
+    const response = await route(
+      request(`${basePath}/${materialBody.operationRef}/material`, materialBody),
+      {},
+    );
+    expect(response?.status).toBe(503);
+    expect(await response?.json()).toEqual({
+      schema: "openagents.portable_owner_local_capability_operation_transport.v1",
+      error: "capability_exchange_unavailable",
+      retryable: true,
+    });
+  });
+
+  test("zeroes and refuses material when authority drifts during lookup", async () => {
+    const privateMaterial = new TextEncoder().encode("must-not-return-after-drift");
+    const { calls, route } = setup({
+      material: privateMaterial,
+      readRecords: [record("claimed"), record("completed")],
+    });
+    const response = await route(
+      request(`${basePath}/${materialBody.operationRef}/material`, materialBody),
+      {},
+    );
+    expect(response?.status).toBe(409);
+    expect(await response?.json()).toMatchObject({
+      error: "capability_material_authority_lost",
+    });
+    expect(calls.material).toHaveLength(1);
+    expect(calls.read).toHaveLength(2);
+    expect(privateMaterial.every((byte) => byte === 0)).toBe(true);
+  });
+
+  test("rejects a material-bearing request before the grant authority", async () => {
+    const { calls, route } = setup();
+    const response = await route(
+      request(`${basePath}/${materialBody.operationRef}/material`, {
+        ...materialBody,
+        material: "must-never-enter-the-authority",
+      }),
+      {},
+    );
+    expect(response?.status).toBe(400);
+    expect(calls.read).toHaveLength(0);
+    expect(calls.material).toHaveLength(0);
   });
 
   test("rejects path/body drift and has no enqueue or material route", async () => {
