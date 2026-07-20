@@ -856,7 +856,7 @@ describe("background agent contract registry", () => {
     )
     expect(fastFollowExpansion).toMatchObject({
       state: "enforced",
-      statement: "The policy is now go, that's unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.",
+      statement: "The policy is now go, that is unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.",
     })
     expect(fastFollowExpansion?.oracles.map(oracle => oracle.ref)).toEqual([
       "scripts/check-fast-follow.test.ts",

@@ -1,9 +1,9 @@
 {
   "schemaVersion": "openagents.desktop.ide-run-acceptance.v1",
   "issue": "IDE-10",
-  "generatedAt": "2026-07-20T00:43:20.677Z",
-  "candidateCommitSha": "3756d4360977bee4a49e3b65c3b036b2be95f882",
-  "mainEvaluationSha": "3756d4360977bee4a49e3b65c3b036b2be95f882",
+  "generatedAt": "2026-07-20T00:58:24.437Z",
+  "candidateCommitSha": "0e29dcdb59ac1fb12a82569834253e40cdac27ad",
+  "mainEvaluationSha": "0e29dcdb59ac1fb12a82569834253e40cdac27ad",
   "artifactTreeSha256": "9c974c288876da15f4978f518a680e11c412ecf74345cec2f3e2433029f491c3",
   "benchmarkRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-run.json",
   "packagedRef": "apps/openagents-desktop/benchmarks/ide/2026-07-19-ide-10-packaged-run.json",
@@ -163,7 +163,7 @@
   },
   "ownerDisposition": "unreviewed",
   "assuranceLifecycle": "proposed",
-  "rollbackTargetSha": "c4af49d153385130139de8713ec1df0b403b131e",
+  "rollbackTargetSha": "3756d4360977bee4a49e3b65c3b036b2be95f882",
   "laterGaps": [
     "IDE-11 adds the DAP debugger authority; IDE-10 does not infer debugger success from test or process state.",
     "Windows and Linux packaged target receipts remain release-lane work. The six-target native-helper table records no Rust admission or native claim.",

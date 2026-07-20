@@ -51,7 +51,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "The policy is now go, that's unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.",
+        "The policy is now go, that is unblocked. Change the fucking policy if needed. Go, get it going. rofl. This is the expansion.",
       surface: "repository-agent",
       verification:
         "The Fast Follow seed, authority docs, accepted plan, and bounded packet requirements are enforced by scripts/check-fast-follow.test.ts in the normal test sweep.",
