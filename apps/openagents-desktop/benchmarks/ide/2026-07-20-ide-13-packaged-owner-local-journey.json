@@ -3,8 +3,8 @@
   "issue": "IDE-13",
   "evidenceClass": "real_local",
   "proofClass": "packaged_shell_concurrent_owner_local_target",
-  "candidateCommitSha": "17c89b94850c1e136fe197393ec56c28c717ef94",
-  "capturedAt": "2026-07-20T18:56:14.275Z",
+  "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
+  "capturedAt": "2026-07-20T19:03:20.970Z",
   "physicalHost": {
     "operatingSystem": "darwin",
     "architecture": "arm64",
@@ -12,9 +12,9 @@
   },
   "packagedArtifact": {
     "ref": "apps/openagents-desktop/out/OpenAgents RC-darwin-arm64/OpenAgents RC.app",
-    "treeSha256": "521b9b1be1bb1e6195394fbd0e15865c3d1d5fd3a46af3807ea62aae01e7e88b",
+    "treeSha256": "60094286055916a3bef114990686f93c3f8c530a3e8cbcff979f4b8bbbc6f41f",
     "files": 362,
-    "bytes": 604026396,
+    "bytes": 604026672,
     "portabilityBoundaryPresent": true
   },
   "packagedShell": {
@@ -33,7 +33,7 @@
     "targetClass": "owner_local",
     "evidenceClass": "real_local",
     "journeyScope": "full_move",
-    "candidateCommitSha": "17c89b94850c1e136fe197393ec56c28c717ef94",
+    "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
     "targetRef": "target.ide13.owner-local.cohort.a",
     "adapterKind": "production",
     "adapterRef": "adapter.pylon.owner-local.control-session.v1",
@@ -58,7 +58,7 @@
       "dap",
       "native"
     ],
-    "replayReceiptRef": "receipt.ide13.owner-local.replay.6f099e838b137d59dee78c001988d9ed",
+    "replayReceiptRef": "receipt.ide13.owner-local.replay.f6e45d047e51b542aa6b99426eb768b2",
     "staleGenerationReceiptRef": "receipt.ide13.owner-local.stale-generation-refused.c2b7ec5970f3ec1c28050dbc5f63df07",
     "sourceCustodyDeletionReceiptRef": "receipt.portable-checkpoint-deletion.9b0cf9b58942396afa774cb146da9f44",
     "failbackCustodyDeletionReceiptRef": "receipt.portable-checkpoint-deletion.2af84106aa33c6026af86a37e98edbbb",

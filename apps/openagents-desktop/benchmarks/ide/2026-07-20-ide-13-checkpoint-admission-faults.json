@@ -1,9 +1,9 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-checkpoint-admission-faults.v1",
   "evidenceContractVersion": "openagents.desktop.ide-portable-evidence.v3",
-  "generatedAt": "2026-07-20T18:57:16.262Z",
-  "candidateCommitSha": "ebd9140cf7f5b39d14ee33e64cb29ed1723d69c5",
-  "baseCommitSha": "33bf21d8c9df4d839d2f9b9f5504b69108a7fe18",
+  "generatedAt": "2026-07-20T19:03:14.784Z",
+  "candidateCommitSha": "7c9cd53cc28d76d6cda8f6b37fc2622f02c17cb6",
+  "baseCommitSha": "fc539974a870c4f3e586f2949ca731d5f7c53a71",
   "harnessRef": "harness.ide13.checkpoint-admission.production-components.v1",
   "cases": [
     {
@@ -13,8 +13,8 @@
       "outcome": "passed",
       "productionBoundaryRef": "boundary.pylon.portable-local-rehydrator.stage",
       "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.corrupt_checkpoint",
-      "rejectionRef": "rejection.ide13.checkpoint-admission.09dd7c0239b0de9957ce1ef48c35fe7b",
-      "elapsedMilliseconds": 236.44745799999987,
+      "rejectionRef": "rejection.ide13.checkpoint-admission.294c60a9f887fa657a79eaed89775aac",
+      "elapsedMilliseconds": 131.635542,
       "deadlineMilliseconds": 30000,
       "residueCount": 0,
       "disclosure": "The harness used the production checkpoint artifact store or local rehydrator with a fixture repository and a source-controlled artifact mutation. It verified fail-closed rejection and no destination residue. This is simulator evidence, not a full owner-local move."
@@ -27,7 +27,7 @@
       "productionBoundaryRef": "boundary.pylon.portable-local-rehydrator.stage",
       "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.truncated_checkpoint",
       "rejectionRef": "rejection.ide13.checkpoint-admission.29d5dda4cbb457cc9ab3f8c6f580a2e8",
-      "elapsedMilliseconds": 236.7710830000001,
+      "elapsedMilliseconds": 131.53366599999998,
       "deadlineMilliseconds": 30000,
       "residueCount": 0,
       "disclosure": "The harness used the production checkpoint artifact store or local rehydrator with a fixture repository and a source-controlled artifact mutation. It verified fail-closed rejection and no destination residue. This is simulator evidence, not a full owner-local move."
@@ -40,7 +40,7 @@
       "productionBoundaryRef": "boundary.pylon.portable-local-rehydrator.stage",
       "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.wrong_schema_checkpoint",
       "rejectionRef": "rejection.ide13.checkpoint-admission.cb4397a8b34ce9dd0891f5f91867e0ae",
-      "elapsedMilliseconds": 236.20220900000004,
+      "elapsedMilliseconds": 131.551875,
       "deadlineMilliseconds": 30000,
       "residueCount": 0,
       "disclosure": "The harness used the production checkpoint artifact store or local rehydrator with a fixture repository and a source-controlled artifact mutation. It verified fail-closed rejection and no destination residue. This is simulator evidence, not a full owner-local move."
@@ -53,7 +53,7 @@
       "productionBoundaryRef": "boundary.pylon.portable-local-rehydrator.stage",
       "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.missing_artifact",
       "rejectionRef": "rejection.ide13.checkpoint-admission.de9106aafabe4f68c1a0381a692af761",
-      "elapsedMilliseconds": 235.60674999999992,
+      "elapsedMilliseconds": 131.26933299999996,
       "deadlineMilliseconds": 30000,
       "residueCount": 0,
       "disclosure": "The harness used the production checkpoint artifact store or local rehydrator with a fixture repository and a source-controlled artifact mutation. It verified fail-closed rejection and no destination residue. This is simulator evidence, not a full owner-local move."
@@ -66,7 +66,7 @@
       "productionBoundaryRef": "boundary.pylon.portable-destination-helper-supervisor.activate",
       "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.auth_expiry_revocation",
       "rejectionRef": "failure.pylon.portable-destination-helper.authentication_failed.a806167c3c360982cf7730a30286dd47ac7e8bef03f064450aa0f9c769920d70",
-      "elapsedMilliseconds": 0.3523330000000442,
+      "elapsedMilliseconds": 5.875334000000009,
       "deadlineMilliseconds": 30000,
       "residueCount": 0,
       "disclosure": "The harness used the production helper supervisor with a fixture authenticator. It returned expired authentication and verified fail-closed admission before helper start. This is simulator evidence, not an external credential revocation."
@@ -92,7 +92,7 @@
       "productionBoundaryRef": "boundary.pylon.portable-destination-helper-supervisor.activate",
       "injectedFaultRef": "injected-fault.ide13.checkpoint-admission.destination_boot_failure",
       "rejectionRef": "failure.pylon.portable-destination-helper.helper_start_failed.2953e68f3d018420c5bfcf06648b9712bd2506d3d68e94d521efe22fcd45391b",
-      "elapsedMilliseconds": 11.902250000000095,
+      "elapsedMilliseconds": 0.2846670000000131,
       "deadlineMilliseconds": 30000,
       "residueCount": 0,
       "disclosure": "The harness used the production helper supervisor with fixture adapters. It injected an LSP start failure after a PTY start and verified that the supervisor disposed the PTY. This is simulator evidence, not a real target boot failure."
