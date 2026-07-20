@@ -1,8 +1,8 @@
 {
   "schemaVersion": "openagents.desktop.ide-run-packaged.v1",
   "issue": "IDE-10",
-  "recordedAt": "2026-07-20T00:58:23.442Z",
-  "candidateCommitSha": "0e29dcdb59ac1fb12a82569834253e40cdac27ad",
+  "recordedAt": "2026-07-20T01:00:39.194Z",
+  "candidateCommitSha": "8e521dc8dff680dac54ec4ba380f1ac8582a1a0b",
   "artifactTreeSha256": "9c974c288876da15f4978f518a680e11c412ecf74345cec2f3e2433029f491c3",
   "artifactFiles": 360,
   "artifactBytes": 603045887,
