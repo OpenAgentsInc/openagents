@@ -176,6 +176,99 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
     leaseExpiresAt: "2026-07-20T12:10:00.000Z",
   });
 
+  const prepareDestinationActivation = async () => {
+    const fixture = await seedExecution();
+    const store = new PostgresPortablePhaseOperationStore(sql as unknown as SyncSql, () => now);
+    const reservationRef = `runner-session-reservation.${fixture.suffix}`;
+    const stage = await store.enqueue(operationRequest(fixture, "checkpoint-stage"));
+    const stageClaim = await store.claim(
+      claimRequest(stage.operation.request, `stage.${fixture.suffix}`),
+    );
+    if (stageClaim.operation.claimRef === null) throw new Error("stage claim ref is missing");
+    await store.complete({
+      schema: PORTABLE_PHASE_OPERATION_SCHEMA_VERSION,
+      claimRef: stageClaim.operation.claimRef,
+      sessionRef: fixture.sessionRef,
+      attachmentRef: stage.operation.request.attachmentRef,
+      attachmentGeneration: 2,
+      pylonRef,
+      targetRef: destinationTargetRef,
+      workerInstanceRef: `worker.ide13.phase.stage.${fixture.suffix}`,
+      claimGeneration: 1,
+      expectedLeaseRevision: 1,
+      resultRef: `result.ide13.phase.stage.${fixture.suffix}`,
+      resultStatus: "completed" as const,
+      checkpointRef: null,
+      checkpointObjectRef: null,
+      checkpointDigest: null,
+      checkpointManifestDigest: null,
+      destinationRunnerSessionReservationRef: reservationRef,
+      destinationActivationReceipt: null,
+      evidenceRefs: [`evidence.ide13.phase.stage.${fixture.suffix}`],
+      errorRef: null,
+      completedAt: now,
+    });
+
+    const operation = await store.enqueue(operationRequest(fixture, "destination-activate"));
+    const claimed = await store.claim(
+      claimRequest(operation.operation.request, `activation.${fixture.suffix}`),
+    );
+    if (claimed.operation.claimRef === null) throw new Error("phase claim ref is missing");
+    const activationReceipt = {
+      schema: "openagents.ide_portable_destination_activation.v1" as const,
+      receiptRef: `receipt.ide13.phase.activation.${fixture.suffix}`,
+      operationRef: operation.operation.request.operationRef,
+      sessionRef: fixture.sessionRef,
+      checkpointRef: operation.operation.request.checkpointRef,
+      destinationTargetRef,
+      destinationAttachmentRef: operation.operation.request.attachmentRef,
+      destinationRunnerSessionReservationRef: reservationRef,
+      destinationGeneration: 2,
+      authentication: {
+        state: "reauthenticated" as const,
+        policyRef: "policy.portable.destination.owner_managed.v1",
+        evidenceRef: `evidence.ide13.phase.auth.${fixture.suffix}`,
+        observedAt: now,
+        expiresAt: "2026-07-20T12:15:00.000Z",
+      },
+      helpersObservedAt: now,
+      helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map((kind) => ({
+        kind,
+        readiness: "unsupported" as const,
+        instanceRef: null,
+        versionRef: null,
+        omissionRef: `omission.ide13.phase.${kind}.${fixture.suffix}`,
+        evidenceRefs: [],
+      })),
+      activatedAgentRefs: [`agent.ide13.phase.root.${fixture.suffix}`],
+      acceptedWorkRefs: [],
+      evidenceRefs: [`evidence.ide13.phase.activation.${fixture.suffix}`],
+    };
+    const completion = {
+      schema: PORTABLE_PHASE_OPERATION_SCHEMA_VERSION,
+      claimRef: claimed.operation.claimRef,
+      sessionRef: fixture.sessionRef,
+      attachmentRef: operation.operation.request.attachmentRef,
+      attachmentGeneration: 2,
+      pylonRef,
+      targetRef: destinationTargetRef,
+      workerInstanceRef: `worker.ide13.phase.activation.${fixture.suffix}`,
+      claimGeneration: 1,
+      expectedLeaseRevision: 1,
+      resultRef: `result.ide13.phase.activation.${fixture.suffix}`,
+      resultStatus: "completed" as const,
+      checkpointRef: null,
+      checkpointObjectRef: null,
+      checkpointDigest: null,
+      checkpointManifestDigest: null,
+      destinationActivationReceipt: activationReceipt,
+      evidenceRefs: activationReceipt.evidenceRefs,
+      errorRef: null,
+      completedAt: now,
+    };
+    return { activationReceipt, completion, fixture, operation, reservationRef, store };
+  };
+
   test("enqueues byte-idempotently and exposes only the exact Pylon target queue", async () => {
     const fixture = await seedExecution();
     const store = new PostgresPortablePhaseOperationStore(sql as unknown as SyncSql, () => now);
@@ -418,64 +511,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
   });
 
   test("accepts only an exact complete destination activation receipt", async () => {
-    const fixture = await seedExecution();
-    const store = new PostgresPortablePhaseOperationStore(sql as unknown as SyncSql, () => now);
-    const operation = await store.enqueue(operationRequest(fixture, "destination-activate"));
-    const claimed = await store.claim(claimRequest(operation.operation.request, "activation"));
-    if (claimed.operation.claimRef === null) throw new Error("phase claim ref is missing");
-    const activationReceipt = {
-      schema: "openagents.ide_portable_destination_activation.v1" as const,
-      receiptRef: `receipt.ide13.phase.activation.${fixture.suffix}`,
-      operationRef: operation.operation.request.operationRef,
-      sessionRef: fixture.sessionRef,
-      checkpointRef: operation.operation.request.checkpointRef,
-      destinationTargetRef,
-      destinationAttachmentRef: operation.operation.request.attachmentRef,
-      destinationRunnerSessionReservationRef:
-        `runner-session-reservation.${fixture.suffix}`,
-      destinationGeneration: 2,
-      authentication: {
-        state: "reauthenticated" as const,
-        policyRef: "policy.portable.destination.owner_managed.v1",
-        evidenceRef: `evidence.ide13.phase.auth.${fixture.suffix}`,
-        observedAt: now,
-        expiresAt: "2026-07-20T12:15:00.000Z",
-      },
-      helpersObservedAt: now,
-      helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map((kind) => ({
-        kind,
-        readiness: "unsupported" as const,
-        instanceRef: null,
-        versionRef: null,
-        omissionRef: `omission.ide13.phase.${kind}.${fixture.suffix}`,
-        evidenceRefs: [],
-      })),
-      activatedAgentRefs: [`agent.ide13.phase.root.${fixture.suffix}`],
-      acceptedWorkRefs: [],
-      evidenceRefs: [`evidence.ide13.phase.activation.${fixture.suffix}`],
-    };
-    const completion = {
-      schema: PORTABLE_PHASE_OPERATION_SCHEMA_VERSION,
-      claimRef: claimed.operation.claimRef,
-      sessionRef: fixture.sessionRef,
-      attachmentRef: operation.operation.request.attachmentRef,
-      attachmentGeneration: 2,
-      pylonRef,
-      targetRef: destinationTargetRef,
-      workerInstanceRef: "worker.ide13.phase.activation",
-      claimGeneration: 1,
-      expectedLeaseRevision: 1,
-      resultRef: `result.ide13.phase.activation.${fixture.suffix}`,
-      resultStatus: "completed" as const,
-      checkpointRef: null,
-      checkpointObjectRef: null,
-      checkpointDigest: null,
-      checkpointManifestDigest: null,
-      destinationActivationReceipt: activationReceipt,
-      evidenceRefs: activationReceipt.evidenceRefs,
-      errorRef: null,
-      completedAt: now,
-    };
+    const { activationReceipt, completion, store } = await prepareDestinationActivation();
     await expect(
       store.complete({
         ...completion,
@@ -499,6 +535,132 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
     expect(await store.complete(completion)).toEqual({
       status: "replayed",
       operation: completed.operation,
+    });
+  });
+
+  test("rejects a destination activation without a completed checkpoint stage", async () => {
+    const fixture = await seedExecution();
+    const store = new PostgresPortablePhaseOperationStore(sql as unknown as SyncSql, () => now);
+    const activation = await store.enqueue(operationRequest(fixture, "destination-activate"));
+    const claimed = await store.claim(
+      claimRequest(activation.operation.request, `missing-stage.${fixture.suffix}`),
+    );
+    if (claimed.operation.claimRef === null) throw new Error("activation claim ref is missing");
+    const prepared = await prepareDestinationActivation();
+    await expect(
+      store.complete({
+        ...prepared.completion,
+        claimRef: claimed.operation.claimRef,
+        sessionRef: fixture.sessionRef,
+        attachmentRef: activation.operation.request.attachmentRef,
+        workerInstanceRef: `worker.ide13.phase.missing-stage.${fixture.suffix}`,
+        resultRef: `result.ide13.phase.activation.missing-stage.${fixture.suffix}`,
+        destinationActivationReceipt: {
+          ...prepared.activationReceipt,
+          receiptRef: `receipt.ide13.phase.activation.missing-stage.${fixture.suffix}`,
+          operationRef: activation.operation.request.operationRef,
+          sessionRef: fixture.sessionRef,
+          checkpointRef: activation.operation.request.checkpointRef,
+          destinationAttachmentRef: activation.operation.request.attachmentRef,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  test("rejects swapped, stale, and foreign checkpoint-stage bindings", async () => {
+    const swapped = await prepareDestinationActivation();
+    const other = await prepareDestinationActivation();
+    await sql`
+      UPDATE khala_sync_portable_phase_operations
+      SET result_destination_runner_session_reservation_ref = ${other.reservationRef}
+      WHERE command_execution_claim_ref = ${swapped.fixture.executionClaimRef}
+        AND kind = 'checkpoint-stage'
+    `;
+    await expect(swapped.store.complete(swapped.completion)).rejects.toMatchObject({
+      code: "invalid",
+    });
+
+    const stale = await prepareDestinationActivation();
+    await sql`
+      UPDATE khala_sync_portable_phase_operations
+      SET attachment_generation = 1
+      WHERE command_execution_claim_ref = ${stale.fixture.executionClaimRef}
+        AND kind = 'checkpoint-stage'
+    `;
+    await expect(stale.store.complete(stale.completion)).rejects.toMatchObject({
+      code: "conflict",
+    });
+
+    const foreign = await prepareDestinationActivation();
+    await sql`
+      UPDATE khala_sync_portable_phase_operations
+      SET owner_user_id = 'owner.ide13.phase.foreign'
+      WHERE command_execution_claim_ref = ${foreign.fixture.executionClaimRef}
+        AND kind = 'checkpoint-stage'
+    `;
+    await expect(foreign.store.complete(foreign.completion)).rejects.toMatchObject({
+      code: "conflict",
+    });
+  });
+
+  test("rejects duplicate checkpoint-stage rows and expired command authority", async () => {
+    const duplicate = await prepareDestinationActivation();
+    const uniqueConstraints: Array<{ conname: string }> = await sql`
+      SELECT conname
+      FROM pg_constraint
+      WHERE conrelid = 'khala_sync_portable_phase_operations'::regclass
+        AND contype = 'u'
+        AND pg_get_constraintdef(oid) LIKE '%command_execution_claim_ref, kind%'
+    `;
+    const uniqueConstraint = uniqueConstraints[0]?.conname;
+    if (uniqueConstraint === undefined) throw new Error("phase uniqueness constraint is missing");
+    const quotedUniqueConstraint = `"${uniqueConstraint.replaceAll('"', '""')}"`;
+    await sql.unsafe(
+      `ALTER TABLE khala_sync_portable_phase_operations DROP CONSTRAINT ${quotedUniqueConstraint}`,
+    );
+    try {
+      await sql`
+        INSERT INTO khala_sync_portable_phase_operations
+        SELECT operation_ref || '.duplicate', request_fingerprint, command_ref,
+               command_execution_claim_ref, owner_user_id, session_ref, attachment_ref,
+               attachment_generation, target_ref, pylon_ref, kind, checkpoint_ref,
+               checkpoint_object_ref, checkpoint_digest, request_evidence_refs_json,
+               request_json, expires_at, state, claim_ref || '.duplicate', claim_fingerprint,
+               worker_instance_ref, claim_generation, lease_revision, claimed_at,
+               lease_expires_at, result_ref || '.duplicate', result_fingerprint, result_status,
+               result_checkpoint_ref, result_checkpoint_object_ref, result_checkpoint_digest,
+               result_evidence_refs_json, error_ref, completed_at, created_at, updated_at,
+               result_destination_activation_receipt_json, result_checkpoint_manifest_digest,
+               result_destination_runner_session_reservation_ref
+        FROM khala_sync_portable_phase_operations
+        WHERE command_execution_claim_ref = ${duplicate.fixture.executionClaimRef}
+          AND kind = 'checkpoint-stage'
+      `;
+      await expect(duplicate.store.complete(duplicate.completion)).rejects.toMatchObject({
+        code: "conflict",
+      });
+    } finally {
+      await sql`
+        DELETE FROM khala_sync_portable_phase_operations
+        WHERE operation_ref = ${`operation.ide13.phase.${duplicate.fixture.suffix}.checkpoint-stage.duplicate`}
+      `;
+      await sql.unsafe(
+        `ALTER TABLE khala_sync_portable_phase_operations ADD CONSTRAINT ${quotedUniqueConstraint} UNIQUE (command_execution_claim_ref, kind)`,
+      );
+    }
+
+    const expired = await prepareDestinationActivation();
+    await sql`
+      UPDATE khala_sync_portable_command_executions
+      SET lease_expires_at = '2026-07-20T12:05:00.000Z'
+      WHERE claim_ref = ${expired.fixture.executionClaimRef}
+    `;
+    const laterStore = new PostgresPortablePhaseOperationStore(
+      sql as unknown as SyncSql,
+      () => "2026-07-20T12:06:00.000Z",
+    );
+    await expect(laterStore.complete(expired.completion)).rejects.toMatchObject({
+      code: "expired",
     });
   });
 

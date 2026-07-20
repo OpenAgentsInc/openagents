@@ -74,6 +74,7 @@ type ExecutionBindingRow = {
   destination_target_ref: string;
   executor_environment_ref: string;
   state: string;
+  claimed_at: Date | string;
   lease_expires_at: Date | string;
 };
 
@@ -258,6 +259,31 @@ const selectByPhase = async (
   return rows[0];
 };
 
+const selectExecutionBinding = async (
+  sql: SyncTransactionSql,
+  commandExecutionClaimRef: string,
+): Promise<ExecutionBindingRow | undefined> => {
+  const rows: ExecutionBindingRow[] = await sql`
+    SELECT command_ref, owner_user_id, session_ref, source_attachment_ref,
+           source_generation, destination_target_ref, executor_environment_ref,
+           state, claimed_at, lease_expires_at
+    FROM khala_sync_portable_command_executions
+    WHERE claim_ref = ${commandExecutionClaimRef}
+    FOR UPDATE
+  `;
+  return rows[0];
+};
+
+const selectDestinationStageRows = async (
+  sql: SyncTransactionSql,
+  commandExecutionClaimRef: string,
+): Promise<ReadonlyArray<Row>> => sql`
+  SELECT * FROM khala_sync_portable_phase_operations
+  WHERE command_execution_claim_ref = ${commandExecutionClaimRef}
+    AND kind = 'checkpoint-stage'
+  FOR UPDATE
+`;
+
 const isSourceKind = (kind: string): boolean =>
   kind === "quiesce" || kind === "checkpoint-create" || kind === "source-cleanup";
 
@@ -287,15 +313,7 @@ export class PostgresPortablePhaseOperationStore {
     const requestFingerprint = fingerprint(request);
 
     return this.sql.begin(async (tx) => {
-      const bindings: ExecutionBindingRow[] = await tx`
-        SELECT command_ref, owner_user_id, session_ref, source_attachment_ref,
-               source_generation, destination_target_ref, executor_environment_ref,
-               state, lease_expires_at
-        FROM khala_sync_portable_command_executions
-        WHERE claim_ref = ${request.commandExecutionClaimRef}
-        FOR UPDATE
-      `;
-      const binding = bindings[0];
+      const binding = await selectExecutionBinding(tx, request.commandExecutionClaimRef);
       if (!binding) {
         throw new PortablePhaseOperationStoreError(
           "not_found",
@@ -554,20 +572,6 @@ export class PostgresPortablePhaseOperationStore {
           "portable phase claim does not exist",
         );
       this.assertMutationBinding(row, request);
-      const targetRows: Array<{ target_class: string }> = await tx`
-        SELECT target_class
-        FROM khala_sync_portable_targets
-        WHERE target_ref = ${row.target_ref}
-        FOR SHARE
-      `;
-      const targetClass = targetRows[0]?.target_class;
-      if (targetClass === undefined) {
-        throw new PortablePhaseOperationStoreError(
-          "conflict",
-          "portable phase target authority does not exist",
-        );
-      }
-      this.assertResultShape(row, request, targetClass);
       const revision = requiredPositive(row.lease_revision, "lease revision");
       const sameResult =
         (row.state === "completed" || row.state === "failed") &&
@@ -593,6 +597,35 @@ export class PostgresPortablePhaseOperationStore {
           "portable phase lease revision is stale",
         );
       }
+      let executionBinding: ExecutionBindingRow | undefined;
+      if (request.resultStatus === "completed" && row.kind === "destination-activate") {
+        executionBinding = await selectExecutionBinding(tx, row.command_execution_claim_ref);
+        if (executionBinding === undefined) {
+          throw new PortablePhaseOperationStoreError(
+            "not_found",
+            "portable command execution claim does not exist",
+          );
+        }
+        this.assertExecutionBinding(rowToRecord(row).request, executionBinding, now);
+      }
+      const targetRows: Array<{ target_class: string }> = await tx`
+        SELECT target_class
+        FROM khala_sync_portable_targets
+        WHERE target_ref = ${row.target_ref}
+        FOR SHARE
+      `;
+      const targetClass = targetRows[0]?.target_class;
+      if (targetClass === undefined) {
+        throw new PortablePhaseOperationStoreError(
+          "conflict",
+          "portable phase target authority does not exist",
+        );
+      }
+      const destinationRunnerSessionReservationRef =
+        executionBinding === undefined
+          ? null
+          : await this.destinationStageReservation(tx, row, request, executionBinding);
+      this.assertResultShape(row, request, targetClass, destinationRunnerSessionReservationRef);
       if (
         new Date(request.completedAt) > now ||
         row.claimed_at === null ||
@@ -792,6 +825,7 @@ export class PostgresPortablePhaseOperationStore {
     row: Row,
     request: ReturnType<typeof decodeResultRequest>,
     targetClass: string,
+    destinationRunnerSessionReservationRef: string | null,
   ): void {
     const hasCompleteCheckpoint =
       request.checkpointRef !== null &&
@@ -833,7 +867,11 @@ export class PostgresPortablePhaseOperationStore {
     }
     const receipt = request.destinationActivationReceipt;
     if (request.resultStatus === "completed" && row.kind === "destination-activate") {
-      if (receipt === null || row.checkpoint_ref === null) {
+      if (
+        receipt === null ||
+        row.checkpoint_ref === null ||
+        destinationRunnerSessionReservationRef === null
+      ) {
         throw new PortablePhaseOperationStoreError(
           "invalid",
           "portable destination activation result is incomplete",
@@ -849,8 +887,7 @@ export class PostgresPortablePhaseOperationStore {
           checkpointRef: row.checkpoint_ref,
           destinationTargetRef: row.target_ref,
           destinationAttachmentRef: row.attachment_ref,
-          destinationRunnerSessionReservationRef:
-            receipt.destinationRunnerSessionReservationRef,
+          destinationRunnerSessionReservationRef: destinationRunnerSessionReservationRef,
           destinationGeneration: requiredPositive(
             row.attachment_generation,
             "attachment generation",
@@ -870,5 +907,54 @@ export class PostgresPortablePhaseOperationStore {
         "portable phase result has an unexpected destination activation receipt",
       );
     }
+  }
+
+  private async destinationStageReservation(
+    tx: SyncTransactionSql,
+    activation: Row,
+    request: ReturnType<typeof decodeResultRequest>,
+    executionBinding: ExecutionBindingRow,
+  ): Promise<string> {
+    const stages = await selectDestinationStageRows(tx, activation.command_execution_claim_ref);
+    if (stages.length !== 1) {
+      throw new PortablePhaseOperationStoreError(
+        "conflict",
+        "portable destination activation requires one exact checkpoint stage",
+      );
+    }
+    const stage = stages[0];
+    const reservationRef = stage?.result_destination_runner_session_reservation_ref;
+    const activationGeneration = requiredPositive(
+      activation.attachment_generation,
+      "attachment generation",
+    );
+    if (
+      stage === undefined ||
+      stage.state !== "completed" ||
+      stage.result_status !== "completed" ||
+      reservationRef === null ||
+      stage.command_ref !== activation.command_ref ||
+      stage.owner_user_id !== activation.owner_user_id ||
+      stage.owner_user_id !== executionBinding.owner_user_id ||
+      stage.session_ref !== activation.session_ref ||
+      stage.session_ref !== executionBinding.session_ref ||
+      stage.target_ref !== activation.target_ref ||
+      stage.target_ref !== executionBinding.destination_target_ref ||
+      stage.attachment_ref !== activation.attachment_ref ||
+      requiredPositive(stage.attachment_generation, "stage attachment generation") !==
+        activationGeneration ||
+      stage.checkpoint_ref !== activation.checkpoint_ref ||
+      stage.checkpoint_object_ref !== activation.checkpoint_object_ref ||
+      stage.checkpoint_digest !== activation.checkpoint_digest ||
+      stage.completed_at === null ||
+      new Date(stage.completed_at) < new Date(executionBinding.claimed_at) ||
+      new Date(stage.completed_at) > new Date(request.completedAt)
+    ) {
+      throw new PortablePhaseOperationStoreError(
+        "conflict",
+        "portable destination checkpoint stage binding is not exact",
+      );
+    }
+    return reservationRef;
   }
 }
