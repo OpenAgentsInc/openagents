@@ -26732,12 +26732,13 @@
     },
     {
       "path": "docs/ide/2026-07-20-ide-12-effect-source-control.md",
-      "sha256": "8fa1efcbd8d7c8647783fff32089a3d983c495caa00f861910234412eb6fb3cf",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "b789b00104034107176ffba4b71e115f28456f95345b49d18438c11fd8c357d6",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -26745,7 +26746,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {

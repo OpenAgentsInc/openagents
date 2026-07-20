@@ -2,7 +2,7 @@
 
 Date: 2026-07-20  
 Issue: [#9040](https://github.com/OpenAgentsInc/openagents/issues/9040)  
-State: implemented candidate; independent review is not complete
+State: implemented candidate. Independent review is not complete.
 
 ## Result
 
@@ -47,17 +47,17 @@ renderer-requested change.
 The implementation supplies these operations:
 
 - refresh and exact status for tracked, untracked, ignored, binary, large,
-  rename, conflict, submodule, LFS, detached-HEAD, and worktree facts;
-- full-file and partial hunk or line stage and unstage;
+  rename, conflict, submodule, LFS, detached-HEAD, and worktree facts.
+- full-file and partial hunk or line stage and unstage.
 - destructive discard with an exact preview, a required approval for an agent,
-  a private recovery patch, and recovery after a service restart;
+  a private recovery patch, and recovery after a service restart.
 - commit, amend, branch, tag, switch, merge, rebase, cherry-pick, revert,
-  continue, and abort;
+  continue, and abort.
 - fetch, pull, and push with prompt-disabled execution, exact refspec policy,
-  non-fast-forward facts, and an observed remote-OID postcondition;
+  non-fast-forward facts, and an observed remote-OID postcondition.
 - worktree create, inspect, repair, and safe remove with ownership, occupancy,
-  dirty, changed, and unpushed facts;
-- version-bound history and blame; and
+  dirty, changed, and unpushed facts.
+- version-bound history and blame.
 - decoded pull-request, commit, review, check, mergeability, merge, and
   freshness facts.
 

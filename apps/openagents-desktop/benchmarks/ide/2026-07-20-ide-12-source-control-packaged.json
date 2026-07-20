@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "openagents.desktop.ide-source-control-packaged.v1",
+  "issue": "IDE-12",
+  "candidateCommitSha": "4203a5984217344d938f3c2c82167cc22df965a1",
+  "recordedAt": "2026-07-20T06:49:12.924Z",
+  "artifactTreeSha256": "6cc311393cc45fe4d1f5b69a2456f4f7c2f3b1649c9282461f56a065c3d5cb89",
+  "target": "darwin-arm64",
+  "checks": {
+    "stage": true,
+    "commit": true,
+    "pushRemoteOid": true,
+    "discard": true,
+    "restartSafeRecovery": true,
+    "deliveryDistinct": true,
+    "keyboardFocus": true,
+    "privatePathsWithheld": true
+  },
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-12-source-control-packaged.png",
+  "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-12-source-control-packaged-trace.json",
+  "passed": true
+}
