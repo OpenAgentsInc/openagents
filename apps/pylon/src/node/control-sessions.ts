@@ -1979,6 +1979,20 @@ export function createControlSessionActions(options: {
         record.workspaceRetentionReasonRef = null
         record.portableRetainWorkspace = true
       }
+      if (options.portableLedger !== undefined) {
+        await Effect.runPromise(options.portableLedger.activateControlBindingDestination({
+          sessionRef: input.sessionRef,
+          sourceAttachmentRef: staged.sourceAttachmentRef,
+          sourceGeneration: staged.sourceGeneration,
+          destinationAttachmentRef: input.destinationAttachmentRef,
+          destinationGeneration: input.destinationGeneration,
+          runtimeInstanceRef: portableRuntimeInstanceRef,
+          agents: binding.input.agents.map(agent => ({
+            ...agent,
+            workspaceRef: input.workspaceRef,
+          })),
+        }))
+      }
       binding.input = {
         ...binding.input,
         attachmentRef: input.destinationAttachmentRef,

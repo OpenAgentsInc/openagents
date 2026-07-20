@@ -400,7 +400,7 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
           helpers: activation.helpers,
           activatedAgentRefs: operation.stage.stagedAgentRefs,
           acceptedWorkRefs: [],
-          evidenceRefs: [operation.authorityEvidenceRef, ...activation.evidenceRefs],
+          evidenceRefs: [...new Set([operation.authorityEvidenceRef, ...activation.evidenceRefs])],
         }, {
           operationRef: operation.operationRef,
           sessionRef: operation.stage.sessionRef,

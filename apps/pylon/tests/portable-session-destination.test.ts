@@ -71,7 +71,9 @@ test("concrete rehydrator restores private repository bytes and activates the re
         },
         helpersObservedAt: new Date().toISOString(),
         helpers: unsupportedHelpers(),
-        evidenceRefs: ["receipt.port03.concrete.activated"],
+        // The production helper supervisor includes the authentication evidence.
+        // The rehydrator must preserve it exactly once when it adds authority evidence.
+        evidenceRefs: [input.authorityEvidenceRef, "receipt.port03.concrete.activated"],
       }
     },
     abortDestination: async () => ({ evidenceRefs: ["receipt.port03.concrete.aborted"] }),
@@ -382,7 +384,7 @@ const createRehydrator = (input: Readonly<{
         helpers: unsupportedHelpers(),
         activatedAgentRefs: operation.stage.stagedAgentRefs,
         acceptedWorkRefs: [],
-        evidenceRefs: ["receipt.port03.local.activated"],
+        evidenceRefs: [operation.authorityEvidenceRef, "receipt.port03.local.activated"],
       }
       activationResults.set(operation.operationRef, result)
       return result
@@ -486,6 +488,7 @@ describe("owner-local portable destination rehydration", () => {
     }
     const activated = await lifecycle.activate(activationInput)
     expect([...activated.activatedAgentRefs].sort()).toEqual(bundle.graph.nodes.map(node => node.agentRef).sort())
+    expect(activated.evidenceRefs.filter(ref => ref === authority.authorityEvidenceRef)).toHaveLength(1)
     expect(runtime.acceptsWork()).toBe(true)
     expect(runtime.activatedRunnerReservationRefs()).toEqual([
       staged.destinationRunnerSessionReservationRef,

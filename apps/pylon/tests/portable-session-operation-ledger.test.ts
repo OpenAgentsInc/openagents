@@ -37,6 +37,77 @@ const register = (ledger: PylonPortableSessionOperationLedger, suffix: string) =
   }))
 
 describe("owner-local Pylon portable operation ledger", () => {
+  test("advances one cleaned control binding to an exact destination and replays it", async () => {
+    const { database, ledger } = await fileLedger()
+    const initial = await register(ledger, "control-destination")
+    const runtimeInstanceRef = "runtime.port03.control-destination"
+    const sourceAgents = [{
+      agentRef: "agent.port03.control-destination.root",
+      controlSessionRef: "session.port03.control-destination.root",
+      workspaceRef: "workspace.port03.control-destination.source",
+    }]
+    await Effect.runPromise(ledger.persistControlBinding({
+      sessionRef: initial.sessionRef,
+      attachmentRef: initial.attachmentRef,
+      generation: 1,
+      runtimeInstanceRef,
+      agents: sourceAgents,
+    }))
+    await Effect.runPromise(ledger.markControlBindingQuiesced({
+      sessionRef: initial.sessionRef,
+      attachmentRef: initial.attachmentRef,
+      generation: 1,
+      runtimeInstanceRef,
+    }))
+    await Effect.runPromise(ledger.quiesceGeneration({
+      operationRef: "operation.port03.control-destination.quiesce",
+      sessionRef: initial.sessionRef,
+      attachmentRef: initial.attachmentRef,
+      generation: 1,
+      evidenceRefs: ["evidence.port03.control-destination.quiesced"],
+    }))
+    await Effect.runPromise(ledger.markControlBindingCleaned({
+      sessionRef: initial.sessionRef,
+      attachmentRef: initial.attachmentRef,
+      generation: 1,
+      runtimeInstanceRef,
+    }))
+    const destination = {
+      sessionRef: initial.sessionRef,
+      sourceAttachmentRef: initial.attachmentRef,
+      sourceGeneration: 1,
+      destinationAttachmentRef: "attachment.port03.control-destination.2",
+      destinationGeneration: 2,
+      runtimeInstanceRef,
+      agents: sourceAgents.map(agent => ({
+        agentRef: agent.agentRef,
+        controlSessionRef: agent.controlSessionRef,
+        workspaceRef: "workspace.port03.control-destination.destination",
+      })),
+    }
+    expect(await Effect.runPromise(ledger.activateControlBindingDestination(destination))).toMatchObject({
+      status: "completed",
+      binding: {
+        attachmentRef: destination.destinationAttachmentRef,
+        generation: 2,
+        state: "accepting",
+        agents: [{ processLifecycle: "settled", workspaceLifecycle: "retained" }],
+      },
+    })
+    expect(await Effect.runPromise(ledger.activateControlBindingDestination(destination))).toMatchObject({
+      status: "replayed",
+    })
+    await expect(Effect.runPromise(ledger.activateControlBindingDestination({
+      ...destination,
+      agents: destination.agents.map(agent => ({ ...agent, workspaceRef: "workspace.port03.conflict" })),
+    }))).rejects.toMatchObject({ reason: "conflicting_replay" })
+    await expect(Effect.runPromise(ledger.activateControlBindingDestination({
+      ...destination,
+      destinationGeneration: 3,
+    }))).rejects.toMatchObject({ reason: "stale_generation" })
+    database.close()
+  })
+
   test("persists quiescence, exact operation replay, and one-generation activation across reopen", async () => {
     const first = await fileLedger()
     const initial = await register(first.ledger, "move")
