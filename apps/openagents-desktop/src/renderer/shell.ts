@@ -49,6 +49,7 @@ import {
 } from "@effect-native/core"
 import { Effect, Schema, SubscriptionRef } from "@effect-native/core/effect"
 import { compareDesktopThreadsByCreatedAt, type DesktopMessageMeta, type DesktopMeterSnapshot, type DesktopQuestionCard, type DesktopRuntimeCard, type DesktopThread } from "../chat-contract.ts"
+import type { DesktopTurnSubmitResult } from "../turn/desktop-turn-ipc.ts"
 import {
   CodexReasoningEffortSchema,
   LocalModelSchema,
@@ -2208,65 +2209,27 @@ export type DesktopFullAutoRendererHost = Readonly<{
 }>
 
 /**
- * OpenAgents on-device answer host (owner directive 2026-07-20). When Apple FM
- * is available, a submitted OpenAgents turn is answered by the local, no-cost
- * on-device model instead of the fixed "Stand by." acknowledgement. The host is
- * a bounded, advisory wrapper over the Apple FM bridge: `respond` runs one
- * bounded on-device turn and returns the reply text, or null when the model
- * refuses, fails, or is unavailable. It holds no authority — it only produces a
- * chat reply, and the availability gate is the boot-sequence probe already in
- * shell state (`appleFmBoot`), so no extra probe runs per turn.
+ * AFS-03 renderer turn host. The local "OpenAgents authority" turn now submits
+ * ONE typed intent (thread ref + bounded message) through the shared turn
+ * kernel; the HOST owns the route decision and the authoritative prompt. The
+ * renderer builds no prompt and makes no route decision — it only sends the
+ * user's message and renders the compact terminal facts. `submit` resolves the
+ * effective provider, placement, data destination, usage truth, and (when
+ * answered) the assistant text; every non-answered outcome preserves the user
+ * entry and the renderer falls back to the fixed "Stand by." acknowledgement.
  */
-export type DesktopAppleFmChatHost = Readonly<{
-  respond: (prompt: string) => Promise<string | null>
+export type DesktopTurnRendererHost = Readonly<{
+  submit: (input: Readonly<{ threadRef: string; message: string }>) => Promise<DesktopTurnSubmitResult>
 }>
-const unavailableAppleFmChatHost: DesktopAppleFmChatHost = { respond: async () => null }
-
-/**
- * The Apple FM prompt hard cap mirrors AppleFmStartTurnRequestSchema (4000
- * chars). Leave a small margin so the flattened prompt never trips the schema.
- */
-const APPLE_FM_PROMPT_MAX_CHARS = 3900
-
-/**
- * Build one flattened Apple FM prompt from the OpenAgents conversation. The
- * on-device model has a small context window, so the history is truncated to
- * fit within `maxChars`: a short preamble plus the most recent turns, always
- * keeping the latest user message, oldest turns dropped first. If even the
- * newest turn overflows, its text is hard-truncated.
- */
-export const buildOpenAgentsAppleFmPrompt = (
-  notes: ReadonlyArray<DesktopNoteEntry>,
-  maxChars: number = APPLE_FM_PROMPT_MAX_CHARS,
-): string => {
-  // Owner directive 2026-07-20: the on-device model must not lie about actions
-  // it cannot take — but the earlier all-prohibition preamble backfired, pushing
-  // this small model into a refusal spiral (it rejected even "what can you do"
-  // with canned "as an LLM I cannot comply"). Reframe positive-first: it IS a
-  // helpful assistant that answers normally; the honesty limit is a short,
-  // specific note (no tools, so never claim to have acted, and don't make things
-  // up), NOT a wall of "cannot" that trips the refusal reflex.
-  const preamble =
-    "You are OpenAgents, a helpful, friendly assistant running locally on this device. " +
-    "Answer the user's questions and chat naturally, directly, and concisely — always try to be " +
-    "helpful and give a real answer. You are text-only and have no tools: you cannot run commands, " +
-    "read or edit files, browse the web, set reminders, or start other agents. So never claim you " +
-    "did, are doing, or will do any such action; if the user asks for one, briefly say you can't do " +
-    "that here, then help by answering in words. Do not make up facts; if you don't know something, " +
-    "say so."
-  const lines = notes
-    .map((note) => {
-      const text = note.text.trim()
-      return text === "" ? null : `${note.role === "assistant" ? "Assistant" : "User"}: ${text}`
-    })
-    .filter((line): line is string => line !== null)
-  const assemble = (rows: ReadonlyArray<string>): string => `${preamble}\n\n${rows.join("\n")}\nAssistant:`
-  // Keep the newest turns that fit, dropping the oldest first, but never drop
-  // the final line (the message being answered).
-  let kept = lines
-  while (kept.length > 1 && assemble(kept).length > maxChars) kept = kept.slice(1)
-  const prompt = assemble(kept)
-  return prompt.length > maxChars ? prompt.slice(0, maxChars) : prompt
+const unavailableTurnHost: DesktopTurnRendererHost = {
+  submit: async () => ({
+    outcome: "unavailable",
+    text: null,
+    provider: null,
+    placement: null,
+    dataDestination: null,
+    usageTruth: null,
+  }),
 }
 
 export const makeDesktopShellHandlers = (
@@ -2328,9 +2291,11 @@ export const makeDesktopShellHandlers = (
   ideCursorHost: IdeCursorRendererHost = unavailableIdeCursorRendererHost,
   // SBX-06 host is appended to preserve every historical positional caller.
   managedSandboxHost: IdeManagedSandboxRendererHost = unavailableIdeManagedSandboxRendererHost,
-  // Apple FM on-device answer host (owner directive 2026-07-20). Appended last
-  // to preserve every historical positional caller.
-  appleFmChatHost: DesktopAppleFmChatHost = unavailableAppleFmChatHost,
+  // AFS-03 (#9081): the shared turn kernel host. The local "OpenAgents
+  // authority" turn submits one typed intent through this host; the previous
+  // renderer-side Apple FM prompt builder and direct answer append are removed.
+  // Appended last to preserve every historical positional caller.
+  turnHost: DesktopTurnRendererHost = unavailableTurnHost,
 ): IntentHandlers<typeof desktopShellIntents> => {
   // Latest-selection-wins fence for async host reads. An older click may
   // finish later, but it must never replace the newer visible conversation.
@@ -3075,25 +3040,48 @@ export const makeDesktopShellHandlers = (
         yield* Effect.promise(() => fullAutoHost.set({ threadRef: thread.id, enabled: true }))
       }
     }
-    // OpenAgents authority (owner directive 2026-07-19, amended 2026-07-20): new
-    // turns route to "OpenAgents". The user message is committed, then — when
-    // Apple FM is available (the boot-sequence probe already in shell state) —
-    // the local, no-cost on-device model answers over the conversation history
-    // (truncated to its small window). When Apple FM is unavailable, or the
-    // model refuses/fails, it falls back to the fixed "Stand by."
-    // acknowledgement. No Codex/Claude provider turn is started. The preserved
+    // OpenAgents authority (owner directive 2026-07-19, amended 2026-07-20;
+    // AFS-03 #9081): new turns route to "OpenAgents" through the SHARED TURN
+    // KERNEL. The renderer commits the user's message and submits ONE typed
+    // `Ask` intent (thread ref + message) to the host; the host owns the route
+    // decision and the authoritative prompt (the honesty preamble and history
+    // flattening now live behind the kernel's Apple FM provider). When the host
+    // answers, the canonical assistant turn shows the effective provider,
+    // placement, data destination, and usage truth. When the host refuses,
+    // fails, is unavailable, or is cancelled, the user entry is preserved and
+    // the reply falls back to the fixed "Stand by." acknowledgement — the
+    // renderer never builds a prompt or makes a route decision. The preserved
     // provider-send path below runs only when a caller explicitly opts out via
-    // `openAgentsStandby: false`.
+    // `openAgentsStandby: false` (its kernel migration is AFS-04).
     if (current.openAgentsStandby !== false) {
       // Commit the user's message and enter the pending state so a thinking
-      // indicator shows while the on-device model runs.
+      // indicator shows while the turn runs. Submit-immediately: this never
+      // blocks on provider-lane readiness.
       const withUser = withNote(current, message, now())
-      yield* SubscriptionRef.set(state, withUser)
-      const reply = withUser.appleFmBoot?.status === "available"
-        ? yield* Effect.promise(() =>
-            appleFmChatHost.respond(buildOpenAgentsAppleFmPrompt(withUser.notes)).catch(() => null))
-        : null
-      const finalText = reply !== null && reply.trim() !== "" ? reply.trim() : "Stand by."
+      const submissionThreadId = withUser.activeThreadId
+      yield* SubscriptionRef.set(state, {
+        ...withUser,
+        pending: submissionThreadId !== null,
+        ...(submissionThreadId === null ? {} : {
+          pendingByThread: { ...withUser.pendingByThread, [submissionThreadId]: true },
+        }),
+      })
+      const result: DesktopTurnSubmitResult | null = submissionThreadId === null
+        ? null
+        : yield* Effect.promise(() =>
+            turnHost.submit({ threadRef: submissionThreadId, message }).catch(() => null))
+      const answered = result !== null && result.outcome === "answered" &&
+        result.text !== null && result.text.trim() !== ""
+      const finalText = answered ? result!.text!.trim() : "Stand by."
+      // Surface the effective route disclosure on the canonical assistant turn.
+      const turnMeta: DesktopMessageMeta | undefined = answered
+        ? {
+            ...(result!.provider === null ? {} : { provider: result!.provider }),
+            ...(result!.placement === null ? {} : { placement: result!.placement }),
+            ...(result!.dataDestination === null ? {} : { dataDestination: result!.dataDestination }),
+            ...(result!.usageTruth === null ? {} : { usageTruth: result!.usageTruth }),
+          }
+        : undefined
       yield* SubscriptionRef.update(state, (cur) => ({
         ...cur,
         pending: false,
@@ -3103,10 +3091,11 @@ export const makeDesktopShellHandlers = (
         notes: [
           ...cur.notes,
           {
-            key: `openagents-standby-${cur.notes.length}`,
+            key: `openagents-turn-${cur.notes.length}`,
             role: "assistant" as const,
             text: finalText,
             timestamp: now(),
+            ...(turnMeta === undefined ? {} : { meta: turnMeta }),
           },
         ],
       }))
@@ -6165,6 +6154,10 @@ export const chatMessageMetadataFields = (
   { label: "Role", value: entry.role },
   { label: "Time", value: entry.timestamp },
   ...(entry.meta?.lane === undefined ? [] : [{ label: "Lane", value: entry.meta.lane }]),
+  ...(entry.meta?.provider === undefined ? [] : [{ label: "Provider", value: entry.meta.provider }]),
+  ...(entry.meta?.placement === undefined ? [] : [{ label: "Placement", value: entry.meta.placement }]),
+  ...(entry.meta?.dataDestination === undefined ? [] : [{ label: "Data destination", value: entry.meta.dataDestination }]),
+  ...(entry.meta?.usageTruth === undefined ? [] : [{ label: "Usage truth", value: entry.meta.usageTruth }]),
   ...(entry.meta?.model === undefined ? [] : [{ label: "Effective model", value: entry.meta.model }]),
   ...(entry.meta?.turnRef === undefined ? [] : [{ label: "Turn", value: entry.meta.turnRef }]),
   ...(entry.meta?.requestId === undefined ? [] : [{ label: "Request", value: entry.meta.requestId }]),

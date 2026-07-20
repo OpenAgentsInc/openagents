@@ -1,12 +1,17 @@
 import { Schema as S } from "effect"
 
 import {
+  MAX_TURN_INPUT_CHARS,
+  MAX_TURN_OUTPUT_CHARS,
   OwnerBoundCandidateSet,
   SafeTurnProjection,
+  TurnDataDestination,
   TurnIntent,
+  TurnProviderCandidate,
   TurnReceipt,
   TurnRequestRef,
   TurnThreadRef,
+  TurnUsageTruth,
 } from "@openagentsinc/agent-runtime-schema"
 
 /**
@@ -26,6 +31,45 @@ export const DesktopTurnCancelChannel = "openagents:turn:cancel" as const
 export const DesktopTurnStatusChannel = "openagents:turn:status" as const
 /** Main -> renderer push channel for bounded progress and terminal frames. */
 export const DesktopTurnEventChannel = "openagents:turn:event" as const
+/**
+ * AFS-03 one-shot local-turn submit channel. The renderer sends only a thread
+ * reference and a bounded message; the HOST owns intent construction, the
+ * owner-bound candidate set, the route decision, and the authoritative prompt.
+ * It resolves with the compact terminal facts the composer renders.
+ */
+export const DesktopTurnSubmitChannel = "openagents:turn:submit" as const
+
+/** The bounded renderer submit request. It carries no route/prompt authority. */
+export const DesktopTurnSubmitRequest = S.Struct({
+  threadRef: TurnThreadRef,
+  message: S.String.check(S.isMaxLength(MAX_TURN_INPUT_CHARS)),
+})
+export type DesktopTurnSubmitRequest = typeof DesktopTurnSubmitRequest.Type
+
+/** The lane placement a host discloses for the effective provider. */
+export const DesktopTurnPlacement = S.Literals([
+  "owner_local",
+  "owner_managed",
+  "openagents_managed",
+  "managed_provider",
+])
+export type DesktopTurnPlacement = typeof DesktopTurnPlacement.Type
+
+/**
+ * The compact terminal facts of one submitted local turn. `answered` carries the
+ * assistant text and the effective route disclosure (selected/effective
+ * provider, placement, data destination, and usage truth). Every non-answered
+ * outcome preserves the user entry in the renderer and shows the exact reason.
+ */
+export const DesktopTurnSubmitResult = S.Struct({
+  outcome: S.Literals(["answered", "refused", "failed", "cancelled", "unavailable"]),
+  text: S.NullOr(S.String.check(S.isMaxLength(MAX_TURN_OUTPUT_CHARS))),
+  provider: S.NullOr(TurnProviderCandidate),
+  placement: S.NullOr(DesktopTurnPlacement),
+  dataDestination: S.NullOr(TurnDataDestination),
+  usageTruth: S.NullOr(TurnUsageTruth),
+})
+export type DesktopTurnSubmitResult = typeof DesktopTurnSubmitResult.Type
 
 /** A renderer start request. It carries an intent and the owner-bound set only. */
 export const DesktopTurnStartRequest = S.Struct({
@@ -84,6 +128,9 @@ export const decodeDesktopTurnStartRequest = S.decodeUnknownOption(DesktopTurnSt
 export const decodeDesktopTurnCancelRequest = S.decodeUnknownOption(DesktopTurnCancelRequest)
 export const decodeDesktopTurnStatusRequest = S.decodeUnknownOption(DesktopTurnStatusRequest)
 export const decodeDesktopTurnEventFrame = S.decodeUnknownOption(DesktopTurnEventFrame)
+export const decodeDesktopTurnSubmitRequest = S.decodeUnknownOption(DesktopTurnSubmitRequest)
+export const decodeDesktopTurnSubmitResult = S.decodeUnknownOption(DesktopTurnSubmitResult)
+export const encodeDesktopTurnSubmitResult = S.encodeUnknownSync(DesktopTurnSubmitResult)
 
 /**
  * A renderer-side generation fence. It keeps the highest generation applied per

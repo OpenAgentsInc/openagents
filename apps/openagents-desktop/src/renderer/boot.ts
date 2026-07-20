@@ -113,8 +113,9 @@ import {
   makeLocalHarnessChatHost,
   type ClaudeLocalRendererBridge,
 } from "./local-harness.ts"
-import { withHarnessLanes, type AppleFmBootState, type DesktopAppleFmChatHost, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
+import { withHarnessLanes, type AppleFmBootState, type DesktopTurnRendererHost, type DesktopWorkspaceName, type HarnessLanes } from "./shell.ts"
 import type { AppleFmStartTurnRequest, AppleFmStatus, AppleFmStopResult, AppleFmTurnResult } from "../apple-fm-contract.ts"
+import type { DesktopTurnSubmitResult } from "../turn/desktop-turn-ipc.ts"
 import { unavailableFullAutoRunOutcome, type FullAutoRunRendererHost } from "../full-auto-run-ipc-contract.ts"
 import { decodeProviderLaneComposerProjections } from "../provider-lane-capabilities.ts"
 import {
@@ -196,6 +197,10 @@ type DesktopBridge = Readonly<{
     refresh?: () => Promise<AppleFmStatus>
     startTurn?: (request: AppleFmStartTurnRequest) => Promise<AppleFmTurnResult>
     stop?: () => Promise<AppleFmStopResult>
+  }>
+  /** AFS-03 (#9081) shared turn kernel submit bridge. Optional across preload rolls. */
+  turn?: Readonly<{
+    submit?: (value: unknown) => Promise<DesktopTurnSubmitResult>
   }>
   runtimeRequest?: (value: unknown) => Promise<DesktopRuntimeGatewayResponse>
   runtimeSubscribe?: (listener: (event: DesktopRuntimeGatewayEvent) => void) => () => void
@@ -1503,18 +1508,22 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         snapshot: () => readBridge()?.codexExperimental?.snapshot?.() ?? Promise.resolve(null),
         request: value => readBridge()?.codexExperimental?.request?.(value) ?? Promise.resolve({ ok: false, reason: "unavailable" }),
       }, fullAutoRunHost, ideAgentCodeRendererHost, ideCursorRendererHost, ideManagedSandboxRendererHost, {
-        // Apple FM on-device answer host (owner directive 2026-07-20): run one
-        // bounded local turn and return its reply text, or null when the model
-        // refuses/fails or the bridge is unavailable. Availability is gated by
-        // the boot-sequence probe in shell state, so this is only called when
-        // Apple FM already reported ready.
-        respond: async (prompt: string) => {
-          const appleFm = readBridge()?.appleFm
-          if (appleFm?.startTurn === undefined) return null
-          const turn = await appleFm.startTurn({ prompt }).catch(() => null)
-          return turn != null && turn.outcome === "completed" && turn.text !== null ? turn.text : null
+        // AFS-03 (#9081) shared turn kernel host: submit ONE typed intent
+        // (thread ref + message) over the schema-checked preload bridge. The
+        // HOST (Electron main) owns the route decision and the authoritative
+        // prompt; this renderer adapter only forwards the message and returns
+        // the compact terminal facts. A missing bridge or a failed submit
+        // resolves to an unavailable outcome so the composer preserves the user
+        // entry and falls back to the fixed acknowledgement.
+        submit: async (input) => {
+          const turn = readBridge()?.turn
+          if (turn?.submit === undefined) {
+            return { outcome: "unavailable", text: null, provider: null, placement: null, dataDestination: null, usageTruth: null }
+          }
+          const result = await turn.submit(input).catch(() => null)
+          return result ?? { outcome: "failed", text: null, provider: null, placement: null, dataDestination: null, usageTruth: null }
         },
-      } satisfies DesktopAppleFmChatHost),
+      } satisfies DesktopTurnRendererHost),
     )
     if (!documentLaunch && typeof bridge?.runtimeRequest === "function") {
       // Non-blocking: the initial voice-state query never gates first paint.

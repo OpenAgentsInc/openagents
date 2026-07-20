@@ -368,6 +368,12 @@ import {
   unavailableAppleFmStopResult,
 } from "./apple-fm-contract.ts"
 import {
+  DesktopTurnSubmitChannel,
+  decodeDesktopTurnSubmitRequest,
+  decodeDesktopTurnSubmitResult,
+  type DesktopTurnSubmitResult,
+} from "./turn/desktop-turn-ipc.ts"
+import {
   UsageLedgerEventChannel,
   UsageLedgerSnapshotChannel,
   decodeUsageLedgerSnapshot,
@@ -1050,6 +1056,31 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
     stop: async () => decodeAppleFmStopResult(
       await ipcRenderer.invoke(AppleFmStopChannel),
     ) ?? unavailableAppleFmStopResult(),
+  },
+  /**
+   * AFS-03 shared turn kernel (local "OpenAgents authority" chat path). The
+   * renderer submits ONE typed intent by thread ref + bounded message; the HOST
+   * owns the route decision and the authoritative prompt. Both sides of the
+   * boundary are schema-checked, so no route/prompt authority and no helper
+   * secret can cross into the renderer. A malformed request or response resolves
+   * to a typed failed outcome and never throws.
+   */
+  turn: {
+    submit: async (value: unknown): Promise<DesktopTurnSubmitResult> => {
+      const failed: DesktopTurnSubmitResult = {
+        outcome: "failed",
+        text: null,
+        provider: null,
+        placement: null,
+        dataDestination: null,
+        usageTruth: null,
+      }
+      const request = decodeDesktopTurnSubmitRequest(value)
+      if (request._tag === "None") return failed
+      const raw = await ipcRenderer.invoke(DesktopTurnSubmitChannel, request.value)
+      const decoded = decodeDesktopTurnSubmitResult(raw)
+      return decoded._tag === "Some" ? decoded.value : failed
+    },
   },
   /**
    * Claude local lane (#8712): schema-checked on both sides of the boundary.

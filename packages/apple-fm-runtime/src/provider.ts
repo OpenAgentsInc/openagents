@@ -24,6 +24,7 @@ import {
   type TurnIntent,
   type TurnProviderCandidate,
   type TurnRefusalReason,
+  type TurnThreadRef,
 } from "@openagentsinc/agent-runtime-schema";
 import {
   ProviderRegistry,
@@ -61,8 +62,16 @@ export interface AppleFmProviderConfig {
   readonly model?: string;
   /** Current helper readiness, derived from main-owned state (never the renderer). */
   readiness: () => AppleFmReadinessSnapshot | Promise<AppleFmReadinessSnapshot>;
-  /** Run one bounded read-only completion. */
-  complete: (prompt: string) => Promise<AppleFmCompletionTurn>;
+  /**
+   * Run one bounded read-only completion. `prompt` is the raw intent text the
+   * neutral adapter derives; `meta` carries the host-owned thread and intent so
+   * a host adapter can assemble a history-aware, honesty-bounded prompt on the
+   * main side (the renderer never builds the authoritative prompt).
+   */
+  complete: (
+    prompt: string,
+    meta: { readonly threadRef: TurnThreadRef; readonly intent: TurnIntent },
+  ) => Promise<AppleFmCompletionTurn>;
   readonly now?: () => number;
   /** Deterministic turn/candidate id suffix source (tests inject a counter). */
   readonly nextId?: () => string;
@@ -227,7 +236,7 @@ export const makeAppleFmProviderRegistry = (config: AppleFmProviderConfig): Prov
       const events = Stream.concat(
         Stream.make(ProviderStreamEvent.Progress()),
         Stream.unwrap(
-          Effect.promise(() => config.complete(prompt)).pipe(
+          Effect.promise(() => config.complete(prompt, { threadRef: input.threadRef, intent: input.intent })).pipe(
             Effect.map((turn) =>
               Stream.make(
                 completionToEvent({

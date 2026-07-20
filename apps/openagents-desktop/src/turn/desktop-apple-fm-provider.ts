@@ -7,6 +7,8 @@ import type { ProviderRegistryInterface } from "@openagentsinc/agent-turn-runtim
 
 import type { AppleFmHost } from "../apple-fm-host.ts"
 import type { AppleFmTurnResult } from "../apple-fm-contract.ts"
+import type { makeThreadStore } from "../thread-store.ts"
+import { buildOpenAgentsAppleFmPrompt } from "./apple-fm-prompt.ts"
 
 /**
  * AFS-02 (#9080): register Apple FM into the AFS-01 `InferenceProviderRegistry`
@@ -52,15 +54,37 @@ const readinessOf = (host: AppleFmHost | null): AppleFmReadinessSnapshot => {
     : { ready: false, unavailableReason: status.unavailableReason ?? "not_ready" }
 }
 
+type ThreadStore = ReturnType<typeof makeThreadStore>
+
+/**
+ * Assemble the honesty-bounded, history-aware prompt on the HOST side. By the
+ * time the Apple FM provider starts, the kernel has already appended the user's
+ * message to the canonical thread store, so the store carries the full window
+ * including the current turn. The renderer never builds this prompt.
+ */
+const honestPromptFor = (
+  store: ThreadStore | null,
+  threadRef: string,
+  fallback: string,
+): string => {
+  const thread = store?.open(threadRef) ?? null
+  const turns = thread === null ? [] : thread.notes
+  return buildOpenAgentsAppleFmPrompt(turns.length > 0 ? turns : [{ role: "user", text: fallback }])
+}
+
 export const makeDesktopAppleFmProviderRegistry = (
   getHost: () => AppleFmHost | null,
+  getThreadStore: () => ThreadStore | null = () => null,
 ): ProviderRegistryInterface =>
   makeAppleFmProviderRegistry({
     providerRef: APPLE_FM_LOCAL_PROVIDER_REF,
     readiness: () => readinessOf(getHost()),
-    complete: async (prompt) => {
+    complete: async (prompt, meta) => {
       const host = getHost()
       if (host === null) return { outcome: "failed", usageTruth: "unknown", failureClass: "not_ready" }
-      return turnResultToCompletion(await host.runTurn(prompt))
+      // Build the authoritative, honesty-bounded prompt from the canonical
+      // thread history the host owns — never from renderer-supplied prose.
+      const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt)
+      return turnResultToCompletion(await host.runTurn(honest))
     },
   })

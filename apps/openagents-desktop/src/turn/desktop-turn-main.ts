@@ -1,5 +1,12 @@
+import { randomUUID } from "node:crypto"
+
 import { Effect, Layer, ManagedRuntime, Schema as S, Stream } from "effect"
 
+import {
+  OWNER_BOUND_CANDIDATE_SET_SCHEMA_LITERAL,
+  OwnerBoundCandidateSet,
+  TurnRequestRef,
+} from "@openagentsinc/agent-runtime-schema"
 import {
   ProviderStartError,
   TurnService,
@@ -16,9 +23,13 @@ import {
   DesktopTurnEventFrame,
   DesktopTurnStartChannel,
   DesktopTurnStatusChannel,
+  DesktopTurnSubmitChannel,
+  type DesktopTurnSubmitResult,
   decodeDesktopTurnCancelRequest,
   decodeDesktopTurnStartRequest,
   decodeDesktopTurnStatusRequest,
+  decodeDesktopTurnSubmitRequest,
+  encodeDesktopTurnSubmitResult,
 } from "./desktop-turn-ipc.ts"
 import { ProviderRegistry } from "./desktop-provider-lane.ts"
 import {
@@ -34,15 +45,30 @@ import { desktopTurnJournalLayer } from "./desktop-turn-journal.ts"
  * AFS-01 first production composition: Electron main composes the shared
  * `TurnService` over the Desktop transition adapters.
  *
- * This is additive and gated. The old renderer provider-lane path stays the
- * default; the kernel path is enabled by an explicit compatibility flag for
- * rollback (`OPENAGENTS_DESKTOP_AFS_TURN_KERNEL=1`), and removed only in AFS-03.
- * The module never forces a cutover of the live chat path.
+ * AFS-03 flips the kernel to the LIVE local chat path: the renderer's local
+ * "OpenAgents authority" turn now submits one typed intent through this kernel
+ * over `turn:submit`. The kernel path is on by default; the rollback opt-out is
+ * `OPENAGENTS_DESKTOP_AFS_TURN_KERNEL=0` (kept until the gate proves out).
  *
  * `ipcMain` and the renderer sender are injected structurally so this module is
  * unit-testable without importing Electron.
  */
 const encodeEventFrame = S.encodeUnknownSync(DesktopTurnEventFrame)
+const decodeCandidateSet = S.decodeUnknownSync(OwnerBoundCandidateSet)
+const decodeRequestRef = S.decodeUnknownSync(TurnRequestRef)
+
+/** The stable owner-bound policy artifact for the AFS-03 local composition. */
+const DESKTOP_LOCAL_POLICY_ARTIFACT_REF = "artifact.policy.desktop-local.v1" as const
+
+const unavailableSubmit: DesktopTurnSubmitResult = {
+  outcome: "unavailable",
+  text: null,
+  provider: null,
+  placement: null,
+  dataDestination: null,
+  usageTruth: null,
+}
+const failedSubmit: DesktopTurnSubmitResult = { ...unavailableSubmit, outcome: "failed" }
 
 /** The narrow Electron surfaces the composition needs. */
 export interface DesktopTurnIpcMain {
@@ -75,9 +101,9 @@ export interface InstalledDesktopTurnKernel {
   readonly dispose: () => Promise<void>
 }
 
-/** The compatibility flag gating the kernel path. Default off preserves rollback. */
+/** The kernel path is live by default (AFS-03). `=0` is the rollback opt-out. */
 export const desktopAfsTurnKernelEnabled = (env: NodeJS.ProcessEnv = process.env): boolean =>
-  env.OPENAGENTS_DESKTOP_AFS_TURN_KERNEL === "1"
+  env.OPENAGENTS_DESKTOP_AFS_TURN_KERNEL !== "0"
 
 /** AFS-01 placeholder registry: refuses provider start until AFS-02 wires lanes. */
 export const placeholderProviderRegistry: ProviderRegistryInterface = {
@@ -92,10 +118,8 @@ export const placeholderProviderRegistry: ProviderRegistryInterface = {
 export const installDesktopTurnKernel = (
   deps: InstallDesktopTurnKernelDeps,
 ): InstalledDesktopTurnKernel => {
-  const providerRegistryLayer = Layer.succeed(
-    ProviderRegistry,
-    ProviderRegistry.of(deps.providerRegistry ?? placeholderProviderRegistry),
-  )
+  const resolvedRegistry = deps.providerRegistry ?? placeholderProviderRegistry
+  const providerRegistryLayer = Layer.succeed(ProviderRegistry, ProviderRegistry.of(resolvedRegistry))
 
   const layer = TurnServiceLayer.pipe(
     Layer.provide(desktopContextSourceLayer),
@@ -205,11 +229,71 @@ export const installDesktopTurnKernel = (
       .catch(() => null)
   })
 
+  // AFS-03 one-shot local-turn submit: the renderer sends only a thread ref and
+  // a bounded message. The HOST builds the intent and the owner-bound candidate
+  // set (from the described local providers), runs the shared kernel, and
+  // resolves the compact terminal facts. The renderer makes no route/prompt
+  // decision.
+  deps.ipcMain.handle(DesktopTurnSubmitChannel, (_event, value) => {
+    const request = decodeDesktopTurnSubmitRequest(value)
+    if (request._tag === "None") return encodeDesktopTurnSubmitResult(failedSubmit)
+    const submit = request.value
+    return Effect.runPromise(resolvedRegistry.describe)
+      .then((descriptors) => {
+        if (descriptors.length === 0) return unavailableSubmit
+        const candidateSet = decodeCandidateSet({
+          schema: OWNER_BOUND_CANDIDATE_SET_SCHEMA_LITERAL,
+          ordered: descriptors.map((descriptor) => descriptor.providerRef),
+          policyArtifactRef: DESKTOP_LOCAL_POLICY_ARTIFACT_REF,
+        })
+        return runtime.runPromise(
+          Effect.gen(function* () {
+            const service = yield* TurnService
+            const result = yield* service.start({
+              requestRef: decodeRequestRef(`request.${randomUUID()}`),
+              threadRef: submit.threadRef,
+              intent: { _tag: "Ask" as const, text: submit.message },
+              candidateSet,
+            })
+            const projection = result.projection
+            const provider = projection.candidate ?? null
+            const descriptor =
+              provider === null ? undefined : descriptors.find((entry) => entry.candidate === provider)
+            const answerText =
+              result.candidate !== null && result.candidate.kind === "answer" ? result.candidate.text : null
+            const outcome: DesktopTurnSubmitResult["outcome"] =
+              projection.cardState === "done"
+                ? answerText !== null
+                  ? "answered"
+                  : "refused"
+                : projection.cardState === "refused"
+                  ? "refused"
+                  : projection.cardState === "cancelled"
+                    ? "cancelled"
+                    : "failed"
+            const submitResult: DesktopTurnSubmitResult = {
+              outcome,
+              text: outcome === "answered" ? answerText : null,
+              provider,
+              placement: descriptor?.placement ?? null,
+              dataDestination: projection.dataDestination,
+              usageTruth: projection.usageTruth,
+            }
+            return submitResult
+          }),
+        )
+      })
+      .catch(() => failedSubmit)
+      .then((result) => encodeDesktopTurnSubmitResult(result))
+      .catch(() => encodeDesktopTurnSubmitResult(failedSubmit))
+  })
+
   return {
     dispose: async () => {
       deps.ipcMain.removeHandler(DesktopTurnStartChannel)
       deps.ipcMain.removeHandler(DesktopTurnCancelChannel)
       deps.ipcMain.removeHandler(DesktopTurnStatusChannel)
+      deps.ipcMain.removeHandler(DesktopTurnSubmitChannel)
       await runtime.dispose()
     },
   }

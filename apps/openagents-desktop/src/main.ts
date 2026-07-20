@@ -1366,7 +1366,7 @@ if (desktopAfsTurnKernelEnabled()) {
     },
     threadStore: threads(),
     journalFilePath: path.join(app.getPath("userData"), "agent-turns", "journal.json"),
-    providerRegistry: makeDesktopAppleFmProviderRegistry(() => appleFmHostRef),
+    providerRegistry: makeDesktopAppleFmProviderRegistry(() => appleFmHostRef, () => threads()),
   })
 }
 const fullAutoRegistry = openFullAutoRegistry(

@@ -63,6 +63,13 @@ export const DesktopMessageMetaSchema = Schema.Struct({
   accountRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   turnRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
   requestId: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+  // AFS-03 (#9081): the effective route disclosure for a kernel-driven turn —
+  // selected/effective provider, lane placement, data destination, and usage
+  // truth. Bounded public-safe labels only; never a helper path, url, or token.
+  provider: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
+  placement: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
+  dataDestination: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
+  usageTruth: Schema.optional(Schema.String.check(Schema.isMaxLength(60))),
   totalTokens: Schema.optional(Schema.NullOr(Schema.Number)),
   durationMs: Schema.optional(Schema.Number),
   trace: Schema.optional(DesktopToolTraceSchema),

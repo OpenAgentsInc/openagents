@@ -84,11 +84,15 @@ describe("AFS-00 baseline: local chat does not dispatch a provider", () => {
     }
   });
 
-  test("the current renderer standby path uses the direct Apple FM bridge flattener", () => {
+  test("the renderer local turn routes through the shared kernel host, not a renderer-built prompt (AFS-03 #9081)", () => {
     const source = readFileSync(path.join(appRoot, "src", "renderer", "shell.ts"), "utf8");
-    expect(source.includes("openAgentsStandby")).toBe(true);
-    expect(source.includes("buildOpenAgentsAppleFmPrompt")).toBe(true);
-    // The renderer standby answer path does not call the provider-lane dispatcher.
+    // AFS-03 removed the renderer authority fork: the renderer no longer builds
+    // the authoritative Apple FM prompt or directly appends the Apple FM answer.
+    expect(source.includes("buildOpenAgentsAppleFmPrompt")).toBe(false);
+    expect(source.includes("DesktopAppleFmChatHost")).toBe(false);
+    // The local turn now submits ONE typed intent through the shared turn host.
+    expect(source.includes("turnHost.submit")).toBe(true);
+    // The renderer still starts no provider-lane dispatch of its own.
     expect(source.includes("dispatchTurn")).toBe(false);
   });
 });
@@ -213,8 +217,10 @@ describe("AFS-00 baseline: frozen input bounds match current code", () => {
     expect(MAX_TURN_INPUT_CHARS).toBe(4000);
   });
 
-  test("the frozen renderer-prepared bound equals the current renderer cap", () => {
-    const source = readFileSync(path.join(appRoot, "src", "renderer", "shell.ts"), "utf8");
+  test("the frozen renderer-prepared bound is preserved on the host-owned prompt module (AFS-03 #9081)", () => {
+    // AFS-03 moved the prompt assembly out of the renderer and behind the shared
+    // turn kernel's Apple FM provider; the frozen bound moved with it.
+    const source = readFileSync(path.join(appRoot, "src", "turn", "apple-fm-prompt.ts"), "utf8");
     expect(source.includes(`APPLE_FM_PROMPT_MAX_CHARS = ${MAX_RENDERER_PREPARED_INPUT_CHARS}`)).toBe(true);
     expect(MAX_RENDERER_PREPARED_INPUT_CHARS).toBe(3900);
   });
