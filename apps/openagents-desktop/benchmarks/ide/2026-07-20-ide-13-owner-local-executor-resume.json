@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-owner-local-executor-resume.v1",
+  "evidenceClass": "real_local",
+  "generatedAt": "2026-07-20T18:48:38.492Z",
+  "candidateCommitSha": "4f4f3269cb1d48be4a07392af6d1e57149ab6a1f",
+  "baseCommitSha": "bfe934b6da8bdb08016230f19ed2a41be77fc93c",
+  "placement": {
+    "targetClass": "owner_local",
+    "adapterRef": "adapter.pylon.owner-local.control-session.v1",
+    "sourceTargetRef": "target.ide13.owner-local.executor-resume.source",
+    "destinationTargetRef": "target.ide13.owner-local.executor-resume.destination",
+    "sourceGeneration": 1,
+    "destinationGeneration": 2,
+    "finalFenceGeneration": 3
+  },
+  "checkpoint": {
+    "artifactRef": "artifact.portable-checkpoint.4296b644f167586218d50f5535eb7723",
+    "sha256": "ee3582afae7aede0be95f81000ef883f63dc1e5e141ea38753b679840823bb06",
+    "bytes": 1501,
+    "encryptedCustody": true,
+    "custodyDeleted": true
+  },
+  "execution": {
+    "workRef": "work.ide13.owner-local.executor-resume.safe-edit",
+    "handlerRef": "handler.ide13.owner-local.executor-resume.safe-edit.v1",
+    "acceptedWorkRefCount": 1,
+    "sourceProcessLifecycle": "settled",
+    "destinationExecutor": "registered_bounded_handler",
+    "processStateTransferred": false,
+    "firstRun": "executed",
+    "replay": "replayed",
+    "duplicateExecutionCount": 0,
+    "staleGenerationRefused": true,
+    "settlementState": "settled",
+    "resultRef": "result.ide13.owner-local.executor-resume.safe-edit",
+    "receiptRef": "receipt.pylon.portable.owner-local-work.23457dfdd2e5518ad074be6a71455d55",
+    "evidenceRefs": [
+      "evidence.ide13.owner-local.executor-resume.safe-edit.settled"
+    ]
+  },
+  "teardown": {
+    "nonTerminalControlSessions": 0,
+    "activeHelperReservations": 0,
+    "activeCustodyObjects": 0,
+    "workControlResidue": 0,
+    "rehydratedWorkspaceResidue": 0
+  },
+  "authority": {
+    "productionDispatchEnabled": false,
+    "networkCalls": 0,
+    "providerCalls": 0,
+    "secretMaterialInReceipt": false
+  },
+  "result": "One refs-only accepted work checkpoint crossed a real owner-local generation 1 to 2 artifact move. A registered bounded handler ran once in the rehydrated destination workspace, settled durably, replayed without duplicate execution, and refused the stale generation after generation 3 became active. No live process state moved. Production command dispatch stayed disabled."
+}
