@@ -156,6 +156,37 @@ describe("IDE-13 portability evidence contract", () => {
     expect(() => validate(completeReceipt())).not.toThrow()
   })
 
+  test("does not require a real managed-provider cohort when no provider is claimed", () => {
+    const receipt = completeReceipt()
+    const unclaimed = decode({
+      ...receipt,
+      placementCohorts: receipt.placementCohorts.map(cohort =>
+        cohort.targetClass !== "managed_provider"
+          ? cohort
+          : {
+              ...cohort,
+              evidenceClass: "not_run" as const,
+              journeyScope: "not_run" as const,
+              adapter: { kind: "not_run" as const, ref: null, name: null, version: null },
+              targetRef: null,
+              artifact: { ref: null, sha256: null, bytes: null },
+              capabilityState: "unsupported" as const,
+              custody: "unverified" as const,
+              phaseReceipts: IDE_PORTABLE_PHASES.map(phase => ({
+                phase,
+                evidenceClass: "not_run" as const,
+                receiptRef: null,
+                operationRef: null,
+                attachmentGeneration: null,
+                result: "not_run" as const,
+              })),
+              metrics: [],
+              result: "No managed provider is admitted or claimed.",
+            }),
+    })
+    expect(() => validate(receipt)).not.toThrow()
+  })
+
   test("rejects simulated evidence classified as real", () => {
     const receipt = completeReceipt()
     const ownerManaged = receipt.placementCohorts[1]

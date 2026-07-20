@@ -217,20 +217,32 @@ export const IdePortableEvidenceReceiptSchema = IdePortableEvidenceReceiptBaseSc
       return "IDE-13 evidence cannot use producer self-review"
     }
     if (!receipt.acceptancePassed) return undefined
-    if (receipt.placementCohorts.some(cohort =>
-      cohort.evidenceClass !== expectedEvidenceClass[cohort.targetClass] ||
-      cohort.journeyScope !== "full_move" || cohort.adapter.kind !== "production" ||
-      cohort.adapter.ref === null || cohort.adapter.name === null || cohort.adapter.version === null ||
-      cohort.targetRef === null || cohort.artifact.ref === null || cohort.artifact.sha256 === null ||
-      cohort.artifact.bytes === null || cohort.phaseReceipts.some(phase =>
-        phase.evidenceClass !== cohort.evidenceClass || phase.receiptRef === null ||
-        phase.operationRef === null || phase.attachmentGeneration === null || phase.result !== "passed"
-      ) || cohort.metrics.length !== IDE_PORTABLE_ACCEPTANCE_METRICS.length ||
-      new Set(cohort.metrics.map(metric => metric.metric)).size !== IDE_PORTABLE_ACCEPTANCE_METRICS.length ||
-      IDE_PORTABLE_ACCEPTANCE_METRICS.some(metric =>
-        !cohort.metrics.some(observation => observation.metric === metric && observation.passed)
-      )
-    )) return "IDE-13 acceptance requires complete real cohorts, receipts, and metrics"
+    if (receipt.placementCohorts.some(cohort => {
+      const explicitlyUnclaimedProvider = cohort.targetClass === "managed_provider" &&
+        cohort.evidenceClass === "not_run" && cohort.journeyScope === "not_run" &&
+        cohort.adapter.kind === "not_run" && cohort.adapter.ref === null &&
+        cohort.adapter.name === null && cohort.adapter.version === null &&
+        cohort.targetRef === null && cohort.artifact.ref === null &&
+        cohort.artifact.sha256 === null && cohort.artifact.bytes === null &&
+        cohort.capabilityState === "unsupported" && cohort.custody === "unverified" &&
+        cohort.phaseReceipts.every(phase => phase.evidenceClass === "not_run" &&
+          phase.receiptRef === null && phase.operationRef === null &&
+          phase.attachmentGeneration === null && phase.result === "not_run") &&
+        cohort.metrics.length === 0
+      if (explicitlyUnclaimedProvider) return false
+      return cohort.evidenceClass !== expectedEvidenceClass[cohort.targetClass] ||
+        cohort.journeyScope !== "full_move" || cohort.adapter.kind !== "production" ||
+        cohort.adapter.ref === null || cohort.adapter.name === null || cohort.adapter.version === null ||
+        cohort.targetRef === null || cohort.artifact.ref === null || cohort.artifact.sha256 === null ||
+        cohort.artifact.bytes === null || cohort.phaseReceipts.some(phase =>
+          phase.evidenceClass !== cohort.evidenceClass || phase.receiptRef === null ||
+          phase.operationRef === null || phase.attachmentGeneration === null || phase.result !== "passed"
+        ) || cohort.metrics.length !== IDE_PORTABLE_ACCEPTANCE_METRICS.length ||
+        new Set(cohort.metrics.map(metric => metric.metric)).size !== IDE_PORTABLE_ACCEPTANCE_METRICS.length ||
+        IDE_PORTABLE_ACCEPTANCE_METRICS.some(metric =>
+          !cohort.metrics.some(observation => observation.metric === metric && observation.passed)
+        )
+    })) return "IDE-13 acceptance requires complete real claimed cohorts, receipts, and metrics"
     if (receipt.review.independentReviewerRef === null ||
       receipt.review.independentReviewerRef === receipt.producerRef ||
       receipt.review.independentDisposition !== "accepted" ||
@@ -298,6 +310,18 @@ export const validateIdePortableEvidenceReceipt = (
   if (!receipt.acceptancePassed) return
 
   for (const cohort of receipt.placementCohorts) {
+    const explicitlyUnclaimedProvider = cohort.targetClass === "managed_provider" &&
+      cohort.evidenceClass === "not_run" && cohort.journeyScope === "not_run" &&
+      cohort.adapter.kind === "not_run" && cohort.adapter.ref === null &&
+      cohort.adapter.name === null && cohort.adapter.version === null &&
+      cohort.targetRef === null && cohort.artifact.ref === null &&
+      cohort.artifact.sha256 === null && cohort.artifact.bytes === null &&
+      cohort.capabilityState === "unsupported" && cohort.custody === "unverified" &&
+      cohort.phaseReceipts.every(phase => phase.evidenceClass === "not_run" &&
+        phase.receiptRef === null && phase.operationRef === null &&
+        phase.attachmentGeneration === null && phase.result === "not_run") &&
+      cohort.metrics.length === 0
+    if (explicitlyUnclaimedProvider) continue
     if (cohort.evidenceClass !== expectedEvidenceClass[cohort.targetClass] ||
       cohort.journeyScope !== "full_move" || cohort.adapter.kind !== "production") {
       throw new Error(`IDE-13 acceptance lacks required real ${cohort.targetClass} evidence`)
