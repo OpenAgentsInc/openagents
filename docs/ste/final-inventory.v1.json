@@ -41238,6 +41238,18 @@
       }
     },
     {
+      "path": "docs/sol/receipts/2026-07-20-desktop-rc25-publication.md",
+      "sha256": "d7cdec43f4a28062f480d3b7df1fe3a8377a35de9cc6ccbe541f801b9311ae97",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/sol/receipts/README.md",
       "sha256": "651f73b4e71cbd87ca5eb153c66229c45686bbc9e05be5131db67da7617c1b9f",
       "reason": "Immutable historical or evidence source data",
