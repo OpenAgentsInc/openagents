@@ -15073,12 +15073,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -48899,6 +48897,28 @@
     {
       "path": "packages/sarah/README.md",
       "sha256": "1b96758c1ca0eaa957d56e080e0553fcafaa40f75c1fdee331561a7f0ab5c408",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/sovereign-identity/README.md",
+      "sha256": "484b9f3459faf953e7769afb75c5df26019be704d720a1f6c608063e64ed6cc6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
