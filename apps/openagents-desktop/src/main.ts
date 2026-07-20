@@ -22,7 +22,6 @@ import {
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
 } from "@openagentsinc/pylon-core/custody/account-registry"
-import { resolvePylonHome } from "@openagentsinc/pylon-core/shared/bootstrap"
 import {
   fetchFleetRunClientProjection,
   buildCloseTurnIntent,
