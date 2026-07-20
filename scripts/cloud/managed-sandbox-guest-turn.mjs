@@ -57,6 +57,7 @@ const runtimeUsage = (usage) => ({
 });
 
 const runCodex = async () => {
+  let settled = false;
   const codex = new Codex({
     apiKey: request.providerCapabilityToken,
     baseUrl: `${request.providerBaseUrl}/openai/v1`,
@@ -75,6 +76,7 @@ const runCodex = async () => {
   });
   const streamed = await thread.runStreamed(request.prompt);
   for await (const event of streamed.events) {
+    if (settled) continue;
     if (event.type === "item.completed" && event.item.type === "agent_message" && event.item.text) {
       emit({ _tag: "RuntimeTextDelta", content: event.item.text });
     } else if (event.type === "item.started" && event.item.type === "command_execution") {
@@ -95,14 +97,17 @@ const runCodex = async () => {
       const usage = runtimeUsage(event.usage);
       emit({ _tag: "RuntimeUsageRecorded", usage });
       emit({ _tag: "RuntimeSettled", finishReason: "structural_completion", usage });
+      settled = true;
     } else if (event.type === "turn.failed" || event.type === "error") {
       emit({
         _tag: "RuntimeFailed",
         errorRef: `provider.failure.sha256.${digest(JSON.stringify(event))}`,
         retryable: false,
       });
+      settled = true;
     }
   }
+  if (!settled) throw new Error("codex_stream_ended_without_result");
 };
 
 const runClaude = async () => {
@@ -124,6 +129,7 @@ const runClaude = async () => {
     },
   });
   for await (const message of session) {
+    if (settled) continue;
     if (message.type === "assistant") {
       const content = Array.isArray(message.message?.content)
         ? message.message.content

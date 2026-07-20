@@ -53,4 +53,23 @@ describe('managed-sandbox guest transport contract', () => {
     expect(source).toContain('str(canonical_cwd),')
     expect(source).not.toContain('"--chdir",\n                f"/proc/self/fd/{cwd_fd}",')
   })
+
+  test('provider streams emit at most one structural terminal event', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, 'managed-sandbox-guest-turn.mjs'),
+      'utf8',
+    )
+    const codex = source.slice(
+      source.indexOf('const runCodex = async () => {'),
+      source.indexOf('const runClaude = async () => {'),
+    )
+    expect(codex).toContain('if (settled) continue;')
+    expect(codex).toContain(
+      'if (!settled) throw new Error("codex_stream_ended_without_result");',
+    )
+    expect(codex.match(/settled = true;/g)).toHaveLength(2)
+
+    const claude = source.slice(source.indexOf('const runClaude = async () => {'))
+    expect(claude).toContain('if (settled) continue;')
+  })
 })

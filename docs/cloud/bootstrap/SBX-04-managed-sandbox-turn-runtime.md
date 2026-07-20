@@ -56,6 +56,11 @@ Each call is a short control operation. The daemon sets no turn-completion
 timer and does not treat a driver response gap as completion. Lease and budget
 enforcement remain declared guardrails, not an arbitrary provider wall clock.
 
+Each provider stream has a one-terminal fence. The guest helper emits the first
+structural completion, interruption, or typed failure and ignores later SDK
+records for that stream. A provider failure followed by a trailing error cannot
+append a second terminal event or roll back the first terminal receipt.
+
 ## Configuration
 
 The Box facade still requires all SBX-03 configuration:
