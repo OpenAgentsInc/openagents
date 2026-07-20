@@ -102,6 +102,11 @@ unprivileged request-transfer root. A systemd-tmpfiles rule recreates
 ownership at every boot. Readiness does not admit an image unless the smoke
 probe verifies both roots and their exact ownership and mode.
 
+The control preserves the contract's missing-versus-null distinction when it
+reserializes guest receipts. Non-command receipts omit `processRef`. They do
+not emit `processRef: null`, which the shared Effect schema rejects. The Rust
+suite pins that cross-language serialization boundary.
+
 ## Fault response
 
 The component refuses these classes before it returns success:

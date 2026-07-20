@@ -110,7 +110,7 @@ pub struct GuestIoReceipt {
     pub bytes_written: u64,
     pub cpu_millis: u64,
     pub network_bytes: u64,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub process_ref: Option<String>,
     pub process_terminated: bool,
     pub descendants_remaining: u64,
@@ -948,6 +948,21 @@ mod tests {
             }
             validate_response(&request, &response).unwrap();
         }
+    }
+
+    #[test]
+    fn omits_absent_optional_process_ref_at_the_worker_contract_boundary() {
+        let write = request(GuestIoAction::WriteFile);
+        let mut write_response = base_response(&write, receipt(&write, 0, 5));
+        write_response.content_digest = Some(digest(b"hello"));
+        write_response.byte_length = Some(5);
+        let write_json = serde_json::to_value(write_response).unwrap();
+        assert!(write_json["receipt"].get("processRef").is_none());
+
+        let command = request(GuestIoAction::ExecuteCommand);
+        let command_json =
+            serde_json::to_value(base_response(&command, receipt(&command, 0, 0))).unwrap();
+        assert_eq!(command_json["receipt"]["processRef"], "process.sbx05.test");
     }
 
     #[test]
