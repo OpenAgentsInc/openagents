@@ -9,6 +9,12 @@ import {
 const HELPER_KINDS: ReadonlyArray<IdePortableDestinationHelperKind> = [
   "pty", "lsp", "dap", "watcher", "native",
 ]
+const decodeDestinationActivationReceipt = Schema.decodeUnknownSync(
+  IdePortableDestinationActivationReceiptSchema,
+)
+
+export const IDE_PORTABLE_HELPER_OBSERVATION_MAXIMUM_AGE_MS = 60_000
+export const IDE_PORTABLE_HELPER_OBSERVATION_MAXIMUM_FUTURE_SKEW_MS = 5_000
 
 export type IdePortableDestinationActivationExpectation = Readonly<{
   operationRef: string
@@ -16,6 +22,7 @@ export type IdePortableDestinationActivationExpectation = Readonly<{
   checkpointRef: string
   destinationTargetRef: string
   destinationAttachmentRef: string
+  destinationRunnerSessionReservationRef: string
   destinationGeneration: number
   authenticationPolicyRef: string
   now?: Date
@@ -30,6 +37,7 @@ export class IdePortableDestinationReceiptError extends Error {
       | "binding_mismatch"
       | "authentication_expired"
       | "authentication_rejected"
+      | "helper_observation_invalid"
       | "helper_inventory_invalid",
     message: string,
   ) {
@@ -42,12 +50,13 @@ export const validateIdePortableDestinationActivationReceipt = (
   value: unknown,
   expected: IdePortableDestinationActivationExpectation,
 ): IdePortableDestinationActivationReceipt => {
-  const receipt = Schema.decodeUnknownSync(IdePortableDestinationActivationReceiptSchema)(value)
+  const receipt = decodeDestinationActivationReceipt(value, { onExcessProperty: "error" })
   if (receipt.operationRef !== expected.operationRef ||
       receipt.sessionRef !== expected.sessionRef ||
       receipt.checkpointRef !== expected.checkpointRef ||
       receipt.destinationTargetRef !== expected.destinationTargetRef ||
       receipt.destinationAttachmentRef !== expected.destinationAttachmentRef ||
+      receipt.destinationRunnerSessionReservationRef !== expected.destinationRunnerSessionReservationRef ||
       receipt.destinationGeneration !== expected.destinationGeneration ||
       receipt.authentication.policyRef !== expected.authenticationPolicyRef) {
     throw new IdePortableDestinationReceiptError(
@@ -61,8 +70,19 @@ export const validateIdePortableDestinationActivationReceipt = (
       "destination authentication is not active",
     )
   }
+  const now = (expected.now ?? new Date()).getTime()
+  const helpersObservedAt = Date.parse(receipt.helpersObservedAt)
+  if (!Number.isFinite(now) ||
+      !Number.isFinite(helpersObservedAt) ||
+      helpersObservedAt < now - IDE_PORTABLE_HELPER_OBSERVATION_MAXIMUM_AGE_MS ||
+      helpersObservedAt > now + IDE_PORTABLE_HELPER_OBSERVATION_MAXIMUM_FUTURE_SKEW_MS) {
+    throw new IdePortableDestinationReceiptError(
+      "helper_observation_invalid",
+      "destination helper observation is stale, invalid, or in the future",
+    )
+  }
   if (receipt.authentication.expiresAt !== null &&
-      Date.parse(receipt.authentication.expiresAt) <= (expected.now ?? new Date()).getTime()) {
+      Date.parse(receipt.authentication.expiresAt) <= now) {
     throw new IdePortableDestinationReceiptError(
       "authentication_expired",
       "destination authentication expired before activation",

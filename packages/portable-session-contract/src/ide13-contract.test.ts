@@ -84,6 +84,7 @@ describe("IDE-13 portable capability contract", () => {
       checkpointRef: "checkpoint.1",
       destinationTargetRef: "target.owner.2",
       destinationAttachmentRef: "attachment.2",
+      destinationRunnerSessionReservationRef: "reservation.destination.runner.2",
       destinationGeneration: 2,
       authentication: {
         state: "reauthenticated",
@@ -92,6 +93,7 @@ describe("IDE-13 portable capability contract", () => {
         observedAt: "2026-07-20T08:05:00.000Z",
         expiresAt: "2026-07-20T09:05:00.000Z",
       },
+      helpersObservedAt: "2026-07-20T08:05:00.000Z",
       helpers: [
         { kind: "pty", readiness: "ready", instanceRef: "instance.pty.2", versionRef: "version.pty.1", omissionRef: null, evidenceRefs: ["evidence.pty.2"] },
         { kind: "lsp", readiness: "unsupported", instanceRef: null, versionRef: null, omissionRef: "omission.lsp.unsupported", evidenceRefs: [] },

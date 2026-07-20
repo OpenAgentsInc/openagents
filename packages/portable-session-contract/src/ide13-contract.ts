@@ -176,8 +176,10 @@ export const IdePortableDestinationActivationReceiptSchema = Schema.Struct({
   checkpointRef: PortableRef,
   destinationTargetRef: ExecutionEnvironmentRef,
   destinationAttachmentRef: PortableRef,
+  destinationRunnerSessionReservationRef: PortableRef,
   destinationGeneration: count(1_000_000_000),
   authentication: IdePortableDestinationAuthenticationSchema,
+  helpersObservedAt: PortableTimestamp,
   helpers: Schema.Array(IdePortableDestinationHelperReadinessSchema).check(Schema.isMaxLength(5)),
   activatedAgentRefs: refs(10_000),
   acceptedWorkRefs: Schema.Array(Schema.Struct({
