@@ -10,6 +10,7 @@ import { Schema } from "effect";
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u;
 const HELPER_KINDS = ["pty", "lsp", "dap", "watcher", "native"] as const;
+const HELPER_KIND_NAMES = new Set<string>(HELPER_KINDS);
 
 export class PylonPortableDestinationHelperSupervisorError extends Schema.TaggedErrorClass<PylonPortableDestinationHelperSupervisorError>()(
   "PylonPortableDestinationHelperSupervisorError",
@@ -195,6 +196,7 @@ export const makePylonPortableDestinationHelperSupervisor = (
     authenticator: PylonPortableDestinationAuthenticator;
     adapters?: ReadonlyArray<PylonPortableDestinationHelperAdapter>;
     now?: () => Date;
+    unsupportedOmissionRefs?: Partial<Record<IdePortableDestinationHelperKind, string>>;
   }>,
 ): PylonPortableDestinationHelperSupervisor => {
   const now = options.now ?? (() => new Date());
@@ -202,7 +204,13 @@ export const makePylonPortableDestinationHelperSupervisor = (
   if (
     typeof options.authenticator.authenticate !== "function" ||
     adapters.size !== (options.adapters ?? []).length ||
-    [...adapters.keys()].some((kind) => !HELPER_KINDS.includes(kind))
+    [...adapters.keys()].some((kind) => !HELPER_KINDS.includes(kind)) ||
+    Object.entries(options.unsupportedOmissionRefs ?? {}).some(
+      ([kind, omissionRef]) =>
+        !HELPER_KIND_NAMES.has(kind) ||
+        typeof omissionRef !== "string" ||
+        !SAFE_REF.test(omissionRef),
+    )
   ) {
     throw failure("invalid_configuration", "configuration");
   }
@@ -329,7 +337,9 @@ export const makePylonPortableDestinationHelperSupervisor = (
               readiness: "unsupported",
               instanceRef: null,
               versionRef: null,
-              omissionRef: `omission.pylon.portable.${kind}.adapter_unavailable`,
+              omissionRef:
+                options.unsupportedOmissionRefs?.[kind] ??
+                `omission.pylon.portable.${kind}.adapter_unavailable`,
               evidenceRefs: [],
             });
             continue;

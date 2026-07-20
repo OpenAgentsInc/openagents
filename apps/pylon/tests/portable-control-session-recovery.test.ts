@@ -1,5 +1,6 @@
 import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { afterEach, describe, expect, test } from "vite-plus/test"
+import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -135,22 +136,28 @@ describe("durable portable control-session restart recovery", () => {
       destinationRunnerSessionReservationRef: "runner-session-reservation.port03.mismatch",
     })).rejects.toThrow("does not match its stage")
     const activated = await actions.portable.activateDestination(activationInput)
-    expect(activated.helpers).toEqual(([
-      "pty",
-      "lsp",
-      "dap",
-      "watcher",
-      "native",
-    ] as const).map(kind => ({
-      kind,
-      readiness: "unsupported",
-      instanceRef: null,
-      versionRef: null,
-      omissionRef: `omission.pylon.portable.${kind}.adapter_unavailable`,
-      evidenceRefs: [],
-    })))
+    expect(activated.helpers.find(helper => helper.kind === "pty")).toMatchObject(
+      existsSync("/usr/bin/python3") && existsSync("/bin/sh")
+        ? { readiness: "ready" }
+        : {
+            readiness: "unsupported",
+            omissionRef: "omission.pylon.portable.pty.exact-runtime-unavailable",
+          },
+    )
+    expect(activated.helpers.find(helper => helper.kind === "watcher")).toMatchObject({ readiness: "ready" })
+    for (const kind of ["lsp", "dap", "native"] as const) {
+      expect(activated.helpers.find(helper => helper.kind === kind)).toEqual({
+        kind,
+        readiness: "unsupported",
+        instanceRef: null,
+        versionRef: null,
+        omissionRef: "omission.pylon.portable.installed-executable-profile-authority.missing",
+        evidenceRefs: [],
+      })
+    }
     expect(await actions.portable.stageDestination(stageInput)).toEqual(staged)
     expect(await actions.portable.activateDestination(activationInput)).toEqual(activated)
+    await actions.portable.shutdownHelpers?.()
   })
 
   test("reconstructs the exact root/child binding as non-accepting and fences the stale process epoch", async () => {

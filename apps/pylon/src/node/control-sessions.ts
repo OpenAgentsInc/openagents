@@ -82,6 +82,7 @@ import {
   makePylonPortableDestinationHelperSupervisor,
   type PylonPortableDestinationHelperSupervisor,
 } from "../portable-destination-helper-supervisor.js"
+import { makePylonPortableDestinationProductionHelpers } from "../portable-destination-production-helper-adapters.js"
 
 export const CONTROL_SESSION_EVENT_SCHEMA = "openagents.pylon.control_session_event.v0.1"
 export const CONTROL_SESSION_ARTIFACT_SCHEMA = "openagents.pylon.control_session_artifact.v0.1"
@@ -1204,9 +1205,14 @@ export function createControlSessionActions(options: {
     stableRef("runtime.pylon.control_session", randomBytes(24).toString("hex"))
   const portableDestinationHelperSupervisor =
     options.portableDestinationHelperSupervisor ??
-    makePylonPortableDestinationHelperSupervisor({
-      authenticator: makeEvidenceBoundPortableDestinationAuthenticator(),
-    })
+    (() => {
+      const productionHelpers = makePylonPortableDestinationProductionHelpers()
+      return makePylonPortableDestinationHelperSupervisor({
+        authenticator: makeEvidenceBoundPortableDestinationAuthenticator(),
+        adapters: productionHelpers.adapters,
+        unsupportedOmissionRefs: productionHelpers.unsupportedOmissionRefs,
+      })
+    })()
   if (options.portableLedger !== undefined) {
     const durableBindings = Effect.runSync(options.portableLedger.listControlBindings())
     for (const durable of durableBindings) {
