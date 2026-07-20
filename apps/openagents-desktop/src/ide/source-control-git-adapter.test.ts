@@ -33,6 +33,15 @@ const git = (root: string, ...args: string[]): string => {
   return String(result.stdout).trim();
 };
 
+const gitGlobal = (...args: string[]): string => {
+  const result = spawnSync("git", args, {
+    encoding: "utf8",
+    env: { ...isolatedGitEnvironment(), GIT_AUTHOR_NAME: "IDE-12", GIT_AUTHOR_EMAIL: "ide12@example.com", GIT_COMMITTER_NAME: "IDE-12", GIT_COMMITTER_EMAIL: "ide12@example.com" },
+  });
+  if (result.status !== 0) throw new Error(String(result.stderr));
+  return String(result.stdout).trim();
+};
+
 const repo = (): string => {
   const root = mkdtempSync(path.join(tmpdir(), "openagents-ide12-git-"));
   roots.push(root);
@@ -239,5 +248,55 @@ describe("IDE-12 real Git adapter", () => {
       }));
       expect(readFileSync(path.join(root, "a.txt"), "utf8")).toBe("restart recovery\n");
     }, undefined, recoveryRoot);
+  });
+
+  test("proves exact remote refs and preserves local history on non-fast-forward", async () => {
+    const root = repo();
+    const bare = mkdtempSync(path.join(tmpdir(), "openagents-ide12-bare-"));
+    roots.push(bare);
+    git(bare, "init", "--bare");
+    git(root, "remote", "add", "origin", bare);
+    git(root, "push", "-u", "origin", "main");
+    await withService(root, async (service) => {
+      let current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: ideSourceControlFixtureSnapshot().binding }))).snapshot;
+      writeFileSync(path.join(root, "local.txt"), "local delivery\n");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: ["local.txt"] } }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "local delivery", amend: false, sign: false, runHooks: true }))).snapshot;
+      current = (await Effect.runPromise(service.execute({
+        _tag: "Push", ...mutation(current), remote: "origin", refspec: "HEAD:refs/heads/main", forcePolicy: "forbid", expectedRemoteOid: null,
+      }))).snapshot;
+      expect(git(bare, "rev-parse", "refs/heads/main")).toBe(current.version.headOid);
+      expect(current.delivery.find((fact) => fact.phase === "pushed")).toMatchObject({ proven: true, freshness: "current" });
+
+      const competitor = mkdtempSync(path.join(tmpdir(), "openagents-ide12-competitor-parent-"));
+      rmSync(competitor, { recursive: true, force: true });
+      roots.push(competitor);
+      gitGlobal("clone", "--quiet", bare, competitor);
+      git(competitor, "config", "user.name", "IDE-12 competitor");
+      git(competitor, "config", "user.email", "competitor@example.com");
+      writeFileSync(path.join(competitor, "remote.txt"), "remote delivery\n");
+      git(competitor, "add", "remote.txt");
+      git(competitor, "commit", "-m", "remote delivery");
+      git(competitor, "push", "origin", "main");
+
+      writeFileSync(path.join(root, "local-2.txt"), "local divergence\n");
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: ["local-2.txt"] } }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Commit", ...mutation(current), message: "local divergence", amend: false, sign: false, runHooks: true }))).snapshot;
+      const localHead = current.version.headOid;
+      const rejected = await Effect.runPromise(service.execute({
+        _tag: "Push", ...mutation(current), remote: "origin", refspec: "HEAD:refs/heads/main", forcePolicy: "forbid", expectedRemoteOid: null,
+      }).pipe(Effect.flip));
+      expect(rejected.failure.code).toBe("non_fast_forward");
+      expect(git(root, "rev-parse", "HEAD")).toBe(localHead);
+
+      current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: current.binding }))).snapshot;
+      current = (await Effect.runPromise(service.execute({ _tag: "Fetch", ...mutation(current), remote: "origin", prune: true }))).snapshot;
+      expect(current.behind).toBe(1);
+      current = (await Effect.runPromise(service.execute({ _tag: "Pull", ...mutation(current), remote: "origin", branch: "main", strategy: "rebase" }))).snapshot;
+      expect(current.behind).toBe(0);
+      expect(readFileSync(path.join(root, "remote.txt"), "utf8")).toBe("remote delivery\n");
+    });
   });
 });
