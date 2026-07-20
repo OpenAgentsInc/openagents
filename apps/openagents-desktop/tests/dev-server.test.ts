@@ -126,6 +126,11 @@ describe("OpenAgents Desktop renderer dev loop", () => {
     expect(launcher).toContain("renderer port 5734 is not ready; stopping the stale launcher-owned process group")
     expect(launcher).toContain("openagents-desktop-(smoke-|preview\\.)")
     expect(launcher).toContain('blocking_unmanaged_pid="$candidate"')
-    expect(launcher).toContain("an unmanaged OpenAgents Dev process exists; refusing to mutate the launch worktree")
+    expect(launcher).toContain("an unmanaged OpenAgents Dev process is running")
+    // On an explicit --restart a DEV build (Electron under node_modules — e.g.
+    // a leftover agent worktree) is replaced instead of dead-ending the owner;
+    // an installed release (not under node_modules) still fails closed.
+    expect(launcher).toContain("--restart is replacing an unmanaged dev build")
+    expect(launcher).toContain('*"/node_modules/"*"/electron/dist/Electron.app/Contents/MacOS/Electron"')
   })
 })

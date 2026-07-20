@@ -92,6 +92,8 @@ fi
 existing_pid=""
 owned_unmanaged_pid=""
 blocking_unmanaged_pid=""
+blocking_unmanaged_exe=""
+blocking_unmanaged_pgid=""
 for candidate in ${(f)"$(pgrep -x 'OpenAgents Dev' 2>/dev/null)"}; do
   candidate_pgid="$(/bin/ps -o pgid= -p "$candidate" | tr -d '[:space:]')"
   if [[ -n "$managed_pgid" && "$candidate_pgid" == "$managed_pgid" ]]; then existing_pid="$candidate"; break; fi
@@ -109,6 +111,8 @@ for candidate in ${(f)"$(pgrep -x 'OpenAgents Dev' 2>/dev/null)"}; do
     isolated_profile_group="$(/bin/ps -axo pgid=,command= | awk -v pgid="$candidate_pgid" '$1 == pgid { $1=""; print substr($0,2) }' | grep -E -- '--user-data-dir=.*/openagents-desktop-(smoke-|preview\.)' | head -1)"
     if [[ -z "$isolated_profile_group" ]]; then
       blocking_unmanaged_pid="$candidate"
+      blocking_unmanaged_exe="$candidate_executable"
+      blocking_unmanaged_pgid="$candidate_pgid"
     fi
   fi
 done
@@ -165,8 +169,44 @@ if [[ -z "$managed_pid" && -n "$recorded_orphan_pgid" ]]; then
   exit 1
 fi
 if [[ -z "$managed_pid" && -n "$blocking_unmanaged_pid" ]]; then
-  echo "oa-dev: an unmanaged OpenAgents Dev process exists; refusing to mutate the launch worktree" >&2
-  exit 1
+  # An OpenAgents Dev process the launcher does not own is running. On an
+  # explicit --restart we replace an unmanaged DEV build — Electron running from
+  # a node_modules dist, e.g. `pnpm dev` from another checkout or a leftover
+  # agent worktree: the owner asked to restart, so stop its process group, free
+  # the renderer port, drop the stale generation record, and fall through to a
+  # fresh launch. An installed release build (executable not under node_modules)
+  # still fails closed so a foreign app is never terminated.
+  if $restart_requested && [[ "$blocking_unmanaged_exe" == *"/node_modules/"*"/electron/dist/Electron.app/Contents/MacOS/Electron" ]]; then
+    echo "oa-dev: --restart is replacing an unmanaged dev build (pid $blocking_unmanaged_pid) from ${blocking_unmanaged_exe%%/node_modules/*}"
+    if [[ -n "$blocking_unmanaged_pgid" && "$blocking_unmanaged_pgid" == <-> ]]; then
+      /bin/kill -TERM -- "-$blocking_unmanaged_pgid" 2>/dev/null || true
+      for _ in {1..100}; do /bin/ps -axo pgid= | tr -d ' ' | grep -qx "$blocking_unmanaged_pgid" || break; sleep 0.1; done
+      if /bin/ps -axo pgid= | tr -d ' ' | grep -qx "$blocking_unmanaged_pgid"; then
+        /bin/kill -KILL -- "-$blocking_unmanaged_pgid" 2>/dev/null || true
+      fi
+      for _ in {1..50}; do /bin/ps -axo pgid= | tr -d ' ' | grep -qx "$blocking_unmanaged_pgid" || break; sleep 0.1; done
+    else
+      /bin/kill -TERM "$blocking_unmanaged_pid" 2>/dev/null || true
+      for _ in {1..100}; do kill -0 "$blocking_unmanaged_pid" 2>/dev/null || break; sleep 0.1; done
+      if kill -0 "$blocking_unmanaged_pid" 2>/dev/null; then /bin/kill -KILL "$blocking_unmanaged_pid" 2>/dev/null || true; fi
+    fi
+    for _ in {1..100}; do /usr/bin/nc -z 127.0.0.1 5734 >/dev/null 2>&1 || break; sleep 0.1; done
+    if /usr/bin/nc -z 127.0.0.1 5734 >/dev/null 2>&1; then
+      echo "oa-dev: renderer port 5734 did not free after stopping the unmanaged dev build" >&2
+      exit 1
+    fi
+    rm -f "$generation_path"
+    blocking_unmanaged_pid=""
+    restart_requested=false
+  else
+    echo "oa-dev: an unmanaged OpenAgents Dev process is running (pid $blocking_unmanaged_pid${blocking_unmanaged_exe:+, from $blocking_unmanaged_exe})." >&2
+    if $restart_requested; then
+      echo "oa-dev: it is not a replaceable dev build (installed release?); quit it explicitly, then retry." >&2
+    else
+      echo "oa-dev: quit it, or run \`oa-dev --restart\` to replace a dev build and launch the latest main." >&2
+    fi
+    exit 1
+  fi
 fi
 if [[ -z "$managed_pid" ]] && /usr/bin/nc -z 127.0.0.1 5734 >/dev/null 2>&1; then
   echo "oa-dev: renderer port 5734 is occupied without a valid managed generation; refusing to mutate the launch worktree" >&2
