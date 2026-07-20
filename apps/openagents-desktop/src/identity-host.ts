@@ -14,7 +14,7 @@
  * verbatim, memoizes it, and forwards it through the IPC layer. Any failure is
  * fail-soft: the host returns the `unavailable` projection.
  */
-import { IDENTITY_STATUS_SCHEMA_ID, type IdentitySourceValue, type IdentityStatus, unavailableIdentityStatus } from "./identity-contract.ts"
+import { IDENTITY_STATUS_SCHEMA_ID, type IdentitySourceValue, type IdentityStatus, type WalletModeValue, unavailableIdentityStatus } from "./identity-contract.ts"
 
 /**
  * The PUBLIC identity projection main hands the host. It is derived behind the
@@ -31,6 +31,11 @@ export type IdentityLoadResult = Readonly<{
   walletFingerprint: string
   /** The frozen derivation profile id. */
   profileId: string
+  /**
+   * The STATUS-ONLY Spark wallet mode (IDR-07): `status_only` when the app-side
+   * Spark adapter opened the recovered wallet, null when it could not. Public.
+   */
+  walletMode?: WalletModeValue | null
 }>
 
 /** The injected, impure boundary that rehydrates-or-creates the identity. */
@@ -57,6 +62,7 @@ export const createIdentityHost = (loader: IdentityLoader): IdentityHost => {
           walletFingerprint: loaded.walletFingerprint,
           source: loaded.source,
           profileId: loaded.profileId,
+          walletMode: loaded.walletMode ?? null,
         }
         return cached
       } catch {

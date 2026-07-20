@@ -18,6 +18,8 @@
     "./executor/*": "./src/executor/*.ts",
     "./presence": "./src/presence/index.ts",
     "./presence/*": "./src/presence/*.ts",
+    "./wallet": "./src/wallet/index.ts",
+    "./wallet/*": "./src/wallet/*.ts",
     "./rpc": "./src/rpc/index.ts"
   },
   "publishConfig": {

@@ -11,6 +11,7 @@ import {
   deriveSovereignIdentityPublic,
   type LocalSignerPort,
 } from "@openagentsinc/sovereign-identity"
+import { openRecoveredSparkWalletStatus, type SparkWalletStatus } from "../wallet/spark-status.js"
 import type { BootstrapSummary } from "./bootstrap.js"
 
 export const ENV_OPENAGENTS_IDENTITY_MNEMONIC_PATH = "OPENAGENTS_IDENTITY_MNEMONIC_PATH"
@@ -51,6 +52,14 @@ export type PylonNostrIdentity = {
   sparkFingerprint: string
   /** The active derivation profile id. */
   profileId: string
+  /**
+   * The STATUS-ONLY Spark wallet status (IDR-07). It is the PUBLIC projection of
+   * the app-side Spark status adapter: the recovered wallet opened in status-only
+   * mode from the shared root, bound to the frozen profile, with no send path. It
+   * is `null` when the status-only open could not complete. Public data only —
+   * never the mnemonic, `nsec`, private key, or seed.
+   */
+  sparkWallet: SparkWalletStatus | null
   /** Signer operations only — no secret-returning method. */
   signer: PylonNostrSigner
 }
@@ -279,12 +288,18 @@ export function deriveNip06Identity(mnemonic: string, identityPath: string): Pyl
   if (!validateMnemonic(normalized, wordlist)) throw new Error("invalid NIP-06 mnemonic")
   const nostr = deriveLocalNostrIdentity(normalized)
   const spark = deriveSovereignIdentityPublic(normalized)
+  // IDR-07: restore the Spark wallet from the recovered root in STATUS-ONLY mode
+  // through the app-side adapter. The mnemonic stays inside this bounded scope;
+  // only the PUBLIC status projection is returned. Non-blocking: a failed open
+  // yields null rather than breaking identity derivation.
+  const sparkWallet = openRecoveredSparkWalletStatus(normalized)
   return {
     identityPath,
     publicKey: nostr.publicKey,
     npub: nostr.npub,
     sparkFingerprint: spark.sparkBip32FingerprintHex,
     profileId: nostr.profileId,
+    sparkWallet,
     signer: nostr.signer,
   }
 }

@@ -34,6 +34,10 @@ export type IdentityStatusValue = (typeof identityStatusValues)[number]
 export const identitySourceValues = ["rehydrated", "created"] as const
 export type IdentitySourceValue = (typeof identitySourceValues)[number]
 
+/** The admitted Spark wallet mode (IDR-07). Status-only only — never a send mode. */
+export const walletModeValues = ["status_only"] as const
+export type WalletModeValue = (typeof walletModeValues)[number]
+
 /** A public Nostr `npub` bech32 identifier. An `nsec1...` can never match. */
 const Npub = Schema.String.check(Schema.isMaxLength(120), Schema.isPattern(/^npub1[a-z0-9]+$/))
 /** A public wallet fingerprint as lower-hex (the Spark BIP-32 fingerprint). */
@@ -56,6 +60,12 @@ export const IdentityStatusSchema = Schema.Struct({
   source: Schema.NullOr(Schema.Literals(identitySourceValues)),
   /** The frozen derivation profile id; null when unavailable. */
   profileId: Schema.NullOr(BoundedRef),
+  /**
+   * The STATUS-ONLY Spark wallet mode (IDR-07). `status_only` when the app-side
+   * Spark adapter opened the recovered wallet; null when unavailable. There is no
+   * send mode on this surface.
+   */
+  walletMode: Schema.NullOr(Schema.Literals(walletModeValues)),
 })
 export type IdentityStatus = typeof IdentityStatusSchema.Type
 
@@ -82,4 +92,5 @@ export const unavailableIdentityStatus = (): IdentityStatus => ({
   walletFingerprint: null,
   source: null,
   profileId: null,
+  walletMode: null,
 })

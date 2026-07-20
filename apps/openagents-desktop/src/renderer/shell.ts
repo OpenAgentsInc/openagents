@@ -441,6 +441,11 @@ export type IdentityBootState = Readonly<{
   walletFingerprint: string | null;
   source: "rehydrated" | "created" | null;
   profileId: string | null;
+  /**
+   * The STATUS-ONLY Spark wallet mode (IDR-07): `status_only` when the app-side
+   * Spark adapter opened the recovered wallet, null otherwise. Public data only.
+   */
+  walletMode: "status_only" | null;
 }>;
 
 export type ComposerReviewContext = Readonly<{

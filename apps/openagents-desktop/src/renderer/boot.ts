@@ -1299,12 +1299,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         Effect.runPromise(SubscriptionRef.update(state, current => ({ ...current, identityBoot: boot })))
       const identity = readBridge()?.identity
       if (identity?.status === undefined) {
-        await setIdentityBoot({ status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null })
+        await setIdentityBoot({ status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null, walletMode: null })
         return
       }
       const status = await identity.status().catch(() => null)
       if (status === null || status.status !== "available") {
-        await setIdentityBoot({ status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null })
+        await setIdentityBoot({ status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null, walletMode: null })
         return
       }
       await setIdentityBoot({
@@ -1313,6 +1313,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         walletFingerprint: status.walletFingerprint,
         source: status.source,
         profileId: status.profileId,
+        walletMode: status.walletMode,
       })
     })().catch(() => {})
     let historyRequestSequence = 0

@@ -143,7 +143,7 @@ describe("boot sequence sovereign identity scan (IDR-BS #9103)", () => {
     expect(rows.every((row) => row.status === "checking")).toBe(true)
   })
 
-  test("an available existing identity shows the truncated npub (no source adjective) + wallet ready", () => {
+  test("an available existing identity shows the truncated npub (no source adjective) + wallet status-only", () => {
     const rows = projectBootSequenceIdentity(
       withState({
         identityBoot: {
@@ -152,6 +152,7 @@ describe("boot sequence sovereign identity scan (IDR-BS #9103)", () => {
           walletFingerprint: publicFingerprint,
           source: "rehydrated",
           profileId: "openagents.legacy_unified_nostr_spark.v1",
+          walletMode: "status_only",
         },
       }),
     )
@@ -162,7 +163,24 @@ describe("boot sequence sovereign identity scan (IDR-BS #9103)", () => {
     // and the full npub is never shown in the row.
     expect(identity?.detail).toBe("npub1az708q3…ghk0w7")
     expect(identity?.detail?.includes(publicNpub)).toBe(false)
-    expect(wallet?.detail).toBe(`${publicFingerprint} · ready`)
+    // IDR-07: the wallet row shows the REAL status-only mode from the adapter.
+    expect(wallet?.detail).toBe(`${publicFingerprint} · status-only`)
+  })
+
+  test("an available identity with no adapter mode falls back to wallet ready", () => {
+    const rows = projectBootSequenceIdentity(
+      withState({
+        identityBoot: {
+          status: "available",
+          npub: publicNpub,
+          walletFingerprint: publicFingerprint,
+          source: "rehydrated",
+          profileId: "openagents.legacy_unified_nostr_spark.v1",
+          walletMode: null,
+        },
+      }),
+    )
+    expect(rows.find((row) => row.id === "wallet")?.detail).toBe(`${publicFingerprint} · ready`)
   })
 
   test("a freshly created identity is labelled 'new'", () => {
@@ -174,6 +192,7 @@ describe("boot sequence sovereign identity scan (IDR-BS #9103)", () => {
           walletFingerprint: publicFingerprint,
           source: "created",
           profileId: "openagents.legacy_unified_nostr_spark.v1",
+          walletMode: "status_only",
         },
       }),
     )
@@ -183,7 +202,7 @@ describe("boot sequence sovereign identity scan (IDR-BS #9103)", () => {
   test("an unavailable identity reads as not detected", () => {
     const rows = projectBootSequenceIdentity(
       withState({
-        identityBoot: { status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null },
+        identityBoot: { status: "unavailable", npub: null, walletFingerprint: null, source: null, profileId: null, walletMode: null },
       }),
     )
     expect(rows.every((row) => row.status === "unavailable")).toBe(true)

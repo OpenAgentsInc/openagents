@@ -3982,6 +3982,10 @@ const desktopIdentityLoader: IdentityLoader = {
       npub: identity.npub,
       walletFingerprint: identity.sparkFingerprint,
       profileId: identity.profileId,
+      // IDR-07: the STATUS-ONLY Spark wallet mode from the app-side adapter's
+      // public projection. `status_only` when the recovered wallet opened; null
+      // otherwise. Public data only — no send path.
+      walletMode: identity.sparkWallet?.mode ?? null,
     }
   },
 }

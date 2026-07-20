@@ -33,6 +33,7 @@ const projectionFor = (mnemonic: string, source: "rehydrated" | "created"): Iden
     npub: nostr.npub,
     walletFingerprint: spark.sparkBip32FingerprintHex,
     profileId: nostr.profileId,
+    walletMode: "status_only",
   }
 }
 
@@ -54,6 +55,8 @@ describe("identity host (IDR-BS #9103, IDR-06 signer boundary)", () => {
     expect(status.walletFingerprint).toBe(PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE.sparkBip32FingerprintHex)
     expect(status.source).toBe("rehydrated")
     expect(status.profileId).toBe("openagents.legacy_unified_nostr_spark.v1")
+    // IDR-07: the status-only Spark wallet mode passes through the host.
+    expect(status.walletMode).toBe("status_only")
   })
 
   test("the signer-boundary derivation still yields the frozen npub + pubkey vectors", () => {
@@ -83,7 +86,7 @@ describe("identity host (IDR-BS #9103, IDR-06 signer boundary)", () => {
     expect(serialized.includes("seed")).toBe(false)
     // Only the documented public keys are present.
     expect(Object.keys(status).sort()).toEqual(
-      ["npub", "profileId", "schema", "source", "status", "walletFingerprint"],
+      ["npub", "profileId", "schema", "source", "status", "walletFingerprint", "walletMode"],
     )
     // The public projection still decodes against the strict IPC schema.
     expect(decodeIdentityStatus(status)).not.toBeNull()

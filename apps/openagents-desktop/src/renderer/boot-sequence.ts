@@ -150,9 +150,13 @@ export const projectBootSequenceIdentity = (
         ? "deriving identity…"
         : "not detected"
 
+  // IDR-07: surface the REAL status-only wallet mode from the app-side Spark
+  // adapter's public projection. `status_only` reads as "status-only"; a missing
+  // mode (adapter did not open) falls back to the neutral "ready".
+  const walletModeLabel = identity?.walletMode === "status_only" ? "status-only" : "ready"
   const walletDetail =
     status === "available" && identity?.walletFingerprint != null
-      ? `${identity.walletFingerprint} · ready`
+      ? `${identity.walletFingerprint} · ${walletModeLabel}`
       : status === "checking"
         ? "deriving wallet…"
         : "not detected"
