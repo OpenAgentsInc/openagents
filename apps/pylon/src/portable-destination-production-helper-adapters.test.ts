@@ -1,3 +1,4 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,11 +93,20 @@ const makeProcessService = () => {
 
 const adapterFor = (
   helpers: ReturnType<typeof makePylonPortableDestinationProductionHelpers>,
-  kind: "pty" | "watcher",
+  kind: "lsp" | "pty" | "watcher",
 ) => {
   const adapter = helpers.adapters.find((candidate) => candidate.kind === kind);
   if (adapter === undefined) throw new Error(`missing ${kind} adapter`);
   return adapter;
+};
+
+const hostileLspProcess = (script: string, observed: ChildProcessWithoutNullStreams[]) => {
+  const child = spawn(process.execPath, ["-e", script], {
+    env: { LANG: "C.UTF-8", LC_ALL: "C.UTF-8" },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  observed.push(child);
+  return child;
 };
 
 describe("portable destination production helper adapters", () => {
@@ -107,7 +117,7 @@ describe("portable destination production helper adapters", () => {
     try {
       const helpers = makePylonPortableDestinationProductionHelpers({
         exactExecutableIsAvailable: () => true,
-        instanceNonce: () => `nonce-${nonce += 1}`,
+        instanceNonce: () => `nonce-${(nonce += 1)}`,
         processService,
       });
       const adapter = adapterFor(helpers, "pty");
@@ -121,10 +131,12 @@ describe("portable destination production helper adapters", () => {
       });
       expect(await first.isLive()).toBe(true);
       await first.dispose();
-      expect(terminations).toEqual([{
-        khalaSessionId: expect.stringMatching(/^session\.pylon\.portable\.pty\./u),
-        sessionId: "khala-session-1",
-      }]);
+      expect(terminations).toEqual([
+        {
+          khalaSessionId: expect.stringMatching(/^session\.pylon\.portable\.pty\./u),
+          sessionId: "khala-session-1",
+        },
+      ]);
       expect(await first.isLive()).toBe(false);
 
       const restarted = await adapter.start(input(root));
@@ -142,15 +154,17 @@ describe("portable destination production helper adapters", () => {
     try {
       const helpers = makePylonPortableDestinationProductionHelpers({
         exactExecutableIsAvailable: () => false,
-        instanceNonce: () => `nonce-${nonce += 1}`,
+        instanceNonce: () => `nonce-${(nonce += 1)}`,
       });
       const adapter = adapterFor(helpers, "watcher");
       const first = await adapter.start(input(root));
-      const replacement = await adapter.start(input(root, {
-        destinationRunnerSessionReservationRef: "runner-session-reservation.ide13.production.3",
-        destinationGeneration: 3,
-        workspaceRef: "workspace.ide13.production.3",
-      }));
+      const replacement = await adapter.start(
+        input(root, {
+          destinationRunnerSessionReservationRef: "runner-session-reservation.ide13.production.3",
+          destinationGeneration: 3,
+          workspaceRef: "workspace.ide13.production.3",
+        }),
+      );
 
       expect(await first.isLive()).toBe(true);
       expect(first.evidenceRefs).not.toEqual(replacement.evidenceRefs);
@@ -167,10 +181,14 @@ describe("portable destination production helper adapters", () => {
   test("keeps an unconfirmed PTY teardown visible and retryable", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-production-pty-failed-teardown-"));
     const { processService } = makeProcessService();
-    const terminateSession = vi.fn(() => Effect.fail(new KhalaToolRuntimeError({
-      code: "process_session_termination_unconfirmed",
-      reason: "test termination was not observed",
-    })));
+    const terminateSession = vi.fn(() =>
+      Effect.fail(
+        new KhalaToolRuntimeError({
+          code: "process_session_termination_unconfirmed",
+          reason: "test termination was not observed",
+        }),
+      ),
+    );
     try {
       const helpers = makePylonPortableDestinationProductionHelpers({
         exactExecutableIsAvailable: () => true,
@@ -194,6 +212,7 @@ describe("portable destination production helper adapters", () => {
     const exactExecutableIsAvailable = vi.fn(() => false);
     const helpers = makePylonPortableDestinationProductionHelpers({
       exactExecutableIsAvailable,
+      resolveLspProfile: () => null,
     });
 
     expect(helpers.adapters.map((adapter) => adapter.kind)).toEqual(["watcher"]);
@@ -209,6 +228,7 @@ describe("portable destination production helper adapters", () => {
   test("keeps LSP, DAP, and native unsupported without a durable executable profile", () => {
     const helpers = makePylonPortableDestinationProductionHelpers({
       exactExecutableIsAvailable: () => true,
+      resolveLspProfile: () => null,
     });
 
     expect(helpers.adapters.map((adapter) => adapter.kind)).toEqual(["pty", "watcher"]);
@@ -217,5 +237,68 @@ describe("portable destination production helper adapters", () => {
       dap: PYLON_PORTABLE_INSTALLED_EXECUTABLE_PROFILE_AUTHORITY_MISSING,
       native: PYLON_PORTABLE_INSTALLED_EXECUTABLE_PROFILE_AUTHORITY_MISSING,
     });
+  });
+
+  test("starts the verified TypeScript LSP, completes initialize, and observes exit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-production-lsp-"));
+    try {
+      const helpers = makePylonPortableDestinationProductionHelpers({
+        exactExecutableIsAvailable: () => false,
+        instanceNonce: () => "lsp-live-nonce",
+      });
+      expect(helpers.unsupportedOmissionRefs.lsp).toBeUndefined();
+      const handle = await adapterFor(helpers, "lsp").start(input(root));
+
+      expect(handle.versionRef).toBe(
+        "version.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.3.v1",
+      );
+      expect(handle.evidenceRefs).toHaveLength(2);
+      expect(handle.evidenceRefs.every((ref) => !ref.includes(root))).toBe(true);
+      expect(handle.instanceRef.includes(root)).toBe(false);
+      expect(await handle.isLive()).toBe(true);
+      await handle.dispose();
+      expect(await handle.isLive()).toBe(false);
+
+      const replacement = await adapterFor(helpers, "lsp").start(
+        input(root, {
+          destinationRunnerSessionReservationRef: "runner-session-reservation.ide13.production.3",
+          destinationGeneration: 3,
+          workspaceRef: "workspace.ide13.production.3",
+        }),
+      );
+      expect(replacement.instanceRef).not.toBe(handle.instanceRef);
+      expect(replacement.evidenceRefs).not.toEqual(handle.evidenceRefs);
+      await replacement.dispose();
+      expect(await replacement.isLive()).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    [
+      "oversize body",
+      `process.stdout.write("Content-Length: 1048577\\r\\n\\r\\n"); setInterval(() => {}, 1000);`,
+    ],
+    ["endless header", `process.stdout.write("x".repeat(8193)); setInterval(() => {}, 1000);`],
+    [
+      "notification flood",
+      `const body = JSON.stringify({ jsonrpc: "2.0", method: "window/logMessage", params: {} }); const frame = "Content-Length: " + Buffer.byteLength(body) + "\\r\\n\\r\\n" + body; for (let index = 0; index < 65; index += 1) process.stdout.write(frame); setInterval(() => {}, 1000);`,
+    ],
+  ])("fails closed and observes exit for a hostile %s", async (_label, script) => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-hostile-lsp-"));
+    const observed: ChildProcessWithoutNullStreams[] = [];
+    try {
+      const helpers = makePylonPortableDestinationProductionHelpers({
+        exactExecutableIsAvailable: () => false,
+        startLspProcess: (_profile, _workingDirectory) => hostileLspProcess(script, observed),
+      });
+
+      await expect(adapterFor(helpers, "lsp").start(input(root))).rejects.toThrow();
+      expect(observed).toHaveLength(1);
+      expect(observed[0]?.exitCode !== null || observed[0]?.signalCode !== null).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
