@@ -3068,6 +3068,7 @@ const gitGithubService = openGitGithubService(
       },
 )
 const ideSourceControlHost = openIdeSourceControlHost({
+  ...(smokeMode ? {} : { mutationAuthority: workspacePortableMutationAuthority }),
   workspace: () => {
     if (smokeMode) return { root: smokeGitRoot, grantRef: "workspace.grant.smoke" }
     const workspace = hostLifecycle.workspace()

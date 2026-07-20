@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 
@@ -16,6 +17,7 @@ import {
   decodeIdeSourceControlCommand,
   type IdeSourceControlBinding,
   type IdeSourceControlCommandResult,
+  type IdeSourceControlFailure,
   type IdeSourceControlSnapshot,
 } from "./source-control-contract.ts";
 import { makeIdeSourceControlGitAdapter } from "./source-control-git-adapter.ts";
@@ -30,6 +32,10 @@ import {
   IdeRootRefSchema,
   IdeWorktreeRefSchema,
 } from "./project-contract.ts";
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./portable-mutation-authority.ts";
 
 export type IdeSourceControlWorkspaceBinding = Readonly<{ root: string; grantRef: string }>;
 
@@ -41,6 +47,7 @@ export type IdeSourceControlHost = Readonly<{
 
 export type IdeSourceControlHostOptions = Readonly<{
   workspace: () => IdeSourceControlWorkspaceBinding | null;
+  mutationAuthority?: IdePortableMutationAuthority;
   now?: () => string;
   recoveryRoot?: string;
 }>;
@@ -100,17 +107,22 @@ const seedSnapshot = (
   stopped: false,
 });
 
-const unavailable = (code: "invalid_command" | "repository_unavailable", message: string) =>
+const unavailable = (
+  code: "invalid_command" | "repository_unavailable" | "policy_refused",
+  message: string,
+  operationRef: IdeSourceControlFailure["operationRef"] = null,
+  currentVersion: IdeSourceControlSnapshot["version"] | null = null,
+) =>
   IdeSourceControlCommandResultSchema.cases.Failure.make({
     failure: IdeSourceControlFailureSchema.make({
       schemaVersion: "openagents.desktop.ide-source-control.v1",
-      operationRef: null,
+      operationRef,
       code,
       message,
-      currentVersion: null,
+      currentVersion,
       conflictPaths: [],
       recoveryRef: null,
-      retryable: code === "repository_unavailable",
+      retryable: code !== "invalid_command",
     }),
   });
 
@@ -120,6 +132,21 @@ export const openIdeSourceControlHost = async (
   const now = options.now ?? (() => new Date().toISOString());
   let runtime: Runtime | null = null;
   let disposed = false;
+  const mutationAuthority = options.mutationAuthority;
+  const permitStorage = new AsyncLocalStorage<IdePortableMutationPermit>();
+  let operationTail: Promise<void> = Promise.resolve();
+
+  const serialized = async <A>(operation: () => Promise<A>): Promise<A> => {
+    const previous = operationTail;
+    let release: () => void = () => undefined;
+    operationTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  };
 
   const closeRuntime = async (reason: string): Promise<void> => {
     const current = runtime;
@@ -150,7 +177,11 @@ export const openIdeSourceControlHost = async (
     const binding = ideSourceControlBindingFor({ root, grantRef: workspace.grantRef });
     const seed = seedSnapshot(binding, now);
     const scope = await Effect.runPromise(Scope.make());
-    const adapter = makeIdeSourceControlGitAdapter({ root, seed, now, recoveryRoot: options.recoveryRoot });
+    const adapter = makeIdeSourceControlGitAdapter({
+      root, seed, now, recoveryRoot: options.recoveryRoot,
+      mutationAuthority,
+      mutationPermit: () => permitStorage.getStore(),
+    });
     const context = await Effect.runPromise(Layer.buildWithScope(
       makeIdeSourceControlServiceLayer(seed, adapter, { now }),
       scope,
@@ -160,7 +191,7 @@ export const openIdeSourceControlHost = async (
     return opened;
   };
 
-  const snapshot = async (): Promise<IdeSourceControlSnapshot | null> => {
+  const snapshotUnlocked = async (): Promise<IdeSourceControlSnapshot | null> => {
     const current = await ensureRuntime();
     if (current === null) return null;
     const settled = await Effect.runPromise(current.service.execute({
@@ -172,23 +203,59 @@ export const openIdeSourceControlHost = async (
     })));
     return settled;
   };
+  const snapshot = async (): Promise<IdeSourceControlSnapshot | null> => serialized(snapshotUnlocked);
 
-  const command = async (value: unknown): Promise<IdeSourceControlCommandResult> => {
+  const commandUnlocked = async (value: unknown): Promise<IdeSourceControlCommandResult> => {
     const decoded = decodeIdeSourceControlCommand(value);
     if (decoded === null) return unavailable("invalid_command", "The source-control command is invalid.");
     const current = await ensureRuntime();
     if (current === null) return unavailable("repository_unavailable", "Choose an available Git workspace.");
-    return Effect.runPromise(current.service.execute(decoded).pipe(Effect.match({
+    const mutatesRepository = !["Refresh", "History", "Blame", "ProviderRefresh"].includes(decoded._tag);
+    let permit: IdePortableMutationPermit | null = null;
+    if (mutatesRepository && mutationAuthority !== undefined) {
+      const authorized = mutationAuthority.authorize(current.grantRef);
+      if (authorized._tag === "Refused") {
+        return unavailable(
+          "policy_refused",
+          `Portable source-control authority is unavailable (${authorized.reason}).`,
+          decoded._tag === "Refresh" ? null : decoded.operationRef,
+          (await Effect.runPromise(current.service.snapshot())).version,
+        );
+      }
+      permit = authorized.permit;
+      if (!mutationAuthority.reauthorize(permit)) {
+        await closeRuntime("portable source-control authority changed before execution");
+        return unavailable(
+          "policy_refused",
+          "Portable source-control authority changed before the Git operation.",
+          decoded._tag === "Refresh" ? null : decoded.operationRef,
+        );
+      }
+    }
+    const execute = () => Effect.runPromise(current.service.execute(decoded).pipe(Effect.match({
       onFailure: (error) => IdeSourceControlCommandResultSchema.cases.Failure.make({ failure: error.failure }),
       onSuccess: (result) => IdeSourceControlCommandResultSchema.cases.Success.make(result),
     })));
+    const result = permit === null ? await execute() : await permitStorage.run(permit, execute);
+    if (permit !== null && mutationAuthority !== undefined && !mutationAuthority.reauthorize(permit)) {
+      await closeRuntime("portable source-control authority changed during execution");
+      return unavailable(
+        "policy_refused",
+        "Portable source-control authority changed during the Git operation. The runtime was stopped and its late result was withheld.",
+        decoded._tag === "Refresh" ? null : decoded.operationRef,
+        result._tag === "Success" ? result.snapshot.version : result.failure.currentVersion,
+      );
+    }
+    return result;
   };
+  const command = async (value: unknown): Promise<IdeSourceControlCommandResult> => serialized(() => commandUnlocked(value));
 
-  const dispose = async (): Promise<void> => {
+  const disposeUnlocked = async (): Promise<void> => {
     if (disposed) return;
     disposed = true;
     await closeRuntime("host disposed");
   };
+  const dispose = async (): Promise<void> => serialized(disposeUnlocked);
 
   return { snapshot, command, dispose };
 };
