@@ -143,6 +143,12 @@ export type WorkbenchAgentChildDispatch = Readonly<{
   threadRef: string
   status: WorkbenchCollabAgentStatusDispatch
   nickname?: string
+  /**
+   * A bounded per-child detail line (for example a delegated subagent's terminal
+   * failure reason). When present it overrides the group prompt as the row's
+   * task text, so an errored child shows WHAT failed inline.
+   */
+  detail?: string
 }>
 
 export type WorkbenchAgentDispatchItem = Readonly<{
@@ -332,7 +338,7 @@ export const dispatchWorkbenchItem = (
       const agents: ReadonlyArray<DesktopAgentActivity> = agentItem.children !== undefined && agentItem.children.length > 0
         ? agentItem.children.map(child => ({
             agentKey: child.threadRef,
-            detail: agentItem.activityKind !== undefined ? "" : (agentItem.prompt ?? ""),
+            detail: child.detail ?? (agentItem.activityKind !== undefined ? "" : (agentItem.prompt ?? "")),
             name: child.nickname ?? agentItem.agentPath ?? child.threadRef,
             role: agentItem.activityKind !== undefined ? "Subagent activity" : "Delegated agent",
             status: toDesktopAgentStatusFromCollab(child.status),

@@ -36,7 +36,7 @@ import {
   TurnPolicy,
   ThreadRepository,
 } from "./ports.js";
-import { buildTurnReceipt, deriveSafeProjection } from "./projection.js";
+import { buildTurnReceipt, deriveSafeProjection, safeFailureReasonText } from "./projection.js";
 import {
   applyTurnEvent,
   bumpTurnGeneration,
@@ -268,7 +268,11 @@ export const layer = Layer.effect(
               }
             }),
           Refused: ({ reason }) => applyAt(generation, TurnTransition.Refused({ reason })),
-          Failed: () => applyAt(generation, TurnTransition.Failed()),
+          // Carry the provider's bounded, public-safe failure reason onto the
+          // record so the terminal projection (and the delegation card that
+          // consumes it) can show WHAT failed, not a bare ERRORED badge.
+          Failed: ({ detail }) =>
+            applyAt(generation, TurnTransition.Failed({ reason: safeFailureReasonText(detail) })),
         });
 
       const run = Effect.gen(function* () {

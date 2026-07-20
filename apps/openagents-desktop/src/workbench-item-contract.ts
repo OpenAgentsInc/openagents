@@ -170,6 +170,13 @@ export const WorkbenchAgentChildSchema = Schema.Struct({
   status: WorkbenchCollabAgentStatusSchema,
   /** Friendly label when a caller can resolve one (e.g. from the history agent graph); the wire itself has none. */
   nickname: Schema.optional(BoundedString(120)),
+  /**
+   * Bounded per-child detail line (for example a delegated subagent's terminal
+   * failure reason). When present it overrides the group prompt as the row's
+   * task text, so an errored child shows WHAT failed inline. Public-safe: a
+   * short label only, never raw provider output, a command, a path, or a token.
+   */
+  detail: Schema.optional(BoundedString(400)),
 })
 export type WorkbenchAgentChild = typeof WorkbenchAgentChildSchema.Type
 

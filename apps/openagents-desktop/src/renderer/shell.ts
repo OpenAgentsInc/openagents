@@ -6779,19 +6779,31 @@ export const delegationCardFromProjection = (
   projection: SafeTurnProjection,
   title: string,
   detail: string,
-): RuntimeChildCardPayload => ({
-  kind: "child",
-  turnRef: projection.requestRef.slice(0, 120),
-  childRef: AFS_DELEGATION_CHILD_REF,
-  status: delegationChildStatus(projection.cardState),
-  title: title.slice(0, 400),
-  detail: detail.slice(0, 400),
-  transcript: projection.messageChain.map((entry) => ({
+): RuntimeChildCardPayload => {
+  // A terminal `failed`/`refused`/`cancelled` projection carries a bounded,
+  // public-safe `failureReason`. Show it as the card detail (so the card reads
+  // "Codex subagent — ERRORED — <reason>" without a click) AND append it as a
+  // transcript system line (so the right-pane inspector shows the reason instead
+  // of the "Running. No output yet." placeholder).
+  const failureReason = projection.failureReason;
+  const transcript = projection.messageChain.map((entry) => ({
     role: entry.role === "tool" ? ("system" as const) : entry.role,
     text: delegationTranscriptText(entry),
-  })),
-  steered: null,
-});
+  }))
+  return {
+    kind: "child",
+    turnRef: projection.requestRef.slice(0, 120),
+    childRef: AFS_DELEGATION_CHILD_REF,
+    status: delegationChildStatus(projection.cardState),
+    title: title.slice(0, 400),
+    detail: (failureReason ?? detail).slice(0, 400),
+    transcript:
+      failureReason === undefined
+        ? transcript
+        : [...transcript, { role: "system" as const, text: failureReason.slice(0, DELEGATION_TRANSCRIPT_TEXT_LIMIT) }],
+    steered: null,
+  }
+}
 
 /** Build the initial (seeded) delegation card, shown after the host start receipt. */
 export const seedDelegationCard = (

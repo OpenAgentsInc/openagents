@@ -2,6 +2,7 @@ import { Effect, Layer, Ref, Schema as S } from "effect";
 
 import {
   CandidateRef,
+  MAX_TURN_FAILURE_REASON_CHARS,
   ProviderTurnRef,
   TurnLifecycleState,
   TurnProviderRef,
@@ -44,6 +45,10 @@ export const PersistedTurnRecord = S.Struct({
   effective: S.NullOr(TurnProviderRef),
   candidateRef: S.NullOr(CandidateRef),
   refusalReason: S.NullOr(TurnRefusalReason),
+  // Additive (#9082): tolerant of absence so an older on-disk journal — decoded
+  // directly, without the migration path — still loads. Absence normalizes to
+  // null on decode below.
+  failureReason: S.optionalKey(S.NullOr(S.String.check(S.isMaxLength(MAX_TURN_FAILURE_REASON_CHARS)))),
   progressCount: NullableInt,
 });
 export type PersistedTurnRecord = typeof PersistedTurnRecord.Type;
@@ -69,7 +74,9 @@ export const encodeTurnRecord = (record: TurnStateRecord): PersistedTurnRecord =
 /** Deserialize (and migrate) a persisted value back to a kernel record. */
 export const decodeTurnRecord = (value: unknown): TurnStateRecord => {
   const { schema: _schema, ...record } = decodePersisted(migratePersistedTurnRecord(value));
-  return record;
+  // An older record predates `failureReason`; normalize its absence to null so
+  // the kernel record type is always complete.
+  return { ...record, failureReason: record.failureReason ?? null };
 };
 
 const journalError = (reason: "storage_unavailable" | "invalid_record") =>

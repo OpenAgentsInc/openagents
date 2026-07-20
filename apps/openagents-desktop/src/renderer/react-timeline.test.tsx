@@ -1682,6 +1682,42 @@ describe("delegated-agent collab states on the primary React timeline (#8867)", 
     expect(records[0]!.runtimeChild?.interruptable).toBe(false);
   });
 
+  test("an errored child routes the bounded failure reason onto the child detail (shows WHAT failed inline)", () => {
+    const reason = "session_failed: delegate lane stopped";
+    const records = projectLocalTimelineRecords([childNote({ status: "failed", detail: reason })]);
+    expect(records[0]!.item).toMatchObject({
+      status: "failed",
+      children: [{ status: "errored", detail: reason }],
+    });
+    // The generic record body also carries the reason (right-pane fallback).
+    expect(records[0]!.body).toBe(reason);
+  });
+
+  test("an errored delegate child renders the failure reason inline on the card without a click", async () => {
+    const reason = "session_failed: delegate lane stopped";
+    const { container } = installDom();
+    const root = createRoot(container);
+    const records = projectLocalTimelineRecords([childNote({ status: "failed", detail: reason })]);
+    root.render(
+      <ReactTimeline
+        sessionKey="thread-1"
+        records={records}
+        loadedItemCount={1}
+        offset={0}
+        totalItems={1}
+        loadingEdge={null}
+        report={report}
+      />,
+    );
+    await settle();
+    const card = container.querySelector<HTMLElement>('[data-kind="collabAgentToolCall"]');
+    expect(card).not.toBeNull();
+    // The errored badge AND the reason are both visible on the card summary.
+    expect(card?.textContent).toContain("ERRORED");
+    expect(card?.textContent).toContain(reason);
+    root.unmount();
+  });
+
   test("an already-steered running child is no longer interruptable (childInterruptable reused verbatim)", () => {
     const records = projectLocalTimelineRecords([
       childNote({

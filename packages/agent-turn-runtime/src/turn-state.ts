@@ -50,8 +50,11 @@ export type TurnTransition = Data.TaggedEnum<{
   Completed: { readonly candidateRef: CandidateRef };
   /** A typed refusal. The user input is kept; no silent provider change occurs. */
   Refused: { readonly reason: TurnRefusalReason };
-  /** A provider or host failure after dispatch. */
-  Failed: Record<never, never>;
+  /**
+   * A provider or host failure after dispatch. It carries a bounded, public-safe
+   * reason label (for example `session_failed`), never raw provider output.
+   */
+  Failed: { readonly reason: string };
   /** The owner or host cancelled the turn. */
   Cancelled: Record<never, never>;
 }>;
@@ -80,6 +83,12 @@ export interface TurnStateRecord {
   readonly effective: TurnProviderRef | null;
   readonly candidateRef: CandidateRef | null;
   readonly refusalReason: TurnRefusalReason | null;
+  /**
+   * The bounded, public-safe reason a turn reached the `failed` state. It is set
+   * only on a `Failed` transition and is null otherwise. It never carries raw
+   * provider output, a command, a path, or a token.
+   */
+  readonly failureReason: string | null;
   readonly progressCount: number;
 }
 
@@ -107,6 +116,7 @@ export const initialTurnState = (
   effective: null,
   candidateRef: null,
   refusalReason: null,
+  failureReason: null,
   progressCount: 0,
 });
 
@@ -173,9 +183,9 @@ export const applyTurnEvent = (record: TurnStateRecord, event: TurnEvent): TurnT
       record.state === "streaming"
         ? accept({ ...record, state: "refused", refusalReason: reason })
         : reject("illegal_transition"),
-    Failed: () =>
+    Failed: ({ reason }) =>
       record.state === "dispatching" || record.state === "streaming"
-        ? accept({ ...record, state: "failed" })
+        ? accept({ ...record, state: "failed", failureReason: reason })
         : reject("illegal_transition"),
     Cancelled: () => accept({ ...record, state: "cancelled" }),
   });
@@ -205,6 +215,7 @@ export interface TurnStateCorpusScenario {
     readonly progressCount: number;
     readonly hasCandidate: boolean;
     readonly refusalReason: TurnRefusalReason | null;
+    readonly failureReason?: string | null;
   };
 }
 
@@ -240,9 +251,16 @@ export const TURN_STATE_TRANSITION_CORPUS: ReadonlyArray<TurnStateCorpusScenario
       gen0(TurnTransition.RouteStarted()),
       gen0(TurnTransition.RouteAdmitted({ selected: SELECTED, effective: EFFECTIVE })),
       gen0(TurnTransition.ProviderStarted({ providerTurnRef: PROVIDER_TURN })),
-      gen0(TurnTransition.Failed()),
+      gen0(TurnTransition.Failed({ reason: "session_failed" })),
     ],
-    expected: { state: "failed", generation: 0, progressCount: 0, hasCandidate: false, refusalReason: null },
+    expected: {
+      state: "failed",
+      generation: 0,
+      progressCount: 0,
+      hasCandidate: false,
+      refusalReason: null,
+      failureReason: "session_failed",
+    },
   },
   {
     name: "refuses on malformed output without dispatch",

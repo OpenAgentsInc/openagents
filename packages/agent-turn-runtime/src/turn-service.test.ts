@@ -43,11 +43,14 @@ describe("TurnService", () => {
     expect(result.projection.messageChain[1]!.commandOutputByteCount).toBe(12);
   });
 
-  test("a fixture provider failure produces a failed terminal", async () => {
+  test("a fixture provider failure produces a failed terminal that carries the bounded reason", async () => {
     const result = await runStart({ outcome: "fails" });
     expect(result.projection.cardState).toBe("failed");
     expect(result.receipt.decision).toBe("failed");
     expect(result.candidate).toBeNull();
+    // The provider's `Failed({ detail })` reason must survive to the safe
+    // projection (was dropped before): the card can now show WHAT failed.
+    expect(result.projection.failureReason).toBe("fixture failure");
   });
 
   test("a fixture provider refusal keeps input and shows the reason", async () => {

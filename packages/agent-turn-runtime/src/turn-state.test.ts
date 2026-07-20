@@ -25,6 +25,7 @@ describe("turn state machine", () => {
       expect(record.progressCount, scenario.name).toBe(scenario.expected.progressCount);
       expect(record.candidateRef !== null, scenario.name).toBe(scenario.expected.hasCandidate);
       expect(record.refusalReason, scenario.name).toBe(scenario.expected.refusalReason);
+      expect(record.failureReason, scenario.name).toBe(scenario.expected.failureReason ?? null);
     }
   });
 

@@ -154,6 +154,13 @@ describe("DesktopAgentGroup rendering states", () => {
     expect(html).not.toContain("Interrupt");
   });
 
+  test("a delegate row defaults EXPANDED (owner request: working/errored state visible without a click)", () => {
+    // A row with no inline transcript used to default collapsed; the owner wants
+    // the disclosure open by default so the working or errored state is visible.
+    const html = renderToStaticMarkup(<DesktopAgentGroup agents={[agent()]} itemKey="i" />);
+    expect(html).toMatch(/<details[^>]*\bopen\b/);
+  });
+
   test("nested transcript rows still render with the parent line (unchanged shape)", () => {
     const html = renderToStaticMarkup(
       <DesktopAgentGroup

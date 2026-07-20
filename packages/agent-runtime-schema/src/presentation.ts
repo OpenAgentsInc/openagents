@@ -4,6 +4,7 @@ import { EvidenceRef } from "./artifact.js";
 import { TurnProviderCandidate, TurnDataDestination } from "./provider.js";
 import {
   brandedTurnRef,
+  MAX_TURN_FAILURE_REASON_CHARS,
   MAX_TURN_OUTPUT_CHARS,
   ProviderTurnRef,
   TurnRequestRef,
@@ -102,6 +103,13 @@ export const SafeTurnProjection = S.Struct({
   requestRef: TurnRequestRef,
   providerTurnRef: S.optionalKey(ProviderTurnRef),
   cardState: AgentCardState,
+  /**
+   * A bounded, public-safe reason for a terminal `failed`, `refused`, or
+   * `cancelled` card. It is a short control-plane label (for example
+   * `session_failed: delegate lane stopped`), never a raw provider error,
+   * command output, path, or token. Absent for non-terminal and `done` cards.
+   */
+  failureReason: S.optionalKey(S.String.check(S.isMaxLength(MAX_TURN_FAILURE_REASON_CHARS))),
   candidate: S.optionalKey(TurnProviderCandidate),
   dataDestination: TurnDataDestination,
   usageTruth: TurnUsageTruth,

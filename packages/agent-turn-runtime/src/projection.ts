@@ -1,6 +1,7 @@
 import { Schema as S } from "effect";
 
 import {
+  MAX_TURN_FAILURE_REASON_CHARS,
   RECEIPT_SCHEMA_LITERAL,
   SAFE_TURN_PROJECTION_SCHEMA_LITERAL,
   SafeTurnProjection,
@@ -64,6 +65,39 @@ export const receiptDecisionForState = (state: TurnLifecycleState): TurnReceiptD
   }
 };
 
+/**
+ * Bound a raw failure/refusal reason into the safe, public-safe label the card
+ * shows. It collapses control characters and whitespace (so a multi-line raw
+ * error can never structurally leak) and truncates to the schema bound. It is
+ * the single redaction boundary a reason string crosses before a projection.
+ */
+const CONTROL_CHARS = new RegExp("[\\u0000-\\u001f\\u007f]+", "g");
+export const safeFailureReasonText = (raw: string): string =>
+  raw
+    .replaceAll(CONTROL_CHARS, " ")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_TURN_FAILURE_REASON_CHARS);
+
+/**
+ * The bounded, public-safe reason for a terminal card, derived purely from the
+ * record. A `failed` card shows the stored failure reason; a `refused` card
+ * shows its typed refusal reason; a `cancelled` card shows an honest cancelled
+ * line. Every other state has no reason.
+ */
+export const terminalFailureReason = (record: TurnStateRecord): string | undefined => {
+  switch (record.state) {
+    case "failed":
+      return record.failureReason === null ? "failed" : safeFailureReasonText(record.failureReason);
+    case "refused":
+      return record.refusalReason === null ? "refused" : record.refusalReason;
+    case "cancelled":
+      return "cancelled";
+    default:
+      return undefined;
+  }
+};
+
 export interface SafeProjectionInput {
   readonly record: TurnStateRecord;
   readonly dataDestination: TurnDataDestination;
@@ -76,13 +110,15 @@ export interface SafeProjectionInput {
 }
 
 /** Derive the one safe projection all three surfaces decode to equivalent facts. */
-export const deriveSafeProjection = (input: SafeProjectionInput): SafeTurnProjection =>
-  decodeSafeProjection({
+export const deriveSafeProjection = (input: SafeProjectionInput): SafeTurnProjection => {
+  const failureReason = terminalFailureReason(input.record);
+  return decodeSafeProjection({
     schema: SAFE_TURN_PROJECTION_SCHEMA_LITERAL,
     threadRef: input.record.threadRef,
     requestRef: input.record.requestRef,
     ...(input.record.providerTurnRef === null ? {} : { providerTurnRef: input.record.providerTurnRef }),
     cardState: cardStateForLifecycle(input.record.state),
+    ...(failureReason === undefined ? {} : { failureReason }),
     ...(input.candidate === undefined ? {} : { candidate: input.candidate }),
     dataDestination: input.dataDestination,
     usageTruth: input.usageTruth,
@@ -91,6 +127,7 @@ export const deriveSafeProjection = (input: SafeProjectionInput): SafeTurnProjec
     messageChain: input.messageChain ?? [],
     evidenceRefs: input.evidenceRefs ?? [],
   });
+};
 
 export interface TurnReceiptInput {
   readonly record: TurnStateRecord;

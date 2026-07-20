@@ -290,6 +290,10 @@ export const projectLocalTimelineRecords = (
                 threadRef: runtime.childRef,
                 status: childCollabStatus,
                 ...(runtime.title === "" ? {} : { nickname: runtime.title }),
+                // Show the subagent's detail (its objective while running, its
+                // bounded failure reason once errored) inline on the card, so an
+                // errored delegate reads "ERRORED — <reason>" without a click.
+                ...(runtime.detail === "" ? {} : { detail: runtime.detail }),
               },
             ],
           },
@@ -850,7 +854,7 @@ export const TimelineItem = ({
       agentItem.children !== undefined && agentItem.children.length > 0
         ? agentItem.children.map((child) => ({
             agentKey: child.threadRef,
-            detail: agentItem.activityKind !== undefined ? "" : (agentItem.prompt ?? ""),
+            detail: child.detail ?? (agentItem.activityKind !== undefined ? "" : (agentItem.prompt ?? "")),
             name: child.nickname ?? agentItem.agentPath ?? child.threadRef,
             role: agentItem.activityKind !== undefined ? "Subagent activity" : "Delegated agent",
             status: toDesktopAgentStatusFromCollab(child.status),

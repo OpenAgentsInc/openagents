@@ -36,6 +36,12 @@ export const MAX_TURN_INPUT_CHARS = 4000 as const;
 export const MAX_RENDERER_PREPARED_INPUT_CHARS = 3900 as const;
 /** Maximum single-turn assistant output characters (Apple FM result text bound). */
 export const MAX_TURN_OUTPUT_CHARS = 8192 as const;
+/**
+ * Maximum characters in a bounded, public-safe turn failure reason. A failure
+ * reason is a short control-plane label (for example `session_failed: delegate
+ * lane stopped`), never a raw provider error, command output, path, or token.
+ */
+export const MAX_TURN_FAILURE_REASON_CHARS = 240 as const;
 /** Maximum characters in a bounded context slice presented to a provider. */
 export const MAX_TURN_CONTEXT_CHARS = 64_000 as const;
 /** Maximum characters in one persisted turn event text field. */

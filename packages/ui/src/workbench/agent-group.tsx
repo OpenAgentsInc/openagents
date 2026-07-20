@@ -38,7 +38,10 @@ export type DesktopAgentActivity = Readonly<{
 }>;
 
 const DesktopAgentRow = ({ agent }: Readonly<{ agent: DesktopAgentActivity }>): ReactElement => {
-  const [open, setOpen] = useState((agent.transcript?.length ?? 0) > 0);
+  // Default the delegated-agent disclosure EXPANDED (owner request): the working
+  // or errored state must be visible without a click. Inspectable rows still
+  // open the right-pane inspector from their summary via `onInspect`.
+  const [open, setOpen] = useState(true);
   const statusLabel = agent.statusLabel ?? activityStatusLabel(agent.status);
   const inspectable = agent.onInspect !== undefined;
   return (
