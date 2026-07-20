@@ -1,10 +1,19 @@
 {
-  "schemaVersion": "openagents.desktop.ide-portable-evidence.v2",
+  "schemaVersion": "openagents.desktop.ide-portable-evidence.v3",
   "issue": "IDE-13",
-  "candidateCommitSha": "d851114b87d19184bf82b9704dd013592f9d6de7",
-  "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
-  "generatedAt": "2026-07-20T12:33:58.298Z",
+  "candidateCommitSha": "31f65f98aaf5106cc0c13be4edd88188fa49a1c3",
+  "baseCommitSha": "ec312f73e830c9fab9dee1c2b2a3011405dedf14",
+  "generatedAt": "2026-07-20T13:04:21.293Z",
   "producerRef": "openagents:ide-13-implementation",
+  "acceptanceRefs": {
+    "candidateRef": null,
+    "mainCommitSha": null,
+    "mainRef": null,
+    "artifactReceiptRef": null,
+    "rollbackReceiptRef": null,
+    "verificationCommandRef": null,
+    "verificationResultRef": null
+  },
   "environment": {
     "platform": "darwin",
     "architecture": "arm64",
@@ -76,9 +85,15 @@
   ],
   "placementCohorts": [
     {
+      "cohortRef": "cohort:owner-local:model",
       "targetClass": "owner_local",
       "evidenceClass": "simulator",
       "journeyScope": "foundation_only",
+      "journeys": {
+        "mainJourneyReceiptRef": null,
+        "failbackJourneyReceiptRef": null,
+        "faultMatrixReceiptRef": null
+      },
       "operatingSystem": "darwin",
       "architecture": "arm64",
       "adapter": {
@@ -93,8 +108,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "d851114b87d19184bf82b9704dd013592f9d6de7",
-      "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
+      "candidateCommitSha": "31f65f98aaf5106cc0c13be4edd88188fa49a1c3",
+      "baseCommitSha": "ec312f73e830c9fab9dee1c2b2a3011405dedf14",
       "capabilityState": "unverified",
       "custody": "owner_device",
       "networkDestinations": [],
@@ -176,9 +191,9 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 100,
-          "p50": 0.05541699999997718,
-          "p95": 0.09212500000001,
-          "p99": 0.14712500000001683,
+          "p50": 0.054249999999996135,
+          "p95": 0.08408299999999258,
+          "p99": 0.09620899999998755,
           "thresholdP95": 5,
           "thresholdP99": 10,
           "passed": true,
@@ -190,9 +205,9 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1000,
-          "p50": 0.008874999999989086,
-          "p95": 0.025167000000010376,
-          "p99": 0.06358299999999417,
+          "p50": 0.009416000000015856,
+          "p95": 0.021750000000025693,
+          "p99": 0.05170800000001918,
           "thresholdP95": 1,
           "thresholdP99": 2,
           "passed": true,
@@ -202,9 +217,15 @@
       "result": "The local process ran the model and schema checks. It did not run a real move."
     },
     {
+      "cohortRef": "cohort:owner-managed:simulator",
       "targetClass": "owner_managed",
       "evidenceClass": "simulator",
       "journeyScope": "foundation_only",
+      "journeys": {
+        "mainJourneyReceiptRef": null,
+        "failbackJourneyReceiptRef": null,
+        "faultMatrixReceiptRef": null
+      },
       "operatingSystem": "unknown",
       "architecture": "unknown",
       "adapter": {
@@ -219,8 +240,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "d851114b87d19184bf82b9704dd013592f9d6de7",
-      "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
+      "candidateCommitSha": "31f65f98aaf5106cc0c13be4edd88188fa49a1c3",
+      "baseCommitSha": "ec312f73e830c9fab9dee1c2b2a3011405dedf14",
       "capabilityState": "unverified",
       "custody": "owner_managed",
       "networkDestinations": [],
@@ -297,9 +318,15 @@
       "result": "Only the deterministic coordinator and target contracts ran."
     },
     {
+      "cohortRef": "cohort:openagents-managed:simulator",
       "targetClass": "openagents_managed",
       "evidenceClass": "simulator",
       "journeyScope": "foundation_only",
+      "journeys": {
+        "mainJourneyReceiptRef": null,
+        "failbackJourneyReceiptRef": null,
+        "faultMatrixReceiptRef": null
+      },
       "operatingSystem": "linux",
       "architecture": "unknown",
       "adapter": {
@@ -314,8 +341,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "d851114b87d19184bf82b9704dd013592f9d6de7",
-      "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
+      "candidateCommitSha": "31f65f98aaf5106cc0c13be4edd88188fa49a1c3",
+      "baseCommitSha": "ec312f73e830c9fab9dee1c2b2a3011405dedf14",
       "capabilityState": "unverified",
       "custody": "openagents_managed",
       "networkDestinations": [],
@@ -392,9 +419,15 @@
       "result": "Only the managed target adapter regressions ran. No live managed move ran."
     },
     {
+      "cohortRef": "cohort:managed-provider:unclaimed",
       "targetClass": "managed_provider",
       "evidenceClass": "not_run",
       "journeyScope": "not_run",
+      "journeys": {
+        "mainJourneyReceiptRef": null,
+        "failbackJourneyReceiptRef": null,
+        "faultMatrixReceiptRef": null
+      },
       "operatingSystem": "unknown",
       "architecture": "unknown",
       "adapter": {
@@ -409,8 +442,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "d851114b87d19184bf82b9704dd013592f9d6de7",
-      "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
+      "candidateCommitSha": "31f65f98aaf5106cc0c13be4edd88188fa49a1c3",
+      "baseCommitSha": "ec312f73e830c9fab9dee1c2b2a3011405dedf14",
       "capabilityState": "unsupported",
       "custody": "unverified",
       "networkDestinations": [],
@@ -520,6 +553,7 @@
   "recoveryFacts": [
     {
       "recoveryRef": "recovery:lost-ack",
+      "cohortRef": "cohort:owner-local:model",
       "targetClass": "owner_local",
       "scenario": "The command result ACK was lost.",
       "evidenceClass": "simulator",
@@ -529,6 +563,7 @@
     },
     {
       "recoveryRef": "recovery:pylon-restart",
+      "cohortRef": "cohort:owner-managed:simulator",
       "targetClass": "owner_managed",
       "scenario": "The Pylon process restarted after it claimed a phase.",
       "evidenceClass": "simulator",
@@ -538,6 +573,7 @@
     },
     {
       "recoveryRef": "recovery:provider-eviction",
+      "cohortRef": "cohort:managed-provider:unclaimed",
       "targetClass": "managed_provider",
       "scenario": "The provider evicted the target after source revocation.",
       "evidenceClass": "not_run",
@@ -546,6 +582,7 @@
       "receiptRef": null
     }
   ],
+  "faultFacts": [],
   "security": {
     "forbiddenMaterialProjected": false,
     "optimisticAuthorityProjected": false,

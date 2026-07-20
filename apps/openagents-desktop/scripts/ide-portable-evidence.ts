@@ -113,12 +113,21 @@ const absentPhases = () => IDE_PORTABLE_PHASES.map(phase => ({
 }))
 
 const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
-  schemaVersion: "openagents.desktop.ide-portable-evidence.v2",
+  schemaVersion: "openagents.desktop.ide-portable-evidence.v3",
   issue: "IDE-13",
   candidateCommitSha,
   baseCommitSha,
   generatedAt: new Date().toISOString(),
   producerRef: "openagents:ide-13-implementation",
+  acceptanceRefs: {
+    candidateRef: null,
+    mainCommitSha: null,
+    mainRef: null,
+    artifactReceiptRef: null,
+    rollbackReceiptRef: null,
+    verificationCommandRef: null,
+    verificationResultRef: null,
+  },
   environment: { platform: process.platform, architecture: process.arch, node: process.version },
   model: {
     maximumDepth: model.maximumDepth,
@@ -141,7 +150,9 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
   ],
   placementCohorts: [
     {
-      targetClass: "owner_local", evidenceClass: "simulator", journeyScope: "foundation_only",
+      cohortRef: "cohort:owner-local:model", targetClass: "owner_local",
+      evidenceClass: "simulator", journeyScope: "foundation_only",
+      journeys: { mainJourneyReceiptRef: null, failbackJourneyReceiptRef: null, faultMatrixReceiptRef: null },
       operatingSystem: process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "windows" : "linux",
       architecture: process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "x64" : "unknown",
       adapter: { kind: "deterministic_simulator", ref: "adapter.desktop.local-model", name: "IDE-13 bounded local model", version: "2" },
@@ -154,7 +165,9 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
       result: "The local process ran the model and schema checks. It did not run a real move.",
     },
     {
-      targetClass: "owner_managed", evidenceClass: "simulator", journeyScope: "foundation_only",
+      cohortRef: "cohort:owner-managed:simulator", targetClass: "owner_managed",
+      evidenceClass: "simulator", journeyScope: "foundation_only",
+      journeys: { mainJourneyReceiptRef: null, failbackJourneyReceiptRef: null, faultMatrixReceiptRef: null },
       operatingSystem: "unknown", architecture: "unknown",
       adapter: { kind: "deterministic_simulator", ref: "adapter.owner-managed.simulator", name: "Owner-managed contract simulator", version: "2" },
       targetRef: null, artifact: { ref: null, sha256: null, bytes: null }, candidateCommitSha, baseCommitSha,
@@ -164,7 +177,9 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
       result: "Only the deterministic coordinator and target contracts ran.",
     },
     {
-      targetClass: "openagents_managed", evidenceClass: "simulator", journeyScope: "foundation_only",
+      cohortRef: "cohort:openagents-managed:simulator", targetClass: "openagents_managed",
+      evidenceClass: "simulator", journeyScope: "foundation_only",
+      journeys: { mainJourneyReceiptRef: null, failbackJourneyReceiptRef: null, faultMatrixReceiptRef: null },
       operatingSystem: "linux", architecture: "unknown",
       adapter: { kind: "deterministic_simulator", ref: "adapter.openagents-managed.simulator", name: "OpenAgents managed target simulator", version: "2" },
       targetRef: null, artifact: { ref: null, sha256: null, bytes: null }, candidateCommitSha, baseCommitSha,
@@ -174,7 +189,9 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
       result: "Only the managed target adapter regressions ran. No live managed move ran.",
     },
     {
-      targetClass: "managed_provider", evidenceClass: "not_run", journeyScope: "not_run",
+      cohortRef: "cohort:managed-provider:unclaimed", targetClass: "managed_provider",
+      evidenceClass: "not_run", journeyScope: "not_run",
+      journeys: { mainJourneyReceiptRef: null, failbackJourneyReceiptRef: null, faultMatrixReceiptRef: null },
       operatingSystem: "unknown", architecture: "unknown",
       adapter: { kind: "not_run", ref: null, name: null, version: null }, targetRef: null,
       artifact: { ref: null, sha256: null, bytes: null }, candidateCommitSha, baseCommitSha,
@@ -190,10 +207,11 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
     { omissionRef: "omission:provider", targetClass: "managed_provider", fact: "No managed provider is admitted.", disposition: "acceptance_gap", evidenceRef: "github.com/OpenAgentsInc/openagents/issues/9041" },
   ],
   recoveryFacts: [
-    { recoveryRef: "recovery:lost-ack", targetClass: "owner_local", scenario: "The command result ACK was lost.", evidenceClass: "simulator", outcome: "passed", recoveryPointRef: "durable-command-row", receiptRef: "packages/khala-sync-server/src/portable-session-command-consumer.test.ts" },
-    { recoveryRef: "recovery:pylon-restart", targetClass: "owner_managed", scenario: "The Pylon process restarted after it claimed a phase.", evidenceClass: "simulator", outcome: "passed", recoveryPointRef: "portable-phase-claim-journal", receiptRef: "apps/pylon/src/portable-phase-operation-claim-journal.test.ts" },
-    { recoveryRef: "recovery:provider-eviction", targetClass: "managed_provider", scenario: "The provider evicted the target after source revocation.", evidenceClass: "not_run", outcome: "not_run", recoveryPointRef: null, receiptRef: null },
+    { recoveryRef: "recovery:lost-ack", cohortRef: "cohort:owner-local:model", targetClass: "owner_local", scenario: "The command result ACK was lost.", evidenceClass: "simulator", outcome: "passed", recoveryPointRef: "durable-command-row", receiptRef: "packages/khala-sync-server/src/portable-session-command-consumer.test.ts" },
+    { recoveryRef: "recovery:pylon-restart", cohortRef: "cohort:owner-managed:simulator", targetClass: "owner_managed", scenario: "The Pylon process restarted after it claimed a phase.", evidenceClass: "simulator", outcome: "passed", recoveryPointRef: "portable-phase-claim-journal", receiptRef: "apps/pylon/src/portable-phase-operation-claim-journal.test.ts" },
+    { recoveryRef: "recovery:provider-eviction", cohortRef: "cohort:managed-provider:unclaimed", targetClass: "managed_provider", scenario: "The provider evicted the target after source revocation.", evidenceClass: "not_run", outcome: "not_run", recoveryPointRef: null, receiptRef: null },
   ],
+  faultFacts: [],
   security: {
     forbiddenMaterialProjected: false,
     optimisticAuthorityProjected: false,
