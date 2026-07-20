@@ -23791,6 +23791,28 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md",
+      "sha256": "8e8094cc802fc5825e771225516e0168c7d9bd0088fdca47d0b35a237676a30f",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/fable/EXECUTION.md",
       "sha256": "fcbc4954cb55d3d2185a95ae814d1656e542406feb748167031a2abfcab2a69c",
       "reason": "Final review of a converted document",
