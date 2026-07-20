@@ -1974,6 +1974,7 @@ const currentIdeAgentCodeHost = (): Promise<IdeAgentCodeHost | null> => {
     const rootDigest = createHash("sha256").update(workspace.summary().root).digest("hex")
     const host = openIdeAgentCodeHost(workspace, {
       persistencePath: path.join(app.getPath("userData"), "ide-agent-code", `${rootDigest}.json`),
+      mutationAuthority: workspacePortableMutationAuthority,
     })
     ideAgentCodeHostEntry = { workspace, host }
     return host
