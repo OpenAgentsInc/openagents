@@ -81,6 +81,7 @@ import {
 export const CONTROL_SESSION_EVENT_SCHEMA = "openagents.pylon.control_session_event.v0.1"
 export const CONTROL_SESSION_ARTIFACT_SCHEMA = "openagents.pylon.control_session_artifact.v0.1"
 export const CONTROL_SESSION_FAILURE_SCHEMA = "openagents.pylon.control_session_failure.v0.1"
+const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u
 
 type ControlSessionRepositoryRef = GitCheckoutWorkspace["repository"]
 
@@ -306,6 +307,7 @@ export type PylonPortableControlSessionLifecycle = Readonly<{
   }>>
   stageDestination: (input: Readonly<{
     sessionRef: string
+    destinationRunnerSessionReservationRef: string
     sourceAttachmentRef: string
     sourceGeneration: number
     destinationAttachmentRef: string
@@ -317,6 +319,7 @@ export type PylonPortableControlSessionLifecycle = Readonly<{
   }>) => Promise<Readonly<{ evidenceRefs: ReadonlyArray<string> }>>
   activateDestination: (input: Readonly<{
     sessionRef: string
+    destinationRunnerSessionReservationRef: string
     destinationAttachmentRef: string
     destinationGeneration: number
     checkpointRef: string
@@ -1177,11 +1180,16 @@ export function createControlSessionActions(options: {
     input: PylonPortableControlSessionBinding
     state: "accepting" | "quiesced" | "cleaned" | "staged"
     staged?: Readonly<{
+      destinationRunnerSessionReservationRef: string
+      sourceAttachmentRef: string
+      sourceGeneration: number
       destinationAttachmentRef: string
       destinationGeneration: number
       checkpointRef: string
+      agentRefs: ReadonlyArray<string>
       workingDirectory: string
       workspaceRef: string
+      activatedAt?: string
     }>
   }>()
   const portableRuntimeInstanceRef = options.portableRuntimeInstanceRef ??
@@ -1854,6 +1862,33 @@ export function createControlSessionActions(options: {
     },
     stageDestination: async (input) => {
       const binding = portableBindings.get(input.sessionRef)
+      if (!SAFE_REF.test(input.destinationRunnerSessionReservationRef)) {
+        throw new Error("portable destination runner reservation is invalid")
+      }
+      const staged = binding?.staged
+      if (binding !== undefined && staged !== undefined &&
+          (binding.state === "staged" || binding.state === "accepting")) {
+        const stagedAgentRefs = [...staged.agentRefs].sort()
+        const replayAgentRefs = [...input.agentRefs].sort()
+        if (staged.destinationRunnerSessionReservationRef !== input.destinationRunnerSessionReservationRef ||
+            staged.sourceAttachmentRef !== input.sourceAttachmentRef ||
+            staged.sourceGeneration !== input.sourceGeneration ||
+            staged.destinationAttachmentRef !== input.destinationAttachmentRef ||
+            staged.destinationGeneration !== input.destinationGeneration ||
+            staged.checkpointRef !== input.checkpointRef ||
+            stagedAgentRefs.length !== replayAgentRefs.length ||
+            stagedAgentRefs.some((value, index) => value !== replayAgentRefs[index]) ||
+            staged.workingDirectory !== input.workingDirectory ||
+            staged.workspaceRef !== input.workspaceRef) {
+          throw new Error("portable destination stage conflicts with its runner reservation")
+        }
+        return {
+          evidenceRefs: input.agentRefs.map(agentRef => stableRef(
+            "receipt.pylon.portable.agent_staged",
+            `${input.sessionRef}:${input.destinationGeneration}:${agentRef}:${input.checkpointRef}`,
+          )),
+        }
+      }
       if (binding === undefined || binding.state !== "cleaned" ||
           binding.input.attachmentRef !== input.sourceAttachmentRef ||
           binding.input.generation !== input.sourceGeneration) {
@@ -1868,9 +1903,13 @@ export function createControlSessionActions(options: {
       }
       binding.state = "staged"
       binding.staged = {
+        destinationRunnerSessionReservationRef: input.destinationRunnerSessionReservationRef,
+        sourceAttachmentRef: input.sourceAttachmentRef,
+        sourceGeneration: input.sourceGeneration,
         destinationAttachmentRef: input.destinationAttachmentRef,
         destinationGeneration: input.destinationGeneration,
         checkpointRef: input.checkpointRef,
+        agentRefs: [...input.agentRefs],
         workingDirectory: input.workingDirectory,
         workspaceRef: input.workspaceRef,
       }
@@ -1884,7 +1923,9 @@ export function createControlSessionActions(options: {
     activateDestination: async (input) => {
       const binding = portableBindings.get(input.sessionRef)
       const staged = binding?.staged
-      if (binding === undefined || binding.state !== "staged" || staged === undefined ||
+      if (!SAFE_REF.test(input.destinationRunnerSessionReservationRef) ||
+          binding === undefined || (binding.state !== "staged" && binding.state !== "accepting") || staged === undefined ||
+          staged.destinationRunnerSessionReservationRef !== input.destinationRunnerSessionReservationRef ||
           staged.destinationAttachmentRef !== input.destinationAttachmentRef ||
           staged.destinationGeneration !== input.destinationGeneration ||
           staged.checkpointRef !== input.checkpointRef ||
@@ -1912,8 +1953,10 @@ export function createControlSessionActions(options: {
         generation: input.destinationGeneration,
       }
       binding.state = "accepting"
-      delete binding.staged
-      const observedAt = new Date().toISOString()
+      const observedAt = staged.activatedAt ?? new Date().toISOString()
+      if (staged.activatedAt === undefined) {
+        binding.staged = { ...staged, activatedAt: observedAt }
+      }
       return {
         authentication: {
           state: "reauthenticated",

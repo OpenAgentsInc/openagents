@@ -33,6 +33,7 @@ export type PylonPortableDestinationAuthority = Readonly<{
 
 export type PylonPortableLocalStage = Readonly<{
   operationRef: string
+  destinationRunnerSessionReservationRef: string
   sessionRef: string
   checkpointRef: string
   checkpointDigest: string
@@ -58,6 +59,7 @@ export type PylonPortableLocalStage = Readonly<{
 export type PylonPortableLocalRehydrator = Readonly<{
   stage: (input: Readonly<{
     operationRef: string
+    destinationRunnerSessionReservationRef: string
     bundle: PylonPortableCheckpointBundle
     destinationAttachmentRef: string
     destinationGeneration: number
@@ -66,6 +68,7 @@ export type PylonPortableLocalRehydrator = Readonly<{
   readStage: (operationRef: string) => Promise<PylonPortableLocalStage>
   activate: (input: Readonly<{
     operationRef: string
+    destinationRunnerSessionReservationRef: string
     stage: PylonPortableLocalStage
     authorityEvidenceRef: string
     executionBinding: PortableSessionExecutionBinding
@@ -190,6 +193,7 @@ const assertStage = (
   stage: PylonPortableLocalStage,
   input: Readonly<{
     operationRef: string
+    destinationRunnerSessionReservationRef: string
     bundle: PylonPortableCheckpointBundle
     destinationAttachmentRef: string
     destinationGeneration: number
@@ -198,6 +202,7 @@ const assertStage = (
 ): void => {
   const checkpoint = input.bundle.checkpoint
   if (stage.operationRef !== input.operationRef ||
+      stage.destinationRunnerSessionReservationRef !== input.destinationRunnerSessionReservationRef ||
       stage.sessionRef !== checkpoint.sessionRef ||
       stage.checkpointRef !== checkpoint.checkpointRef ||
       stage.checkpointDigest !== checkpoint.digest ||
@@ -230,7 +235,6 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
     const prior = await runLedger(input.ledger.readOperation(operation.operationRef))
     if (prior?.state === "completed") {
       const stage = await input.rehydrator.readStage(operation.operationRef)
-      assertStage(stage, operation)
       const reservationRef = prior.outcome?.destinationRunnerSessionReservationRef
       if (prior.kind !== "stage" || prior.sessionRef !== checkpoint.sessionRef ||
           prior.attachmentRef !== operation.destinationAttachmentRef ||
@@ -245,6 +249,13 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
           "completed destination stage differs from the requested checkpoint",
         )
       }
+      if (!SAFE_REF.test(reservationRef)) {
+        throw new PylonPortableDestinationError("conflicting_replay", "completed destination stage has an invalid runner reservation")
+      }
+      assertStage(stage, {
+        ...operation,
+        destinationRunnerSessionReservationRef: reservationRef,
+      })
       return {
         destinationRunnerSessionReservationRef: reservationRef,
         checkpointDigest: checkpoint.digest,
@@ -278,8 +289,12 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
     const destinationRunnerSessionReservationRef = await runLedger(
       input.ledger.reserveDestinationRunnerSession(operation.operationRef),
     )
-    const stage = await input.rehydrator.stage(operation)
-    assertStage(stage, operation)
+    const stageInput = {
+      ...operation,
+      destinationRunnerSessionReservationRef,
+    }
+    const stage = await input.rehydrator.stage(stageInput)
+    assertStage(stage, stageInput)
     await runLedger(input.ledger.completeOperation({
       operationRef: operation.operationRef,
       outcome: {
@@ -306,8 +321,16 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
   },
   activate: async operation => {
     const stageOperationRef = stageOperationRefFor(operation.operationRef)
+    const completedStage = await runLedger(input.ledger.readOperation(stageOperationRef))
+    const destinationRunnerSessionReservationRef = completedStage?.outcome?.destinationRunnerSessionReservationRef
+    if (completedStage?.state !== "completed" || completedStage.kind !== "stage" ||
+        destinationRunnerSessionReservationRef === undefined ||
+        !SAFE_REF.test(destinationRunnerSessionReservationRef)) {
+      throw new PylonPortableDestinationError("conflicting_replay", "activation does not have a completed runner reservation")
+    }
     const stage = await input.rehydrator.readStage(stageOperationRef)
-    if (stage.sessionRef !== operation.sessionRef ||
+    if (stage.destinationRunnerSessionReservationRef !== destinationRunnerSessionReservationRef ||
+        stage.sessionRef !== operation.sessionRef ||
         stage.checkpointRef !== operation.checkpointRef ||
         stage.destinationAttachmentRef !== operation.destinationAttachmentRef ||
         stage.destinationGeneration !== operation.destinationGeneration ||
@@ -325,6 +348,7 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
     }
     const activation = validateIdePortableDestinationActivationReceipt(await input.rehydrator.activate({
       operationRef: operation.operationRef,
+      destinationRunnerSessionReservationRef,
       stage,
       authorityEvidenceRef: authority.authorityEvidenceRef,
       executionBinding: operation.executionBinding,
@@ -358,7 +382,11 @@ export const createPylonOwnerLocalDestinationLifecycle = (input: Readonly<{
       stageOperationRef,
       authorityEvidenceRef: authority.authorityEvidenceRef,
       evidenceRefs: activation.evidenceRefs,
-      exactInput: { ...operation, authorityEvidenceRef: authority.authorityEvidenceRef },
+      exactInput: {
+        ...operation,
+        authorityEvidenceRef: authority.authorityEvidenceRef,
+        destinationRunnerSessionReservationRef,
+      },
     }))
     return {
       ...activation,
