@@ -517,6 +517,11 @@ import {
 } from "./ide/portable-client-contract.ts"
 import { makeIdePortableMutationAuthority } from "./ide/portable-mutation-authority.ts"
 import {
+  makeDesktopSourceSafePoint,
+  type DesktopSourceSafePoint,
+  type DesktopSourceSubsystemResult,
+} from "./ide/desktop-source-safe-point.ts"
+import {
   openIdeManagedSandboxHost,
   type IdeManagedSandboxHost,
 } from "./ide/managed-sandbox-host.ts"
@@ -1742,8 +1747,17 @@ const relaunchDesktopUpdateApp = (): void => {
   }
 }
 let desktopUpdateDrainActive = false
+let desktopSourceSafePoint: DesktopSourceSafePoint | null = null
 const drainDesktopUpdateRuntimes = async () => {
   desktopUpdateDrainActive = true
+  const sourceBinding = desktopSourceSafePoint?.currentBinding() ?? null
+  if (sourceBinding !== null) {
+    const safePoint = await desktopSourceSafePoint?.quiesce(sourceBinding)
+    if (safePoint?.state !== "quiescent") {
+      const states = safePoint?.outcomes.map(outcome => `${outcome.subsystem}:${outcome.state}`).join(",") ?? "unavailable"
+      console.warn(`[desktop-update] IDE source safe point was incomplete (${states})`)
+    }
+  }
   return await drainChildRuntimes({
     timeoutMs: 15_000,
     drainers: [
@@ -4337,6 +4351,108 @@ const laneDispatcher = makeProviderLaneDispatcher({
       })
     },
   },
+})
+
+const currentDesktopSourceBinding = () => {
+  const grantRef = hostLifecycle.workspace()?.grantRef ?? null
+  if (grantRef === null) return null
+  const authorization = workspacePortableMutationAuthority.authorize(grantRef)
+  if (authorization._tag !== "Permitted" || authorization.permit._tag !== "Portable" ||
+      authorization.permit.attachmentRef === null || authorization.permit.generation === null) return null
+  return {
+    sessionRef: authorization.permit.sessionRef,
+    attachmentRef: authorization.permit.attachmentRef,
+    grantRef,
+    generation: authorization.permit.generation,
+  }
+}
+const sourceQuiesced = (): DesktopSourceSubsystemResult => ({ state: "quiesced" })
+const sourceUnsupported = (detailRef: string): DesktopSourceSubsystemResult => ({
+  state: "unsupported",
+  detailRef,
+})
+desktopSourceSafePoint = makeDesktopSourceSafePoint({
+  currentBinding: currentDesktopSourceBinding,
+  timeoutMs: 5_000,
+  subsystems: [
+    {
+      subsystem: "workspace-search-registry",
+      quiesce: async () => (await workspaceSearchRegistry.quiesce()).state === "quiesced"
+        ? sourceQuiesced()
+        : sourceUnsupported("desktop.workspace-search.safe-point-timeout"),
+    },
+    {
+      subsystem: "workspace-watch-search-language",
+      quiesce: async () => {
+        const workspace = hostLifecycle.workspace()
+        if (workspace === null) return sourceUnsupported("desktop.workspace.binding-unavailable")
+        return (await workspace.dispose()).state === "quiesced"
+          ? sourceQuiesced()
+          : sourceUnsupported("desktop.workspace.safe-point-timeout")
+      },
+    },
+    {
+      subsystem: "terminal",
+      quiesce: async () => {
+        terminalHost.dispose()
+        return sourceUnsupported("desktop.terminal.no-settled-process-proof")
+      },
+    },
+    {
+      subsystem: "task-test",
+      quiesce: async () => { await (await ideRunHost).dispose(); return sourceQuiesced() },
+    },
+    {
+      subsystem: "debug-adapter",
+      quiesce: async () => { await (await ideDebugHost).dispose(); return sourceQuiesced() },
+    },
+    {
+      subsystem: "source-control",
+      quiesce: async () => { await (await ideSourceControlHost).dispose(); return sourceQuiesced() },
+    },
+    {
+      subsystem: "turn-checkpoint",
+      quiesce: async () => { await turnCheckpoints.quiesce(); return sourceQuiesced() },
+    },
+    {
+      subsystem: "provider-lanes",
+      quiesce: async () => (await laneDispatcher.quiesce()).state === "safe"
+        ? sourceQuiesced()
+        : sourceUnsupported("desktop.provider-lane.remote-execution-unconfirmed"),
+    },
+    {
+      subsystem: "agent-code",
+      quiesce: async () => {
+        const entry = ideAgentCodeHostEntry
+        if (entry !== null) await (await entry.host).dispose()
+        return sourceQuiesced()
+      },
+    },
+    {
+      subsystem: "cursor-agent",
+      quiesce: async () => {
+        const entry = ideCursorHostEntry
+        if (entry !== null) await (await entry.host).dispose()
+        return sourceQuiesced()
+      },
+    },
+    {
+      subsystem: "managed-sandbox",
+      quiesce: async () => {
+        const entry = ideManagedSandboxHostEntry
+        if (entry !== null) await (await entry.host).quiesce()
+        return sourceQuiesced()
+      },
+    },
+    {
+      subsystem: "codex-host-services",
+      quiesce: async () => sourceUnsupported("desktop.codex-host-services.registry-has-no-awaited-quiesce"),
+    },
+    {
+      subsystem: "codex-experimental-runtime",
+      quiesce: async () => sourceUnsupported("desktop.codex-experimental.registry-has-no-awaited-quiesce"),
+    },
+  ],
 })
 
 /**
