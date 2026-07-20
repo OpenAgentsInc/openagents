@@ -1,9 +1,9 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-evidence.v3",
   "issue": "IDE-13",
-  "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
-  "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
-  "generatedAt": "2026-07-20T18:34:03.939Z",
+  "candidateCommitSha": "0ee3e4491319b68615b3261d4855f93930dcdf4a",
+  "baseCommitSha": "bfe934b6da8bdb08016230f19ed2a41be77fc93c",
+  "generatedAt": "2026-07-20T18:36:20.833Z",
   "producerRef": "openagents:ide-13-implementation",
   "acceptanceRefs": {
     "candidateRef": null,
@@ -182,12 +182,12 @@
       },
       "targetRef": "target.ide13.owner-local.cohort.a",
       "artifact": {
-        "ref": "artifact.portable-checkpoint.4f4eea5d479195b4d7dfff0994cddf2a",
-        "sha256": "fdb61e7065303fbec258658773dc33b7ae6aba18a62f5dc72182c813b6b9d60c",
-        "bytes": 1380
+        "ref": "artifact.portable-checkpoint.67a595e4ad20b111ccbb781afe94bad0",
+        "sha256": "3939b38bc894a0fc93d13cc1023089e50e145799c774523567de5aa95beed7e0",
+        "bytes": 1378
       },
-      "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
-      "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
+      "candidateCommitSha": "0ee3e4491319b68615b3261d4855f93930dcdf4a",
+      "baseCommitSha": "bfe934b6da8bdb08016230f19ed2a41be77fc93c",
       "capabilityState": "degraded",
       "custody": "owner_device",
       "networkDestinations": [],
@@ -216,7 +216,7 @@
         {
           "phase": "upload",
           "evidenceClass": "real_local",
-          "receiptRef": "receipt.ide13.owner-local.upload.b1067d4b2542e4619be4c2239171db75",
+          "receiptRef": "receipt.ide13.owner-local.upload.2ce416c5092f81e0b6917b6298ca32ce",
           "operationRef": "operation.ide13.owner-local.move.custody.upload",
           "attachmentGeneration": 1,
           "result": "passed"
@@ -224,7 +224,7 @@
         {
           "phase": "redeem",
           "evidenceClass": "real_local",
-          "receiptRef": "receipt.pylon.portable.artifact_materialized.285601543a9fa1d91204be39bf329a00",
+          "receiptRef": "receipt.pylon.portable.artifact_materialized.1cffc46ed730e8c5392a0677fe49d0da",
           "operationRef": "operation.ide13.owner-local.move.destination.stage",
           "attachmentGeneration": 2,
           "result": "passed"
@@ -269,13 +269,13 @@
           "phase": "quiesce",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 0.7287919999998849,
-          "p95": 0.7902079999994385,
-          "p99": 0.7902079999994385,
+          "p50": 0.4545410000009724,
+          "p95": 0.5472079999999551,
+          "p99": 0.5472079999999551,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.6de079eff023fbd7d33c20bc41d37199"
+          "receiptRef": "receipt.ide13.owner-local.performance.9cde74405f11e9002f33bc6c1d0b5a8e"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.checkpoint",
@@ -283,13 +283,13 @@
           "phase": "checkpoint",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 74.15124999999989,
-          "p95": 89.53924999999981,
-          "p99": 89.53924999999981,
+          "p50": 40.50412499999993,
+          "p95": 46.3533750000006,
+          "p99": 46.3533750000006,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.80db585afd6302b6daec56bce26d3458"
+          "receiptRef": "receipt.ide13.owner-local.performance.fd55db7a3017c6ce8e97afa89262316f"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.upload",
@@ -297,13 +297,13 @@
           "phase": "upload",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 82.11162500000046,
-          "p95": 97.7932499999988,
-          "p99": 97.7932499999988,
+          "p50": 47.092625,
+          "p95": 50.03949999999986,
+          "p99": 50.03949999999986,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.1ae1b2d6a46295944b2a6cabfc63ed63"
+          "receiptRef": "receipt.ide13.owner-local.performance.171785bb92f82882f884e511ae3fe578"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.redeem",
@@ -311,13 +311,13 @@
           "phase": "redeem",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 173.60883300000023,
-          "p95": 202.90350000000035,
-          "p99": 202.90350000000035,
+          "p50": 89.47641600000043,
+          "p95": 93.80779099999927,
+          "p99": 93.80779099999927,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.593d062452fdd51c87f15eb406d66850"
+          "receiptRef": "receipt.ide13.owner-local.performance.5db61e19f54281be81a7b60f7ad6f429"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.attach",
@@ -325,13 +325,13 @@
           "phase": "attach",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 71.85824999999932,
-          "p95": 76.3539580000006,
-          "p99": 76.3539580000006,
+          "p50": 54.830832999999984,
+          "p95": 56.390750000000025,
+          "p99": 56.390750000000025,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.248cdf94bb1a6e3676605e8c61b253a0"
+          "receiptRef": "receipt.ide13.owner-local.performance.774347ea238a6364bc90392e806e1a9a"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.helper_readiness",
@@ -339,13 +339,13 @@
           "phase": "helper_readiness",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 0.006499999999505235,
-          "p95": 0.008625000002211891,
-          "p99": 0.008625000002211891,
+          "p50": 0.005415999999968335,
+          "p95": 0.009208000000398897,
+          "p99": 0.009208000000398897,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.44bf9dc7ba8b9cdeee285dc812bdd671"
+          "receiptRef": "receipt.ide13.owner-local.performance.800519e909523b46cad2eb05dde94f2e"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.failback",
@@ -353,13 +353,13 @@
           "phase": "failback",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 698.0392499999998,
-          "p95": 746.9196670000001,
-          "p99": 746.9196670000001,
+          "p50": 529.9565000000002,
+          "p95": 541.3734999999999,
+          "p99": 541.3734999999999,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.b76f3211e0355400cce67677d7b4aac7"
+          "receiptRef": "receipt.ide13.owner-local.performance.3af2a09d93a98605c4aa0cca651b4145"
         },
         {
           "metricRef": "metric.ide13.owner-local.phase.teardown",
@@ -367,13 +367,13 @@
           "phase": "teardown",
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 336.4722920000004,
-          "p95": 367.71508300000096,
-          "p99": 367.71508300000096,
+          "p50": 303.4021250000005,
+          "p95": 308.85458300000005,
+          "p99": 308.85458300000005,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.59a3919994e518d7611313b53ca6e60e"
+          "receiptRef": "receipt.ide13.owner-local.performance.7c91e1e392de5f2e1bd3d4ca7b800a67"
         },
         {
           "metricRef": "metric.ide13.owner-local.checkpoint_size",
@@ -381,13 +381,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 10,
-          "p50": 1377,
-          "p95": 1381,
-          "p99": 1381,
+          "p50": 1379,
+          "p95": 1383,
+          "p99": 1383,
           "thresholdP95": 67108864,
           "thresholdP99": 67108864,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.d22d59fb319925d290853ebc578ea3ab"
+          "receiptRef": "receipt.ide13.owner-local.performance.a25a43a3832826511528e1ce54e5d3a5"
         },
         {
           "metricRef": "metric.ide13.owner-local.cpu",
@@ -395,13 +395,13 @@
           "phase": null,
           "unit": "percent",
           "repetitions": 10,
-          "p50": 11.365042548351937,
-          "p95": 12.341584085764572,
-          "p99": 12.341584085764572,
+          "p50": 11.451345357150407,
+          "p95": 12.035767065046217,
+          "p99": 12.035767065046217,
           "thresholdP95": 100,
           "thresholdP99": 100,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.4f0ec8919223bec811606ec47912e6ad"
+          "receiptRef": "receipt.ide13.owner-local.performance.0a7aa0df0ee36a4792890973c983d6d5"
         },
         {
           "metricRef": "metric.ide13.owner-local.memory",
@@ -409,13 +409,13 @@
           "phase": null,
           "unit": "bytes",
           "repetitions": 10,
-          "p50": 294092800,
-          "p95": 296157184,
-          "p99": 296157184,
+          "p50": 310198272,
+          "p95": 311640064,
+          "p99": 311640064,
           "thresholdP95": 2147483648,
           "thresholdP99": 2147483648,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.68b3373b5d1a9b6cf3e0e56c141e8fe5"
+          "receiptRef": "receipt.ide13.owner-local.performance.e8e3321597a48a6f3f3c0921c2f8a19a"
         },
         {
           "metricRef": "metric.ide13.owner-local.network",
@@ -429,7 +429,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.55f01b3e1d8347501d2fd950828db645"
+          "receiptRef": "receipt.ide13.owner-local.performance.af04e9cc022fb0a967ab9bce22a9b5c0"
         },
         {
           "metricRef": "metric.ide13.owner-local.queue",
@@ -443,7 +443,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.50302afc661f3be4578fea3e699d612f"
+          "receiptRef": "receipt.ide13.owner-local.performance.15bb20a16a1cc1c19ecbf5d6f04edbfe"
         },
         {
           "metricRef": "metric.ide13.owner-local.lease",
@@ -457,7 +457,7 @@
           "thresholdP95": 1,
           "thresholdP99": 1,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.28f3a82b68d81a2d8b007ef950d8d794"
+          "receiptRef": "receipt.ide13.owner-local.performance.eacf7c9bd880395b29b56517a7c7ad59"
         },
         {
           "metricRef": "metric.ide13.owner-local.resource_cleanup",
@@ -471,7 +471,7 @@
           "thresholdP95": 0,
           "thresholdP99": 0,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.7dec7bf16791789384c729ed890db593"
+          "receiptRef": "receipt.ide13.owner-local.performance.65e5dafff9f68d2959559db2ede6dae8"
         },
         {
           "metricRef": "metric.ide13.owner-local.teardown",
@@ -479,16 +479,16 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 10,
-          "p50": 336.4722920000004,
-          "p95": 367.71508300000096,
-          "p99": 367.71508300000096,
+          "p50": 303.4021250000005,
+          "p95": 308.85458300000005,
+          "p99": 308.85458300000005,
           "thresholdP95": 30000,
           "thresholdP99": 30000,
           "passed": true,
-          "receiptRef": "receipt.ide13.owner-local.performance.8a0b4bef962421a121c46e8d758e8a46"
+          "receiptRef": "receipt.ide13.owner-local.performance.e49f706dbd9bb44e8b3e6cac7dab1321"
         }
       ],
-      "result": "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The destination started a signature-verified TypeScript LSP. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. DAP and native stayed unsupported because no signed executable profile is admitted for them. The phase and resource distributions use 10 complete real owner-local runs under receipt.ide13.owner-local.performance.a329f4c8b7591c8b5560290c689e2cb3. The required fault inventory records 8 passed injected transition-partition rows and 19 explicit not-run rows."
+      "result": "The source-controlled local cohort completed generation 1 to 2 move, generation 2 to 3 failback, replay, stale-generation refusal, abort teardown, encrypted artifact deletion, and final helper teardown. The destination started a signature-verified TypeScript LSP. The retained control-session process stayed settled, no Codex executor resumed, and no work ref was accepted. DAP and native stayed unsupported because no signed executable profile is admitted for them. The phase and resource distributions use 10 complete real owner-local runs under receipt.ide13.owner-local.performance.e2325e5a4b3d4b4a38eada3e8da222ea. The required fault inventory records 8 passed injected transition-partition rows and 19 explicit not-run rows."
     },
     {
       "cohortRef": "cohort:owner-managed:simulator",
@@ -514,8 +514,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
-      "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
+      "candidateCommitSha": "0ee3e4491319b68615b3261d4855f93930dcdf4a",
+      "baseCommitSha": "bfe934b6da8bdb08016230f19ed2a41be77fc93c",
       "capabilityState": "unverified",
       "custody": "owner_managed",
       "networkDestinations": [],
@@ -615,8 +615,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
-      "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
+      "candidateCommitSha": "0ee3e4491319b68615b3261d4855f93930dcdf4a",
+      "baseCommitSha": "bfe934b6da8bdb08016230f19ed2a41be77fc93c",
       "capabilityState": "unverified",
       "custody": "openagents_managed",
       "networkDestinations": [],
@@ -716,8 +716,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "5abcf1351055ebfba7e033b747e23c3f64c609d4",
-      "baseCommitSha": "0cde3c3190abec1257fe2616dcc150014c56a013",
+      "candidateCommitSha": "0ee3e4491319b68615b3261d4855f93930dcdf4a",
+      "baseCommitSha": "bfe934b6da8bdb08016230f19ed2a41be77fc93c",
       "capabilityState": "unsupported",
       "custody": "unverified",
       "networkDestinations": [],
@@ -833,7 +833,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "owner-local-generation-2-attachment",
-      "receiptRef": "receipt.ide13.owner-local.replay.cfd1f09f1258bbfc39be8cfce95f586b"
+      "receiptRef": "receipt.ide13.owner-local.replay.963637df2b88a8fe157084d49477f6db"
     },
     {
       "recoveryRef": "recovery:pylon-restart",
@@ -866,7 +866,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.agent_quiesced.4c76e00686868261446d94d0",
-      "receiptRef": "receipt.ide13.owner-local.fault.d0819c36d844df435e829245330deea7"
+      "receiptRef": "receipt.ide13.owner-local.fault.a07b84f5ca59ded5ad9c5844e4d79f9d"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.checkpoint",
@@ -877,7 +877,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.checkpoint.f89cd37b0e524045087fc9af",
-      "receiptRef": "receipt.ide13.owner-local.fault.0412d79f6c0aef784a3ec6275c8f2d51"
+      "receiptRef": "receipt.ide13.owner-local.fault.0ba6fcca0ce9061146f95419b93b1b9a"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.upload",
@@ -887,8 +887,8 @@
       "phase": "upload",
       "evidenceClass": "real_local",
       "outcome": "passed",
-      "recoveryPointRef": "receipt.ide13.owner-local.upload.c0f199e50429489fada11b8968acc98d",
-      "receiptRef": "receipt.ide13.owner-local.fault.18026e9ddcf56ab6e5e8cc03740ad86c"
+      "recoveryPointRef": "receipt.ide13.owner-local.upload.d1f2188d80b8df9213ab43c289999211",
+      "receiptRef": "receipt.ide13.owner-local.fault.78f22cc4452122390c7948471527dfed"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.redeem",
@@ -898,8 +898,8 @@
       "phase": "redeem",
       "evidenceClass": "real_local",
       "outcome": "passed",
-      "recoveryPointRef": "receipt.pylon.portable.artifact_materialized.3f0c51672158809fa4a64bfe86f4c4c1",
-      "receiptRef": "receipt.ide13.owner-local.fault.9094c60ff750efe4d29e2e6dc768f886"
+      "recoveryPointRef": "receipt.pylon.portable.artifact_materialized.ebc6c71d523b57682115c131f236d370",
+      "receiptRef": "receipt.ide13.owner-local.fault.c1ab9c3354b5dc831d980d3deedb7e2a"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.attach",
@@ -910,7 +910,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
-      "receiptRef": "receipt.ide13.owner-local.fault.087a8642d2d4ebd000b6412b4e778bba"
+      "receiptRef": "receipt.ide13.owner-local.fault.c23ea9d5b5534e1c15fdea86d6f59075"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.helper_readiness",
@@ -921,7 +921,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.ide13.owner-local.helpers.1cbc836f75cac0a97936a027bdcbcf27",
-      "receiptRef": "receipt.ide13.owner-local.fault.a9f91c642cf8bd4e44653013536ce8ea"
+      "receiptRef": "receipt.ide13.owner-local.fault.8edba103aec31b18b3e461f74d8fa601"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.failback",
@@ -932,7 +932,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.destination_activation.f2a6ffbcadb2d1f8fbcefdb57e03fcc8",
-      "receiptRef": "receipt.ide13.owner-local.fault.5649883dbfb4288f651a445de7e710e4"
+      "receiptRef": "receipt.ide13.owner-local.fault.80c6ec18d370aab526c425513100973d"
     },
     {
       "faultRef": "fault.ide13.owner-local.transition-partition.teardown",
@@ -943,7 +943,7 @@
       "evidenceClass": "real_local",
       "outcome": "passed",
       "recoveryPointRef": "receipt.pylon.portable.source_cleanup.fadb8dcbee3ab1ce8ee60e2b",
-      "receiptRef": "receipt.ide13.owner-local.fault.89af2dea1877498bffa255113a4c8d1a"
+      "receiptRef": "receipt.ide13.owner-local.fault.dedeb9fccdc4475e426493d1454db7bd"
     },
     {
       "faultRef": "fault.ide13.owner-local.coordinator_crash",
