@@ -12,6 +12,11 @@
  * signer implementation and its static import test arrive in IDR-06.
  */
 export * from "./signer.ts";
+// IDR-06 narrowed real signer, backed by the `nostr-effect` `IdentityKeys`
+// façade. The secret-export custody module (`./custody.ts`) is intentionally NOT
+// re-exported here, so a normal caller cannot reach the key-export escape
+// hatches through the package barrel.
+export * from "./local-signer.ts";
 export * from "./recovery-state.ts";
 export * from "./discovery.ts";
 export * from "./open.ts";

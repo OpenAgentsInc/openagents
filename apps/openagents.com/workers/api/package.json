@@ -72,7 +72,7 @@
     "arctic": "^2.2.2",
     "effect": "4.0.0-beta.94",
     "hono": "^4.12.23",
-    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz",
+    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz",
     "postgres": "3.4.9",
     "react": "19.2.7",
     "react-dom": "19.2.7"

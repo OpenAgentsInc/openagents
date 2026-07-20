@@ -1303,8 +1303,8 @@ importers:
         specifier: ^4.12.23
         version: 4.12.30
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz
       postgres:
         specifier: 3.4.9
         version: 3.4.9
@@ -2268,8 +2268,8 @@ importers:
   packages/nip90:
     dependencies:
       nostr-effect:
-        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz
-        version: https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -2441,6 +2441,9 @@ importers:
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../runtime-platform
+      '@openagentsinc/sovereign-identity':
+        specifier: workspace:*
+        version: link:../sovereign-identity
       '@openai/codex-sdk':
         specifier: ^0.144.1
         version: 0.144.3
@@ -2536,6 +2539,9 @@ importers:
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
+      nostr-effect:
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -9946,9 +9952,9 @@ packages:
     resolution: {integrity: sha512-DlL+XwOy3NxAQ8xuC0okPgK46iuVNAK01YN7RueYBqqFeGsBjV9XmCAzAdgt+667bCl5kPh9EqKKDwnaPG1I7A==}
     engines: {node: '>=10'}
 
-  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz:
-    resolution: {integrity: sha512-DtD+6XQ9ndMAkmaeih7TIkjeeNbeS/ANrRjt+UXnuCFzvfbIUE16uMfpbYC05cvLNxTQbsiUD24d7m9bX8cldg==, tarball: https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz}
-    version: 0.0.12
+  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz:
+    resolution: {integrity: sha512-3rYUUJ//akItGXawiFDOXJ09qGXyFcUtf0FkDImgHS+Hv1gTQTqluz/OPT+UJZe1C3s+wjIB0LwL4bOAcIudCA==, tarball: https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz}
+    version: 0.0.13
 
   npm-package-arg@11.0.3:
     resolution: {integrity: sha512-sHGJy8sOC1YraBywpzQlIKBE4pBbGbiF95U6Auspzyem956E0+FtDtsx1ZxlOJkQCZ1AFXAY/yuvtFYrOxF+Bw==}
@@ -20761,7 +20767,7 @@ snapshots:
 
   normalize-url@6.1.0: {}
 
-  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/2bb57870eeeb214ed80ca8a275292f5e4dd89863.tar.gz:
+  nostr-effect@https://github.com/OpenAgentsInc/nostr-effect/archive/009fb155df86fc4a6f2c68fda4883a88c4176f42.tar.gz:
     dependencies:
       '@noble/ciphers': 1.2.1
       '@noble/curves': 1.8.1

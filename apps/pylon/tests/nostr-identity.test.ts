@@ -5,9 +5,8 @@ import { describe, expect, test } from "vite-plus/test"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
   NIP06_DERIVATION_PATH,
-  createNip98Event,
+  createNip98Authorization,
   deriveNip06Identity,
-  encodeNip98Authorization,
   loadOrCreateNostrIdentity,
   resolveNostrIdentityPath,
   verifyNip98Authorization,
@@ -26,14 +25,22 @@ async function withTempHome<T>(fn: (home: string) => Promise<T>) {
 }
 
 describe("Pylon NIP-06 identity", () => {
-  test("derives the deprecated Rust Pylon NIP-06 account-zero vector", () => {
+  test("derives the deprecated Rust Pylon NIP-06 account-zero PUBLIC vector", () => {
+    // IDR-06: the identity is narrowed to the signer boundary. The public key
+    // and `npub` uniquely pin the private derivation path, so the deprecated
+    // Rust-Pylon regression anchor survives WITHOUT exposing the private key or
+    // `nsec` through the normal API. Private-key vectors live in custody-only
+    // tests (sovereign-identity), never on the normal caller surface.
     const identity = deriveNip06Identity(vectorMnemonic, "/tmp/identity.mnemonic")
 
     expect(NIP06_DERIVATION_PATH).toBe("m/44'/1237'/0'/0/0")
-    expect(identity.privateKeyHex).toBe("7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a")
     expect(identity.publicKey).toBe("17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917")
-    expect(identity.nsec).toBe("nsec10allq0gjx7fddtzef0ax00mdps9t2kmtrldkyjfs8l5xruwvh2dq0lhhkp")
     expect(identity.npub).toBe("npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu")
+    // The narrowed identity exposes signer operations only — no secret field.
+    expect("privateKeyHex" in identity).toBe(false)
+    expect("nsec" in identity).toBe(false)
+    expect("mnemonic" in identity).toBe(false)
+    expect("privateKeyBytes" in identity).toBe(false)
   })
 
   test("reuses an existing compatibility mnemonic without overwriting it", async () => {
@@ -102,16 +109,17 @@ describe("Pylon NIP-06 identity", () => {
     })
   })
 
-  test("creates and verifies a strict NIP-98 event", () => {
+  test("signs and verifies a strict NIP-98 token THROUGH the signer boundary", async () => {
     const identity = deriveNip06Identity(vectorMnemonic, "/tmp/identity.mnemonic")
-    const event = createNip98Event({
+    // IDR-06: sign through the signer port, not with a raw private key.
+    const authorization = await createNip98Authorization({
       method: "POST",
       url: "https://openagents.com/api/pylons/pylon.test/heartbeat",
       body: "{\"pylonRef\":\"pylon.test\"}",
-      identity,
+      signer: identity.signer,
       now: new Date("2026-06-09T00:00:00.000Z"),
     })
-    const verified = verifyNip98Authorization(encodeNip98Authorization(event), {
+    const verified = verifyNip98Authorization(authorization, {
       method: "POST",
       url: "https://openagents.com/api/pylons/pylon.test/heartbeat",
       body: "{\"pylonRef\":\"pylon.test\"}",
@@ -121,5 +129,7 @@ describe("Pylon NIP-06 identity", () => {
     expect(verified.pubkey).toBe(identity.publicKey)
     expect(verified.kind).toBe(27235)
     expect(verified.tags.find((tag) => tag[0] === "method")?.[1]).toBe("POST")
+    // The token carries the `Nostr ` authorization scheme.
+    expect(authorization.startsWith("Nostr ")).toBe(true)
   })
 })

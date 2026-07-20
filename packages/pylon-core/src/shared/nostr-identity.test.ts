@@ -104,7 +104,13 @@ describe("intentional rehydrate-or-create loadOrCreateNostrIdentity", () => {
     const rehydrated = await loadOrCreateNostrIdentity(paths(), env())
     expect(rehydrated.npub).toBe(created.npub)
     // Rehydration opened the existing file; it never overwrote the mnemonic.
-    expect(rehydrated.mnemonic).toBe(created.mnemonic)
+    // IDR-06: the narrowed identity exposes public identifiers + a signer only,
+    // so stability is proven by the public key/npub, never a raw mnemonic field.
+    expect(rehydrated.publicKey).toBe(created.publicKey)
+    // The narrowed identity carries NO raw secret field.
+    expect("mnemonic" in rehydrated).toBe(false)
+    expect("nsec" in rehydrated).toBe(false)
+    expect("privateKeyBytes" in rehydrated).toBe(false)
   })
 
   test("a symbolic-link candidate fails closed and is NOT created over", async () => {

@@ -3974,8 +3974,15 @@ const desktopIdentityLoader: IdentityLoader = {
     // overwrites an existing mnemonic.
     const resolution = resolveNostrIdentityPath(paths, process.env)
     const existed = existsSync(resolution.path)
+    // IDR-06: the narrowed loader returns the PUBLIC projection plus a signer —
+    // never the raw mnemonic. The boot display consumes public identifiers only.
     const identity = await loadOrCreateNostrIdentity(paths, process.env)
-    return { source: existed ? "rehydrated" : "created", mnemonic: identity.mnemonic }
+    return {
+      source: existed ? "rehydrated" : "created",
+      npub: identity.npub,
+      walletFingerprint: identity.sparkFingerprint,
+      profileId: identity.profileId,
+    }
   },
 }
 const identityHost = createIdentityHost(desktopIdentityLoader)

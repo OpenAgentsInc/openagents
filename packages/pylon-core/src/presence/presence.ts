@@ -60,7 +60,7 @@ import {
   NOT_PROBED_APPLE_FM_STATUS,
   type PylonAppleFmStatusProjection,
 } from "./apple-fm-status.js"
-import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "../shared/nostr-identity.js"
+import { createNip98Authorization, loadOrCreateNostrIdentity } from "../shared/nostr-identity.js"
 import {
   assertPublicProjectionSafe,
   ensurePylonLocalState,
@@ -871,18 +871,20 @@ export async function createSignedHeaders(input: {
   now?: Date
 }) {
   const identity = await loadOrCreateNostrIdentity(input.paths)
-  const event = createNip98Event({
+  // IDR-06: sign the NIP-98 token THROUGH the signer boundary. The private key
+  // stays inside `identity.signer`; this path never touches raw key material.
+  const authorization = await createNip98Authorization({
     method: input.method,
     url: input.url,
     body: input.body,
-    identity,
+    signer: identity.signer,
     now: input.now,
   })
 
   return {
     "content-type": "application/json",
     "x-pylon-ref": input.pylonRef,
-    authorization: encodeNip98Authorization(event),
+    authorization,
   }
 }
 

@@ -9,8 +9,9 @@ import { describe, expect, test } from "vite-plus/test";
  * packages, so this package owns its own boundary proof. `sovereign-identity`
  * is a neutral root package: it must import no app, no Pylon or Desktop code, no
  * React or Electron platform API, and no wallet SDK. It may import Effect, the
- * audited crypto primitives (`@noble/*`, `@scure/*`), and the neutral
- * `@openagentsinc/local-secret-store` port only.
+ * audited crypto primitives (`@noble/*`, `@scure/*`), the neutral
+ * `@openagentsinc/local-secret-store` port, and the audited `nostr-effect`
+ * derivation/signer engine (IDR-06) only.
  */
 
 const srcRoot = import.meta.dirname;
@@ -71,6 +72,10 @@ const ALLOWED_PREFIXES = [
   "@noble/",
   "@scure/",
   "@openagentsinc/local-secret-store",
+  // IDR-06: the audited Nostr derivation/signer engine. `sovereign-identity`
+  // adopts `nostr-effect`'s `IdentityKeys` / `LocalSignerPort` façade instead of
+  // rebuilding Nostr primitives (workspace rule).
+  "nostr-effect",
 ] as const;
 
 describe("package import boundary", () => {

@@ -1,27 +1,53 @@
 import { describe, expect, test } from "vite-plus/test"
 
 import {
+  deriveLocalNostrIdentity,
+  deriveSovereignIdentityPublic,
   PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE,
   PUBLIC_TEST_MNEMONIC,
 } from "@openagentsinc/sovereign-identity"
 
 import { decodeIdentityStatus } from "./identity-contract.ts"
-import { createIdentityHost, deriveNostrPublicIdentity, type IdentityLoader } from "./identity-host.ts"
+import { createIdentityHost, type IdentityLoadResult, type IdentityLoader } from "./identity-host.ts"
 
 /**
- * IDR-BS #9103 host tests. They use ONLY IDR-00's published test mnemonic and
- * its frozen public vectors — never a real secret, and never a secret in output.
+ * IDR-BS #9103 host tests, narrowed by IDR-06. They use ONLY IDR-00's published
+ * test mnemonic and its frozen public vectors — never a real secret, and never a
+ * secret in output.
+ *
+ * IDR-06 moved the raw derivation behind the signer boundary: the loader now
+ * hands the host the PUBLIC projection (`npub` + Spark fingerprint + source +
+ * profile), derived through `@openagentsinc/sovereign-identity` (the
+ * `nostr-effect` `IdentityKeys` engine). These tests build that public
+ * projection with the same derivation the real Pylon loader uses, so the boot
+ * display keeps deriving the frozen vectors — WITHOUT the mnemonic reaching this
+ * host.
  */
-const loaderFor = (over: Partial<{ source: "rehydrated" | "created"; mnemonic: string; fail: boolean; calls: { n: number } }>): IdentityLoader => ({
+
+/** Build the PUBLIC projection the real loader produces, from a test mnemonic. */
+const projectionFor = (mnemonic: string, source: "rehydrated" | "created"): IdentityLoadResult => {
+  const nostr = deriveLocalNostrIdentity(mnemonic)
+  const spark = deriveSovereignIdentityPublic(mnemonic)
+  return {
+    source,
+    npub: nostr.npub,
+    walletFingerprint: spark.sparkBip32FingerprintHex,
+    profileId: nostr.profileId,
+  }
+}
+
+const loaderFor = (
+  over: Partial<{ source: "rehydrated" | "created"; mnemonic: string; fail: boolean; calls: { n: number } }>,
+): IdentityLoader => ({
   loadOrCreate: async () => {
     if (over.calls) over.calls.n += 1
     if (over.fail) throw new Error("loader boom")
-    return { source: over.source ?? "rehydrated", mnemonic: over.mnemonic ?? PUBLIC_TEST_MNEMONIC }
+    return projectionFor(over.mnemonic ?? PUBLIC_TEST_MNEMONIC, over.source ?? "rehydrated")
   },
 })
 
-describe("identity host (IDR-BS #9103)", () => {
-  test("derives the frozen IDR-00 npub + Spark fingerprint from the public test mnemonic", async () => {
+describe("identity host (IDR-BS #9103, IDR-06 signer boundary)", () => {
+  test("forwards the frozen IDR-00 npub + Spark fingerprint from the public projection", async () => {
     const status = await createIdentityHost(loaderFor({ source: "rehydrated" })).status()
     expect(status.status).toBe("available")
     expect(status.npub).toBe(PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE.npub)
@@ -30,10 +56,12 @@ describe("identity host (IDR-BS #9103)", () => {
     expect(status.profileId).toBe("openagents.legacy_unified_nostr_spark.v1")
   })
 
-  test("the thin Nostr seam derives the frozen npub + pubkey vectors", () => {
-    const nostr = deriveNostrPublicIdentity(PUBLIC_TEST_MNEMONIC)
+  test("the signer-boundary derivation still yields the frozen npub + pubkey vectors", () => {
+    // The derivation now lives behind the signer boundary in sovereign-identity;
+    // it must still produce the frozen public vectors for the boot display.
+    const nostr = deriveLocalNostrIdentity(PUBLIC_TEST_MNEMONIC)
     expect(nostr.npub).toBe(PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE.npub)
-    expect(nostr.pubkey).toBe(PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE.nostrPublicKeyHex)
+    expect(nostr.publicKey).toBe(PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE.nostrPublicKeyHex)
   })
 
   test("a missing mnemonic (created) passes the source through unchanged", async () => {

@@ -36,6 +36,7 @@
     "@openagentsinc/grok-harness": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
+    "@openagentsinc/sovereign-identity": "workspace:*",
     "@openai/codex-sdk": "^0.144.1",
     "@scure/base": "1.2.4",
     "@scure/bip32": "1.6.2",

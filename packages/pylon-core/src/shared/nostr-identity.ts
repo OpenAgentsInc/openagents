@@ -2,12 +2,15 @@ import { existsSync, lstatSync, readFileSync, statSync } from "node:fs"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { secp256k1, schnorr } from "@noble/curves/secp256k1"
+import { schnorr } from "@noble/curves/secp256k1"
 import { sha256 } from "@noble/hashes/sha256"
-import { HDKey } from "@scure/bip32"
-import { bech32 } from "@scure/base"
-import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39"
+import { generateMnemonic, validateMnemonic } from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english"
+import {
+  deriveLocalNostrIdentity,
+  deriveSovereignIdentityPublic,
+  type LocalSignerPort,
+} from "@openagentsinc/sovereign-identity"
 import type { BootstrapSummary } from "./bootstrap.js"
 
 export const ENV_OPENAGENTS_IDENTITY_MNEMONIC_PATH = "OPENAGENTS_IDENTITY_MNEMONIC_PATH"
@@ -25,14 +28,31 @@ export type NostrIdentityPathResolution = {
     | "legacy_default"
 }
 
-export type PylonNostrPrivateIdentity = {
+/**
+ * The narrow Nostr signer surface (IDR-06). It is exactly the `nostr-effect`
+ * `LocalSignerPort` re-exported by `@openagentsinc/sovereign-identity`: get the
+ * public key, sign an admitted event, NIP-44 encrypt/decrypt, create a NIP-98
+ * HTTP auth token, and read the public manifest. It has NO method that returns
+ * the mnemonic, `nsec`, raw private key, or seed.
+ */
+export type PylonNostrSigner = LocalSignerPort
+
+/**
+ * A local Pylon Nostr identity, NARROWED to the signer boundary (IDR-06). It
+ * carries the PUBLIC identifiers and the signer only. The mnemonic, `nsec`, raw
+ * private key, and seed are NEVER returned; they live only inside the bounded
+ * open/create scope below, and the signing key survives only inside `signer`.
+ */
+export type PylonNostrIdentity = {
   identityPath: string
-  mnemonic: string
   publicKey: string
   npub: string
-  nsec: string
-  privateKeyHex: string
-  privateKeyBytes: Uint8Array
+  /** The PUBLIC Spark wallet BIP-32 fingerprint (hex). Safe to display/persist. */
+  sparkFingerprint: string
+  /** The active derivation profile id. */
+  profileId: string
+  /** Signer operations only — no secret-returning method. */
+  signer: PylonNostrSigner
 }
 
 export type Nip98Event = {
@@ -209,7 +229,7 @@ function inspectIdentityFile(path: string): IdentityFileInspection {
 export async function openNostrIdentity(
   paths: BootstrapSummary["paths"],
   env: NodeJS.ProcessEnv = process.env,
-): Promise<PylonNostrPrivateIdentity> {
+): Promise<PylonNostrIdentity> {
   const resolution = resolveNostrIdentityPath(paths, env)
   const inspection = inspectIdentityFile(resolution.path)
   switch (inspection.kind) {
@@ -236,7 +256,7 @@ export async function openNostrIdentity(
 export async function createNostrIdentity(
   paths: BootstrapSummary["paths"],
   env: NodeJS.ProcessEnv = process.env,
-): Promise<PylonNostrPrivateIdentity> {
+): Promise<PylonNostrIdentity> {
   const resolution = resolveNostrIdentityPath(paths, env)
   if (inspectIdentityFile(resolution.path).kind !== "absent") {
     throw new NostrIdentityAlreadyExistsError(resolution.path)
@@ -246,25 +266,26 @@ export async function createNostrIdentity(
   return deriveNip06Identity(mnemonic, resolution.path)
 }
 
-export function deriveNip06Identity(mnemonic: string, identityPath: string): PylonNostrPrivateIdentity {
+/**
+ * Derive the NARROWED local Nostr identity from a mnemonic (IDR-06). The audited
+ * `nostr-effect` `IdentityKeys` façade (via `@openagentsinc/sovereign-identity`)
+ * is the Nostr derivation engine; the frozen reference derives the PUBLIC Spark
+ * wallet fingerprint. The `mnemonic` argument lives only inside this bounded
+ * scope: the return exposes public identifiers plus a signer, and NEVER the
+ * mnemonic, `nsec`, raw private key, or seed.
+ */
+export function deriveNip06Identity(mnemonic: string, identityPath: string): PylonNostrIdentity {
   const normalized = normalizeMnemonic(mnemonic)
   if (!validateMnemonic(normalized, wordlist)) throw new Error("invalid NIP-06 mnemonic")
-  const seed = mnemonicToSeedSync(normalized, "")
-  const node = HDKey.fromMasterSeed(seed).derive(NIP06_DERIVATION_PATH)
-  if (!node.privateKey) throw new Error("failed to derive NIP-06 private key")
-  const privateKeyBytes = node.privateKey
-  const publicKeyBytes = secp256k1.getPublicKey(privateKeyBytes, true).slice(1)
-  const publicKey = bytesToHex(publicKeyBytes)
-  const privateKeyHex = bytesToHex(privateKeyBytes)
-
+  const nostr = deriveLocalNostrIdentity(normalized)
+  const spark = deriveSovereignIdentityPublic(normalized)
   return {
     identityPath,
-    mnemonic: normalized,
-    publicKey,
-    npub: encodeNip19("npub", publicKeyBytes),
-    nsec: encodeNip19("nsec", privateKeyBytes),
-    privateKeyHex,
-    privateKeyBytes,
+    publicKey: nostr.publicKey,
+    npub: nostr.npub,
+    sparkFingerprint: spark.sparkBip32FingerprintHex,
+    profileId: nostr.profileId,
+    signer: nostr.signer,
   }
 }
 
@@ -280,7 +301,7 @@ export function deriveNip06Identity(mnemonic: string, identityPath: string): Pyl
 export async function loadOrCreateNostrIdentity(
   paths: BootstrapSummary["paths"],
   env: NodeJS.ProcessEnv = process.env,
-): Promise<PylonNostrPrivateIdentity> {
+): Promise<PylonNostrIdentity> {
   try {
     return await openNostrIdentity(paths, env)
   } catch (error) {
@@ -291,16 +312,6 @@ export async function loadOrCreateNostrIdentity(
   }
 }
 
-export function encodeNip19(prefix: "npub" | "nsec", bytes: Uint8Array) {
-  return bech32.encode(prefix, bech32.toWords(bytes))
-}
-
-export function decodeNip19(prefix: "npub" | "nsec", value: string) {
-  const decoded = bech32.decode(value as `${string}1${string}`, 2048)
-  if (decoded.prefix !== prefix) throw new Error(`expected ${prefix}`)
-  return Uint8Array.from(bech32.fromWords(decoded.words))
-}
-
 export function sha256HexBody(input: string) {
   return sha256Hex(input)
 }
@@ -309,27 +320,32 @@ function serializeNostrEvent(event: Omit<Nip98Event, "id" | "sig">) {
   return JSON.stringify([0, event.pubkey, event.created_at, event.kind, event.tags, event.content])
 }
 
-export function createNip98Event(input: {
+/**
+ * Build a NIP-98 HTTP `Authorization` value by signing THROUGH the signer port
+ * (IDR-06). The signer holds the private key; this function only assembles the
+ * admitted event template (kind 27235, `u`/`method`/`payload` tags, empty
+ * content) and delegates the signature to `signer.signEvent`. The optional `now`
+ * is threaded into the event `created_at` so callers keep a deterministic clock.
+ * The resulting event is byte-compatible with `verifyNip98Authorization`.
+ */
+export async function createNip98Authorization(input: {
   method: string
   url: string
   body: string
-  identity: PylonNostrPrivateIdentity
+  signer: PylonNostrSigner
   now?: Date
-}): Nip98Event {
-  const unsigned = {
-    pubkey: input.identity.publicKey,
-    created_at: Math.floor((input.now ?? new Date()).getTime() / 1000),
+}): Promise<string> {
+  const signed = await input.signer.signEvent({
     kind: NIP98_KIND,
+    created_at: Math.floor((input.now ?? new Date()).getTime() / 1000),
     tags: [
       ["u", input.url],
       ["method", input.method.toUpperCase()],
       ["payload", sha256HexBody(input.body)],
     ],
     content: "",
-  } satisfies Omit<Nip98Event, "id" | "sig">
-  const id = sha256Hex(serializeNostrEvent(unsigned))
-  const sig = bytesToHex(schnorr.sign(hexToBytes(id), input.identity.privateKeyBytes))
-  return { ...unsigned, id, sig }
+  })
+  return encodeNip98Authorization(signed as Nip98Event)
 }
 
 export function encodeNip98Authorization(event: Nip98Event) {
